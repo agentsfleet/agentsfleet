@@ -1,6 +1,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 
+use super::diagnostics;
+
 /// A runner identifier for the two reporting helpers.
 ///
 /// Minted rather than parsed from a literal: `Uuid7::encode` is the only
@@ -14,7 +16,8 @@ fn runner_id() -> Result<Uuid7, &'static str> {
     .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
-/// Both queue reporters render every Dragonfly failure kind without panicking.
+/// Every queue and wake reporter renders every Dragonfly failure kind without
+/// panicking.
 ///
 /// Thin, and deliberately so. These are `tracing::warn!` calls with no
 /// return value, so what there is to prove is that each field expression
@@ -27,7 +30,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
 /// second copy of every field expression, and a panic in the copy that does
 /// run would take down a path whose entire job is to report calmly.
 #[test]
-fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str> {
+fn every_queue_and_wake_reporter_renders_every_redis_failure() -> Result<(), &'static str> {
     let runner = runner_id()?;
 
     for (label, error) in afd_dragonfly::error::one_of_each_kind() {
@@ -35,9 +38,34 @@ fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str>
             !error.to_string().is_empty(),
             "{label} renders to something a reader can act on"
         );
-        super::warn_queue("lease_poll_queue_failed", &runner, &error);
+        super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
         super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
+        let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
+        diagnostics::warn_rung_peek(&runner, partition, &error);
     }
+    Ok(())
+}
+
+/// A rung peek that fails logs under its own event, naming the partition the
+/// doorbell rang, so an operator can tell a sick partition from a sick poll.
+#[cfg(feature = "test-util")]
+#[test]
+fn a_failed_rung_peek_logs_its_event_and_partition() -> Result<(), &'static str> {
+    use afd_core::test_util::trace::Capture;
+
+    let runner = runner_id()?;
+    let (_label, error) = afd_dragonfly::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .ok_or("one datastore failure")?;
+    let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
+    let log = Capture::install();
+
+    diagnostics::warn_rung_peek(&runner, partition, &error);
+
+    // pin test: the event name is what an operator searches the log by.
+    let logged = log.only("assign_ready_wake_peek_failed");
+    assert_eq!(logged.field("partition"), Some("3"));
     Ok(())
 }
 
@@ -112,7 +140,7 @@ fn a_poll_queue_failure_reason_carries_no_code_prefix() -> Result<(), &'static s
     let told = error.told();
 
     let log = Capture::install();
-    super::warn_queue("lease_poll_queue_failed", &runner, &error);
+    super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
     super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
 
     for event in ["lease_poll_queue_failed", "lease_claim_queue_failed"] {

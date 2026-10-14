@@ -102,7 +102,7 @@ pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64
     })
 }
 
-/// Up to one poll's worth of ready fleets, gathered over a full rotation.
+/// Up to one peek's worth of ready fleets, gathered over a full rotation.
 ///
 /// The plan below is explained against the same membership list a poll
 /// binds, and a single partition of a freshly seeded population may hold
@@ -155,6 +155,9 @@ pub(super) async fn postgres_at_population(
     // to bind at all: the lease path's own binds for the hold condition.
     .bind(afd_core::timing::RUNNER_OFFLINE_AFTER_MS)
     .bind(afd_fleet::lease::sql::ADMIN_STATE_ACTIVE)
+    // The ids the cursor's partition offered, which sort first: every sampled
+    // id here, as a held-first poll binds them, so the plan carries the key.
+    .bind(&ready)
     .fetch_all(&mut *connection)
     .await?
     .iter()

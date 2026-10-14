@@ -27,7 +27,7 @@ useFreshStateDir();
 
 const CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${"a".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
 const CREDENTIAL_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
-const ALL_SESSIONS_PATH = `${AUTH_SESSIONS_PATH}/all`;
+const OWN_SESSIONS_PATH = AUTH_SESSIONS_PATH;
 const REVOKE_PATH = `${CLI_CREDENTIALS_PATH}/${CREDENTIAL_ID}`;
 const METHOD_DELETE = "DELETE" as const;
 const REVOKE_FAILED_CODE = "UZ-INTERNAL-001";
@@ -178,7 +178,7 @@ describe("test_logout_does_not_revoke_browser_session", () => {
     // nothing here addresses it — pinned as the exact call set, so a future
     // Clerk admin-API call cannot be added without this failing.
     expect(rec.calls.map((c) => c.path).sort()).toEqual(
-      [ALL_SESSIONS_PATH, REVOKE_PATH].sort(),
+      [OWN_SESSIONS_PATH, REVOKE_PATH].sort(),
     );
   });
 });

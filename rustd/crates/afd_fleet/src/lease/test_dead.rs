@@ -98,5 +98,6 @@ pub(crate) fn acquired() -> Acquired {
         reused: None,
         ready: ReadyToken::mint(&Entropy::new(), AT).expect("the host has entropy"),
         resume_hold: false,
+        redelivered: false,
     }
 }

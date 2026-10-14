@@ -4,7 +4,7 @@
 // component keeps the state and wiring.
 
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
-import type { LibraryModel } from "@/lib/api/model-library-types";
+import { providerLabel, type LibraryModel } from "@/lib/api/model-library-types";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { compareModelIds, type RateFields } from "@/lib/models/display";
 
@@ -32,6 +32,11 @@ export function computeNextSort(cur: SortState, key: string): SortState | null {
   return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
 }
 
+/** The name a Provider cell shows, which the column sorts by; none first. */
+function labelOf(provider: string | undefined): string {
+  return provider ? providerLabel(provider) : "";
+}
+
 /** Pure — the order two entries take under a sort column. The model column
  * orders exactly as the model library does, through the one shared comparison;
  * rates order by the input rate the Rates cell shows, the entry's own or else
@@ -46,7 +51,7 @@ export function compareEntries(
     case "model":
       return compareModelIds(a.model_id, b.model_id);
     case "provider":
-      return (a.provider ?? "").localeCompare(b.provider ?? "");
+      return labelOf(a.provider).localeCompare(labelOf(b.provider));
     case "context":
       return (a.context_cap_tokens ?? ABSENT_FIGURE) - (b.context_cap_tokens ?? ABSENT_FIGURE);
     case "rates":

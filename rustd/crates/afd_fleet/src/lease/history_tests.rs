@@ -242,9 +242,15 @@ async fn test_non_chat_lease_carries_no_history() {
     }
 }
 
+/// Held by every test that makes a history read fail: the failure counter is
+/// the process's, so one test's failure would land inside the window another
+/// test measures it in.
+static READ_FAILURES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// A read that fails issues the lease with no turns, and says so once.
 #[tokio::test]
 async fn test_history_read_failure_fails_open() {
+    let _counted_alone = READ_FAILURES.lock().await;
     let capture = Capture::install();
     let thread = Fake::new(None);
 
@@ -266,6 +272,7 @@ async fn test_history_metrics_recorded() {
     const BYTES: &str = "agentsfleet_lease_history_bytes";
     const CUTS: &str = "agentsfleet_lease_history_cuts_total";
     const FAILURES: &str = "agentsfleet_lease_history_read_failures_total";
+    let _counted_alone = READ_FAILURES.lock().await;
     let metrics = Metrics::install();
     let before = (
         metrics.histogram_count(BYTES, &[]),

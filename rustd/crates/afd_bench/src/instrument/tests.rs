@@ -69,8 +69,9 @@ fn a_flush_and_a_shutdown_keep_the_last_capture_a_lane_reads() {
             polls: 3,
             candidates: 30,
             roundtrips: 6,
+            dragonfly_commands: 0,
         },
-        "only the three lease families are captured, and a flush or shutdown clears none"
+        "only the lease families are captured, and a flush or shutdown clears none"
     );
 }
 

@@ -8,6 +8,11 @@ import {
   deletePlatformLibraryActionMock, captureProductEventMock,
 } from "@/tests/helpers/fleet-library-view";
 
+/** The class that lets a flex child shrink below its content. */
+const SHRINKS = "min-h-0";
+/** The class that would stretch a container to fill the page. */
+const GROWS = "flex-1";
+
 describe("FleetLibrariesView", () => {
   beforeEach(() => {
     onboardPlatformLibraryActionMock.mockReset();
@@ -30,6 +35,22 @@ describe("FleetLibrariesView", () => {
     expect(screen.getByText("Published")).toBeTruthy();
     expect(screen.getByText("Draft")).toBeTruthy();
     expect(screen.getByText("No bundle")).toBeTruthy();
+  });
+
+  it("ends the catalog at its rows yet lets a long one shrink and scroll", () => {
+    // The page is fullHeight with its overflow hidden, so every container
+    // between it and the table must be able to shrink (min-h-0) and none may
+    // grow (flex-1): a short catalog ends at its rows, a long one scrolls
+    // inside the table with its pagination bar still on screen.
+    renderView([PUBLISHED, DRAFT]);
+
+    const section = screen.getByRole("region", { name: "Platform fleet catalog" });
+    const wrapper = screen.getByTestId("data-table").parentElement;
+    for (const container of [section, wrapper]) {
+      const classes = container?.className.split(" ") ?? [];
+      expect(classes).toContain(SHRINKS);
+      expect(classes).not.toContain(GROWS);
+    }
   });
 
   it("shows the empty state only when the catalog is genuinely empty", () => {

@@ -75,7 +75,22 @@ afterEach(() => {
   listActionMock.mockReset();
 });
 
+/** The class that lets a flex child shrink below its content. */
+const SHRINKS = "min-h-0";
+/** The class that would stretch a container to fill the page. */
+const GROWS = "flex-1";
+
 describe("the workspace library list", () => {
+  it("ends at its rows yet shrinks, so Load more stays on screen", () => {
+    renderList([entry("e1", "github-pr-reviewer")], "cursor-2");
+
+    const wrapper = screen.getByTestId("data-table").parentElement;
+    const classes = wrapper?.className.split(" ") ?? [];
+    expect(classes).toContain(SHRINKS);
+    expect(classes).not.toContain(GROWS);
+    expect(wrapper?.contains(screen.getByRole("button", { name: /load more/i }))).toBe(true);
+  });
+
   it("renders a row per onboarded entry, with its provenance", () => {
     renderList([entry("e1", "github-pr-reviewer"), entry("e2", "incident-responder")]);
 

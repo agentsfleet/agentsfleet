@@ -232,7 +232,11 @@ impl Reclaim {
     /// above and the ledger question below — so a mark that fails is counted
     /// and logged the same way whichever question raised it.
     async fn mark_ready(&self, fleet_id: &str) -> bool {
-        match self.ready.mark(fleet_id).await {
+        // Quiet: this pass re-marks fleets mid-run too, and a long run's entry
+        // is claimed here once it idles past the autoclaim threshold, so a
+        // claim proves no dead holder. The rotation reaches every mark it
+        // writes without the doorbell sending polls.
+        match self.ready.mark_quiet(fleet_id).await {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();

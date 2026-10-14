@@ -157,12 +157,12 @@ FROM bumped b
 JOIN core.fleet_events e
   ON e.fleet_id = b.fleet_id AND e.event_id = b.event_id";
 
-/// Eligible active fleets for one lease poll, sticky-first and bounded.
+/// Eligible active fleets for one poll, cursor-first then sticky, bounded.
 ///
 /// Readiness NARROWS the input; it never decides eligibility. The label gate
 /// and the sticky ordering are properties of this query — `required_tags <@
 /// labels` still filters (empty tags are a subset of any labels, so any runner
-/// qualifies) and the runner's own affinity still sorts to the front. The `$3`
+/// qualifies) and the runner's own affinity still sorts first within its peek. The `$3`
 /// membership restriction is the readiness index's contribution, and `$4` is
 /// the ceiling that makes per-poll cost independent of how many fleets exist.
 ///
@@ -181,9 +181,17 @@ JOIN core.fleet_events e
 /// A fleet another runner holds and can still lease is skipped the same way,
 /// by the claim's own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
 ///
+/// The cursor's partition's fleets (`$8`) sort ahead of the partition the
+/// readiness doorbell rang: a poll the rotation sends to a partition with work
+/// leases from it, so one rotation of polls still reaches every placeable
+/// fleet, and the rung partition gives what that partition leaves. The ids are cast inside
+/// a scalar subquery, which Postgres runs once per scan; cast in the sort key
+/// itself, a generic plan casts all of them again for every candidate row.
+/// The outer cast is what makes `ANY` read the subquery as one array.
+///
 /// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
 /// `$5` now, `$6` how long a silent runner stays live, `$7` the admin state
-/// that may lease.
+/// that may lease, `$8` the ids among `$3` from the cursor's partition.
 pub const SELECT_READY_CANDIDATES: &str = "\
 SELECT z.id::text
 FROM core.fleets z
@@ -206,7 +214,8 @@ WHERE z.status = $1
                 FROM fleet.runners WHERE id = $2::uuid)
              ) AS e
       )
-ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, random()
+ORDER BY z.id = ANY((SELECT ($8::text[])::uuid[])::uuid[]) DESC,
+         (a.last_runner_id = $2::uuid) DESC NULLS LAST, random()
 LIMIT $4";
 
 /// What one lease authorises a mint to reach.

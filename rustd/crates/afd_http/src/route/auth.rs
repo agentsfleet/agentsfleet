@@ -18,8 +18,8 @@ pub enum AuthRoute {
     VerifySession,
     /// `DELETE` one session — an explicit cancel by its owner.
     DeleteSession,
-    /// `DELETE /v1/auth/sessions/all` — abort every in-flight login.
-    DeleteAllSessions,
+    /// `DELETE /v1/auth/sessions` — abort the caller's own in-flight logins.
+    DeleteOwnSessions,
     /// The identity provider's own event delivery.
     IdentityEventClerk,
 }
@@ -32,7 +32,7 @@ impl AuthRoute {
         Self::ApproveSession,
         Self::VerifySession,
         Self::DeleteSession,
-        Self::DeleteAllSessions,
+        Self::DeleteOwnSessions,
         Self::IdentityEventClerk,
     ];
 
@@ -48,7 +48,7 @@ impl AuthRoute {
             Self::CreateSession | Self::VerifySession | Self::IdentityEventClerk => &[Verb::Post],
             Self::PollSession => &[Verb::Get],
             Self::ApproveSession => &[Verb::Patch],
-            Self::DeleteSession | Self::DeleteAllSessions => &[Verb::Delete],
+            Self::DeleteSession | Self::DeleteOwnSessions => &[Verb::Delete],
         }
     }
 
@@ -65,7 +65,7 @@ impl AuthRoute {
             Self::IdentityEventClerk => (Guard::PayloadSigned, "/v1/auth/identity-events/clerk"),
             Self::ApproveSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}/approve"),
             Self::DeleteSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}"),
-            Self::DeleteAllSessions => (Guard::Bearer, "/v1/auth/sessions/all"),
+            Self::DeleteOwnSessions => (Guard::Bearer, "/v1/auth/sessions"),
         };
         RouteMeta::new(guard, RouteClass::Api, template, Scopes::Always(NONE))
     }

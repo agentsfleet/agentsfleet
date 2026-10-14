@@ -1,9 +1,6 @@
 # Tenant provider activation — the v2 plan
 
-> Parent: [`README.md`](./README.md) · Sibling: [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) (the posture this activates). · User-facing: [docs.agentsfleet.net/fleets/model-providers](https://docs.agentsfleet.net/fleets/model-providers).
-
-> Concept reference for the surface today:
-> [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1, §8
+> Parent: [`README.md`](./README.md) · Sibling: [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"1. The two postures" and §"8. The self-managed credential and the api_key visibility boundary" (the surface today). · User-facing: [docs.agentsfleet.net/fleets/model-providers](https://docs.agentsfleet.net/fleets/model-providers).
 
 What `PUT /v1/tenants/me/provider` costs today, why, and the three schema
 changes that delete those costs instead of optimizing them. Written during the
@@ -12,9 +9,11 @@ workaround the port carries cites this file as its expiry date.
 
 ## The principle
 
-The activation transaction runs seven round trips and one decrypt, and that is
-the FLOOR for the current schema — each remaining statement compensates for a
-named piece of schema debt. Query tuning below that floor is polishing the
+The activation transaction runs three statements inside `BEGIN`/`COMMIT`, one
+explicit row lock and one decrypt (`rustd/crates/afd_credential/src/provider/activate.rs`):
+lock and read the credential, insert the registry entry, then gate and write the
+selection. That is the FLOOR for the current schema — each remaining step
+compensates for a named piece of schema debt. Query tuning below that floor is polishing the
 workaround. The v2 items each remove a debt, and with it a class of statements,
 locks, or failure modes; together they reduce activation to two statements with
 no explicit locks and no decrypt.
@@ -23,13 +22,13 @@ no explicit locks and no decrypt.
 
 | Debt | Consequence today | Owner |
 |---|---|---|
-| `secret_ref` is TEXT, not a foreign key | the DB cannot refuse an orphaning delete, so a three-lock treaty (`vault.secrets` → `core.tenant_model_entries` → `core.tenant_model_selection`, all `FOR UPDATE`) is hand-held by every producer and destroyer of a credential reference | §V2-1 |
-| the credential payload is the authority for `provider` (`meta_provider` is a copy, not a contract) | activation must decrypt an envelope to write a truthful row | §V2-3 |
-| the selection row snapshots `provider` + `context_cap_tokens` at write time | the catalogue must be consulted at write (a TOCTOU the gate-and-write statement closes), and a later admin repoint or cap change is invisible to the stored view | §V2-2 |
+| `secret_ref` is TEXT, not a foreign key | the database cannot refuse an orphaning delete, so a three-lock treaty (`vault.secrets` → `core.tenant_model_entries` → `core.tenant_model_selection`, in that order) is hand-held by every producer and destroyer of a credential reference; every participant takes the `vault.secrets` row lock first, and the deletes spell all three as `FOR UPDATE` | §V2-1 |
+| the credential payload is the authority for `provider`; `meta_provider` is only a copy | activation must decrypt an envelope to write a truthful row | §V2-3 |
+| the selection row snapshots `provider` + `context_cap_tokens` at write time | the catalogue must be consulted at write (a time-of-check to time-of-use race, which the gate-and-write statement closes), and a later admin repoint or cap change is invisible to the stored view | §V2-2 |
 
 ## V2-1 · Make the reference a foreign key — deletes the treaty
 
-`vault.secrets.id` is already a UUID primary key. Referencing rows store it:
+`vault.secrets.id` is already a UUID primary key (`schema/300_vault_secrets.sql`). Referencing rows store it:
 
 ```sql
 ALTER TABLE core.tenant_model_entries   ADD COLUMN secret_id UUID REFERENCES vault.secrets(id);
@@ -47,8 +46,8 @@ Migration shape: add column → backfill by join on `(workspace, key_name)` →
 dual-write → flip readers → keep `secret_ref` TEXT for display only (or derive
 it). Single-writer only: `agentsfleetd` is the one writer of these tables.
 
-**Deletes:** both implementations of the lock treaty, the deadlock-order
-contract between crates, and the orphan class.
+**Deletes:** both sides of the lock treaty (`afd_vault` and `afd_credential`), the
+lock-order agreement between those crates, and the orphan class.
 
 ## V2-2 · Store intent, resolve facts live — deletes the snapshot class
 
@@ -63,24 +62,22 @@ core.tenant_model_selection v2:  (tenant_id, mode, secret_id, model)
     provider           → resolved at lease time from the credential
 ```
 
-The write-time catalogue check survives as a UX courtesy (`SELECT EXISTS`),
+The write-time catalogue check survives as a user-experience courtesy (`SELECT EXISTS`),
 but nothing is persisted from the catalogue, so there is nothing to race over
 and nothing to go stale. An admin raising a model's cap takes effect on the
 tenant's next lease with no re-activation — the same live-read philosophy the
 platform default already has. That also retires a quirk this port carried
 across deliberately: an explicit platform row shows the SNAPSHOT taken when the
-tenant reset, not the live default. It is not a cutover divergence — both
-daemons behave identically, which is why the parity register has no row for it
-— it is a product behaviour both implementations share, and V2-2 is where it
-stops being one.
+tenant reset, not the live default. The port kept it on purpose, so the
+parity register has no row for it; V2-2 is where it stops.
 
-## V2-3 · Make the metadata a contract — deletes the decrypt
+## V2-3 · Make the metadata binding — deletes the decrypt
 
 Enforce at seal time — the one write path — that `meta_provider`,
 `meta_has_key` and `meta_base_url` are written iff they match the payload.
 The metadata becomes authoritative, and activation never opens an envelope:
 provider from `meta_provider`, dialability from `meta_has_key`, endpoint from
-`meta_base_url`. The SSRF guard already re-runs at lease time, which is the
+`meta_base_url`. The Server-Side Request Forgery (SSRF) guard already re-runs at lease time, which is the
 real security boundary; activation-time endpoint validation is a courtesy 400.
 A refused AND an accepted activation both complete with no plaintext key ever
 in memory. This also retires the legacy model-fallback read (a bare PUT
@@ -93,20 +90,21 @@ legacy — v2 requires the model in the body or on the registry entry.
 PUT /v1/tenants/me/provider {mode:self_managed, secret_ref, model}
 │ ① INSERT INTO core.tenant_model_entries (…, secret_id, …)
 │     SELECT s.id, … FROM vault.secrets s JOIN <workspace bridge>
-│     ON CONFLICT DO NOTHING            ── the FK is the lock and the rung-2 refusal
+│     ON CONFLICT DO NOTHING            ── the foreign key is the lock and the missing-credential refusal
 │ ② INSERT INTO core.tenant_model_selection (tenant_id, mode, secret_id, model)
 │     ON CONFLICT (tenant_id) DO UPDATE ── plus the courtesy EXISTS gate
 └ COMMIT
 2 statements · no explicit locks · no treaty · no decrypt · nothing to go stale
 ```
 
-From 7 round trips and one decrypt today → 2 and none — but the jump is bought
-with schema, not SQL.
+From three statements, one explicit lock and one decrypt today → two statements
+and none of either. The jump is bought with schema, not SQL.
 
 ## Sequencing
 
 V2-1 first: it deletes shared machinery both later steps would otherwise have
 to respect. Then V2-2, then V2-3. Each is independently shippable; all three
-are single-writer migrations, and `agentsfleetd` is the one writer. Until they
-land, `agentsfleetd` carries the treaty as-is, and every such site carries a
-comment naming the section here that deletes it.
+are single-writer migrations (see §V2-1). Until they land, `agentsfleetd`
+carries the treaty as-is, and every such site carries a comment naming the
+section here that deletes it (`afd_credential/src/provider/activate.rs`,
+`afd_credential/src/provider/sql.rs`).

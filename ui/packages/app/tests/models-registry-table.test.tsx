@@ -653,6 +653,9 @@ describe("ModelsRegistryTable", () => {
     expect(compareEntries(big, small, "provider")).toBeGreaterThan(0);
     expect(compareEntries(entry({ provider: undefined }), small, "provider")).toBeLessThan(0);
     expect(compareEntries(small, entry({ provider: undefined }), "provider")).toBeGreaterThan(0);
+    // By the name the Provider cell shows: OpenAI before Tencent Hunyuan,
+    // though by slug `hunyuan` would sort first.
+    expect(compareEntries(entry({ provider: "hunyuan" }), entry({ provider: "openai" }), "provider")).toBeGreaterThan(0);
   });
 
   it("computeNextSort accepts Context and Rates, the columns the model library sorts", async () => {

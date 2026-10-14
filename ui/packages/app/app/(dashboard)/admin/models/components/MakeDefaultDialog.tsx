@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { type AdminModel } from "@/lib/api/admin_model_library";
+import { ProviderBadge } from "@/components/domain/ModelCells";
 import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -73,11 +73,15 @@ export default function MakeDefaultDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Make this the platform default</DialogTitle>
-          <DialogDescription>
-            Every fleet runs <Badge variant="cyan">{model.provider}</Badge>{" "}
+          {/* A div, not the paragraph Radix renders by default: the provider
+              badge is a block element, and a div inside a p is invalid. */}
+          <DialogDescription asChild>
+            <div>
+            Every fleet runs <ProviderBadge provider={model.provider} />{" "}
             <span className="font-mono">{model.model_id}</span> when a user hasn&apos;t brought their own key,
             billed at its catalogue rate. Enter the provider API key — it&apos;s stored in your vault and
             never shown again.
+            </div>
           </DialogDescription>
         </DialogHeader>
 

@@ -76,11 +76,16 @@ test.describe("fleet detail logs", () => {
     await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await events.getByRole("button", { name: /inspect event/i }).first().click();
 
+    // The heading carries no identifier: the event ID travels through the
+    // footer's copy button, and the request context names its source and
+    // type in words (tests/event-details-dialog.test.tsx pins the same shape).
     const dialog = page.getByRole("dialog", { name: "Event details" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("ID", { exact: true })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Copy event ID" })).toBeVisible();
+    await expect(dialog.getByText("ID", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(/^Source:/)).toBeVisible();
+    await expect(dialog.getByText(/^Type:/)).toBeVisible();
     await expect(dialog.getByRole("heading", { name: "Request context" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Copy event ID" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Copy diagnostic" })).toBeVisible();
   });
 

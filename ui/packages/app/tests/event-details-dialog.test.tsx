@@ -62,19 +62,23 @@ describe("EventDetailsDialog", () => {
   });
 
   it("keeps technical identifiers out of the heading and labels the request source and type", async () => {
+    // The acceptance journey (tests/e2e/acceptance/logs-detail.spec.ts)
+    // claims this shape inside the dialog on the live stack; scoped the same
+    // way here so the two cannot drift apart without a unit failure first.
     await renderDialogWithBody(event({
       event_id: "evt_header",
       actor: "github-app",
       event_type: "webhook",
     }));
 
-    expect(screen.getByRole("heading", { name: "Event details" })).toBeTruthy();
-    expect(screen.queryByText("ID")).toBeNull();
-    expect(screen.queryByText("evt_header")).toBeNull();
-    expect(screen.getByText(/Source:/).textContent).toBe("Source: GitHub App");
-    expect(screen.getByText(/Type:/).textContent).toBe("Type: webhook");
-    expect(screen.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
-    const copyDiagnostic = screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
+    const dialog = within(screen.getByRole("dialog", { name: "Event details" }));
+    expect(dialog.getByRole("heading", { name: "Event details" })).toBeTruthy();
+    expect(dialog.queryByText("ID", { exact: true })).toBeNull();
+    expect(dialog.queryByText("evt_header")).toBeNull();
+    expect(dialog.getByText(/Source:/).textContent).toBe("Source: GitHub App");
+    expect(dialog.getByText(/Type:/).textContent).toBe("Type: webhook");
+    expect(dialog.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
+    const copyDiagnostic = dialog.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
     expect(copyDiagnostic.closest("div")?.className).toContain("justify-end");
     expect(screen.queryByText(COPY_DIAGNOSTIC_LABEL)).toBeNull();
     expect(screen.queryByText("Copy event details")).toBeNull();

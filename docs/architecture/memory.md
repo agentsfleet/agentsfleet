@@ -15,7 +15,7 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 | Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql`, `schema/926_memory_entries_workspace_scope.sql` |
 | Every read and write goes through one trait, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `MemoryStore`, the Postgres store, the grants, and the flip |
 | The grants are read and set as the api role on `core.fleets`, never by the store | `schema/927_fleet_memory_access.sql`, `rustd/crates/afd_memory/src/access.rs` |
-| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` (`lease.fleet_id == {fleet_id}`) |
+| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` hands the path's fleet to `Plane::hydrate` / `Plane::capture` (`rustd/crates/afd_fleet/src/lease/memory.rs`), which refuse a runner holding no live lease on that fleet |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
 > [!NOTE]
@@ -23,7 +23,7 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` takes the role with `SET LOCAL ROLE memory_runtime` inside each memory transaction, so Postgres drops it at commit or rollback and no pooled connection is left running as `memory_runtime` (`rustd/crates/afd_memory/src/sql.rs`). `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 

@@ -7,7 +7,6 @@ use afd_core::error_code;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::tool_detail::ToolCallRecord;
 use bytes::Bytes;
-use tokio::time::Instant;
 
 use super::LeaseRun;
 use crate::client::retrying;
@@ -29,12 +28,7 @@ impl LeaseRun<'_> {
     /// lapses. Answers whether the daemon will never record the report, so
     /// the sandbox the run left held carries a run it does not know and serves
     /// no next lease.
-    pub(super) async fn settle(
-        &self,
-        ending: &mut Ending,
-        started: Instant,
-        held_until: Option<UnixMillis>,
-    ) -> bool {
+    pub(super) async fn settle(&self, ending: &mut Ending, held_until: Option<UnixMillis>) -> bool {
         let mut trace = None;
         if let Ending::Ran { output, .. } = ending {
             self.post_records(&mem::take(&mut output.records)).await;
@@ -48,7 +42,7 @@ impl LeaseRun<'_> {
             self.lease,
             ending,
             &self.meter,
-            started.elapsed(),
+            self.started.elapsed(),
             trace.as_deref(),
             held_until,
         );

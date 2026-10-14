@@ -116,3 +116,39 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert_eq!(plane.deployment(), "https://api.fixture.test");
     assert!(plane.now().as_millis() > 0);
 }
+
+/// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a
+/// ring published on a partition's production channel reaches it. This proves
+/// the helper the plane calls, not that the plane hands its result to the
+/// lease store; that hand-off is one line beside it in `plane.rs`.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn test_the_daemon_doorbell_hears_its_hub() {
+    use afd_dragonfly::{Partition, ReadyPrefix, SubscriptionHub};
+
+    /// Long enough for the listener task to hear a frame the server pushed.
+    const HEARD_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
+
+    let (hub, server) = SubscriptionHub::detached();
+    let live = Live::new(hub, Ceiling::new(1));
+    let doorbell = super::listening_doorbell(&live);
+    let rung = Partition::new(6).expect("a partition below sixteen");
+    let cursor = Partition::new(0).expect("a partition below sixteen");
+
+    server.publish(
+        &rung.wake_channel_under(&ReadyPrefix::production()),
+        "token",
+    );
+
+    let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
+    let mut taken = None;
+    while taken.is_none() && tokio::time::Instant::now() < deadline {
+        taken = doorbell.take(cursor);
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        taken,
+        Some(rung),
+        "the daemon's doorbell listens on its hub"
+    );
+}

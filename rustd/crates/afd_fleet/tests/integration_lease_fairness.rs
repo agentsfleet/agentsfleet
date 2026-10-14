@@ -15,7 +15,9 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use afd_core::clock::UnixMillis;
-use afd_dragonfly::ready::{Partition, READY_PARTITIONS};
+use afd_core::id::Uuid7;
+use afd_dragonfly::ready::{Doorbell, Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
+use afd_fleet::lease::{Acquired, Leases};
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 
 use crate::queue;
@@ -36,6 +38,9 @@ const COLD_FLEETS: u16 = 3;
 
 /// The tag every hot fleet requires and the runner does not carry.
 const HOT_TAG: &str = "fixture:nobody-carries-this";
+
+/// Polls after the first in which the rung fleet must be leased.
+const LATER_POLLS: usize = 2;
 
 /// The `nth` distinct fleet id derived from `base` that lands in `partition`.
 ///
@@ -166,4 +171,127 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
         leased, expected,
         "one rotation of polls must lease every placeable fleet, hot partition or not"
     );
+}
+
+/// A poll the rotation sends to a partition with work leases that work before
+/// the doorbell's: the rung partition is rung again, because its fleet was
+/// never tried, and a later poll leases it.
+///
+/// A private index, so this run's partitions hold only its own two marks,
+/// and a fresh store, so the cursor's first partition is 0. The store's
+/// doorbell holds partition 5 rung, so the first poll peeks it while the
+/// cursor names the other fleet's partition. The rung fleet is also sticky to
+/// the runner, so only the cursor-first ordering puts the other ahead.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_the_cursor_partition_leases_before_the_rung_one() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let population = Population::from(unique_ids());
+    let run = afd_core::clock::now().as_millis();
+    let prefix = ReadyPrefix::private(&format!("cursor-first-{}-{run}", std::process::id()));
+    let index = ReadyIndex::under(fixtures.queue().clone(), prefix.clone());
+    let rung = Partition::new(5).expect("a partition");
+    let behind_the_ring = fleet_in(&population.base, rung, 0);
+    let cursor = fleet_in(&population.base, Partition::new(0).expect("a partition"), 0);
+    let mut request = enrolment_tagged(
+        SandboxTier::LandlockFull,
+        NetworkPolicy::AllowListEgress,
+        1,
+        &placement_tag(&population.base),
+    );
+    for fleet in [&behind_the_ring, &cursor] {
+        seed_marked(&fixtures, &index, &population, fleet).await;
+        request.labels.push(Cow::Owned(placement_tag(fleet)));
+    }
+    let runner = fixtures
+        .runners()
+        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .await
+        .expect("enrolment must succeed")
+        .runner_id;
+    fixtures
+        .make_sticky(&behind_the_ring, runner.as_str(), ENROLLED_AT)
+        .await;
+    let doorbell = Doorbell::new();
+    doorbell.ring(rung);
+    let store = fixtures
+        .leases()
+        .with_ready_prefix(prefix)
+        .with_doorbell(doorbell.clone());
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+
+    let first = store
+        .select(&runner, &[], now)
+        .await
+        .expect("a poll must not fault");
+    let rung_again = doorbell.is_rung(rung);
+    let later = leased_within(&store, &runner, now, LATER_POLLS).await;
+
+    for fleet in [&behind_the_ring, &cursor] {
+        queue::clear_ready(fixtures.queue(), fleet).await;
+    }
+    fixtures.cleanup().await;
+    assert_eq!(
+        first.map(|acquired| acquired.fleet_id.as_str().to_owned()),
+        Some(cursor),
+        "the cursor's partition is claimed before the rung one's"
+    );
+    assert!(rung_again, "the untried partition is rung again");
+    assert_eq!(
+        later.map(|acquired| acquired.fleet_id.as_str().to_owned()),
+        Some(behind_the_ring),
+        "a later poll takes the ring and leases the fleet behind it"
+    );
+}
+
+/// Seeds `fleet` into `population`, queues one event for it and marks it.
+async fn seed_marked(
+    fixtures: &Fixtures,
+    index: &ReadyIndex,
+    population: &Population,
+    fleet: &str,
+) {
+    let tag = placement_tag(fleet);
+    fixtures
+        .seed_fleet(
+            fleet,
+            &population.workspace,
+            &population.tenant,
+            &tag,
+            ENROLLED_AT,
+        )
+        .await;
+    queue::enqueue(
+        fixtures.queue(),
+        fleet,
+        &population.workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    index
+        .mark(fleet)
+        .await
+        .expect("the private index takes a mark");
+}
+
+/// The first lease `store` hands `runner` within `polls` polls.
+async fn leased_within(
+    store: &Leases,
+    runner: &Uuid7,
+    now: UnixMillis,
+    polls: usize,
+) -> Option<Acquired> {
+    for _poll in 0..polls {
+        let leased = store
+            .select(runner, &[], now)
+            .await
+            .expect("a poll must not fault");
+        if leased.is_some() {
+            return leased;
+        }
+    }
+    None
 }

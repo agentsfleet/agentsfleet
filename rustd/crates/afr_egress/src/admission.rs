@@ -116,6 +116,26 @@ impl<'p> Admission<'p> {
         self.mintable.iter().find(|mintable| mintable.name == name)
     }
 
+    /// The refusal for `secret`, which this fleet cannot supply: a field a
+    /// secret it has does not carry, named with the fields that secret does
+    /// carry, or a secret it does not have.
+    pub(crate) fn unknown(self, secret: SecretRef<'_>) -> Error {
+        let fields = match self.mints(secret.name) {
+            Some(_minted) => Some(vec![FIELD_TOKEN]),
+            None => self.statics.field_names(secret.name),
+        };
+        match fields {
+            // A credential with no string field has none to name.
+            Some(mut fields) if !fields.is_empty() => {
+                // Sorted, so the sentence reads the same whatever order the
+                // policy wrote the fields in.
+                fields.sort_unstable();
+                Error::secret_field_not_found(secret.name, secret.field, &fields)
+            }
+            Some(_) | None => Error::secret_not_found(secret.name, secret.field),
+        }
+    }
+
     /// `draft`, admitted, or the first rule it breaks.
     pub(crate) fn admit(self, draft: Draft) -> Result<Admitted> {
         let method = sendable(&draft.method)?;
@@ -145,9 +165,12 @@ impl<'p> Admission<'p> {
         };
         let host = named
             .map(|(name, _rest)| {
-                self.statics
-                    .host(name)
-                    .ok_or_else(|| Error::secret_not_found(name, FIELD_HOST))
+                self.statics.host(name).ok_or_else(|| {
+                    self.unknown(SecretRef {
+                        name,
+                        field: FIELD_HOST,
+                    })
+                })
             })
             .transpose()?;
         let resolved = match (named, host) {
@@ -192,9 +215,7 @@ impl<'p> Admission<'p> {
     /// origin policy names it, a static one only to its own `host` field.
     fn bound(self, secret: SecretRef<'_>, host: &str) -> Result<()> {
         let sent_here = match self.mints(secret.name) {
-            Some(_minted) if secret.field != FIELD_TOKEN => {
-                return Err(Error::secret_not_found(secret.name, secret.field));
-            }
+            Some(_minted) if secret.field != FIELD_TOKEN => return Err(self.unknown(secret)),
             Some(_minted) => self.origin(host).is_some_and(|origin| {
                 origin
                     .credential_names
@@ -204,7 +225,7 @@ impl<'p> Admission<'p> {
             None => {
                 self.statics
                     .field(secret.name, secret.field)
-                    .ok_or_else(|| Error::secret_not_found(secret.name, secret.field))?;
+                    .ok_or_else(|| self.unknown(secret))?;
                 self.statics
                     .host(secret.name)
                     .is_some_and(|bound| bound.eq_ignore_ascii_case(host))

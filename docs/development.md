@@ -8,7 +8,8 @@
 
 ## Shared development worktrees
 
-Each checkout runs its own compiled `agentsfleetd` while linked worktrees share Postgres, Dragonfly, Mailpit and Upstash QStash.
+Each checkout runs its own compiled `agentsfleetd`, the API daemon, while linked worktrees share Postgres, Dragonfly, Mailpit and Upstash QStash.
+The [Glossary](architecture/README.md#glossary) defines the daemon, the runner and the other names used here.
 Each daemon gets a separate Postgres database, Dragonfly namespace and stable port.
 Production and deployed `api-dev` continue using their existing deployment settings.
 
@@ -44,7 +45,7 @@ Mailpit shares its inbox, so use distinct development recipients and avoid delet
 
 ### Runner on the existing Linux host
 
-Compile `agentsfleet-runner` from the matching checkout on the existing Linux host.
+Compile `agentsfleet-runner`, the host process that leases work and runs it in a sandbox, from the matching checkout on the existing Linux host.
 Register that runner against this worktree's daemon using the existing runner registration workflow.
 Keep its returned `AGENTSFLEET_RUNNER_TOKEN` private and separate from tokens for other worktrees.
 
@@ -89,7 +90,7 @@ Stack: agentsfleet-dev-<REPOSITORY_CHECKSUM>
 State: <SHARED_STATE>
   worktree wt_<WORKTREE_CHECKSUM>: <WORKTREE_ROOT> (live|gone)
   <container states vary>
-  containers: running|stopped
+  containers: running|stopped|unprovisioned|unavailable
 ```
 
 An existing registered root counts as live even after `make down`; a missing root counts as gone.
@@ -171,15 +172,19 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 — not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → cli,
-  `ui/packages/app/*` → app, website → website, design-system → both it and
-  app). Zero matches → `"no test-relevant files — nothing to run"` and the push
-  sails through. A genuinely docs-only push skips the suite entirely.
+  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-unit-cli`,
+  `ui/packages/app/*` → `test-unit-app`, `ui/packages/website/*` →
+  `test-unit-website`, `ui/packages/design-system/*` → both
+  `test-unit-design-system` and `test-unit-app`). Zero matches →
+  `"no test-relevant files — nothing to run"` and the push sails through, so a
+  docs-only push skips the suite entirely. No pre-push lane needs a live
+  datastore. Rust unit tests do not run here; they run at `orly gate pr` and
+  in Continuous Integration (CI) (`.githooks/pre-push`).
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
   workspace under `-D warnings`, which measured 36s to 3m16s per commit — a tax
   on every commit including the small ones. Pre-commit keeps the checks that
   cost seconds: the partial-staging reject, `orly gate work` (the `conform`
-  row — UFS, RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
+  row — UFS (the named-constants gate), RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
   and the fast per-surface gates. This is the split `.orly/docs/VERIFY_TIERS.md`
   already describes; the hooks had drifted from it.
 - **Pre-commit asserts the orly engine pin before it gates.**
@@ -195,28 +200,20 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   command for the manager the binary actually resolves under: bun-installed
   and npm-installed orlys do not replace each other.
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
-  range include all of main's recent source files — pre-push then runs the full
-  unit lanes for what was a docs-only intent, and `test-unit-agentsfleetd` **hangs if
-  the test-DB containers are down**. The lean-push pattern for docs-only
-  branches: don't local-merge main; push just the docs commit (skips), and sync
+  range include all of main's recent source files — pre-push then runs
+  `lint-rustd` and the TypeScript unit lanes for what was a docs-only intent.
+  The lean-push pattern for docs-only branches: don't local-merge main; push just the docs commit (skips), and sync
   the branch with GitHub's **"Update branch"** button (server-side, no local
   hook).
-- **Never run two pushes concurrently.** Each pre-push spawns a DB-backed
-  agentsfleetd test suite; two at once deadlock on the shared test Postgres at 0% CPU
-  forever and block every subsequent push. Recovery: kill the stuck
-  `agentsfleetd-tests --listen` processes and retry serially.
 - **Sandboxed agent environments break the SSH transfer.** Hook verification
   passes, then the upload dies with `Broken pipe` / `Connection closed by remote
   host` on every attempt. It is not payload size — run the push with network
   sandboxing disabled and it lands first try.
-- **Flaky under parallel hook load:** `agentsfleet test/browser-resolve-platforms`
+- **Flaky under parallel hook load:** `cli/test/browser-resolve-platforms.unit.test.ts`
   (and occasionally the app's provider-selection tests) time out at ~5 s but pass
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
   Everything lands via a feature branch + PR — including specs.
-- Pre-push runs the lanes matching what you pushed: Rust changes trigger lint;
-  each TypeScript package triggers its own unit lane.
-  Rust units run at `orly gate pr` and in Continuous Integration (CI).
 
 ## Test lanes — what the names mean
 
@@ -226,11 +223,13 @@ and the coverage bar are canonical in
 follows is the repo-workflow half that page does not carry.
 
 - **"Live e2e" / acceptance = the Playwright ladder**, not backend integration:
-  `ui/packages/app` → `bun run test:e2e:acceptance` (signup, login, lifecycle,
-  kill, billing, multi-workspace). Local twins of the CI jobs:
-  `make acceptance-e2e` (app suite; local run auto-starts dev on :3101, needs
-  Clerk DEV creds in the worktree-root `.env`) and `make acceptance-cli`
-  (agentsfleet). CI runs the same suite against the dev deployment on PR and prod
+  `ui/packages/app` → `bun run test:e2e:acceptance` (sign-in, install, fleet
+  lifecycle and the other journeys in `tests/e2e/acceptance/`). Local twins of
+  the CI jobs: `make acceptance-e2e` (app suite; without `BASE_URL` it builds
+  and starts the app on a per-worktree port from 30000 to 49999, or on
+  `E2E_PORT`, and needs Clerk development credentials in the worktree-root
+  `.env`) and `make acceptance-cli` (the `agentsfleet` CLI's login and token
+  lifecycle). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
 
 - **Runner execute-loop without a language model:** `afr_agent`'s scripted
@@ -381,17 +380,16 @@ The shared Mac checkout survives. Delete only your disposable machine, then repe
 
 ## Dashboard performance — read dev numbers carefully
 
-The dev-mode `/agents` 1.5–5 s is mostly **not** a backend bug: Turbopack
-on-demand route compilation (zero in prod) + local dev calling the **remote**
-`api-dev` backend (`lib/api/client.ts` `API_ORIGIN` default) + uncompressed dev
-RSC streaming. The `route?_rsc=…` request is the App Router navigation payload,
-not the JSON API. The Approvals 5 s repeat is an intentional poll; the Clerk
-`/touch`+`/tokens` pair is SDK session management doubled by StrictMode in dev.
-The one prod-relevant lever (own perf PR): the server components make 3
-*sequential* remote hops (`getToken → workspaces → agents`) — parallelize
-billing with workspace resolution and skip the workspaces round-trip when the
-`active_workspace_id` cookie is set. Measure a Vercel preview first; never
-optimize against dev numbers.
+A slow dev-mode fleet list (`/w/{workspaceId}/fleets`) is mostly **not** a
+backend bug: Turbopack compiles routes on demand (zero in prod), local dev
+calls whatever backend `NEXT_PUBLIC_API_URL` names (`lib/api/client.ts`
+`API_ORIGIN` has no default and throws when it is unset), and dev streams React
+Server Components (RSC) uncompressed. The `route?_rsc=…` request is the App
+Router navigation payload, not the JSON API. The Clerk `/touch`+`/tokens` pair
+is Clerk Software Development Kit (SDK) session management doubled by StrictMode in dev. The fleet list already
+fetches fleets and billing in parallel and reads the workspace from the URL
+(`app/(dashboard)/w/[workspaceId]/fleets/page.tsx`). Measure a Vercel preview
+first; never optimize against dev numbers.
 
 ### Authenticated route bundle gate
 
@@ -413,10 +411,3 @@ product budgets are maintained. The command fails when a discovered file set
 exceeds its limit or a required build manifest is absent or malformed.
 Continuous Integration (CI) runs the build and size commands in one job so the
 gate measures the output produced immediately before it.
-
-## Synced tooling (not repo-owned)
-
-`scripts/audit-*.sh`, `scripts/lib/`, and `scripts/llmevals/` appear untracked —
-they re-sync from the operating-model tooling via `upgrade-ai-tools`. Don't
-commit them, don't treat a worktree missing them as data loss, and don't block
-worktree cleanup on them.

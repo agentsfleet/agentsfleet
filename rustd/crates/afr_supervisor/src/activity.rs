@@ -14,7 +14,10 @@
 //! batcher and keeps taking frames, so a streamed answer joins it rather than
 //! being dropped piecemeal; only a batch that has filled while it waited is
 //! dropped, counted and logged. The last batch of a run waits for room
-//! instead.
+//! instead. Two frames skip the tick: a lease's first frame, and its first
+//! answer chunk with whatever was buffered before it, so the live tail shows
+//! a run has started, and its first words, without the batching delay (see
+//! [`Early`]).
 //!
 //! A lease that stops waiting for the drain drops the pump with frames still
 //! held — in the batch, the queue, a post in flight, or the channel from the
@@ -23,8 +26,8 @@
 //! counted on every path that loses them.
 
 use std::io;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use afd_core::error_code;
@@ -38,39 +41,68 @@ use tokio::time::Instant;
 
 use crate::client::ControlPlane;
 
+mod timing;
+
+use self::timing::RunClock;
+pub(crate) use self::timing::RunTiming;
+
 /// Batches queued or in flight at once; past that a batch waits with the
 /// batcher.
 pub(crate) const MAX_BATCHES_HELD: usize = 4;
 /// The most frame bytes one batch carries; a single larger frame rides alone.
 pub(crate) const MAX_BATCH_BYTES: usize = 64 * 1024;
-/// How long a partial batch waits for company before it is sent anyway.
+/// How long a partial batch waits for company before it is sent anyway; a
+/// lease's first frame and first answer chunk do not wait (see `Early`).
 const FLUSH_EVERY: Duration = Duration::from_millis(250);
 const EVENT_BATCH_DROPPED: &str = "activity_batch_dropped";
 const EVENT_POST_FAILED: &str = "activity_frame_write_failed";
 
-/// The run's side: hands frames to the pump without waiting, and notes when
-/// the first answer chunk went by, which is the run's time to first token.
+/// The run's side: hands frames to the pump without waiting, and reads off
+/// them where the run's time went, its time to first token first of all.
 #[derive(Debug)]
 pub(crate) struct ActivitySink {
     frames: mpsc::UnboundedSender<ActivityFrame<'static>>,
-    started: Instant,
-    first_chunk: OnceLock<Duration>,
+    clock: RunClock,
 }
 
 impl ActivitySink {
-    /// When the first answer chunk was emitted, measured from the sink's start.
-    pub(crate) fn first_chunk(&self) -> Option<Duration> {
-        self.first_chunk.get().copied()
+    /// The run starts now; see [`RunClock::start`].
+    pub(crate) fn run_started(&self) {
+        self.clock.start();
+    }
+
+    /// Where the run's time went, as of now.
+    pub(crate) fn timing(&self) -> RunTiming {
+        self.clock.read()
     }
 }
 
 impl EventSink for ActivitySink {
     fn emit(&self, frame: ActivityFrame<'static>) {
-        if matches!(frame, ActivityFrame::FleetResponseChunk(_)) {
-            self.first_chunk.get_or_init(|| self.started.elapsed());
-        }
+        self.clock.note(&frame);
         // A closed pump means the lease is ending; a frame then has no reader.
         drop(self.frames.send(frame));
+    }
+}
+
+/// Which frames go the moment they arrive rather than on the tick: a lease's
+/// first frame, and its first answer chunk with whatever was buffered before
+/// it. Each is tried once; a batch every slot refuses waits for the tick like
+/// any other, and is never waited on from the emitting side.
+#[derive(Debug, Default)]
+struct Early {
+    frame_tried: bool,
+    answer_tried: bool,
+}
+
+impl Early {
+    /// Whether the batch `frame` just joined should go now.
+    fn wants(&mut self, frame: &ActivityFrame<'_>) -> bool {
+        let answer = matches!(frame, ActivityFrame::FleetResponseChunk(_));
+        let first = !self.frame_tried || (answer && !self.answer_tried);
+        self.frame_tried = true;
+        self.answer_tried |= answer;
+        first
     }
 }
 
@@ -86,6 +118,7 @@ pub(crate) struct ActivityPump<'a> {
     /// a pump dropped mid-drain abandons. Shared with the poster, which runs
     /// beside the batcher, and lock-free like everything on this path.
     held: Arc<AtomicU64>,
+    early: Early,
 }
 
 impl Drop for ActivityPump<'_> {
@@ -112,11 +145,11 @@ pub(crate) fn channel<'a>(
         frames: receiver,
         dropped: 0,
         held: Arc::default(),
+        early: Early::default(),
     };
     let sink = ActivitySink {
         frames: sender,
-        started: Instant::now(),
-        first_chunk: OnceLock::new(),
+        clock: RunClock::new(),
     };
     (sink, pump)
 }
@@ -167,18 +200,16 @@ impl ActivityPump<'_> {
                         // new batch gets a full period, not a burst of ticks.
                         flush.reset();
                     }
+                    let now = self.early.wants(&frame);
                     batch.push(frame);
                     self.held.fetch_add(1, Ordering::Relaxed);
                     bytes += size;
+                    if now {
+                        offer(&posts, &mut batch, &mut bytes);
+                    }
                 }
                 _ = flush.tick(), if !batch.is_empty() => {
-                    // With every slot held the batch comes back and keeps
-                    // filling; the next tick tries again. The poster outlives
-                    // the batcher inside `run`, so the channel is open.
-                    match posts.try_send(std::mem::take(&mut batch)) {
-                        Ok(()) => bytes = 0,
-                        Err(full) => batch = full.into_inner(),
-                    }
+                    offer(&posts, &mut batch, &mut bytes);
                 }
             }
         }
@@ -206,6 +237,16 @@ impl ActivityPump<'_> {
             event,
             "the live tail fell behind; a batch was dropped"
         );
+    }
+}
+
+/// Hands `batch` to the poster if a slot is free. With every slot held the
+/// batch comes back and keeps filling; the next tick tries again. The poster
+/// outlives the batcher inside `run`, so the channel is open.
+fn offer(posts: &mpsc::Sender<Batch>, batch: &mut Batch, bytes: &mut usize) {
+    match posts.try_send(std::mem::take(batch)) {
+        Ok(()) => *bytes = 0,
+        Err(full) => *batch = full.into_inner(),
     }
 }
 
@@ -255,3 +296,7 @@ impl io::Write for Counter {
 #[cfg(test)]
 #[path = "activity/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "activity/early_tests.rs"]
+mod early_tests;

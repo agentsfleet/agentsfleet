@@ -17,7 +17,7 @@ use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
-/// One poll's cost, in the two numbers whose ratio an operator reads.
+/// One poll's cost, in the numbers whose ratios an operator reads.
 #[derive(Debug, Clone, Copy)]
 pub struct PollMeasurement {
     /// Fleets the readiness index offered this poll.
@@ -25,6 +25,9 @@ pub struct PollMeasurement {
     /// Statements this poll issued. Zero is the whole point of the empty
     /// path: see the ordering note at the top of `assign.rs`.
     pub database_roundtrips: u64,
+    /// Commands this poll sent Dragonfly. One on an idle poll, the
+    /// rotation's peek, and two when the doorbell rang another partition.
+    pub dragonfly_commands: u64,
 }
 
 impl Leases {
@@ -44,6 +47,7 @@ impl Leases {
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
             database_roundtrips: cost.database_roundtrips,
+            dragonfly_commands: cost.dragonfly_commands,
         };
         (selected, measured)
     }

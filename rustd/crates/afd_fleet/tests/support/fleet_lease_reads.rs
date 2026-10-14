@@ -180,6 +180,26 @@ impl Fixtures {
             .expect("the affinity read must run")
             .and_then(|row| row.try_get(0).expect("the column must be readable as text"))
     }
+
+    /// Makes `runner` the fleet's last holder, its claim long expired, so the
+    /// candidate scan sorts the fleet sticky for that runner and nothing holds
+    /// its slot.
+    pub(crate) async fn make_sticky(&self, fleet: &str, runner: &str, at: i64) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(
+            "INSERT INTO fleet.runner_affinity
+               (fleet_id, last_runner_id, fencing_seq, leased_until,
+                metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+                last_metered_at, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 1, 0, 0, 0, 0, $3, $3, $3)",
+        )
+        .bind(fleet)
+        .bind(runner)
+        .bind(at)
+        .execute(&mut *connection)
+        .await
+        .expect("the affinity row must insert");
+    }
 }
 
 impl Fixtures {
