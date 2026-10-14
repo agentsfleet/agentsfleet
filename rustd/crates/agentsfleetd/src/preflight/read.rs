@@ -20,8 +20,8 @@ use super::knobs::{
     APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
     OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
     PROVIDER_SECRET_KNOB, R2_KNOBS, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT,
-    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
-    WHY_PLATFORM_ADMIN, WHY_R2, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER,
+    WHY_KEK, WHY_PLATFORM_ADMIN, WHY_R2, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{BundleStoreConfig, Fault, IdentityConfig};
 
@@ -86,7 +86,8 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
 ) -> Option<IdentityConfig> {
     let issuer = required(env, faults, OIDC_ISSUER_KNOB, WHY_ISSUER);
     let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
-    let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE);
+    let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE)
+        .and_then(|raw| provider_api_base(raw, faults));
     let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
 
     let secret = raw_secret.and_then(|raw| {
@@ -114,6 +115,21 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
         api_base: api_base.into(),
         secret,
     })
+}
+
+/// The provider API base, refused unless the provider secret can travel to it
+/// safely: every capability read sends `CLERK_SECRET_KEY` there, so a base
+/// that is plain http off a loopback host, or not a URL at all, refuses boot
+/// rather than leaking the secret or answering 503 on every read.
+fn provider_api_base(raw: String, faults: &mut Vec<Fault>) -> Option<String> {
+    if reqwest::Url::parse(&raw).is_ok_and(|url| carries_a_token_safely(&url)) {
+        return Some(raw);
+    }
+    faults.push(Fault::Invalid {
+        knob: PROVIDER_API_BASE_KNOB,
+        why: WHY_API_BASE_UNSAFE.to_owned(),
+    });
+    None
 }
 
 /// Reads a knob that must be present, recording a fault when it is not.

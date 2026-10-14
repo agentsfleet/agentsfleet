@@ -17,7 +17,7 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use crate::auth::DashboardIdentity;
+use crate::auth::{DashboardIdentity, HumanIdentity};
 use crate::handler::{malformed, refuse};
 use crate::request_id::RequestId;
 use crate::services::{DeviceFlow as _, Services};
@@ -196,13 +196,15 @@ pub(crate) async fn delete_one<D: Services>(
     operation_id = "delete_all_auth_sessions",
     summary = "Bulk-abort every in-flight login session for the caller",
     description = concat!(
-        "Caller-scoped bulk delete. Enumerates every session with the ",
-        "caller's `clerk_user_id` whose status is `pending` or ",
-        "`verification_pending` and transitions each to `aborted` with ",
-        "`reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs; ",
-        "revoking those is the identity provider's concern, and an active CLI continues to ",
-        "work until its short-lived JWT expires. This endpoint clears ",
-        "in-flight login sessions only. ",
+        "Caller-scoped bulk delete. Accepts the person's browser session or ",
+        "their own `afc_` command-line credential, so `agentsfleet logout` can ",
+        "end the logins it left unfinished; a tenant api-key is refused. ",
+        "Transitions every session the caller approved (status ",
+        "`verification_pending`, owned by the caller's `clerk_user_id`) to ",
+        "`aborted` with `reason=\"explicit_cancel\"`. A `pending` session has ",
+        "no owner until it is approved, so this cannot reach it; it expires on ",
+        "its own five-minute time-to-live. Revokes no credential: ",
+        "`DELETE /v1/cli-credentials/{id}` does that.",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = DeleteAllSessionsResponse),
@@ -214,9 +216,9 @@ pub(crate) async fn delete_one<D: Services>(
 ))]
 pub(crate) async fn delete_all<D: Services>(
     State(services): State<Arc<D>>,
-    dashboard: DashboardIdentity,
+    person: HumanIdentity,
 ) -> Response {
-    match services.sessions().cancel_all(dashboard.subject()).await {
+    match services.sessions().cancel_all(person.subject()).await {
         Ok(aborted) => {
             let aborted_count = aborted.len();
             tracing::debug!(aborted_count, event = "auth_sessions_bulk_cancelled");
