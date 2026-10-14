@@ -134,7 +134,7 @@ async fn retiring_another_workspaces_schedule_answers_as_for_one_already_gone() 
     let caller = Holder::seed(&database, SUBJECT_RETIRING).await;
     let owner = Holder::seed(&database, SUBJECT_RETIRED_OWNER).await;
     let schedule = owner.schedule(&database).await;
-    let plane = caller.fleet(&database);
+    let plane = caller.services(&database);
 
     plane
         .schedules()
@@ -146,6 +146,20 @@ async fn retiring_another_workspaces_schedule_answers_as_for_one_already_gone() 
         owner.read_back(&database, &schedule).await,
         untouched(),
         "the foreign schedule is not marked for deletion"
+    );
+
+    // The same row, under the workspace that holds it, retires: the answer
+    // above was a refusal, not a row no retire could have claimed.
+    let owners = owner.services(&database);
+    owners
+        .schedules()
+        .retire(&owner.workspace, &owner.fleet, &schedule, owners.now())
+        .await
+        .expect("the owner retires its own schedule");
+    assert_eq!(
+        owner.read_back(&database, &schedule).await.1,
+        "deleting",
+        "the owner's retirement marks the row for deletion"
     );
 
     caller.cleanup(&database).await;
@@ -248,11 +262,11 @@ impl Holder {
 
     /// A router proven in this tenant's workspace and nobody else's.
     fn router(&self, database: &Db) -> axum::Router {
-        self.fleet(database).router()
+        self.services(database).router()
     }
 
     /// The services behind [`Self::router`], for a verb no route reaches.
-    fn fleet(&self, database: &Db) -> Fleet {
+    fn services(&self, database: &Db) -> Fleet {
         Fleet::live(
             database.clone(),
             self.subject,

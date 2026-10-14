@@ -84,6 +84,12 @@ export const TEST_INBOX_DOMAIN = "resend.dev";
 // the list-then-create in ensureSecondWorkspace; specs only ever resolve it.
 export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 
+// The regular fixture's workspace for the Fleet library layout specs, and theirs
+// alone: workspace-library.spec.ts clears every library entry in the default
+// workspace after each test, which a layout spec on another worker would read
+// as an empty page. Provisioned in global-setup for the reason given above.
+export const LIBRARY_LAYOUT_WORKSPACE_NAME = "fixture-library-layout";
+
 // Tags a test that times the page's own frames. A second worker streaming
 // beside it on a shared runner doubles the frame time it measures, so the
 // suite runs every test carrying this tag alone, after the parallel groups.
