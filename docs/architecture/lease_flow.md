@@ -36,6 +36,7 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                          6 202 {matched, enqueued}
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
+                         0 fleets whose sandbox this runner holds: their marks read first
    (every ~1 s)          a peek the rotation's partition ∥ the first partition the doorbell
                            rang at or after the cursor, its bit cleared, the rung peek
                            under 100 ms; rotation's fleets first; zero Postgres if both
@@ -46,7 +47,7 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE
                          d reclaim a dead holder's active lease? else XAUTOCLAIM/XREADGROUP 1
                          e INSERT core.fleet_events status=received (+ stamp admission delivered)
-                         f PUBLISH event_received bracket on fleet:{id}:activity
+                         f SPUBLISH event_received bracket on fleet:{id}:activity
                          g gates: payer → balance → budget → receive debit → approval
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
@@ -58,7 +59,7 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
 ### Install writes the fleet, the stream, the grant, and stops
 
-`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. Once the stream exists and the fleet is flipped to `active`, installing a bundle that declares a credential writes the approved `core.integration_grants` row, best-effort: a failed write is logged, the install still answers 201, and the grant card the first delivery raises closes the gap (`afd_fleet_lifecycle/src/install/grants.rs`). There is no card at install (`docs/architecture/scenarios/github-pr-reviewer.md`). Install writes no admission, event, lease or affinity row (`afd_fleet_lifecycle/src/install.rs`). The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
+`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. After the fleet is flipped to `active`, install writes one approved `core.integration_grants` row per mintable credential the bundle declares, best-effort: a failed write is logged and the install still answers 201 (`afd_fleet_lifecycle/src/install.rs`, `afd_fleet_lifecycle/src/install/grants.rs`). Why, and what happens when the write fails: [`connectors.md`](./connectors.md) §"Where a grant comes from". Install writes no admission, event, lease or affinity row (`afd_fleet_lifecycle/src/install.rs`). The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
@@ -82,12 +83,12 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 ### The poll: ready index → claim → event → row
 
-`POST /v1/runners/me/leases` (`afd_api_runner/src/handler/runner/lease.rs`, body not read) calls `Plane::lease` (`afd_fleet/src/lease/pull.rs`). A degraded runner gets no work. Then `Leases::select` (`afd_fleet/src/lease/assign.rs`):
+`POST /v1/runners/me/leases` (`afd_api_runner/src/handler/runner/lease.rs`; the body names the fleets whose sandboxes the runner holds, read leniently) calls `Plane::lease` (`afd_fleet/src/lease/pull.rs`). A degraded runner gets no work. Then `Leases::select` (`afd_fleet/src/lease/assign.rs`):
 
-1. advance a process-wide cursor to the next of 16 partitions and `peek` at most `MAX_READY_CANDIDATES_PER_POLL = 64` fleets; an empty peek answers no-work with zero Postgres reads;
-2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease.rs`): `status = active`, id in the peeked set, `leased_until IS NULL OR < now`, `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
+1. read the readiness marks of the fleets whose sandboxes the runner holds, and try those first (`held_first`, `afd_fleet/src/lease/assign/offer.rs`); then advance a process-wide cursor to the next of 16 partitions and `peek` at most `MAX_READY_CANDIDATES_PER_POLL = 64` fleets from it, plus at most 64 from the partition the readiness doorbell rang, if it rang another (`afd_fleet/src/lease/assign/wake.rs`; when a rung partition is rung again: [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology"); empty peeks answer no-work with zero Postgres reads;
+2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease.rs`): `status = active`, id in the peeked set, `leased_until IS NULL OR < now`, no live sandbox hold by another runner (`held_until`), `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
 3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease.rs`), a conditional upsert on `fleet.runner_affinity` (`schema/630_runner_affinity.sql`) that wins only if `leased_until < now`, bumps `fencing_seq + 1`, sets `leased_until = now + LEASE_TTL_MS` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_seq`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
-4. `take_claimed` (`assign.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease.rs`) flips it to `expired` and re-reads the body from `core.fleet_events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
+4. `take_claimed` (`afd_fleet/src/lease/assign/claim.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease.rs`) flips it to `expired` and re-reads the body from `core.fleet_events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
 
 `run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: config, `instructions = afd_fleet_runtime::instructions(source_markdown)`, the SKILL.md body after the frontmatter per `afd_fleet_runtime/src/instructions.rs`, the bundle hash and the session row); `record_received` inserts `core.fleet_events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/800_fleet_events.sql`) and stamps `core.fleet_admissions.delivered_at` on the same connection (`afd_admission::sql::MARK_DELIVERED`, `event.rs`); a first delivery publishes the `event_received` bracket (`pull.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
 
@@ -145,7 +146,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
                                                → fleet_events processed/fleet_error + tool_calls
                                                → fleet_sessions checkpoint → affinity released
                                                → obligation if a reply destination; COMMIT
-                                               → XACK receipt → PUBLISH event_complete
+                                               → XACK receipt → SPUBLISH event_complete
 ```
 
 **Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,bundles}` (`afr_supervisor/src/config.rs`, `afr_supervisor/src/storage_home.rs`). The binary then builds the host's engine, refusing to start on a host that lacks a mechanism every sandbox needs, and runs `afr_supervisor::run` with it (`agentsfleet_runner/src/main.rs`). Building the engine sweeps what a crashed run left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").

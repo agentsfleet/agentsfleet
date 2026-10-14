@@ -13,14 +13,14 @@ Every row is extracted from the sections below; the owner column names the secti
 | Definition layers | 2 | immutable library entry (content-addressed snapshot) vs live Fleet (`PATCH`-editable); the runner executes the fleet's copy | §Two layers |
 | Onboard | fetch → validate → re-pack | `afd_library::snapshot::canonical_snapshot` builds agentsfleet's own tar; the runner untars without re-validating; GitHub is never a runtime dependency | §Onboard |
 | Catalog tiers | 2 tables | `core.fleet_library` (slug id, platform, runtime-owned since M128) · `core.tenant_fleet_library` (UUIDv7, deduped on `(workspace_id, content_hash)`) | §Two-tier Fleet library catalog |
-| Tenant entry removal | hard `DELETE`, workspace-scoped | `delete_workspace_library_entry` removes one row; no soft-delete column, no marker, no visibility flip; slot 917 grants the privilege slot 460 withheld | §Two-tier Fleet library catalog |
+| Tenant entry removal | hard `DELETE`, workspace-scoped | the `delete_workspace_library_entry` operation removes one row; no soft-delete column, no marker, no visibility flip; slot 917 grants the privilege slot 460 withheld | §Two-tier Fleet library catalog |
 | Publish gate | `visibility` ∈ {`draft`, `public`} | every write stages to `draft`; gallery, bundles list, and install-by-id all require `public` AND `content_hash IS NOT NULL` | §The publish gate |
 | Install pinning | snapshot onto the fleet | `bundle_content_hash` + `bundle_snapshot_key`; unpublish or delete never touches a running fleet | §The publish gate |
 | Catalog identity | frontmatter `name:`, not the repository path | a duplicate name is refused (`UZ-CATALOG-004`); a changed source sets `content_hash = NULL` + `draft` atomically | §The publish gate |
 | Content store | R2 only | `fleet-bundles/sha256/{hash}.tar`; Postgres holds a path/size/hash manifest, never file bytes | §Storage map |
 | Size caps | 32 files · 64 KiB each · 256 KiB total | import validation also caps 16 MiB decompressed / 4096 entries | §Storage map, §Onboard |
 | Runtime reads | lease + bundle endpoint | SKILL/TRIGGER ride the lease fresh per PATCH; support files via `GET /v1/runners/me/bundles/{content_hash}`, cached | §Runtime read path |
-| Concurrency control | optional ETag / `If-Match` | on fleet markdown edits and on platform catalog edits alike; stale writes 412 | §Update + sync |
+| Concurrency control | optional entity tag (ETag) / `If-Match` | on fleet markdown edits and on platform catalog edits alike; stale writes 412 | §Update + sync |
 | Known gaps 🟡 | 2 | no in-place support-file edit; no GitHub → library sync (manual re-onboard) | §Update + sync |
 
 ## Traps
@@ -73,7 +73,7 @@ The re-pack is deliberate: the runner untars the result **without re-validating*
 Fleet library entries onboard into one of two catalog tiers, each its own table:
 
 - **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope owns its whole lifecycle from `/admin/fleet-libraries`. **Runtime-owned since M128: no migration seeds it.** A row is born when an operator adds a repository, and the bundle's `SKILL.md` frontmatter supplies its id, name, description, credentials, tools, and hosts.
-- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`. Reachable from the Command-Line Interface (CLI) since M199 — `agentsfleet library create` posts that body in all three source kinds. Before it, the route was served but only the dashboard called it, so a tenant entry's identifier could not be produced from a terminal and `agentsfleet library` (which read the platform catalogue alone) could not list one.
+- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` foreign key, `ON DELETE CASCADE`). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`. Reachable from the Command-Line Interface (CLI) since M199 — `agentsfleet library create` posts that body in all three source kinds. Before it, the route was served but only the dashboard called it, so a tenant entry's identifier could not be produced from a terminal and `agentsfleet library` (which read the platform catalogue alone) could not list one.
 
 A workspace lists and hard-deletes its own entries on a second collection (API reference › Fleet library); removal is workspace-scoped and idempotent.
 
@@ -90,7 +90,7 @@ The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. T
 - **`draft`** — the bundle is fetched, validated, and stored, and the fleet is invisible to every tenant.
 - **`public`** — live: it appears in the workspace gallery and in `GET /v1/fleets/bundles`, and it can be installed.
 
-**Every write stages to `draft`.** `INSERT_PLATFORM`'s `ON CONFLICT` list includes `visibility`, so re-fetching a newer bundle for a *published* fleet withdraws it rather than shipping unreviewed content to every tenant. Publishing is always a separate, deliberate `PATCH`.
+**Every write stages to `draft`.** The import `UPSERT`'s `ON CONFLICT` list (`rustd/crates/afd_library/src/catalogue/import.rs`) includes `visibility`, so re-fetching a newer bundle for a *published* fleet withdraws it rather than shipping unreviewed content to every tenant. Publishing is always a separate, deliberate `PATCH`.
 
 **Publish is the only door to a tenant.** Three reads gate on it — the workspace gallery, `GET /v1/fleets/bundles`, and `SELECT_PLATFORM_INSTALL` (the resolve-by-id path the install flow uses). The third is the load-bearing one: without it a draft would be *unlisted but installable* by anyone who knew its id, and Unpublish would be decoration.
 
@@ -100,7 +100,7 @@ The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. T
 
 The operator's curated fields — `name` (since M130), `description`, and `required_credentials_reasons` (the install gate's "why this fleet needs your token" copy) — are deliberately **absent from the `ON CONFLICT` update list**, so a bundle refetch can never clobber what an operator wrote. A first import still seeds all three from the bundle; only the conflict path preserves the operator's. `required_credentials_reasons` is the one exception to "left alone". The refetch **prunes** it to the credentials the incoming bundle actually declares. The map is keyed by credential name, and a departed credential would otherwise leave a dead key that every dialog save faithfully round-trips (M130 §4).
 
-**The operator owns the row's identity (M130).** `PATCH /v1/admin/fleet-libraries/{id}` accepts `name`, `source_repo`, and `source_ref` alongside the curated copy. A **changed** source sets `content_hash = NULL` and `visibility = 'draft'` atomically. Change is detected against the stored row inside the statement (`UPDATE_CATALOG_IDENTITY`), never against field presence. The stored tar was built from the old repository, and a row must never advertise a source it is not serving. Re-sending an unchanged source is a no-op, so a copy-only save cannot withdraw a live fleet. The slug is immutable (it is the primary key, and installs reference it as `platform_library_id`); repointing validates through the same `afd_library::github::Repository::parse` the import path uses, so the edit path and the add path cannot drift on what counts as a repository. Workspaces already running the fleet are untouched throughout — their installs pinned their own `content_hash`.
+**The operator owns the row's identity (M130).** `PATCH /v1/admin/fleet-libraries/{id}` accepts `name`, `source_repo`, and `source_ref` alongside the curated copy. A **changed** source sets `content_hash = NULL` and `visibility = 'draft'` atomically. Change is detected against the stored row inside the statement (`UPDATE` in `rustd/crates/afd_library/src/catalogue/store.rs`), never against field presence. The stored tar was built from the old repository, and a row must never advertise a source it is not serving. Re-sending an unchanged source is a no-op, so a copy-only save cannot withdraw a live fleet. The slug is immutable (it is the primary key, and installs reference it as `platform_library_id`); repointing validates through the same `afd_library::github::Repository::parse` the import path uses, so the edit path and the add path cannot drift on what counts as a repository. Workspaces already running the fleet are untouched throughout — their installs pinned their own `content_hash`.
 
 The catalog id comes from the bundle's frontmatter `name:`, **not** the repository path. A repository declaring a name another repository already owns is refused (`UZ-CATALOG-004`) rather than silently swapping the bundle every workspace installs; overwriting takes an explicit `replace`.
 
@@ -127,7 +127,7 @@ Caps (`rustd/crates/afd_library/src/validate.rs`): **32 support files · 64 KiB 
 
 ## Runtime read path
 
-At lease time (see [`data_flow.md` §"C. EXECUTE"](./data_flow.md)):
+At lease time (see [`data_flow.md`](./data_flow.md) §"C. EXECUTE  (lease → runner → report)"):
 
 - **SKILL.md / TRIGGER.md** → from the **lease** (`instructions`/`policy`, resolved from `core.fleets` fresh per lease, so they reflect any PATCH). The runner **ignores** the SKILL.md/TRIGGER.md copies inside the tar.
 - **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; verified against its hash, then cached at `<storage home>/bundles/{hash}.tar`), and writes the support files into the lease's sandbox workspace **before** the turn runs (`rustd/crates/afr_supervisor/src/lease_loop/workspace.rs`). `SKILL.md` can then reference them — a review script, a playbook, whatever the bundle shipped.

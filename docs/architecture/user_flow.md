@@ -28,9 +28,9 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Preflight | `agentsfleet doctor --json`, health only | `server_reachable` · `workspace_selected` · `workspace_binding_valid`; the only sanctioned preflight surface | §8.2.2 |
 | Create guarantee | stream + consumer group before 201 | created synchronously by the create call; response shape in the API reference | §8.2.2 |
 | Trigger declarations | 1–8 entries, unique on `(type, source)` | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
-| Cron authority | QStash owns the clock | one stable schedule id registered synchronously at install; the runner owns no timer | §8.3 |
+| Cron authority | QStash (Upstash's hosted scheduler) owns the clock | one stable schedule id registered synchronously at install; the runner owns no timer | §8.3 |
 | `type: api` | accepted | the trigger a bundle with no `TRIGGER.md` installs with; no ingress route of its own | §8.3 |
-| Steer | always accepted | same single-ingress `XADD` with `actor=steer:<user>` | §8.3 |
+| Steer | always accepted | same single ingress as webhook and cron: a `core.fleet_admissions` row, then an `XADD` with `actor=steer:<user>` | §8.3 |
 | Model/cap overlay | per-field, at lease time | frontmatter `""` / `0` / absent ⇒ overlay from `tenant_model_selection` (or synth-default) | §8.7 |
 | Cap resolution time | provider-set or install time | never at trigger time — no network dependency on the hot path | §8.7 |
 | Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
@@ -59,7 +59,7 @@ The dual-posture model/cap resolution diagram lives in §8.7 — it is that sect
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Hosted-only v2 | launch claim is "OSS + self-managed + markdown-defined", not "self-hostable"; integration burden earns v3 | §8.0.1 |
+| Hosted-only v2 | launch claim is "open-source software (OSS) + self-managed + markdown-defined", not "self-hostable"; integration burden earns v3 | §8.0.1 |
 | The CLI is the install surface | deterministic, scriptable, host-neutral; the bundle stays portable markdown | §8.0 |
 | Upload-bundle picker deferred | Indy-acked 2026-06-20; library + GitHub + paste ship first | §8.2.3 |
 | Visible sentinels (`""`, `0`) in self-managed frontmatter | a human can spot "inherits from tenant config" at a glance; absent-key is the safety net | §8.7 |
@@ -73,12 +73,12 @@ Everything below is the full reference. Headings are stable — specs cite them 
 
 ## §8.0 The wedge surface
 
-The MVP's user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
+The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
 
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
-agentsfleet library                          # browse the first-party Fleet library gallery (GET /v1/fleets/bundles)
+agentsfleet library                          # browse the workspace's Fleet library gallery (GET /v1/workspaces/{ws}/fleet-libraries)
 agentsfleet install --library github-pr-reviewer
 ```
 
@@ -95,7 +95,7 @@ This matters architecturally: the install surface is the CLI (deterministic, scr
 
 v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
 
-This is a deliberate scope cut, not a gap in the architecture. The runtime is already structured so the auth substrate (Clerk OAuth), KMS adapter (cloud KMS), and process orchestration (Fly.io machines) are the only deployment-specific layers — the worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic. **Validating** that on a clean non-Fly Linux host (Clerk shim or local-token auth, a portable KMS adapter, the runner's Landlock+cgroups+bwrap on a vanilla VM, systemd orchestration) is a v3 workstream once v2 has earned the trust to justify the integration burden.
+This is a deliberate scope cut, not a gap in the architecture. The runtime is already structured so the auth substrate (Clerk OAuth), key management service (KMS) adapter (cloud KMS), and process orchestration (Fly.io machines) are the only deployment-specific layers — the worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic. **Validating** that on a clean non-Fly Linux host (Clerk shim or local-token auth, a portable KMS adapter, the runner's Landlock+cgroups+bwrap on a vanilla VM, systemd orchestration) is a v3 workstream once v2 has earned the trust to justify the integration burden.
 
 Practically, this means:
 
@@ -147,7 +147,7 @@ Or run the chain explicitly (skip any step already in place):
 npm install -g @agentsfleet/cli   # CLI binary
 agentsfleet login                  # Clerk OAuth → credential in ~/.config/agentsfleet/credentials.json
 agentsfleet whoami                 # who that credential belongs to
-agentsfleet connector status github --json
+agentsfleet connector show github --json
 ```
 
 Login proves the new credential against `GET /v1/users/me`, which needs no capability scope ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Users).
@@ -162,7 +162,7 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
 4. The API reads the library entry's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a library entry lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no secrets, and no network. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
 5. The API stores the Fleet config, linked secret reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
 6. **Provider wiring follows the trigger surface.** A GitHub App trigger needs a one-time workspace connection, and a custom webhook keeps its printed per-fleet URL; the platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
-7. Future triggers are served with no restart and no watcher thread. Creation made the Fleet's events stream + consumer group up front (step 4). Each later trigger `XADD`s to the canonical stream name `fleet:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
+7. Future triggers are served with no restart and no watcher thread. Creation made the Fleet's events stream + consumer group up front (step 4). Each later trigger is first recorded as a row in the admission ledger (`core.fleet_admissions`), then `XADD`ed to the canonical stream name `fleet:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`). [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" carries the full path.
 
 After creation, the Fleet is no longer tied to the interactive Claude session that created it.
 
@@ -188,11 +188,11 @@ A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger 
 
 - **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories` and `events`; omitting `repositories` is fail-closed for App traffic ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
 - **Manual/custom webhook trigger.** The existing fleet-addressed routes remain available: `POST /v1/webhooks/{fleet_id}` and the GitHub-specific `POST /v1/webhooks/{fleet_id}/github`. The operator registers those URLs and a workspace webhook secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
-- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which appends one synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
+- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which admits one event through the admission ledger with `actor=cron:<schedule_id>` (`rustd/crates/afd_cron/src/fire.rs`). The runner owns no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
 
 In addition to the declared triggers, every Fleet always accepts:
 
-- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages` and `XADD`s directly to `fleet:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use. The dashboard names every send with an `operation_id` (a UUID v7) and keeps it in a per-user, per-fleet ledger of unresolved sends, mirrored to `localStorage`, until the 202 arrives; a retry, a Resend, or a Resend after reload carries the same id. A resend under the same id returns the first event ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). Every send ends visibly. One unanswered after 30 seconds reads "Couldn't confirm" with Resend. Another tab's send stays hidden while that tab holds its Web Lock, and shows Resend once the tab is gone. A dismissal is a tombstone every tab keeps for a day, so no late write brings the send back. A `UZ-AGT-016` refusal is final: its notice offers Send as new, under a fresh id, and never Resend. A replayed answer whose event the page never loaded reads the event's detail and settles its row; one the page already holds settles from its own frames. A running event the page has not heard from in 45 seconds is read once, so a lost completion still ends its row.
+- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages`. `afd_events::Steer::append` admits it as a `core.fleet_admissions` row and then `XADD`s it to `fleet:{id}:events` with `actor=steer:<user>`: the same admission ledger webhook and cron use. The dashboard names every send with an `operation_id` (a version 7 universally unique identifier, UUID v7) and keeps it in a per-user, per-fleet ledger of unresolved sends, mirrored to `localStorage`, until the 202 arrives; a retry, a Resend, or a Resend after reload carries the same id. A resend under the same id returns the first event ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). Every send ends visibly. One unanswered after 30 seconds reads "Couldn't confirm" with Resend. Another tab's send stays hidden while that tab holds its Web Lock, and shows Resend once the tab is gone. A dismissal is a tombstone every tab keeps for a day, so no late write brings the send back. A `UZ-AGT-016` refusal is final: its notice offers Send as new, under a fresh id, and never Resend. A replayed answer whose event the page never loaded reads the event's detail and settles its row; one the page already holds settles from its own frames. A running event the page has not heard from in 45 seconds is read once, so a lost completion still ends its row.
 
 All actors flow through the same runtime path. The Fleet's in-run fleet loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the create-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 
@@ -251,7 +251,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 Two things travel together: the **model** the runner's fleet invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
-The install flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json` and branch on `mode`. The bundle's frontmatter carries resolved-or-sentinel model/cap values.** Doctor is the sanctioned health check. It verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider posture or balance. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Balance and exhaustion state come from `agentsfleet billing show`. The CLI never reads the model library directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+The install flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json` and branch on `mode`. The bundle's frontmatter carries resolved-or-sentinel model/cap values.** Doctor's checks and what it leaves out are in §8.2.2 step 2. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. The CLI never reads the model library directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
 ```
                      PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)

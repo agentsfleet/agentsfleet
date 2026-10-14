@@ -8,6 +8,8 @@
 
 ## 0. The cast and the words
 
+The words this page leans on; the rest are in [`../README.md`](../README.md) §"Glossary".
+
 | Word | What it is |
 |---|---|
 | **Workspace** | Your team's space; every fleet, secret and connection lives in one. |
@@ -17,11 +19,11 @@
 | **Admission** | "We accepted this job", a `core.fleet_admissions` row committed **before** the sender hears yes. |
 | **Stream** | A fleet's inbox, `fleet:{id}:events`; its jobs wait there oldest first. |
 | **Ready mark** | A note on one of sixteen shelves, `fleet:ready:{p}`, saying "this fleet has work". |
-| **Doorbell** | A ring on a shelf's channel, `fleet:ready:{p}:wake`, so a poll looks at that shelf first instead of waiting for its turn. |
+| **Doorbell** | A ring on a shelf's channel, `fleet:ready:{p}:wake`, so the next poll also peeks that shelf instead of waiting for the rotation to reach it. Each replica keeps what it heard as one bit per shelf (`afd_dragonfly::Doorbell`). |
 | **Lease** | A time-limited permission to run one job for one fleet, carrying a **fencing token** that only goes up, so a stale worker cannot overwrite a newer one. |
 | **Report** | The worker handing the answer back; settles money, history and the bookmark in one transaction. |
 | **Obligation** | "We still owe someone this answer", a `core.fleet_obligations` row, written only when the job came from somewhere a reply can go. |
-| **Activity channel** | The live tail, `fleet:{id}:activity`; frames for screens, never the record. |
+| **Activity channel** | The live tail, `fleet:{id}:activity`, a sharded pub/sub channel (`SPUBLISH` / `SSUBSCRIBE`); frames for screens, never the record. |
 
 ```
   WORKSPACE "indy-ws"
@@ -139,7 +141,7 @@ GitHub gives this path ten seconds and never retries on its own, which is why th
 Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agentsfleet-dev why did this fail?`. Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"4. Routing a mention" and §"5. What the fleet is told".
 
 ```
-  Slack ── signed app_mention ──► agentsfleetd (mention handler)
+  Slack ── signed app_mention ──► POST /v1/connectors/slack/events
                                      │
   ┌──────────────────────────────────▼───────────────────────────────────────┐
   │ 1. FILTER   app_mention only; drop bots, edits, and the bot's own posts  │
@@ -152,7 +154,7 @@ Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agent
   │       ▼             ▼                  ▼                         │       │
   │   the channel's   that fleet       "@agentsfleet-dev <name> …"   │       │
   │   resident        ──► fleet B       → the named one              │       │
-  │   (read-only)                       no name → ONE notice listing │       │
+  │   (no tools)                        no name → ONE notice listing │       │
   │                                     the names, no model runs     │       │
   │                                                                          │
   │ 3. READ THE THREAD  conversations.replies: the parent (GitHub's          │
@@ -188,13 +190,13 @@ A steer is you typing to a fleet. It enters through the same door as every other
   ┌──────────────────────────── agentsfleetd ────────────────────────────┐
   │  INSERT core.fleet_admissions      producer=steer                    │
   │  XADD fleet:{A}:events *           actor=steer:kishore  type=chat    │
-  │  PUBLISH fleet:{A}:activity        {kind:"event_admitted", message}  │
+  │  receipt, ready mark + doorbell ring                                 │
+  │  SPUBLISH fleet:{A}:activity       {kind:"event_admitted", message}  │
   │                                    ← every open screen shows the     │
   │                                      message as waiting at once      │
-  │  ready mark + doorbell ring                                          │
   └──────────────────────────────┬───────────────────────────────────────┘
                                  ▼
-                         202 { event_id }   ← the CLI filters frames by it
+          202 { status, event_id, replayed }   ← the CLI filters frames by event_id
 ```
 
 Seven producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_fire, gate_continuation, repair_verification, slack_mention) write one envelope into one stream:
@@ -245,7 +247,7 @@ Fleet A now holds two jobs (the PR and the steer) and fleet B one. A fleet's she
         └─────────────────────────────────────────────────────────────┘
 ```
 
-The inbox holds the jobs. The note says where to look. The ring says look there first, now. A lost ring costs the fleet the rotation's speed, never its work.
+The inbox holds the jobs. The note says where to look. The ring says look there too, on the next poll; the rotation's own shelf still comes first. A lost ring costs the fleet the rotation's speed, never its work.
 
 ## 6. Pickup: two runners, two leases
 
@@ -265,6 +267,8 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → c
   │             (consecutive polls take DIFFERENT rung shelves)            │
   │                                                                        │
   │ then, in Postgres, for each:                                           │
+  │  a. (checked before the peeks above) a fleet whose held sandbox the    │
+  │     runner names goes first, any shelf; neither runner holds one here  │
   │  b. SELECT_READY_CANDIDATES ≤64: active, slot free, runner has the     │
   │     labels; rotation's shelf first, then the last runner, then random  │
   │  c. CLAIM fleet.runner_affinity    ← ONE active lease per fleet        │
@@ -272,7 +276,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → c
   │  d. the fleet's oldest job: pending first (XAUTOCLAIM), else new       │
   │     (XREADGROUP >). A gets "PR opened"; the steer waits behind it      │
   │  1. INSERT core.fleet_events  status=received  + stamp delivered_at    │
-  │  2. PUBLISH fleet:{id}:activity {event_received}                       │
+  │  2. SPUBLISH fleet:{id}:activity {event_received}                      │
   │  3. GATES: payer → balance → budget → receive debit → approval         │
   │     refused → status=gate_blocked, terminal, never reopened            │
   │  4. vault: secrets_map; the provider key apart (never in secrets_map); │
@@ -321,7 +325,7 @@ Canonical: [`../runner_execution.md`](../runner_execution.md) §"One lease, end 
   │        │  POST /repos/…/pulls/{n}/reviews        ✗ no rule matches               │
   │        │      → the model reads "[request_policy_not_allowed] …" and goes on     │
   │        ▼                                                                         │
-  │   each step → an activity frame → POST …/activity → the daemon PUBLISHes it:     │
+  │   each step → an activity frame → POST …/activity → the daemon SPUBLISHes it:    │
   │      tool_call_started · fleet_response_chunk · tool_call_progress ·             │
   │      tool_call_completed                                                         │
   │                                                                                  │
@@ -352,7 +356,7 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"Steer flow end-to-end" (write
   │  ╚════════════════════════════════════════════════════════════╝   was      │
   │                                                                 remembered │
   │  after the commit (no transaction spans Postgres and Dragonfly):           │
-  │   8.  PUBLISH fleet:{id}:activity {event_complete}                         │
+  │   8.  SPUBLISH fleet:{id}:activity {event_complete}                        │
   │   11. XACK fleet:{id}:events          ← the job leaves the inbox           │
   │   14. XADD connector:outbound          (only with an obligation)           │
   │   15. obligation.receipt = <entry id>                                      │
@@ -390,8 +394,8 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
    receipt set, delivered NULL → queued, nobody received it (a lost stream or host)
    delivered_at set            → a person has it
 
-   afd_outbound re-queues the first state every 30 s and the second after 5 min;
-   a destination that refuses for good is stamped abandoned and never offered again.
+   afd_outbound re-queues the first state once it is 30 s old and the second after 5 min;
+   a destination that refuses for good, or twelve failed cycles, stamps it abandoned.
 ```
 
 A steer records no reply destination either: its answer reaches you on the live tail the CLI opened in part 4, and later through `agentsfleet events`.
@@ -401,14 +405,15 @@ A steer records no reply destination either: its answer reaches you on the live 
 Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
 
 ```
-  Fleet Console tab   ── EventSource ──► /live/v1/…/fleets/{id}/events/stream
-  Fleets Wall tab     ── EventSource ──► /live/v1/workspaces/{ws}/events/stream
-  CLI steer           ── Server-Sent Events (SSE), Bearer ─────┐
-                                                                ▼
-   Next.js /live/* proxy ── Clerk token ──► agentsfleetd ── SubscriptionHub ──┐
-                                                                              │
-          one shared Dragonfly pub/sub socket: SSUBSCRIBE fleet:{id}:activity │
-          frames copied into each viewer's bounded queue ◄────────────────────┘
+  fleet page (ChatView)   ── EventSource ──► /live/v1/…/fleets/{id}/events/stream
+  fleet wall (FleetWall)  ── EventSource ──► /live/v1/workspaces/{ws}/events/stream
+                                                │
+   Next.js /live/* proxy (Clerk session → Bearer) ──► agentsfleetd ── SubscriptionHub ──┐
+                                                       ▲                                │
+  CLI steer ── Server-Sent Events (SSE), Bearer ───────┘                                │
+                                                                                        │
+          one shared Dragonfly pub/sub socket: SSUBSCRIBE fleet:{id}:activity           │
+          frames copied into each viewer's bounded queue ◄──────────────────────────────┘
 
    frames: event_admitted → event_received → tool_call_started →
            fleet_response_chunk … → tool_call_completed → event_complete
@@ -418,6 +423,8 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
    a lost channel:  catching_up {dropped:0}, then the same backfill
    the live tail is for watching; core.fleet_events is the record
 ```
+
+A browser's `EventSource` cannot send an `Authorization` header, so the dashboard reads through its own `/live/*` routes, which turn your Clerk sign-in session into the Bearer token `agentsfleetd` accepts (`ui/packages/app/app/live/v1/`). The CLI holds its own token and calls `agentsfleetd` directly.
 
 ## 11. Both fleets on one timeline
 
@@ -438,4 +445,4 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
  You  ◄─── the live tail shows every frame; A#2's answer arrives on the CLI's stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and billing one telemetry row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and billing one `billing.usage_ledger` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").

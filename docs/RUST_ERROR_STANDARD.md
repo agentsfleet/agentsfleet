@@ -11,11 +11,9 @@ the hull and which do not, and where a crate is deliberately off the rule.
 
 ## The four rules, and how this repository meets them
 
-The rules and their worked examples live in
-[`.orly/dispatch/write_rust.md`](../.orly/dispatch/write_rust.md), which fires on every
-`*.rs` edit. They are not restated here. What IS here is the local shape, because
-the portable rule and the reference guideline both describe something this
-repository does not hand-write.
+The dispatch page above fires on every `*.rs` edit and carries the rules. This
+section shows only the local shape, because the portable rule and the reference
+guideline both describe something this repository does not hand-write.
 
 > [!IMPORTANT]
 > **`afd_core::error_shell!` is the implementation. Do not hand-write the error
@@ -44,9 +42,10 @@ rather than a list of names — see §"The shared hull" below for which crates a
 on each side and why a fieldless refusal vocabulary stays a plain enum.
 
 **One deliberate exception, and it is security not style.** `afd_crypto`'s
-`EnvelopeOpen` declines to wrap the Authenticated Encryption with Associated
-Data (AEAD) library's reason. Telling a caller "bad tag" versus "bad nonce" is
-the beginning of a padding oracle.
+`ErrorKind::OpenFailed` declines to wrap the Authenticated Encryption with
+Associated Data (AEAD) library's reason: a wrong key, a tampered tag and
+mismatched associated data all answer `UZ-INTERNAL-003`. Telling a caller which
+one it was would hand it a decryption oracle.
 
 ## What changed under this standard (M176)
 
@@ -111,10 +110,6 @@ it there, in its own module note — being a plain enum today is not the argumen
 `Unavailable`, so it owns no error to give a hull to. A crate implementing a
 foreign trait does not choose the trait's error type.
 
-**The `Result` alias stays hand-written**, in every crate, including those
-calling the macro. An alias that only appears after macro expansion is one a
-reader cannot see, which is the thing rule 1 exists to prevent.
-
 **A finer-grained type still lifts.** The carve-out below lets a crate keep a
 second type where a caller DISCRIMINATES on it — and that type still composes
 into the crate's `Error`, through `error_lifts!` or a hand-written `From`, so a
@@ -134,8 +129,8 @@ property their row names.
 | `afd_db` | ✅ | `error_shell!` | same shape; composes no foreign error through `From` |
 | `afd_fleet` | ✅ | `error_shell!` + `error_lifts!` | same shape; its sources lift through the macro in `error/lift.rs` |
 | `afd_bench` | ✅ | `error_shell!` + `error_lifts!` | private `ErrorKind` lifting its fourteen sources; reuses existing registry codes rather than minting a `BENCH_*` family, since a bench refusal is read by the developer running the make target, never rendered to a tenant |
-| `afd_admin`, `afd_admission`, `afd_approval`, `afd_billing`, `afd_connector`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_gate`, `afd_identity`, `afd_ingress`, `afd_library`, `afd_observability`, `afd_outbound`, `afd_runner`, `afd_vault` | ✅ | `error_shell!` + `error_lifts!` | the full shape: private `ErrorKind`, one `answer()` table pairing each kind with its code and sentence, raisers in `error/raise.rs`, and a `one_of_each_kind()` sample behind `test-util` |
-| `afd_memory` | ✅ | `error_shell!` + `error_lifts!` | composes `afd_db`, `sqlx`, `afd_crypto` and `afd_core` errors and carries a context, a detail and a store name, so it takes the hull; it has no `one_of_each_kind()` sample yet |
+| `afd_admin`, `afd_admission`, `afd_approval`, `afd_billing`, `afd_connector`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_gate`, `afd_identity`, `afd_ingress`, `afd_library`, `afd_observability`, `afd_outbound`, `afd_runner`, `afd_vault` | ✅ | `error_shell!` + `error_lifts!` | same shape: private `ErrorKind`, a `code()` naming an existing registry code, and raiser functions beside it. Most also keep raisers in `error/raise.rs`, an `answer()` table pairing each kind with its code and sentence, and a `one_of_each_kind()` sample behind `test-util`; not every crate has all three |
+| `afd_memory` | ✅ | `error_shell!` + `error_lifts!` | composes `afd_db`, `sqlx`, `afd_crypto` and `afd_core` errors and carries a context, a detail and a store name, so it takes the hull |
 | `afd_otlp` | ✅ | `error_shell!` + `error_lifts!` | composes the exporter's build errors. Its second type, `Refused` (a knob and the sentence it accepts), is DISCRIMINATED on: the daemon's preflight reports each refused knob beside every other fault, so it needs the knob as data, and `Refused` lifts into `Error` as the `Knob` kind |
 | `afd_observability` (second type) | ✅ | via the crate hull | `ParsePolicy` is the `FromStr::Err` a trait mandates for `Policy`; no fallible function answers with it, and serde flattens it at its one call site. It carries the number parser's error as a `#[source]` rather than a string |
 | `afr_agent`, `afr_executor`, `afr_sandbox`, `afr_supervisor`, `afr_secrets`, `afr_providers`, `afr_telemetry` | ✅ | `error_shell!` + `error_lifts!` | the Rust runner's crates: private `ErrorKind`, `code()` answering with EXISTING registry codes — a runner failure is read by an operator on the host's journal, never by a client, so it mints no `UZ-RUN-*` code that `public/openapi.json` would publish; the log line's `event` says which failure it was, as `afd_bench` does |
@@ -148,11 +143,14 @@ property their row names.
 | `afd_sse` | ✅ | none, by design | one fieldless variant, same reasoning |
 | `afd_validate` | ❌ by design | n/a | owns no error: a garde rule answers with garde's own error, and `Limit::parse` with `LimitBreak`, a fieldless `Copy` refusal whose two variants the routes map to their two sentences |
 | `agentsfleet_runner` | ❌ by design | n/a | the terminal binary: every failure ends at `OrExit::or_exit` or `io_failed`, which logs it under `run_failed` with its registry code and turns it into an `ExitCode`. Nothing receives its failures, so its signatures are `Result<T, ExitCode>` and it has no `Result` alias |
-| `afd_state` | ❌ by design | n/a | implements `afd_auth`'s `CredentialDirectory` and `CapabilitySource`, whose signatures mandate `Unavailable`. A crate implementing a foreign trait does not choose the trait's error type. The alias defaults to it and the file says why |
-| `agentsfleetd` | two, by necessity | none, by design | `BootFailure` and `MigrateFailure` — see below for why they cannot merge. Both compose `afd_db::Error`, which the property test would put on the hull, and the property that keeps them off it is that their `Display` IS the output: `fatal` prints it as the boot sentence and walks `source()` beneath it, and `serve` sends it as the analytics event's `reason` beside the `error_code` field. The hull's `[CODE]` prefix would repeat that code in both, and its captured backtrace would print a second, unfiltered time beside `fatal`'s own frames and reach the analytics sink under `RUST_BACKTRACE` |
+| `afd_state` | ❌ by design | n/a | re-exports `afd_auth::error::Unavailable`, the error its foreign traits mandate (see §"The shared hull"); its `Result` alias defaults to it and `src/error.rs` says why |
+| `agentsfleetd` | two, by necessity | none, by design | `BootFailure` and `MigrateFailure`, both in `src/error.rs` beside the preflight `Fault` and `Refusal` that lift into `BootFailure` — see below for why they cannot merge. Both compose `afd_db::Error`, which the property test would put on the hull, and the property that keeps them off it is that their `Display` IS the output: `fatal` prints it as the boot sentence and walks `source()` beneath it, and `serve` sends it as the analytics event's `reason` beside the `error_code` field. The hull's `[CODE]` prefix would repeat that code in both, and its captured backtrace would print a second, unfiltered time beside `fatal`'s own frames and reach the analytics sink under `RUST_BACKTRACE` |
 | `afd_api_wire` | n/a | n/a | no fallible function: request and response shapes, refused by garde on the type |
 | `afd_identity` (second type) | ✅ | via the crate hull | `BlankSecret` folded into `Error`; `ClaimUnavailable` and `MetadataUnwritten` kept as their own `Copy` types because callers DISCRIMINATE on them, and composed by `error_lifts!` |
-| `afd_api`, `afd_wire`, `afd_webhook`, `afd_api_tenant`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner` | n/a | n/a | no fallible function. `afd_wire`'s `FailureClass` is a serde field on the wire `Failure` payload, not a Rust error; the plane crates answer with `Refusal`, which is an HTTP response |
+| `afd_api` | n/a | n/a | no fallible function: it assembles the router and server from the plane crates |
+| `afd_http`, `afd_api_tenant`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner` | ❌ by design | n/a | a handler's failure is an HTTP response. Handlers answer `Result<Response, Refusal>`, where `afd_http`'s `Refusal` boxes the rendered `Response` (`afd_http/src/handler/refusal.rs`); request parsers answer a fieldless refusal such as `BrokenEscape` or a static sentence the handler renders |
+| `afd_wire` | ❌ by design | n/a | `TraceRejection` and `DetailRejection` are fieldless `Copy` refusals naming the bound a tool trace or tool record broke; the daemon logs the reason and drops the item (`afd_fleet/src/lease/tool_detail.rs`). `FailureClass` is the `failure_reason` field on the wire `ReportRequest`, not a Rust error |
+| `afd_webhook` | ❌ by design | n/a | a delivery that fails to verify is a `Verdict`, and its fieldless `Refusal` names one of the three documented reasons; nothing on this side failed, so it is not an error (`afd_webhook/src/verdict.rs`) |
 
 ### Where rule 1 is deliberately not met, and why
 

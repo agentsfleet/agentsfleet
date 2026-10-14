@@ -23,7 +23,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
 | Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Registered locks | 15 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Registered locks | 20 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
 | Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
@@ -34,7 +34,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 Each trap is enforced in its owner section; this list is the index.
 
-- Never `tokio::spawn` outside the supervisor or the accept loop's per-connection arm — a detached task outlives the pools it reads through (§Thread map).
+- Never `tokio::spawn` outside the supervisor, the accept loop's per-connection arm, or the hub-owned tasks `afd_dragonfly` starts — a detached task outlives the pools it reads through (§Thread map).
 - Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task; a subscriber enqueues a command and the dispatch task sends a signal instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
 - Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
 - Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
@@ -82,7 +82,9 @@ how that state is protected, and how it is stopped and joined.
 Nothing runs outside the supervisor. `Supervisor::spawn`
 (`rustd/crates/agentsfleetd/src/supervisor.rs`) is the only caller of
 `tokio::spawn` in the daemon apart from the accept loop's per-connection arm and
-the hub's own pump: it hands each task a `CancellationToken`, keeps its
+the tasks `afd_dragonfly` starts for the hub (its control task, its dispatch task
+and the sixteen doorbell listeners), which all end when the supervised
+`hub_pump` task shuts the hub down. It hands each task a `CancellationToken`, keeps its
 `JoinHandle`, and `shutdown` consumes the supervisor so nothing a task borrowed
 can be dropped until every handle has been joined. A task that will not stop
 inside `JOIN_TIMEOUT` (10 s) is reported by name rather than hanging the process.
@@ -96,9 +98,10 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 |---|---|---|---|---|
 | accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
-| SSE response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
+| Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
-| SSE hub control task (`hub/pump.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
+| owed-answer producer (`connector:outbound-producer`) | `agentsfleetd::outbound::spawn`, beside the worker | `core.fleet_obligations` through its own pool handle; re-appends owed answers on the shared Dragonfly handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
+| SSE hub control task (`hub/pump.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
 | SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
 | readiness doorbell listeners (sixteen, `ready/doorbell.rs`) | `Doorbell::listen`, from `ServingPlane::new` when the hub opened | one hub `Subscription` each, and the `Arc<AtomicU16>` every lease poll takes from | the atomic alone: `fetch_or` rings, `fetch_and` takes, no lock | the hub's shutdown closes each subscription, its `recv` errs, and the loop returns |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
@@ -106,7 +109,9 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
 | repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Dragonfly, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
-| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OTLP endpoint is configured — a normal boot without one supervises eight tasks | the four SDK providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | awaits cancellation, then `Exports::flush` force-flushes every provider before the pools they describe are dropped → joined |
+| lost-receipt reconciler (`sweeper:admission-reconcile`) | `sweepers::spawn` | `core.fleet_admissions` + Dragonfly: finds admitted rows the stream took and then lost, and hands them back to replay | `Mutex<Duration>` pacing and `Mutex<Progress>` rotation place (each a leaf) | as above |
+| admission-replay dispatcher (`sweeper:admission-replay`) | `sweepers::spawn`, last | `core.fleet_admissions` + Dragonfly: re-appends admitted rows the stream never receipted | `Mutex<Duration>` (leaf) | as above |
+| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured — a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
 A sweep that fails is reported and retried on the next pass: every pass here is
@@ -148,10 +153,10 @@ below are the concurrency view.
 | hub signals | unbounded `mpsc` | the hub's dispatch task → its control task | `Resubscribe` (a slot moved), `Repair` (a node's socket was lost: every live channel), `Redial` (a loss the window did not explain); unbounded so a push is never held behind the control task's round trips |
 | channel fan-out | `broadcast`, 256 messages per channel | the dispatch task (producer) → every reader subscribed to that channel | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it; a lost subscription is a `Gap` item once it is back; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
-| `fleet:{id}:events` | Dragonfly stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
-| `connector:outbound` | Dragonfly stream + consumer group | report producer → dedicated blocking outbound reader | durable queue; worker acknowledges delivered jobs |
+| `fleet:{id}:events` | Dragonfly stream + consumer group `fleet_lease` | the seven admission producers (`afd_admission::Producer`) `XADD` after their `core.fleet_admissions` row commits, and the replay sweeper re-appends any row the stream never took → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
+| `connector:outbound` | Dragonfly stream + consumer group `connector_workers` | the report path after its commit, and the owed-answer producer → dedicated blocking outbound reader | durable queue; the worker acknowledges each job it finishes, delivered or exhausted |
 | `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `fleet:ready:{p}:wake` (sixteen) | Dragonfly sharded pub/sub (ephemeral) | `ReadyIndex::mark` `SPUBLISH` after the mark lands → every replica's hub, one `SSUBSCRIBE` per partition held for the life of the process → that replica's `Doorbell` bit | ephemeral; the payload is the mark's token, which the doorbell does not read; a lost ring costs the rotation's speed |
+| `fleet:ready:{p}:wake` (sixteen) | Dragonfly sharded pub/sub (ephemeral) | `ReadyIndex::mark` `SPUBLISH` after the mark lands → every replica's hub, one `SSUBSCRIBE` per partition held for the life of the process → that replica's `Doorbell` bit | ephemeral; the payload is the mark's token, which the doorbell does not read; a lost ring costs the rotation's speed. When a rung partition rings again: [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology", the doorbell row |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
@@ -177,10 +182,13 @@ constraint. Each is documented at its declaration (C4).
 | hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
-| reclaim cursor | `afd_runner`'s reclaim sweeper | the keyset cursor one pass resumes from | leaf — held alone, and only by the single sweeper task |
+| reclaim cursors | `afd_runner`'s reclaim sweeper | two locks: `cursor`, the keyset cursor one pass resumes from, and `stranded_after`, where the ledger question's last page ended | each a leaf — held alone, and only by the single sweeper task |
 | repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
+| replay pacing | `afd_runner`'s `Replay` | when the next pass comes back | leaf — held alone |
+| reconcile pacing and progress | `afd_runner`'s `Reconcile` | when the next pass comes back, and where it resumes its rotation | each a leaf — held alone |
+| metric instruments | `afd_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
-| JWKS cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
+| JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
 | run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `delegate` |
 | child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf — held alone |
 | process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf — held alone |
@@ -189,6 +197,8 @@ constraint. Each is documented at its declaration (C4).
 | lease egress | `afr_tools`'s `Lease::egress` (tokio) | the lease's policy and the credentials it has minted | held to admit or mask, never across a send |
 | exec sessions | `afr_tools`'s `Sessions` | one lease's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
 | mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
+| run clock and lease timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one lease's segment timings | each a leaf — held alone |
+| egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf — held alone |
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
 blocking-write-under-the-map-mutex hazard): the pub/sub socket is behind no lock
