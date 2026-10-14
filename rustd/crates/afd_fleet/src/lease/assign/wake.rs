@@ -25,7 +25,8 @@
 //! at its ceiling, so a rung fleet past it was never offered. A fleet the scan
 //! left out, running or not this runner's labels, never holds the bell, and
 //! every other exit leaves it clear, a faulted poll's included, so one broken
-//! fleet cannot keep drawing every poll. A poll dropped before it decides, its
+//! fleet cannot keep drawing every poll. A rung partition whose peek failed is
+//! left clear whatever the scan did, so one slow node cannot either. A poll dropped before it decides, its
 //! runner gone, rings the partition again rather than losing the ring.
 //!
 //! # The rung peek has a deadline; the rotation peek does not
@@ -74,6 +75,18 @@ impl Rung {
             settled: false,
         }
     }
+
+    /// The rung partition still owed a decision, or none when its peek did
+    /// not answer: that one is settled clear here, so neither a cut scan nor
+    /// a dropped poll sends the next poll back to a partition that failed.
+    /// Only the bit this poll took stays clear; a ring heard since is set.
+    fn kept_if(mut self, answered: bool) -> Option<Self> {
+        if answered {
+            return Some(self);
+        }
+        self.settled = true;
+        None
+    }
 }
 
 impl Drop for Rung {
@@ -107,16 +120,19 @@ impl Leases {
             .as_ref()
             .map(|rung| rung.partition)
             .filter(|taken| *taken != partition);
-        let offer = match other {
+        let (offer, rung_answered) = match other {
             Some(other) => self.peek_both(runner_id, partition, other, cost).await,
-            // No ring, or the rotation's own partition rang: one key, one read.
-            None => self
-                .peek_rotation(runner_id, partition, cost)
-                .await
-                .map(|ready| cursor_first(ready, Vec::new()))
-                .map_err(Into::into),
+            // No ring, or the rotation's own partition rang: one key, one read,
+            // and a failed read fails the offer, which rings nothing again.
+            None => (
+                self.peek_rotation(runner_id, partition, cost)
+                    .await
+                    .map(|ready| cursor_first(ready, Vec::new()))
+                    .map_err(Into::into),
+                true,
+            ),
         };
-        (offer, rung)
+        (offer, rung.and_then(|rung| rung.kept_if(rung_answered)))
     }
 
     /// Rings `rung` again when the poll's `pass` left work in it, and settles
@@ -149,14 +165,14 @@ impl Leases {
     }
 
     /// The rotation's partition and the rung one, sent together, the rung
-    /// one under the doorbell's deadline.
+    /// one under the doorbell's deadline, and whether the rung one answered.
     async fn peek_both(
         &self,
         runner_id: &Uuid7,
         partition: Partition,
         rung: Partition,
         cost: &mut PollCost,
-    ) -> Result<Offer> {
+    ) -> (Result<Offer>, bool) {
         let index = self.ready();
         cost.dragonfly_commands += 2;
         let (rotation, rung_peek) = join(
@@ -167,7 +183,8 @@ impl Leases {
         let rotation =
             rotation.inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error));
         let rung_peek = rung_peek.inspect_err(|error| warn_rung_peek(runner_id, rung, error));
-        match (rotation, rung_peek) {
+        let answered = rung_peek.is_ok();
+        let offer = match (rotation, rung_peek) {
             // Neither answered, so the poll cannot say there is no work.
             (Err(error), Err(_)) => Err(error.into()),
             // Whichever answered is offered, the rotation's fleets first.
@@ -175,7 +192,8 @@ impl Leases {
                 rotation.unwrap_or_default(),
                 rung_peek.unwrap_or_default(),
             )),
-        }
+        };
+        (offer, answered)
     }
 }
 
