@@ -123,6 +123,65 @@ async fn a_delete_after_a_lost_answer_removes_the_registration_the_scheduler_hol
     );
 }
 
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and the compose qstash service"]
+async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
+    let Some((url, token)) = live() else {
+        return;
+    };
+    let lane = CronLane::open().await;
+    let created = lane.settled("key-live-stale-pause", FIRST_CRON).await;
+    let service = against_live(&lane, url.clone(), token.clone());
+    let registered = push(&lane, &service, &created.schedule_id, Change::default()).await;
+
+    // One syncer claims a pause, then stalls past its lease before pushing it.
+    let stale = CronLane::token();
+    let pausing = lane
+        .store
+        .claim_change(
+            &lane.fleet_id(),
+            &created.schedule_id,
+            status(DesiredStatus::Paused),
+            &stale,
+            CronLane::now(),
+        )
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("an unheld schedule is claimable");
+    lane.expire_lease(&created.schedule_id).await;
+
+    // Another takes the expired row and resumes it.
+    let resumed = push(
+        &lane,
+        &service,
+        &created.schedule_id,
+        status(DesiredStatus::Active),
+    )
+    .await;
+    assert_eq!(resumed.source_key, registered.source_key);
+
+    let overtaken = service
+        .reconcile(&pausing, &stale, CronLane::now())
+        .await
+        .expect("a reachable scheduler is not a datastore failure");
+    assert!(
+        matches!(overtaken, Reconciled::Superseded),
+        "the overtaken pause is refused, got {overtaken:?}"
+    );
+    assert!(
+        holds(&url, &token, &registered.source_key).await,
+        "the old pause must not remove the registration the newer resume made"
+    );
+}
+
+/// A change that only moves the schedule's intent to `desired`.
+fn status(desired: DesiredStatus) -> Change<'static> {
+    Change {
+        desired_status: Some(desired),
+        ..Change::default()
+    }
+}
+
 /// Claims `schedule` for deletion and reconciles it.
 async fn delete(lane: &CronLane, service: &Reconciler, schedule: &Uuid7) -> Reconciled {
     let removing = Change {
