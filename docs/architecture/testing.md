@@ -11,12 +11,11 @@ compose those graphs; they never rebuild a component's import list.
 
 | Component | Lane | Build graph |
 |---|---|---|
-| `rustd/crates/afd_core` | `test-unit-rustd` | `rustd/Cargo.toml` |
-| `rustd/crates/afd_wire` | `test-unit-rustd` | `rustd/Cargo.toml` |
+| `rustd/crates/*` (every Rust crate) | `test-unit-rustd` | `rustd/Cargo.toml` |
 | `ui/packages/app` | `test-coverage-all` | its own `vitest.config.ts` |
 | `ui/packages/website` | `test-coverage-all` | its own `vite.config.ts` |
 | `ui/packages/design-system` | `test-coverage-all` | its own `vitest.config.ts` |
-| `cli` | `test-coverage-all` | `cli/bunfig.toml` + `scripts/enforce-coverage.mjs` |
+| `cli` | `test-coverage-all` | `cli/bunfig.toml` + `cli/scripts/enforce-coverage.mjs` |
 
 Rust integration tests live under each crate's `tests/`, one binary per file, so
 a failing type is the failing test's NAME rather than a line inside a loop. Unit
@@ -45,13 +44,16 @@ datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
 only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never
 sets it.
 
-`make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
-`cargo clippy --workspace --all-targets -- -D warnings`), the TypeScript lints,
-the shell and OpenAPI checks, and the safety gates.
+`make lint-all` is the lint claim: `lint-rustd` (the Rust source checks in
+`scripts/check_rust_source.py`, `cargo fmt --check`,
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`, and a
+no-feature `cargo check` of each binary), the TypeScript lints, the shell and
+OpenAPI checks, and the safety gates.
 
 `make test-runner-kernel` proves the runner's sandbox on a real Linux kernel. It
 builds the toolbox image, then runs `afr_sandbox`'s kernel lane as root with
-bubblewrap, Landlock and cgroup v2. It fails, never skips.
+bubblewrap, Landlock and cgroup v2, then `test-runner-startup` (the runner's
+startup under systemd). It fails, never skips.
 
 `make check-version` is the version claim: `cli/package.json` and
 `rustd/Cargo.toml` must match `VERSION`.
@@ -133,7 +135,7 @@ produces a file that compiles nowhere and fails nothing.
 
 The filename rule above decides the tier. This decides the function, and it was
 settled in M180 by measuring rather than by preference, because two conventions
-were live at once and a spec had contracted seventeen names in the losing one.
+were live at once and a spec had named seventeen tests in the losing one.
 
 **A test function is named for the behaviour it pins, as a sentence, with no
 `test_` prefix.** `a_signature_under_the_wrong_key_is_refused_on_every_scheme`,
@@ -190,11 +192,15 @@ identifier, that identifier is minted per test. `Lane::isolated` is the shape:
 mint the workspace and fleet, seed them, scope every read. Cost is a few
 statements; it removes the whole row-collision class.
 
-**ISO-2 — ISO-1 does not reach a key the product spells globally.** `fleet:ready` is
-one hash for the whole deployment and `HRANDFIELD` hands a poller somebody's
-fleet at random — competing consumers, which is the design. Minted row ids do
-not touch it. Isolation here means a keyspace of the test's own (a Dragonfly logical
-database in the connection URL, or a key prefix), and until one exists, ISO-3.
+**ISO-2 — ISO-1 does not reach a key the product spells globally.** The ready
+index, `fleet:ready`, is shared by the whole deployment: 16 partition hashes
+(`READY_PARTITIONS` in `rustd/crates/afd_dragonfly/src/ready/partition.rs`), and
+a poll samples one with `HRANDFIELD`, so it hands a poller somebody's fleet at
+random. That is competing consumers, which is the design. Minted row ids do not
+touch it. Isolation here means a key family of the test's own:
+`ReadyPrefix::private(name)` (behind the `test-util` feature) gives a test an
+index no other writer touches, as `afd_fleet/tests/integration_lease_ready.rs`
+does. A test that drives the production index falls back to ISO-3.
 
 **ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
 `UPDATE … WHERE status = pending AND timeout_at <= $5`: no workspace, no fleet,
@@ -212,8 +218,8 @@ writer can invalidate is ISO-3, whatever else is true of it.
 **ISO-3 is a debt, not a resting place.** Serialisation buys correctness with wall
 time: the daemon end-to-end scenarios are exclusive over `fleet:ready`, and the
 lane measured `tests_s` 110-123 with the guard against 71 for the concurrent
-runs that were producing wrong answers. Recovering that time means ISO-2 for the
-ready stream, not removing the guard.
+runs that were producing wrong answers. Recovering that time means moving those
+scenarios onto a private ready index (ISO-2), not removing the guard.
 
 ## The wire
 

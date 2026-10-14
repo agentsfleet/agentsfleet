@@ -16,14 +16,14 @@ Every row is extracted from the numbered sections below; the owner column names 
 |---|---|---|---|
 | Capability layers | 2 | `SKILL.md` + support files are advisory; `TRIGGER.md` + install-derived policy are binding, enforced by the runner | §1 |
 | `trigger.type` vs `event_type` | orthogonal fields | different tables (`TRIGGER.md` frontmatter vs `core.fleet_events`), never the same value | §1.1 |
-| Tool primitives | `http_request` · `file_read/write/edit` · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
-| Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JWT exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
+| Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
+| Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
-| Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap) · `stage_chunk_threshold: 0.75` | §4 |
+| Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap, resolved per lease) · `stage_chunk_threshold: 0.75` | §4 |
 | Layer 3 authority | enforced | past the threshold the runner logs `context_cap_reached`, offers no more tools and asks for the answer; the fleet's prose owns the snapshot | §4 |
 | Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
 | Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
-| Cap resolution | install or provider-set time | from the model library, never at trigger time; `""` / `0` are the self-managed overlay sentinels | §4 |
+| Cap resolution | pinned at provider-set time, read per lease | copied from the model library when the provider is set; `""` / `0` in `TRIGGER.md` inherit the resolved provider's model and cap | §4 |
 
 ## Traps
 
@@ -31,7 +31,7 @@ Each trap is enforced in its owner section; this list is the index — §5 (What
 
 - `SKILL.md` is advisory, `TRIGGER.md` is binding — never treat prose as enforcement (§1).
 - `trigger.type` and `event_type` are never the same value and never the same table (§1.1).
-- A fleet's own schedules go through a runner verb onto `agentsfleetd`'s schedule plane — QStash still owns the clock, and the runner receives only the resulting event ([`runner_execution.md`](./runner_execution.md) §"Tool catalog").
+- A fleet's own schedules go through a runner verb onto `agentsfleetd`'s schedule plane — Upstash QStash, the hosted scheduler, still owns the clock, and the runner receives only the resulting event ([`runner_execution.md`](./runner_execution.md) §"Tool catalog").
 - The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
 - A fleet that hoards everything as `core` defeats the pinning — an over-cap all-`core` set evicts the coldest `core` (§4).
 - The GitHub App private key never rides the lease envelope, the `secrets_map`, or the runner (§3, §5).
@@ -55,7 +55,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 | `trigger.type` | `TRIGGER.md` frontmatter (static config) | `webhook` / `api` / `cron` / `mention` | **How a Fleet gets triggered** — the wiring at install time. |
 | `event_type` | `core.fleet_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
 
-A `trigger.type: api` fleet typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` fleet receives `event_type: webhook`. A continuation `agentsfleetd` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
+A `trigger.type: api` fleet typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` fleet receives `event_type: webhook`. A continuation event, which `agentsfleetd` writes when an approval gate resolves (`rustd/crates/afd_approval/src/inbox/resolve.rs`), carries `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
 Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger.rs` (`Trigger`) for `trigger.type`; `rustd/crates/afd_wire/src/event.rs` (`EventType`) for `event_type`.
 
@@ -75,12 +75,12 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 | Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model — outbound is the only network surface"). | Lease ExecutionPolicy |
 | Event stream + history | Every steer / webhook / cron event lands on `fleet:{id}:events` with actor provenance. `core.fleet_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). | App ingress + webhook receiver |
-| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
+| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`rustd/crates/afd_crypto/src/lib.rs`). Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
 | Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
 | Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → lease `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
-| Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/afd_gate/src/gate/park.rs:17-35`). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
+| Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/afd_gate/src/gate/park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly dollar hard caps, configured per fleet in `TRIGGER.md`, block further runs at the first trip ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate — a second, independent ceiling"). | Billing gate |
-| Per-run context lifecycle | Rolling tool-result window, memory-store nudge, run chunking, and continuation events. See §4. | Context lifecycle |
+| Per-run context lifecycle | Rolling tool-result window, memory-store nudge, and the context-cap wrap-up. See §4. | Context lifecycle |
 
 ---
 
@@ -97,11 +97,9 @@ x-agentsfleet:
                                                 # plane forwards it into the lease
                                                 # ExecutionPolicy (the engine's
                                                 # ContextBudget.model). Empty
-                                                # string ("") = self-managed overlay
-                                                # sentinel: agentsfleetd resolves
-                                                # the real model from
-                                                # core.tenant_model_selection at
-                                                # lease time.
+                                                # string ("") or absent = inherit
+                                                # the model of the tenant's
+                                                # resolved provider at lease time.
   context:
     tool_window: auto              # rolling tool-result window size; "auto"
                                     # (bare YAML string) and 0 are equivalent
@@ -109,19 +107,17 @@ x-agentsfleet:
     memory_checkpoint_every: 5     # call memory_store every N tool calls
     stage_chunk_threshold: 0.75    # fraction (0 to 1) of the context window
                                     # at which a stage chunks
-    context_cap_tokens: 200000     # the active model's context window
-                                    # (resolved at install time from the
-                                    #  model library — see user_flow.md
-                                    #  §8.7 and billing_and_provider_keys.md). 0 is the
-                                    # self-managed overlay sentinel — same shape as
-                                    # the empty `model` value above.
+    context_cap_tokens: 200000     # the active model's context window.
+                                    # 0 or absent = inherit the resolved
+                                    # provider's cap at lease time — same
+                                    # shape as the empty `model` value above.
 ```
 
 **Wire-shape parser status.** Both `x-agentsfleet.model` and the four
 `x-agentsfleet.context.*` knobs are parsed into `FleetConfig`, carried in the
 lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
 run. Operator overrides take effect; absent or zero fields fall through to
-the runtime defaults below, resolved at lease (`rustd/crates/afd_gate/src/policy/context.rs`).
+the runtime defaults below, resolved per lease (`rustd/crates/afd_gate/src/policy/context.rs`).
 
 ### How the three layers compose (defence-in-depth, not override)
 
@@ -149,7 +145,7 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the fleet works. Forces the fleet to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.fleet_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor hydrates that fleet's prior memory over the `agt_r` plane, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context.rs`, `loop.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor loads that fleet's prior memory from `agentsfleetd` over the runner's authenticated API, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
@@ -164,9 +160,9 @@ Layer 3 ends a run's tool calls once its context fills (above), but there is no 
 The runtime ships with model-tier-aware defaults the user inherits without any configuration:
 
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
-- `tool_window: auto` resolves at install time based on the active model's context cap: **30** when the cap is at least one million tokens, **20** for caps between two-hundred-thousand and three-hundred-thousand tokens, **10** for caps at or below two-hundred-thousand tokens.
+- `tool_window: auto` resolves per lease from the active model's context cap: **30** when the cap is at least one million tokens, **10** when it is at or below two hundred thousand, and **20** for every cap in between or an unknown cap (`rustd/crates/afd_gate/src/policy/context.rs`).
 
-The model's context cap is **not** baked into the runtime. It's resolved at install time (platform-managed posture) or at provider-set time (self-managed provider key posture) from the model library. See [`user_flow.md`](./user_flow.md) §8.7 and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
+The model's context cap is **not** baked into the runtime. Unless `TRIGGER.md` sets one, each lease takes it from the tenant's resolved provider: `core.tenant_model_selection` (self-managed, pinned when the tenant sets the provider) or `core.platform_provider_defaults` (platform, pinned when an admin sets the default). Both copy it from the model library. See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
 
 ### When a user does want to override (rare)
 
@@ -175,7 +171,7 @@ The model's context cap is **not** baked into the runtime. It's resolved at inst
 | "My fleet loses important findings mid-incident" | `memory_checkpoint_every: 3` | Checkpoint more often. Cheap. Always safe. |
 | "My fleet hits context limits and chunks too aggressively" | `tool_window: 10` | Drop old results sooner so newer stuff fits. Loses older tool results earlier. |
 | "My fleet chunks too late and produces partial diagnoses" | `stage_chunk_threshold: 0.6` | Chunk earlier. More handoffs but less risk of being cut off mid-thought. |
-| "I'm on Kimi K2.6 (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
+| "I'm on Kimi K2.7 Code (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
 
 ### The 80/20 rule
 
@@ -183,9 +179,9 @@ Eighty percent of users use the defaults forever and never see context errors. T
 
 ### Memory hygiene — what to store so it survives
 
-Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). Four habits make that selection work for the fleet instead of against it:
+Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Four habits make that selection work for the fleet instead of against it:
 
-- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction or an explicit `memory_forget`).
+- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction; `memory_forget` hides a key for the current run only, `rustd/crates/afr_memory/src/hydrated.rs`).
 - **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
 - **Replace what's stale.** A store under the same key replaces the stored copy; `memory_forget` only hides a key for the rest of the run. A Fleet that hoards everything as `core` defeats the pinning: an all-`core` set over the entry cap evicts the coldest `core` as last resort.
 - **Keep entries small.** The hydration budget is bytes, not entries — one bloated entry crowds out many small ones. Snapshot conclusions, not transcripts.

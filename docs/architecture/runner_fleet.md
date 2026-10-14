@@ -20,7 +20,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
-| Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
+| Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | the reclaim sweeper's `BATCH_LIMIT` = 100 fleets a pass, every 30 s, keyset cursor on `(updated_at, id)`; min-idle is `AUTOCLAIM_MIN_IDLE_MS` = 5 min; ≈5.5 min at 100 fleets, ≈10 at 1 000, ≈30 at 5 000 | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
@@ -124,10 +124,10 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 | **Fleet outruns the lease TTL** | resolved (§3) — a live runner renews its own lease | the runner renews through the fenced `/renew` verb on every tick while the lease's task lives; liveness is decoupled from execution duration, bounded by a hard `MAX_RUNTIME_MS` cap | a runner that dies stops renewing — its lease expires at its deadline and is reclaimed + re-run; never double-run (fencing) | **shipped**; §1 cordon-drain + §2 heartbeat-lapse reassignment build on top |
 | Sandbox setup fails | immediate | the turn never runs; runner reports `fleet_error` as `startup_posture` | a host with a broken sandbox fails each lease it takes until the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
 | Control plane unreachable | bounded by runner backoff | runner retries with backoff; the un-acked lease redelivers | a runner that can't reach `agentsfleetd` does no work until the link returns | unchanged — the runner is the reconnect handler |
-| Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `try_candidate` releases the won `runner_affinity` slot through `let_go` before the error propagates, on the reclaim probe and on the fresh-envelope build alike (`rustd/crates/afd_fleet/src/lease/assign.rs`). A release that itself fails degrades to the slot's own `leased_until` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL_MS` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
-| Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `fleet_xautoclaim_min_idle_ms` + `ceil(active_fleets / sweep batch)` × `fleet_reclaim_interval_ms` — **scales with fleet count** | the reclaim sweeper re-marks any fleet still holding deliverable work. Its probe compares the consumer group's `last-delivered-id` against the stream's `last-generated-id`, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
+| Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `try_candidate` releases the won `runner_affinity` slot through `let_go` before the error propagates, on the reclaim probe and on the fresh-envelope build alike (`rustd/crates/afd_fleet/src/lease/assign/claim.rs`). A release that itself fails degrades to the slot's own `leased_until` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL_MS` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
+| Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `AUTOCLAIM_MIN_IDLE_MS` + `ceil(active_fleets / BATCH_LIMIT)` × the 30 s pass interval — **scales with fleet count** | the reclaim sweeper (`afd_runner::sweep::reclaim`) re-marks any fleet still holding deliverable work. Its probe reads the consumer group's `lag` (entries never delivered) and pending count from `XINFO GROUPS`, and reads an unknown `lag` as deliverable, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
 
-> **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass reaches at most `SWEEP_BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)`. So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`: about 6 minutes at 100 active fleets, about 15 at 1 000, about 55 at 5 000. Quote operators the formula, not the single-batch case.
+> **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass runs every 30 s and reaches at most `BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)` (`rustd/crates/afd_runner/src/sweep/reclaim.rs`). So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`, where min-idle is `AUTOCLAIM_MIN_IDLE_MS`, five minutes (`rustd/crates/afd_dragonfly/src/streams.rs`): about 5.5 minutes at 100 active fleets, about 10 at 1 000, about 30 at 5 000. Quote operators the formula, not the single-batch case.
 >
 > The same arithmetic is the **cold-start** window. On first deploy the index is empty while streams already hold undelivered entries, so nothing is leasable until a sweep finds it. This is a deliberate, Indy-acked deferral (M141_001 Discovery): a boot-time reconciliation pass and a raised batch bound were both offered and declined, because both are discovery scaffolding the future scheduler replaces. What is *not* deferred is the keyset cursor — without it the fleets past the first batch are never reached at all rather than merely reached late.
 
@@ -138,12 +138,12 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 A renewal pushes the kill-deadline forward while the runner's lease task lives. The Rust supervisor calls `/renew` on every `RENEWAL_TICK_MS` tick from the lease's start, carrying the run's cumulative tokens, and gives the lease up at the last granted deadline less two seconds (`rustd/crates/afr_supervisor/src/renew.rs`). The call atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
 
 ```
- lease issued                                renewal window
- (expires = now + LEASE_TTL_MS)              (RENEWAL_WINDOW_MS before expiry)
-   │            tick    tick    tick    tick ▼ tick
-   ●────────────●───────●───────●───────●────●──────────────────►
-                                              │ < window? → POST /renew
-                                              ▼
+ lease issued                                every RENEWAL_TICK_MS (5 s) tick
+ (expires = now + LEASE_TTL_MS)              posts /renew, from the lease's start
+   │            tick    tick    tick    tick   tick
+   ●────────────●───────●───────●───────●──────●────────────────►
+                                               │ POST /renew
+                                               ▼
    server, in ONE fenced atomic statement:
      • still the fencing holder?  no → 409 lease_lost  → runner cuts the run
      • credits cover the run?     no → 402 no_credits  → terminate
@@ -196,13 +196,13 @@ The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 ### Where the code lives
 
-The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate` and `afd_observability`. No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
+The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate`, `afd_observability` and `afd_otlp` (the OpenTelemetry export, which `afr_telemetry` links). No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|
 | wire | `rustd/crates/afd_wire` | both | none | the frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
 | shared knobs | `rustd/crates/afd_core` | both | none | the knobs both planes key off (`LEASE_TTL_MS`, …), `error_shell!` |
-| control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the four background sweeps, and the `/v1/runners` handlers over them |
+| control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the background sweepers (`afd_runner::sweep`, started in `rustd/crates/agentsfleetd/src/sweepers.rs`), and the `/v1/runners` handlers over them |
 | runner | `rustd/crates/afr_supervisor` · `afr_agent` · `afr_providers` · `afr_tools` · `afr_egress` · `afr_secrets` · `afr_memory` · `afr_executor` · `afr_sandbox` · `afr_telemetry` | `agentsfleet-runner` (`rustd/crates/agentsfleet_runner`) | none | supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine; imports nothing from the control plane |
 
 ## The control protocol — `/v1/runners`
@@ -273,7 +273,7 @@ A runner's "status" is three *separate* concerns; conflating them into one Kuber
 | **Runtime liveness** | **derived** at read from `last_seen_at` + leases | `registered` · `online` · `busy` · `offline` | **no** — a pure function; storing it would drift |
 | **History** | `fleet.runner_events` (append-only) | `runner_registered` · `lease_acquired` · `runner_offline` · `runner_revoked` | **yes** — answers "last busy?", "runs this period", "offline how long?" |
 
-Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel): a freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001). "Auth failed" is *not* a runner state — identity is the token, so a bad `agt_r` matches no row; it surfaces in logs/metrics, never as a row's liveness. The `phase + conditions JSONB` split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security) — not before.
+Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel): a freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001). "Auth failed" is *not* a runner state — identity is the token, so a bad `agt_r` matches no row; it surfaces in logs/metrics, never as a row's liveness. A Kubernetes-style `status` + `conditions` JSONB split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security) — not before.
 
 ### Operator plane + reassignment
 
@@ -293,7 +293,7 @@ Lease history: API reference › Fleet (List a runner's leases). Neither item st
 
 Two indexes serve the read. `idx_runner_leases_runner_id_created_at_id` answers the page, and `idx_runner_leases_fleet_id_event_id_fencing_token` answers the per-row reclaim derivation. On `fleet.runner_events`, `idx_runner_events_runner_id_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count, so that read stops walking the per-lease bulk. A partial index was rejected there: the tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
-**History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, supervised beside the liveness, reclaim and repair sweepers) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
+**History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, started with the other sweepers in `rustd/crates/agentsfleetd/src/sweepers.rs`) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
 
 Only the per-lease event tags are eligible — `PER_LEASE_EVENT_TYPES`, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
 
@@ -490,7 +490,7 @@ runner ── GET/POST /v1/runners/me/memory ──► agentsfleetd ── store
 The agent loop emits progress frames mid-run: tool started, tool completed, and each answer chunk. The runner holds no Dragonfly, so the supervisor hands each frame to a per-lease sink that never blocks the run, and a pump batches frames up to 64 KiB, flushing every 250 ms. At most four batches are queued or in flight; past that the next batch waits with the batcher and keeps filling, and only a batch that filled while it waited is dropped, counted and logged as `activity_batch_dropped`. A post that fails loses its batch, logs `activity_frame_write_failed` and counts its frames as dropped (`rustd/crates/afr_supervisor/src/activity.rs`). `afd_fleet`'s activity path publishes the ordered batch on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Dragonfly subscription connection across downstream Server-Sent Events (SSE) viewers.
 
 ```
-agent loop ─sink─► activity pump ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
+agent loop ─sink─► activity pump ─POST .../activity (no ack)─► agentsfleetd ─SPUBLISH─► SSE
 ```
 
 The runner's frames reach the channel through `afd_fleet::lease::activity`, each stamped with the `event_id` its lease runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
@@ -650,7 +650,7 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_leases`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
 
-The write-failure counter is deliberately unlabelled — which of the two writes failed does not change the operator's response, and a `reason` label would double the series for no decision. Sweep re-marks are visible today as the `remarked_fleets` field on the sweeper's cycle log line, not as a counter family; promoting them to a metric needs a name from the pinned semantic registry first.
+The write-failure counter is deliberately unlabelled — which of the two writes failed does not change the operator's response, and a `reason` label would double the series for no decision. Sweep re-marks are visible today only inside the `changed` count on the reclaim sweeper's `sweep_completed` log line, which also counts claimed entries, and as one `stranded_lease_surfaced` line per fleet the ledger check re-marks; there is no counter family for them; promoting them to a metric needs a name from the pinned semantic registry first.
 
 They carry no fleet, workspace, tenant, event, lease, or runner label — they describe the control plane, not any one entity, so a per-entity label here would be pure cardinality. `lease_polls_total` exists as a denominator: mean fan-out per poll is a ratio, and shipping only the numerators would make a traffic increase indistinguishable from a fan-out regression. An idle poll contributes a sample of zero rather than no sample at all, because the idle case is the one the fan-out defect lived in.
 

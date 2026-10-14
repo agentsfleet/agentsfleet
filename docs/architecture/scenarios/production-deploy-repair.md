@@ -1,6 +1,6 @@
 # Scenario — Production deploy repair
 
-> Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §8.5, [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
+> Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §"§8.5 Example: Production deploy repair", [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
 
 **Outcome:** a failed production deployment becomes a diagnosis or one bounded draft Pull Request (PR). A human installs the write-bound repairer, reviews the exact diff, and merges. Only a terminal production result for the exact merged commit can wake post-deploy verification.
 
@@ -8,9 +8,9 @@
 
 **Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. It also adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof. The live GitHub App subscription and delivery are not yet proven together; the registration playbook requires that final operator check.
 
-> **Not ported to the Rust daemon.** The repair-evidence writer and `deployment_status` intake: the App ingress drops both as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs:22-32`), so no PR link, run history, merge pin or production result is recorded, and nothing reaches the verifier. §4–§8 describe the design the port follows.
+> **Not ported to the Rust daemon.** The repair-evidence writer and `deployment_status` intake: the App ingress drops both as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs:22-29`), so no PR link, run history, merge pin or production result is recorded, and nothing reaches the verifier. §4–§8 describe the design the port follows.
 >
-> A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §7.
+> A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §"7. Four stages, four authorities".
 
 ```text
                    Grafana + Elasticsearch
@@ -40,7 +40,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 There is no per-event approval card and no request ceiling. M202 retired both: the install-time `github` grant authorises a write, and the grant, the fleet's `budget.daily_dollars` and `agentsfleet grant delete` bound it (`rustd/crates/afd_gate/src/gate/first.rs:8-17`).
 
-The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission. The daemon verifies the token returned by GitHub before exposing it to the run.
+The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
 
 ## 3. Diagnose and open one draft PR
 
@@ -48,7 +48,7 @@ The repairer reads the failed deployment, recent code changes, and current files
 
 For a bounded forward fix, the repairer writes blobs, a tree, a commit, one daemon-issued branch, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
 
-The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the leased event identifier's bytes, so its length varies with the identifier (`rustd/crates/afd_gate/src/policy/repair.rs:1-22,44-68`). The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
+The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the leased event identifier's bytes, so its length varies with the identifier (`branch_for` in `rustd/crates/afd_gate/src/policy/repair.rs:65`). The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
 
 The user-authored `TRIGGER.md` declares the exact repository and trusted Pull Request base. The daemon combines them with the event's repair branch and emits generic HTTP rules for host, method, path, and the top-level JSON fields each request may carry, locked or permitted; a rule that names fields refuses any other key and any query string. Those rules allow repository reads, blob and tree creation, a commit carrying only its message, tree and parents, the exact `refs/heads/<repair branch>` ref, and a draft Pull Request whose head and base equal the trusted values. The runner evaluates only those generic rules. It contains no GitHub repair type, procedure, or progress flag.
 
@@ -103,7 +103,7 @@ Every normalized production result is stored before correlation. The same reconc
 
 A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
 
-Each selected verifier Fleet gets one slot 835 intent with `verifier_event_id = NULL` and `verify_after` fifteen minutes after production completion. A dispatcher on every replica claims due intents in batches under a claim token that lapses after 30 seconds, and admits each as a `repair_production_result` event (`rustd/crates/afd_runner/src/sweep/repair.rs`). The admission ledger's unique index on the intent makes a retry answer the first attempt's event identifier, and the completion, guarded on the claim token, fills `verifier_event_id` once. The once-key and its cleanup sweep are gone (`schema/912_repair_verifications_drop_once_cleanup.sql`). The dispatcher is ported; nothing writes an intent yet, because the production-result intake is not.
+Each selected verifier Fleet gets one intent row in `core.repair_verifications` (`schema/835_repair_verifications.sql`) with `verifier_event_id = NULL` and `verify_after` fifteen minutes after production completion. A dispatcher on every replica claims due intents in batches under a claim token that lapses after 30 seconds (`CLAIM_STALE`), and admits each as a `repair_production_result` event (`rustd/crates/afd_runner/src/sweep/repair.rs`). The admission ledger's (`core.fleet_admissions`) unique index on the intent makes a retry answer the first attempt's event identifier, and the completion, guarded on the claim token, fills `verifier_event_id` once. The once-key and its cleanup sweep are gone (`schema/912_repair_verifications_drop_once_cleanup.sql`). The dispatcher is ported; nothing writes an intent yet, because the production-result intake is not.
 
 The `verifier_event_id` is therefore the standard Fleet event identifier for Fleet 3's verification run. It is not another incident identifier and users do not copy it between Fleets. It lets event history, logs, and support trace the exact verification run back to the repair and production result.
 
@@ -136,16 +136,16 @@ production_result {
 }
 ```
 
-The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. The live record includes `deployment.id` as deployment context and `deployment_status.id` as slot 834's append identity. Fixture coverage is not accepted as evidence that the live App subscription exists.
+The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. The live record includes `deployment.id` as deployment context and `deployment_status.id` as the append identity of `core.repair_production_results` (`schema/834_repair_production_results.sql`). Fixture coverage is not accepted as evidence that the live App subscription exists.
 
 `agentsfleet` accepts any signed terminal production status from a mapped GitHub installation. That proves GitHub origin and repository routing; it does not attest that Vercel produced the status. Which identities that boundary admits is [`../connectors.md`](../connectors.md) §"Trust anchors" item 5; the daemon inspects neither `deployment_status.creator` nor App identity. The live proof records the expected deployment integration, received creator identity, repository, commit, deployment identifier, deployment-status identifier, and delivery identifier in Pull Request (PR) Session Notes for audit; it does not add a daemon rejection rule.
 
-Slot 834 retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, and claim fence. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
+`core.repair_production_results` retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. `core.repair_verifications` retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, and claim fence. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. Proof status
 
-The three bundles — `incident-responder`, `incident-repairer`,
-`incident-verifier` — are test fixtures under `tests/fixtures/fleetbundle/`
+The three bundles, `incident-responder`, `incident-repairer` and
+`incident-verifier`, are test fixtures under `tests/fixtures/fleetbundle/`
 since `e621d7262`. The correlated-repair path landed in `M157_003` on the
 retired daemon. The Rust daemon ports the verification dispatcher and not the
 evidence writer or the production-result intake (the box at the top).
