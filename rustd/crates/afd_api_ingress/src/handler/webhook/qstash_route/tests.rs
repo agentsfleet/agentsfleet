@@ -24,11 +24,18 @@ fn an_oversized_header_is_cut_at_the_cap() {
 }
 
 #[test]
-fn an_oversized_header_of_wide_characters_is_cut_at_a_character_boundary() {
-    // A two-byte character straddles the cap, so the byte cut lands inside it
-    // whatever the cap's parity, and the cut steps back to where it starts.
-    let head = "a".repeat(MAX_LOGGED_ID_BYTES - 1);
-    let sent = format!("{head}\u{e9}{head}");
+fn a_wide_character_across_the_cap_is_cut_back_to_where_it_starts() {
+    // Each character ends one byte past the cap, so the cut lands on its last
+    // byte and must step back `width - 1` bytes, not one.
+    for wide in ["\u{e9}", "\u{20ac}", "\u{1f980}"] {
+        let head = "a".repeat(MAX_LOGGED_ID_BYTES + 1 - wide.len());
+        let sent = format!("{head}{wide}{head}");
 
-    assert_eq!(logged_id(Some(&sent)), head);
+        assert_eq!(
+            logged_id(Some(&sent)),
+            head,
+            "a {}-byte character",
+            wide.len()
+        );
+    }
 }
