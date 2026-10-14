@@ -115,6 +115,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/pull/claimed.rs` | EDIT | module doc: a poll peeks the rotation's partition and the rung one; passes the poll's start instant on |
 | `rustd/crates/afd_bench/src/instrument.rs`, `rustd/crates/afd_bench/src/instrument/tests.rs` | EDIT | reads `agentsfleet_lease_poll_dragonfly_commands_total` back; the new counter field |
 | `playbooks/operations/acceptance/baselines/M225_001-20261013.md` | NEW | the comparison-revision baseline report |
+| `docs/v2/pending/M226_001_P2_API_OBS_ADMISSIONS_LEDGER_IS_THE_ONLY_QUEUE.md` | NEW | the one-queue follow-up, written from round 3's adversarial review (Indy, Oct 14, 2026: "Spec it now (Recommended)"), landing with this PR |
 
 **Ride-along rows** — the `afr_egress` and `ui/` rows are scope (Indy, Oct 12, 2026 — carried from `fix/egress-refusal-tells-the-model-to-stop` and asked for at CHORE(open); outside the lease work, inside this Pull Request):**
 
