@@ -625,8 +625,8 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        and, when the readiness doorbell rang, the first rung partition at
        or after the cursor, together; both peeks' fleets reach the scan,
        the rotation's first; empty peeks answer at once and read no
-       Postgres. When the rung partition is rung again: runner_fleet.md
-       §Datastore topology, the doorbell row. Keep the active fleets whose
+       Postgres. When the rung partition is rung again: runner_fleet.md,
+       the doorbell row of its Datastore topology table. Keep the active fleets whose
        required_tags are a subset of the runner's labels and whose slot no
        live runner holds;
        order them the rotation's partition first, then sticky by
