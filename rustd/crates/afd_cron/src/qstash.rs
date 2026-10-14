@@ -233,7 +233,8 @@ struct ScheduleAnswer {
 /// header — a proxy that stripped it, an API version that ignores it — files
 /// the schedule under an id of its own, and adopting that id would mark the row
 /// synced while every fire it sends is dropped as naming no schedule. Refused
-/// as unreadable instead, so the row records `failed` and why.
+/// as unreadable instead, so the row records `failed`. Its reason reads as the
+/// scheduler being unavailable, the sentence any unreadable answer gets.
 fn confirmed(sent: String, body: &str) -> Result<Registered> {
     let answer: ScheduleAnswer =
         serde_json::from_str(body).map_err(|_unreadable| error::upstream_unreadable())?;
