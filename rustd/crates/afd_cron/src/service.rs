@@ -24,6 +24,13 @@
 //! the schedule while this one was talking upstream, and its state is the newer
 //! one — overwriting it with this attempt's outcome would resurrect a change
 //! the operator had already replaced.
+//!
+//! A fence lost BEFORE the push is refused the same way, before the scheduler
+//! is called: every push names one upstream id per schedule, so a syncer that
+//! stalled past its lease would otherwise remove the registration a newer
+//! resume made, or overwrite a newer edit, and its refused finalize would leave
+//! the row marked synced. A stall between that read and the request still
+//! races; per-revision upstream ids are what close it.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -92,6 +99,11 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<Reconciled> {
+        // As late as the row can be read; see the module note on a lost fence.
+        if !self.store.holds_fence(held, token).await? {
+            log_overtaken(held);
+            return Ok(Reconciled::Superseded);
+        }
         let missed = missed(held, now);
         let pushed = match held.desired_status {
             // A paused schedule is REMOVED upstream rather than left registered
@@ -203,3 +215,14 @@ fn log_missed(held: &Schedule) {
 
 /// A one-off removed because it was not registered before its moment.
 const EVENT_ONCE_MISSED: &str = "schedule_once_missed";
+
+/// Logs a push refused because another syncer took the schedule first.
+fn log_overtaken(held: &Schedule) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let fleet_id = held.fleet_id.as_str();
+    let schedule_id = held.schedule_id.as_str();
+    tracing::warn!(fleet_id, schedule_id, event = EVENT_SYNC_OVERTAKEN);
+}
+
+/// A syncer that lost its fence before pushing, so it pushed nothing.
+const EVENT_SYNC_OVERTAKEN: &str = "schedule_sync_overtaken";

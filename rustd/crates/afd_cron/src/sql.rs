@@ -193,6 +193,13 @@ pub const FINALIZE_FAILURE: &str = concat!(
 pub const DELETE_CLAIMED: &str = "DELETE FROM core.fleet_schedules \
      WHERE id = $1::uuid AND generation = $2 AND sync_token = $3::uuid RETURNING id::text";
 
+/// Whether a fence is still the row's: the token and the generation its claim set.
+///
+/// Read just before the external scheduler is called — see
+/// `crate::service::Schedules::reconcile` on the stale syncer it turns away.
+pub const HOLDS_FENCE: &str = "SELECT id::text FROM core.fleet_schedules \
+     WHERE id = $1::uuid AND generation = $2 AND sync_token = $3::uuid";
+
 /// What a signed fire resolves to.
 ///
 /// Reads the fleet's own status alongside the schedule's, because both can
