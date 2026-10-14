@@ -34,7 +34,7 @@
     "billed: a local runtime is self-managed, where token cost is not charged.",
     "",
     "Providers are keyed on the name a fleet's policy selects, which the runner resolves",
-    "through its provider registry (rustd/crates/afr_providers/src/registry.rs, over the",
+    "through its provider registry (rustd/crates/afr_providers/src/registry/mod.rs, over the",
     "table it embeds, rustd/crates/afr_providers/assets/providers.json): `xai`, not its",
     "alias `grok`.",
     "",
@@ -91,7 +91,7 @@
       "Provider names where OUR base_url deliberately differs from where the runner's",
       "registry sends the same name. base_url is curated, never regenerated.",
       "Source: rustd/crates/afr_providers/assets/providers.json, embedded by",
-      "rustd/crates/afr_providers/src/registry.rs."
+      "rustd/crates/afr_providers/src/registry/mod.rs."
     ]
   },
   "providers": {
@@ -633,7 +633,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llama.cpp": {
       "dial": "native",
@@ -642,7 +642,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llamacpp": {
       "dial": "native",
@@ -651,7 +651,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lm-studio": {
       "dial": "native",
@@ -660,7 +660,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lmstudio": {
       "dial": "native",
@@ -669,7 +669,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "minimax-cn": {
       "dial": "native",
@@ -801,7 +801,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "opencode": {
       "dial": "native",
@@ -828,7 +828,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "ovh": {
       "dial": "native",
@@ -911,7 +911,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "shengsuanyun": {
       "dial": "native",
@@ -1024,7 +1024,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "volcengine": {
       "dial": "native",

@@ -3,7 +3,7 @@
 //! A fieldless projection of [`Error`](crate::Error), read through
 //! [`Error::refusal`](crate::Error::refusal): the error carries the host or
 //! name the model reads in its detail, and a tool discriminates on this to
-//! pick the code the model reads first (`afr_tools/src/egress.rs`). Fieldless,
+//! pick the code the model reads first (`afr_tools/src/egress/mod.rs`). Fieldless,
 //! so it stays a plain `Copy` enum (`docs/RUST_ERROR_STANDARD.md` §"The shared
 //! hull").
 

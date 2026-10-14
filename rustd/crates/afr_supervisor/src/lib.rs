@@ -24,6 +24,8 @@
 //! [`StorageHome::sandboxes`], so the engine's boot sweep finds what a crashed
 //! runner left. [`capability::probe_answer`] is the `probe` command's answer.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod capability;
 pub mod config;
 pub mod error;

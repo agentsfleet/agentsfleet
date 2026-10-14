@@ -106,7 +106,7 @@ fn the_full_skill_carries_every_optional_field() {
 /// bundles before them happened to declare a single tool each — an accident of
 /// the roster, not a property of a first-party bundle. `incident-responder`
 /// declares `memory_store` and `memory_recall` beside `http_request`, both of
-/// which the runner hosts (`afr_tools/src/catalog.rs`). What the
+/// which the runner hosts (`afr_tools/src/catalog/mod.rs`). What the
 /// roster actually shares is the reach: every one of them talks to its service
 /// over `http_request` rather than a bespoke tool.
 #[test]
