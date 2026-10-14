@@ -88,10 +88,10 @@ pub(crate) async fn create<D: Services>(
             NewSchedule {
                 fleet: &fleet,
                 source: afd_cron::Source::Api,
-                // The upstream key is this daemon's own name for the schedule
-                // until the scheduler answers with its id. It has to be unique
-                // per fleet, which the fleet's own identifier plus the instant
-                // already is.
+                // A placeholder key until the first successful push records
+                // `fleet-schedule-{id}`, the id it is registered under. It has
+                // to be unique per fleet, which the fleet's own identifier plus
+                // the instant already is.
                 source_key: Some(&format!("{fleet_id}-{}", services.now().as_millis())),
                 cron: &input.cron,
                 timezone: &timezone,

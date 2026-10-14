@@ -22,3 +22,26 @@ fn an_oversized_header_is_cut_at_the_cap() {
 
     assert_eq!(logged_id(Some(&sent)), &sent[..MAX_LOGGED_ID_BYTES]);
 }
+
+#[test]
+fn an_oversized_header_of_wide_characters_is_cut_at_a_character_boundary() {
+    // Two bytes each, so the byte cap falls inside a character when it is odd
+    // and on a boundary when it is even; either way the cut never exceeds it.
+    let sent = "\u{e9}".repeat(MAX_LOGGED_ID_BYTES);
+
+    let logged = logged_id(Some(&sent));
+
+    assert!(
+        logged.len() <= MAX_LOGGED_ID_BYTES,
+        "the cap holds: {}",
+        logged.len()
+    );
+    assert!(
+        !logged.is_empty(),
+        "a cut that falls inside a character backs off, not to nothing"
+    );
+    assert!(
+        sent.starts_with(logged),
+        "the logged id is a prefix of what was sent"
+    );
+}

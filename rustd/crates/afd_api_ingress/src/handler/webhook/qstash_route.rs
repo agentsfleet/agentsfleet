@@ -147,7 +147,7 @@ pub(crate) async fn receive<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_DROPPED))?
     else {
-        return Ok(dropped(REASON_NO_SUCH_SCHEDULE));
+        return Ok(no_such_schedule(&schedule));
     };
 
     // Both halves can stop a fire and they are different facts: the schedule
@@ -208,12 +208,37 @@ fn unnamed(named: Option<&str>) -> Response {
     ignored(REASON_NO_SCHEDULE_HEADER)
 }
 
+/// The 200 a fire naming a schedule this daemon no longer holds answers with,
+/// logging which schedule it named.
+///
+/// A deleted row whose registration survived upstream fires here, so the id
+/// is what an operator needs to remove that registration. It was parsed into
+/// a row id already, so it is bounded and safe to log whole.
+fn no_such_schedule(schedule: &afd_core::id::Uuid7) -> Response {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let schedule_id = schedule.as_str();
+    tracing::info!(
+        schedule_id,
+        reason = REASON_NO_SUCH_SCHEDULE,
+        event = EVENT_DROPPED
+    );
+    ignored(REASON_NO_SUCH_SCHEDULE)
+}
+
 /// As much of `named` as a dropped fire logs: empty when absent, and no more
 /// than [`MAX_LOGGED_ID_BYTES`].
 ///
-/// Sliced by bytes safely: a header value read as text is visible ASCII.
+/// A header value read as text is visible ASCII today, but the cut still backs
+/// off to a character boundary, so a wider reader can never make it return the
+/// whole value uncapped.
 fn logged_id(named: Option<&str>) -> &str {
-    named.map_or("", |id| id.get(..MAX_LOGGED_ID_BYTES).unwrap_or(id))
+    named.map_or("", |id| {
+        let mut end = id.len().min(MAX_LOGGED_ID_BYTES);
+        while !id.is_char_boundary(end) {
+            end = end.saturating_sub(1);
+        }
+        id.get(..end).unwrap_or_default()
+    })
 }
 
 /// The 200 a deliberately-dropped fire answers with.

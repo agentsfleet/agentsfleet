@@ -164,10 +164,10 @@ impl FleetSchedules for SchedulePlane {
             return Ok(());
         }
         // Nothing claimed: the row is gone, which is retired, or another
-        // syncer holds it, which is not yet. Read straight from the store: the
-        // workspace is the one the fire target's own join resolved, so a second
-        // ownership read would ask a question already answered.
-        if self.store().one(fleet, schedule).await?.is_none() {
+        // syncer holds it, which is not yet. Read through the workspace like
+        // every other verb here, so a caller naming a foreign fleet learns
+        // nothing from which of the two it was.
+        if self.one(workspace, fleet, schedule).await?.is_none() {
             return Ok(());
         }
         let error_code = afd_core::error_code::SCHEDULE_SYNCING.as_str();
