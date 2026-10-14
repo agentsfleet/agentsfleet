@@ -83,6 +83,10 @@ pub struct Message {
     pub payload: String,
 }
 
+/// The longest step production's redial schedule waits, and how long a
+/// connection must serve before its loss restarts the climb (`pump/pacing.rs`).
+pub(crate) const REDIAL_CEILING: Duration = Duration::from_secs(5);
+
 /// How long the pump waits before redialling a dropped connection.
 ///
 /// A schedule is an operational promise — how long an outage takes to recover
@@ -105,7 +109,7 @@ pub const fn production_backoff() -> ExponentialBuilder {
     // redialled on.
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(200))
-        .with_max_delay(Duration::from_secs(5))
+        .with_max_delay(REDIAL_CEILING)
         .without_max_times()
         .with_jitter()
 }

@@ -4,10 +4,12 @@ use std::time::Duration;
 
 use backon::{BackoffBuilder as _, ExponentialBackoff, ExponentialBuilder};
 
+use crate::hub::REDIAL_CEILING;
+
 /// How long a generation must serve before its loss counts as a fresh one:
 /// production's ceiling step, so a node that confirms the subscribes and then
 /// drops is backed off as hard as one that refuses them.
-const HELD_GENERATION: Duration = Duration::from_secs(5);
+const HELD_GENERATION: Duration = REDIAL_CEILING;
 
 /// One schedule across consecutive generations that ended young, so a primary
 /// that stays down, or keeps dropping the connection it accepted, costs a wait
@@ -26,7 +28,8 @@ impl Pacing {
         }
     }
 
-    /// The wait before redialling a generation that served for `held`.
+    /// The wait before redialling a generation that served for `held`,
+    /// counted from its resubscribe's answer, so one that never served is young.
     ///
     /// One that held is a fresh loss: no wait, and the climb starts again. One
     /// that did not takes the schedule's next step. A schedule with an attempt
