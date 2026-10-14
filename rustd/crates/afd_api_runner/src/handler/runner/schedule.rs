@@ -201,7 +201,7 @@ pub(crate) async fn list<D: Services>(
     let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
     let schedules = services
         .schedules()
-        .list(&lease.fleet_id)
+        .list(&lease.workspace_id, &lease.fleet_id)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
     Ok(Json(Page {
@@ -301,7 +301,7 @@ pub(super) async fn fleet_owned<D: Services>(
 ) -> Result<(), Refusal> {
     let found = services
         .schedules()
-        .one(&lease.fleet_id, schedule)
+        .one(&lease.workspace_id, &lease.fleet_id, schedule)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
         .ok_or_else(not_found)?;

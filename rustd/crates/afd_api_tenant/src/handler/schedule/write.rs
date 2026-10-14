@@ -16,11 +16,12 @@ use axum::extract::{Path, State};
 use axum::response::Response;
 use http::StatusCode;
 
+use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::handler::fleet::detail::parse_fleet_id;
+use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::services::{FleetSchedules as _, Services};
 
-use super::support::{Create, Patch};
+use super::support::{Create, Patch, SchedulePath};
 use super::{DETAIL_INVALID_BODY, EVENT_WRITE};
 
 /// What a create and an update both answer: the row as the scheduler now holds it.
@@ -59,11 +60,11 @@ const RECONCILED: &str = "The schedule as reconciled with the scheduler";
 ))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
-    Path((workspace_id, fleet_id)): Path<(String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(FleetPath { fleet_id }): Path<FleetPath>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    let workspace = parse_fleet_id(&workspace_id)?;
 
     let input: Create = serde_json::from_slice(&body)
         .map_err(|_unreadable| Refusal::coded(error_code::INVALID_REQUEST, DETAIL_INVALID_BODY))?;
@@ -83,7 +84,7 @@ pub(crate) async fn create<D: Services>(
     let created = services
         .schedules()
         .create(
-            &workspace,
+            &owned.workspace,
             NewSchedule {
                 fleet: &fleet,
                 source: afd_cron::Source::Api,
@@ -139,7 +140,11 @@ pub(crate) async fn create<D: Services>(
 ))]
 pub(crate) async fn patch<D: Services>(
     State(services): State<Arc<D>>,
-    Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(SchedulePath {
+        fleet_id,
+        schedule_id,
+    }): Path<SchedulePath>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
@@ -157,6 +162,7 @@ pub(crate) async fn patch<D: Services>(
     let changed = services
         .schedules()
         .change(
+            &owned.workspace,
             &fleet,
             &schedule,
             Change {
@@ -204,7 +210,11 @@ pub(crate) async fn patch<D: Services>(
 ))]
 pub(crate) async fn purge<D: Services>(
     State(services): State<Arc<D>>,
-    Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(SchedulePath {
+        fleet_id,
+        schedule_id,
+    }): Path<SchedulePath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let schedule = parse_fleet_id(&schedule_id)?;
@@ -212,6 +222,7 @@ pub(crate) async fn purge<D: Services>(
     let removed = services
         .schedules()
         .change(
+            &owned.workspace,
             &fleet,
             &schedule,
             Change {
@@ -260,14 +271,18 @@ pub(crate) async fn purge<D: Services>(
 ))]
 pub(crate) async fn sync<D: Services>(
     State(services): State<Arc<D>>,
-    Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(SchedulePath {
+        fleet_id,
+        schedule_id,
+    }): Path<SchedulePath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let schedule = parse_fleet_id(&schedule_id)?;
 
     let synced = services
         .schedules()
-        .sync(&fleet, &schedule, services.now())
+        .sync(&owned.workspace, &fleet, &schedule, services.now())
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 

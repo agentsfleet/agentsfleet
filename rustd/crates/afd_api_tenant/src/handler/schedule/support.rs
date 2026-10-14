@@ -7,6 +7,21 @@
 
 use serde::Deserialize;
 
+/// The two segments beyond the workspace that an item template carries.
+///
+/// A named struct rather than `Path<(String, String)>`: the template carries
+/// THREE parameters, and a tuple extractor would take them positionally — which
+/// binds correctly only for as long as nobody reorders the path. The workspace
+/// is not here; [`crate::auth::WorkspaceContext`] carries the one the
+/// ownership layer proved.
+#[derive(Debug, Deserialize)]
+pub(crate) struct SchedulePath {
+    /// The fleet named in the path, still text.
+    pub(crate) fleet_id: String,
+    /// The schedule named in the path, still text.
+    pub(crate) schedule_id: String,
+}
+
 /// What a caller sends to create a schedule.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = ScheduleWrite))]

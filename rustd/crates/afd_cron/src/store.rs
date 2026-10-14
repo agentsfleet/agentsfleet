@@ -34,6 +34,7 @@ mod admit;
 mod decode;
 mod fence;
 mod guarded;
+mod owner;
 pub(crate) mod refused;
 
 pub use self::refused::Refused;
