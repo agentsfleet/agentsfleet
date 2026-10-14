@@ -107,13 +107,16 @@ async fn settle(fixtures: &Fixtures, prefix: &ReadyPrefix, doorbell: &Doorbell) 
     }
     while doorbell.take(partition(0)).is_some() {}
     // A probe re-sent while an earlier one was still in flight can land after
-    // the clear; wait it out and clear again, so no test starts with a ring.
+    // the clear; wait it out and clear again. Then a quiet window that nothing
+    // may ring in, so a probe later still fails here, named, rather than
+    // starting a test with a ring it never sent.
     tokio::time::sleep(PROBE_EVERY * 2).await;
     while doorbell.take(partition(0)).is_some() {}
-    assert!(
-        Partition::all().all(|partition| !doorbell.is_rung(partition)),
-        "settling leaves the doorbell clear"
-    );
+    tokio::time::sleep(PROBE_EVERY * 2).await;
+    let stray: Vec<Partition> = Partition::all()
+        .filter(|partition| doorbell.is_rung(*partition))
+        .collect();
+    assert!(stray.is_empty(), "a probe rang after settling: {stray:?}");
 }
 
 /// The partition numbered `index`.

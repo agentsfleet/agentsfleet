@@ -13,7 +13,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{Partition, Ready, ReadyToken};
 
-use super::{MAX_READY_CANDIDATES_PER_POLL, cursor_first, offered_untried};
+use super::{MAX_READY_CANDIDATES_PER_POLL, Pass, cursor_first};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -41,30 +41,52 @@ fn partition(index: u16) -> Partition {
     Partition::new(index).expect("a partition below sixteen")
 }
 
+/// A pass that leased one fleet and left `untried` behind it, the scan cut
+/// at its ceiling or not.
+fn leased_ahead_of(untried: Vec<Uuid7>, cut: bool) -> Pass {
+    Pass {
+        acquired: None,
+        untried,
+        cut,
+    }
+}
+
 /// A fleet the scan offered from the rung partition, behind the one this poll
 /// leased, was never tried: the partition is rung again for the next poll.
 #[test]
 fn test_an_untried_offered_fleet_rings_again() {
     let rung = partition(5);
 
-    assert!(offered_untried(
-        rung,
-        &[fleet_in(partition(9)), fleet_in(rung)]
-    ));
+    let pass = leased_ahead_of(vec![fleet_in(partition(9)), fleet_in(rung)], false);
+
+    assert!(pass.left_work_in(rung));
 }
 
-/// Nothing untried from the rung partition leaves it clear: nothing leased or
-/// the poll failed (no untried list at all), its only offered fleet was the
-/// one leased, or every untried fleet sits in another partition. A fleet the
-/// scan left out, running or not this runner's labels, is never in the list,
-/// so it cannot hold the bell.
+/// A scan cut at its ceiling behind a lease may have cut the rung partition's
+/// fleets before any was offered, so the partition is rung again even with
+/// none of its fleets in the untried list.
+#[test]
+fn test_a_scan_cut_behind_a_lease_rings_again() {
+    let rung = partition(5);
+
+    let pass = leased_ahead_of(vec![fleet_in(partition(9))], true);
+
+    assert!(pass.left_work_in(rung));
+}
+
+/// Nothing untried from the rung partition and an uncut scan leave it clear:
+/// nothing leased or the poll failed (no untried list at all), its only
+/// offered fleet was the one leased, or every untried fleet sits in another
+/// partition. A fleet the scan left out, running or not this runner's labels,
+/// is never in the list, so it cannot hold the bell.
 #[test]
 fn test_nothing_untried_from_the_rung_partition_stays_clear() {
     let rung = partition(5);
 
-    assert!(!offered_untried(rung, &[]), "nothing untried");
+    assert!(!Pass::default().left_work_in(rung), "nothing untried");
     assert!(
-        !offered_untried(rung, &[fleet_in(partition(9)), fleet_in(partition(2))]),
+        !leased_ahead_of(vec![fleet_in(partition(9)), fleet_in(partition(2))], false)
+            .left_work_in(rung),
         "only other partitions' fleets were left"
     );
 }
@@ -126,7 +148,7 @@ async fn test_a_refused_rung_peek_is_logged_and_left_clear() {
     let mut cost = PollCost::default();
 
     let (offer, rung) = store.ready_this_poll(&id(9), &mut cost).await;
-    store.ring_again(rung, &[]);
+    store.ring_again(rung, Some(&Pass::default()));
 
     assert!(offer.is_err(), "both peeks were refused");
     assert_eq!(cost.dragonfly_commands, 2, "both peeks were sent");
