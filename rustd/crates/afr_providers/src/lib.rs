@@ -7,6 +7,8 @@
 //! retry) and the turn's chunks. The model key lives only here, in the
 //! supervisor: no provider runs inside a sandbox.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 mod connect;

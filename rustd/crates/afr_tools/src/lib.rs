@@ -7,6 +7,8 @@
 //! where its [`Runtime`] says (`docs/architecture/runner_execution.md` §"Tool
 //! catalog").
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod catalog;
 pub mod error;
 pub mod nested;

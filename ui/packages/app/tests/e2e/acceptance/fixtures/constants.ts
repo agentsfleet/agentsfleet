@@ -15,7 +15,7 @@
 
 import * as path from "node:path";
 
-// Matches afr_tools/src/catalog.rs:HTTP_REQUEST so fixture bundles pass native admission.
+// Matches afr_tools/src/catalog/mod.rs:HTTP_REQUEST so fixture bundles pass native admission.
 export const HTTP_REQUEST = "http_request";
 
 // Where global setup caches the minted fixture JWTs. It must sit outside every

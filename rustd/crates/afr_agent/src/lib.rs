@@ -9,6 +9,8 @@
 //! lease's tools, and the [`Router`] runs each call where its runtime says; a
 //! scripted engine drives the supervisor's lanes.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 mod context;
@@ -16,7 +18,7 @@ mod engine;
 mod events;
 #[cfg(test)]
 mod fixture;
-#[path = "loop.rs"]
+#[path = "loop/mod.rs"]
 mod harness;
 mod ledger;
 mod nested;

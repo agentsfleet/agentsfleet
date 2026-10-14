@@ -7,6 +7,8 @@
 //! guard masks the tokens it mints with the same type, so there is one masker
 //! (`docs/architecture/runner_execution.md` §Credentials).
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 pub mod json;
 

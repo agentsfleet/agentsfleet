@@ -63,7 +63,7 @@ Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger.rs` (`Trigge
 
 ## 2. The platform tools the fleet can call
 
-The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only: the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`) (`rustd/crates/afr_egress/src/admission.rs`).
+The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only: the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`) (`rustd/crates/afr_egress/src/admission/mod.rs`).
 
 ---
 
@@ -145,7 +145,7 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the fleet works. Forces the fleet to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.fleet_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context.rs`, `loop.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor loads that fleet's prior memory from `agentsfleetd` over the runner's authenticated API, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context/mod.rs`, `loop/mod.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor loads that fleet's prior memory from `agentsfleetd` over the runner's authenticated API, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 

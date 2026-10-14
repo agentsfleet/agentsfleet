@@ -473,7 +473,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ## 9. Provider routing — what makes Fireworks + Kimi K3 work today
 
-The runner resolves a lease's `provider` through its registry, `rustd/crates/afr_providers/assets/providers.json`. Each name maps to one of three wires and a base URL. A name the registry lacks refuses the lease at admission (`rustd/crates/afr_providers/src/registry.rs`). The model library's enumeration lives in `scripts/model-library-allowlist.json`. This section names the shapes; it deliberately re-lists neither file, because a hand-copied table is wrong the moment one of them changes.
+The runner resolves a lease's `provider` through its registry, `rustd/crates/afr_providers/assets/providers.json`. Each name maps to one of three wires and a base URL. A name the registry lacks refuses the lease at admission (`rustd/crates/afr_providers/src/registry/mod.rs`). The model library's enumeration lives in `scripts/model-library-allowlist.json`. This section names the shapes; it deliberately re-lists neither file, because a hand-copied table is wrong the moment one of them changes.
 
 | Shape | Wire format | Examples |
 |---|---|---|
