@@ -48,6 +48,19 @@ pub struct OperatorPage {
     pub limit: Option<String>,
 }
 
+/// A keyset page, as the Library collections spell it.
+///
+/// The tenant spelling with this family's bounds, which the sentence states
+/// because a caller sizing a gallery page needs the ceiling.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct LibraryPage {
+    /// Opaque cursor from the previous page's `next_cursor`, bound to its collection.
+    pub starting_after: Option<String>,
+    /// Page size, 1..100; default 50.
+    pub limit: Option<u32>,
+}
+
 /// What a fleet's memory listing is narrowed by, and how it pages.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]

@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-util = ["afd_admin/test-util", "afd_library/test-util"]
+test-util = ["afd_admin/test-util"]
 # Generates this plane's half of the OpenAPI document. NOT default: the shipped
 # daemon compiles no annotation, no schema string and no collector — the whole
 # of it is a build-time tool, and CI is where its compile cost belongs.
@@ -20,6 +20,7 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/o
 
 [dependencies]
 afd_admin.workspace = true
+afd_authoring.workspace = true
 afd_core.workspace = true
 # A garde report answered with the route's own sentence (`Sentences`), and the
 # shared `?limit` bound.
@@ -28,7 +29,6 @@ const_format.workspace = true
 garde.workspace = true
 afd_credential.workspace = true
 afd_http.workspace = true
-afd_library.workspace = true
 afd_runner.workspace = true
 afd_api_wire.workspace = true
 afd_wire.workspace = true
@@ -37,6 +37,7 @@ afd_wire.workspace = true
 utoipa = { workspace = true, optional = true }
 axum = { workspace = true, features = ["json", "query"] }
 http.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 

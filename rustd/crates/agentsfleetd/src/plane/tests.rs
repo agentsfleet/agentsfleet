@@ -43,13 +43,14 @@ fn plane() -> ServingPlane {
     .expect("a lazy Dragonfly handle opens no socket");
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
+        authoring_transport: afd_authoring::Network::new()
+            .expect("fixed transport builds without a network request"),
         database,
         queue,
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
         signup_writeback: SignupWriteback::Unconfigured(crate::identity::NoWriteback),
         sessions: Sessions::Unconfigured(NoVerifier),
-        stores: crate::bundles::resolve(None),
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
             Arc::new(vendors),
@@ -87,32 +88,29 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(plane.signup_metadata(), &plane.signup_writeback));
     assert!(same(plane.runners(), &plane.runners));
     assert!(same(plane.leases(), &plane.leases));
-    assert!(same(plane.bundles(), &plane.bundles));
-    assert!(same(plane.sessions(), &plane.logins));
-    assert!(same(plane.workspaces(), &plane.workspaces));
-    assert!(same(plane.workspace_directory(), &plane.workspaces));
-    assert!(same(plane.api_keys(), &plane.api_keys));
-    assert!(same(plane.cli_credentials(), &plane.cli_credentials));
-    assert!(same(plane.fleets(), &plane.fleets));
-    assert!(same(plane.preferences(), &plane.preferences));
-    assert!(same(plane.approvals(), &plane.approvals));
-    assert!(same(plane.grants(), &plane.grants));
-    assert!(same(plane.events(), &plane.events));
+    assert!(same(plane.sessions(), &plane.login.logins));
+    assert!(same(plane.workspaces(), &plane.tenant.workspaces));
+    assert!(same(plane.workspace_directory(), &plane.tenant.workspaces));
+    assert!(same(plane.api_keys(), &plane.tenant.api_keys));
+    assert!(same(plane.cli_credentials(), &plane.tenant.cli_credentials));
+    assert!(same(plane.fleets(), &plane.tenant.fleets));
+    assert!(same(plane.preferences(), &plane.tenant.preferences));
+    assert!(same(plane.approvals(), &plane.activity.approvals));
+    assert!(same(plane.grants(), &plane.activity.grants));
+    assert!(same(plane.events(), &plane.activity.events));
     assert!(same(plane.live(), &plane.live));
     assert!(same(plane.analytics(), &plane.analytics));
-    assert!(same(plane.steering(), &plane.steering));
+    assert!(same(plane.steering(), &plane.activity.steering));
     assert!(same(plane.memories(), &plane.leases.memories));
-    assert!(same(plane.secrets(), &plane.secrets));
-    assert!(same(plane.billing(), &plane.billing));
-    assert!(same(plane.catalogue(), &plane.models));
+    assert!(same(plane.secrets(), &plane.tenant.secrets));
+    assert!(same(plane.billing(), &plane.tenant.billing));
+    assert!(same(plane.catalogue(), &plane.tenant.models));
     assert!(same(
         plane.runner_lease_history(),
-        &plane.runner_lease_history
+        &plane.admin.runner_lease_history
     ));
-    assert!(same(plane.models(), &plane.admin_models));
-    assert!(same(plane.platform_keys(), &plane.platform_keys));
-    assert!(same(plane.libraries(), &plane.libraries));
-    assert!(same(plane.library_imports(), &plane.library_imports));
+    assert!(same(plane.models(), &plane.admin.models));
+    assert!(same(plane.platform_keys(), &plane.admin.platform_keys));
     assert_eq!(plane.deployment(), "https://api.fixture.test");
     assert!(plane.now().as_millis() > 0);
 }
@@ -120,7 +118,7 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
 /// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a
 /// ring published on a partition's production channel reaches it. This proves
 /// the helper the plane calls, not that the plane hands its result to the
-/// lease store; that hand-off is one line beside it in `plane.rs`.
+/// lease store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_daemon_doorbell_hears_its_hub() {

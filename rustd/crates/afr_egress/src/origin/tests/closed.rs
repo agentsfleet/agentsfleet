@@ -83,10 +83,9 @@ fn should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule() {
 }
 
 #[test]
-fn should_enforce_a_rule_from_an_older_daemon_as_it_was_written() {
-    // A daemon that predates `permitted_fields` writes the ref rule with `ref`
-    // locked and nothing listed, yet creating a ref must also send `sha`.
-    // Closing that rule would refuse every repair until the daemon upgrades.
+fn should_check_only_the_locked_fields_of_an_open_rule() {
+    // A ref rule with `ref` locked and nothing listed is open, so the `sha`
+    // creating a ref also sends passes beside it.
     let mut refs = rule(
         HttpMethod::Post,
         "/repos/acme/widgets/git/refs",

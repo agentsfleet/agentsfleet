@@ -1,6 +1,6 @@
 //! The lease's sandbox and its workspace: the lease's egress is resolved, the
-//! fleet's held sandbox is taken or a fresh one built, the bundle's support
-//! files land where the fleet's instructions find them, and the turn runs.
+//! fleet's held sandbox is taken or a fresh one built, repositories are checked
+//! out, and the turn runs with its pinned native instructions.
 //! The sandbox goes back to the lease, which holds it for the fleet's next
 //! lease or destroys it.
 
@@ -9,7 +9,6 @@ use std::time::Instant;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
-use afr_executor::Executor;
 use afr_memory::Seed;
 use afr_sandbox::{Limits, Sandbox, SandboxRequest};
 use afr_telemetry::labels::SandboxStart;
@@ -17,16 +16,12 @@ use afr_telemetry::record;
 
 use super::hold::{Kept, Worked, mark_reused};
 use super::segments::{Segment, Stopwatch};
-use super::{DETAIL_RENEWAL, LeaseRun, failed};
+use super::{LeaseRun, failed};
 use crate::activity::ActivitySink;
-use crate::bundles::Bundle;
 use crate::egress::Bound;
 use crate::holds::Release;
 use crate::report::Ending;
 
-/// What a lease whose support files would not land reports.
-const DETAIL_LANDING: &str =
-    "the fleet bundle's support files could not be written to the workspace";
 const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
 const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 /// What a lease whose egress allowlist could not be resolved reports: a host
@@ -39,7 +34,6 @@ const DETAIL_EGRESS: &str =
 const DETAIL_EGRESS_BLOCKED: &str =
     "the fleet allows an egress host at a private or reserved address";
 const EVENT_EGRESS_REFUSED: &str = "egress_bind_refused";
-const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
 const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
 
@@ -50,12 +44,7 @@ impl LeaseRun<'_> {
     /// keeps the repositories as its last lease left them. An egress that will
     /// not resolve, a sandbox that cannot be built, or a repository that will
     /// not check out, ends the lease at startup.
-    pub(super) async fn sandboxed(
-        &self,
-        memory: Seed<'_>,
-        bundle: Option<&Bundle>,
-        sink: ActivitySink,
-    ) -> Worked {
+    pub(super) async fn sandboxed(&self, memory: Seed<'_>, sink: ActivitySink) -> Worked {
         // Timed from here to the landed workspace, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
         let limits = match sized(self.lease.limits, self.lessee.limits) {
@@ -91,10 +80,7 @@ impl LeaseRun<'_> {
             self.check_out(sandbox.as_ref()).await
         };
         let ending = match checked_out {
-            Ok(()) => {
-                self.in_sandbox(memory, bundle, sandbox.as_ref(), sink, setup)
-                    .await
-            }
+            Ok(()) => self.in_sandbox(memory, sandbox.as_ref(), sink, setup).await,
             Err(refused) => *refused,
         };
         Worked {
@@ -167,27 +153,13 @@ impl LeaseRun<'_> {
         })
     }
 
-    /// Lands the bundle's support files in the workspace, then runs the turn.
-    /// A bundle that will not land is a startup failure before the model is
-    /// invoked, as a missing one is; a lease that ends while it lands stops
-    /// the landing there, so its worker and sandbox are freed at once.
     async fn in_sandbox(
         &self,
         memory: Seed<'_>,
-        bundle: Option<&Bundle>,
         sandbox: &dyn Sandbox,
         sink: ActivitySink,
         setup: Stopwatch<'_>,
     ) -> Ending {
-        let landed = tokio::select! {
-            landed = materialize(sandbox.executor(), bundle) => landed,
-            () = self.interrupt.cancelled() => {
-                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL);
-            }
-        };
-        if let Err(failure) = landed {
-            return self.refuse(&failure, EVENT_LANDING_FAILED, DETAIL_LANDING);
-        }
         setup.stop();
         self.drive(memory, Some(sandbox.executor()), sink).await
     }
@@ -217,19 +189,10 @@ fn within(asked: &garde::Valid<SandboxLimits>, host: Limits) -> Limits {
     }
 }
 
-/// Writes a bundle's support files into the lease's workspace, where the
-/// fleet's instructions find them; a lease without a bundle has none.
-async fn materialize(executor: &dyn Executor, bundle: Option<&Bundle>) -> afr_executor::Result<()> {
-    for (path, content) in bundle.map(Bundle::support_files).unwrap_or_default() {
-        executor.write_file(path, content.clone()).await?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
-#[path = "workspace_tests.rs"]
+#[path = "tests/sandbox.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "egress_tests.rs"]
+#[path = "tests/egress.rs"]
 mod egress_tests;

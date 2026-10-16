@@ -10,7 +10,7 @@
 //! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
 //! crosses the same three stores in the same order the daemon crosses them.
 //!
-//! # What this suite is for, and what `webhook_fleet_route.rs` keeps
+//! # What this suite is for, and what `webhook_fleet_route/mod.rs` keeps
 //!
 //! The route's policy — which events a trigger admits, what a paused fleet is
 //! answered, which actor a wake records — is proven with no datastore and stays

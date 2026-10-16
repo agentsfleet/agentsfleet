@@ -210,9 +210,10 @@ impl Fixtures {
             &format!(
                 "INSERT INTO fleet.runners \
                  (id, host_id, token_hash, sandbox_tier, admin_state, labels, \
-                  degraded, last_seen_at, created_at, updated_at) \
+                  network_policy, registry_allowlist, degraded, last_seen_at, created_at, \
+                  updated_at) \
                  VALUES ($1::uuid, 'fixture-host', $2, 'standard', $3, '{{}}'::jsonb, \
-                         {degraded}, 0, 0, 0)"
+                         'deny_all_egress', '[]'::jsonb, {degraded}, 0, 0, 0)"
             ),
             &[id, digest.as_str(), admin_state],
         )

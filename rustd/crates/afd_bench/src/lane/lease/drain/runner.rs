@@ -121,7 +121,7 @@ pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Res
         shared.abort.record(true);
         let response: LeaseResponse<'_> = serde_json::from_str(&answer)
             .map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-        let Some(lease) = response.lease else {
+        let Some(afd_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
             continue;
         };
         tally.leased += 1;

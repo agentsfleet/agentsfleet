@@ -16,7 +16,7 @@
 //! thing it mints for in two different places.
 
 pub(crate) mod activity;
-pub(crate) mod bundle;
+pub(crate) mod authoring;
 pub(crate) mod credential;
 pub(crate) mod enrolment;
 pub(crate) mod heartbeat;

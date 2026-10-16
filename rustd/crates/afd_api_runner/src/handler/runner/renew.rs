@@ -54,6 +54,7 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RenewResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -68,6 +69,11 @@ pub(crate) async fn handle<D: Services>(
     Path(lease_id): Path<String>,
     body: Bytes,
 ) -> Response {
+    // Parsed first, so the lease lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any lease is the caller's mistake.
+    if let Err(refusal) = super::schedule::lease(&lease_id) {
+        return refusal.into_response();
+    }
     match services
         .leases()
         .renew(runner.id(), &lease_id, counts(&body), services.now())

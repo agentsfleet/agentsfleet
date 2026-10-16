@@ -17,9 +17,11 @@ const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json
 /// What precedes the token in `Authorization`.
 const BEARER: &str = "Bearer ";
 /// How long one call may take, end to end, before it counts as a transport
-/// failure. Long enough for a bundle download; renewal races its own deadline
-/// rather than relying on this.
+/// failure. It must outlast the daemon's message deadline (asserted below);
+/// renewal races its own deadline rather than relying on this.
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
+/// The daemon may spend thirty seconds awaiting the one provider request.
+const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(35);
 
 // The daemon bounds a message post by its own deadline and answers
 // `delivered: false` past it; a call timeout shorter than that would read a
@@ -54,6 +56,8 @@ impl HttpRunnerApi {
         )]
         let client = reqwest::Client::builder()
             .timeout(CALL_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
             .default_headers(HeaderMap::from_iter([(AUTHORIZATION, authorization)]))
             .build()
             .map_err(error::client)?;
@@ -70,6 +74,11 @@ impl RunnerApi for HttpRunnerApi {
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;
         let request = self.client.request(call.verb.method().http(), url);
+        let request = if call.verb == super::Verb::AuthoringModel {
+            request.timeout(AUTHORING_MODEL_TIMEOUT)
+        } else {
+            request
+        };
         let request = match call.body {
             Some(body) => request.header(CONTENT_TYPE, APPLICATION_JSON).body(body),
             None => request,

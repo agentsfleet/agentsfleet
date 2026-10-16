@@ -69,6 +69,7 @@ afd_events.workspace = true
 # policy and the sweepers.
 afd_approval.workspace = true
 afd_auth.workspace = true
+afd_authoring.workspace = true
 # The Postgres credential directory the shell authenticates against.
 # The live-stream surface the plane hands the router: the pub/sub hub and the
 # instance's concurrent-stream ceiling, composed once at boot.
@@ -95,14 +96,12 @@ afd_gate.workspace = true
 # The signed-ingress plane the webhook and App ingress routes resolve through.
 afd_ingress.workspace = true
 # The connect flow the connector routes act through, assembled here because its
-# two vault halves read different workspaces — see `plane.rs`.
+# two vault halves read different workspaces — see `plane/platform.rs`.
 afd_connector.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
 # Read-only operator projections are kept off the runner execution crate.
 afd_fleet_ops.workspace = true
-# Fleet-library catalogue and validated import pipeline.
-afd_library.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true
@@ -110,19 +109,10 @@ afd_tenant.workspace = true
 afd_vault.workspace = true
 # The invite email the serving plane sends through.
 afd_mail.workspace = true
-# The S3 client the Fleet Bundle snapshot store is built on. Named HERE and not
-# in `afd_fleet` because this is the file that decides the store is Cloudflare
-# R2 — `afd_fleet::bundle` takes an already-built `dyn ObjectStore` and knows
-# nothing about which one.
-object_store.workspace = true
 # The identity provider's side of authentication: the capability claim and the
 # key set. Optional at RUNTIME, not at build time — an unconfigured deployment
 # holds the refusing variants rather than a different binary.
 afd_identity.workspace = true
-# The vendor credential pair becomes one basic-auth header, which is base64 by
-# definition of the scheme. Taken here rather than hand-rolled: an encoder that
-# is wrong in the last three bytes fails as a 401 nobody can read.
-base64.workspace = true
 # The command line. Subcommands, `--port`, `--help` and `--version` are all
 # derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
 clap.workspace = true
@@ -156,6 +146,8 @@ tracing-subscriber.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
+# The fleet rows the suites seed (`afd_db::test_util::FleetSeed`).
+afd_db = { workspace = true, features = ["test-util"] }
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
 # time paused and every task parked, the runtime advances to the next deadline
 # itself, so the ten-second timeout costs no wall clock in the unit lane.
@@ -182,6 +174,9 @@ sqlx.workspace = true
 # `afd_wire` rides in as the SHAPE those bodies are written against.
 serde_json.workspace = true
 afd_wire.workspace = true
+# Seeded fleets select a native definition through the setup authority's own
+# parser and digest; the setup corpus is read into one once, as fixture data.
+afd_fleet_runtime.workspace = true
 # The Rust runner, driven end to end against this daemon: its supervisor, the
 # test-only unsandboxed engine, the scripted agent engine and the executor's
 # process request. Dev-only, and only in this direction — the runner itself
@@ -189,10 +184,10 @@ afd_wire.workspace = true
 afr_agent = { workspace = true, features = ["test-util"] }
 afr_executor.workspace = true
 afr_sandbox.workspace = true
-# The code-running bundle's runner fetches its bound repository from a
+# The code-running fleet's runner fetches its bound repository from a
 # fixture origin over `file://`, not from GitHub.
 afr_supervisor = { workspace = true, features = ["test-util"] }
-# Section 6's bundle suite: the real loop over the hosted catalog, a scripted
+# Section 6's corpus suite: the real loop over the hosted catalog, a scripted
 # model behind the provider seam, and the egress client routed to HTTPS fakes
 # that rcgen's test CA signs and hyper serves.
 afr_egress = { workspace = true, features = ["test-util"] }

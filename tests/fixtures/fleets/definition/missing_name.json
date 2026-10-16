@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "description": "A configuration without its required name.",
+  "instructions_md": "The configuration name is required.",
+  "config": {
+    "x-agentsfleet": {
+      "triggers": [],
+      "tools": [],
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}

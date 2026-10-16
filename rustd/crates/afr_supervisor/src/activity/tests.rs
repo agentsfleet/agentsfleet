@@ -31,7 +31,7 @@ const FRAMES: &str = "frames";
 pub(super) fn chunk(text: String) -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: text.into(),
-        text_kind: None,
+        text_kind: afd_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: None,
         stream_start: false,
         stream_contiguous: true,
@@ -48,7 +48,7 @@ pub(super) fn tool(name: &'static str) -> ActivityFrame<'static> {
     ActivityFrame::ToolCallStarted(ToolCallStarted {
         name: name.into(),
         args_redacted: NO_ARGS.into(),
-        call_id: None,
+        call_id: name.into(),
     })
 }
 
@@ -56,7 +56,7 @@ pub(super) fn started(call_id: &'static str) -> ActivityFrame<'static> {
     ActivityFrame::ToolCallStarted(ToolCallStarted {
         name: TOOL.into(),
         args_redacted: NO_ARGS.into(),
-        call_id: Some(call_id.into()),
+        call_id: call_id.into(),
     })
 }
 
@@ -64,7 +64,7 @@ pub(super) fn progress(call_id: &'static str) -> ActivityFrame<'static> {
     ActivityFrame::ToolCallProgress(ToolCallProgress {
         name: TOOL.into(),
         elapsed_ms: 1,
-        call_id: Some(call_id.into()),
+        call_id: call_id.into(),
     })
 }
 
@@ -72,8 +72,8 @@ pub(super) fn completed(call_id: &'static str, ms: i64) -> ActivityFrame<'static
     ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: TOOL.into(),
         ms,
-        call_id: Some(call_id.into()),
-        status: None,
+        call_id: call_id.into(),
+        status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
         output_head: None,
         output_tail: None,
         output_line_count: None,

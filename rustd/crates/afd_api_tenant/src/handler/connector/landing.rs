@@ -1,23 +1,11 @@
 //! Where a person is sent once a connector callback has done its work.
 //!
-//! Two legs share one redirect: the browser leg relays the whole handoff to
-//! the dashboard, and the dashboard leg lands the grant and sends the person
-//! to the connector's page. What differs is what a redirect that cannot be
-//! written MEANS on each leg, which is why the two entry points below exist
-//! rather than one function with a flag.
+//! # A 200 when no page can be named
 //!
-//! # A 200 on the completion leg, and a refusal on the relay leg
-//!
-//! On the completion leg the grant is sealed and the connection is live by
-//! the time the destination is built, so failing the request would tell a
-//! person their connect did not work when it did, and the next thing they
-//! would do is press Connect again. So this answers `200` with
-//! `{"status":"connected"}` there.
-//!
-//! On the relay leg nothing has landed yet: the browser arrived carrying the
-//! provider's code and this daemon could not name the dashboard page to hand
-//! it to. That is the deployment's misconfiguration, and it is refused as one
-//! rather than answered as a connect that never happened.
+//! The grant is sealed and the connection is live by the time the destination
+//! is built, so failing the request would tell a person their connect did not
+//! work when it did, and the next thing they would do is press Connect again.
+//! So this answers `200` with `{"status":"connected"}` instead.
 
 use afd_api_wire::connector::{Connected, STATUS_CONNECTED};
 use afd_connector::callback;
@@ -26,17 +14,7 @@ use axum::Json;
 use axum::response::{IntoResponse as _, Response};
 use http::{StatusCode, header};
 
-use super::unconfigured;
-use crate::handler::Refusal;
 use crate::services::Services;
-
-/// The browser leg's redirect, or a refusal when it cannot be written.
-///
-/// # Errors
-/// `UZ-CONN-001` when the destination cannot be a `Location` header.
-pub(super) fn relayed(destination: &str) -> Result<Response, Refusal> {
-    found(destination).ok_or_else(unconfigured)
-}
 
 /// Where a person lands once the connect has finished.
 ///
@@ -48,12 +26,10 @@ pub(super) fn connected<D: Services>(services: &D, workspace: &Uuid7) -> Respons
 
 /// A redirect to `destination`, when it can be written as a header.
 ///
-/// 302 rather than 303: the daemon this ports answers 302 on both callback
-/// legs, and a browser follows either with a GET here because both arrive at a
-/// destination that only serves one.
+/// 302: a browser follows it with a GET, and the destination serves only GET.
 // `None` rather than a fallback response: a URL this daemon composed through
 // `url` is already in the header's alphabet, so an unwritable one is a bug in
-// that composer, and what to answer for it differs by leg.
+// that composer, answered by [`sealed`].
 fn found(destination: &str) -> Option<Response> {
     let location = header::HeaderValue::from_str(destination).ok()?;
     Some((StatusCode::FOUND, [(header::LOCATION, location)]).into_response())
@@ -75,7 +51,7 @@ mod tests {
     use axum::response::Response;
     use http::{HeaderValue, StatusCode, header};
 
-    use super::{found, relayed, sealed};
+    use super::{found, sealed};
 
     /// A destination the header alphabet cannot carry is `None`, not a
     /// redirect to a truncated or mangled location.
@@ -118,37 +94,5 @@ mod tests {
             .await
             .ok();
         assert_eq!(bytes.as_deref(), Some(&br#"{"status":"connected"}"#[..]));
-    }
-
-    /// A relay this daemon cannot write is the deployment's misconfiguration,
-    /// answered as one: the code a connector this deployment did not set up earns,
-    /// never a 200 that would tell the browser a connect it has not begun
-    /// succeeded.
-    #[tokio::test]
-    async fn test_an_unwritable_relay_is_refused_as_not_configured() {
-        let refused = relayed("https://app.example/x\ny")
-            .err()
-            .map(axum::response::IntoResponse::into_response);
-
-        assert_eq!(
-            refused.as_ref().map(axum::response::Response::status),
-            Some(StatusCode::SERVICE_UNAVAILABLE)
-        );
-        let body = match refused {
-            Some(response) => axum::body::to_bytes(response.into_body(), usize::MAX)
-                .await
-                .ok(),
-            None => None,
-        };
-        let code = body
-            .as_deref()
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok())
-            .and_then(|document| document.get("error_code").cloned());
-        assert_eq!(
-            code,
-            Some(serde_json::json!(
-                afd_core::error_code::CONNECTOR_NOT_CONFIGURED.as_str()
-            ))
-        );
     }
 }

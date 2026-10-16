@@ -23,7 +23,7 @@ fn lease(provider: &str) -> LeasePayload<'static> {
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0}},
-        "instructions": "", "bundle": null
+        "instructions": "", "limits": null, "history": [], "resume_hold": false
     });
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
     serde_json::from_str(text).unwrap()
@@ -41,7 +41,7 @@ fn should_admit_what_it_can_connect_and_nothing_else() {
     assert_eq!(unconnected.unhosted_provider(), Some("bedrock"));
 }
 
-// Where each wire posts is proven on a socket in `tests/providers.rs`; here,
+// Where each wire posts is proven on a socket in `tests/providers/main.rs`; here,
 // that a connected provider names its wire and never its key.
 #[test]
 fn should_connect_each_wire_and_never_print_the_key() {

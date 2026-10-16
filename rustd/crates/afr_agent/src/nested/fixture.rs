@@ -130,9 +130,7 @@ pub(super) fn started_ids(frames: &[ActivityFrame<'_>]) -> Vec<String> {
     frames
         .iter()
         .filter_map(|frame| match frame {
-            ActivityFrame::ToolCallStarted(started) => {
-                started.call_id.as_deref().map(str::to_owned)
-            }
+            ActivityFrame::ToolCallStarted(started) => Some(started.call_id.to_string()),
             _ => None,
         })
         .collect()

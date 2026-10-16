@@ -18,7 +18,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
@@ -142,19 +142,11 @@ impl Fixture {
                INSERT INTO core.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
                VALUES ($6::uuid, $1::uuid, $3, 'callback-live@example.test', 1, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($7::uuid, $1::uuid, 'fixture', '', $8, $3, TRUE, NULL, 1, 1) \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($9::uuid, $2::uuid, $1::uuid, 'callback', '# fixture', '{}', \
-                     'active', 1, 1), \
-                    ($10::uuid, $4::uuid, $1::uuid, 'dashboard', '# fixture', '{}', \
-                     'active', 1, 1)",
+             INSERT INTO core.api_keys \
+               (id, tenant_id, key_name, description, key_hash, created_by, active, \
+                revoked_at, created_at, updated_at) \
+             VALUES ($7::uuid, $1::uuid, 'fixture', '', $8, $3, TRUE, NULL, 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -164,11 +156,26 @@ impl Fixture {
         .bind(&self.user)
         .bind(&self.key)
         .bind(digest.as_str())
-        .bind(&self.fleet)
-        .bind(&self.other_fleet)
         .execute(&mut *connection)
         .await
-        .expect("the tenant, its people and its fleets seed");
+        .expect("the tenant and its people seed");
+        for (fleet, workspace, name) in [
+            (&self.fleet, &self.workspace, "callback"),
+            (&self.other_fleet, &self.other_workspace, "dashboard"),
+        ] {
+            FleetSeed::new(
+                fleet,
+                workspace.as_str(),
+                &self.tenant,
+                afd_state::sql::FLEET_STATUS_ACTIVE,
+            )
+            .name(name)
+            .at(1)
+            .native_setup()
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant's fleets seed");
+        }
     }
 
     /// One pending gate on each fleet, differing in nothing but identifiers.

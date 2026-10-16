@@ -29,22 +29,24 @@
 //! `use super::*` and that path resolves against the directory of the file that
 //! declares it — which aggregation does not move.
 
-#[path = "support/bundle_code.rs"]
-mod bundle_code;
-#[path = "support/bundle_install.rs"]
-mod bundle_install;
-#[path = "support/bundle_repair.rs"]
-mod bundle_repair;
-#[path = "support/bundle_responder.rs"]
-mod bundle_responder;
-#[path = "support/bundle_run.rs"]
-mod bundle_run;
+#[path = "support/definition_code.rs"]
+mod definition_code;
+#[path = "support/definition_install/mod.rs"]
+mod definition_install;
+#[path = "support/definition_repair.rs"]
+mod definition_repair;
+#[path = "support/definition_responder.rs"]
+mod definition_responder;
+#[path = "support/definition_run.rs"]
+mod definition_run;
 #[path = "support/e2e.rs"]
 mod e2e;
 #[path = "support/e2e_db.rs"]
 mod e2e_db;
 #[path = "support/e2e_event.rs"]
 mod e2e_event;
+#[path = "support/e2e_native.rs"]
+mod e2e_native;
 #[path = "support/e2e_retire.rs"]
 mod e2e_retire;
 #[path = "support/e2e_seed.rs"]
@@ -88,7 +90,6 @@ mod integration_runner_activity;
 mod integration_runner_activity_call_id;
 #[path = "integration_runner_brackets.rs"]
 mod integration_runner_brackets;
-#[path = "integration_runner_e2e.rs"]
 mod integration_runner_e2e;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;
@@ -108,8 +109,8 @@ mod integration_runner_schedules_runs;
 mod integration_runner_shapes;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
-#[path = "integration_rust_runner_bundles.rs"]
-mod integration_rust_runner_bundles;
+#[path = "integration_rust_runner_definitions.rs"]
+mod integration_rust_runner_definitions;
 #[path = "integration_rust_runner_nested.rs"]
 mod integration_rust_runner_nested;
 #[path = "integration_rust_runner_repairs.rs"]
@@ -152,3 +153,6 @@ mod supervisor;
 
 #[path = "integration_grant_denial.rs"]
 mod integration_grant_denial;
+
+#[path = "integration_authoring_mint.rs"]
+mod integration_authoring_mint;

@@ -184,7 +184,7 @@ Reviewed subitems (component/client and package evidence only): `docs/reviews/wo
 ### §7 — Runtime preservation and release boundary
 
 Preserve affinity/wake/report/outbound, renewal budgets, child narrowing, and wall-clock queue wait. Repair existing queued history for durable admissions without receipts before/after append. Bind acceptance preflight to app/daemon/runner/CLI builds before fixture mutation; rehearse successful release and failed-release recovery. Coordinate generated API/public docs/reset. M227_002 stays folded.
-- **Dimension 7.1** — connector/runtime regression and post-append replay behavior remain correct → Test `test_cutover_preserves_runtime_and_steer_receipt` — IN_PROGRESS: no single retry, sweep and lease test
+- **Dimension 7.1** — connector/runtime regression and post-append replay behavior remain correct → Test `test_cutover_preserves_runtime_and_steer_receipt` — DONE: steer receipt retry/sweep/lease proven live (`afd_fleet/tests/integration_steer_receipt_cutover.rs`); preserved-runtime proofs (queue loss, recovery budget, report destination) pass in `make test-integration-rustd` (1,105 passed, 0 failed)
 - **Dimension 7.2** — exact route/code parity, removed writers, aligned release, privacy-safe telemetry → Test `test_cutover_surface_and_release_smoke` — IN_PROGRESS — deployed release smoke deferred to dev (Indy, Discovery); local proofs pass: route-table parity (`afd_api/tests/architecture_route_tables.rs`, 4 passed), failed-release recovery (`integration_migrate`, 21 passed), build binding (`scripts/acceptance_build_binding_test.sh`, 21/21)
 
 ### §8 — Operator runner labels (carried from M227_002 §4)
@@ -193,7 +193,7 @@ The runner Edit dialog's `PATCH /v1/fleets/runners/{runner_id}` (`runner:write`)
 - **Dimension 8.2** — 401 before the body is read, 403 without `runner:write`, a valid edit reaches the store → Test `a_label_edit_without_runner_write_is_forbidden` — DONE (carried verification record; final repository rerun pending)
 - **Dimension 8.3** — enrolment and the edit share bounds, refusal sentence and collapse → Test `a_repeated_label_collapses_to_its_first_position_on_both_writers` — DONE (carried verification record; final repository rerun pending)
 - **Dimension 8.4** — stored set reads back through the GET; each half leaves the other's columns identical; a refused half writes nothing; unknown runner 404 → Test `operator_edits_labels_through_the_runner_patch` — DONE: run live against Postgres (operator_plane, 1 passed)
-- **Dimension 8.5** — an edited label changes which fleets the same runner's next polls are offered → Test `test_operator_label_edit_changes_placement_on_the_next_poll` — IN_PROGRESS: compiled with `--no-run`, not yet run against the live daemon
+- **Dimension 8.5** — an edited label changes which fleets the same runner's next polls are offered → Test `test_operator_label_edit_changes_placement_on_the_next_poll` — DONE: passes live in `make test-integration-rustd` (daemon_suite, 0 failed)
 
 ## Interfaces
 

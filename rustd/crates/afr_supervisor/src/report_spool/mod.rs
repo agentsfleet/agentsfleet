@@ -27,6 +27,8 @@ use crate::client::ControlPlane;
 use crate::error::{Error, Result, UNAUTHORIZED};
 use crate::storage_home::StorageHome;
 
+pub(crate) mod authoring;
+
 /// The extension every spooled report carries.
 const EXTENSION: &str = "json";
 /// The extension a report the daemon cannot read is moved aside under.

@@ -4,10 +4,6 @@
 //! collecting logic beside it does not, and a name plus the reason it exists
 //! is the part an operator reading a refusal actually meets.
 
-/// R2 fixes the AWS Signature V4 region label to `auto`, and account endpoints address the
-/// bucket in the path rather than in the hostname.
-pub(super) const R2_REGION: &str = "auto";
-
 /// The knob carrying the hex master key every vault read is decrypted with.
 pub const ENCRYPTION_MASTER_KEY_KNOB: &str = "ENCRYPTION_MASTER_KEY";
 
@@ -160,28 +156,6 @@ pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 256;
 pub(super) const WHY_SSE_MAX_STREAMS: &str =
     "a whole number of concurrent event streams, at least 1";
 
-/// The Cloudflare account the Fleet Bundle bucket lives under.
-pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
-
-/// The access key id the snapshot GET is signed with.
-pub const R2_ACCESS_KEY_ID_KNOB: &str = "R2_ACCESS_KEY_ID";
-
-/// The secret half of that key.
-pub const R2_SECRET_ACCESS_KEY_KNOB: &str = "R2_SECRET_ACCESS_KEY";
-
-/// The bucket Fleet Bundle snapshots are stored in.
-pub const R2_BUCKET_KNOB: &str = "R2_BUCKET";
-
-/// Every knob the snapshot store needs, in the order an operator sets them.
-///
-/// Named as a group because the rule is about the group: all four or none.
-pub(super) const R2_KNOBS: [&str; 4] = [
-    R2_ACCOUNT_ID_KNOB,
-    R2_ACCESS_KEY_ID_KNOB,
-    R2_SECRET_ACCESS_KEY_KNOB,
-    R2_BUCKET_KNOB,
-];
-
 /// Why a set platform-admin workspace has to be an identifier.
 pub(super) const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployment's platform credentials, as a UUIDv7; unset it to serve without on-demand credential minting";
 
@@ -214,9 +188,3 @@ pub(super) const WHY_API_BASE_UNSAFE: &str = "an https URL, or http only on a lo
 
 /// Why it needs a secret.
 pub(super) const WHY_SECRET: &str = "the provider secret that authorises reading a subject's claim";
-
-/// Why a half-configured snapshot store refuses boot.
-///
-/// One sentence for all four knobs, because the fault is never about one of
-/// them in isolation — it is that some are set and some are not.
-pub(super) const WHY_R2: &str = "Fleet Bundle snapshot storage needs all four R2 knobs or none; set the rest, or unset them all to serve without snapshots";

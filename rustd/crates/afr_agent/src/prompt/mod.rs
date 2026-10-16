@@ -69,7 +69,7 @@ impl Prompt {
 ///
 /// Read from the daemon's binding and the ref rule it locked, never from the
 /// event: the branch is the one value the model must not choose, and both
-/// repairer bundles start by asking for it (`ci-repairer/SKILL.md` step 1).
+/// repairer fleets start by asking for it (step 1 of `ci-repairer`'s instructions).
 struct RepairContext<'p> {
     /// The one repository the binding names.
     repository: &'p str,

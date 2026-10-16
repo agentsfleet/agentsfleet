@@ -16,10 +16,9 @@
 //!
 //! # Why path × method and not paths
 //!
-//! Two route identities can share a template and differ only by method —
-//! `PollSession` and `DeleteSession` are one path, as are the connector
-//! `Callback`/`Complete` pair and the runner's memory hydrate/capture. A
-//! comparison over paths alone would pass while a verb went missing, which is
+//! Two route identities can share a template and differ only by method — the
+//! runner's memory hydrate and capture are one path (`afd_http::route::runner`).
+//! A comparison over paths alone would pass while a verb went missing, which is
 //! most of what this exists to catch.
 #![cfg(all(feature = "test-util", feature = "openapi"))]
 

@@ -1,14 +1,14 @@
 //! A chat channel's resident: the fleet that answers a mention no attached
 //! fleet takes, materialised on the first one.
 //!
-//! # The configuration is code, and the skill is prose
+//! # The configuration is code, and the instructions are prose
 //!
-//! What a resident may do comes from the `TRIGGER.md` built here — one `api`
-//! trigger, no tools, no hosts, a small daily ceiling — and never from its
-//! skill, which carries a name and prose only. So nothing a channel's members
-//! say, and nothing the skill text says, can widen what the resident reaches
-//! (RULE PRI). A person who needs more is told the command that attaches a
-//! fleet which has it.
+//! What a resident may do comes from the native definition built here — one
+//! `api` trigger, no tools, no hosts, a small daily ceiling — and never from
+//! its instructions, which are prose only. So nothing a channel's members say,
+//! and nothing the instructions say, can widen what the resident reaches
+//! (RULE PRI). A person who needs more is told how to set up a fleet that has
+//! it.
 //!
 //! # One resident per channel, however many first mentions race
 //!
@@ -31,8 +31,11 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_fleet_runtime::FleetName;
+use afd_fleet_runtime::definition::DEFINITION_SCHEMA_VERSION;
+use afd_fleet_runtime::{Definition, FleetName};
+use serde_json::json;
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
@@ -40,15 +43,19 @@ use super::ChannelId;
 use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_fleet, stored_status};
 use crate::{Ingress, sql};
 
-/// The skill every resident runs, before its placeholders are filled.
-const SKILL_TEMPLATE: &str = include_str!("resident.md");
-/// Where the resident's name goes in [`SKILL_TEMPLATE`].
-const PLACEHOLDER_NAME: &str = "{name}";
-/// Where the channel's identifier goes in [`SKILL_TEMPLATE`].
+/// The instructions every resident runs, before its placeholder is filled.
+const INSTRUCTIONS_TEMPLATE: &str = include_str!("resident.md");
+/// Where the channel's identifier goes in [`INSTRUCTIONS_TEMPLATE`].
 const PLACEHOLDER_CHANNEL: &str = "{channel_id}";
 
 /// What every resident's name opens with.
 const NAME_PREFIX: &str = "slack-channel-";
+
+/// The resident's display description.
+const DESCRIPTION: &str = "Read-only assistant resident in one Slack channel. Answers mentions \
+from what it has learned about this channel; never acts unattended.";
+/// A one-dollar day, in the exact units every budget reader uses.
+const DAILY_NANOS: i64 = NANOS_PER_USD;
 
 /// How a binding row says it names a channel's resident. The table stores the
 /// spelling; this is the one place it is written (RULE STS).
@@ -62,20 +69,17 @@ const CONTEXT_BIND: &str = "bind channel resident";
 const CONTEXT_NAMED: &str = "resolve fleet by name";
 
 /// A channel's resident, as an install writes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Resident {
     /// `slack-channel-<team>-<channel>`, lower-cased.
     pub name: FleetName,
-    /// The skill, with the name and the channel filled in.
-    pub skill_markdown: String,
-    /// The install's default policy ([`afd_fleet_lifecycle::default_trigger`]),
-    /// never anything a person wrote.
-    pub trigger_markdown: String,
-    /// [`Self::trigger_markdown`] as the fleet row stores it, which is how a
-    /// fleet already holding the name is recognised as this resident. A
-    /// skill-only install a person names this way carries the same default, so
-    /// it reads as the resident too: the check tells a resident from a fleet
-    /// with its own policy, not from one with none.
+    /// The complete native setup, never anything a person wrote.
+    pub definition: Definition,
+    /// The definition's configuration as the fleet row stores it, which is
+    /// how a fleet already holding the name is recognised as this resident.
+    /// A fleet a person saved under this name with the same policy reads as
+    /// the resident too: the check tells a resident from a fleet with a policy
+    /// of its own.
     pub config_json: String,
 }
 
@@ -102,21 +106,33 @@ impl Resident {
             &format!("{NAME_PREFIX}{team}-{}", channel.as_str()).to_ascii_lowercase(),
         )
         .ok()?;
-        let skill_markdown = SKILL_TEMPLATE
-            .replace(PLACEHOLDER_NAME, name.as_str())
-            .replace(PLACEHOLDER_CHANNEL, channel.as_str());
-        let trigger_markdown = afd_fleet_lifecycle::default_trigger(&name);
-        let config_json = afd_fleet_runtime::parse_trigger(&trigger_markdown)
-            .ok()?
-            .config_json()
-            .to_owned();
+        let definition = Definition::parse(&definition(&name, channel).to_string()).ok()?;
+        let config_json = serde_json::to_string(definition.config()).ok()?;
         Some(Self {
             name,
-            skill_markdown,
-            trigger_markdown,
+            definition,
             config_json,
         })
     }
+}
+
+/// The resident's setup: its name, prose for `channel`, and the fixed policy.
+fn definition(name: &FleetName, channel: &ChannelId) -> serde_json::Value {
+    json!({
+        "schema_version": DEFINITION_SCHEMA_VERSION,
+        "description": DESCRIPTION,
+        "instructions_md": INSTRUCTIONS_TEMPLATE.replace(PLACEHOLDER_CHANNEL, channel.as_str()),
+        "config": {
+            "name": name.as_str(),
+            "x-agentsfleet": {
+                // No trigger: ingress addresses a resident directly, by the
+                // channel's binding row, never by matching what it declares.
+                "triggers": [],
+                "tools": [],
+                "budget": {"daily_nanos": DAILY_NANOS.to_string()},
+            },
+        },
+    })
 }
 
 /// A channel's resident, as its binding reads.

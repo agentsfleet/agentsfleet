@@ -15,6 +15,7 @@ use crate::client::Verb;
 // one meaning wherever it arises, so it lifts.
 afd_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
+    afd_crypto::error::Error => Crypto,
     tempfile::PersistError => Persist,
     afd_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
@@ -79,14 +80,6 @@ pub(crate) fn malformed(verb: Verb) -> impl Fn(serde_json::Error) -> Error {
 /// Reports a request body that would not serialize.
 pub(crate) fn encode(source: serde_json::Error) -> Error {
     ErrorKind::Encode { source }.into()
-}
-
-/// Reports bundle bytes that do not hash to the name they were fetched by.
-pub(crate) fn tampered(content_hash: &str) -> Error {
-    ErrorKind::BundleTampered {
-        content_hash: content_hash.to_owned(),
-    }
-    .into()
 }
 
 /// Reports `repository` failing at `step`, with the git library's reason.

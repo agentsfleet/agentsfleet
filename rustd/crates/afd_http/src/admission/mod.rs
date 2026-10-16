@@ -54,7 +54,7 @@ pub use self::shed::{
 
 /// Requests one instance serves at once when nothing configures otherwise.
 ///
-/// A compiled constant: `agentsfleetd`'s `serve.rs` passes it straight to
+/// A compiled constant: `agentsfleetd`'s `serve/mod.rs` passes it straight to
 /// [`Admission::new`], and a configuration loader reads this constant rather
 /// than declaring a second.
 pub const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = NonZeroUsize::new(256).unwrap();

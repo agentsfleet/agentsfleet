@@ -177,15 +177,14 @@ fn test_fatal_colours_only_on_a_terminal() {
     assert!(rich.contains("boot refused"), "and the same message");
 }
 
-/// Only our frames survive, and only their last path segment.
+/// Only our frames survive, each from its crate name onward.
 ///
-/// Both halves are the Ruby original's — `backtrace.grep(/nilavu/)` then
-/// `ft.split('/').last` — and both are asserted here, against a backtrace
-/// shaped like the real thing. A captured backtrace is mostly `core::` and
-/// `std::` frames, and a trace that is ninety per cent runtime is a trace
-/// nobody reads.
+/// A captured backtrace is mostly `core::` and `std::` frames, and a trace that
+/// is ninety per cent runtime is a trace nobody reads. Our frames keep the path
+/// from the crate directory on: with every module root a `mod.rs`, a bare last
+/// segment would no longer say which file panicked.
 #[test]
-fn test_fatal_keeps_only_our_frames_by_their_last_segment() {
+fn test_fatal_keeps_only_our_frames_from_their_crate() {
     let backtrace = "\
    0: core::panicking::panic_fmt
              at /rustc/aaaa/library/core/src/panicking.rs:75:14
@@ -193,7 +192,11 @@ fn test_fatal_keeps_only_our_frames_by_their_last_segment() {
              at /home/build/rustd/crates/agentsfleetd/src/preflight.rs:210:9
    2: afd_crypto::secret::Kek::from_hex
              at /home/build/rustd/crates/afd_crypto/src/secret.rs:50:9
-   3: std::rt::lang_start_internal
+   3: afd_core::error_code::lookup
+             at /home/build/rustd/crates/afd_core/src/error_code/mod.rs:12:5
+   4: afd_db::config::read
+             at /home/build/rustd/crates/afd_db/src/config/mod.rs:40:7
+   5: std::rt::lang_start_internal
              at /rustc/aaaa/library/std/src/rt.rs:148:20";
 
     let error = Layered {
@@ -202,13 +205,20 @@ fn test_fatal_keeps_only_our_frames_by_their_last_segment() {
     };
     let rendered = fatal::render_with_trace(&error, Rendering::Plain, backtrace);
 
+    for frame in [
+        "agentsfleetd/src/preflight.rs:210:9",
+        "afd_crypto/src/secret.rs:50:9",
+        "afd_core/src/error_code/mod.rs:12:5",
+        "afd_db/src/config/mod.rs:40:7",
+    ] {
+        assert!(
+            rendered.contains(frame),
+            "our frame keeps its crate path, {frame}: {rendered}"
+        );
+    }
     assert!(
-        rendered.contains("preflight.rs:210:9"),
-        "our frame survives, trimmed to its last segment: {rendered}"
-    );
-    assert!(
-        rendered.contains("secret.rs:50:9"),
-        "an afd_* frame is ours too: {rendered}"
+        rendered.contains("afd_core::error_code::lookup"),
+        "a function-symbol line is kept whole: {rendered}"
     );
     assert!(
         !rendered.contains("panicking.rs"),
@@ -220,8 +230,21 @@ fn test_fatal_keeps_only_our_frames_by_their_last_segment() {
     );
     assert!(
         !rendered.contains("/home/build/"),
-        "the leading path is dropped, as the Ruby did: {rendered}"
+        "the build machine's path before the crate is dropped: {rendered}"
     );
+}
+
+/// A frame whose path names no crate directory falls back to its last segment.
+#[test]
+fn test_fatal_frame_outside_the_crates_tree_keeps_its_last_segment() {
+    let backtrace = "   1: agentsfleetd::main\n             at /opt/agentsfleetd/main.rs:9:1";
+    let error = Layered {
+        message: "boot refused",
+        cause: None,
+    };
+    let rendered = fatal::render_with_trace(&error, Rendering::Plain, backtrace);
+    assert!(rendered.contains("main.rs:9:1"), "{rendered}");
+    assert!(!rendered.contains("/opt/"), "{rendered}");
 }
 
 /// A backtrace with nothing of ours in it adds no frame block at all.

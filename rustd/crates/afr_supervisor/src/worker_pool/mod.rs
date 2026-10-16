@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use afd_core::error_code;
 use afd_core::timing::NO_WORK_RETRY_AFTER_MS;
-use afd_wire::lease::LeaseResponse;
+use afd_wire::lease::{LeaseResponse, TaggedLease};
 use backon::ExponentialBackoff;
 use futures_util::FutureExt as _;
 use tokio::sync::watch;
@@ -159,7 +159,11 @@ impl Worker {
         // The egress assigned when the lease arrived is the one it runs under,
         // whatever a beat assigns while it runs.
         let egress = self.assignment.borrow().egress.clone();
-        if let Err(failure) = self.lessee.run(&self.turns, &lease, &egress).await {
+        let result = match lease {
+            TaggedLease::Fleet(lease) => self.lessee.run(&self.turns, &lease, &egress).await,
+            TaggedLease::Authoring(lease) => self.lessee.author(&lease).await,
+        };
+        if let Err(failure) = result {
             return Some(self.failed(&failure, EVENT_LEASE_ERROR));
         }
         Some(Duration::ZERO)

@@ -14,7 +14,7 @@ use std::time::Duration;
 use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::lease::LeaseRequest;
+use afd_wire::lease::{AcceptedKinds, LeaseRequest};
 use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use afd_wire::paths;
 use afd_wire::report::{RenewRequest, RenewResponse};
@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{self, Result};
 
+mod authoring;
 mod http;
 mod lease_verbs;
 mod verb;
@@ -117,6 +118,7 @@ impl ControlPlane {
         let holds = held.iter().map(|fleet| Cow::Borrowed(fleet.as_str()));
         let request = LeaseRequest {
             holds: HeldFleets(holds.collect()),
+            accepted_kinds: AcceptedKinds::ALL,
         };
         self.send_json(Verb::Lease, path, &request).await
     }
@@ -194,14 +196,6 @@ impl ControlPlane {
     pub(crate) async fn me(&self) -> Result<Body> {
         self.send(Verb::Me, Cow::Borrowed(paths::RUNNER_SELF), None)
             .await
-    }
-
-    /// Downloads a bundle's canonical tar.
-    pub(crate) async fn bundle(&self, content_hash: &str) -> Result<Bytes> {
-        let path = Cow::Owned(format!("{}/{content_hash}", paths::RUNNER_BUNDLES));
-        self.send(Verb::Bundle, path, None)
-            .await
-            .map(|body| body.bytes)
     }
 
     /// Sends `body` as JSON, with the method `verb` is sent with.

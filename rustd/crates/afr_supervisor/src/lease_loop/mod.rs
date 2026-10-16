@@ -1,7 +1,7 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► bundle ─► hydrate ─► [take hold or prepare sandbox ─► land] ─► run
+//!   admit ─► turn ─► hydrate ─► [take hold or prepare sandbox ─► checkout] ─► run
 //!   ─► [hold frozen, or destroy] ─► memory push (fenced) ─► report spooled ─► report posted
 //!   ─► activity drained
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
@@ -57,7 +57,6 @@ use self::segments::{Segment, Timeline};
 /// How long a settled lease waits for its live tail to finish posting.
 pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
 const DETAIL_TURN: &str = "the worker pool was shutting down when the lease arrived";
-const DETAIL_BUNDLE: &str = "the fleet bundle could not be fetched and verified";
 const DETAIL_MEMORY: &str = "the fleet's memory could not be read";
 const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
 const DETAIL_UNHOSTED_PROVIDER: &str =
@@ -72,7 +71,6 @@ const EVENT_FAILED: &str = "lease_failed";
 /// A fixed spelling, because dashboards and alerts match on it.
 const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
 const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
-const EVENT_BUNDLE_FAILED: &str = "bundle_download_failed";
 const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
 const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
 
@@ -271,23 +269,6 @@ impl LeaseRun<'_> {
         let Some(_turn) = claimed else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
-        let bundle = match &self.lease.bundle {
-            Some(manifest) => match self
-                .timed(
-                    Segment::Bundle,
-                    lessee.bundles.fetch(&lessee.plane, &manifest.content_hash),
-                )
-                .await
-            {
-                Ok(bundle) => bundle,
-                Err(failure) => {
-                    return self
-                        .refuse(&failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE)
-                        .into();
-                }
-            },
-            None => None,
-        };
         let hydrating = self.timeline.start(Segment::Memory);
         let hydrated = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
             Ok(hydrated) => hydrated,
@@ -314,7 +295,7 @@ impl LeaseRun<'_> {
             recall: Some(&recaller),
         };
         if needs.sandbox {
-            self.sandboxed(seed, bundle.as_ref(), sink).await
+            self.sandboxed(seed, sink).await
         } else {
             self.drive(seed, None, sink).await.into()
         }
@@ -325,7 +306,9 @@ impl LeaseRun<'_> {
 mod tests;
 
 #[cfg(test)]
+#[path = "tests/admission.rs"]
 mod admit_tests;
 
 #[cfg(test)]
+#[path = "tests/records.rs"]
 mod records_tests;

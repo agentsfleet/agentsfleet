@@ -24,7 +24,7 @@ use crate::test_support::{Answer, FLEET_ID, LEASE_ID, drain, json, lease, plane}
 
 /// A crashed run's report, encoded as the lease loop encodes it.
 fn report_bytes() -> Bytes {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Failed {
         class: FailureClass::RunnerCrash,
         detail: "killed",

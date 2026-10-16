@@ -49,7 +49,7 @@ pub async fn migrate<E: EnvSource + ?Sized>(env: &E) -> Result<Applied, MigrateF
 /// when the question is always *which* three.
 #[must_use]
 pub fn summarise(applied: &Applied) -> String {
-    if applied.applied.is_empty() && applied.reaped == 0 {
+    if applied.applied.is_empty() {
         return format!(
             "schema already current — {} version(s) recorded",
             applied.skipped.len()
@@ -60,12 +60,9 @@ pub fn summarise(applied: &Applied) -> String {
     // the sentence is then visible in the shape of the code, and a part that is
     // conditional is a conditional `push` rather than a branch around a
     // separator.
-    let mut parts = Vec::with_capacity(3);
+    let mut parts = Vec::with_capacity(2);
     if !applied.applied.is_empty() {
         parts.push(format!("applied {:?}", applied.applied));
-    }
-    if applied.reaped > 0 {
-        parts.push(format!("reaped {} stale row(s)", applied.reaped));
     }
     parts.push(format!("{} already current", applied.skipped.len()));
     parts.join(", ")

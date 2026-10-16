@@ -23,8 +23,8 @@ const EVENT: &str = "runner_events_failed";
     summary = "List fleet runner events",
     description = concat!(
         "Platform-admin read of a single runner's append-only history, newest ",
-        "first over the composite (occurred_at, id) key. The retired page and ",
-        "page_size parameters are refused. Optionally filtered by event type ",
+        "first over the composite (occurred_at, id) key. Optionally filtered ",
+        "by event type ",
         "and an occurred-at millisecond window. ",
     ),
     params(

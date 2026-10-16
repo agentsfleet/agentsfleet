@@ -11,6 +11,8 @@
 //! provider-segment parse and the approval vault key both resolve through
 //! [`afd_http`] rather than through the tenant crate that also uses them.
 
+#![deny(clippy::self_named_module_files)]
+
 pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
 
 pub(crate) mod handler;
@@ -31,7 +33,7 @@ use services::Services;
 /// Selects the handler for a signed inbound delivery.
 pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        WebhookRoute::Receive => post(handler::webhook::receive_route::receive::<D>),
+        WebhookRoute::ReceiveSource => post(handler::webhook::source_route::receive::<D>),
         WebhookRoute::ReceiveSvix => post(handler::webhook::svix_route::receive::<D>),
         WebhookRoute::Approval => post(handler::webhook::approval_route::receive::<D>),
         WebhookRoute::GitHub => post(handler::webhook::github_route::receive::<D>),
@@ -58,7 +60,6 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
         | AuthRoute::PollSession
         | AuthRoute::ApproveSession
         | AuthRoute::VerifySession
-        | AuthRoute::DeleteSession
         | AuthRoute::DeleteOwnSessions => None,
     }
 }
@@ -74,7 +75,6 @@ pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<Method
         ConnectorRoute::Events => Some(post(handler::events::receive::<D>)),
         ConnectorRoute::Connect
         | ConnectorRoute::Status
-        | ConnectorRoute::Callback
         | ConnectorRoute::Complete
         | ConnectorRoute::Catalog => None,
     }

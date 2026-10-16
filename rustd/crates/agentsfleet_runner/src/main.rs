@@ -13,6 +13,8 @@
 //!   before any thread exists, then serves the executor. The binary is bound
 //!   read-only into every sandbox, so there is no second artifact to ship.
 
+#![deny(clippy::self_named_module_files)]
+
 mod engine;
 mod host;
 

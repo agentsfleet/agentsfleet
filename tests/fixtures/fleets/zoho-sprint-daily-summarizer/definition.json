@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Summarizes the day's Zoho Sprints activity and posts a digest.",
+  "instructions_md": "# Zoho Sprints daily summarizer\n\nReads the day's Zoho Sprints activity and posts a concise digest.\n\n## Goal\nOnce a day, pull the sprint's recent item changes and produce a short digest of\nwhat moved, what is blocked, and what is due.\n\n## Steps\n1. Read recent sprint item activity from the Zoho Sprints API with `http_request`.\n2. Group by status change, blockers, and due-today.\n3. Produce a concise markdown digest.\n\n## Constraints\n- Read-only against Zoho Sprints; do not mutate items.\n- Stay within the declared Zoho network hosts.",
+  "config": {
+    "name": "zoho-sprint-daily-summarizer",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "cron",
+          "schedule": "0 9 * * *",
+          "timezone": "Asia/Kolkata",
+          "message": "Summarize today's Zoho Sprints activity"
+        }
+      ],
+      "tools": [
+        "http_request"
+      ],
+      "credentials": [
+        "zoho"
+      ],
+      "network": {
+        "allow": [
+          "sprintsapi.zoho.com",
+          "accounts.zoho.com"
+        ]
+      },
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}

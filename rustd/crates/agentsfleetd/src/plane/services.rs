@@ -22,11 +22,9 @@ use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_credential::provider::Providers;
 use afd_events::History;
-use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::Plane;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::{Libraries, LibraryImports};
 use afd_memory::Memories;
 use afd_observability::Analytics;
 use afd_runner::Runners;
@@ -42,6 +40,18 @@ use afd_vault::Vault as SecretVault;
 use super::{Authenticator, ServingPlane};
 
 impl Services for ServingPlane {
+    fn authoring(&self) -> &afd_authoring::Drafts {
+        &self.authoring.drafts
+    }
+    fn authoring_setup(&self) -> &afd_authoring::Setup {
+        &self.authoring.setup
+    }
+    fn creations(&self) -> &afd_authoring::Creations {
+        &self.authoring.creations
+    }
+    fn authoring_models(&self) -> &afd_authoring::ModelCalls {
+        &self.authoring.models
+    }
     type Auth = Authenticator;
     type SignupMetadata = SignupWriteback;
     type Leases = Plane;
@@ -75,38 +85,34 @@ impl Services for ServingPlane {
         &self.leases
     }
 
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
-    }
-
     fn sessions(&self) -> &Logins {
-        &self.logins
+        &self.login.logins
     }
 
     fn ingress(&self) -> &afd_ingress::Ingress {
-        &self.ingress
+        &self.activity.ingress
     }
 
     fn schedules(&self) -> &afd_api::SchedulePlane {
-        &self.schedules
+        &self.outbound.schedules
     }
 
     fn connectors(&self) -> &afd_connector::Connectors {
-        &self.connectors
+        &self.outbound.connectors
     }
 
     /// Where a PERSON goes, which is a different deployment fact from
     /// [`Services::deployment`] below and never the same string.
     fn dashboard(&self) -> &afd_connector::Dashboard {
-        &self.app_url
+        &self.login.app_url
     }
 
     fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
-        self.schedule_keys.as_ref()
+        self.outbound.schedule_keys.as_ref()
     }
 
     fn schedule_destination(&self) -> &str {
-        &self.schedule_destination
+        &self.outbound.schedule_destination
     }
 
     fn platform_admin_workspace(&self) -> Option<&afd_core::id::Uuid7> {
@@ -118,30 +124,30 @@ impl Services for ServingPlane {
     }
 
     fn workspaces(&self) -> &Workspaces {
-        &self.workspaces
+        &self.tenant.workspaces
     }
 
     /// The same value as [`Services::workspaces`], deliberately: production
     /// holds one directory that answers both seams, and the split exists for
     /// the suites — see the trait's own note.
     fn fleets(&self) -> &Fleets {
-        &self.fleets
+        &self.tenant.fleets
     }
 
     fn preferences(&self) -> &Preferences {
-        &self.preferences
+        &self.tenant.preferences
     }
 
     fn approvals(&self) -> &Inbox {
-        &self.approvals
+        &self.activity.approvals
     }
 
     fn grants(&self) -> &IntegrationGrants {
-        &self.grants
+        &self.activity.grants
     }
 
     fn events(&self) -> &History {
-        &self.events
+        &self.activity.events
     }
 
     fn live(&self) -> &Live {
@@ -149,7 +155,7 @@ impl Services for ServingPlane {
     }
 
     fn interjector(&self) -> &afd_outbound::Interjector {
-        &self.interjector
+        &self.outbound.interjector
     }
 
     fn analytics(&self) -> &Analytics {
@@ -157,7 +163,7 @@ impl Services for ServingPlane {
     }
 
     fn steering(&self) -> &afd_events::Steer {
-        &self.steering
+        &self.activity.steering
     }
 
     /// The store the lease plane already holds. ONE `Memories` in this process:
@@ -167,11 +173,11 @@ impl Services for ServingPlane {
     }
 
     fn secrets(&self) -> &SecretVault {
-        &self.secrets
+        &self.tenant.secrets
     }
 
     fn runner_lease_history(&self) -> &RunnerLeaseHistory {
-        &self.runner_lease_history
+        &self.admin.runner_lease_history
     }
 
     /// The admin plane's WRITE of the priced catalogue.
@@ -180,23 +186,15 @@ impl Services for ServingPlane {
     /// read of the same rows — the split is what keeps a tenant route from
     /// reaching a mutation by holding the wrong accessor.
     fn models(&self) -> &AdminModels {
-        &self.admin_models
+        &self.admin.models
     }
 
     fn platform_keys(&self) -> &PlatformKeys {
-        &self.platform_keys
-    }
-
-    fn libraries(&self) -> &Libraries {
-        &self.libraries
-    }
-
-    fn library_imports(&self) -> &LibraryImports {
-        &self.library_imports
+        &self.admin.platform_keys
     }
 
     fn deployment(&self) -> &str {
-        &self.api_url
+        &self.login.api_url
     }
 
     /// The wall clock, read once per verb by whichever handler asked.
@@ -226,38 +224,38 @@ impl TenantSurface for ServingPlane {
     type InviteMail = afd_mail::InviteMailer;
 
     fn invite_mail(&self) -> &Self::InviteMail {
-        &self.invite_mail
+        &self.tenant.invite_mail
     }
 
     fn signups(&self) -> &Self::Signups {
-        &self.signups
+        &self.tenant.signups
     }
 
     fn workspace_directory(&self) -> &Workspaces {
-        &self.workspaces
+        &self.tenant.workspaces
     }
 
     fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
+        &self.tenant.api_keys
     }
 
     fn team(&self) -> &Self::Team {
-        &self.team
+        &self.tenant.team
     }
 
     fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
+        &self.tenant.cli_credentials
     }
 
     fn billing(&self) -> &Billing {
-        &self.billing
+        &self.tenant.billing
     }
 
     fn tenant_providers(&self) -> &Providers {
-        &self.providers
+        &self.tenant.providers
     }
 
     fn catalogue(&self) -> &Models {
-        &self.models
+        &self.tenant.models
     }
 }

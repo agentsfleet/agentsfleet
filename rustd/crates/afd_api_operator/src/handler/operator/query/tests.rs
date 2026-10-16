@@ -24,9 +24,8 @@ fn page_query_accepts_defaults_and_composite_cursors() {
 }
 
 #[test]
-fn page_query_refuses_retired_and_out_of_range_inputs() {
+fn page_query_refuses_out_of_range_inputs() {
     for (key, value, detail) in [
-        (QUERY_PAGE, "2", DETAIL_RETIRED_PAGE),
         (QUERY_LIMIT, "0", DETAIL_BAD_PAGE),
         (QUERY_LIMIT, "101", DETAIL_BAD_PAGE),
         (QUERY_STARTING_AFTER, "not-a-cursor", DETAIL_BAD_PAGE),
@@ -89,8 +88,6 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
     assert_eq!(parsed.cursor.as_ref().map(format).as_deref(), Some(cursor));
 
     for (key, value, detail) in [
-        (QUERY_PAGE, "2", DETAIL_RETIRED_EVENT_PAGE),
-        (QUERY_PAGE_SIZE, "10", DETAIL_RETIRED_EVENT_PAGE),
         (QUERY_LIMIT, "0", DETAIL_BAD_EVENTS),
         (QUERY_STARTING_AFTER, "not-a-cursor", DETAIL_BAD_EVENTS),
         (QUERY_EVENT_TYPE, "", DETAIL_BAD_EVENTS),

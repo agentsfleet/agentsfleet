@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "description": "Summarizes the day's Zoho Recruit pipeline activity and posts a digest.",
+  "instructions_md": "# Zoho Recruit daily summarizer\n\nReads the day's Zoho Recruit pipeline movement and posts a concise digest.\n\n## Goal\nOnce a day, pull the candidates whose stage changed and produce a short digest of\nwho advanced, who is waiting on us, and which roles are going cold.\n\n## Steps\n1. Read recent candidate and job-opening activity from the Zoho Recruit API with `http_request`.\n2. Group by advanced, waiting-on-us, waiting-on-them, and rejected.\n3. Flag any open role with no candidate movement for seven days.\n4. Produce a concise markdown digest.\n\n## Constraints\n- Read-only against Zoho Recruit; do not advance, reject, email, or edit.\n- Stay within the declared Zoho network hosts.\n- Name candidates and their stage only. Never quote resume contents, salary\n  expectations, contact details, or interviewer notes.",
+  "config": {
+    "name": "zoho-recruiter-daily-summarizer",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "cron",
+          "schedule": "0 9 * * 1-5"
+        }
+      ],
+      "tools": [
+        "http_request"
+      ],
+      "credentials": [
+        "zoho_recruit"
+      ],
+      "network": {
+        "allow": [
+          "recruit.zoho.com",
+          "accounts.zoho.com"
+        ]
+      },
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}

@@ -1,0 +1,245 @@
+//! What the inbox listing reads off a query string, and what it refuses.
+//!
+//! Split from [`super`] along the seam `handler/event/query.rs` already draws:
+//! the rules here, the three verbs beside it. Five parameters, one closed
+//! vocabulary, and a cursor spelled in the clear.
+//!
+//! # The cursor is spelled in the clear, and that is not this file's choice
+//!
+//! The approvals inbox issues `{millis}:{id}` with no encoding, unlike the
+//! event listings, which wrap the same pair in base64url.
+//! `docs/REST_API_DESIGN_GUIDELINES.md` §9 settles which form this endpoint
+//! keeps: a dashboard holds a cursor across a deploy, so the published form
+//! cannot change under it. So this reads [`afd_core::paging::Cursor`], the type
+//! that spells the clear form.
+//!
+//! # The status vocabulary is every state a row can be in
+//!
+//! A gate's column carries five spellings, and all five are served. The store
+//! reads an absent filter as pending, so `pending` and absent are one request.
+//! A value outside those five is refused by name rather than silently answered
+//! with the pending page, which is what an ignored parameter amounts to.
+//!
+//! The filter reads [`GateStatus`] and not `Decision` for that reason:
+//! `Decision` is the three arms an operator WRITES, and routing the filter
+//! through it left `auto_killed` — a state a row really is in, and one the
+//! dashboard's own type declares — unreachable through this listing.
+
+use std::borrow::Cow;
+
+use afd_api_wire::approval::GateStatus;
+use afd_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use afd_core::spelling::from_spelling;
+use afd_http::handler::parse_id;
+use afd_validate::Limit;
+use const_format::concatcp;
+use garde::Validate as _;
+
+use crate::handler::{Refusal, decoded_parameter, parameter};
+
+/// The parameter names, spelled once each (RULE UFS).
+const QUERY_STATUS: &str = "status";
+const QUERY_FLEET_ID: &str = "fleet_id";
+const QUERY_GATE_KIND: &str = "gate_kind";
+const QUERY_LIMIT: &str = "limit";
+const QUERY_CURSOR: &str = "cursor";
+
+/// The page size when the caller names none.
+const DEFAULT_LIMIT: u32 = 50;
+
+/// The largest page any caller may ask for.
+const MAX_LIMIT: u32 = 200;
+
+/// The inbox's bound on `?limit`.
+const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
+
+/// The longest `gate_kind` filter, decoded.
+///
+/// A gate kind is a short family name a gate is filed under (`spend`,
+/// `tool_call`); a filter longer than any family is not a filter.
+const MAX_GATE_KIND_BYTES: usize = 64;
+
+/// The refusal an over-long `gate_kind` filter earns.
+const DETAIL_GATE_KIND: &str =
+    concatcp!("gate_kind must be at most ", MAX_GATE_KIND_BYTES, " bytes");
+
+/// The refusal a page size outside the served band earns.
+///
+/// Kept verbatim: it is already on the wire.
+const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
+
+/// The refusal a cursor this daemon did not mint earns.
+const DETAIL_CURSOR: &str = "invalid cursor";
+
+/// The refusal a status no row can be in earns.
+///
+/// Every spelling the column holds is served, so this names a value that is
+/// not one of them rather than one the filter merely cannot express.
+const DETAIL_STATUS: &str = "status must be pending, approved, denied, timed_out or auto_killed";
+
+/// The refusal a fleet id that is not an identifier earns.
+///
+/// Refused HERE rather than at the statement: `SELECT_GATE_PAGE` casts the
+/// value to `uuid`, so an unparsed one reaches Postgres and comes back as a
+/// cast failure — a 500 and an error log line for a client's typo.
+const DETAIL_FLEET_ID: &str = "fleet_id must be a valid identifier";
+
+/// The refusal a query string this daemon cannot decode earns.
+const DETAIL_QUERY: &str = "malformed query string";
+
+/// Where a page resumes, owned so the handler can borrow it per read.
+///
+/// [`afd_approval::Cursor`] borrows its identifier, and a borrowed struct
+/// cannot outlive the parse that built it. This owns the pair and hands out
+/// the borrowed form at the call.
+#[derive(Debug)]
+pub(super) struct Resume {
+    /// The boundary row's instant.
+    created_at: i64,
+    /// The boundary row's gate id, breaking ties inside one millisecond.
+    gate_id: String,
+}
+
+impl Resume {
+    /// The borrowed form the store's filter takes.
+    pub(super) fn borrowed(&self) -> afd_approval::Cursor<'_> {
+        afd_approval::Cursor {
+            created_at: self.created_at,
+            gate_id: &self.gate_id,
+        }
+    }
+}
+
+/// One resolved listing request: what to narrow by, where to resume, how many.
+#[derive(Debug)]
+pub(super) struct Listing {
+    /// The status the page is narrowed to; every state when absent.
+    pub(super) status: Option<GateStatus>,
+    /// The fleet the page is narrowed to.
+    pub(super) fleet_id: Option<String>,
+    /// The gate family the page is narrowed to.
+    pub(super) gate_kind: Option<String>,
+    /// Where the page resumes, absent on the first one.
+    pub(super) cursor: Option<Resume>,
+    /// How many rows the page may carry.
+    pub(super) limit: i64,
+}
+
+impl Listing {
+    /// The listing's parameters, or the first refusal they earn.
+    ///
+    /// The order is `limit`, then `cursor`, then the three filters.
+    ///
+    /// # Which parameters are decoded, and why not all of them
+    ///
+    /// `cursor` and `gate_kind` are decoded; `limit`, `status` and `fleet_id`
+    /// are drawn from alphabets RFC 3986 leaves alone, so reading them raw is
+    /// honest. The cursor is the one that MATTERS: its wire form is
+    /// `{millis}:{id}` in the clear, and a browser building the query with
+    /// `URLSearchParams` percent-escapes that colon. Read raw,
+    /// `cursor=1735689600000%3A0192…` finds no separator and every page after
+    /// the first is refused 400 — which is what the dashboard sends.
+    ///
+    /// # Errors
+    /// A [`Refusal`] naming the parameter that refused.
+    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
+        Ok(Self {
+            limit: requested_limit(parameter(query, QUERY_LIMIT))?,
+            cursor: parse_cursor(decoded(query, QUERY_CURSOR)?.as_deref())?,
+            status: parse_status(parameter(query, QUERY_STATUS))?,
+            fleet_id: parse_fleet_id(parameter(query, QUERY_FLEET_ID))?,
+            gate_kind: parse_gate_kind(decoded(query, QUERY_GATE_KIND)?)?,
+        })
+    }
+}
+
+/// The page size, or the refusal a caller outside the band earns.
+///
+/// Zero is refused rather than clamped, for the reason the event listing gives:
+/// a caller asking for no rows has made a mistake, and an empty page would read
+/// as an empty inbox.
+fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
+    Limit::parse(raw, CEILING)
+        .map(i64::from)
+        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
+}
+
+/// A `gate_kind` filter as the caller sent it, decoded.
+#[derive(Debug, garde::Validate)]
+struct GateKindFilter<'q> {
+    #[garde(length(bytes, max = MAX_GATE_KIND_BYTES))]
+    gate_kind: Cow<'q, str>,
+}
+
+/// The gate family the page is narrowed to, inside its bound.
+fn parse_gate_kind(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
+    raw.map(|gate_kind| {
+        let filter = GateKindFilter { gate_kind };
+        filter
+            .validate()
+            .map_err(|_report| Refusal::malformed(DETAIL_GATE_KIND))?;
+        Ok(filter.gate_kind.into_owned())
+    })
+    .transpose()
+}
+
+/// The boundary a page resumes strictly after.
+///
+/// A text-boundary cursor is refused as malformed rather than mapped: this
+/// listing orders by instant alone, and a name boundary would resume a walk
+/// through an ordering it never served.
+fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    match CoreCursor::parse(raw) {
+        Ok(CoreCursor::Timestamp { at_ms, id }) => Ok(Some(Resume {
+            created_at: at_ms,
+            gate_id: id,
+        })),
+        Ok(CoreCursor::Text { .. }) | Err(InvalidCursor) => Err(Refusal::malformed(DETAIL_CURSOR)),
+    }
+}
+
+/// One parameter, decoded the way a query-string reader decodes every value.
+///
+/// A broken escape refuses the whole REQUEST rather than the parameter, which
+/// is what the event listing does for the same reason: the string parses in one
+/// pass, so a bad escape anywhere in it is a 400.
+fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
+    decoded_parameter(query, name).map_err(|_broken| Refusal::malformed(DETAIL_QUERY))
+}
+
+/// The fleet the page is narrowed to, checked before it reaches the statement.
+fn parse_fleet_id(raw: Option<&str>) -> Result<Option<String>, Refusal> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    parse_id(raw, DETAIL_FLEET_ID).map(|fleet| Some(fleet.as_str().to_owned()))
+}
+
+/// The status filter, as the store expresses it.
+///
+/// `pending` resolves to ABSENT rather than to a value, because that is how the
+/// statement spells it: an absent filter binds the pending status. The two are
+/// the same request, so they parse to the same thing.
+///
+/// Every other spelling the column holds is served, including the killer's:
+/// `auto_killed` is a state a row is really in, and a filter that refused it
+/// left those gates unreachable through the only listing that shows them.
+fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    // Every named state narrows, `pending` included. It used to collapse to
+    // `None` because absent MEANT pending and the two were the same request.
+    // Absent now means every state, so collapsing would make `?status=pending`
+    // — the one query an existing client is told to send — return all five.
+    match from_spelling::<GateStatus>(raw) {
+        Some(state) => Ok(Some(state)),
+        None => Err(Refusal::malformed(DETAIL_STATUS)),
+    }
+}
+
+#[cfg(test)]
+mod tests;

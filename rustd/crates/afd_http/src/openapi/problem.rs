@@ -37,8 +37,6 @@ pub struct ProblemBody {
     pub current_state: Option<String>,
     /// On a 412 only: the resource's current entity tag, to refetch and retry.
     pub etag: Option<String>,
-    /// On a 424 only: the credentials this workspace has yet to store.
-    pub missing_secrets: Option<Vec<String>>,
     /// On an answered approval gate's 409 only: the gate that was answered.
     pub gate_id: Option<String>,
     /// On that 409 only: the action the gate held.

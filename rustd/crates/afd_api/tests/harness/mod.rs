@@ -66,10 +66,8 @@ use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_events::{History, Steer};
-use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::{Libraries, LibraryImports};
 use afd_memory::Memories;
 use afd_observability::Analytics;
 use afd_runner::Runners;
@@ -87,9 +85,6 @@ use afd_approval::{Inbox, IntegrationGrants};
 use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
-use bytes::Bytes;
-use object_store::ObjectStoreExt as _;
-use object_store::memory::InMemory;
 
 mod readiness;
 mod stubs_identity;
@@ -192,6 +187,22 @@ pub(crate) fn vault(database: Db) -> SecretVault {
     )
 }
 
+/// Seals raw provider signing bytes under the key and associated data the router reads.
+/// The workspace secret API accepts objects; raw Svix fixtures must keep that API's key private.
+pub(crate) fn raw_secret_envelope(
+    workspace: &Uuid7,
+    name: &str,
+    plaintext: &[u8],
+) -> afd_crypto::envelope::Envelope {
+    afd_crypto::envelope::Sealer::new()
+        .seal(
+            &Kek::from_bytes(FIXTURE_KEK),
+            &afd_crypto::aad::Aad::new(workspace.as_str(), name),
+            plaintext,
+        )
+        .expect("seal owned raw signing fixture with the router's vault key")
+}
+
 /// The production ingress over `database`, for a suite that drives one of its
 /// reads directly rather than through a delivery.
 ///
@@ -216,6 +227,10 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
 pub(crate) struct Fleet {
+    authoring: afd_authoring::Drafts,
+    authoring_setup: afd_authoring::Setup,
+    creations: afd_authoring::Creations,
+    authoring_models: afd_authoring::ModelCalls,
     ready: ReadyInputs,
     mock_directory: MockDirectory,
     directory: Directory,
@@ -223,7 +238,6 @@ pub(crate) struct Fleet {
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
     leases: NoWork,
-    bundles: Bundles,
     workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,
@@ -262,8 +276,6 @@ pub(crate) struct Fleet {
     runner_lease_history: RunnerLeaseHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
-    libraries: Libraries,
-    library_imports: LibraryImports,
     now: UnixMillis,
 }
 

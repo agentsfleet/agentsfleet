@@ -76,6 +76,9 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+async-trait.workspace = true
+hex.workspace = true
+afd_authoring.workspace = true
 # The harness stubs the runner plane, whose request and report types are the
 # shared protocol.
 afd_wire.workspace = true
@@ -122,7 +125,6 @@ afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
 # install would, rather than a hand-written `config_json` that could drift.
 afd_fleet_runtime.workspace = true
 afd_fleet_ops.workspace = true
-afd_library = { workspace = true, features = ["test-util"] }
 afd_runner.workspace = true
 afd_sse.workspace = true
 afd_tenant = { workspace = true, features = ["test-util"] }
@@ -147,12 +149,11 @@ hyper.workspace = true
 tracing-subscriber = { workspace = true, features = ["registry"] }
 # A dev-dependency, not a library one: nothing in this crate opens a pool. The
 # runner-plane suite needs `Db::unreachable` to drive a real handler into the
-# transport-class refusal without a datastore, and that constructor is the whole
-# reason `afd_db` is named anywhere in this manifest.
+# transport-class refusal without a datastore, and the live suites seed their
+# fleets through `FleetSeed`.
 afd_db = { workspace = true, features = ["test-util"] }
-# For the same reason, and it arrived with the same change: the login surface
-# and the fleet install reach a queue, so the harness needs `Redis::unreachable`
-# to build the real stores over one that answers nothing.
+# The login surface and fleet setup reach a queue, so the harness needs
+# `Redis::unreachable` to build the real stores over one that answers nothing.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 # A library dependency too, but named again here for its feature: the thread
 # handler's page arithmetic is decided over `EventDetailRow`, which is
@@ -162,11 +163,6 @@ afd_events = { workspace = true, features = ["test-util"] }
 # through the production Postgres directory.
 afd_state.workspace = true
 sqlx.workspace = true
-# The in-memory backend the bundle-fetch suite drives the snapshot store
-# through, and the byte buffer it seeds one with. A dev-dependency: nothing in
-# this crate's library builds an object store — `Services::bundles` takes one
-# already built.
-object_store.workspace = true
 bytes.workspace = true
 # Live SSE tests consume one body chunk without waiting for the infinite stream.
 futures-util.workspace = true

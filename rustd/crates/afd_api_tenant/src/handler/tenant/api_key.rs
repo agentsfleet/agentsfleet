@@ -114,8 +114,7 @@ pub(crate) async fn mint<D: Services>(
         "Returns metadata for every tenant API key visible to the caller, ",
         "under Stripe-style keyset pagination. The cursor carries the ",
         "boundary sort value, so every allowlisted sort pages without loss. ",
-        "The retired page and page_size parameters are refused. Results are ",
-        "always scoped to the caller's tenant; `key_hash` is never returned. ",
+        "Results are always scoped to the caller's tenant; `key_hash` is never returned. ",
     ),
     params(
         ("starting_after" = Option<String>, Query, description = "An opaque cursor from a previous page's `next_cursor`, issued under the same sort."),
@@ -313,7 +312,6 @@ fn summary(key: &KeyRow) -> ApiKeySummary<'_> {
         key_name: Cow::Borrowed(&key.name),
         active: key.active,
         created_at: key.created_at_ms,
-        last_used_at: key.last_used_at_ms,
         revoked_at: key.revoked_at_ms,
     }
 }

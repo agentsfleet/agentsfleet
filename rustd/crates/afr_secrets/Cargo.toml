@@ -1,5 +1,6 @@
 [package]
 name = "afr_secrets"
+autotests = false
 description = "The runner's secrets: a token held in memory, a lease's static credentials, and the scrub that masks every known value before text leaves the run."
 version.workspace = true
 edition.workspace = true
@@ -26,3 +27,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 # A held token's bytes are overwritten when it drops.
 zeroize.workspace = true
+
+[[test]]
+name = "secrets_suite"
+path = "tests/secrets_suite.rs"

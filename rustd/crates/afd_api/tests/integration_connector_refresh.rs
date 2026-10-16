@@ -1,6 +1,6 @@
 //! The refresh-token connectors' completions — the grant shape Slack is not.
 //!
-//! `integration_connector_callback.rs` connects Slack because its grant has an
+//! `integration_connector_callback/mod.rs` connects Slack because its grant has an
 //! INSTALL behind it, and says so in its header. What that choice leaves
 //! ungraded is the OTHER shape: the providers whose exchange answers an
 //! access/refresh/expiry triple and whose grant exists to be re-minted — the

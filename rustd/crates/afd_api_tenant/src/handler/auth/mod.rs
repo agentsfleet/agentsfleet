@@ -16,4 +16,4 @@
 pub(crate) mod session;
 
 pub(crate) use self::session::dashboard::{approve, verify};
-pub(crate) use self::session::{delete_all, delete_one, open, poll};
+pub(crate) use self::session::{delete_all, open, poll};

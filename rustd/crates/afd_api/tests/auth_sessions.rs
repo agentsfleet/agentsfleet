@@ -100,10 +100,7 @@ async fn verification_refuses_unreadable_and_wrong_shaped_codes_before_redis() {
 
 #[tokio::test]
 async fn dashboard_mutations_require_a_verified_session_class() {
-    for (method, path, body) in [
-        (Method::PATCH, APPROVE, APPROVE_BODY),
-        (Method::DELETE, SESSION, ""),
-    ] {
+    for (method, path, body) in [(Method::PATCH, APPROVE, APPROVE_BODY)] {
         let missing = dashboard_router(method.clone(), path, None, body).await;
         assert_eq!(missing.status(), StatusCode::UNAUTHORIZED, "{path}");
 
@@ -144,7 +141,6 @@ async fn the_bulk_abort_admits_a_persons_own_terminal_and_refuses_a_tenant_key()
 async fn a_dashboard_session_reaches_each_mutation_service() {
     for (method, path, body) in [
         (Method::PATCH, APPROVE, APPROVE_BODY),
-        (Method::DELETE, SESSION, ""),
         (Method::DELETE, ALL, ""),
     ] {
         let response = dashboard_router(method, path, Some(DASHBOARD_TOKEN), body).await;

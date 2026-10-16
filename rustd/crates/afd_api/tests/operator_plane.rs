@@ -30,6 +30,7 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
             ScopeSet::from_scopes(&[Scope::FleetRead]),
         )
         .router();
+    // The bundle catalog went with bundle import; no scope reaches it.
     let bundles = send(
         &fleet_reader,
         Method::GET,
@@ -38,7 +39,7 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
         "",
     )
     .await;
-    assert_eq!(bundles.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(bundles.status(), StatusCode::NOT_FOUND);
 }
 
 async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
@@ -97,8 +98,6 @@ async fn runner_events_reject_filter_shape_before_io() {
         )
         .router();
     for query in [
-        "page=2",
-        "page_size=10",
         "limit=0",
         "starting_after=foreign",
         "event_type=",

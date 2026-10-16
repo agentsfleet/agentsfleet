@@ -113,7 +113,7 @@ impl<'run> Ledger<'run> {
             .emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
                 name: Cow::Owned(call.name.clone()),
                 args_redacted: Cow::Owned(args_redacted),
-                call_id: Some(Cow::Owned(id.clone())),
+                call_id: Cow::Owned(id.clone()),
             }));
         drop(book);
         Opened {
@@ -207,8 +207,8 @@ impl Opened<'_, '_> {
             .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
                 name: Cow::Owned(self.name.to_owned()),
                 ms: saturating_millis_signed(outcome.elapsed),
-                call_id: Some(Cow::Owned(std::mem::take(&mut self.id))),
-                status: Some(outcome.status),
+                call_id: Cow::Owned(std::mem::take(&mut self.id)),
+                status: outcome.status,
                 output_head: outcome.head.clone().map(Cow::Owned),
                 output_tail: outcome.tail.clone().map(Cow::Owned),
                 output_line_count: outcome.line_count,

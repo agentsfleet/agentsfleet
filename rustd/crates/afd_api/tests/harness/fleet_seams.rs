@@ -19,6 +19,12 @@ use afd_ingress::Ingress;
 use super::*;
 
 impl Fleet {
+    /// Uses the same wall-clock era as live database expiry checks.
+    pub(crate) const fn at(mut self, now: afd_core::clock::UnixMillis) -> Self {
+        self.now = now;
+        self
+    }
+
     /// An instance that will carry `streams` at once and no more.
     pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
         self.live = Live::detached(Ceiling::new(streams));
@@ -95,13 +101,25 @@ impl Fleet {
         self
     }
 
-    /// Runs fleet installation and purge over a live queue and database.
-    pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Dragonfly) -> Self {
-        // The same fixture key every other store in this harness seals under:
-        // the install opens a declared credential's handle to classify it, so a
-        // seam holding a different key would classify nothing.
-        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        self.fleets = Fleets::new(database, queue, kek, Entropy::new());
+    /// Runs native setup and purge over a live queue and database.
+    pub(crate) fn with_fleet_queue(self, database: Db, queue: Dragonfly) -> Self {
+        self.with_fleet_queue_budgets(database, queue, afd_admission::Budgets::default())
+    }
+
+    /// Refuses real admissions under explicit small ceilings, without stubbing the ledger.
+    pub(crate) fn with_fleet_queue_budgets(
+        mut self,
+        database: Db,
+        queue: Dragonfly,
+        budgets: afd_admission::Budgets,
+    ) -> Self {
+        self.creations = afd_authoring::Creations::new(
+            self.authoring_setup.clone(),
+            queue.clone(),
+            afd_admission::Admissions::for_tests(database.clone(), queue.clone())
+                .with_budgets(budgets),
+        );
+        self.fleets = Fleets::new(database, queue);
         self
     }
 
@@ -186,6 +204,13 @@ impl Fleet {
         self
     }
 
+    /// A lease plane whose mint succeeds with `token`, for the case that
+    /// proves the route writes it into the body and nowhere else.
+    pub(crate) fn with_lease_minting(mut self, token: &'static str, expires_at_ms: i64) -> Self {
+        self.leases = super::NoWork::minting(token, expires_at_ms);
+        self
+    }
+
     /// Files a person row under the digest of `key`, holding `scopes`.
     pub(crate) fn with_person(mut self, key: &str, subject: &str, scopes: ScopeSet) -> Self {
         let who = Subject::new(subject).expect("the fixture subject is not blank");
@@ -226,28 +251,6 @@ impl Fleet {
             },
         );
         self.capabilities = self.capabilities.with(&who, scopes);
-        self
-    }
-
-    /// Backs this instance with an in-memory snapshot store holding `body`
-    /// under `content_hash`.
-    ///
-    /// `object_store::memory::InMemory` rather than a mock of our own: it is
-    /// the backend the workspace manifest names for exactly this, so what the
-    /// suite drives is the same client production drives with a different
-    /// backing store — not a second implementation that could agree with the
-    /// test and disagree with R2.
-    ///
-    /// Async because a `put` is, which is why it is not one of the `const`
-    /// builders above.
-    pub(crate) async fn with_snapshot(mut self, content_hash: &str, body: &[u8]) -> Self {
-        let store = InMemory::new();
-        let hash = ContentHash::parse(content_hash).expect("the fixture digest is well formed");
-        store
-            .put(&hash.snapshot_key(), Bytes::copy_from_slice(body).into())
-            .await
-            .expect("an in-memory put cannot fail");
-        self.bundles = Bundles::new(Arc::new(store));
         self
     }
 

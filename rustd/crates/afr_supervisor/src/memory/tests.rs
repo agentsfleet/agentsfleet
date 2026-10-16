@@ -66,7 +66,7 @@ async fn hydrate_rides_out_a_blip() {
 #[tokio::test]
 async fn capture_carries_the_lease_and_its_fencing_token() {
     let (plane, mut calls) = plane(|_call| json(&serde_json::json!({"stored": 1, "skipped": 0})));
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
 
     capture(
         &plane,
@@ -87,7 +87,7 @@ async fn capture_carries_the_lease_and_its_fencing_token() {
 #[tokio::test]
 async fn a_checkpoint_pushes_the_runs_memory_under_the_fencing_token() {
     let (plane, mut calls) = plane(|_call| json(&serde_json::json!({"stored": 1, "skipped": 0})));
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
     LeaseCheckpoint::new(&plane, &fleet, &lease)
@@ -110,7 +110,7 @@ async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
         counted.fetch_add(1, Ordering::SeqCst);
         Answer::Fail(error::unavailable(Verb::Capture, 503))
     });
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
     let refused = LeaseCheckpoint::new(&plane, &fleet, &lease)
@@ -130,7 +130,7 @@ async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
 #[tokio::test]
 async fn a_recall_carries_the_query_under_the_fencing_token() {
     let (plane, mut calls) = plane(daemon(|_call| None));
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
     let found = Recaller::new(&plane, &fleet, &lease)
@@ -157,7 +157,7 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
         counted.fetch_add(1, Ordering::SeqCst);
         Answer::Fail(error::unavailable(Verb::Recall, 503))
     });
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
     let unanswered = Recaller::new(&plane, &fleet, &lease)
@@ -180,7 +180,7 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
 async fn test_memory_push_failure_is_counted() {
     let (plane, _calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Capture, 500)));
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let (tally, recorded) = Tally::new();
 
     let pushed = scoped(

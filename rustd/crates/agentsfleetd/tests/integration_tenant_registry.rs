@@ -29,13 +29,13 @@ use crate::e2e::{MODEL, PROVIDER, scenario_with_provider};
 /// The second catalogued model the retargeting half of the walk points at.
 const SECOND_MODEL: &str = "claude-fixture-walk-b";
 
-/// The vault name the walk's own credential is sealed under.
-///
-/// Its own name rather than the scenario's `PROVIDER` key: that fixture's body
-/// deliberately fails the activation ladder, and the runner suites rely on it
-/// staying that way.
+/// The vault name the walk's own credential is sealed under, so activating it
+/// never reselects the scenario's `PROVIDER` key the runner suites dial with.
 const WALK_KEY: &str = "walk-provider-key";
-use crate::e2e_seed_keys::{seed_activatable_key, seed_tenant_key};
+
+/// A sealed key with no projection, which the metadata gate refuses.
+const UNPROJECTED_KEY: &str = "unprojected-provider-key";
+use crate::e2e_seed_keys::{seed_activatable_key, seed_tenant_key, seed_unprojected_key};
 
 /// A tenant credential minted for this run alone.
 ///
@@ -99,6 +99,7 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     let token = mint_tenant_token();
     seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
     seed_activatable_key(&run.booted, &run.workspace, WALK_KEY).await;
+    seed_unprojected_key(&run.booted, &run.workspace, UNPROJECTED_KEY).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
@@ -308,15 +309,15 @@ async fn activate_after_the_ladder_refuses(
     )
     .await;
     assert_eq!(missing["error_code"], "UZ-PROVIDER-002", "{missing}");
-    // The scenario's own key: sealed, but projected as nothing — the metadata
-    // gate refuses it before any decrypt, and the runner suites rely on that.
+    // A key sealed but projected as nothing: the metadata gate refuses it
+    // before any decrypt.
     let (_status, unlabelled) = send_json(
         http,
         token,
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": PROVIDER, "model": SECOND_MODEL }),
+        &json!({ "mode": "self_managed", "secret_ref": UNPROJECTED_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(unlabelled["error_code"], "UZ-PROVIDER-003", "{unlabelled}");

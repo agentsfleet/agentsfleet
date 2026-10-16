@@ -11,9 +11,12 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_memory::Memories;
 use afd_wire::memory::{MemoryDelta, Visibility};
+
+/// The status every seeded fleet carries.
+const FLEET_ACTIVE: &str = "active";
 
 /// A workspace on the shared lane database, and the memory handle over it.
 pub(crate) struct Workspace {
@@ -64,21 +67,13 @@ impl Workspace {
     /// A fleet named `name` holding `grants`.
     pub(crate) async fn fleet(&self, name: &str, grants: Grants) -> Uuid7 {
         let fleet = Uuid7::parse(&mint_id()).expect("a minted id is canonical");
-        sqlx::query(
-            "INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, status, \
-                memory_reads_workspace, memory_publishes_workspace, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '# fixture', '{}', 'active', $5, $6, 1, 1)",
-        )
-        .bind(fleet.as_str())
-        .bind(self.id.as_str())
-        .bind(&self.tenant)
-        .bind(name)
-        .bind(grants.read)
-        .bind(grants.publish)
-        .execute(&mut *self.database.acquire().await.expect("an API connection"))
-        .await
-        .expect("the fleet seeds");
+        FleetSeed::new(fleet.as_str(), self.id.as_str(), &self.tenant, FLEET_ACTIVE)
+            .name(name)
+            .memory(grants.read, grants.publish)
+            .at(1)
+            .insert(&mut *self.database.acquire().await.expect("an API connection"))
+            .await
+            .expect("the fleet seeds");
         fleet
     }
 

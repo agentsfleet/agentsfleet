@@ -14,7 +14,7 @@ use afd_db::test_util::mint_id;
 use afd_ingress::slack::KIND_RESIDENT;
 use afd_ingress::sql;
 
-use super::resident_bound::{bind, resident_document, resident_name};
+use super::resident_bound::{bind, resident_document};
 use super::*;
 
 /// The role every request's statements run under.
@@ -27,13 +27,12 @@ const RUNTIME_ROLE: &str = "SET LOCAL ROLE api_runtime";
 async fn a_moved_teams_binding_is_repointed_as_api_runtime() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let name = resident_name(&fixture);
     let left_behind = fixture
-        .fleet_elsewhere(&resident_document(&name), FleetStatus::Active.as_str())
+        .fleet_elsewhere(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
     bind(&fixture, &left_behind).await;
     let resident = fixture
-        .fleet(&resident_document(&name), FleetStatus::Active.as_str())
+        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
 
     let mut connection = fixture.database().acquire().await.expect("a connection");

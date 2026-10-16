@@ -1,8 +1,5 @@
 //! What `/v1/connectors/{provider}/callback` refuses, and where in the order.
 //!
-//! One path, two routes, two guards. `GET` is where the PROVIDER sends the
-//! browser, so it carries no credential of ours and is `Guard::Open`; it reads
-//! nothing and writes nothing, and only redirects to the dashboard's own relay.
 //! `POST` is the dashboard coming back with the person's bearer, and it is the
 //! only endpoint in this family that redeems a code or writes a connection.
 //!
@@ -36,7 +33,7 @@ use self::harness::Fleet;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
-use http::{Method, StatusCode, header};
+use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A person holding the connector-write scope `Complete` demands.
@@ -57,9 +54,6 @@ const FORGED_STATE: &str = "not-a-state-this-daemon-signed";
 /// The authorization code a provider hands back.
 const CODE: &str = "vendor-authorization-code";
 
-/// Where the dashboard lives, as the fixture configures it.
-const DASHBOARD: &str = "https://app.fixture.test";
-
 fn path(provider: &str) -> String {
     format!("/v1/connectors/{provider}/callback")
 }
@@ -67,13 +61,6 @@ fn path(provider: &str) -> String {
 /// The registry code, as it is spelled on the wire.
 fn code(code: ErrorCode) -> String {
     code.as_str().to_owned()
-}
-
-/// One request at a fresh router, as the browser arrives — no credential.
-async fn browser(provider: &str, query: &str) -> axum::response::Response {
-    let router = Fleet::new().router();
-    let target = format!("{}?{query}", path(provider));
-    harness::send(&router, Method::GET, &target, None, "").await
 }
 
 /// One request at a fresh router, as the dashboard returns — bearing a person.
@@ -102,63 +89,6 @@ async fn refusal(response: axum::response::Response) -> String {
         .and_then(serde_json::Value::as_str)
         .expect("every refusal carries its registry code")
         .to_owned()
-}
-
-// ── GET: the browser leg, which touches nothing ──────────────────────────────
-
-#[tokio::test]
-async fn the_browser_leg_hands_the_whole_handoff_to_the_dashboard() {
-    let response = browser(SHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await;
-
-    assert_eq!(
-        response.status(),
-        StatusCode::FOUND,
-        "the provider sent a browser here; it leaves with a redirect"
-    );
-    let destination = response
-        .headers()
-        .get(header::LOCATION)
-        .and_then(|value| value.to_str().ok())
-        .expect("a redirect names where it goes")
-        .to_owned();
-
-    assert!(
-        destination.starts_with(DASHBOARD),
-        "the relay goes to the dashboard, not back to the vendor: {destination}"
-    );
-    assert!(
-        destination.contains(CODE) && destination.contains(FORGED_STATE),
-        "the dashboard cannot complete a connect it was not handed the code and \
-         state for: {destination}"
-    );
-}
-
-#[tokio::test]
-async fn a_browser_arriving_with_no_state_is_refused() {
-    assert_eq!(
-        refusal(browser(SHIPPED, &format!("code={CODE}")).await).await,
-        code(error_code::INVALID_REQUEST),
-        "the state is what the dashboard completes with; a relay without it \
-         would send a person to a page that cannot finish"
-    );
-}
-
-#[tokio::test]
-async fn a_provider_this_daemon_ships_nothing_for_is_refused_on_the_browser_leg() {
-    assert_eq!(
-        refusal(browser(UNSHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await).await,
-        code(error_code::CONNECTOR_UNKNOWN)
-    );
-}
-
-#[tokio::test]
-async fn a_query_this_daemon_cannot_decode_is_refused_rather_than_relayed() {
-    assert_eq!(
-        refusal(browser(SHIPPED, "state=%ZZ").await).await,
-        code(error_code::INVALID_REQUEST),
-        "a percent-escape that is not one must not be forwarded into the \
-         dashboard's URL, where it would be a second parser's problem"
-    );
 }
 
 // ── POST: the dashboard leg, up to its first store read ──────────────────────

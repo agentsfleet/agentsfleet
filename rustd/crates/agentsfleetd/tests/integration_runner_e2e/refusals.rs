@@ -54,7 +54,7 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
         "a provider credential is not silently treated as a mintable connector"
     );
 
-    let no_second_lease = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+    let no_second_lease = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
     assert_eq!(no_second_lease.status().as_u16(), 200);
     // Scoped to this scenario's fleet rather than asserting `null`. What makes
     // a second poll answer nothing is that the fleet's stream is empty and its

@@ -47,7 +47,7 @@ const VERIFY_BODY: &str = r#"{"verification_code":"012345"}"#;
 
 #[tokio::test]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn device_sessions_open_approve_verify_replay_and_cancel() {
+async fn device_sessions_open_approve_verify_replay_and_abort() {
     let router = Fleet::new()
         .with_session_queue(harness::connect_redis().await)
         .with_dashboard(SUBJECT)
@@ -74,19 +74,23 @@ async fn device_sessions_open_approve_verify_replay_and_cancel() {
         );
     }
 
-    let cancelled = open_session(&router, "cancelled").await;
-    approve_session(&router, &cancelled).await;
-    for _attempt in 0..2 {
-        let response = harness::send(
-            &router,
-            Method::DELETE,
-            &format!("/v1/auth/sessions/{cancelled}"),
-            Some(DASHBOARD_TOKEN),
-            "",
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    }
+    // One session is not cancelled on its own: the route is removed, and the
+    // bulk abort below is the only cancel.
+    let single = open_session(&router, "single").await;
+    approve_session(&router, &single).await;
+    let response = harness::send(
+        &router,
+        Method::DELETE,
+        &format!("/v1/auth/sessions/{single}"),
+        Some(DASHBOARD_TOKEN),
+        "",
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::METHOD_NOT_ALLOWED,
+        "a single session's DELETE is not served"
+    );
 
     for name in ["bulk-one", "bulk-two"] {
         let session = open_session(&router, name).await;
@@ -99,7 +103,8 @@ async fn device_sessions_open_approve_verify_replay_and_cancel() {
             .await
             .get("aborted_count")
             .and_then(Value::as_u64),
-        Some(2)
+        Some(3),
+        "the two bulk sessions and the one its single DELETE did not cancel"
     );
 }
 
