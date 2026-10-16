@@ -21,8 +21,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — one product Pull Request (PR), including folded M227_002
 **Branch:** feat/website-completion — current authorized worktree; no extra worktree
 **Baseline revision:** ad3ed8f92c739b59df71863dbeec81d621dd7d0a
-**Test Baseline:** pending — full repository unit/integration runs deferred until implementation is finished
-**Baseline evidence:** repository lanes pending; reviewed interface package results in `docs/reviews/workspace-setup/ui-completion-review.md`
+**Test Baseline:** unit=10372 integration=5586
+**Baseline evidence:** docs/reviews/workspace-setup/test-baseline.md
 **Depends on:** independent schedule ownership/stable-ID fix merged before schedule acceptance; L1 guide amendment materialized before handler implementation
 **Provenance:** owner decisions L1–L21 and October14 Claude/ChatGPT/Astra High reviews, reconciled through source inspection; required implementation proofs remain pending
 **Canonical architecture:** docs/architecture/high_level.md#fleet-authoring-and-runtime; exact route/type authority is docs/architecture/api_resources.md
