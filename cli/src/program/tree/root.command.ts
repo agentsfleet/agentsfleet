@@ -29,7 +29,6 @@ import {
   deleteCommand,
   eventsCommand,
   fleetCommand,
-  installCommand,
   killCommand,
   libraryCommand,
   listCommand,
@@ -42,6 +41,7 @@ import {
   stopCommand,
 } from "./fleet.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
+import { chatCommand } from "./chat.command.ts";
 import { memoryCommand } from "./memory.command.ts";
 import { forceFlag, logoutAllFlag, tokenNameFlag } from "./flags.ts";
 
@@ -123,7 +123,7 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     loginCommand,
     logoutCommand,
     whoamiCommand,
-      doctorCommand,
+    doctorCommand,
     workspaceCommand,
     grantCommand,
     apiKeyCommand,
@@ -133,8 +133,8 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     billingCommand,
     libraryCommand,
     modelsCommand,
-    installCommand,
-    fleetCommand,
+    chatCommand,
+      fleetCommand,
     listCommand,
     statusCommand,
     stopCommand,

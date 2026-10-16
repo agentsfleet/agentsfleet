@@ -1,6 +1,6 @@
 // CLI JSON contract — every documented command resolves in the tree, JSON
 // mode suppresses banners/prose, the JSON error envelope shape is stable, and
-// removed v1 routes (run/runs/spec/specs) surface as unknown instead of
+// removed routes (run/runs/spec/specs/install) surface as unknown instead of
 // resolving silently.
 
 import { describe, test, expect } from "bun:test";
@@ -54,7 +54,8 @@ describe("CLI tree — every documented route is reachable", () => {
     ["schedule", "create"], ["schedule", "list"], ["schedule", "update"], ["schedule", "delete"], ["schedule", "show"], ["schedule", "sync"],
     ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],
     ["billing", "show"],
-    ["install"], ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
+    ["chat"], ["library", "list"], ["library", "delete"], ["fleet", "show"],
+    ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
     ["logs"], ["events"], ["steer"],
     ["secret", "create"], ["secret", "update"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
   ];
@@ -126,7 +127,7 @@ describe("JSON error envelope", () => {
   });
 
   test("removed v1 commands surface as unknown (validation exit)", async () => {
-    for (const argv of [["run"], ["runs", "list"], ["spec", "init"]]) {
+    for (const argv of [["run"], ["runs", "list"], ["spec", "init"], ["install"]]) {
       const out = makeBufferStream();
       const err = makeBufferStream();
       const code = await runCli(argv, {

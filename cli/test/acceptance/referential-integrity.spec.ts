@@ -31,7 +31,7 @@ import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
 import {
@@ -200,7 +200,7 @@ if (!isLive) {
         const deletedWorkspaceId = workspaceId;
         try {
           // Install a live fleet into the current (bootstrap) workspace.
-          const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+          const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
           const fleetId = (installed.fleet_id ?? installed.id) as string | undefined;
           assert.ok(fleetId, `install missing id: ${JSON.stringify(installed)}`);
 

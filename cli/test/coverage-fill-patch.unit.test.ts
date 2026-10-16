@@ -57,30 +57,16 @@ test("apiRequest tolerates non-JSON response body", async () => {
   expect(res).toEqual({});
 });
 
-test("readProblemDetails prefers the legacy envelope while accepting RFC 7807 fields", () => {
+test("readProblemDetails reads the flat problem body and ignores a nested error object", () => {
   expect(readProblemDetails({
-    error: { code: "UZ-LEGACY-001", message: "legacy detail", request_id: "req_legacy" },
+    error: { code: "UZ-NESTED-001", message: "nested detail", request_id: "req_nested" },
     error_code: "UZ-FLAT-001",
     detail: "flat detail",
     request_id: "req_flat",
   })).toEqual({
-    code: "UZ-LEGACY-001",
-    message: "legacy detail",
-    requestId: "req_legacy",
-    missingSecrets: undefined,
-  });
-});
-
-test("readProblemDetails rejects malformed missing secret arrays", () => {
-  expect(readProblemDetails({
-    error_code: "UZ-BUNDLE-003",
-    title: "Fleet Bundle secrets missing",
-    missing_secrets: ["fly", 7],
-  })).toEqual({
-    code: "UZ-BUNDLE-003",
-    message: "Fleet Bundle secrets missing",
-    requestId: undefined,
-    missingSecrets: undefined,
+    code: "UZ-FLAT-001",
+    message: "flat detail",
+    requestId: "req_flat",
   });
 });
 
@@ -91,15 +77,14 @@ test("apiRequest maps an RFC 7807 body onto ApiError", async () => {
     statusText: "Failed Dependency",
     headers: { get: () => null },
     text: async () => JSON.stringify({
-      error_code: "UZ-BUNDLE-003",
-      detail: "required secrets are absent",
-      request_id: "req_bundle",
-      missing_secrets: ["fly", "github"],
+      error_code: "UZ-AUTHOR-006",
+      detail: "Review this draft before saving",
+      request_id: "req_review",
     }),
   }));
   await expect(apiRequest("https://x", { fetchImpl })).rejects.toMatchObject({
-    code: "UZ-BUNDLE-003",
-    message: "required secrets are absent",
-    requestId: "req_bundle",
+    code: "UZ-AUTHOR-006",
+    message: "Review this draft before saving",
+    requestId: "req_review",
   });
 });

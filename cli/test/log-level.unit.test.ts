@@ -94,7 +94,7 @@ describe("the endpoint a record names carries no identifier", () => {
     ["a trailing identifier", `/v1/fleets/${U}`, "/v1/fleets/{id}"],
     ["a trailing identifier before a query", `/v1/fleets/${U}?expand=runs`, "/v1/fleets/{id}?expand={value}"],
     ["a collection query", `/v1/workspaces/${U}/approvals?limit=50`, "/v1/workspaces/{id}/approvals?limit={value}"],
-    ["two identifiers", `/v1/workspaces/${U}/library-entries/${V}`, "/v1/workspaces/{id}/library-entries/{id}"],
+    ["two identifiers", `/v1/workspaces/${U}/drafts/${V}`, "/v1/workspaces/{id}/drafts/{id}"],
     ["two identifiers before a query", `/v1/workspaces/${U}/fleets/${V}?tail=1`, "/v1/workspaces/{id}/fleets/{id}?tail={value}"],
     // A cursor is a row identifier that does not look like one. The memory
     // cursor carries the memory key, so keeping the value would name the row
@@ -119,8 +119,8 @@ describe("the endpoint a record names carries no identifier", () => {
     for (const path of [
       `/v1/fleets/${U}`,
       `/v1/fleets/${U}?expand=runs`,
-      `/v1/workspaces/${U}/library-entries/${V}`,
-      `/v1/workspaces/${U}/library-entries/${V}?force=1`,
+      `/v1/workspaces/${U}/drafts/${V}`,
+      `/v1/workspaces/${U}/drafts/${V}?force=1`,
     ])
       expect(UUID_ANYWHERE.test(endpointOf(path))).toBe(false);
   });

@@ -24,9 +24,9 @@ describe("ago renders every magnitude", () => {
 
   test("each unit boundary reports the coarser unit, never the finer one", () => {
     expect(ago(NOW - 59 * SECOND_MS, NOW)).toBe("59s");
-    expect(ago(NOW - 60 * SECOND_MS, NOW)).toBe("1m");
+    expect(ago(NOW - MINUTE_MS, NOW)).toBe("1m");
     expect(ago(NOW - 59 * MINUTE_MS, NOW)).toBe("59m");
-    expect(ago(NOW - 60 * MINUTE_MS, NOW)).toBe("1h");
+    expect(ago(NOW - HOUR_MS, NOW)).toBe("1h");
     expect(ago(NOW - 23 * HOUR_MS, NOW)).toBe("23h");
     expect(ago(NOW - 24 * HOUR_MS, NOW)).toBe("1d");
   });
@@ -50,7 +50,7 @@ describe("ago refuses to invent an age", () => {
   });
 
   test("an instant in the future is clock disagreement, not a negative age", () => {
-    expect(ago(NOW + 60 * SECOND_MS, NOW)).toBe(EMPTY_CELL);
-    expect(ago(NOW + 60 * SECOND_MS, NOW)).not.toContain("-");
+    expect(ago(NOW + MINUTE_MS, NOW)).toBe(EMPTY_CELL);
+    expect(ago(NOW + MINUTE_MS, NOW)).not.toContain("-");
   });
 });

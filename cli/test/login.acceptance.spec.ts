@@ -54,22 +54,22 @@ describe("login acceptance — full device flow end-to-end", () => {
 
 
 describe("login acceptance — jsonMode rendering + rollback", () => {
-  test("a deployment without the identity route keeps the credential it just minted", async () => {
+  test("a 404 on the identity read rolls back the credential it just minted", async () => {
     const rec = makeRecorder();
-    // The regression this guards. The probe used to read the billing snapshot,
-    // which every deployment serves; it now reads an identity route a deployment
-    // older than this client does not have. A 404 there means the credential
-    // reached the server and was NOT rejected — the route is missing, not the
-    // caller. Clearing on it would delete a working credential and leave the
-    // operator in a login loop no retry escapes.
+    // Every deployment this client talks to serves the identity route, so a
+    // 404 there is a failure like any other: the login did not take.
     const exit = await Effect.runPromiseExit(
-      runLogin(rec, freshFixture(), { identityAbsent: true }),
+      runLogin(rec, freshFixture(), { identityNotFound: true }),
     );
 
-    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(Exit.isFailure(exit)).toBe(true);
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(MeValidationError);
     expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
-    expect(rec.cleared).toBe(false);
-    expect(rec.stdout.some((line) => line.includes("login complete"))).toBe(true);
+    expect(rec.cleared).toBe(true);
+    expect(rec.stdout.some((line) => line.includes("login complete"))).toBe(false);
   });
 
   test("an identity carrying no name and no address still completes the login", async () => {
@@ -121,19 +121,20 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
     expect(rec.cleared).toBe(true);
   });
 
-  test("a deployment answering the identity read unreadably keeps the credential", async () => {
+  test("an identity read answered unreadably rolls back the credential", async () => {
     const rec = makeRecorder();
-    // The credential got PAST the guard to reach a 200, so the body this client
-    // cannot decode is a statement about deployment skew, not about the
-    // credential. Clearing here would mint and delete a working credential on
-    // every retry, a loop no retry escapes — the same trap the 404 case avoids.
+    // A 200 this client cannot decode confirms nothing about whose credential
+    // was saved, so it clears like a refusal and fails with the same sentence.
     const exit = await Effect.runPromiseExit(
       runLogin(rec, freshFixture(), { identityUnreadable: true }),
     );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.cleared).toBe(false);
+    expect(Exit.isFailure(exit)).toBe(true);
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(MeValidationError);
+    expect(rec.cleared).toBe(true);
     expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
-    expect(rec.stderr.concat(rec.stdout).some((l) => l.includes("cannot read"))).toBe(true);
   });
 
   test("first wrong code then correct code: retry succeeds, token persists", async () => {

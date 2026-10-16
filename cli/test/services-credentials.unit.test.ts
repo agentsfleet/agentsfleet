@@ -43,7 +43,7 @@ describe("Credentials service", () => {
           token: Redacted.make(ROUNDTRIP_CREDENTIAL),
           sessionId: "sess-1",
           apiUrl: "https://api.test.local",
-          credentialId: null,
+          credentialId: "cred-roundtrip",
         });
         return yield* c.getAccessToken;
       }),
@@ -107,7 +107,7 @@ describe("Credentials service", () => {
           token: Redacted.make("tok-2"),
           sessionId: "sess-2",
           apiUrl: "https://x",
-          credentialId: null,
+          credentialId: "cred-2",
         });
         yield* c.clearAccessToken;
         const snap = yield* c.snapshot;
@@ -128,13 +128,13 @@ describe("Credentials service", () => {
           token: Redacted.make("tok-3"),
           sessionId: null,
           apiUrl: undefined,
-          credentialId: null,
+          credentialId: "cred-3",
         });
         return yield* c.snapshot;
       }),
     );
     expect(snap.sessionId).toBeNull();
-    expect(snap.credentialId).toBeNull();
+    expect(snap.credentialId).toBe("cred-3");
   });
   // Deterministic load-error path: a directory where credentials.json is
   // expected makes readFile throw EISDIR (non-ENOENT, non-SyntaxError),

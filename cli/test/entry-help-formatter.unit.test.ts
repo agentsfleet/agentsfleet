@@ -8,6 +8,7 @@ import { CliError } from "effect/cli";
 import { helpFormatter, helpTail } from "../src/program/entry/help-formatter.ts";
 
 const MAX_WIDTH = 80;
+const LONG_DESCRIPTION_WORDS = 60;
 const formatter = helpFormatter();
 
 const longSentence = (words: number): string =>
@@ -36,7 +37,7 @@ describe("help formatter — the 80-column ceiling", () => {
   test("no rendered line exceeds the ceiling, however long the prose", () => {
     const doc = {
       usage: `agentsfleet ${longSentence(40)}`,
-      description: longSentence(60),
+      description: longSentence(LONG_DESCRIPTION_WORDS),
       flags: [],
       args: [],
     } as never;

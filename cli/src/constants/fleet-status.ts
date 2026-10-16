@@ -5,6 +5,7 @@
 // (rate-limit / circuit-breaker); the CLI never mutates to it.
 
 export const AGENTSFLEET_STATUS = Object.freeze({
+  INSTALLING: "installing",
   ACTIVE: "active",
   PAUSED: "paused",
   STOPPED: "stopped",
@@ -18,5 +19,5 @@ export type FleetStatus =
 // because no CLI verb sets it.
 export type FleetMutationStatus = Exclude<
   FleetStatus,
-  typeof AGENTSFLEET_STATUS.PAUSED
+  typeof AGENTSFLEET_STATUS.PAUSED | typeof AGENTSFLEET_STATUS.INSTALLING
 >;

@@ -12,7 +12,7 @@
  * command, the option validator, and the tests — imports from here (RULE UFS).
  *
  * The secret JSON field keys match the `FIELD_API_KEY` / `FIELD_BASE_URL`
- * extraction in `rustd/crates/afd_vault/src/projection.rs` (`api_key` /
+ * extraction in `rustd/crates/afd_vault/src/projection/mod.rs` (`api_key` /
  * `base_url`); the `custom`-flow flags compose a `{ provider, api_key,
  * base_url, model? }` object posted to the vault, so a non-https
  * `base_url` is rejected by a flag validator (exit 4, no

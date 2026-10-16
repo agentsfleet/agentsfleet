@@ -67,8 +67,8 @@ const authedRead = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
 function errorEnvelope(
   code: string,
   message: string,
-): { error: { code: string; message: string }; request_id: string } {
-  return { error: { code, message }, request_id: REQUEST_ID };
+): { error_code: string; detail: string; request_id: string } {
+  return { error_code: code, detail: message, request_id: REQUEST_ID };
 }
 
 describe("read-path failures — server 5xx boundedness", () => {

@@ -247,27 +247,25 @@ describe("whoamiEffect", () => {
     expect(rec.stdout).toEqual([]);
   });
 
-  test("a deployment without the route says so, not 'check the payload'", async () => {
+  test("a 404 travels out with the server's own code", async () => {
     const { exit, rec } = await run({
       responder: () =>
         Effect.fail(
           new ServerError({
-            detail: "",
+            detail: "not found",
             suggestion: "verify the request payload and retry",
             code: "HTTP_404",
             status: 404,
-            requestId: null,
+            requestId: "req_404",
           }),
         ),
     });
 
     expect(Exit.isFailure(exit)).toBe(true);
     const failure = failureOf(exit) as InstanceType<typeof ServerError>;
-    // The generic 404 sentence sends the reader after a request body this
-    // command never sends. A router matches a path before any guard runs, so
-    // the honest report is that the deployment is older than the client.
-    expect(failure.detail).toContain("older than this client");
-    expect(failure.suggestion).toContain("AGENTSFLEET_API_URL");
+    expect(failure.code).toBe("HTTP_404");
+    expect(failure.detail).toBe("not found");
+    expect(failure.requestId).toBe("req_404");
     expect(rec.stdout).toEqual([]);
   });
 

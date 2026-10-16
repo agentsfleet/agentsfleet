@@ -1,5 +1,5 @@
 // Fleet CLI top-level command Effects — status / stop / resume / kill /
-// delete. Install + update live in fleet_install.ts; list/logs/events/
+// delete. Creation and improvement use terminal chat; list/logs/events/
 // steer/secret leaves live in sibling files (fleet_list.ts,
 // fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_secret.ts).
 //
@@ -9,7 +9,6 @@
 // detail + suggestion + (for ServerError) request_id.
 
 import { Effect } from "effect";
-import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -25,6 +24,8 @@ import {
   type FleetMutationStatus,
 } from "../constants/fleet-status.ts";
 import { formatDollars } from "../constants/billing.ts";
+import { decode, FleetSchema } from "./chat/protocol.ts";
+import { IF_MATCH } from "./chat/transport.ts";
 import {
   ValidationError,
   type CliError,
@@ -47,8 +48,8 @@ const STATUS_VERB: Record<FleetMutationStatus, string> = {
 interface FleetListItem {
   readonly name?: string;
   readonly status?: string;
-  readonly events_processed?: number;
-  readonly budget_used_nanos?: number | null;
+  readonly events_processed?: string | number;
+  readonly budget_used_nanos?: string | number | null;
   readonly id?: string;
 }
 
@@ -186,15 +187,23 @@ const setStatusEffect = (
     const wsId = yield* requireWorkspaceId;
     const id = yield* requireFleetId(fleetId, `agentsfleet ${verb} <fleet_id>`);
     const token = yield* resolveAuthToken;
-
-    const res = yield* http.request<Record<string, unknown>>({
-      path: wsFleetPath(wsId, id),
+    const path = wsFleetPath(wsId, id);
+    const observed = yield* http.request<unknown>({ path, token }).pipe(
+      Effect.flatMap((body) => decode(FleetSchema, body)),
+    );
+    const res = yield* http.request<unknown>({
+      path,
       method: "PATCH",
       body: { status },
+      headers: {[IF_MATCH]: observed.etag},
       token,
-    });
+      retry: null,
+    }).pipe(Effect.flatMap((body) => decode(FleetSchema, body)));
 
-    yield* output.success(`${id} ${STATUS_PAST_TENSE[status]}.`, { ...res });
+    const outcome = res.status === status ? STATUS_PAST_TENSE[status]
+      : res.status === AGENTSFLEET_STATUS.INSTALLING ? "setup is still waiting; inspect with agentsfleet fleet show " + id
+      : res.status;
+    yield* output.success(`${id} ${outcome}.`, { ...res });
   });
 
 export const stopEffectFromId = (
@@ -235,21 +244,25 @@ export const deleteEffectFromId = (
     const id = yield* requireFleetId(fleetId, "agentsfleet delete <fleet_id>");
     const token = yield* resolveAuthToken;
 
+    const path = wsFleetPath(wsId, id);
+    const observed = yield* http.request<unknown>({path, token}).pipe(
+      Effect.flatMap((body) => decode(FleetSchema, body)),
+    );
     yield* http.request<unknown>({
-      path: wsFleetPath(wsId, id),
+      path,
       method: "DELETE",
+      headers: {[IF_MATCH]: observed.etag},
       token,
+      retry: null,
     });
 
     yield* output.success(`${id} deleted.`, { fleet_id: id, deleted: true });
   });
 
-// The status empty state names both halves of the next move: where the choices
-// are listed, and the command that installs one.
 const FLEETS_SHOWN = "Fleet status" as const;
 
 const NO_FLEETS_HINT =
-  `No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
+  "No fleets running. Create reviewed setup with: agentsfleet chat" as const;
 
 // A Fleet with a waiting gate does nothing until someone decides it, so the
 // status that reports the wait also names the command that ends it.

@@ -15,7 +15,6 @@ import { Credentials } from "../src/services/credentials.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 import { stopEffectFromId, resumeEffectFromId, killEffectFromId } from "../src/commands/fleet.ts";
-import { updateEffectFromArgs } from "../src/commands/fleet_install.ts";
 
 const MALFORMED = "not-a-uuid";
 const WORKSPACE_ID = "0192a3b4-c5d6-7e8f-9012-3456789abcde";
@@ -103,10 +102,5 @@ describe("handler id defence — a malformed id never reaches the wire", () => {
     expect(text).toContain("required");
   });
 
-  test("fleet update refuses a malformed fleet_id", async () => {
-    const text = await refusalText(
-      updateEffectFromArgs(MALFORMED, null) as Effect.Effect<unknown, unknown, never>,
-    );
-    expect(text).toContain("fleet_id");
-  });
+
 });

@@ -78,7 +78,7 @@ function methods(): string[] {
 
 describe("retry policy over a real socket", () => {
   it("a read recovers from a blip: the 503 is retried and the list arrives", async () => {
-    queue.push({ status: HTTP_SERVICE_UNAVAILABLE, body: JSON.stringify({ error: { code: "HTTP_503" } }) });
+    queue.push({ status: HTTP_SERVICE_UNAVAILABLE, body: JSON.stringify({ error_code: "HTTP_503" }) });
     queue.push({ status: HTTP_OK, body: EMPTY_LIST_BODY });
     const result = await runFleetctl([...FLEET_LIST_ARGS], { env: env() });
     assert.equal(result.code, EXIT_OK, `${result.stdout}\n${result.stderr}`);

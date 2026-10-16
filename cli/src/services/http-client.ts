@@ -63,16 +63,11 @@ const isFetchFailed = (cause: unknown): boolean =>
   ((isString(cause.message) && cause.message.toLowerCase().includes("fetch failed")) ||
     reachabilityCode(cause));
 
-const BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003" as const;
 export const ERR_WORKSPACE_NAME_EXISTS = "UZ-WORKSPACE-001" as const;
 const WORKSPACE_NAME_EXISTS_SUGGESTION =
   "run `agentsfleet workspace list`, then `agentsfleet workspace use <workspace_id>`, or choose another name";
 
 const apiErrorSuggestion = (cause: ApiError, status: number): string => {
-  if (cause.code === BUNDLE_SECRETS_MISSING) {
-    const missing = readProblemDetails(cause.body).missingSecrets;
-    if (missing && missing.length > 0) return `add: ${missing.join(", ")}`;
-  }
   if (cause.code === ERR_WORKSPACE_NAME_EXISTS) {
     return WORKSPACE_NAME_EXISTS_SUGGESTION;
   }
@@ -83,7 +78,7 @@ const apiErrorSuggestion = (cause: ApiError, status: number): string => {
 
 // The daemon writes a `user_message` for a person and a `detail` for a log.
 // The CLI rendered the log one under the ✕ glyph, so an operator read
-// "Fleet Bundle is invalid" where the daemon had already written the sentence
+// a storage diagnostic where the daemon had already written the sentence
 // naming what to fix. Prefer the human one wherever it was sent.
 const renderedDetail = (cause: ApiError): string =>
   readProblemDetails(cause.body).userMessage ?? cause.message;

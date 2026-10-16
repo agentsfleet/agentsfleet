@@ -54,7 +54,7 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
         return jsonResponse({ status: "ok", service: "agentsfleetd" });
       if (url.includes("/v1/workspaces/ws_test/fleets"))
         return jsonResponse({ items: [] });
-      return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
+      return jsonResponse({ error_code: "NOT_FOUND" }, 404);
     });
     const code = await runCli(["--json", "doctor"], {
       env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
@@ -136,7 +136,7 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
       if (url.includes("/v1/workspaces/ws_test/fleets")) {
         return jsonResponse(
-          { error: { code: "FORBIDDEN", message: "Workspace access denied" } },
+          { error_code: "FORBIDDEN", detail: "Workspace access denied" },
           403,
         );
       }

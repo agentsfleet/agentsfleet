@@ -32,13 +32,6 @@ import {
 } from "../errors/index.ts";
 import { isString } from "./guards.ts";
 
-// The status a deployment older than this client answers the identity route
-// with. A router matches a path before any guard runs, so a 404 here says
-// nothing about the credential and everything about the deployment — which is
-// why all three callers branch on it and none of them may spell it themselves
-// (RULE UFS). What each one DOES with it differs, and that stays at the branch.
-export const IDENTITY_ROUTE_ABSENT_STATUS = 404;
-
 // What the server says about the caller. Every field is required except the
 // display name, which the identity provider may never have sent.
 export interface CallerIdentity {
@@ -53,8 +46,8 @@ export interface CallerIdentity {
 
 // The failure the read can add that the transport cannot: a 200 whose body is
 // not an identity. Distinct from a refusal on purpose — the credential worked
-// and the answer did not parse, which is the server's fault or a version skew,
-// never a reason to tell somebody to sign in again.
+// and the answer did not parse, so the sentence points at the API address, not
+// at signing in.
 // The one response key this decoder reads twice — present-and-array, then
 // filtered — so it is named rather than re-spelled (RULE UFS).
 const FIELD_SCOPES = "scopes" as const;

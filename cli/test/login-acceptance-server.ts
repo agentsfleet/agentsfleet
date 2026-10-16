@@ -63,7 +63,7 @@ export const httpLayer = (
   fixture: DeviceFlowFixture,
   opts: {
     identityFails?: boolean;
-    identityAbsent?: boolean;
+    identityNotFound?: boolean;
     identityUnreadable?: boolean;
     identity?: Record<string, unknown>;
     firstVerifyFails?: boolean;
@@ -161,9 +161,8 @@ export const httpLayer = (
         // `src/lib/me-ping.ts`). Unlike the billing probe it replaced, the
         // BODY matters: login reports the person it signed in, so the shape
         // has to decode or the success line falls back.
-        // What a deployment older than this client answers: the credential is
-        // fine and the ROUTE is not there.
-        if (opts.identityAbsent) {
+        // A 404 on the identity read, which login treats as any other failure.
+        if (opts.identityNotFound) {
           return Effect.fail(
             new ServerError({
               detail: "",
@@ -174,9 +173,8 @@ export const httpLayer = (
             }),
           );
         }
-        // A deployment that HAS the route and answers 200 in a shape this
-        // client cannot decode — the version-skew case that looks like success
-        // to the transport and fails at the parse boundary.
+        // A 200 in a shape this client cannot decode: success to the transport,
+        // a failure at the parse boundary.
         if (opts.identityUnreadable) {
           return Effect.succeed({ unexpected: "shape" } as T);
         }

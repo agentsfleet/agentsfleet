@@ -45,7 +45,7 @@ import {
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { killFleet, resumeFleet, stopFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
 import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
@@ -106,7 +106,7 @@ if (!isLive) {
       let fleetId: string = "";
 
       it("install platform-ops bundle", async () => {
-        const installed = await installPlatformOpsFleet({ env });
+        const installed = await saveProbeFleet({ env });
         assert.ok(installed.id || installed.fleet_id, `install response missing id: ${JSON.stringify(installed)}`);
         const id = installed.id ?? installed.fleet_id;
         if (!id) throw new Error("install missing id");

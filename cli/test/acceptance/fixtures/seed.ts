@@ -1,14 +1,4 @@
-/**
- * Acceptance-suite seed helper.
- *
- * Onboards the worktree's canonical sample bundle as a tenant template
- * (`source_kind: "upload"`, via `template-ops.ts`), then drives
- * `agentsfleet install --library <id> --json`. Local-directory install
- * (`--from`) was removed with the two-tier model, so the seed path
- * onboards-then-installs. A unique name per call keeps each onboarded template
- * (and its fleet) distinct. Returns the parsed JSON envelope the CLI emits with
- * `--json` set.
- */
+// Native fixture setup exercises the terminal Review and explicit Save commands.
 
 import crypto from "node:crypto";
 
@@ -17,40 +7,26 @@ import {
   AGENTSFLEET_STATUS,
   TERMINAL_STATUSES,
 } from "./constants.ts";
-import { runFleetctl } from "./cli.js";
 import { FleetNotFoundError, getStatus } from "./lifecycle.ts";
 import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
-import {
-  buildConnectorProbeContent,
-  buildPlatformOpsContent,
-  buildSteerProbeContent,
-  onboardUploadTemplate,
-  readAuthContext,
-  type SampleContent,
-} from "./template-ops.ts";
+import { fixtureDefinition, saveNativeFleet } from "./native-setup.ts";
 
-export interface InstallOptions {
+export interface SaveOptions {
   readonly env: Readonly<Record<string, string>>;
-  // Total budget for onboarding, install, and readiness polling.
   readonly timeoutMs?: number;
   readonly seedFixtureSecrets?: boolean;
-  // Defaults to the per-process `ACCEPTANCE_RUN_PREFIX`. Pass a custom
-  // prefix only when a spec needs an isolated sub-namespace.
   readonly runPrefix?: string;
-  // Overrides the model the fixture pins into its `{{model}}` slot. Only the
-  // invalid-model negative needs this: it installs on an id no provider serves
-  // so the spec can pin what a mistyped model looks like from the outside.
+  // An explicit runtime reference for refusal/recovery journeys.
   readonly model?: string;
 }
 
-export interface InstalledFleet {
-  readonly id?: string;
-  readonly fleet_id?: string;
+export interface SavedFleet {
+  readonly id: string;
   readonly [key: string]: unknown;
 }
 
 const FLEET_READY_POLL_MS = 1_000;
-const DEFAULT_INSTALL_TIMEOUT_MS = 120_000;
+const DEFAULT_SAVE_TIMEOUT_MS = 120_000;
 
 function uniqueName(runPrefix: string, fixtureName: string): string {
   return `${runPrefix}-${fixtureName}-${crypto.randomBytes(3).toString("hex")}`;
@@ -91,62 +67,20 @@ async function waitForFleetActive(
   throw new Error(`fleet ${fleetId} did not become active; last status=${lastStatus ?? "unknown"}`);
 }
 
-export async function installPlatformOpsFleet(opts: InstallOptions): Promise<InstalledFleet> {
-  return installFixtureFleet(opts, "platform-ops", buildPlatformOpsContent, opts.seedFixtureSecrets !== false);
+export async function saveProbeFleet(opts: SaveOptions): Promise<SavedFleet> {
+  if (opts.seedFixtureSecrets) await ensurePlatformSecretsSeeded(opts.env, () => opts.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS);
+  const name = uniqueName(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX, "probe");
+  return saveNativeFleet(opts.env, fixtureDefinition(name), opts.model);
 }
 
-export async function installSteerProbeFleet(opts: InstallOptions): Promise<InstalledFleet> {
-  return installFixtureFleet(opts, "steer-probe", (name) => buildSteerProbeContent(name, opts.model), false);
+export async function saveSteerProbeFleet(opts: SaveOptions): Promise<SavedFleet> {
+  const fleet = await saveProbeFleet(opts);
+  const deadline = Date.now() + (opts.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS);
+  await waitForFleetActive(opts.env, fleet.id, deadline);
+  return fleet;
 }
 
-/**
- * The steer probe declaring one connector credential, so its install leaves a
- * pending grant card behind.
- *
- * The workspace must already hold `credentialName` as a connector handle — an
- * install that cannot resolve a declared credential FAILS its delivery instead
- * of parking it. `grant-ops.ts` seeds the handle.
- */
-export async function installConnectorProbeFleet(
-  opts: InstallOptions,
-  credentialName: string,
-): Promise<InstalledFleet> {
-  return installFixtureFleet(
-    opts,
-    "connector-probe",
-    (name) => buildConnectorProbeContent(name, credentialName),
-    false,
-  );
-}
-
-async function installFixtureFleet(
-  opts: InstallOptions,
-  fixtureName: string,
-  buildContent: (name: string) => Promise<SampleContent>,
-  seedSecrets: boolean,
-): Promise<InstalledFleet> {
-  const deadline = Date.now() + (opts.timeoutMs ?? DEFAULT_INSTALL_TIMEOUT_MS);
-  const runPrefix = opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
-  const ctx = await readAuthContext(opts.env);
-  if (seedSecrets) {
-    await ensurePlatformSecretsSeeded(opts.env, () => remainingTimeoutMs(deadline));
-  }
-  const content = await buildContent(uniqueName(runPrefix, fixtureName));
-  const templateId = await onboardUploadTemplate(ctx, content, remainingTimeoutMs(deadline));
-  const result = await runFleetctl(
-    ["install", "--library", templateId, "--json"],
-    { env: opts.env, timeoutMs: remainingTimeoutMs(deadline) },
-  );
-  if (result.code !== 0) {
-    throw new Error(`install exited ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`);
-  }
-  const parsed = JSON.parse(result.stdout.trim()) as InstalledFleet;
-  // Both callers fall back via `installed.id ?? installed.fleet_id`; the
-  // server's install envelope can carry either key depending on the route.
-  const fleetId = parsed.id ?? parsed.fleet_id;
-  if (!fleetId) {
-    throw new Error(`install JSON missing id/fleet_id field: ${result.stdout.trim()}`);
-  }
-  await waitForFleetActive(opts.env, fleetId, deadline);
-  return parsed;
+export async function saveConnectorProbeFleet(opts: SaveOptions, credential: string): Promise<SavedFleet> {
+  const name = uniqueName(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX, "connector-probe");
+  return saveNativeFleet(opts.env, fixtureDefinition(name, credential));
 }

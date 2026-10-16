@@ -50,7 +50,7 @@ export async function withMockApi<T>(
       const handler = routes[key];
       if (!handler) {
         return new Response(
-          JSON.stringify({ error: { code: "NOT_FOUND", message: `no mock route for ${key}` }, request_id: "req_mock_404" }),
+          JSON.stringify({ error_code: "NOT_FOUND", detail: `no mock route for ${key}`, request_id: "req_mock_404" }),
           { status: 404, headers: { "content-type": "application/json" } },
         );
       }

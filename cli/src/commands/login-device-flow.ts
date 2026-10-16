@@ -5,7 +5,7 @@
 // /approve which the CLI never touches.
 //
 // Server response shapes (confirmed against
-// rustd/crates/afd_api_tenant/src/handler/auth/session.rs and its session/
+// rustd/crates/afd_api_tenant/src/handler/auth/session/mod.rs and its session/
 // submodules):
 //
 //   POST /v1/auth/sessions

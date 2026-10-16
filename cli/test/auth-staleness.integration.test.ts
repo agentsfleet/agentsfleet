@@ -48,7 +48,7 @@ const STACK_FRAME = /^\s*at\s+/m;
 const LIST_ROUTE = `GET /v1/workspaces/${WS_ID}/fleets` as const;
 
 const expiredEnvelope = {
-  error: { code: "UZ-AUTH-003", message: "Token expired — run `agentsfleet login` to refresh" },
+  error_code: "UZ-AUTH-003", detail: "Token expired — run `agentsfleet login` to refresh",
   request_id: "req_stale_test",
 } as const;
 

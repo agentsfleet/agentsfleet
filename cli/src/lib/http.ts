@@ -29,7 +29,6 @@ export interface ProblemDetails {
    */
   readonly userMessage?: string | undefined;
   readonly requestId?: string | undefined;
-  readonly missingSecrets?: ReadonlyArray<string> | undefined;
 }
 
 export class ApiError extends Error {
@@ -137,23 +136,14 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
 const readString = (value: unknown): string | undefined =>
   isString(value) ? value : undefined;
 
-const readStringArray = (value: unknown): ReadonlyArray<string> | undefined =>
-  Array.isArray(value) && value.every((item) => isString(item))
-    ? value
-    : undefined;
-
 export function readProblemDetails(value: unknown): ProblemDetails {
   if (!isRecord(value)) return {};
   const body = value as Record<string, unknown>;
-  const nested = isRecord(body.error)
-    ? body.error as Record<string, unknown>
-    : null;
   return {
-    code: readString(nested?.code) ?? readString(body.error_code),
-    message: readString(nested?.message) ?? readString(body.detail) ?? readString(body.title),
+    code: readString(body.error_code),
+    message: readString(body.detail) ?? readString(body.title),
     userMessage: readString(body.user_message),
-    requestId: readString(nested?.request_id) ?? readString(body.request_id),
-    missingSecrets: readStringArray(body.missing_secrets),
+    requestId: readString(body.request_id),
   };
 }
 

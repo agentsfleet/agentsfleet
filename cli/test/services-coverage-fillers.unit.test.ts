@@ -39,7 +39,7 @@ describe("Credentials error path", () => {
             token: Redacted.make("tok"),
             sessionId: "sess",
             apiUrl: "https://x",
-            credentialId: null,
+            credentialId: "cred-unwritable",
           });
         }),
         credentialsLayer(process.env),

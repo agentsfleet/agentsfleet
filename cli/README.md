@@ -2,8 +2,8 @@
 
 The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.net).
 
-[![Get early access](https://img.shields.io/badge/agentsfleet-Get_early_access-5EEAD4?style=for-the-badge)](https://agentsfleet.net)
-[![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.agentsfleet.net)
+[![Get early access](https://img.shields.io/badge/agentsfleet-Get_early_access-B8F0CE?style=for-the-badge&labelColor=151716)](https://agentsfleet.net/#pricing)
+[![Docs](https://img.shields.io/badge/Docs-B8F0CE?style=for-the-badge)](https://docs.agentsfleet.net)
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
@@ -14,6 +14,10 @@ Authenticate, manage workspaces, install Fleets, tail their events, and operate 
 > General Availability (GA).
 
 ## Install
+
+**Package release pending.** The public npm package is not available yet. [Build the CLI from source](https://github.com/agentsfleet/agentsfleet#quick-start) while the release is prepared.
+
+After the package is published, install it with:
 
 ```bash
 npm install -g @agentsfleet/cli
