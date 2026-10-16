@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.14.3",
+  "orly_version": "0.14.4",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -136,7 +136,7 @@
     ".orly/audits/error-codes.sh": "sha256:7f29bd13ed9729a6e5593a20539c49d01ada1d1e12dc4ebc2dea79ba88b85a72",
     ".orly/audits/logging-rust.awk": "sha256:9b5b238ef3215a777093fd1c55758936ff4ba3807107bba497f635b43791ef56",
     ".orly/audits/logging.sh": "sha256:adc30728749037d457b0ca36a8f15042b771da695f1aa0416edc332f5733f172",
-    ".orly/audits/msid-ui.sh": "sha256:752ff4c839b5d19a41a696ed050ab51623ab1742423075cdb9bd9add0a5f67bc",
+    ".orly/audits/msid-ui.sh": "sha256:50fa3a6dd3edb5e1e75722509259c753858687213e8aba6fc4159ba84185401f",
     ".orly/audits/rule-ledger-lib.sh": "sha256:168182658aa0d53bf08bbd571f81e04d538fc5b9b0c6d0006e57c6974c083164",
     ".orly/audits/rust-error.sh": "sha256:4127d08e592d61b2b158bedfcd8e5809707398566abca735c80620be9bb9a29f",
     ".orly/audits/scope.sh": "sha256:83725913f561729377f4b913495823e749ed64de5aeb9eda8fa1b35e01ef707b",
