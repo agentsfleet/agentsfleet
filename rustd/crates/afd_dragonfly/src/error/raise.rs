@@ -34,7 +34,11 @@ pub(crate) fn classify(command: &'static str, stream: &str, source: redis::Redis
         Some(CODE_OUT_OF_MEMORY) => return Error::new(ErrorKind::Full { command }),
         _ => {}
     }
-    if source.is_connection_dropped() || source.is_io_error() {
+    // Redial can empty the driver's connection map before a socket error reaches us.
+    if source.is_connection_dropped()
+        || source.is_io_error()
+        || source.kind() == redis::ErrorKind::ClusterConnectionNotFound
+    {
         return Error::new(ErrorKind::Unreachable {
             role: "default",
             source: Box::new(source),

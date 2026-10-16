@@ -97,7 +97,7 @@ fn output(body: &serde_json::Value) -> u64 {
 // why_new=existing runtime tests use identical model and operating windows;
 // seam=none; no_claim=external provider acceptance (local HTTP fixture).
 #[tokio::test]
-async fn a_smaller_fleet_budget_clamps_output_without_rejecting_saved_settings() {
+async fn a_smaller_fleet_budget_preserves_the_saved_model_window() {
     assert_operating_budget(8192).await;
 }
 
@@ -122,9 +122,15 @@ async fn assert_operating_budget(budget: u32) {
         let output = output(&seen[0].body);
         assert!(output > 0, "{wire:?}");
         assert!(
-            output + seen[0].raw.len() as u64 <= u64::from(CONTEXT.min(budget)),
-            "{wire:?}: output {output}, input {} exceeds the effective context",
+            output + seen[0].raw.len() as u64 <= u64::from(CONTEXT),
+            "{wire:?}: output {output}, input {} exceeds the physical context",
             seen[0].raw.len()
         );
+        if budget < CONTEXT {
+            assert!(
+                output > u64::from(budget),
+                "{wire:?}: operating cap is not a physical limit"
+            );
+        }
     }
 }

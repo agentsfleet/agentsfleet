@@ -45,7 +45,6 @@ pub(crate) struct Turns {
     model: DynModel<Completion>,
     settings: ModelInference,
     model_context_tokens: u32,
-    context_tokens: u32,
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
@@ -73,7 +72,6 @@ impl Turns {
             model,
             settings: settings.clone(),
             model_context_tokens: policy.model_context_tokens,
-            context_tokens: policy.context.context_cap_tokens,
             lease_id: lease_id.into(),
             provider: policy.provider.as_ref().into(),
         }
@@ -107,7 +105,7 @@ impl Turns {
         let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
             .map_err(raise::configuration)?;
         let built = route
-            .bound_output(request.model, built, self.context_tokens)
+            .bound_output(request.model, built)
             .map_err(raise::configuration)?;
         self.model
             .stream(built)

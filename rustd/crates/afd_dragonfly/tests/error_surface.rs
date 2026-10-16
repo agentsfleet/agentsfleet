@@ -14,6 +14,26 @@ use std::error::Error as _;
 
 use afd_dragonfly::error::one_of_each_kind;
 
+/// During redial the driver can have no connections before it reports an I/O error.
+#[test]
+fn a_cluster_without_connections_is_unavailable_and_keeps_the_driver_cause() {
+    let (_label, failure) = one_of_each_kind()
+        .into_iter()
+        .find(|(label, _)| *label == "unreachable")
+        .expect("the public error samples include an unreachable cluster");
+    assert!(failure.is_unavailable());
+    assert!(!failure.is_command());
+    assert_eq!(
+        failure.code(),
+        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
+    );
+    let source = failure
+        .source()
+        .and_then(|source| source.downcast_ref::<Box<redis::RedisError>>())
+        .expect("the typed driver cause survives classification");
+    assert_eq!(source.kind(), redis::ErrorKind::ClusterConnectionNotFound);
+}
+
 /// Every kind renders, carries its code, and says what went wrong.
 #[test]
 fn test_every_kind_renders_with_its_code() {
