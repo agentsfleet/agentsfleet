@@ -1,0 +1,161 @@
+//! Taking connections off the listener, one task each.
+//!
+//! Its own module rather than a block in `serve`, and the cut is where the
+//! concerns already part: `serve` decides what this process IS — which knobs,
+//! which pools, which plane — and this decides what happens to one socket once
+//! it arrives. The seam between them is the `Router`, which by this point is
+//! built and shared.
+//!
+//! # The accept syscall is a seam, and the loop must survive it failing
+//!
+//! `accept()` fails for reasons no test can arrange — a descriptor table that
+//! is full, a peer that reset between the SYN and the accept — and a loop that
+//! returned on the first one would take the daemon down over a transient the
+//! next call would have shrugged off.
+
+use afd_api::connection_builder;
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
+
+use super::drain::Drain;
+
+/// The accept syscall, as a seam.
+///
+/// M-MOCKABLE-SYSCALLS. `accept()` fails for reasons a test cannot arrange —
+/// the process is out of file descriptors, the peer reset between the SYN and
+/// the accept — and the loop's answer to that (log it, keep serving) is the
+/// difference between one dropped client and a daemon that stops accepting.
+/// Making the syscall a trait is what lets that answer be tested at all.
+pub trait Acceptor: Send + 'static {
+    /// Waits for the next connection.
+    ///
+    /// # Errors
+    /// Returns whatever the underlying accept returned. A failure is one
+    /// client, not the end of serving, and the loop treats it that way.
+    fn accept(&self) -> impl Future<Output = std::io::Result<tokio::net::TcpStream>> + Send;
+}
+
+impl Acceptor for TcpListener {
+    async fn accept(&self) -> std::io::Result<tokio::net::TcpStream> {
+        Self::accept(self).await.map(|(stream, _peer)| stream)
+    }
+}
+
+/// Serves until cancelled, spawning one supervised task per connection.
+pub(super) async fn accept_loop<A: Acceptor>(
+    listener: A,
+    router: axum::Router,
+    drain: Drain,
+    abort: CancellationToken,
+) {
+    // Before the first accept, so a drain landing immediately still knows to
+    // wait for this loop rather than reading a count it can still join.
+    drain.attach();
+    while let Some(accepted) = next_accepted(&listener, &drain, &abort).await {
+        let stream = match accepted {
+            Ok(stream) => stream,
+            Err(error) => {
+                log_accept_failure(&error);
+                continue;
+            }
+        };
+        spawn_connection(stream, &router, &drain, &abort);
+    }
+    // Dropped HERE, before the signal, not at the end of the function: a
+    // waiter woken by `stopped_accepting` must find a port that has already
+    // stopped answering, and a listener still alive for the two statements
+    // after the signal accepts one more connection into its backlog.
+    drop(listener);
+    // However the loop ended, no further connection can now be accepted or
+    // counted. Saying so is what lets a drain snapshot a settled number.
+    drain.stopped_accepting();
+}
+
+/// The next accept, or `None` once either token says to stop accepting.
+async fn next_accepted<A: Acceptor>(
+    listener: &A,
+    drain: &Drain,
+    abort: &CancellationToken,
+) -> Option<std::io::Result<tokio::net::TcpStream>> {
+    tokio::select! {
+        // Cancellation is checked against a genuinely blocked accept, not
+        // between iterations — the property Dimension 7.5 exists to prove.
+        //
+        // The DRAIN's token stops the loop on the graceful path. Stopping
+        // drops `listener`, so the port stops answering and a new
+        // connection is refused by the kernel, while the connections
+        // already accepted keep running (`drain`).
+        () = drain.accepting().cancelled() => None,
+        // The supervisor's token stops it too. A shutdown drains first, so
+        // on that path this arm never wins; a cancel that skipped the drain
+        // otherwise left the loop accepting until the supervisor's join
+        // timeout gave up on it, ten seconds per daemon.
+        () = abort.cancelled() => None,
+        accepted = listener.accept() => Some(accepted),
+    }
+}
+
+/// Logs one failed accept. The loop keeps serving: a failure is one client.
+fn log_accept_failure(error: &std::io::Error) {
+    // Hoisted: the `log` bridge duplicates field expressions and
+    // llvm-cov scores the copy that never runs.
+    let reason = error.to_string();
+    tracing::warn!(
+        reason,
+        event = "accept_failed",
+        "accept failed; still serving"
+    );
+}
+
+/// Serves one accepted connection on its own task, counted by `drain` and cut
+/// at `abort`.
+fn spawn_connection(
+    stream: tokio::net::TcpStream,
+    router: &axum::Router,
+    drain: &Drain,
+    abort: &CancellationToken,
+) {
+    let service = router.clone();
+    let connection_token = abort.clone();
+    // Claimed BEFORE the spawn, deliberately: taken inside, there is a
+    // window where the connection exists and is not counted, and a drain
+    // landing in it would see zero and return while this request runs.
+    let guard = drain.enter();
+    tokio::spawn(async move {
+        // Held for the whole task, released however it ends — returned,
+        // errored, or cut at `abort`. Only `Drop` covers all three.
+        let _guard = guard;
+        // Bound to a local, not spelled inline: `serve_connection` BORROWS
+        // the builder, where the http1-only one consumed a copy of it.
+        let builder = connection_builder();
+        let served = builder.serve_connection(
+            TokioIo::new(stream),
+            hyper::service::service_fn(move |request| {
+                let service = service.clone();
+                async move { tower::ServiceExt::oneshot(service, request).await }
+            }),
+        );
+        tokio::select! {
+            () = connection_token.cancelled() => {}
+            result = served => drop(result),
+        }
+    });
+}
+
+/// Runs `accept_loop` over any [`Acceptor`], for tests that need a faulty one.
+///
+/// The production path goes through [`boot`], which supplies a real
+/// `TcpListener`; this exists so a suite can supply one that fails.
+#[cfg(feature = "test-util")]
+pub async fn serve_accepts<A: Acceptor>(
+    listener: A,
+    router: axum::Router,
+    drain: Drain,
+    abort: CancellationToken,
+) {
+    accept_loop(listener, router, drain, abort).await;
+}
+
+#[cfg(test)]
+mod tests;

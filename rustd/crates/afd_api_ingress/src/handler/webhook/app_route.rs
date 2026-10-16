@@ -21,12 +21,9 @@
 //!
 //! # Why repair traffic is dropped here
 //!
-//! Repair evidence — `deployment_status` and repair-branch traffic — has a
-//! reader, `afd_runner::sweep::repair`, and no writer, so those events fall
-//! through to the ordinary classification and are dropped as unsupported.
-//! Dropping is the safe direction: the repair sweeper waits rather than acting
-//! on evidence it never received. Until a writer lands, `deployment_status` is
-//! a documented gap rather than a silent one.
+//! Repair evidence — `deployment_status` and repair-branch traffic — has no
+//! reader and no writer in this daemon, so those events fall through to the
+//! ordinary classification and are dropped as unsupported.
 
 use std::sync::Arc;
 

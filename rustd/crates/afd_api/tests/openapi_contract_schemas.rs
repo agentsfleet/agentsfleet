@@ -52,12 +52,6 @@ fn test_the_run_egress_rules_and_the_runner_posture_are_two_schemas() {
     );
 }
 
-/// The one route answering a tar: where a runner fetches a bundle.
-const BUNDLE: &str = "/v1/runners/me/bundles/{content_hash}";
-
-/// The media type a bundle is published under.
-const TAR: &str = "application/x-tar";
-
 /// The content of the `200` a `GET` at `path` answers, when one is described.
 fn ok_content<'d>(document: &'d serde_json::Value, path: &str) -> Option<&'d serde_json::Value> {
     document
@@ -76,40 +70,13 @@ fn media_types(document: &serde_json::Value, path: &str) -> Option<Vec<String>> 
         .map(|content| content.keys().cloned().collect())
 }
 
-/// The component schema the bundle's tar body references.
-fn tar_schema(document: &serde_json::Value) -> Option<&serde_json::Value> {
-    let name = ok_content(document, BUNDLE)?
-        .get(TAR)?
-        .get("schema")?
-        .get("$ref")?
-        .as_str()?
-        .strip_prefix(SCHEMA_PREFIX)?;
-    document.get("components")?.get("schemas")?.get(name)
-}
-
-/// A tar is binary bytes under its own media type, and a stream is events.
+/// A stream is published as events, never as JSON.
 ///
-/// utoipa reads a byte slice as an array of integers, which a generated client
-/// parses as JSON and fails on the first byte of a tar; the document names a
-/// binary string instead. Neither the body gate nor the reference gate would
-/// notice that reverting, nor a stream published under `application/json`.
+/// A stream published under `application/json` would be parsed whole by every
+/// generated client, which waits for a body that never ends.
 #[test]
-fn test_the_tar_and_the_streams_publish_under_their_own_media_types() {
+fn test_the_streams_publish_under_their_own_media_type() {
     let document = document();
-    let tar = tar_schema(&document);
-
-    assert_eq!(media_types(&document, BUNDLE), Some(vec![TAR.to_owned()]));
-    assert_eq!(
-        tar.and_then(|schema| schema.get("type"))
-            .and_then(serde_json::Value::as_str),
-        Some("string")
-    );
-    assert_eq!(
-        tar.and_then(|schema| schema.get("format"))
-            .and_then(serde_json::Value::as_str),
-        Some("binary"),
-        "a byte array is parsed as JSON by every generated client"
-    );
     for path in [
         "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
         "/v1/workspaces/{workspace_id}/events/stream",

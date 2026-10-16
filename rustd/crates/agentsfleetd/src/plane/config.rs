@@ -1,7 +1,7 @@
 //! The three parameter objects the serving plane is built from.
 //!
-//! Split from `plane.rs` at the file cap, along the line between what the plane
-//! IS and what it is HANDED. Each of these exists for the same reason — a
+//! They sit apart from `mod.rs` along the line between what the plane IS and
+//! what it is HANDED. Each of these exists for the same reason — a
 //! constructor that already takes seven arguments cannot take eight more
 //! without a caller being able to transpose two of them silently — so they
 //! belong together, and the plane itself is easier to read without them
@@ -21,7 +21,6 @@ use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
 use afd_sse::Live;
 
-use crate::bundles::Stores;
 use crate::identity::{Capabilities, Sessions, SignupWriteback};
 
 /// Everything [`ServingPlane::new`] is assembled from.
@@ -29,11 +28,12 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 /// A parameter object rather than eight positional arguments, and not only to
 /// satisfy a lint. Each field is CONNECTED or BUILT before it gets here, which
 /// is the property the constructor's own note is about — boot has already
-/// proven the pools answer, resolved the snapshot store's absence into a value,
-/// and read this deployment's platform credentials out of the vault. Naming
+/// proven the pools answer and read this deployment's platform credentials out of the vault. Naming
 /// them at the call site is what makes that readable in one place.
 #[derive(Debug)]
 pub struct PlaneParts {
+    /// Fixed-origin authoring transport, built before opening datastores.
+    pub authoring_transport: afd_authoring::Network,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
     /// The API role's Dragonfly, open and proven.
@@ -51,26 +51,17 @@ pub struct PlaneParts {
     pub sessions: Sessions,
     /// What tells the provider a new account's tenant.
     pub signup_writeback: SignupWriteback,
-    /// The object-store handles, read and upload, over one owner.
-    ///
-    /// Split inside [`ServingPlane::new`] rather than out here, because the two
-    /// halves are one configuration decision: a deployment either set the R2
-    /// knobs or did not, and handing over two independently-built values would
-    /// let a caller pair a live reader with an absent writer.
-    pub stores: Stores,
     /// The credential broker, built before the plane because it reads the
     /// vault, which is asynchronous where this constructor is not.
     pub broker: Arc<afd_credential::credential::Broker>,
     /// Where product events go, holding its own absence.
     ///
-    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: a
-    /// deployment naming no `PostHog` project reports nothing, and a caller that
+    /// A deployment naming no `PostHog` project reports nothing, and a caller that
     /// had to ask before reporting is a caller that can forget.
     pub analytics: Analytics,
     /// The live-stream surface, holding its own absence.
     ///
-    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: an
-    /// instance whose pub/sub connection could not be opened still SERVES the
+    /// An instance whose pub/sub connection could not be opened still SERVES the
     /// stream routes, silently, and `afd_sse::Live::detached` is that case as a
     /// value rather than as a `None` this file would unwrap into a refusal.
     /// Built before the plane because opening the hub is asynchronous where

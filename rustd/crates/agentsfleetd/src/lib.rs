@@ -6,6 +6,7 @@
 //! exactly what wants testing and exactly what a `main` hides.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 
 // `unused_crate_dependencies` is a crate attribute, so it also grades the lib's
 // own test target — and fires there for a dev-dependency only the suites in
@@ -14,16 +15,16 @@
 // everything else. The first three belong to the end-to-end suite; the runner
 // crates and `tempfile` drive the Rust runner through a lease against it; the
 // egress, provider and tool crates, `futures-util` and the three TLS crates
-// carry the bundle suite's real loop to its HTTPS fakes.
+// carry the corpus suite's real loop to its HTTPS fakes.
 #[cfg(test)]
 use {
-    afd_wire as _, afr_agent as _, afr_egress as _, afr_executor as _, afr_providers as _,
-    afr_sandbox as _, afr_supervisor as _, afr_telemetry as _, afr_tools as _, futures_util as _,
-    rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _, tokio_rustls as _,
+    afd_fleet_runtime as _, afd_wire as _, afr_agent as _, afr_egress as _, afr_executor as _,
+    afr_providers as _, afr_sandbox as _, afr_supervisor as _, afr_telemetry as _, afr_tools as _,
+    futures_util as _, rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _,
+    tokio_rustls as _,
 };
 
 pub mod banner;
-mod bundles;
 pub mod cli;
 pub mod credentials;
 pub mod daemon;
@@ -53,6 +54,6 @@ pub use self::inventory::{
 };
 pub use self::migrate::migrate;
 pub use self::plane::{Authenticator, ServingPlane, Shared};
-pub use self::preflight::{BootConfig, BundleStoreConfig, IdentityConfig, preflight};
+pub use self::preflight::{BootConfig, IdentityConfig, preflight};
 pub use self::probes::{LiveDependencies, PROBE_TIMEOUT};
 pub use self::supervisor::{JOIN_TIMEOUT, ShutdownReport, Supervisor};

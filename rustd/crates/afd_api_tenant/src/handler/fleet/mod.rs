@@ -1,4 +1,4 @@
-//! The workspace's fleets over HTTP: the list, and the install.
+//! The shared workspace fleet directory; native setup lives in `native`.
 //!
 //! The item half — read, edit, purge — is [`detail`], split along the line the
 //! route table already draws: everything here is addressed by a workspace
@@ -13,42 +13,31 @@
 //! never a handler deciding whether it may.
 
 pub mod detail;
-mod detail_request;
-mod install_request;
 pub mod memory;
 pub mod memory_access;
 mod memory_request;
 pub mod message;
 pub mod message_steer;
+pub(crate) mod native;
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_api_wire::fleet::{
-    FleetSummary, FleetsResponse, InstalledFleetResponse, Triggers, WebhookUrl,
-};
+use afd_api_wire::fleet::{FleetSummary, FleetsResponse, Triggers};
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor;
-use afd_fleet_lifecycle::{After, FleetPage, FleetRow, Installed};
+use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
 use axum::Json;
-use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
-use http::StatusCode;
 use serde_json::value::RawValue;
 
-pub use self::install_request::{
-    DETAIL_LIBRARY_AMBIGUOUS, DETAIL_LIBRARY_REQUIRED, DETAIL_MALFORMED_JSON, DETAIL_NAME_INVALID,
-    DETAIL_SLACK_CHANNEL_ID, DETAIL_TENANT_LIBRARY_ID,
-};
-use self::install_request::{read_body, read_install};
 use crate::auth::WorkspaceContext;
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceFleets as _};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "fleet_list_failed";
-const EVENT_INSTALL: &str = "fleet_install_failed";
 
 /// The page a caller naming no `limit` gets.
 ///
@@ -59,20 +48,11 @@ const LIST_LIMIT_DEFAULT: u32 = 20;
 /// The most rows one list page may carry.
 const LIST_LIMIT_MAX: u32 = 100;
 
-/// The pre-guideline cursor spelling, refused outright.
-///
-/// Not ignored: a caller still sending it would silently read page one forever,
-/// so the rename is reported rather than absorbed.
-const QUERY_CURSOR_RETIRED: &str = "cursor";
-
 /// The `starting_after` parameter's name.
 const QUERY_STARTING_AFTER: &str = "starting_after";
 
 /// The `limit` parameter's name.
 const QUERY_LIMIT: &str = "limit";
-
-/// The refusal a caller still paging with `cursor` earns.
-pub const DETAIL_RETIRED_CURSOR: &str = "cursor is retired on this list; page with starting_after";
 
 /// The refusal a `starting_after` this daemon never issued earns.
 pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
@@ -91,8 +71,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
     ),
     params(
         afd_http::openapi::path::Workspace,
-        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.
-"),
+        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page."),
         ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
     ),
     responses(
@@ -112,9 +91,6 @@ pub(crate) async fn list<D: Services>(
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
-    if parameter(&query, QUERY_CURSOR_RETIRED).is_some() {
-        return Err(Refusal::malformed(DETAIL_RETIRED_CURSOR));
-    }
     let limit = limit_or_default(parameter(&query, QUERY_LIMIT));
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
 
@@ -124,72 +100,6 @@ pub(crate) async fn list<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
     Ok(Json(page_response(&page)).into_response())
-}
-
-/// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post,
-    path = "/v1/workspaces/{workspace_id}/fleets",
-    tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "create_fleet",
-    summary = "Create a fleet",
-    description = concat!(
-        "Creates a fleet from one library entry. Use either ",
-        "`platform_library_id` or `tenant_library_id`. The service creates a ",
-        "default API trigger when the library has no trigger. ",
-        "Set `slack_channel_id` so the fleet answers mentions in that Slack channel. ",
-    ),
-    request_body = afd_api_wire::fleet::InstallFleetRequest,
-    params(
-        afd_http::openapi::path::Workspace,
-    ),
-    responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = InstalledFleetResponse),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 424, description = afd_http::openapi::FAILED_DEPENDENCY),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
-    ),
-))]
-pub(crate) async fn install<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let request = read_body(&body)?;
-    let install = read_install(&request)?;
-
-    let installed = services
-        .fleets()
-        .install(&owned.workspace, &install, services.now())
-        .await
-        .map_err(short_a_credential_or(EVENT_INSTALL))?;
-    Ok((
-        StatusCode::CREATED,
-        Json(installed_response(&installed, services.deployment())),
-    )
-        .into_response())
-}
-
-/// Renders an install failure, listing the credentials when that is the cause.
-///
-/// [`super::detail`]'s `stale_or` in the other direction: a 424 whose body
-/// names the secrets this workspace has yet to store, so an operator adds
-/// exactly those rather than reading the bundle's manifest to work out which
-/// of its declared names they are short.
-fn short_a_credential_or(
-    event: &'static str,
-) -> impl FnOnce(afd_fleet_lifecycle::Error) -> Refusal {
-    move |error| match error.missing_secrets() {
-        Some(missing) => Refusal::missing_secrets(error.code(), error.detail(), missing.to_vec()),
-        None => Refusal::at(event)(error),
-    }
 }
 
 /// The page size asked for, clamped, or the default.
@@ -240,7 +150,7 @@ fn page_response(page: &FleetPage) -> FleetsResponse<'_> {
     });
     FleetsResponse {
         items: page.rows.iter().map(summary).collect(),
-        total: page.rows.len(),
+        total: None,
         next_cursor,
     }
 }
@@ -254,41 +164,17 @@ fn summary(row: &FleetRow) -> FleetSummary<'_> {
         created_at: row.created_at_ms,
         updated_at: row.updated_at_ms,
         triggers: triggers(row.triggers.as_ref()),
-        events_processed: row.events_processed,
-        budget_used_nanos: row.budget_used_nanos,
+        events_processed: row.events_processed.to_string(),
+        budget_used_nanos: row.budget_used_nanos.to_string(),
     }
 }
 
 /// The stored trigger projection, spliced as raw JSON.
 ///
-/// Text that will not parse renders as `null`, which is
-/// `parseFromSlice(…) catch null` kept exactly: a legacy row with a malformed
-/// projection shows no triggers rather than failing the whole page.
+/// The projection is cast from a `JSONB` column, so it always parses; the
+/// `.ok()` is the conversion's error type, not a path a stored row takes.
 pub(super) fn triggers(stored: Option<&afd_fleet_lifecycle::Triggers>) -> Triggers {
     stored.and_then(|projection| RawValue::from_string(projection.as_json_text().to_owned()).ok())
-}
-
-/// The install's reply, with the webhook addresses this deployment answers on.
-fn installed_response<'a>(
-    installed: &'a Installed,
-    deployment: &'a str,
-) -> InstalledFleetResponse<'a> {
-    InstalledFleetResponse {
-        fleet_id: Cow::Borrowed(installed.id.as_str()),
-        name: Cow::Borrowed(&installed.name),
-        status: Cow::Borrowed(installed.status.as_str()),
-        webhook_urls: installed
-            .webhook_sources
-            .iter()
-            .map(|source| WebhookUrl {
-                source: Cow::Borrowed(source),
-                url: Cow::Owned(format!(
-                    "{deployment}/v1/webhooks/{}/{source}",
-                    installed.id.as_str()
-                )),
-            })
-            .collect(),
-    }
 }
 
 #[cfg(test)]

@@ -95,20 +95,12 @@ fn an_api_key_summary_never_carries_the_key() {
         key_name: Cow::Borrowed(TEXT),
         active: true,
         created_at: WHEN,
-        last_used_at: None,
         revoked_at: None,
     };
     assert_shape(
         &summary,
         "ApiKeySummary",
-        &[
-            "id",
-            "key_name",
-            "active",
-            "created_at",
-            "last_used_at",
-            "revoked_at",
-        ],
+        &["id", "key_name", "active", "created_at", "revoked_at"],
     );
 
     // The listing shape must not be able to grow the secret back.
@@ -120,19 +112,17 @@ fn an_api_key_summary_never_carries_the_key() {
 
 #[test]
 fn absent_optionals_stay_on_the_wire_as_null() {
-    let never_used = ApiKeySummary {
+    let live = ApiKeySummary {
         id: Cow::Borrowed(TEXT),
         key_name: Cow::Borrowed(TEXT),
         active: true,
         created_at: WHEN,
-        last_used_at: None,
         revoked_at: None,
     };
-    let document = serde_json::to_value(&never_used).expect("a wire shape serialises");
+    let document = serde_json::to_value(&live).expect("a wire shape serialises");
 
     // Present AND null, not omitted. A dashboard branching on
     // `"revoked_at" in row` reads the two differently.
-    assert_eq!(document.get("last_used_at"), Some(&Value::Null));
     assert_eq!(document.get("revoked_at"), Some(&Value::Null));
 }
 

@@ -8,7 +8,7 @@
 
 use crate::e2e::{GOOD_KEK, Scenario, scenario};
 use crate::reads::event_column;
-use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, json, post};
+use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, fleet_poll, json, post};
 use afd_approval::{Decision, Inbox};
 use afd_core::id::Uuid7;
 use afd_crypto::{entropy::Entropy, secret::Kek};
@@ -43,10 +43,29 @@ async fn connect_and_declare(run: &Scenario) {
         )
         .await
         .expect("existing connection");
-    sqlx::query("UPDATE core.fleets SET config_json = jsonb_set(config_json, '{x-agentsfleet,credentials}', $2::jsonb) WHERE id = $1::uuid")
-        .bind(&run.fleet).bind(json!([SERVICE]).to_string())
-        .execute(&mut *run.booted.database.acquire().await.expect("connection"))
-        .await.expect("declare credential");
+    // Declared the way a person declares it: an Apply selecting a setup that
+    // names the credential. The lease reads the selected revision, never
+    // `config_json`.
+    let mut connection = run.booted.database.acquire().await.expect("connection");
+    let mut config: serde_json::Value = sqlx::query_scalar::<_, String>(
+        "SELECT config_json::text FROM core.fleets WHERE id = $1::uuid",
+    )
+    .bind(&run.fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .map(|text| serde_json::from_str(&text).expect("stored config JSON"))
+    .expect("the fleet's config reads");
+    config["x-agentsfleet"]["credentials"] = json!([SERVICE]);
+    let definition =
+        crate::e2e_native::definition(&config.to_string(), crate::e2e_seed::FIXTURE_INSTRUCTIONS);
+    crate::e2e_native::reselect(
+        &mut connection,
+        &run.fleet,
+        &definition,
+        run.seeded_at.as_millis(),
+    )
+    .await;
+    drop(connection);
     // Prefer this fixture's fleet over unrelated ready marks left by other suites.
     Leases::new(
         run.booted.database.clone(),
@@ -115,7 +134,7 @@ where
             .await
             .expect("expire the previous no-work claim");
 
-        let response = post(http, run, LEASES, &json!({})).await;
+        let response = post(http, run, LEASES, &fleet_poll()).await;
         // The body is in the message on purpose: a bare status says a poll
         // failed and nothing about why, and the daemon's own log is not
         // captured by this suite.

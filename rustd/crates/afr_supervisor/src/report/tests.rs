@@ -23,7 +23,7 @@ fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
 
 #[test]
 fn a_completed_run_reports_its_answer_tokens_and_timings() {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Ran {
         output: answer(),
         first_chunk: Some(Duration::from_millis(120)),
@@ -60,7 +60,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
 
 #[test]
 fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let mut output = answer();
     output.result = ExecutionResult {
         outcome: ResultOutcome::Failed(Failure {
@@ -91,7 +91,7 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
 
 #[test]
 fn a_run_that_never_finished_still_reports_what_it_spent() {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Failed {
         class: FailureClass::RunnerCrash,
         detail: "the engine broke mid-run",
@@ -124,7 +124,7 @@ fn a_run_that_never_finished_still_reports_what_it_spent() {
 
 #[test]
 fn a_run_that_never_started_reports_zero_usage() {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Failed {
         class: FailureClass::StartupPosture,
         detail: "no sandbox",
@@ -153,7 +153,7 @@ fn a_count_past_the_wire_width_saturates() {
 
 #[test]
 fn a_finished_run_bills_its_result_not_the_meter() {
-    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Ran {
         output: answer(),
         first_chunk: None,

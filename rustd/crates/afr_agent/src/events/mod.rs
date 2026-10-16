@@ -70,7 +70,7 @@ impl<'run> Live<'run> {
         self.sink
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: Cow::Owned(ready),
-                text_kind: Some(kind),
+                text_kind: kind,
                 first_chunk_after_ms,
                 stream_start: first,
                 stream_contiguous: true,

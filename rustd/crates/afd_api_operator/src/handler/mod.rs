@@ -3,4 +3,4 @@
 pub(crate) mod admin;
 pub(crate) mod operator;
 
-pub(crate) use afd_http::handler::{library_onboard, malformed, parse_id, refuse, reject};
+pub(crate) use afd_http::handler::{malformed, parse_id, refuse, reject};

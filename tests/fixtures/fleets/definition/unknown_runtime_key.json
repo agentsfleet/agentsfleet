@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "A refusal fixture.",
+  "instructions_md": "`contxt` is not a runtime key.",
+  "config": {
+    "name": "typo-setup",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "cron",
+          "schedule": "0 9 * * *"
+        }
+      ],
+      "tools": [
+        "agentmail"
+      ],
+      "budget": {
+        "daily_nanos": "1000000000"
+      },
+      "contxt": {
+        "foo": "bar"
+      }
+    }
+  }
+}

@@ -9,7 +9,6 @@ use afr_egress::Resolve;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 
-use crate::bundles::BundleCache;
 use crate::client::ControlPlane;
 use crate::halt::Halt;
 use crate::holds::Holds;
@@ -30,8 +29,8 @@ pub(crate) struct Lessee {
     pub(crate) agent: Box<dyn AgentEngine>,
     /// Where reports wait to be posted.
     pub(crate) spool: ReportSpool,
-    /// Verified fleet bundles.
-    pub(crate) bundles: BundleCache,
+    /// Private answers and independent content-free settlement.
+    pub(crate) authoring_spool: crate::report_spool::authoring::Spool,
     /// Bound repositories' mirrors, fetched outside every sandbox.
     pub(crate) mirrors: Mirrors,
     /// What every sandbox enforces.

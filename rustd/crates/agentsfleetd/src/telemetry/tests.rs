@@ -14,8 +14,7 @@ use afd_otlp::Encoding;
 
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{
-    GRAFANA_API_KEY_KNOB, GRAFANA_INSTANCE_KNOB, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB,
-    OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, preflight,
+    OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, preflight,
 };
 use crate::serve::{attach_exports, open_telemetry};
 use crate::supervisor::Supervisor;
@@ -148,8 +147,8 @@ async fn the_json_protocol_builds_a_transport() {
 /// The daemon builds the same pipelines from the same knobs after the move.
 ///
 /// The builder left this crate for `afd_otlp`, and the risk of a move is a
-/// knob that stops reaching the exporter on the way: a vendor credential that
-/// no longer becomes a header, a JSON request that posts protobuf, a timeout
+/// knob that stops reaching the exporter on the way: a credential header that
+/// never arrives, a JSON request that posts protobuf, a timeout
 /// read in the wrong unit. So every knob the daemon reads is set at once, and
 /// what reaches the transport is read back — endpoint per signal, encoding,
 /// timeout, header names — then the transport is built, log pipeline
@@ -160,9 +159,10 @@ async fn test_daemon_otlp_install_is_unchanged() {
         (OTEL_ENDPOINT_KNOB, "http://otelcol-dev.internal:4318/"),
         (OTEL_PROTOCOL_KNOB, "http/json"),
         (OTEL_TIMEOUT_KNOB, "1500"),
-        (OTEL_HEADERS_KNOB, "x-scope-orgid=tenant-a"),
-        (GRAFANA_INSTANCE_KNOB, "123456"),
-        (GRAFANA_API_KEY_KNOB, "fixture-token-not-a-credential"),
+        (
+            OTEL_HEADERS_KNOB,
+            "Authorization=Basic MTIzNDU2OmZpeHR1cmU=,x-scope-orgid=tenant-a",
+        ),
     ]);
     let otlp = config.otlp().expect("an endpoint is configured");
 
@@ -183,7 +183,7 @@ async fn test_daemon_otlp_install_is_unchanged() {
     assert_eq!(
         names,
         vec!["Authorization", "x-scope-orgid"],
-        "the vendor pair still becomes a credential header beside the standard ones"
+        "every configured header reaches the transport"
     );
     assert_eq!(otlp.source(), OTEL_ENDPOINT_KNOB);
 

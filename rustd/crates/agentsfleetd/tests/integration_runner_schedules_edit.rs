@@ -159,9 +159,13 @@ async fn test_fleet_schedule_patch_is_idempotent() {
     );
     assert_eq!(first["message"], "daily check");
     assert_eq!(first["status"], "paused");
-    // The instant of the write is the one field a second write moves.
+    // A second write moves two fields: its instant, and the version it mints,
+    // which a later If-Match must name. Everything else is unchanged.
+    assert_ne!(first["etag"], second["etag"], "each write is a new version");
     for view in [&mut first, &mut second] {
-        view.as_object_mut().expect("a view").remove("updated_at");
+        let view = view.as_object_mut().expect("a view");
+        view.remove("updated_at");
+        view.remove("etag");
     }
     assert_eq!(first, second);
 

@@ -1,4 +1,4 @@
-//! Dimension 3.2 — the standard names configure, the vendor names bridge.
+//! Telemetry resolves from the OpenTelemetry specification's names alone.
 
 #![expect(
     clippy::expect_used,
@@ -7,20 +7,16 @@
 
 use afd_core::env::MapEnv;
 
-use super::{
-    AUTHORIZATION, GRAFANA_API_KEY_KNOB, GRAFANA_ENDPOINT_KNOB, GRAFANA_INSTANCE_KNOB,
-    OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, otlp,
-};
+use super::{OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, otlp};
 
 /// Where a deployment configured with the standard name sends.
 const STANDARD_ENDPOINT: &str = "https://collector.example.test";
 
-/// Where one still carrying the vendor name sends.
-const VENDOR_ENDPOINT: &str = "https://otlp.vendor.example.test";
+/// The header a basic credential is presented in.
+const AUTHORIZATION: &str = "Authorization";
 
-/// A vendor account, and a token that is neither real nor secret.
-const VENDOR_INSTANCE: &str = "123456";
-const VENDOR_KEY: &str = "fixture-token-not-a-credential";
+/// A credential that is neither real nor secret, as a header value.
+const CREDENTIAL: &str = "Basic Zml4dHVyZS1ub3QtYS1jcmVkZW50aWFs";
 
 /// Resolves `pairs`, asserting nothing was faulted.
 fn resolved<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> super::OtlpConfig {
@@ -52,96 +48,12 @@ fn no_endpoint_is_no_export_and_no_fault() {
     assert!(faults.is_empty(), "an absent collector is not a fault");
 }
 
-/// The vendor spelling alone still exports, which is what a rollback needs.
+/// The endpoint names the knob it came from, so a boot line can say which.
 #[test]
-fn the_vendor_endpoint_alone_still_exports() {
-    let config = resolved([(GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT)]);
-
-    assert_eq!(config.signal_endpoint(""), VENDOR_ENDPOINT);
-    assert_eq!(
-        config.source(),
-        GRAFANA_ENDPOINT_KNOB,
-        "the source names the knob it came from, so a boot line can say which"
-    );
-}
-
-/// With both set, the standard name wins.
-///
-/// The property that makes it an ALIAS. If the vendor spelling could outrank
-/// the name it stands in for, a deployment that had adopted the standard one
-/// would keep exporting to wherever the leftover variable pointed — silently,
-/// and for as long as nobody compared the two.
-#[test]
-fn the_standard_endpoint_outranks_the_vendor_alias() {
-    let config = resolved([
-        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
-        (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
-    ]);
-
+fn the_endpoint_names_its_source() {
+    let config = resolved([(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT)]);
     assert_eq!(config.signal_endpoint(""), STANDARD_ENDPOINT);
     assert_eq!(config.source(), OTEL_ENDPOINT_KNOB);
-}
-
-/// The vendor's two halves become one basic credential.
-#[test]
-fn the_vendor_pair_becomes_a_basic_credential() {
-    let config = resolved([
-        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
-        (GRAFANA_INSTANCE_KNOB, VENDOR_INSTANCE),
-        (GRAFANA_API_KEY_KNOB, VENDOR_KEY),
-    ]);
-
-    let credential = header(&config, AUTHORIZATION).expect("both halves are configured");
-    assert!(
-        credential.starts_with("Basic "),
-        "the vendor authenticates with a basic credential: {credential}"
-    );
-    assert!(
-        !credential.contains(VENDOR_KEY),
-        "the token must be encoded rather than carried in the clear"
-    );
-}
-
-/// Half a credential is no credential.
-///
-/// An instance id with no key authenticates nothing, and sending it produces a
-/// 401 whose message names nothing an operator can act on.
-#[test]
-fn half_a_vendor_credential_is_no_credential() {
-    for half in [
-        vec![(GRAFANA_INSTANCE_KNOB, VENDOR_INSTANCE)],
-        vec![(GRAFANA_API_KEY_KNOB, VENDOR_KEY)],
-    ] {
-        let mut pairs = vec![(GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT)];
-        pairs.extend(half);
-        let config = resolved(pairs);
-        assert_eq!(header(&config, AUTHORIZATION), None);
-    }
-}
-
-/// A standard header of the same name replaces the vendor's.
-///
-/// The same precedence the endpoint has, for the same reason: a deployment
-/// that has moved to the standard surface must not have a leftover vendor
-/// variable deciding what it authenticates with.
-#[test]
-fn a_standard_header_replaces_the_vendor_credential() {
-    let config = resolved([
-        (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
-        (GRAFANA_INSTANCE_KNOB, VENDOR_INSTANCE),
-        (GRAFANA_API_KEY_KNOB, VENDOR_KEY),
-        (OTEL_HEADERS_KNOB, "authorization=Bearer collector-token"),
-    ]);
-
-    assert_eq!(
-        header(&config, AUTHORIZATION).as_deref(),
-        Some("Bearer collector-token")
-    );
-    assert_eq!(
-        config.headers().len(),
-        1,
-        "the replaced credential must not survive beside its replacement"
-    );
 }
 
 /// Several headers resolve, trimmed, in the order they were written.
@@ -160,27 +72,6 @@ fn a_header_list_resolves_every_pair() {
         Some("tenant-a")
     );
     assert_eq!(header(&config, "x-extra").as_deref(), Some("spaced"));
-}
-
-/// The credential is standard base64, padding included.
-///
-/// Spelled out rather than round-tripped through the same encoder the code
-/// uses: an assertion that decodes what it just encoded passes for the
-/// URL-safe alphabet and for an unpadded one too, and either produces a 401
-/// the vendor explains as bad credentials rather than as bad encoding.
-#[test]
-fn the_basic_credential_is_standard_base64_of_the_pair() {
-    let config = resolved([
-        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
-        (GRAFANA_INSTANCE_KNOB, "1"),
-        (GRAFANA_API_KEY_KNOB, "k"),
-    ]);
-
-    // `1:k`, which is short enough to read as base64 by eye.
-    assert_eq!(
-        header(&config, AUTHORIZATION).as_deref(),
-        Some("Basic MTpr")
-    );
 }
 
 /// A timeout is read as milliseconds, exactly as written.
@@ -237,9 +128,8 @@ fn a_malformed_pair_faults_without_dropping_its_neighbours() {
 
 /// A name written twice resolves to the last value, once.
 ///
-/// Same rule the vendor credential's replacement follows, and it has to hold
-/// for every name: two entries of one header name is a request whose meaning
-/// depends on which the client happened to send.
+/// It has to hold for every name: two entries of one header name is a request
+/// whose meaning depends on which the client happened to send.
 #[test]
 fn a_repeated_header_name_keeps_only_the_last_value() {
     let config = resolved([
@@ -313,28 +203,23 @@ fn unset_knobs_resolve_to_the_documented_defaults() {
 
 /// A resolved configuration never renders the credential it carries.
 ///
-/// The derived `Debug` did: the first header is the vendor pair as
-/// `Basic <base64>`, and base64 is an encoding rather than a protection. The
+/// The derived `Debug` did: a header can be `Basic <base64>`, and base64 is an
+/// encoding rather than a protection. The
 /// master key and the session pepper are asserted the same way one module
 /// over, and for the same reason — the `{:?}` that ships a token to a log is
 /// always one somebody adds later.
 #[test]
 fn a_resolved_configuration_renders_no_credential() {
     let config = resolved([
-        (GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT),
-        (GRAFANA_INSTANCE_KNOB, VENDOR_INSTANCE),
-        (GRAFANA_API_KEY_KNOB, VENDOR_KEY),
+        (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
+        (OTEL_HEADERS_KNOB, &format!("{AUTHORIZATION}={CREDENTIAL}")),
     ]);
 
     let rendered = format!("{config:?}");
+    assert_eq!(header(&config, AUTHORIZATION).as_deref(), Some(CREDENTIAL));
     assert!(
-        !rendered.contains(VENDOR_KEY) && !rendered.contains(VENDOR_INSTANCE),
-        "the credential's own bytes must not render: {rendered}"
-    );
-    let encoded = header(&config, AUTHORIZATION).expect("both halves are configured");
-    assert!(
-        !rendered.contains(&encoded),
-        "nor the encoding of them, which is reversible: {rendered}"
+        !rendered.contains(CREDENTIAL),
+        "the credential's bytes must not render: {rendered}"
     );
     assert!(
         rendered.contains(AUTHORIZATION),
@@ -363,22 +248,4 @@ fn every_bad_knob_faults_in_one_pass() {
     let mut expected = vec![OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB];
     expected.sort_unstable();
     assert_eq!(knobs, expected);
-}
-
-/// A malformed vendor endpoint faults naming the vendor knob, which is the
-/// one an operator on the vendor spelling has to fix.
-#[test]
-fn a_malformed_vendor_endpoint_faults_naming_the_vendor_knob() {
-    let mut faults = Vec::new();
-
-    let config = otlp(
-        &MapEnv::from_pairs([(GRAFANA_ENDPOINT_KNOB, "collector:4318")]),
-        &mut faults,
-    );
-
-    assert!(config.is_none());
-    assert_eq!(
-        faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
-        vec![GRAFANA_ENDPOINT_KNOB]
-    );
 }

@@ -127,6 +127,12 @@ pub(crate) async fn one<D: Services>(
 
     found.map_or_else(
         || Err(not_found()),
-        |schedule| Ok(Json(schedule.view()).into_response()),
+        |schedule| {
+            Ok((
+                [(http::header::ETAG, schedule.etag())],
+                Json(schedule.view()),
+            )
+                .into_response())
+        },
     )
 }

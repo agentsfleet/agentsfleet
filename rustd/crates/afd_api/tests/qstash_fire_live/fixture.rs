@@ -9,7 +9,7 @@ use afd_core::id::Uuid7;
 use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_fleet_lifecycle::FleetStatus;
 
@@ -86,29 +86,38 @@ impl Fixture {
              ), workspace AS ( \
                INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
                VALUES ($2::uuid, $1::uuid, 'qstash-fire-live', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'qstash-fire@example.test', 1, 1) \
-             ), fleet AS ( \
-               INSERT INTO core.fleets \
-                 (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                  status, created_at, updated_at) \
-               VALUES ($5::uuid, $2::uuid, $1::uuid, 'qstash-fire-fleet', '# fixture', \
-                       '{}'::jsonb, $6, 1, 1) \
              ) \
-             INSERT INTO core.fleet_schedules \
-               (id, fleet_id, source, source_key, cron_expression, timezone, message, \
-                desired_status, sync_status, generation, created_at, updated_at) \
-             VALUES ($7::uuid, $5::uuid, $8, $7::text, $9, 'UTC', $10, $11, 'synced', 1, 1, 1)",
+             INSERT INTO core.users \
+               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, $3, 'qstash-fire@example.test', 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(&self.subject)
         .bind(&self.user)
-        .bind(self.fleet.as_str())
-        .bind(fleet.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("the tenant, workspace and person seed");
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.workspace.as_str(),
+            &self.tenant,
+            fleet.as_str(),
+        )
+        .name("qstash-fire-fleet")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("the fleet seeds");
+        sqlx::query(
+            "INSERT INTO core.fleet_schedules \
+               (id, fleet_id, source, source_key, cron_expression, timezone, message, \
+                desired_status, sync_status, generation, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, $1::text, $4, 'UTC', $5, $6, 'synced', 1, 1, 1)",
+        )
         .bind(self.schedule.as_str())
+        .bind(self.fleet.as_str())
         // A person's schedule: `source` names who wrote it, and a retirement
         // decodes the whole row, so it must hold a value the store reads back.
         .bind(Source::Api.as_str())
@@ -117,7 +126,7 @@ impl Fixture {
         .bind(desired.as_str())
         .execute(&mut *connection)
         .await
-        .expect("the tenant, workspace, person, fleet and schedule seed");
+        .expect("the schedule seeds");
     }
 
     /// Makes the seeded schedule a `once` schedule, which retires on its

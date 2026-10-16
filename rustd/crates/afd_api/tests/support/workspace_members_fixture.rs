@@ -10,7 +10,7 @@ use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
@@ -97,26 +97,29 @@ impl Members {
             self.sign_up(person).await;
         }
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH fleet AS ( \
-               INSERT INTO core.fleets \
-                 (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                  status, created_at, updated_at) \
-               VALUES ($1::uuid, $2::uuid, $3::uuid, 'members', '# fixture', '{}', \
-                       'active', 1, 1) \
-             ) \
-             INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-             VALUES ($4::uuid, $3::uuid, $5::uuid, $6, 2)",
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.john.workspace.as_str(),
+            &self.john.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
         )
-        .bind(self.fleet.as_str())
-        .bind(self.john.workspace.as_str())
-        .bind(&self.john.tenant)
+        .name("members")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("John's fleet seeds");
+        sqlx::query(
+            "INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 2)",
+        )
         .bind(mint_id())
+        .bind(&self.john.tenant)
         .bind(&self.bob.user)
         .bind(ROLE_MEMBER)
         .execute(&mut *connection)
         .await
-        .expect("John's fleet and Bob's membership seed");
+        .expect("Bob's membership seeds");
     }
 
     /// The rows signup writes for one person, less the wallet.

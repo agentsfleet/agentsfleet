@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
-use afd_wire::lease::{BundleManifest, LeasePayload};
+use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::tool_detail::ToolCallRecord;
@@ -41,7 +41,7 @@ mod sandbox;
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::assigned;
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL, Writes};
+pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL};
 pub(crate) use afr_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
@@ -134,18 +134,14 @@ pub(crate) fn drain(received: &mut mpsc::UnboundedReceiver<Call>) -> Vec<Call> {
     std::iter::from_fn(|| received.try_recv().ok()).collect()
 }
 
-/// A lease for `fleet`, with or without a bundle.
-pub(crate) fn lease(lease_id: &str, fleet: &str, bundle: Option<&str>) -> LeasePayload<'static> {
+/// A native lease carrying the installed fleet instructions.
+pub(crate) fn lease(lease_id: &str, fleet: &str) -> LeasePayload<'static> {
     let mut document: serde_json::Value = serde_json::from_str(LEASE_JSON).unwrap();
     document["lease_id"] = lease_id.into();
     document["event"]["fleet_id"] = fleet.into();
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
-    let mut payload: LeasePayload<'static> = serde_json::from_str(text).unwrap();
-    payload.bundle = bundle.map(|hash| BundleManifest {
-        content_hash: hash.to_owned().into(),
-    });
-    payload
+    serde_json::from_str(text).unwrap()
 }
 
 /// What the fake agent does with a run.
@@ -216,7 +212,7 @@ impl AgentEngine for FakeAgent {
         run.events
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: "hi".into(),
-                text_kind: None,
+                text_kind: afd_wire::activity::StreamTextKind::Answer,
                 first_chunk_after_ms: None,
                 stream_start: true,
                 stream_contiguous: false,

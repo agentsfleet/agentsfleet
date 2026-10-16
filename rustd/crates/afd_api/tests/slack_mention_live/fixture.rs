@@ -4,7 +4,7 @@
 //! Everything a mention reads on its way to the ledger is real here: the app
 //! bag the wall verifies against, the install row the team resolves through,
 //! the sealed grant the bot's identity is read from, and fleet rows whose
-//! stored documents are what `parse_trigger` produced. Only the queue is
+//! stored configurations are ones Save accepts. Only the queue is
 //! absent, and a mention admitted without it is exactly the deferral the
 //! ledger promises: the row commits and the sweeper appends later.
 //!
@@ -18,7 +18,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 
@@ -195,40 +195,31 @@ impl Fixture {
         .await;
     }
 
-    /// A fleet in the team's workspace, stored from `trigger_markdown` exactly
-    /// as an install would store it, with `status`.
-    pub(super) async fn fleet(&self, trigger_markdown: &str, status: &str) -> Uuid7 {
-        self.fleet_in(&self.workspace, trigger_markdown, status)
-            .await
+    /// A fleet in the team's workspace, stored from the native `config` a
+    /// reviewed setup would store, with `status`.
+    pub(super) async fn fleet(&self, config: &str, status: &str) -> Uuid7 {
+        self.fleet_in(&self.workspace, config, status).await
     }
 
     /// The same fleet in the tenant's other workspace: the one a Slack team
     /// that moved has left behind.
-    pub(super) async fn fleet_elsewhere(&self, trigger_markdown: &str, status: &str) -> Uuid7 {
-        self.fleet_in(&self.admin, trigger_markdown, status).await
+    pub(super) async fn fleet_elsewhere(&self, config: &str, status: &str) -> Uuid7 {
+        self.fleet_in(&self.admin, config, status).await
     }
 
-    async fn fleet_in(&self, workspace: &Uuid7, trigger_markdown: &str, status: &str) -> Uuid7 {
-        let parsed = afd_fleet_runtime::parse_trigger(trigger_markdown)
-            .expect("the fixture document parses");
+    async fn fleet_in(&self, workspace: &Uuid7, config: &str, status: &str) -> Uuid7 {
+        let parsed = afd_fleet_runtime::FleetConfig::authored(config)
+            .expect("the fixture configuration parses");
         let fleet = Uuid7::parse(&mint_id()).expect("a minted fleet is canonical");
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, status, \
-                created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, 1, 1)",
-        )
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
-        .bind(&self.tenant)
-        .bind(parsed.config().name().as_str())
-        .bind(trigger_markdown)
-        .bind(parsed.config_json())
-        .bind(status)
-        .execute(&mut *connection)
-        .await
-        .expect("the fleet row seeds");
+        FleetSeed::new(fleet.as_str(), workspace.as_str(), &self.tenant, status)
+            .name(parsed.name().as_str())
+            .config(config)
+            .at(1)
+            .native_setup()
+            .insert(&mut *connection)
+            .await
+            .expect("the fleet row seeds");
         fleet
     }
 

@@ -53,8 +53,9 @@ const EVENT_ID_MAX_LEN: usize = 256;
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
 
-/// The longest platform catalogue id: the bundle name it is keyed by.
-const CATALOG_ID_MAX_BYTES: usize = afd_library::MAX_SKILL_NAME_LEN;
+/// A platform Library entry id: native slugs and opaque identifiers share one
+/// byte bound.
+const PLATFORM_LIBRARY_ID_MAX_BYTES: usize = 128;
 
 /// The longest actor glob or prefix.
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
@@ -131,18 +132,18 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
     )
     .await;
 
-    // A platform catalogue id is held to the bundle-name bound it is keyed by,
-    // on both verbs that name one.
-    let catalog = "n".repeat(CATALOG_ID_MAX_BYTES + 1);
+    // A platform Library entry id is bounded before acquiring a datastore, on
+    // both verbs that name one.
+    let library = "n".repeat(PLATFORM_LIBRARY_ID_MAX_BYTES + 1);
     for method in [Method::PATCH, Method::DELETE] {
         assert_refused(
             method,
-            &format!("/v1/admin/fleet-libraries/{catalog}"),
+            &format!("/v1/admin/fleet-libraries/{library}"),
             INVALID_REQUEST,
         )
         .await;
     }
-    let at_bound = "n".repeat(CATALOG_ID_MAX_BYTES);
+    let at_bound = "n".repeat(PLATFORM_LIBRARY_ID_MAX_BYTES);
     assert_accepted(
         Method::DELETE,
         &format!("/v1/admin/fleet-libraries/{at_bound}"),
@@ -186,11 +187,11 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
 }
 
-/// The generated document bounds the admin catalogue id the way the handler
-/// does: a 1 to `MAX_SKILL_NAME_LEN` byte slug on both routes that take one,
-/// never a UUID.
+/// The generated document bounds the platform Library entry id the way the
+/// handler does: a 1 to [`PLATFORM_LIBRARY_ID_MAX_BYTES`] byte slug on both
+/// routes that take one, never a UUID.
 #[test]
-fn test_the_published_catalog_id_bound_is_the_enforced_one() {
+fn test_the_published_platform_library_id_bound_is_the_enforced_one() {
     let document = serde_json::to_value(afd_api::openapi::document())
         .expect("the generated document serializes");
     for verb in ["patch", "delete"] {
@@ -211,7 +212,7 @@ fn test_the_published_catalog_id_bound_is_the_enforced_one() {
                 id.get("minLength").and_then(Value::as_u64),
                 id.get("maxLength").and_then(Value::as_u64),
             ),
-            (Some(1), u64::try_from(CATALOG_ID_MAX_BYTES).ok()),
+            (Some(1), u64::try_from(PLATFORM_LIBRARY_ID_MAX_BYTES).ok()),
             "{verb}: {id}"
         );
     }

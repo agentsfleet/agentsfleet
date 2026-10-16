@@ -247,7 +247,6 @@ pub(super) fn completion(event_id: &str) -> Value {
             wall_ms: Some(12),
             failure_label: None,
             failure_detail: None,
-            checkpoint_id: None,
             resumes_event_id: None,
             created_at: 10,
             updated_at: 11,

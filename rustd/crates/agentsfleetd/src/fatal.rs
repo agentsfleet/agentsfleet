@@ -39,6 +39,8 @@ use crate::tty::{BOLD, CYAN, DIM, RED, Rendering};
 /// eight libraries, and every one of them shares the `afd_` prefix by
 /// convention — so two fragments cover the tree and nothing else.
 const OURS: [&str; 2] = ["agentsfleetd", "afd_"];
+/// Where a frame's path turns into a crate name.
+const CRATES_SEGMENT: &str = "/crates/";
 
 /// The bomb, kept verbatim from the Ruby because it earned its place.
 const BOMB: &str = r"       ,--.!,
@@ -107,20 +109,27 @@ pub fn render_with_trace(error: &dyn Error, rendering: Rendering, backtrace: &st
     out
 }
 
-/// Keeps the frames that are ours, as their last path segment.
+/// Keeps the frames that are ours, each from its crate name onward.
 ///
-/// Both halves are the Ruby's: `backtrace.grep(/nilavu/)` then
-/// `ft.split('/').last`. A frame reading
-/// `agentsfleetd/src/preflight.rs:180:5` becomes `preflight.rs:180:5`, which is
-/// the part a reader navigates by.
+/// `/home/build/rustd/crates/agentsfleetd/src/preflight.rs:180:5` becomes
+/// `agentsfleetd/src/preflight.rs:180:5`. The last segment alone used to be
+/// enough; with every module root now a `mod.rs`, `mod.rs:12:5` no longer
+/// names a file. A line with no path (a function symbol) is kept whole.
 fn ours_only(backtrace: &str) -> Vec<String> {
     backtrace
         .lines()
         .map(str::trim)
         .filter(|line| OURS.iter().any(|ours| line.contains(ours)))
-        .filter_map(|line| line.rsplit('/').next())
-        .map(str::to_owned)
+        .map(crate_relative)
         .collect()
+}
+
+/// The part of a frame a reader navigates by: from the crate directory on.
+fn crate_relative(line: &str) -> String {
+    match line.rsplit_once(CRATES_SEGMENT) {
+        Some((_, within)) => within.to_owned(),
+        None => line.rsplit('/').next().unwrap_or(line).to_owned(),
+    }
 }
 
 /// Prints a fatal to standard error. The only thing in this crate that does.

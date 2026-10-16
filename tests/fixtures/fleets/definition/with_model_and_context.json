@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "description": "A runtime model and every context knob.",
+  "instructions_md": "",
+  "config": {
+    "name": "with-model-and-context",
+    "x-agentsfleet": {
+      "model": "{{model}}",
+      "context": {
+        "context_cap_tokens": "{{context_cap_tokens}}",
+        "tool_window": "auto",
+        "memory_checkpoint_every": 5,
+        "stage_chunk_threshold": 0.75
+      },
+      "triggers": [
+        {
+          "type": "webhook",
+          "source": "github",
+          "signature": {
+            "secret_ref": "github_secret"
+          }
+        }
+      ],
+      "tools": [
+        "http_request"
+      ],
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}

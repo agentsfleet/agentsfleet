@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use afd_wire::lease::LeaseResponse;
+use afd_wire::lease::{LeaseResponse, TaggedLease};
 use afd_wire::runner::HeartbeatStatus;
 use bytes::Bytes;
 use tokio::sync::watch;
@@ -40,14 +40,14 @@ fn polling_with(
 }
 
 fn granted(lease_id: &str) -> Answer {
-    json(&LeaseResponse {
-        lease: Some(lease(lease_id, FLEET_ID, None)),
+    json(&LeaseResponse::<serde_json::Value> {
+        lease: Some(TaggedLease::Fleet(Box::new(lease(lease_id, FLEET_ID)))),
         retry_after_ms: None,
     })
 }
 
 fn idle(retry_after_ms: Option<u32>) -> Answer {
-    json(&LeaseResponse {
+    json(&LeaseResponse::<serde_json::Value> {
         lease: None,
         retry_after_ms,
     })

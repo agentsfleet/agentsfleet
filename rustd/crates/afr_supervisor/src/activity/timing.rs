@@ -11,7 +11,7 @@
 //! are taken out.
 //!
 //! The clock starts when the run is started, not when the sink is made: the
-//! sink is made before the bundle, the memory and the sandbox are ready, and a
+//! sink is made before the memory and the sandbox are ready, and a
 //! first token measured from there read setup as model time.
 
 use std::collections::HashMap;
@@ -101,15 +101,13 @@ impl RunClock {
                 clocked.first_chunk.get_or_insert_with(|| since.elapsed());
             }
             ActivityFrame::ToolCallStarted(body) => {
-                if let Some(id) = body.call_id.as_deref() {
-                    if clocked.open.is_empty() {
-                        clocked.busy_since = Some(Instant::now());
-                    }
-                    *clocked.open.entry(id.to_owned()).or_default() += 1;
+                if clocked.open.is_empty() {
+                    clocked.busy_since = Some(Instant::now());
                 }
+                *clocked.open.entry(body.call_id.to_string()).or_default() += 1;
             }
             ActivityFrame::ToolCallCompleted(body) => {
-                let paired = body.call_id.as_deref().is_some_and(|id| clocked.close(id));
+                let paired = clocked.close(&body.call_id);
                 if paired {
                     if clocked.open.is_empty()
                         && let Some(since) = clocked.busy_since.take()

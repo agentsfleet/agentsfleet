@@ -1,11 +1,11 @@
 //! The Postgres reads the rest of the daemon is built on.
 //!
-//! Named for the retired daemon's `state/`, which is where it kept its
-//! statements. What lands here first are the three credential directories,
-//! because they are the reads the authentication path cannot run without and
-//! the ones `afd_auth` is deliberately unable to write for itself.
+//! It holds the three credential directories, because they are the reads the
+//! authentication path cannot run without and the ones `afd_auth` is
+//! deliberately unable to write for itself.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 
 // `unused_crate_dependencies` is a crate attribute, so it also grades the lib's
 // own test target — and fires there for a dev-dependency only the suites in

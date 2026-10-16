@@ -111,6 +111,7 @@ pub(super) async fn healthz() -> Response {
         service: SERVICE.into(),
         version: VERSION.into(),
         commit: COMMIT.into(),
+        build_id: afd_core::build::SOURCE_ID.map(Into::into),
     })
     .into_response()
 }

@@ -10,8 +10,9 @@ use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 /// Signed inbound deliveries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WebhookRoute {
-    /// A fleet's own inbound webhook.
-    Receive,
+    /// A fleet's inbound webhook from the source its URL names, so two
+    /// webhook triggers on one fleet each have an address of their own.
+    ReceiveSource,
     /// The Svix-signed variant of the same delivery.
     ReceiveSvix,
     /// An approval decision arriving from outside.
@@ -27,7 +28,7 @@ pub enum WebhookRoute {
 impl WebhookRoute {
     /// Every webhook route.
     pub const ALL: &'static [Self] = &[
-        Self::Receive,
+        Self::ReceiveSource,
         Self::ReceiveSvix,
         Self::Approval,
         Self::GitHub,
@@ -50,7 +51,9 @@ impl WebhookRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (guard, template) = match self {
-            Self::Receive => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}"),
+            // Beside the literal `/github` and `/approval` templates, which the
+            // router matches first: a static segment outranks a parameter.
+            Self::ReceiveSource => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}/{source}"),
             Self::GitHub => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}/github"),
             Self::Approval => (Guard::WebhookHmac, "/v1/webhooks/{fleet_id}/approval"),
             Self::ReceiveSvix => (Guard::Svix, "/v1/webhooks/svix/{fleet_id}"),

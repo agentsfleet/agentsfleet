@@ -30,6 +30,8 @@ afd_observability.workspace = true
 # Identifiers, the lease clock, worker-count clamps, the environment seam and
 # the registry codes a failure is logged under.
 afd_core.workspace = true
+# Per-report content keys, authenticated metadata and encrypted private spool bytes.
+afd_crypto.workspace = true
 # The one wire: every verb's request and reply, spelled once.
 afd_wire.workspace = true
 afr_agent.workspace = true
@@ -55,12 +57,10 @@ bytes.workspace = true
 # The fleet's repository, fetched into a host-side mirror over HTTPS and
 # checked out into the lease's workspace.
 gix = { workspace = true, features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls", "worktree-mutation"] }
-# A bundle's entries, read so `afd_core::bundle::BundleDigest` can name them.
-tar.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# The report spool and the bundle cache write through a temporary file that is
+# The report spool writes through a temporary file that is
 # persisted only once complete, so a crash never leaves half a report.
 tempfile.workspace = true
 thiserror.workspace = true
@@ -97,9 +97,6 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # this feature; named here so the tests build when this crate is selected
 # alone.
 afr_agent = { workspace = true, features = ["test-util"] }
-# The bundle tests' independent oracle for the digest.
-hex.workspace = true
-sha2.workspace = true
 # The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
 # and a header are proven on the socket rather than assumed by a mock.
 axum.workspace = true

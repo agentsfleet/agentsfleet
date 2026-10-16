@@ -19,7 +19,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Assignment, EVENT_RELEASE_UNREADABLE, Heartbeat, MIN_HEARTBEAT_INTERVAL};
 use crate::client::{Call, Verb};
-use crate::egress::Egress;
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
@@ -61,23 +60,19 @@ pub(super) fn probe() -> HostProbe {
     }
 }
 
-fn reply(status: &str, policy: bool, selftest: bool, interval_ms: u32) -> Answer {
-    let assigned = policy.then(|| {
-        serde_json::json!({"sandbox_tier": "landlock_full", "network_policy": "allow_all",
-            "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
-    });
-    answer(
-        status,
-        &serde_json::json!(assigned),
-        selftest,
-        interval_ms,
-        &[],
-    )
+/// The assignment every answer here carries.
+fn policy() -> serde_json::Value {
+    serde_json::json!({"sandbox_tier": "landlock_full", "network_policy": "allow_all",
+        "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
-/// An answer with no policy whose `release_holds` names `released`.
+fn reply(status: &str, selftest: bool, interval_ms: u32) -> Answer {
+    answer(status, &policy(), selftest, interval_ms, &[])
+}
+
+/// An answer whose `release_holds` names `released`.
 pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
-    answer(status, &serde_json::Value::Null, false, TICK_MS, released)
+    answer(status, &policy(), false, TICK_MS, released)
 }
 
 /// The daemon's heartbeat answer, every field spelled once.
@@ -123,37 +118,34 @@ pub(super) fn sent(call: &Call) -> serde_json::Value {
     serde_json::from_slice(call.body.as_ref().unwrap()).unwrap()
 }
 
+/// An answered beat carries its assignment to the leases, and the self-test it
+/// asks for rides the next beat under that assignment's label. An answer whose
+/// assignment is null is malformed, never an empty assignment.
 #[tokio::test]
-async fn a_null_policy_fails_closed_and_a_self_test_waits_for_one() {
+async fn an_assignment_reaches_the_leases_and_labels_the_self_test_it_asks_for() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 => reply(KEEP_GOING, false, true, 2000),
-        1 => reply(KEEP_GOING, true, true, 2000),
-        _later => reply("drain", false, false, 2000),
+        0 => reply(KEEP_GOING, true, 2000),
+        _later => answer("drain", &serde_json::Value::Null, false, 2000, &[]),
     });
     let probe = probe();
     let held = idle_holds();
     let mut heartbeat = Heartbeat::new(&plane, &probe, &held);
 
-    let unassigned = heartbeat.beat().await.unwrap();
     let assigned = heartbeat.beat().await.unwrap();
-    let unreadable = heartbeat.beat().await.unwrap();
+    let unassigned = heartbeat.beat().await;
 
-    assert_eq!(unassigned.workers, 0, "no policy, no work");
-    assert_eq!(unassigned.egress, Egress::closed(), "no policy, no egress");
     assert_eq!(assigned.workers, 3);
     assert_eq!(
         assigned.egress,
         test_support::assigned(NetworkPolicy::AllowAll, &[]),
         "the assigned posture reaches the leases"
     );
-    assert_eq!(unreadable.egress, Egress::closed());
     assert_eq!(assigned.interval, Duration::from_millis(2000));
-    assert_eq!(unreadable.status, HeartbeatStatus::Drain);
-    assert_eq!(
-        unreadable.workers, 0,
-        "a null policy is never the last one kept"
+    assert!(
+        unassigned.is_err(),
+        "a null assignment is refused: {unassigned:?}"
     );
     let calls = drain(&mut calls);
     assert!(calls.iter().all(|call| call.verb == Verb::Heartbeat));
@@ -163,15 +155,15 @@ async fn a_null_policy_fails_closed_and_a_self_test_waits_for_one() {
             .unwrap()
     );
     assert!(
-        sent(&calls[1])["selftest"].is_null(),
-        "no assignment yet to label it with"
+        sent(&calls[0])["selftest"].is_null(),
+        "nothing has asked for a self-test yet"
     );
-    assert_eq!(sent(&calls[2])["selftest"]["sandbox_tier"], "landlock_full");
+    assert_eq!(sent(&calls[1])["selftest"]["sandbox_tier"], "landlock_full");
 }
 
 #[tokio::test]
 async fn a_zero_interval_is_floored() {
-    let (plane, _calls) = plane(|_call| reply(KEEP_GOING, true, false, 0));
+    let (plane, _calls) = plane(|_call| reply(KEEP_GOING, false, 0));
     let probe = probe();
 
     let held = idle_holds();
@@ -201,8 +193,8 @@ async fn a_failed_beat_retries_and_a_stop_ends_leases_in_flight() {
     let counted = Arc::clone(&beats);
     let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
         0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
-        2 => reply(KEEP_GOING, true, false, INTERVAL_MS),
-        _later => reply(STOP, true, false, INTERVAL_MS),
+        2 => reply(KEEP_GOING, false, INTERVAL_MS),
+        _later => reply(STOP, false, INTERVAL_MS),
     });
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());

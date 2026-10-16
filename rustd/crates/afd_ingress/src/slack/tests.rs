@@ -3,12 +3,17 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "a test asserts by panicking; the restriction set is for the daemon"
+    clippy::indexing_slicing,
+    reason = "a test asserts by panicking and builds its probe JSON by key; the restriction set \
+              is for the daemon"
 )]
 
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
+use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::ChannelId;
+use serde_json::{Value, json};
 
 use super::{Subscriber, subscribed};
 
@@ -28,28 +33,31 @@ fn fleet() -> Uuid7 {
     Uuid7::parse(FLEET).expect("a v7 id")
 }
 
-/// The JSON an install stores for a fleet attached to `channel`, optionally
-/// bound to a repository with `access`.
+/// The configuration a reviewed setup stores for a fleet attached to
+/// `channel`, optionally bound to a repository with `access`.
 fn stored(name: &str, channel: &str, access: Option<&str>) -> String {
-    // A write binding opens a Pull Request, so it names a base; a read one
-    // opens nothing and may not.
-    let binding = access.map_or_else(String::new, |access| {
-        let base = if access == "write" {
-            "  repository_base: main\n"
-        } else {
-            ""
-        };
-        format!("  repositories: [acme/widgets]\n  repository_access: {access}\n{base}")
+    let mut runtime = json!({
+        "triggers": [{"type": "mention", "source": SLACK, "channels": [channel]}],
+        "tools": [],
+        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
     });
-    let markdown = format!(
-        "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: mention\n      \
-         source: {SLACK}\n      channels: [{channel}]\n  tools: []\n  budget:\n    \
-         daily_dollars: 1.0\n{binding}---\n"
-    );
-    afd_fleet_runtime::parse_trigger(&markdown)
-        .expect("the probe document parses")
-        .config_json()
-        .to_owned()
+    if let Some(access) = access {
+        runtime["repositories"] = json!(["acme/widgets"]);
+        runtime["repository_access"] = json!(access);
+        // A write binding opens a Pull Request, so it names a base; a read one
+        // opens nothing and may not.
+        if access == "write" {
+            runtime["repository_base"] = json!("main");
+        }
+    }
+    validated(&json!({"name": name, "x-agentsfleet": runtime}))
+}
+
+/// `document` as stored text, proven to be a configuration Save accepts.
+fn validated(document: &Value) -> String {
+    let text = document.to_string();
+    FleetConfig::authored(&text).expect("the probe configuration parses");
+    text
 }
 
 /// Dimension 2.3 — the subscription is the channel's identifier: the document
@@ -138,13 +146,10 @@ fn the_provider_must_match_ignoring_case() {
 /// cannot name and a document that no longer parses are refused, not skipped.
 #[test]
 fn unattached_and_unreadable_rows_are_told_apart() {
-    let api_only = afd_fleet_runtime::parse_trigger(
-        "---\nname: api-only\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
-         budget:\n    daily_dollars: 1.0\n---\n",
-    )
-    .expect("the probe document parses")
-    .config_json()
-    .to_owned();
+    let api_only = validated(&json!({"name": "api-only", "x-agentsfleet": {
+        "triggers": [], "tools": [],
+        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
+    }}));
     assert_eq!(
         subscribed(
             fleet(),

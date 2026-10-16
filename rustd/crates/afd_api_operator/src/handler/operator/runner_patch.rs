@@ -7,7 +7,7 @@ use afd_api_wire::admin::{
     RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse,
     RunnerTokenRotatedResponse,
 };
-use afd_wire::runner::AssignedPolicy;
+use afd_runner::RunnerEdit;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -20,22 +20,22 @@ use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
 const EVENT: &str = "runner_patch_failed";
-const DETAIL_PATCH_BODY: &str = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke|rotate|self_test\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}";
+const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}, {\"labels\":[]}, or both";
 
-enum Mutation<'a> {
+enum Mutation<'r, 'a> {
     Transition(RunnerAdminAction),
     Rotate,
     Selftest,
-    Policy(&'a AssignedPolicy<'a>),
+    Edit(RunnerEdit<'r, 'a>),
 }
 
-enum OrdinaryMutation<'a> {
+enum OrdinaryMutation<'r, 'a> {
     Transition(RunnerAdminAction),
     Selftest,
-    Policy(&'a AssignedPolicy<'a>),
+    Edit(RunnerEdit<'r, 'a>),
 }
 
-/// Applies one exactly-one-of runner mutation.
+/// Applies an action alone, or an edit of the policy, the labels, or both.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/v1/fleets/runners/{runner_id}",
@@ -43,8 +43,9 @@ enum OrdinaryMutation<'a> {
     operation_id = "patch_fleet_runner",
     summary = "Administer a fleet runner",
     description = concat!(
-        "Platform-admin mutation on a single runner. The body carries exactly ",
-        "one of `action` or `assigned_policy`. `action` moves the admin ",
+        "Platform-admin mutation on a single runner. The body carries either ",
+        "`action` alone, or an edit: `assigned_policy`, `labels`, or both. An ",
+        "edit carrying both applies both or neither. `action` moves the admin ",
         "state: `cordon` to cordoned, `drain` to draining, `revoke` to ",
         "revoked. Revoked is terminal; a revoked runner cannot transition ",
         "back. `self_test` moves no state. It records a request for the ",
@@ -54,7 +55,13 @@ enum OrdinaryMutation<'a> {
         "`UZ-RUN-018`, since it will never heartbeat again. `assigned_policy` ",
         "reassigns the runner's policy, and the host picks it up on its next ",
         "heartbeat. Sending the same policy again changes nothing and records ",
-        "no event. ",
+        "no event. A revoked runner refuses a policy with 400. `labels` ",
+        "replaces the runner's whole label set, the labels a fleet's required ",
+        "tags are matched against on the runner's next lease poll. The bounds ",
+        "and the refusal are the ones enrollment applies. A label given twice ",
+        "is stored once, in the order first given, an empty list clears every ",
+        "label, and a revoked runner's labels stay editable. The reply carries ",
+        "`labels` as stored whenever the request sent them. ",
     ),
     request_body = RunnerAdminPatchRequest,
     params(
@@ -97,7 +104,7 @@ pub(crate) async fn handle<D: Services>(
         Mutation::Rotate => return rotate(&*services, &identity, &runner).await,
         Mutation::Transition(action) => OrdinaryMutation::Transition(action),
         Mutation::Selftest => OrdinaryMutation::Selftest,
-        Mutation::Policy(policy) => OrdinaryMutation::Policy(policy),
+        Mutation::Edit(edit) => OrdinaryMutation::Edit(edit),
     };
     let result = mutate(&*services, &runner, identity.subject(), ordinary).await;
     finish(result, &identity, &runner)
@@ -107,7 +114,7 @@ async fn mutate<'a, D: Services>(
     services: &D,
     runner: &'a afd_core::id::Uuid7,
     actor: &str,
-    mutation: OrdinaryMutation<'a>,
+    mutation: OrdinaryMutation<'_, 'a>,
 ) -> afd_runner::Result<RunnerAdminPatchResponse<'a>> {
     match mutation {
         OrdinaryMutation::Transition(action) => services
@@ -118,6 +125,7 @@ async fn mutate<'a, D: Services>(
                 id: Cow::Borrowed(runner.as_str()),
                 admin_state,
                 assigned_policy: None,
+                labels: None,
                 selftest_requested_at: None,
             }),
         OrdinaryMutation::Selftest => services
@@ -128,21 +136,19 @@ async fn mutate<'a, D: Services>(
                 id: Cow::Borrowed(runner.as_str()),
                 admin_state: recorded.admin_state(),
                 assigned_policy: None,
+                labels: None,
                 selftest_requested_at: Some(recorded.requested_at()),
             }),
-        OrdinaryMutation::Policy(policy) => services
+        OrdinaryMutation::Edit(edit) => services
             .runners()
-            .assign_policy(runner, policy, services.now())
+            .edit(runner, edit, services.now())
             .await
-            .map(|stored| {
-                let mut assigned_policy = policy.clone();
-                assigned_policy.worker_count = stored.worker_count();
-                RunnerAdminPatchResponse {
-                    id: Cow::Borrowed(runner.as_str()),
-                    admin_state: stored.admin_state(),
-                    assigned_policy: Some(assigned_policy),
-                    selftest_requested_at: None,
-                }
+            .map(|stored| RunnerAdminPatchResponse {
+                id: Cow::Borrowed(runner.as_str()),
+                admin_state: stored.admin_state,
+                assigned_policy: stored.assigned_policy,
+                labels: stored.labels,
+                selftest_requested_at: None,
             }),
     }
 }
@@ -196,13 +202,19 @@ async fn rotate<D: Services>(
     }
 }
 
-fn mutation<'a>(request: &'a RunnerAdminPatchRequest<'a>) -> Option<Mutation<'a>> {
-    match (request.action, request.assigned_policy.as_ref()) {
-        (Some(RunnerAdminAction::SelfTest), None) => Some(Mutation::Selftest),
-        (Some(RunnerAdminAction::Rotate), None) => Some(Mutation::Rotate),
-        (Some(action), None) => Some(Mutation::Transition(action)),
-        (None, Some(policy)) => Some(Mutation::Policy(policy)),
-        (None, None) | (Some(_), Some(_)) => None,
+/// An action travels alone; an edit carries a policy, labels, or both.
+fn mutation<'r, 'a>(request: &'r RunnerAdminPatchRequest<'a>) -> Option<Mutation<'r, 'a>> {
+    let edit = RunnerEdit {
+        assigned_policy: request.assigned_policy.as_ref(),
+        labels: request.labels.as_deref(),
+    };
+    let editing = edit.assigned_policy.is_some() || edit.labels.is_some();
+    match (request.action, editing) {
+        (Some(RunnerAdminAction::SelfTest), false) => Some(Mutation::Selftest),
+        (Some(RunnerAdminAction::Rotate), false) => Some(Mutation::Rotate),
+        (Some(action), false) => Some(Mutation::Transition(action)),
+        (None, true) => Some(Mutation::Edit(edit)),
+        (None, false) | (Some(_), true) => None,
     }
 }
 
@@ -222,25 +234,78 @@ fn refuse_rotation(
 mod tests {
     use super::*;
 
+    fn policy() -> afd_wire::runner::AssignedPolicy<'static> {
+        afd_wire::runner::AssignedPolicy {
+            sandbox_tier: afd_wire::runner::SandboxTier::DevNone,
+            network_policy: afd_wire::runner::NetworkPolicy::AllowAll,
+            registry_allowlist: Vec::new(),
+            worker_count: 1,
+            extra_binds: Vec::new(),
+        }
+    }
+
+    fn request(
+        action: Option<RunnerAdminAction>,
+        policy: bool,
+        labels: bool,
+    ) -> RunnerAdminPatchRequest<'static> {
+        RunnerAdminPatchRequest {
+            action,
+            assigned_policy: policy.then(self::policy),
+            labels: labels.then(|| vec![Cow::Borrowed("gpu")]),
+        }
+    }
+
+    /// The name of the mutation a body reads as, or `None` for a refusal.
+    fn read_as(request: &RunnerAdminPatchRequest<'_>) -> Option<&'static str> {
+        mutation(request).map(|mutation| match mutation {
+            Mutation::Transition(_) => "transition",
+            Mutation::Rotate => "rotate",
+            Mutation::Selftest => "self-test",
+            Mutation::Edit(edit) => match (edit.assigned_policy, edit.labels) {
+                (Some(_), Some(_)) => "edit both",
+                (Some(_), None) => "edit policy",
+                (None, _) => "edit labels",
+            },
+        })
+    }
+
     #[test]
-    fn exactly_one_mutation_is_required() {
-        let neither = RunnerAdminPatchRequest {
+    fn an_action_travels_alone_and_an_edit_carries_policy_labels_or_both() {
+        let cordon = Some(RunnerAdminAction::Cordon);
+        let cases = [
+            (request(None, false, false), None),
+            (request(cordon, false, false), Some("transition")),
+            (
+                request(Some(RunnerAdminAction::Rotate), false, false),
+                Some("rotate"),
+            ),
+            (
+                request(Some(RunnerAdminAction::SelfTest), false, false),
+                Some("self-test"),
+            ),
+            (request(None, true, false), Some("edit policy")),
+            (request(None, false, true), Some("edit labels")),
+            (request(None, true, true), Some("edit both")),
+            (request(cordon, true, false), None),
+            (request(cordon, false, true), None),
+            (request(cordon, true, true), None),
+            (request(Some(RunnerAdminAction::Rotate), false, true), None),
+        ];
+        for (body, expected) in cases {
+            assert_eq!(read_as(&body), expected, "{body:?}");
+        }
+    }
+
+    /// An empty list is an edit that clears, never the absence of one.
+    #[test]
+    fn an_empty_label_list_is_an_edit() {
+        let clear = RunnerAdminPatchRequest {
             action: None,
             assigned_policy: None,
+            labels: Some(Vec::new()),
         };
-        assert!(mutation(&neither).is_none());
-
-        let both = RunnerAdminPatchRequest {
-            action: Some(RunnerAdminAction::Cordon),
-            assigned_policy: Some(AssignedPolicy {
-                sandbox_tier: afd_wire::runner::SandboxTier::DevNone,
-                network_policy: afd_wire::runner::NetworkPolicy::AllowAll,
-                registry_allowlist: Vec::new(),
-                worker_count: 1,
-                extra_binds: Vec::new(),
-            }),
-        };
-        assert!(mutation(&both).is_none());
+        assert_eq!(read_as(&clear), Some("edit labels"));
     }
 
     /// The assigned policy is a shape the runner reads leniently; an operator's

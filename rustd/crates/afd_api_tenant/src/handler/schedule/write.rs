@@ -8,20 +8,21 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::schedule::Patch;
 use afd_core::error_code;
 use afd_cron::{Change, DesiredStatus, NewSchedule, validate};
 use afd_http::handler::schedule::{checked, held_or, refused, rendered};
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::Response;
-use http::StatusCode;
+use http::{HeaderMap, StatusCode};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::services::{FleetSchedules as _, Services};
 
-use super::support::{Create, Patch, SchedulePath};
+use super::support::{Create, SchedulePath};
 use super::{DETAIL_INVALID_BODY, EVENT_WRITE};
 
 /// What a create and an update both answer: the row as the scheduler now holds it.
@@ -51,6 +52,7 @@ const RECONCILED: &str = "The schedule as reconciled with the scheduler";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 422, description = afd_http::openapi::UNPROCESSABLE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -131,6 +133,7 @@ pub(crate) async fn create<D: Services>(
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 412, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 422, description = afd_http::openapi::UNPROCESSABLE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -145,38 +148,34 @@ pub(crate) async fn patch<D: Services>(
         fleet_id,
         schedule_id,
     }): Path<SchedulePath>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let schedule = parse_fleet_id(&schedule_id)?;
-
-    let input: Patch = serde_json::from_slice(&body)
-        .map_err(|_unreadable| Refusal::coded(error_code::INVALID_REQUEST, DETAIL_INVALID_BODY))?;
-
+    let input: Patch = crate::handler::input::body(&body)?;
+    // The fields a patch supplies are refused for what they say before the row
+    // is looked up, so an unusable expression never reads as a missing row.
+    // The store validates the merged result again once it knows the row.
     checked(validate::Fields {
         expression: input.cron.as_deref(),
         timezone: input.timezone.as_deref(),
         message: input.message.as_deref(),
     })?;
-
+    let expected = crate::handler::input::expected(&headers)?;
     let changed = services
         .schedules()
-        .change(
-            &owned.workspace,
-            &fleet,
-            &schedule,
-            Change {
-                cron: input.cron.as_deref(),
-                timezone: input.timezone.as_deref(),
-                message: input.message.as_deref(),
-                desired_status: input.paused.map(DesiredStatus::of_paused),
-            },
-            services.now(),
-        )
+        .edit(afd_cron::EditRequest {
+            workspace: &owned.workspace,
+            fleet: &fleet,
+            schedule: &schedule,
+            expected,
+            patch: &input,
+            now: services.now(),
+        })
         .await
-        .map_err(Refusal::at(EVENT_WRITE))?;
-
-    held_or(changed, StatusCode::OK)
+        .map_err(afd_http::handler::schedule::edit_refusal)?;
+    rendered(changed, StatusCode::OK)
 }
 
 /// `DELETE …/schedules/{schedule_id}` — see the module note on why it does not.

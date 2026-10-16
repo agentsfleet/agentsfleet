@@ -1,0 +1,307 @@
+//! Turning a memory request's URL into values the store can be handed.
+//!
+//! Split from [`super::memory`] along the line the file cap and the tests both
+//! want: everything here is total, synchronous and datastore-free, so the whole
+//! refusal surface in FRONT of `memory.memory_entries` is proven by the unit
+//! tests at the bottom of this file rather than by driving HTTP.
+//!
+//! # Why this decodes the URL itself
+//!
+//! This surface REFUSES a malformed escape in a query string or a path segment;
+//! axum decodes both, and silently leaves `%2` as the two characters `%2`. Left
+//! to axum, `bad%2` would earn a 404 for a key nobody stored rather than the
+//! 400 it is owed — so the decoding is done from the raw URL, once, by
+//! [`Read::parse`] and [`memory_key`]. It is also why the forget handler reads
+//! its key off [`http::Uri`] rather than axum's `Path`: by the time an
+//! extractor hands over a segment, the malformed escape it was meant to refuse
+//! is already absorbed.
+//!
+//! # One decoder, two policies
+//!
+//! A raw `+` is a SPACE in a query string and a literal plus in a path. The
+//! difference is a single substitution applied before [`decode_bytes`] rather
+//! than a second copy of the escape reader — `%2B` contains no `+`, so
+//! substituting first cannot turn an encoded plus into a space.
+
+use afd_http::handler::encoding::{decode_bytes, decode_form};
+use std::borrow::Cow;
+
+use afd_core::id::Uuid7;
+use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use afd_memory::page::View;
+use afd_wire::memory::MAX_KEY_LEN;
+use garde::Validate as _;
+
+use crate::handler::Refusal;
+
+use super::DETAIL_INVALID_CURSOR;
+
+/// The free-text search parameter's name.
+const QUERY_TEXT: &str = "query";
+
+/// The category filter's name.
+const QUERY_CATEGORY: &str = "category";
+
+/// The refusal a query string this daemon cannot decode earns.
+const DETAIL_MALFORMED_QUERY: &str = "malformed query string";
+
+/// The refusal a limit that is not a positive integer earns.
+const DETAIL_LIMIT: &str = "limit must be a positive integer";
+
+/// The refusal a key outside its length bounds earns.
+const DETAIL_KEY_BOUNDS: &str = "memory key must be 1..255 chars";
+
+/// The refusal a key this daemon cannot decode earns.
+const DETAIL_KEY_ENCODING: &str = "memory key has invalid URL encoding";
+
+/// The page a caller who names no `limit` gets when LISTING.
+///
+/// A hundred, because a list is a person
+/// scrolling what their fleet knows and the whole set is capped at a thousand.
+const LIST_LIMIT_DEFAULT: i64 = 100;
+
+/// The page a caller who names no `limit` gets when SEARCHING.
+///
+/// A fifth of the list's, and the
+/// asymmetry is deliberate: a search is a person looking for one entry, so the
+/// first page is what they read and the rest is paging they will not do.
+const RECALL_LIMIT_DEFAULT: i64 = 20;
+
+/// The most rows one page may carry, whatever the caller asks for.
+///
+/// CLAMPED rather than refused, which is
+/// this surface's own vocabulary — the workspace directory answers a 400 for
+/// the same ask, and a client sitting on either would change class if the two
+/// were made to agree.
+const LIMIT_MAX: i64 = 100;
+
+/// Which rows the caller asked for, holding the text they asked with.
+///
+/// The owned twin of [`View`], and the reason it exists rather than a pair of
+/// `Option<String>` fields: a request names a search OR a category OR neither,
+/// and resolving that once at the boundary is what leaves no both-set case for
+/// a later reader to decide differently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Lens {
+    /// Everything the fleet remembers.
+    Recent,
+    /// One retention category of it.
+    Category(String),
+    /// A free-text search across keys and content.
+    Search(String),
+}
+
+impl Lens {
+    /// The lens a request naming `text` and `category` reads through.
+    ///
+    /// A search outranks a category filter, which is `parseListParams`' own
+    /// precedence: `?query=x&category=core` searches, and the category is
+    /// ignored rather than intersected.
+    fn of(text: Option<&str>, category: Option<&str>) -> Self {
+        match (text, category) {
+            (Some(text), _ignored) => Self::Search(text.to_owned()),
+            (None, Some(label)) => Self::Category(label.to_owned()),
+            (None, None) => Self::Recent,
+        }
+    }
+
+    /// The borrowed view the store takes.
+    fn view(&self) -> View<'_> {
+        match self {
+            Self::Recent => View::Recent,
+            Self::Category(label) => View::Category(label),
+            Self::Search(text) => View::Search(text),
+        }
+    }
+}
+
+/// Where a page resumes, owned because the cursor's key is decoded text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Boundary {
+    /// The boundary row's creation instant.
+    pub(super) created_at_ms: i64,
+    /// Its writer, which breaks a tie between two fleets' entries under one
+    /// key.
+    pub(super) fleet: Uuid7,
+    /// Its key, which breaks a tie inside one millisecond.
+    pub(super) key: String,
+}
+
+/// Ends the writer in a cursor's row half, `{fleet}:{key}`.
+///
+/// A fleet identifier is a canonical UUID, which never holds `:`, so the first
+/// `:` always ends it whatever the key carries.
+const ROW_SEPARATOR: char = ':';
+
+/// The row half of the cursor a walk resumes after `fleet`'s entry `key`:
+/// the writer as well as the key, because a page holding shared entries can
+/// hold two writers' rows under one key in one millisecond.
+pub(super) fn row_id(fleet: &Uuid7, key: &str) -> String {
+    format!("{fleet}{ROW_SEPARATOR}{key}")
+}
+
+/// One list request, parsed into values that can only be valid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Read {
+    lens: Lens,
+    /// Where the page resumes, or the start.
+    pub(super) after: Option<Boundary>,
+    /// How many rows to answer with, already clamped.
+    pub(super) limit: i64,
+}
+
+impl Read {
+    /// Reads a list request's query string.
+    ///
+    /// # Errors
+    /// Refuses a query string with a malformed escape, a limit that is not a
+    /// positive integer, and a `starting_after` this daemon did not issue — in
+    /// that ORDER, so a request wrong in two ways is always told about the
+    /// same one.
+    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
+        let pairs = decode_pairs(query)?;
+        let lens = Lens::of(named(&pairs, QUERY_TEXT), named(&pairs, QUERY_CATEGORY));
+        Ok(Self {
+            limit: limit(named(&pairs, QUERY_LIMIT), &lens)?,
+            after: boundary(named(&pairs, QUERY_STARTING_AFTER))?,
+            lens,
+        })
+    }
+
+    /// Which rows this request reads.
+    pub(super) fn view(&self) -> View<'_> {
+        self.lens.view()
+    }
+}
+
+/// One decoded parameter by name, or `None` for absent-or-empty.
+///
+/// An empty value reads as ABSENT, exactly as `if (q.len == 0)` does, and it is
+/// checked on the decoded text: `?query=%20` is a search for a space, not an
+/// unnamed parameter.
+fn named<'p>(pairs: &'p [(Cow<'_, str>, Cow<'_, str>)], name: &str) -> Option<&'p str> {
+    pairs
+        .iter()
+        .find(|(key, _value)| key == name)
+        .map(|(_key, value)| value.as_ref())
+        .filter(|value| !value.is_empty())
+}
+
+/// Every recognised parameter, decoded, first occurrence winning.
+///
+/// The whole string is decoded rather than only the parameters this read wants,
+/// because `req.query()` parses it in one pass and fails the REQUEST on a bad
+/// escape anywhere in it — a per-parameter decode would serve a page for a
+/// query string the request as a whole is refused for.
+///
+/// A repeated name keeps its first entry, so `?limit=1&limit=2` is a page of
+/// one.
+/// One query string's decoded key/value pairs, borrowed where they can be.
+///
+/// Named because the bare type is three nested generics deep at a signature,
+/// and a reader of `decode_pairs` wants to know it hands back pairs — not to
+/// reassemble that from punctuation.
+type Pairs<'q> = Vec<(Cow<'q, str>, Cow<'q, str>)>;
+
+fn decode_pairs(query: &str) -> Result<Pairs<'_>, Refusal> {
+    query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+            form_decode(name)
+                .zip(form_decode(value))
+                .ok_or_else(|| Refusal::malformed(DETAIL_MALFORMED_QUERY))
+        })
+        .collect()
+}
+
+/// The page size asked for, clamped, or the lens's default.
+///
+/// # Errors
+/// Refuses anything that is not a positive integer. Over the ceiling is NOT
+/// refused — see [`LIMIT_MAX`].
+fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
+    let default = if lens.view().is_recall() {
+        RECALL_LIMIT_DEFAULT
+    } else {
+        LIST_LIMIT_DEFAULT
+    };
+    raw.map_or(Ok(default), |asked| {
+        asked
+            .parse::<i64>()
+            .ok()
+            .filter(|asked| *asked >= 1)
+            .map(|asked| asked.min(LIMIT_MAX))
+            .ok_or_else(|| Refusal::malformed(DETAIL_LIMIT))
+    })
+}
+
+/// The decoded boundary, or the refusal a foreign token earns.
+fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
+    raw.map(|raw| {
+        // Some other list's token reaches the same refusal as an unparseable
+        // one: this walk keys on `(created_at, key, fleet)`, and a
+        // text-boundary cursor names a sort it does not have.
+        let resumed = match Cursor::parse(raw) {
+            Ok(Cursor::Timestamp { at_ms, id }) => row(&id).map(|(fleet, key)| Boundary {
+                created_at_ms: at_ms,
+                fleet,
+                key: key.to_owned(),
+            }),
+            Ok(Cursor::Text { .. }) | Err(..) => None,
+        };
+        resumed.ok_or_else(|| Refusal::malformed(DETAIL_INVALID_CURSOR))
+    })
+    .transpose()
+}
+
+/// The writer and key a cursor's row half names, or `None` when it names no
+/// row: [`row_id`] read back.
+fn row(id: &str) -> Option<(Uuid7, &str)> {
+    let (fleet, key) = id.split_once(ROW_SEPARATOR)?;
+    let fleet = Uuid7::parse(fleet).ok()?;
+    (!key.is_empty()).then_some((fleet, key))
+}
+
+/// The memory key named by the LAST segment of `path`, decoded.
+///
+/// Takes the whole path rather than a segment because the caller reads it off
+/// the URI: the router already split on `/`, so the last segment is the key and
+/// nothing it can contain — an encoded slash included — reaches back past that
+/// boundary.
+///
+/// # Errors
+/// Refuses a malformed escape, bytes this daemon cannot read as text, and a key
+/// outside 1..=255 bytes. All three are the request being unusable, so none of
+/// them spends a statement discovering it.
+pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
+    let raw = path.rsplit('/').next().unwrap_or_default();
+    let key = DecodedKey {
+        bytes: decode_bytes(raw).map_err(|_invalid| Refusal::malformed(DETAIL_KEY_ENCODING))?,
+    };
+    key.validate()
+        .map_err(|_report| Refusal::malformed(DETAIL_KEY_BOUNDS))?;
+    String::from_utf8(key.bytes).map_err(|_not_text| Refusal::malformed(DETAIL_KEY_ENCODING))
+}
+
+/// A memory key as its path segment names it, percent-decoded.
+///
+/// The bound is on the DECODED bytes, which is what a stored key is measured
+/// in — the same bound `afd_wire::memory::MemoryDelta` declares on the key a
+/// runner writes. `decodePathSegment` reaches the same answer by writing into a
+/// `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
+/// the bound is the rule.
+#[derive(Debug, garde::Validate)]
+struct DecodedKey {
+    #[garde(length(min = 1, max = MAX_KEY_LEN))]
+    bytes: Vec<u8>,
+}
+
+/// Query policy is shared; parameter selection remains specific to memory reads.
+fn form_decode(raw: &str) -> Option<Cow<'_, str>> {
+    decode_form(raw).ok()
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,6 +1,6 @@
 //! A FAKE provider token endpoint, on a loopback port.
 //!
-//! Named for what it is, beside `afd_dragonfly/tests/support/fake_redis.rs`: this
+//! Named for what it is, beside `afd_dragonfly/tests/support/fake_redis/mod.rs`: this
 //! serves a fixture's answers, and a reader who took it for a real vendor
 //! client would look here for the daemon's own exchange, which lives in
 //! `afd_connector::Exchange`.
@@ -125,61 +125,8 @@ impl FakeProvider {
             "http://{}{TOKEN_PATH}",
             listener.local_addr().expect("a bound address")
         );
-        let exchanges = Arc::new(AtomicUsize::new(0));
-        let counted = Arc::clone(&exchanges);
-        let answers: Vec<serde_json::Value> = bodies
-            .iter()
-            .map(|body| serde_json::from_str(body).expect("a fixture answer is JSON"))
-            .collect();
-        assert!(
-            !answers.is_empty(),
-            "a fake provider answers at least one body"
-        );
-        let mut router = Router::new().route(
-            TOKEN_PATH,
-            post(move |headers: HeaderMap| {
-                let asked = counted.fetch_add(1, Ordering::SeqCst);
-                let answer = answers
-                    .get(asked)
-                    .or_else(|| answers.last())
-                    .cloned()
-                    .expect("the fake provider was built with at least one answer");
-                let asked_for_json = headers
-                    .get(ACCEPT)
-                    .is_some_and(|value| value.as_bytes() == ACCEPT_JSON.as_bytes());
-                async move {
-                    if asked_for_json {
-                        axum::Json(answer).into_response()
-                    } else {
-                        ([(CONTENT_TYPE, FORM_MEDIA_TYPE)], form_encoded(&answer)).into_response()
-                    }
-                }
-            }),
-        );
-        let served = Arc::new(AtomicUsize::new(0));
-        for read in reads {
-            let status = StatusCode::from_u16(read.status).expect("a fixture status is one");
-            let body: serde_json::Value =
-                serde_json::from_str(&read.body).expect("a fixture read answer is JSON");
-            let counted = Arc::clone(&served);
-            router = router.route(
-                &read.path,
-                get(move |headers: HeaderMap| {
-                    counted.fetch_add(1, Ordering::SeqCst);
-                    let body = body.clone();
-                    // See ADMINISTRATIVE_REFUSAL: the vendor judges this before
-                    // the credential, so the fixture does too.
-                    let named_itself = headers.contains_key(USER_AGENT);
-                    async move {
-                        if named_itself {
-                            (status, axum::Json(body)).into_response()
-                        } else {
-                            (ADMINISTRATIVE_REFUSAL, "Request forbidden by administrative rules. Please make sure your request has a User-Agent header").into_response()
-                        }
-                    }
-                }),
-            );
-        }
+        let (router, exchanges) = exchange_route(bodies);
+        let (router, served) = read_routes(router, reads);
         let handle = tokio::spawn(async move {
             let _served = axum::serve(listener, router).await;
         });
@@ -207,4 +154,72 @@ impl FakeProvider {
     pub(crate) fn close(self) {
         self.handle.abort();
     }
+}
+
+/// The token endpoint: consecutive exchanges get consecutive `bodies`, the
+/// last repeating, each rendered as the caller's `Accept` asked. Returns the
+/// router and the count of exchanges it answered.
+fn exchange_route(bodies: &[&str]) -> (Router, Arc<AtomicUsize>) {
+    let exchanges = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&exchanges);
+    let answers: Vec<serde_json::Value> = bodies
+        .iter()
+        .map(|body| serde_json::from_str(body).expect("a fixture answer is JSON"))
+        .collect();
+    assert!(
+        !answers.is_empty(),
+        "a fake provider answers at least one body"
+    );
+    let router = Router::new().route(
+        TOKEN_PATH,
+        post(move |headers: HeaderMap| {
+            let asked = counted.fetch_add(1, Ordering::SeqCst);
+            let answer = answers
+                .get(asked)
+                .or_else(|| answers.last())
+                .cloned()
+                .expect("the fake provider was built with at least one answer");
+            let asked_for_json = headers
+                .get(ACCEPT)
+                .is_some_and(|value| value.as_bytes() == ACCEPT_JSON.as_bytes());
+            async move {
+                if asked_for_json {
+                    axum::Json(answer).into_response()
+                } else {
+                    ([(CONTENT_TYPE, FORM_MEDIA_TYPE)], form_encoded(&answer)).into_response()
+                }
+            }
+        }),
+    );
+    (router, exchanges)
+}
+
+/// Each arranged GET, answered from its own path to a caller that named
+/// itself. Returns the router and the count of reads it served.
+fn read_routes(mut router: Router, reads: Vec<Read>) -> (Router, Arc<AtomicUsize>) {
+    let served = Arc::new(AtomicUsize::new(0));
+    for read in reads {
+        let status = StatusCode::from_u16(read.status).expect("a fixture status is one");
+        let body: serde_json::Value =
+            serde_json::from_str(&read.body).expect("a fixture read answer is JSON");
+        let counted = Arc::clone(&served);
+        router = router.route(
+            &read.path,
+            get(move |headers: HeaderMap| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let body = body.clone();
+                // See ADMINISTRATIVE_REFUSAL: the vendor judges this before
+                // the credential, so the fixture does too.
+                let named_itself = headers.contains_key(USER_AGENT);
+                async move {
+                    if named_itself {
+                        (status, axum::Json(body)).into_response()
+                    } else {
+                        (ADMINISTRATIVE_REFUSAL, "Request forbidden by administrative rules. Please make sure your request has a User-Agent header").into_response()
+                    }
+                }
+            }),
+        );
+    }
+    (router, served)
 }

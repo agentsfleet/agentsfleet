@@ -3,7 +3,6 @@
 //! ```text
 //!   <home>/sandboxes/<lease_id>/  each lease's sandbox; the engine's base
 //!   <home>/spool/<lease_id>.json  a report written before it is posted
-//!   <home>/bundles/<hash>.tar     fleet bundles, verified before they are kept
 //!   <home>/git/<workspace>/<owner>/<name>.git
 //!                                 a bare mirror per bound repository
 //!   <home>/toolbox/incoming/      the release a deploy staged: image, manifest
@@ -26,7 +25,6 @@ use crate::error::Result;
 
 const SANDBOXES: &str = "sandboxes";
 const SPOOL: &str = "spool";
-const BUNDLES: &str = "bundles";
 const MIRRORS: &str = "git";
 const TOOLBOX: &str = "toolbox";
 
@@ -43,12 +41,7 @@ impl StorageHome {
     /// A directory that cannot be made.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let home = Self { root: root.into() };
-        for directory in [
-            home.sandboxes(),
-            home.spool(),
-            home.bundles(),
-            home.mirrors(),
-        ] {
+        for directory in [home.sandboxes(), home.spool(), home.mirrors()] {
             fs::create_dir_all(directory)?;
         }
         ToolboxHome::open(home.root.join(TOOLBOX))?;
@@ -65,11 +58,6 @@ impl StorageHome {
     /// Where reports wait to be posted.
     pub(crate) fn spool(&self) -> PathBuf {
         self.root.join(SPOOL)
-    }
-
-    /// Where verified bundles are kept.
-    pub(crate) fn bundles(&self) -> PathBuf {
-        self.root.join(BUNDLES)
     }
 
     /// Where bound repositories are mirrored, outside every sandbox.

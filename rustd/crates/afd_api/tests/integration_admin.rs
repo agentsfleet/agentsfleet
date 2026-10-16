@@ -1,4 +1,4 @@
-//! Platform catalogue, import, and default-key lifecycles over live Postgres.
+//! Platform model catalogue and default-key lifecycles over live Postgres.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -14,14 +14,12 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{PlatformDefault, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
-#[path = "admin_live/libraries.rs"]
-mod libraries;
 const SUBJECT: &str = "user_live_platform_catalogue";
 const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
 const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":6,"cached_input_nanos_per_mtok":2,"output_nanos_per_mtok":30}"#;
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn platform_models_and_libraries_complete_real_http_lifecycles() {
+async fn platform_models_and_keys_complete_real_http_lifecycles() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = Fleet::live(
@@ -31,7 +29,6 @@ async fn platform_models_and_libraries_complete_real_http_lifecycles() {
     )
     .router();
     exercise_models(&router, &fixture.token).await;
-    libraries::exercise(&router, &fixture.token, &fixture.slug).await;
     // The platform-key route creates this provider's default through the
     // product; the hold removes it even when an assertion fails first.
     let platform_default =
@@ -43,6 +40,38 @@ async fn platform_models_and_libraries_complete_real_http_lifecycles() {
 
 async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
     let collection = "/v1/admin/platform-keys";
+    an_absent_source_workspace_is_named_as_absent(router, fixture, collection).await;
+
+    let set = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &fixture.platform_key_body(),
+    )
+    .await;
+    assert_eq!(set.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(set).await.get("active").and_then(Value::as_bool),
+        Some(true)
+    );
+    let listed = send(router, Method::GET, collection, Some(&fixture.token), "").await;
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert!(contains_provider(
+        &json_body(listed).await,
+        &fixture.provider
+    ));
+
+    deactivation_answers_inactive_every_time(router, fixture, collection).await;
+}
+
+/// A source workspace id that parses but names nothing is refused with its own
+/// code, not as a malformed body.
+async fn an_absent_source_workspace_is_named_as_absent(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
     let unknown = send(
         router,
         Method::PUT,
@@ -69,27 +98,15 @@ async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
         Some("UZ-PROVIDER-011"),
         "an absent workspace must not read back as an invalid request"
     );
+}
 
-    let set = send(
-        router,
-        Method::PUT,
-        collection,
-        Some(&fixture.token),
-        &fixture.platform_key_body(),
-    )
-    .await;
-    assert_eq!(set.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(set).await.get("active").and_then(Value::as_bool),
-        Some(true)
-    );
-    let listed = send(router, Method::GET, collection, Some(&fixture.token), "").await;
-    assert_eq!(listed.status(), StatusCode::OK);
-    assert!(contains_provider(
-        &json_body(listed).await,
-        &fixture.provider
-    ));
-
+/// Deactivating the provider's key answers inactive, and a second deactivation
+/// answers the same rather than a refusal.
+async fn deactivation_answers_inactive_every_time(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
     for _attempt in 0..2 {
         let deactivated = send(
             router,
@@ -111,6 +128,27 @@ async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
 }
 
 async fn exercise_models(router: &axum::Router, token: &str) {
+    let id = a_model_is_created_once(router, token).await;
+
+    let listed = send(router, Method::GET, "/v1/admin/models", Some(token), "").await;
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert!(contains_id(&json_body(listed).await, "models", &id));
+
+    let updated = send(
+        router,
+        Method::PATCH,
+        &format!("/v1/admin/models/{id}"),
+        Some(token),
+        MODEL_UPDATE,
+    )
+    .await;
+    assert_eq!(updated.status(), StatusCode::OK);
+
+    a_deleted_model_is_gone(router, token, &id).await;
+}
+
+/// The model is created and answers its id; the same model again conflicts.
+async fn a_model_is_created_once(router: &axum::Router, token: &str) -> String {
     let created = send(
         router,
         Method::POST,
@@ -136,21 +174,12 @@ async fn exercise_models(router: &axum::Router, token: &str) {
     )
     .await;
     assert_eq!(duplicate.status(), StatusCode::CONFLICT);
+    id
+}
 
-    let listed = send(router, Method::GET, "/v1/admin/models", Some(token), "").await;
-    assert_eq!(listed.status(), StatusCode::OK);
-    assert!(contains_id(&json_body(listed).await, "models", &id));
-
-    let updated = send(
-        router,
-        Method::PATCH,
-        &format!("/v1/admin/models/{id}"),
-        Some(token),
-        MODEL_UPDATE,
-    )
-    .await;
-    assert_eq!(updated.status(), StatusCode::OK);
-
+/// A delete answers no content, and a second delete of the same model finds
+/// nothing.
+async fn a_deleted_model_is_gone(router: &axum::Router, token: &str, id: &str) {
     let deleted = send(
         router,
         Method::DELETE,
@@ -198,7 +227,6 @@ struct Fixture {
     tenant: String,
     key: String,
     token: String,
-    slug: String,
     workspace: String,
     platform_model_row: String,
     platform_model: String,
@@ -217,7 +245,6 @@ impl Fixture {
             tenant: mint_id(),
             key: mint_id(),
             token: format!("agt_t{first}{second}"),
-            slug: format!("live-{suffix}"),
             workspace: mint_id(),
             platform_model_row: mint_id(),
             platform_model: "platform-key-model".to_owned(),
@@ -285,11 +312,7 @@ impl Fixture {
             .execute(&mut *connection)
             .await
             .expect("the platform model cleanup runs");
-        sqlx::query("DELETE FROM core.fleet_library WHERE id = $1")
-            .bind(&self.slug)
-            .execute(&mut *connection)
-            .await
-            .expect("the scoped library cleanup runs");
+
         sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)

@@ -14,6 +14,8 @@ use crate::error::BootFailure;
 /// Every outbound client boot hands on, one pool per surface.
 #[derive(Debug)]
 pub(super) struct Clients {
+    /// Scoped authoring calls have their own fixed-origin client and no retries.
+    pub(super) authoring: afd_authoring::Network,
     /// The credential broker's vendor token exchanges.
     pub(super) broker: reqwest::Client,
     /// The plane's connector token exchange and site listing.
@@ -43,6 +45,7 @@ impl Clients {
         schedule: impl FnOnce() -> reqwest::Result<reqwest::Client>,
     ) -> Result<Self, BootFailure> {
         Ok(Self {
+            authoring: afd_authoring::Network::new()?,
             broker: vendor()?,
             plane: vendor()?,
             outbound: vendor()?,

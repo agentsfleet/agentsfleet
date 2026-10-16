@@ -15,7 +15,8 @@ use afd_wire::activity::{
 };
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afr_executor::{Executor, Spawn};
+use afd_wire::tool_trace::ToolCallStatus;
+use afr_executor::{Ending, Executor, Spawn};
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 use crate::error::Result;
@@ -112,9 +113,9 @@ async fn run_tool(
     events.emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
         name: Cow::Borrowed(tool),
         args_redacted: Cow::Borrowed(ARGS_REDACTED),
-        call_id: Some(Cow::Owned(call.to_owned())),
+        call_id: Cow::Owned(call.to_owned()),
     }));
-    let _ending = executor
+    let ending = executor
         .spawn(spawn)
         .await?
         .ended(|_stream, _data| ())
@@ -123,21 +124,33 @@ async fn run_tool(
     events.emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(tool),
         ms: elapsed,
-        call_id: Some(Cow::Owned(call.to_owned())),
-        status: None,
+        call_id: Cow::Owned(call.to_owned()),
+        status: status_of(ending),
         output_head: None,
         output_tail: None,
         output_line_count: None,
-        exit_code: None,
+        exit_code: match ending {
+            Some(Ending::Exited(code)) => Some(code),
+            _ => None,
+        },
     }));
     Ok(())
+}
+
+/// How a scripted call ended, in the words a completion frame reports.
+const fn status_of(ending: Option<Ending>) -> ToolCallStatus {
+    match ending {
+        Some(Ending::Exited(0)) => ToolCallStatus::Succeeded,
+        None => ToolCallStatus::Interrupted,
+        Some(_) => ToolCallStatus::Failed,
+    }
 }
 
 /// Streams one chunk of answer text.
 fn say(events: &dyn EventSink, turn: &mut Turn, text: &str) {
     events.emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Owned(text.to_owned()),
-        text_kind: Some(StreamTextKind::Answer),
+        text_kind: StreamTextKind::Answer,
         first_chunk_after_ms: None,
         stream_start: turn.chunks == 0,
         stream_contiguous: true,

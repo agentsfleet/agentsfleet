@@ -43,7 +43,7 @@ impl Mint for LeaseMint<'_> {
 }
 
 /// A refusal as the model reads it: the daemon's registry code first, so a
-/// bundle that reports a `UZ-REPAIR-` refusal verbatim can.
+/// fleet whose instructions report a `UZ-REPAIR-` refusal verbatim can.
 fn detail(refused: &Error) -> String {
     match (refused.refusal_code(), refused.refusal_status()) {
         (Some(code), Some(status)) => {

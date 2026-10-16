@@ -1,23 +1,20 @@
 //! Tenant, workspace, and fleet HTTP regression suite.
 
+mod authoring;
 mod harness;
 
 #[path = "fleet_schedules_input.rs"]
 mod fleet_schedules_input;
-#[path = "integration_fleet_schedules.rs"]
 mod integration_fleet_schedules;
 #[path = "integration_fleet_schedules_ownership.rs"]
 mod integration_fleet_schedules_ownership;
 
 #[path = "connector_callback_route.rs"]
 mod connector_callback_route;
-#[path = "integration_connector_callback.rs"]
 mod integration_connector_callback;
-#[path = "integration_connector_github.rs"]
 mod integration_connector_github;
 #[path = "integration_connector_refresh.rs"]
 mod integration_connector_refresh;
-#[path = "integration_connector_status.rs"]
 mod integration_connector_status;
 
 #[path = "integration_current_user.rs"]
@@ -44,16 +41,13 @@ mod fleet_messages_steer;
 mod fleet_streams;
 #[path = "fleet_tool_calls.rs"]
 mod fleet_tool_calls;
+mod fleets;
 #[path = "input_bounds.rs"]
 mod input_bounds;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
 #[path = "integration_fleet_admitted.rs"]
 mod integration_fleet_admitted;
-#[path = "integration_fleet_install_credentials.rs"]
-mod integration_fleet_install_credentials;
-#[path = "integration_fleet_lifecycle.rs"]
-mod integration_fleet_lifecycle;
 #[path = "integration_fleet_memories.rs"]
 mod integration_fleet_memories;
 #[path = "integration_fleet_memory_access.rs"]
@@ -92,8 +86,6 @@ mod integration_workspace_approvals_fixture;
 mod integration_workspace_approvals_listing;
 #[path = "integration_workspace_enumeration.rs"]
 mod integration_workspace_enumeration;
-#[path = "integration_workspace_library_entries.rs"]
-mod integration_workspace_library_entries;
 #[path = "integration_workspace_members.rs"]
 mod integration_workspace_members;
 #[path = "integration_workspace_preferences.rs"]
@@ -128,15 +120,8 @@ mod workspace_approvals;
 mod workspace_events;
 #[path = "workspace_events_input.rs"]
 mod workspace_events_input;
-#[path = "workspace_fleet_libraries.rs"]
-mod workspace_fleet_libraries;
-#[path = "workspace_fleets.rs"]
-mod workspace_fleets;
-#[path = "workspace_fleets_input.rs"]
-mod workspace_fleets_input;
 #[path = "workspace_member_roles.rs"]
 mod workspace_member_roles;
 #[path = "workspace_preferences.rs"]
 mod workspace_preferences;
-#[path = "workspace_secrets.rs"]
 mod workspace_secrets;

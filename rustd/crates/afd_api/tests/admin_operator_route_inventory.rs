@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_api::route::{AdminRoute, RunnerOpsRoute, TenantRoute, Verb};
+use afd_api::route::{AdminRoute, RunnerOpsRoute, Verb};
 
 type Endpoint = (&'static str, Verb);
 
@@ -19,7 +19,6 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/admin/models", Verb::Post),
     ("/v1/admin/models/{id}", Verb::Patch),
     ("/v1/admin/models/{id}", Verb::Delete),
-    ("/v1/fleets/bundles", Verb::Get),
     ("/v1/fleets/runners", Verb::Get),
     ("/v1/fleets/runners/{runner_id}", Verb::Get),
     ("/v1/fleets/runners/{runner_id}", Verb::Patch),
@@ -40,17 +39,6 @@ fn actual() -> BTreeSet<Endpoint> {
             .copied()
             .map(|verb| (route.meta().template, verb))
     });
-    // One route from the tenant family, named rather than filtered for: M179's
-    // interface covers the public gallery and nothing else there, and
-    // `TenantRoute::verbs` now answers for all thirteen tenant routes rather
-    // than only this one.
-    let bundles = std::iter::once(TenantRoute::FleetBundles).flat_map(|route| {
-        route
-            .verbs()
-            .iter()
-            .copied()
-            .map(move |verb| (route.meta().template, verb))
-    });
     let operator = RunnerOpsRoute::ALL
         .iter()
         .filter(|route| **route != RunnerOpsRoute::Register)
@@ -62,7 +50,7 @@ fn actual() -> BTreeSet<Endpoint> {
                 .map(|verb| (route.meta().template, verb))
         });
 
-    admin.chain(bundles).chain(operator).collect()
+    admin.chain(operator).collect()
 }
 
 #[test]

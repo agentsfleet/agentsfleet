@@ -3,6 +3,8 @@
 //! Runner inventory, lease history, event projections, and runner mutations
 //! live here so operator views compile independently of the host protocol.
 
+#![deny(clippy::self_named_module_files)]
+
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
 
 pub(crate) mod handler;
@@ -34,7 +36,7 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
 pub fn admin_handler_for<D: Services>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
     match verb {
         AdminRoute::FleetLibrary => get(handler::admin::libraries::list::<D>)
-            .merge(post(handler::admin::library_import::create::<D>)),
+            .merge(post(handler::admin::library_stage::create::<D>)),
         AdminRoute::FleetLibraryEntry => patch(handler::admin::libraries::patch::<D>)
             .merge(delete(handler::admin::libraries::delete::<D>)),
         AdminRoute::PlatformKeys => get(handler::admin::platform_keys::list::<D>)

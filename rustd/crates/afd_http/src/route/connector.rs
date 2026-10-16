@@ -15,11 +15,8 @@ pub enum ConnectorRoute {
     Connect,
     /// One provider's connection status.
     Status,
-    /// The provider's redirect back. Unauthenticated by necessity — the
-    /// caller is a browser arriving from the provider, carrying the flow's own
-    /// state rather than a credential of ours.
-    Callback,
-    /// Completing that flow from the dashboard, which IS bearer-authenticated.
+    /// Completing that flow from the dashboard, once the provider has returned
+    /// the browser to it.
     Complete,
     /// Everything connectable from this workspace.
     Catalog,
@@ -38,7 +35,6 @@ impl ConnectorRoute {
     pub const ALL: &'static [Self] = &[
         Self::Connect,
         Self::Status,
-        Self::Callback,
         Self::Complete,
         Self::Catalog,
         Self::Events,
@@ -46,22 +42,18 @@ impl ConnectorRoute {
 
     /// The verbs this route identity serves.
     ///
-    /// `Callback` and `Complete` share a template and are told apart by
-    /// method: the provider's browser redirect is a `GET`, the dashboard's
-    /// follow-up a `POST`. There is no `PUT` beside `Status`'s pair because a
-    /// connection is produced by a consent round trip and cannot be asserted.
+    /// There is no `PUT` beside `Status`'s pair because a connection is
+    /// produced by a consent round trip and cannot be asserted.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::Connect | Self::Complete | Self::Events => &[Verb::Post],
             Self::Status => &[Verb::Get, Verb::Delete],
-            Self::Callback | Self::Catalog => &[Verb::Get],
+            Self::Catalog => &[Verb::Get],
         }
     }
 
-    /// `Callback` and `Complete` share a template and differ in guard, which
-    /// is why a template is not an identity: the browser's redirect and the
-    /// dashboard's follow-up land on one path and are not one route.
+    /// The guard, template and scopes each route is mounted with.
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (guard, template, scopes) = match self {
@@ -84,11 +76,6 @@ impl ConnectorRoute {
                 Guard::Bearer,
                 "/v1/connectors/{provider}/callback",
                 Scopes::Always(CONNECTOR_WRITE),
-            ),
-            Self::Callback => (
-                Guard::Open,
-                "/v1/connectors/{provider}/callback",
-                Scopes::Always(NONE),
             ),
             // `WebhookSignature` rather than `Open`, and the difference is a
             // claim rather than a layer: `plane_of` answers `None` for both,

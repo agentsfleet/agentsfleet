@@ -1,4 +1,4 @@
-//! The delegating bundle, end to end: installed from the corpus into a real
+//! The delegating fleet, end to end: installed from the corpus into a real
 //! daemon, leased by the Rust runner's real loop, its model a script, its two
 //! children reading the checked-out repository through the executor, and
 //! every call of the run, the children's included, in the one trace the
@@ -18,14 +18,14 @@ use afr_providers::Chunk;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
-use crate::bundle_code::greeter_origin;
-use crate::bundle_install::install_bundle;
-use crate::bundle_run::run_event_from;
+use crate::definition_code::greeter_origin;
+use crate::definition_install::install_definition;
+use crate::definition_run::run_event_from;
 use crate::fake_model::{Asked, FakeModel, call, say};
 use crate::https::Upstream;
 use crate::integration_tool_trace::stored_trace;
 
-const BUNDLE: &str = "delegating-triager";
+const FLEET: &str = "delegating-triager";
 const SCRIPT: &str = "greeter/greet.sh";
 const SUITE: &str = "greeter/test.sh";
 /// What the script's child is told; its conversation opens with it.
@@ -99,9 +99,9 @@ fn row(call: &Value) -> (String, String, String) {
 /// rows under one counter, each ended inside the call that started it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_delegating_bundle_roundtrip() {
+async fn test_delegating_definition_roundtrip() {
     let mut supervisor = Supervisor::new();
-    let run = install_bundle(&mut supervisor, BUNDLE, &[], None).await;
+    let run = install_definition(&mut supervisor, FLEET, &[], None).await;
     let origins = tempfile::tempdir().expect("an origin directory");
     let origin = greeter_origin(origins.path());
     let upstream = Upstream::serve(Vec::new()).await;

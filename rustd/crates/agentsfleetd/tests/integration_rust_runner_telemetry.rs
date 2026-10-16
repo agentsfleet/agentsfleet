@@ -34,7 +34,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::layer::SubscriberExt as _;
 
-use crate::bundle_run::{runner, settled};
+use crate::definition_run::{runner, settled};
 use crate::e2e::scenario;
 use crate::fake_model::{FakeModel, call, say};
 use crate::integration_rust_runner::allow_all_egress;

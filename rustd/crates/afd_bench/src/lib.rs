@@ -27,6 +27,7 @@
 //! results are files, so a synthetic run can never be mistaken for production
 //! traffic on an operator's dashboard.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod abort;
 pub mod allocations;

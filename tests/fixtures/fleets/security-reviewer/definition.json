@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Reviews pull requests for security issues and posts findings.",
+  "instructions_md": "# Security reviewer\n\nReviews pull requests for security issues against the checklist below.\n\n## Goal\nFor each pull request, audit the diff against the checklist and post security\nfindings as review comments.\n\n## Checklist\n- Injection (SQL, command, template)\n- Broken authentication / session handling\n- Sensitive data exposure (secrets or PII in logs/responses)\n- Broken access control / Insecure Direct Object Reference (IDOR)\n- Security misconfiguration (unsafe defaults, verbose errors)\n- Cross-Site Scripting (XSS)\n- Insecure deserialization\n- Vulnerable / outdated dependencies\n- Insufficient logging and monitoring\n- Server-Side Request Forgery (SSRF)\n\n## Steps\n1. Read the pull request diff.\n2. Check it against the checklist.\n3. Post one review comment per finding with `http_request` and include the severity.\n\n## Constraints\n- Comment only — never push, merge, approve, or close.\n- The checklist is reference material; capabilities come from this fleet's\n  declared grants, not from these instructions.",
+  "config": {
+    "name": "security-reviewer",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "webhook",
+          "source": "github",
+          "events": [
+            "pull_request"
+          ]
+        }
+      ],
+      "tools": [
+        "http_request"
+      ],
+      "credentials": [
+        "github"
+      ],
+      "network": {
+        "allow": [
+          "api.github.com"
+        ]
+      },
+      "budget": {
+        "daily_nanos": "2000000000"
+      }
+    }
+  }
+}

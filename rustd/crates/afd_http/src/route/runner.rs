@@ -32,6 +32,14 @@ pub enum RunnerRoute {
     CredentialsMint,
     /// Reporting activity against a held lease.
     Activity,
+    /// Version-bound private setup proposals and progress.
+    AuthoringActivity,
+    /// Scoped daemon provider invocation without a raw provider key.
+    AuthoringModelCalls,
+    /// Renewing private authoring with the shared host capacity guard.
+    AuthoringRenew,
+    /// Terminal answer or content-free accounting recovery for private work.
+    AuthoringReports,
     /// Renewing a held lease.
     Renew,
     /// Loading a fleet's memory at lease start.
@@ -40,8 +48,6 @@ pub enum RunnerRoute {
     MemoryCapture,
     /// Searching a fleet's memory past the window a run was seeded with.
     MemoryRecall,
-    /// Fetching a fleet bundle by content hash.
-    Bundle,
     /// Keeping each finished tool call's full arguments and output.
     ToolCalls,
     /// The schedules of the fleet a held lease runs: listing them, and a
@@ -64,11 +70,14 @@ impl RunnerRoute {
         Self::Report,
         Self::CredentialsMint,
         Self::Activity,
+        Self::AuthoringActivity,
+        Self::AuthoringModelCalls,
+        Self::AuthoringRenew,
+        Self::AuthoringReports,
         Self::Renew,
         Self::MemoryHydrate,
         Self::MemoryCapture,
         Self::MemoryRecall,
-        Self::Bundle,
         Self::ToolCalls,
         Self::Schedules,
         Self::Schedule,
@@ -79,7 +88,7 @@ impl RunnerRoute {
     /// The verbs this route identity serves.
     ///
     /// Reads are the runner asking what it has been given — its own record, a
-    /// fleet's memory, a bundle by content hash. Reporting is a `POST` because
+    /// fleet's memory. Reporting is a `POST` because
     /// each one appends a fact rather than replacing a resource. The schedules
     /// are the one resource a runner manages: a collection it lists and adds
     /// to, members it edits and removes, and runs it reads and creates.
@@ -88,12 +97,16 @@ impl RunnerRoute {
         match self {
             Self::Schedules | Self::ScheduleRuns => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
-            Self::SelfRecord | Self::MemoryHydrate | Self::Bundle => &[Verb::Get],
+            Self::SelfRecord | Self::MemoryHydrate => &[Verb::Get],
             Self::Heartbeat
             | Self::Lease
             | Self::Report
             | Self::CredentialsMint
             | Self::Activity
+            | Self::AuthoringActivity
+            | Self::AuthoringModelCalls
+            | Self::AuthoringRenew
+            | Self::AuthoringReports
             | Self::Renew
             | Self::MemoryCapture
             | Self::MemoryRecall
@@ -115,10 +128,13 @@ impl RunnerRoute {
             Self::Report => paths::RUNNER_REPORTS,
             Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
             Self::Activity => paths::LEASE_ACTIVITY,
+            Self::AuthoringActivity => paths::AUTHORING_ACTIVITY,
+            Self::AuthoringModelCalls => paths::AUTHORING_MODEL_CALLS,
+            Self::AuthoringRenew => paths::AUTHORING_RENEW,
+            Self::AuthoringReports => paths::AUTHORING_REPORTS,
             Self::Renew => paths::LEASE_RENEW,
             Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
             Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
-            Self::Bundle => paths::RUNNER_BUNDLE,
             Self::ToolCalls => paths::LEASE_TOOL_CALLS,
             Self::Schedules => paths::LEASE_SCHEDULES,
             Self::Schedule => paths::LEASE_SCHEDULE,

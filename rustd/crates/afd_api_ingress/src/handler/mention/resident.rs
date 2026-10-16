@@ -21,9 +21,11 @@
 //! person with no answer at all. A killed one is on its way to deletion, which
 //! takes the binding with it, so its mention is dropped until then.
 
+use afd_authoring::SystemSetup;
 use afd_connector::Provider;
+use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{FleetStatus, Install, LibrarySource};
+use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::slack::{BoundResident, Named, Notice, Resident, Subscriber};
 
 use super::{
@@ -31,7 +33,7 @@ use super::{
 };
 use crate::handler::Refusal;
 use crate::handler::events::REASON_UNREADABLE;
-use crate::services::{Services, WebhookIngress as _, WorkspaceFleets as _};
+use crate::services::{Services, WebhookIngress as _};
 
 /// The event a newly installed resident is logged under.
 const EVENT_MATERIALIZED: &str = "slack_resident_materialized";
@@ -164,30 +166,26 @@ async fn materialise<D: Services>(
     workspace: &Uuid7,
     resident: &Resident,
 ) -> Result<Option<BoundResident>, Refusal> {
-    let install = Install {
-        source: LibrarySource::InCode {
-            skill_markdown: &resident.skill_markdown,
-            trigger_markdown: &resident.trigger_markdown,
-        },
-        name: Some(resident.name.clone()),
-        mention: None,
+    let setup = SystemSetup {
+        workspace,
+        definition: &resident.definition,
     };
     match services
-        .fleets()
-        .install(workspace, &install, services.now())
+        .creations()
+        .materialise(setup, services.now())
         .await
     {
-        Ok(installed) => {
+        Ok(fleet) => {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let workspace_id = workspace.as_str();
-            let fleet_id = installed.id.as_str();
+            let fleet_id = fleet.as_str();
             tracing::info!(workspace_id, fleet_id, event = EVENT_MATERIALIZED);
             Ok(Some(BoundResident {
-                fleet: installed.id,
+                fleet,
                 status: FleetStatus::Active,
             }))
         }
-        Err(lost) if lost.is_name_taken() => match services
+        Err(lost) if lost.code() == error_code::AGENTSFLEET_NAME_EXISTS => match services
             .ingress()
             .resident_named(workspace, resident)
             .await
@@ -196,7 +194,7 @@ async fn materialise<D: Services>(
             Some(Named::Resident(found)) => Ok(Some(found)),
             Some(Named::Other) => Ok(None),
             None => Err(Refusal::coded(
-                afd_core::error_code::INTERNAL_DB_UNAVAILABLE,
+                error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_RESIDENT_RACE,
             )),
         },

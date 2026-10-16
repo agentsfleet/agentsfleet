@@ -62,6 +62,8 @@ pub(crate) fn capable_beat() -> Value {
             "egress_enforcement": true,
         },
         "selftest": null,
+        "holds": [],
+        "closing": false,
     })
 }
 
@@ -116,7 +118,7 @@ pub(crate) async fn poll_for_lease(
 ) -> (String, u64) {
     let mut elsewhere = Vec::new();
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
-        let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+        let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
         // Asserted on EVERY turn, not once before the loop: a caller that
         // polled separately to check the status would consume the lease this
         // loop is looking for, and then never find it.
@@ -209,7 +211,7 @@ where
     Fut: Future<Output = bool>,
 {
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
-        let response = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+        let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
         assert_eq!(
             response.status().as_u16(),
             200,
@@ -227,13 +229,12 @@ where
 ///
 /// Scoped to that fleet rather than asserting `lease: null`, because a lease
 /// for ANOTHER fleet is the shared lane rather than a defect: this database
-/// carries every earlier scenario's fleets, and the reclaim sweeper re-marks
-/// any whose stream still holds work. Nothing in the daemon stops one runner
-/// holding leases on several fleets — every `fleet.runner_leases` statement is
-/// scoped by lease id AND runner id for OWNERSHIP, and none asks whether the
-/// runner already holds one — so a lease taken here costs the caller nothing
-/// and is left alone. Handing it back would mean reporting an event this suite
-/// does not own, to a fleet another crate's suite may be waiting on.
+/// carries every earlier suite's fleets, and the reclaim sweeper re-marks any
+/// whose stream still holds work. A scenario's runner is placed only on its own
+/// tagged fleet and on fleets that require no tag, so such a lease is an
+/// untagged leftover. It takes one of the runner's worker slots and is left
+/// alone: handing it back would mean reporting an event this suite does not
+/// own, to a fleet another crate's suite may be waiting on.
 pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value) {
     let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
         return;
@@ -276,6 +277,12 @@ pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> r
         .send()
         .await
         .expect("the booted daemon answers")
+}
+
+/// The claim body a fleet worker sends: it implements the fleet protocol only,
+/// and `accepted_kinds` is required on the claim.
+pub(crate) fn fleet_poll() -> Value {
+    json!({"accepted_kinds": afd_wire::lease::AcceptedKinds::FLEET})
 }
 
 /// A `POST` carrying the scenario's runner credential and a JSON body.

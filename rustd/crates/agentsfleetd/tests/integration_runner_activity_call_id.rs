@@ -1,4 +1,4 @@
-//! A runner tool frame's optional call id and outcome, on their way to the
+//! A runner tool frame's required call id and outcome, on their way to the
 //! live tail.
 //!
 //! Split from `integration_runner_activity.rs` at the length cap, and shares
@@ -25,16 +25,16 @@ use crate::wire::field;
 /// The call id every frame of one tool call carries.
 const CALL_ID: &str = "3";
 
-/// A tool frame's `call_id` is optional, bounded, and republished scoped to its
-/// lease as `{fence}:{call_id}`; a frame without one publishes as it always
-/// did; any other unknown field still refuses the batch.
+/// A tool frame's `call_id` is required, bounded, and republished scoped to its
+/// lease as `{fence}:{call_id}`; a frame without one, or with any unknown
+/// field, refuses the batch.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_activity_carries_an_optional_call_id() {
+async fn test_activity_carries_a_required_call_id() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;
 
-    let named = json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID}}]});
+    let named = json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "succeeded"}}]});
     assert_eq!(tailed.forward(&named).await.status().as_u16(), 202);
     let frame = next_frame(&mut tailed.tail)
         .await
@@ -45,20 +45,11 @@ async fn test_activity_carries_an_optional_call_id() {
         "the runner's id, scoped to the lease that sent it"
     );
 
-    let unnamed = json!({"frames": [{"tool_call_progress": {"name": TOOL_NAME, "elapsed_ms": 5}}]});
-    assert_eq!(tailed.forward(&unnamed).await.status().as_u16(), 202);
-    let frame = next_frame(&mut tailed.tail)
-        .await
-        .expect("the unnamed frame publishes");
-    assert!(
-        frame.get("call_id").is_none(),
-        "no call id is invented: {frame}"
-    );
-
     for refused in [
+        json!({"frames": [{"tool_call_progress": {"name": TOOL_NAME, "elapsed_ms": 5}}]}),
         json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": ""}}]}),
         json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": "c".repeat(CALL_ID_MAX_BYTES + 1)}}]}),
-        json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "retries": 1}}]}),
+        json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "succeeded", "retries": 1}}]}),
     ] {
         let answer = tailed.forward(&refused).await;
         assert_eq!(answer.status().as_u16(), 400, "{refused}");
@@ -103,7 +94,8 @@ async fn test_activity_tool_outcome_reaches_channel() {
     assert_eq!(field(&frame, "exit_code"), &json!(2));
 
     let oversized = json!({"frames": [{"tool_call_completed": {
-        "name": TOOL_NAME, "ms": 5, "output_tail": "a".repeat(OUTPUT_EDGE_MAX_BYTES + 1),
+        "name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "failed",
+        "output_tail": "a".repeat(OUTPUT_EDGE_MAX_BYTES + 1),
     }}]});
     let answer = tailed.forward(&oversized).await;
     assert_eq!(answer.status().as_u16(), 400);

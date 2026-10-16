@@ -1,7 +1,7 @@
 //! Tenant-scoped self-service: identity, billing, credentials, and models.
 //!
 //! The family is what a caller manages or reads FOR ITSELF, which is why
-//! `/v1/models`, `/v1/fleets/bundles` and `/v1/users/me` sit here beside the
+//! `/v1/models` and `/v1/users/me` sit here beside the
 //! `/v1/tenants/me/*` rows — the grouping is the scope a request is keyed by,
 //! never a shared path prefix.
 
@@ -13,7 +13,6 @@ const BILLING_READ: &[Scope] = &[Scope::BillingRead];
 const WORKSPACE_ADMIN: &[Scope] = &[Scope::WorkspaceAdmin];
 const SECRET_READ: &[Scope] = &[Scope::SecretRead];
 const SECRET_WRITE: &[Scope] = &[Scope::SecretWrite];
-const FLEET_READ: &[Scope] = &[Scope::FleetRead];
 const APIKEY_READ: &[Scope] = &[Scope::ApikeyRead];
 const APIKEY_WRITE: &[Scope] = &[Scope::ApikeyWrite];
 const APIKEY_ADMIN: &[Scope] = &[Scope::ApikeyAdmin];
@@ -37,8 +36,6 @@ pub enum TenantRoute {
     ModelEntries,
     /// One registry entry.
     ModelEntry,
-    /// Installable fleet bundles.
-    FleetBundles,
     /// Tenant api-keys (`agt_t`).
     ApiKeys,
     /// One api-key.
@@ -76,7 +73,6 @@ impl TenantRoute {
         Self::Provider,
         Self::ModelEntries,
         Self::ModelEntry,
-        Self::FleetBundles,
         Self::ApiKeys,
         Self::ApiKey,
         Self::CliCredentials,
@@ -98,9 +94,6 @@ impl TenantRoute {
     /// the reset is a `DELETE` because what it removes is the tenant's own
     /// choice rather than the credential behind it.
     ///
-    /// `FleetBundles` lists already-published snapshots and nothing more —
-    /// uploads enter through a library onboarding route, so there is no `POST`
-    /// on the public gallery.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
@@ -108,7 +101,6 @@ impl TenantRoute {
             | Self::BillingCharges
             | Self::Workspaces
             | Self::ModelLibrary
-            | Self::FleetBundles
             | Self::CurrentUser
             | Self::Members
             | Self::InvitesForMe => &[Verb::Get],
@@ -152,7 +144,6 @@ impl TenantRoute {
                 Scopes::rw(SECRET_READ, SECRET_WRITE),
             ),
             Self::ModelEntry => ("/v1/tenants/me/models/{id}", Scopes::Always(SECRET_WRITE)),
-            Self::FleetBundles => ("/v1/fleets/bundles", Scopes::Always(FLEET_READ)),
             Self::ApiKeys => ("/v1/api-keys", Scopes::rw(APIKEY_READ, APIKEY_WRITE)),
             Self::ApiKey => ("/v1/api-keys/{id}", Scopes::wa(APIKEY_WRITE, APIKEY_ADMIN)),
             Self::CliCredentials => ("/v1/cli-credentials", Scopes::Always(NONE)),

@@ -1,10 +1,6 @@
-//! `/v1/connectors/{provider}/callback` — one path, two routes, two guards.
-//!
-//! `GET` is where the PROVIDER sends the browser, so it can carry no credential
-//! of ours and is unauthenticated by necessity: it reads nothing, writes
-//! nothing, and redirects to the dashboard's own relay. `POST` is the dashboard
-//! coming back with the person's bearer, and it is the only endpoint in this
-//! family that redeems a code or writes a connection.
+//! `POST /v1/connectors/{provider}/callback` — the dashboard coming back with
+//! the person's bearer after the provider returned the browser to it. It is the
+//! only endpoint in this family that redeems a code or writes a connection.
 //!
 //! # Why the workspace check is in the handler and not in a layer
 //!
@@ -26,7 +22,7 @@
 
 use std::sync::Arc;
 
-use afd_connector::{Finishing, Handoff, Landed, Provider, Rejected, callback, github};
+use afd_connector::{Finishing, Landed, Provider, Rejected, callback, github};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_tenant::workspace::crossing;
@@ -34,7 +30,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::response::Response;
 use http::Method;
 
-use super::landing::{connected, relayed};
+use super::landing::connected;
 use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
@@ -91,78 +87,6 @@ const DETAIL_FOREIGN_WORKSPACE: &str = "Workspace access denied";
 /// connect again — and this is what tells the two apart in an operator's log.
 const REASON_SLOT_SPENT: &str = "state_slot_spent";
 
-/// `GET /v1/connectors/{provider}/callback` — the browser, arriving.
-///
-/// Redirects to the dashboard's relay carrying what the provider sent. It reads
-/// no state binding, consumes no nonce and touches no store, which is what
-/// makes an unauthenticated route safe to serve: everything it does with the
-/// parameters is hand them onward, and the dashboard then returns with a bearer
-/// through [`complete`].
-///
-/// # Errors
-/// `UZ-CONN-004` for a provider this daemon does not ship, `UZ-REQ-001` for a
-/// callback carrying no state or a query this daemon cannot decode, and
-/// `UZ-CONN-001` for a destination that cannot be written as a `Location`
-/// header.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    get,
-    path = "/v1/connectors/{provider}/callback",
-    tag = afd_http::openapi::tag::CONNECTORS,
-    operation_id = "connector_callback",
-    summary = "Relay a provider callback to the dashboard",
-    description = concat!(
-        "Compatibility URL for provider registrations that still target the ",
-        "API host. It forwards the browser to the dashboard callback with a ",
-        "fixed legacy marker. The authenticated endpoint uses that marker ",
-        "only to echo the old redirect URL during token exchange. This ",
-        "endpoint never exchanges a provider code or changes connector data. ",
-        "New provider registrations use ",
-        "`https://<APP_HOST>/api/connectors/{provider}/callback` for the ",
-        "matching environment. The dashboard posts the current Bearer token ",
-        "to the authenticated callback completion method. ",
-    ),
-    params(
-        afd_http::openapi::path::Provider,
-        afd_http::openapi::query::ConnectorState,
-        afd_http::openapi::query::ConnectorCallback,
-    ),
-    responses(
-        (status = 302, description = afd_http::openapi::FOUND),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
-    ),
-))]
-pub(crate) async fn relay<D: Services>(
-    State(services): State<Arc<D>>,
-    Path(provider_segment): Path<String>,
-    RawQuery(query): RawQuery,
-) -> Result<Response, Refusal> {
-    let provider = provider_of(&provider_segment)?;
-    let query = query.unwrap_or_default();
-
-    let state = optional(&query, PARAM_STATE)?
-        .ok_or_else(|| Refusal::coded(error_code::INVALID_REQUEST, DETAIL_MISSING_STATE))?;
-    let code = optional(&query, PARAM_CODE)?;
-    let location = optional(&query, PARAM_LOCATION)?;
-    let installation_id = optional(&query, PARAM_INSTALLATION_ID)?;
-
-    let destination = callback::relay_url(
-        services.dashboard(),
-        provider,
-        Handoff {
-            code: code.as_deref(),
-            state: &state,
-            location: location.as_deref(),
-            installation_id: installation_id.as_deref(),
-        },
-    );
-
-    relayed(&destination)
-}
-
 /// `POST /v1/connectors/{provider}/callback` — the dashboard, completing.
 ///
 /// # Errors
@@ -191,7 +115,6 @@ pub(crate) async fn relay<D: Services>(
         afd_http::openapi::path::Provider,
         afd_http::openapi::query::ConnectorState,
         afd_http::openapi::query::ConnectorCallback,
-        ("callback_source" = Option<String>, Query, description = "Fixed compatibility marker added by the legacy API relay. Browser callers omit it."),
     ),
     responses(
         (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_api_wire::connector::Connected),

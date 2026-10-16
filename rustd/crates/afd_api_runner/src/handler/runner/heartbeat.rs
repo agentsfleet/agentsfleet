@@ -85,7 +85,10 @@ pub(crate) async fn handle<D: Services>(
         .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
         .await
     {
-        Ok(beat) => Json(payload(&beat)).into_response(),
+        Ok(beat) => match payload(&beat) {
+            Ok(reply) => Json(reply).into_response(),
+            Err(error) => refuse(&error, EVENT),
+        },
         Err(error) => refuse(&error, EVENT),
     }
 }
@@ -128,14 +131,12 @@ const WIRE_INTERVAL_MS: u32 = {
 };
 
 /// The beat as the wire shape, borrowing the assignment from the row.
-fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
-    HeartbeatResponse {
+fn payload(beat: &Beat) -> afd_runner::Result<HeartbeatResponse<'_>> {
+    Ok(HeartbeatResponse {
         status: HeartbeatStatus::Ok,
         // Carried on EVERY beat, so an operator's dashboard change reaches the
-        // host within one interval and nobody visits the host. A null
-        // assignment means a row this daemon could not read, and the runner
-        // fails closed on it rather than leasing under a policy it invented.
-        assigned_policy: beat.assignment.decode(),
+        // host within one interval and nobody visits the host.
+        assigned_policy: beat.assignment.decode()?,
         degraded: beat.verdict.is_degraded(),
         degraded_reason: beat.verdict.reason().map(Cow::Borrowed),
         selftest_requested: beat.selftest_requested,
@@ -148,7 +149,7 @@ fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
         // host offline, so it is what says how often to beat. `timing`'s
         // assertion keeps this under that threshold.
         heartbeat_interval_ms: WIRE_INTERVAL_MS,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -169,7 +170,10 @@ mod tests {
     /// A body carrying [`REPORT`] and `fleets` as its holds.
     fn body(fleets: &[&str]) -> String {
         let quoted: Vec<String> = fleets.iter().map(|fleet| format!("\"{fleet}\"")).collect();
-        format!("{{{REPORT},\"holds\":[{}]}}", quoted.join(","))
+        format!(
+            "{{{REPORT},\"holds\":[{}],\"closing\":false}}",
+            quoted.join(",")
+        )
     }
 
     /// Whether `body` reads with a report, and the fleets its proved list

@@ -1,0 +1,272 @@
+//! What one fleet's row says about receiving a signed delivery.
+//!
+//! # Parsed once, at the boundary
+//!
+//! A [`Binding`] can only hold a fleet that HAS a webhook trigger. Resolution
+//! either produces one or answers `Ok(None)`, so nothing downstream re-asks
+//! "does this fleet take webhooks" and nothing downstream can forget to. The
+//! status, the vault key and the scheme are settled here too, which is why the
+//! verifier and the appender below take a `&Binding` rather than four loose
+//! strings a call site could pair wrongly.
+//!
+//! # Where the URL names the source
+//!
+//! `/v1/webhooks/{fleet_id}/{source}` and `/v1/ingress/{provider}` carry it,
+//! so [`Binding::read_for_source`] selects the trigger declared for that
+//! source. `Trigger::parse_set` refuses two webhook triggers on one source, so
+//! the match is unambiguous.
+//!
+//! # Why the Svix route takes the FIRST webhook trigger
+//!
+//! `/v1/webhooks/svix/{fleet_id}` carries the fleet id alone, so it answers
+//! with the fleet's first webhook trigger. That is the only reader that takes
+//! the first, and `Trigger::parse_set` keeps it sound: a Svix-signed source
+//! anywhere but first is refused when the setup is saved. The rule is written
+//! in [`Binding::resolve`] rather than in a SQL sub-select, where a test can
+//! reach it.
+
+use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
+use afd_fleet_runtime::config::{FleetConfig, Trigger, Webhook, WebhookSignature};
+use afd_webhook::Scheme;
+
+use crate::error::{self, Result};
+
+/// A fleet that takes signed deliveries, and everything one is checked against.
+#[derive(Debug, Clone)]
+pub struct Binding {
+    /// The fleet the delivery is addressed to.
+    fleet: Uuid7,
+    /// The workspace whose vault holds the signing secret.
+    ///
+    /// Read from the row rather than taken from the request, because the
+    /// request has no principal to carry one — see [`crate::sql`].
+    workspace: Uuid7,
+    /// What the fleet's row says it is doing.
+    status: FleetStatus,
+    /// The webhook trigger this delivery is measured against.
+    trigger: Webhook,
+}
+
+impl Binding {
+    /// Reads one from a row's three columns.
+    ///
+    /// `Ok(None)` when the fleet declares no webhook trigger at all: a delivery
+    /// to a fleet nobody configured for webhooks is indistinguishable from one
+    /// to a fleet that does not exist, and both answer `UZ-WH-001`. Telling
+    /// them apart would confirm a fleet id to whoever guessed it.
+    ///
+    /// # Errors
+    /// Reports a stored document that no longer parses, and a status this build
+    /// cannot name. Both are this deployment's incidents rather than a sender's.
+    pub(crate) fn read(
+        fleet: Uuid7,
+        workspace: Uuid7,
+        stored_status: &str,
+        document: &str,
+    ) -> Result<Option<Self>> {
+        Self::select(fleet, workspace, stored_status, document, None)
+    }
+
+    /// Reads the trigger a named provider sends to, rather than the first one.
+    ///
+    /// The App ingress difference. The Svix route, `/v1/webhooks/svix/{fleet_id}`,
+    /// is addressed to a fleet and cannot name WHICH of its webhook triggers,
+    /// so [`Self::read`] takes the first and says why. `/v1/ingress/{provider}`
+    /// carries the provider in the path, so it can and must say: a fleet
+    /// declaring Slack before GitHub would otherwise be measured on its Slack
+    /// trigger — a wrong allow-list and a wrong repository set, silently.
+    ///
+    /// `Trigger::parse_set` already refuses two webhook triggers sharing one
+    /// source, so at most one trigger can match and "the first matching" is the
+    /// only one.
+    ///
+    /// # Errors
+    /// As [`Self::read`].
+    pub(crate) fn read_for_source(
+        fleet: Uuid7,
+        workspace: Uuid7,
+        stored_status: &str,
+        document: &str,
+        source: &str,
+    ) -> Result<Option<Self>> {
+        Self::select(fleet, workspace, stored_status, document, Some(source))
+    }
+
+    /// Either reader, reachable from a sibling crate's suite.
+    ///
+    /// Behind `test-util` (`M-TEST-UTIL`), and what it unlocks is REACH rather
+    /// than a shortcut. The `from_parts` seams `GatePolicy` and
+    /// `RepositoryBinding` carry exist because their production doors VALIDATE
+    /// and a suite wants to skip the validation; this one is the production
+    /// door, exported. There is nothing here worth bypassing — [`Self::select`]
+    /// is a status parse and a document parse, and a constructor that skipped
+    /// them would only be skipping the two things this type exists to have
+    /// done. A suite that built a `Binding` around them could pair a status
+    /// with a trigger the document never declared, which is precisely the
+    /// invalid state the parse rules out.
+    ///
+    /// `source` selects as [`Self::read_for_source`] does; `None` takes the
+    /// first, as [`Self::read`] does. Both are exposed through one function
+    /// because a suite proving the difference between them needs to call them
+    /// the same way.
+    ///
+    /// # Errors
+    /// As [`Self::read`].
+    #[cfg(feature = "test-util")]
+    pub fn stored(
+        fleet: Uuid7,
+        workspace: Uuid7,
+        stored_status: &str,
+        document: &str,
+        source: Option<&str>,
+    ) -> Result<Option<Self>> {
+        Self::select(fleet, workspace, stored_status, document, source)
+    }
+
+    /// Both readers, over the trigger `source` selects.
+    fn select(
+        fleet: Uuid7,
+        workspace: Uuid7,
+        stored_status: &str,
+        document: &str,
+        source: Option<&str>,
+    ) -> Result<Option<Self>> {
+        let status = error::stored_status(stored_status)?;
+        let config = FleetConfig::stored(document)?;
+
+        Ok(webhook_trigger(&config, source).map(|trigger| Self {
+            fleet,
+            workspace,
+            status,
+            trigger: trigger.clone(),
+        }))
+    }
+
+    /// The fleet the delivery wakes.
+    #[must_use]
+    pub const fn fleet(&self) -> &Uuid7 {
+        &self.fleet
+    }
+
+    /// The workspace whose vault holds the signing secret.
+    #[must_use]
+    pub const fn workspace(&self) -> &Uuid7 {
+        &self.workspace
+    }
+
+    /// Whether this fleet will take new work.
+    ///
+    /// `false` is not a refusal on this surface. A webhook to a paused fleet is
+    /// answered 200 with an ignore reason, because a sender's retry queue adds
+    /// nothing for a fleet somebody paused on purpose. The steer ingress, where
+    /// a person is waiting for an answer, refuses loudly with `UZ-AGT-012`
+    /// instead.
+    #[must_use]
+    pub const fn is_runnable(&self) -> bool {
+        self.status.is_runnable()
+    }
+
+    /// The provider a delivery must be signed by.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.trigger.source
+    }
+
+    /// The vault key holding this fleet's shared secret.
+    ///
+    /// `credential_name ?? source`: the override exists so two fleets on one
+    /// provider can hold different secrets, and its absence means the
+    /// provider's own name IS the key.
+    #[must_use]
+    pub fn credential_name(&self) -> &str {
+        self.trigger
+            .credential_name
+            .as_deref()
+            .unwrap_or(&self.trigger.source)
+    }
+
+    /// The scheme this delivery is verified under, when the daemon ships one.
+    ///
+    /// `None` is a source no scheme is declared for, which the ingress answers
+    /// as [`afd_webhook::Refusal::Unconfigured`] — never as a pass, so an
+    /// unrecognised provider fails closed.
+    #[must_use]
+    pub fn scheme(&self) -> Option<Scheme> {
+        Scheme::for_source(self.source())
+    }
+
+    /// The Svix `secret_ref`, for the fleet whose trigger declares one.
+    ///
+    /// A separate vault key from [`Self::credential_name`] and a separate
+    /// SHAPE: this one resolves to a raw `whsec_…` string where the HMAC family
+    /// resolves to a JSON object. Two readers, because they are two stored
+    /// forms — see [`crate::secret`].
+    #[must_use]
+    pub fn signature(&self) -> Option<&WebhookSignature> {
+        self.trigger.signature.as_ref()
+    }
+
+    /// Whether this trigger's allow-list admits `event`.
+    ///
+    /// An absent list fires on every event, which is the shape
+    /// [`Webhook::events`] already documents.
+    ///
+    /// There is deliberately no empty-list arm. The schema bounds the list at
+    /// `min = 1`, so `Some([])` is a state [`FleetConfig::stored`] refuses
+    /// before this is ever called — and a branch here guessing what an empty
+    /// list "meant" would be a second, softer answer to a question the parser
+    /// already answered by rejecting the document. Interior code that trusts
+    /// its types needs no defensive re-check (RULE FN-RS).
+    #[must_use]
+    pub fn admits(&self, event: &str) -> bool {
+        self.trigger
+            .events
+            .as_deref()
+            .is_none_or(|allowed| allowed.iter().any(|kind| &**kind == event))
+    }
+
+    /// Whether this trigger subscribes to `repository`.
+    ///
+    /// The App-ingress counterpart to [`Self::admits`], and it answers the
+    /// OPPOSITE way when the list is absent: no list is no subscription, where
+    /// no event list is every event. That asymmetry is deliberate.
+    ///
+    /// The reason the two differ: one App delivery is offered to every fleet in
+    /// the workspace, so a fleet that named no repository has not opted in to
+    /// anything and must not be woken by another team's repository. A fleet
+    /// reached at `/v1/webhooks/{fleet_id}/{source}` was addressed on purpose,
+    /// so its silence about events means "all of them".
+    ///
+    /// Compared case-insensitively: GitHub treats `Owner/Repo` and
+    /// `owner/repo` as one repository, and a subscription that missed on case
+    /// would fail in a way an author could stare straight at without seeing.
+    #[must_use]
+    pub fn serves_repository(&self, repository: &str) -> bool {
+        self.trigger.repositories.as_deref().is_some_and(|allowed| {
+            allowed
+                .iter()
+                .any(|named| named.eq_ignore_ascii_case(repository))
+        })
+    }
+}
+
+/// The first webhook trigger a document declares, or the first from `source`.
+///
+/// `None` for `source` is "whichever comes first", which is what the Svix
+/// route's URL, carrying only a fleet id, can ask for.
+fn webhook_trigger<'c>(config: &'c FleetConfig, source: Option<&str>) -> Option<&'c Webhook> {
+    config.triggers().iter().find_map(|trigger| match trigger {
+        Trigger::Webhook(hook) => match source {
+            // Case-insensitive because the URL's spelling is the sender's: the
+            // document's source is a lowercase slug, but a provider may
+            // capitalise its own name in the address it calls.
+            Some(named) if !hook.source.eq_ignore_ascii_case(named) => None,
+            Some(_) | None => Some(hook),
+        },
+        Trigger::Cron(_) | Trigger::Mention(_) => None,
+    })
+}
+
+#[cfg(test)]
+mod tests;

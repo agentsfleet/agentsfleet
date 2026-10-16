@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "description": "The fewest fields a setup needs.",
+  "instructions_md": "You are a minimal agent. Instructions go here.",
+  "config": {
+    "name": "minimal-setup",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "cron",
+          "schedule": "0 9 * * *"
+        }
+      ],
+      "tools": [
+        "agentmail"
+      ],
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}
