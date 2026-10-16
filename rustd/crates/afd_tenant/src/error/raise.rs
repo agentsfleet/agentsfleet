@@ -73,7 +73,6 @@ pub(crate) fn session_code_rejected() -> Error {
     Error::new(ErrorKind::SessionCodeRejected)
 }
 
-
 /// Refuses an api-key field this daemon will not store.
 pub(crate) fn apikey_field(field: ApiKeyField) -> Error {
     Error::new(ErrorKind::ApiKeyFieldInvalid { field })
