@@ -9,6 +9,8 @@ use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::StreamExt as _;
 use serde_json::{Value, json};
 
+mod replay;
+
 use super::ends::{SIGNATURE, THOUGHT};
 use super::support::wires::{self, Wire};
 use super::support::{Fake, Reply, connector, lease};

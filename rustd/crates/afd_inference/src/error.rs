@@ -34,6 +34,8 @@ pub(crate) enum ErrorKind {
     Endpoint,
     #[error("inference dialect is not supported for the configured API")]
     Dialect,
+    #[error("inference request must contain JSON bytes")]
+    Body,
     #[error("model output limit exceeds its context window")]
     OutputLimit,
     #[error("complete inference input exhausts the model context window")]
@@ -52,5 +54,11 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> afd_core::error_code::ErrorCode {
         afd_core::error_code::INVALID_REQUEST
+    }
+}
+
+impl From<Error> for rig_core::ProviderError {
+    fn from(source: Error) -> Self {
+        Self::from_transport_error(rig_core::http_client::Error::instance(source))
     }
 }

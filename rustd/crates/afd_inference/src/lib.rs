@@ -2,9 +2,11 @@
 
 mod budget;
 mod error;
+mod json;
 mod logs;
 
 pub use budget::input_tokens;
+pub use json::json_request;
 pub use logs::log_filter;
 
 use afd_wire::inference::{InferenceApi, ModelInference};
@@ -27,6 +29,7 @@ static GATEWAY: openai::wire::Dialect = openai::wire::Dialect::gateway("gateway"
 #[derive(Debug)]
 pub struct Configured<'a> {
     settings: &'a ModelInference,
+    host: Box<str>,
     dialect: Dialect,
     context_tokens: u32,
 }
@@ -46,8 +49,8 @@ impl<'a> Configured<'a> {
     pub fn new(settings: &'a ModelInference, context_tokens: u32) -> Result<Self> {
         settings.validate()?;
         let url = url::Url::parse(&settings.base_url)?;
+        let host = url.host_str().ok_or(ErrorKind::Endpoint)?;
         if url.scheme() != "https"
-            || url.host_str().is_none()
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()
@@ -92,9 +95,16 @@ impl<'a> Configured<'a> {
         };
         Ok(Self {
             settings,
+            host: host.into(),
             dialect,
             context_tokens,
         })
+    }
+
+    /// The validated host, in the URL spelling used by the egress allowlist.
+    #[must_use]
+    pub fn into_host(self) -> Box<str> {
+        self.host
     }
 
     /// Creates a rig model using the caller's guarded transport and secret.

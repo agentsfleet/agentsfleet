@@ -22,11 +22,14 @@ async fn fixed_replies_record_the_exact_prepared_request() {
     let draft = Draft {
         method: "GET".into(),
         url: "https://demo-grafana.internal/api/health".into(),
-        headers: vec![(
-            "Authorization".into(),
-            "Bearer ${secrets.grafana.token}".into(),
-        )],
-        body: None,
+        headers: vec![
+            (
+                "Authorization".into(),
+                "Bearer ${secrets.grafana.token}".into(),
+            ),
+            ("x-request-id".into(), "trace-proof".into()),
+        ],
+        body: Some("request body".into()),
         placement: Placement::Authorization,
     };
     let outbound = egress
@@ -44,7 +47,8 @@ async fn fixed_replies_record_the_exact_prepared_request() {
         recorded.header("authorization"),
         Some("Bearer glsa_live_token")
     );
-    assert_eq!(recorded.body, None);
+    assert_eq!(recorded.header("x-request-id"), Some("trace-proof"));
+    assert_eq!(recorded.body.as_deref(), Some("request body"));
     sent.try_recv().expect_err("only one request was sent");
     assert_eq!(mint.asked(), 0);
 }

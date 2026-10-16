@@ -88,3 +88,19 @@ fn identity_and_entropy_failures_keep_internal_classification() {
         assert_eq!(error.current_state(), None);
     }
 }
+
+#[test]
+fn credential_refusals_preserve_the_vault_code_and_original_cause() {
+    let vault = afd_vault::SecretName::parse("").expect_err("empty secret name");
+    let source = afd_credential::Error::from(vault);
+    let code = source.code();
+    let error = Error::from(source);
+    assert_eq!(error.code(), code);
+    assert_eq!(error.current_state(), None);
+    assert!(
+        error
+            .source()
+            .expect("credential cause")
+            .is::<afd_credential::Error>()
+    );
+}

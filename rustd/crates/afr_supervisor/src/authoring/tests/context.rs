@@ -108,14 +108,16 @@ async fn unknown_or_exhausted_usage_prevents_another_model_call() {
 // seam=the existing control-plane transport fixture; no_claim=live invalid leases.
 #[tokio::test]
 async fn an_output_allowance_beyond_the_wire_range_never_calls_the_model() {
-    let mut rig = rig(|call| match call.verb {
-        Verb::AuthoringReport => ack(),
-        other => panic!("invalid allowance requested authority {other:?}"),
-    });
-    let mut configured = lease();
-    configured.limits.output_per_turn = i64::from(u32::MAX) + 1;
-    let (calls, report) = run(&mut rig, configured).await;
-    assert_eq!(calls.len(), 1);
-    assert_eq!(report["usage"]["knowledge"], "unknown");
-    assert!(report["answer"].is_null());
+    for allowance in [-1, i64::from(u32::MAX) + 1] {
+        let mut rig = rig(|call| match call.verb {
+            Verb::AuthoringReport => ack(),
+            other => panic!("invalid allowance requested authority {other:?}"),
+        });
+        let mut configured = lease();
+        configured.limits.output_per_turn = allowance;
+        let (calls, report) = run(&mut rig, configured).await;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(report["usage"]["knowledge"], "unknown");
+        assert!(report["answer"].is_null());
+    }
 }

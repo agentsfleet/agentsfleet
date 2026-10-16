@@ -42,9 +42,6 @@ pub(super) fn body(
     continuations: Vec<super::continuation::Continuation>,
 ) -> Result<Prepared> {
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
-    if request.request.max_output_tokens > settings.max_output_tokens {
-        return Err(ErrorKind::Token.into());
-    }
     let context =
         u32::try_from(model.context_window_tokens).map_err(|_invalid| ErrorKind::Model)?;
     let route = afd_inference::Configured::new(settings, context)?;
@@ -71,9 +68,7 @@ fn input_tokens(
     model: &RegisteredModel,
 ) -> Result<i64> {
     let encoded = route.encode(&model.model, canonical.clone())?;
-    let rig_core::wire::Body::Bytes(body) = encoded.request.into_body() else {
-        return Err(ErrorKind::Model.into());
-    };
+    let body = afd_inference::json_request(encoded.request)?.into_body();
     garde::Unvalidated::new(Envelope { bytes: &body }).validate()?;
     let text = std::str::from_utf8(&body).map_err(|_unreachable| ErrorKind::Token)?;
     // Unknown tokenizers use a conservative UTF-8 byte bound; billing always uses reported usage.

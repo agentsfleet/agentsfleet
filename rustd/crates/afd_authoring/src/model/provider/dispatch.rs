@@ -7,7 +7,7 @@ use afd_wire::{authoring::ENVELOPE_BYTES_MAX, inference::ModelInference};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse},
     driver::{Exchange, Opened, Opening},
-    wire::{Body, Encoded, Wire, WireFrame},
+    wire::{Encoded, Wire, WireFrame},
 };
 use std::sync::{
     Arc,
@@ -55,15 +55,10 @@ where
         let status = Arc::clone(&self.status);
         let timeout_ms = self.timeout_ms;
         Opening::new(async move {
-            let (parts, body) = payload.request.into_parts();
-            let Body::Bytes(body) = body else {
-                return Err(rig_core::ProviderError::request(
-                    "authoring sends only JSON",
-                ));
-            };
-            let path = parts.uri.path().to_owned();
+            let request = afd_inference::json_request(payload.request)?;
+            let path = request.uri().path().to_owned();
             let request = ProviderRequest {
-                request: http::Request::from_parts(parts, body),
+                request,
                 timeout_ms,
             };
             let reply = physical.send(request).await.map_err(|source| {

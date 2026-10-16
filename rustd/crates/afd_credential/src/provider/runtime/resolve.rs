@@ -6,7 +6,7 @@ use afd_crypto::aad::Aad;
 use afd_vault::StoredEnvelope;
 use sqlx::{Connection as _, FromRow as _, Row as _};
 
-use super::super::registered::{CONTEXT, metadata, read};
+use super::super::registered::{CONTEXT, read};
 use super::project;
 use crate::{
     error::{Result, provider_secret_missing, query, vault_open},
@@ -22,10 +22,11 @@ impl Providers {
     pub async fn resolve_reference(&self, owner: &Uuid7, reference: &str) -> Result<Resolved> {
         let mut connection = self.pool().acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let row = read(&mut tx, owner, reference)
+        let registration = read(&mut tx, owner, reference)
             .await?
             .ok_or_else(provider_secret_missing)?;
-        let model = project(metadata(&row, reference)?).ok_or_else(provider_secret_missing)?;
+        let model = project(registration.model).ok_or_else(provider_secret_missing)?;
+        let row = registration.row;
         let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
         let name: String = row.try_get(7).map_err(query(CONTEXT))?;
         let row = sqlx::query(sql::SELECT_SECRET)
@@ -44,11 +45,9 @@ impl Providers {
         let credential = vetted::vet(body.expose())?;
         let api_key = managed::bearer(credential.api_key, credential.dialled.is_some())?;
         tx.commit().await.map_err(query(CONTEXT))?;
-        let endpoint = super::super::endpoint::validate(&model.inference.base_url)
-            .map_err(|_rejected| provider_secret_missing())?;
         let endpoint = Some(super::super::Dialled {
             base_url: model.inference.base_url.as_str().into(),
-            inference_host: endpoint,
+            inference_host: registration.inference_host,
         });
         Ok(Resolved::new(
             if reference == PLATFORM_MODEL_REF {

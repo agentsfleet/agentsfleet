@@ -15,6 +15,12 @@ use crate::error::{Result, query};
 pub const PLATFORM_MODEL_REF: &str = "platform-default";
 pub(super) const CONTEXT: &str = "resolve registered owner model";
 
+pub(super) struct Registration {
+    pub(super) row: PgRow,
+    pub(super) model: RegisteredModel,
+    pub(super) inference_host: Box<str>,
+}
+
 /// Non-secret facts selected by an explicit reference.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisteredModel {
@@ -51,18 +57,16 @@ pub async fn registered_model(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<RegisteredModel>> {
-    read(connection, owner, reference)
+    Ok(read(connection, owner, reference)
         .await?
-        .as_ref()
-        .map(|row| metadata(row, reference))
-        .transpose()
+        .map(|registration| registration.model))
 }
 
 pub(super) async fn read(
     connection: &mut PgConnection,
     owner: &Uuid7,
     reference: &str,
-) -> Result<Option<PgRow>> {
+) -> Result<Option<Registration>> {
     let statement = if reference == PLATFORM_MODEL_REF {
         sql::PLATFORM
     } else {
@@ -82,12 +86,16 @@ pub(super) async fn read(
         return Ok(None);
     };
     let context = u32::try_from(model.context_window_tokens).unwrap_or_default();
-    if !afd_inference::Configured::new(inference, context)
-        .is_ok_and(|route| route.accepts_endpoint(model.base_url.as_deref()))
-    {
-        return Ok(None);
-    }
-    Ok(Some(row))
+    let route = match afd_inference::Configured::new(inference, context) {
+        Ok(route) if route.accepts_endpoint(model.base_url.as_deref()) => route,
+        _ => return Ok(None),
+    };
+    let inference_host = route.into_host();
+    Ok(Some(Registration {
+        row,
+        model,
+        inference_host,
+    }))
 }
 
 pub(super) fn metadata(row: &PgRow, reference: &str) -> Result<RegisteredModel> {
