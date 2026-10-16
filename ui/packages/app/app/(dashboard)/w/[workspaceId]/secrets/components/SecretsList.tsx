@@ -1,6 +1,7 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { TIME_LABEL } from "@/lib/time-labels";
+import { useDeferredValue, useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
@@ -9,6 +10,7 @@ import {
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon } from "lucide-react";
+import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
@@ -46,14 +48,14 @@ function buildColumns({
 }): DataTableColumn<Secret>[] {
   return [
     {
-      key: "name",
+      key: "name", primary: true,
       header: "Name",
       sortValue: (c) => c.name,
       cell: (c) => <SecretNameCell secret={c} pending={pending} onRename={onRename} />,
     },
     {
       key: "created_at",
-      header: "Time",
+      header: TIME_LABEL.created,
       hideOnMobile: true,
       sortValue: (c) => c.created_at,
       cell: (c) => <SecretCreatedCell secret={c} />,
@@ -146,13 +148,19 @@ function SecretTable({
   onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
+  const [search, setSearch] = useState("");
+  const query = useDeferredValue(search.trim().toLowerCase());
+  const matches = useMemo(() => secrets.filter((secret) => secret.name.toLowerCase().includes(query)), [secrets, query]);
   const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col gap-xl">
+      <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
       <DataTable
         className="flex min-h-0 flex-1 flex-col"
         columns={columns}
-        rows={secrets}
+        rows={matches}
+        isLoading={pending}
+        empty={<EmptyState title="No matching secrets" description="Try another name or clear your search." />}
         rowKey={(c) => c.name}
         caption="Stored secrets"
         viewportClassName="min-h-0 flex-1 max-h-none"
@@ -226,8 +234,8 @@ export default function SecretsList({
       {secrets.length === 0 ? (
         <EmptyState
           icon={<KeyRoundIcon size={28} />}
-          title="No secrets"
-          description="Create secret to have your fleets reach other services securely."
+          title="Keep your credentials in one place"
+          description="Create a secret for the services your fleets need. Saved values are encrypted and stay hidden; you can replace them whenever needed."
         />
       ) : (
         <SecretTable

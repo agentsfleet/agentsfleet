@@ -53,7 +53,7 @@ describe("workspace fleet wall provider", () => {
     expect(view.getByTestId(FLEET_B).textContent).toContain(NO_FEED_LABEL);
   });
 
-  it("coalesces a 60-fleet burst into one animation callback and one React commit", () => {
+  it(`coalesces a ${BURST_FLEET_COUNT}-fleet burst into one animation callback and one React commit`, () => {
     const fleetIds = Array.from({ length: BURST_FLEET_COUNT }, (_, index) => `fleet_${index}`);
     const onRender = vi.fn<ProfilerOnRenderCallback>();
     renderWall(fleetIds, onRender);

@@ -9,6 +9,7 @@ import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE, type RunnerAdminState, type Ru
 // later milestone, and a control that pretends to work is worse than one that
 // says why it will not. One string, both entries.
 const NOT_ACTIVE_YET_REASON = "Not active yet";
+export const EDIT_POLICY_LABEL = "Edit";
 
 // Each admin action carries its confirm-dialog copy. `label` is the single
 // source of the accessible name; `icon` is the leading glyph its header button
@@ -74,7 +75,7 @@ export const DELETE_ACTION_CONFIG = {
 // runner's own sandbox and changes nothing an operator would want to undo, so a
 // confirmation would be ceremony without a decision behind it.
 export const SELFTEST_ACTION_CONFIG = {
-  label: "Run checks",
+  label: "Test",
   pendingLabel: "Checks requested",
   errorAction: "run checks on this runner",
   icon: ListChecksIcon,

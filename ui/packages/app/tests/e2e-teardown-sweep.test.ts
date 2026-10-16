@@ -10,6 +10,8 @@
  * target that is not disposable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FLEET, FLEET_ID, DRAFT_ID, CANDIDATE_ID } from "./helpers/draft-fixtures";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 
 const DEV_API_URL = "https://api-dev.agentsfleet.net";
 const PROD_API_URL = "https://api.agentsfleet.net";
@@ -20,7 +22,10 @@ type StubFleet = { id: string; name: string; status: string };
 const UNLISTED_NAMES = ["console-ab12", "pulse-cd34", "nav-ef56"] as const;
 
 /** The collection the library sweep reads and removes through. */
-const ENTRIES_PATH = "/library-entries";
+const ENTRIES_PATH = "/fleet-libraries";
+const OWNED_ENTRIES_PATH = `${ENTRIES_PATH}/owned`;
+const FLEET_IDS = [FLEET_ID, DRAFT_ID, CANDIDATE_ID] as const;
+const KILLED_ETAG = '"killed-fleet"';
 
 /** Entries a leaked run leaves in a fixture workspace's own library. */
 const LEAKED_ENTRIES = [
@@ -48,7 +53,7 @@ async function loadSweep() {
 }
 
 function fleets(...names: readonly string[]): StubFleet[] {
-  return names.map((name, i) => ({ id: `fleet-${i}`, name, status: "active" }));
+  return names.map((name, i) => ({ id: FLEET_IDS[i] ?? FLEET_ID, name, status: AGENTSFLEET_STATUS.ACTIVE }));
 }
 
 beforeEach(() => {
@@ -56,8 +61,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
   del.mockResolvedValue(undefined);
-  patch.mockResolvedValue(undefined);
-  get.mockResolvedValue({ items: [] });
+  patch.mockResolvedValue({...FLEET, status: AGENTSFLEET_STATUS.KILLED, etag: KILLED_ETAG});
+  get.mockResolvedValue({...FLEET, status: AGENTSFLEET_STATUS.ACTIVE});
 });
 
 afterEach(() => {
@@ -78,6 +83,9 @@ describe("sweepLeakedFixtureFleets", () => {
     const fixtureUsers = listWorkspaces.mock.calls.length;
     expect(counts.removed).toBe(UNLISTED_NAMES.length * fixtureUsers);
     expect(counts.failed).toBe(0);
+    expect(patch).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID),
+      {status: AGENTSFLEET_STATUS.KILLED}, {"If-Match": FLEET.etag});
+    expect(del).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID), {"If-Match": KILLED_ETAG});
     // Assert each individual fleet reached a delete, not just that the total
     // adds up — a count can be right while the wrong rows were removed.
     const deleted = del.mock.calls.map(([path]) => String(path));
@@ -93,7 +101,7 @@ describe("sweepLeakedFixtureFleets", () => {
     listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
     listFleets.mockResolvedValue(fleets("console-ab12", "pulse-cd34", "nav-ef56"));
     del.mockImplementation((path: string) =>
-      path.endsWith("fleet-1") ? Promise.reject(new Error("stuck")) : Promise.resolve(),
+      path.endsWith(DRAFT_ID) ? Promise.reject(new Error("stuck")) : Promise.resolve(),
     );
 
     const { sweepLeakedFixtureFleets } = await loadSweep();
@@ -170,7 +178,7 @@ describe("sweepLeakedFixtureLibraries", () => {
     // here even by mistake. That is the bound, and it is a property of the
     // path, not of a filter the sweep applies afterwards.
     const read = get.mock.calls.map(([path]) => String(path));
-    expect(read.every((path) => path.includes(ENTRIES_PATH))).toBe(true);
+    expect(read.every((path) => path.includes(OWNED_ENTRIES_PATH))).toBe(true);
     const deleted = del.mock.calls.map(([path]) => String(path));
     LEAKED_ENTRIES.forEach((entry) => {
       const swept = deleted.some(
@@ -271,6 +279,6 @@ describe("cleanWorkspaceFleets", () => {
 
     expect(counts).toEqual({ removed: 2, failed: 0 });
     const deleted = del.mock.calls.map(([path]) => String(path));
-    expect(deleted.some((p) => p.endsWith("fleet-1"))).toBe(false); // count-bbb survived
+    expect(deleted.some((p) => p.endsWith(DRAFT_ID))).toBe(false); // count-bbb survived
   });
 });

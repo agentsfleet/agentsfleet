@@ -56,7 +56,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     expect(getSnapshot(Z_A).events[0]?.submittedAtMs).toBe(stamped);
     sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_mine", actor: "steer:k@e2e.com", created_at: Date.UTC(2026, 0, 1) });
     // A frame that lands on the row synchronously, so nothing here waits.
-    sourceAt(0).emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_mine", name: "read_file", args_redacted: true });
+    sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_mine", name: "read_file", args_redacted: true });
     expect(getSnapshot(Z_A).events).toHaveLength(1);
     expect(getSnapshot(Z_A).events[0]).toMatchObject({ id: "evt_mine", tools: [{ name: "read_file" }], submittedAtMs: stamped });
     release();

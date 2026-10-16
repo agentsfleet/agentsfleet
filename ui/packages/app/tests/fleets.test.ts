@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FLEET } from "./helpers/draft-fixtures";
 import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -129,6 +130,7 @@ describe("FleetConfig interactions", () => {
         workspaceId: "ws_1",
         fleetId: "zom_1",
         fleetName: "platform-ops",
+        etag: FLEET.etag,
       }),
     );
 
@@ -140,7 +142,7 @@ describe("FleetConfig interactions", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-        expect.objectContaining({ method: "DELETE" }),
+        expect.objectContaining({ method: "DELETE", headers: expect.objectContaining({"If-Match": FLEET.etag}) }),
       ),
     );
     expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets");
@@ -164,6 +166,7 @@ describe("FleetConfig interactions", () => {
         workspaceId: "ws_1",
         fleetId: "zom_1",
         fleetName: "platform-ops",
+        etag: FLEET.etag,
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete fleet/i }));
@@ -193,6 +196,7 @@ describe("FleetConfig interactions", () => {
         workspaceId: "ws_1",
         fleetId: "zom_1",
         fleetName: "platform-ops",
+        etag: FLEET.etag,
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete fleet/i }));
@@ -213,6 +217,7 @@ describe("FleetConfig interactions", () => {
         workspaceId: "ws_1",
         fleetId: "zom_1",
         fleetName: "platform-ops",
+        etag: FLEET.etag,
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete fleet/i }));

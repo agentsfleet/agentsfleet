@@ -24,7 +24,7 @@ function announce(eventId: string, actor = OWN): void {
 }
 
 function toolStarted(eventId: string): void {
-  sourceAt(0).emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true });
+  sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true });
 }
 
 function ids(): string[] {

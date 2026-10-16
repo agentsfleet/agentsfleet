@@ -197,7 +197,7 @@ describe("SSE route handler — refused at open for lost access", () => {
   const PROBLEM_JSON = "application/problem+json";
   const problem = (errorCode: string) => JSON.stringify({ title: "Forbidden", error_code: errorCode });
   // pin test: literal is the contract — the bytes the daemon writes for
-  // `Frame::access_revoked` (rustd/crates/afd_sse/src/frame.rs).
+  // `Frame::access_revoked` (rustd/crates/afd_sse/src/frame/mod.rs).
   const ACCESS_REVOKED_WIRE =
     'id: 0\nevent: access_revoked\ndata: {"kind":"access_revoked","error_code":"UZ-AUTH-001"}\n\n';
 

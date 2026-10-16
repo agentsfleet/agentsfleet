@@ -44,7 +44,6 @@ export type EventRow = {
    * it — every surface then falls back to the canned `failure_label` sentence.
    */
   failure_detail: string | null;
-  checkpoint_id: string | null;
   resumes_event_id: string | null;
   /**
    * Summed telemetry `credit_deducted_nanos` for this event — server truth
@@ -79,10 +78,9 @@ export type EventDetail = EventRow & {
   response_text: string | null;
   /**
    * The run's tool calls as the runner reported them at settle, so a reload
-   * shows the same rows the live tail did. `null` when none were recorded;
-   * absent from a daemon that predates the column.
+   * shows the same rows the live tail did. `null` when none were recorded.
    */
-  tool_calls?: SavedToolTrace | null;
+  tool_calls: SavedToolTrace | null;
 };
 
 /** `afd_wire::tool_trace::ToolTrace`: the calls in order, and how many the
@@ -233,8 +231,8 @@ export type ActivityLiveFrame =
       event_id: string;
       name: string;
       args_redacted: unknown;
-      /** Shared by every frame of one call; absent from older runners. */
-      call_id?: string;
+      /** Shared by every frame of one call. */
+      call_id: string;
     }
 
   | {
@@ -242,19 +240,19 @@ export type ActivityLiveFrame =
       event_id: string;
       name: string;
       elapsed_ms: number;
-      call_id?: string;
+      call_id: string;
     }
 
-  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind?: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
 
-  // The outcome fields are absent from a runner that reports none.
+  // Status is required; output edges and exit codes depend on the tool.
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;
       event_id: string;
       name: string;
       ms: number;
-      call_id?: string;
-      status?: string;
+      call_id: string;
+      status: string;
       output_head?: string;
       output_tail?: string;
       output_line_count?: number;
@@ -293,17 +291,7 @@ export type ActivityLiveFrame =
       resolved_by: string;
       pending_approvals: number;
     } & FleetCountersSnapshot)
-
-  // Install-progression frames carry only their discriminating `kind` (the kind
-  // itself names the step). The registry forks these off the chat-event path —
-  // they advance the install step, never the message list.
-  | { kind: typeof FRAME_KIND.INSTALL_CREATING }
-
-  | { kind: typeof FRAME_KIND.INSTALL_PROVISIONING }
-
-  | { kind: typeof FRAME_KIND.INSTALL_READY }
-
-  | { kind: typeof FRAME_KIND.INSTALL_ERROR };
+;
 
 export type WorkspaceHelloFrame = {
   kind: typeof FRAME_KIND.HELLO;

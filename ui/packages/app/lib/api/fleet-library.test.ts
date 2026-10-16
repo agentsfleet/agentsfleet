@@ -1,100 +1,61 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
-import { SOURCE_KIND_GITHUB } from "../types";
+import { deletePlatformFleetLibraryEntry, listPlatformFleetLibrary, patchPlatformFleetLibraryEntry, removeWorkspaceLibraryEntry, stagePlatformFleetLibrary } from "./fleet-library";
+import { LIBRARY_CARD, PUBLICATION, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
+const OPERATION = "0199a801-1000-7000-8000-000000000009";
+const TAG = '\"platform-one\"';
+const platform = {card: {...LIBRARY_CARD, visibility: "platform_draft"}, published: false, updated_at: 0};
+const fetchMock = vi.fn<typeof fetch>();
+beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+afterEach(() => vi.unstubAllGlobals());
 
-afterEach(() => fetchMock.mockReset());
+function call() {
+  const [url, init] = fetchMock.mock.calls.at(-1) ?? [];
+  return {url: typeof url === "string" ? url : url instanceof URL ? url.href : url?.url, method: init?.method, body: init?.body ? JSON.parse(typeof init.body === "string" ? init.body : "null") : undefined, headers: new Headers(init?.headers)};
+}
 
-const onboarded = {
-  id: "tmpl_1",
-  name: "GitHub PR reviewer",
-  visibility: "tenant",
-  content_hash: "sha256:abc",
-  requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-};
-
-describe("fleet template API client", () => {
-  it("test_onboard_client_posts_tenant_endpoint", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => onboarded });
-    const { onboardWorkspaceFleetLibrary } = await import("./fleet-library");
-    const body = { source_kind: SOURCE_KIND_GITHUB, source_ref: "owner/repo" };
-    const res = await onboardWorkspaceFleetLibrary("ws_1", body, "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleet-libraries"),
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
-        body: JSON.stringify(body),
-      }),
-    );
-    expect(res).toEqual(onboarded);
+describe("native Library transport", () => {
+  it("removes only the encoded entry requested", async () => {
+    fetchMock.mockResolvedValue(new Response(null, {status: 204}));
+    await removeWorkspaceLibraryEntry(WORKSPACE, "../fleets", "session");
+    expect(call()).toMatchObject({url: expect.stringContaining("/fleet-libraries/..%2Ffleets"), method: "DELETE"});
   });
-
-  // The regression this pins: a POST gets `maxAttempts: 1` and, with no signal
-  // of its own, the transport's 10s default. GitHub serving the tarball slower
-  // than that abandoned the import in the dialog while the daemon was still
-  // fetching — the acceptance suite's own failure before this budget existed.
-  it.each([
-    [
-      "tenant",
-      async (mod: typeof import("./fleet-library")) =>
-        mod.onboardWorkspaceFleetLibrary("ws_1", { source_kind: SOURCE_KIND_GITHUB, source_ref: "owner/repo" }, "tok"),
-    ],
-    [
-      "platform",
-      async (mod: typeof import("./fleet-library")) =>
-        mod.onboardPlatformFleetLibrary({ source_kind: SOURCE_KIND_GITHUB, source_ref: "owner/repo" }, "tok"),
-    ],
-  ])("test_onboard_%s_carries_the_bundle_budget_not_the_transport_default", async (_tier, call) => {
-    fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => onboarded });
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
-    try {
-      const mod = await import("./fleet-library");
-      await call(mod);
-      expect(timeoutSpy).toHaveBeenCalledWith(mod.ONBOARD_BUNDLE_TIMEOUT_MS);
-      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(init.signal).toBeInstanceOf(AbortSignal);
-      expect(init.signal?.aborted).toBe(false);
-    } finally {
-      timeoutSpy.mockRestore();
-    }
+  it("stages a reviewed candidate without publishing or source files", async () => {
+    fetchMock.mockResolvedValue(response(PUBLICATION, 201));
+    const body = {workspace_id: WORKSPACE, draft_candidate_id: OPERATION, label: "Reviewed"};
+    expect(await stagePlatformFleetLibrary(body, OPERATION, "session")).toEqual(PUBLICATION);
+    expect(call()).toMatchObject({url: expect.stringContaining("/v1/admin/fleet-libraries"), method: "POST", body});
+    expect(call().headers.get("Idempotency-Key")).toBe(OPERATION); expect(fetchMock).toHaveBeenCalledTimes(1);
   });
-
-  // The ordering the fix rests on, held by a pin rather than an import so no
-  // module depends on another for it.
-  //
-  // Below the route segment's maxDuration: both pages hosting an onboard action
-  // declare `export const maxDuration = 60`, and if the platform killed the
-  // function first the operator would get an opaque 504 instead of our own
-  // message. Above a warm import: one measured under 6s against api-dev, so a
-  // budget at or beneath that would fail imports that were about to succeed.
-  it("test_onboard_budget_sits_between_a_warm_import_and_the_segment_ceiling", async () => {
-    const { ONBOARD_BUNDLE_TIMEOUT_MS } = await import("./fleet-library");
-    // pin test: literal is the contract — `maxDuration = 60` on
-    // admin/fleet-libraries/page.tsx and w/[workspaceId]/fleets/new/page.tsx
-    const SEGMENT_MAX_DURATION_MS = 60 * 1_000;
-    // pin test: literal is the contract — measured warm import, api-dev
-    const WARM_IMPORT_MS = 6_000;
-    expect(ONBOARD_BUNDLE_TIMEOUT_MS).toBeLessThan(SEGMENT_MAX_DURATION_MS);
-    expect(ONBOARD_BUNDLE_TIMEOUT_MS).toBeGreaterThan(WARM_IMPORT_MS);
+  it("validates staged operator metadata", async () => {
+    fetchMock.mockResolvedValue(response({entries: [platform]}));
+    const result = await listPlatformFleetLibrary("session");
+    expect(result.entries[0]).toMatchObject({id: LIBRARY_CARD.id, published: false, visibility: "platform_draft"});
   });
-
-  it("test_onboard_action_maps_apierror_to_errorcode: throws ApiError on 403", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ detail: "forbidden", error_code: "UZ-AUTH-022" }),
-    });
-    const { onboardWorkspaceFleetLibrary } = await import("./fleet-library");
-    const err = await onboardWorkspaceFleetLibrary(
-      "ws_1",
-      { source_kind: SOURCE_KIND_GITHUB, source_ref: "owner/repo" },
-      "tok",
-    ).catch((e) => e) as ApiError;
-    expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(403);
-    expect(err.code).toBe("UZ-AUTH-022");
+  it("requires matching body and response tags after conditional curation", async () => {
+    fetchMock.mockResolvedValue(response({...platform, card: {...platform.card, etag: TAG}}, 200, {etag: TAG}));
+    const updated = await patchPlatformFleetLibraryEntry("recipe", {published: true}, TAG, "session");
+    expect(updated.etag).toBe(TAG); expect(call().headers.get("If-Match")).toBe(TAG);
+    expect(call().body).toEqual({published: true});
+  });
+  it.each([null, '\"other\"'])("refuses an unconfirmed curation tag %s", async (etag) => {
+    fetchMock.mockResolvedValue(response(platform, 200, etag ? {etag} : {}));
+    await expect(patchPlatformFleetLibraryEntry("recipe", {published: true}, TAG, "session")).rejects.toThrow("ETag disagree");
+  });
+  it("deletes against the displayed operator revision", async () => {
+    fetchMock.mockResolvedValue(new Response(null, {status: 204}));
+    await deletePlatformFleetLibraryEntry("recipe", TAG, "session");
+    expect(call().method).toBe("DELETE"); expect(call().headers.get("If-Match")).toBe(TAG);
+  });
+  it.each([401, 403, 409, 412])("surfaces refusal %i without retrying a mutation", async (status) => {
+    fetchMock.mockResolvedValue(response({detail: "Refused", error_code: "UZ-AUTH-022"}, status));
+    await expect(stagePlatformFleetLibrary({workspace_id: WORKSPACE, draft_candidate_id: OPERATION, label: "Reviewed"}, OPERATION, "session"))
+      .rejects.toMatchObject({name: "ApiError", status, code: "UZ-AUTH-022"});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("refuses malformed native metadata instead of showing an empty catalog", async () => {
+    fetchMock.mockResolvedValue(response({entries: [{id: "invalid-entry"}]}));
+    await expect(listPlatformFleetLibrary("session")).rejects.not.toBeInstanceOf(ApiError);
   });
 });

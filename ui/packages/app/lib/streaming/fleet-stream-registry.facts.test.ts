@@ -29,12 +29,12 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     status: "processed",
     request_json: "{}",
     response_text: "seed body",
+    tool_calls: null,
     tokens: 1500,
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     created_at: SEED_AT,
     updated_at: SEED_AT,
@@ -164,8 +164,8 @@ describe("fleet-stream-registry — the newest figures", () => {
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "fleet", created_at: SEED_AT + 1 });
     const opened = getSnapshot(FLEET).latest;
     expect(opened).toMatchObject({ status: "received", tokens: null });
-    emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "Hel" });
-    emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "lo" });
+    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "Hel" });
+    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "lo" });
     expect(getSnapshot(FLEET).latest).toBe(opened);
     release();
   });

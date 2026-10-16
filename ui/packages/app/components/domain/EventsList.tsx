@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { useMemo, useState } from "react";
 import {
   Badge,
@@ -72,14 +73,14 @@ function createEventColumns(
       // Leading column: which fleet, by the name it carries everywhere else.
       // This printed `01a0…7b2a` — the durable id, correct and unreadable, and
       // the same class of thing as a raw user subject in the Decided column.
-      key: "fleet",
+      key: "fleet", primary: true,
       header: "Fleet",
       sortValue: (row) => agentDisplayName(row.fleet_id),
       cell: (row) => <AgentLabel fleetId={row.fleet_id} />,
     },
     {
       key: "time",
-      header: "Time",
+      header: TIME_LABEL.created,
       hideOnMobile: true,
       sortValue: (row) => row.created_at,
       cell: (row) => <EventTimeCell row={row} />,
@@ -140,7 +141,7 @@ function createEventColumns(
       // Failure column here printed one sentence from `failure_label` and
       // "No failure recorded" on every healthy row, while Status already
       // flagged the failure and this dialog already showed that same sentence
-      // plus its recorded cause, the fix hint and the copyable diagnostic.
+      // plus its recorded cause and the fix hint.
       // Right-aligned: a row action aligns right in every table, and here it
       // keeps its place after Status (docs/DESIGN_SYSTEM.md).
       key: "details",

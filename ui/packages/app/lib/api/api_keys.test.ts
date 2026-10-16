@@ -11,7 +11,6 @@ const keyRow = (id: string) => ({
   key_name: id,
   active: true,
   created_at: 1700000000000,
-  last_used_at: null,
   revoked_at: null,
 });
 

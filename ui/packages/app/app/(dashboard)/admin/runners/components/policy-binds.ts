@@ -8,7 +8,7 @@ import { BIND_MODE, type BindMode, type ExtraBind } from "@/lib/api/runners-type
 //
 // The rules here are a MIRROR, never the enforcement. The garde rules on
 // `ExtraBind` and `AssignedPolicy::extra_binds`
-// (rustd/crates/afd_wire/src/runner.rs) are the daemon's boundary; this exists
+// (rustd/crates/afd_wire/src/runner/mod.rs) are the daemon's boundary; this exists
 // so an operator hears the reason next to the row they typed.
 
 /** `EXTRA_BINDS_MAX` in rustd/crates/afd_wire/src/runner/rules.rs. */
@@ -142,21 +142,16 @@ export function bindNoteIssue(note: string): string | null {
 /**
  * Form rows → the wire list. Empty rows are dropped rather than refused: an
  * operator who opens a row and changes their mind should be able to save.
- * `note` is omitted when blank so the stored assignment carries no empty keys.
+ * Every bind carries `mode` and `note`, a blank note as `""`, because the
+ * daemon requires both.
  */
 export function bindsFromForm(rows: BindFormRow[]): ExtraBind[] {
   return rows
-    .map((r) => ({ ...r, path: r.path.trim(), note: r.note.trim() }))
-    .filter((r) => r.path.length > 0)
-    .map((r) => (r.note.length > 0 ? { path: r.path, mode: r.mode, note: r.note } : { path: r.path, mode: r.mode }));
+    .map((r) => ({ path: r.path.trim(), mode: r.mode, note: r.note.trim() }))
+    .filter((r) => r.path.length > 0);
 }
 
-/** A stored assignment's binds → form rows. An entry that names no mode is
- * read-only, matching the wire default — access never widens by omission. */
-export function formFromBinds(binds: ExtraBind[] | undefined): BindFormRow[] {
-  return (binds ?? []).map((b) => ({
-    path: b.path,
-    mode: b.mode ?? BIND_MODE.read_only,
-    note: b.note ?? "",
-  }));
+/** A stored assignment's binds → form rows. */
+export function formFromBinds(binds: ExtraBind[]): BindFormRow[] {
+  return binds.map((b) => ({ path: b.path, mode: b.mode, note: b.note }));
 }

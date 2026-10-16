@@ -1,6 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { SCOPE } from "@/lib/auth/scopes";
 import { ApiError } from "@/lib/api/errors";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
@@ -43,6 +44,15 @@ beforeEach(() => {
 });
 
 describe("admin/runners page", () => {
+  it.each([true, false])("resolves enrollment separately from runner read (enroll=%s)", async (canEnroll) => {
+    hasScopeMock.mockImplementation(async (scope: string) => scope === SCOPE.RUNNER_READ || (scope === SCOPE.RUNNER_ENROLL && canEnroll));
+    mockAuth();
+    listRunnersMock.mockResolvedValueOnce({items: [], total: 0, next_cursor: null});
+    const { default: Page } = await import("../app/(dashboard)/admin/runners/page");
+    expect((await Page()).props.canEnroll).toBe(canEnroll);
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_ENROLL);
+  });
+
   it("redirects a caller without runner:read to settings with the operator notice (UI guard)", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
     const { default: Page } = await import("../app/(dashboard)/admin/runners/page");

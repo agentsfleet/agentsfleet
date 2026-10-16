@@ -92,11 +92,11 @@ export function completed(fleetId: string, eventId: string, counters: object = {
 }
 
 export function chunk(fleetId: string, eventId: string, text = "…"): WorkspaceLiveFrame {
-  return { kind: FRAME_KIND.CHUNK, fleet_id: fleetId, event_id: eventId, text };
+  return { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: fleetId, event_id: eventId, text };
 }
 
 export function toolStarted(fleetId: string, eventId: string, name: string): WorkspaceLiveFrame {
-  return { kind: FRAME_KIND.TOOL_CALL_STARTED, fleet_id: fleetId, event_id: eventId, name, args_redacted: null };
+  return { call_id: name, kind: FRAME_KIND.TOOL_CALL_STARTED, fleet_id: fleetId, event_id: eventId, name, args_redacted: null };
 }
 
 /** A settled durable row, as the backfill list serves one. */
@@ -112,7 +112,6 @@ export function listRow(fleetId: string, eventId: string, createdAtMs = CREATED_
     wall_ms: null,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: null,
     created_at: createdAtMs,

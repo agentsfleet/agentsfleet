@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const createRunnerActionMock = vi.fn();
 vi.mock("../actions", () => ({
@@ -24,6 +25,21 @@ function openDialog() {
 }
 
 describe("AddRunnerDialog assigns policy", () => {
+  it("retains an in-flight enrollment and shows an unexpected failure inside the dialog", async () => {
+    const pending = Promise.withResolvers<unknown>();
+    createRunnerActionMock.mockReturnValue(pending.promise);
+    openDialog();
+    fireEvent.change(screen.getByLabelText(/host name/i), {target: {value: "web-prod-1"}});
+    fireEvent.click(screen.getByRole("button", {name: "Create"}));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Cancel"})).toHaveProperty("disabled", true));
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await act(async () => pending.reject(new Error("private-response-marker")));
+    expect(screen.getByRole("alert").textContent).toContain("Try again");
+    expect(screen.getByRole("alert").textContent).not.toContain("private-response-marker");
+    expect(screen.getByLabelText(/host name/i)).toHaveProperty("value", "web-prod-1");
+    expect(screen.getByRole("button", {name: "Cancel"})).toHaveProperty("disabled", false);
+  });
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     openDialog();
     fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });

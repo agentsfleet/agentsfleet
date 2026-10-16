@@ -1,7 +1,7 @@
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
+  const m = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const s = seconds % SECONDS_PER_MINUTE;
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
@@ -43,7 +43,7 @@ export function formatMs(ms: number): string {
 
 /** A clock that ticks, its width held: seconds at one decimal under a minute
  * ("59.0s"), then minutes and two-digit seconds ("2m 05s"). The switch reads
- * the rounded figure, so a clock never shows "60.0s". */
+ * the rounded figure, so a full minute always uses the minute form. */
 export function formatSeconds(ms: number): string {
   const tenths = Math.round(Math.max(0, ms) / MS_PER_TENTH);
   if (tenths < TENTHS_PER_MINUTE) return SECONDS_FORMAT.format(tenths / TENTHS_PER_SECOND);

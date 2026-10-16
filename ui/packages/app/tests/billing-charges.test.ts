@@ -6,7 +6,6 @@ import {
   formatChargeAmount,
   formatChargeTimestamp,
   formatDollars,
-  summarizeCharges,
   type ChargeRow,
 } from "@/app/(dashboard)/settings/billing/lib/charges";
 import { CHARGE_TYPE, NANOS_PER_USD, PROVIDER_MODE } from "@/lib/types";
@@ -113,49 +112,6 @@ describe("charge identity", () => {
   });
 });
 
-describe("summarizeCharges", () => {
-  it("returns zeros for an empty window", () => {
-    expect(summarizeCharges([], 4_710_000_000)).toEqual({
-      spentNanos: 0,
-      eventCount: 0,
-      meterPct: 0,
-    });
-  });
-
-  it("sums spend, counts distinct events, and computes the consumed fraction", () => {
-    const rows = [
-      charge({ id: "a", event_id: "evt_1", credit_deducted_nanos: 1, charge_type: CHARGE_TYPE.receive }),
-      charge({ id: "b", event_id: "evt_1", credit_deducted_nanos: 289_999_999 }),
-    ];
-    const s = summarizeCharges(rows, 4_710_000_000);
-    expect(s.spentNanos).toBe(290_000_000);
-    expect(s.eventCount).toBe(1); // both rows are the same event
-    // 290M / (4710M + 290M) = 5.8%
-    expect(s.meterPct).toBeCloseTo(5.8, 5);
-  });
-
-  it("counts each distinct event once", () => {
-    const rows = [
-      charge({ id: "a", event_id: "evt_1" }),
-      charge({ id: "b", event_id: "evt_2" }),
-      charge({ id: "c", event_id: "evt_2" }),
-    ];
-    expect(summarizeCharges(rows, NANOS_PER_USD).eventCount).toBe(2);
-  });
-
-  it("floors a non-zero consumed fraction to a hairline so the track is never invisibly empty", () => {
-    // Tiny spend against a huge balance → raw < 1% → floored to 1%.
-    const s = summarizeCharges([charge({ credit_deducted_nanos: 1 })], 9_000_000_000_000);
-    expect(s.spentNanos).toBe(1);
-    expect(s.meterPct).toBe(1);
-  });
-
-  it("never exceeds 100% even when balance is exhausted", () => {
-    const s = summarizeCharges([charge({ credit_deducted_nanos: 500_000_000 })], 0);
-    expect(s.meterPct).toBe(100);
-  });
-});
-
 // The dashboard holds the nanos denominator and no rate. These cover what that
 // buys: a figure the server sent is the figure rendered, and the denominator
 // stays exact across the whole range a balance can occupy.
@@ -170,17 +126,6 @@ const SERVED_COST_NANOS = 7_111_111;
 const NINE_MILLION_USD = 9_000_000;
 
 describe("spend is reported from the served figure, never recomputed", () => {
-  it("sums the credits the ledger says were deducted, ignoring wall time", () => {
-    const rows = [
-      charge({ id: "tel_1", event_id: "evt_1", credit_deducted_nanos: SERVED_COST_NANOS, wall_ms: 3000 }),
-      charge({ id: "tel_2", event_id: "evt_2", credit_deducted_nanos: SERVED_COST_NANOS, wall_ms: 60_000 }),
-    ];
-
-    // Equal costs against wildly unequal durations: only a summary that reads
-    // the served field can produce this total.
-    expect(summarizeCharges(rows, NANOS_PER_USD).spentNanos).toBe(2 * SERVED_COST_NANOS);
-  });
-
   it("renders a charge the server sent even when no rate could have produced it", () => {
     expect(formatChargeAmount(SERVED_COST_NANOS)).toBe("−$0.0071");
   });

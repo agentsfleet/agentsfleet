@@ -38,7 +38,7 @@ export const RUNNER_ADMIN_STATES = [
 ] as const;
 
 // Canonical Stripe-style paging parameter names — spelled identically to the
-// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (rustd/crates/afd_core/src/paging.rs).
+// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (rustd/crates/afd_core/src/paging/mod.rs).
 export const QUERY_STARTING_AFTER = "starting_after";
 
 export const QUERY_LIMIT = "limit";
@@ -61,9 +61,8 @@ export interface RunnerListItem {
   labels: string[];
   last_seen_at: number;
   created_at: number;
-  /** The assignment this host must satisfy. Null only for a pre-policy row —
-   * such a runner reads degraded until an operator assigns a policy. */
-  assigned_policy: AssignedPolicy | null;
+  /** The assignment this host must satisfy. */
+  assigned_policy: AssignedPolicy;
   /** The host's last capability report; null until its first report arrives. */
   achievable: CapabilityReport | null;
   /** Assigned exceeds achievable (or no report yet). A degraded runner is issued no work. */
@@ -183,11 +182,19 @@ export interface RunnerSelftestRequest {
   selftest_requested_at: number;
 }
 
-/** The policy-update PATCH reply: the assignment as stored (worker count clamped). */
-export interface RunnerPolicyUpdate {
+/** At least one edit field; both are applied atomically by the daemon. */
+export type RunnerEdit = (
+  | { assigned_policy: AssignedPolicy; labels?: string[] }
+  | { assigned_policy?: AssignedPolicy; labels: string[] }
+) & { action?: never };
+
+/** Fields not requested by this edit are returned as null. */
+export interface RunnerEditResponse {
   id: string;
   admin_state: RunnerAdminState;
-  assigned_policy: AssignedPolicy;
+  assigned_policy: AssignedPolicy | null;
+  labels: string[] | null;
+  selftest_requested_at: number | null;
 }
 
 export interface RunnerEventItem {
@@ -297,16 +304,15 @@ export async function requestRunnerSelftest(
   );
 }
 
-/** Re-assign a runner's policy. Reaches the host on its next heartbeat — no
- * host visit, no restart. Idempotent: a same-values PATCH changes nothing. */
-export async function updateRunnerPolicy(
+/** Replace requested runner settings together; placement re-reads labels on its next poll. */
+export async function updateRunner(
   token: string,
   runnerId: string,
-  assigned_policy: AssignedPolicy,
-): Promise<RunnerPolicyUpdate> {
-  return request<RunnerPolicyUpdate>(
+  edit: RunnerEdit,
+): Promise<RunnerEditResponse> {
+  return request<RunnerEditResponse>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
-    { method: "PATCH", body: JSON.stringify({ assigned_policy }) },
+    { method: "PATCH", body: JSON.stringify(edit) },
     token,
   );
 }

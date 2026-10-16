@@ -1,4 +1,5 @@
-import { detailResponse, happyBilling } from "./harness";
+import { FLEET_ID, response } from "../helpers/draft-fixtures";
+import { happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,55 +8,15 @@ import { fetchMock } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail header and summary", () => {
   it("fleets detail page omits the WakePulse dot when the fleet is not active", async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], next_cursor: null }),
-        };
-      }
-      if (url.includes("/memories")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], total: 0, next_cursor: null }),
-        };
-      }
-      // The chat's thread read: a real (empty) thread page, not the list
-      // envelope the fall-through returns — the strip builds its summary from
-      // this shape and rightly refuses one without `items`.
-      if (url.includes("/messages")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], total: null, next_cursor: null }),
-        };
-      }
-      if (url.includes("/events")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], next_cursor: null }),
-        };
-      }
-      return detailResponse({ name: "platform-ops", status: "paused" });
-    });
+    mockFetchBilling(happyBilling, {fleet: {status: "paused"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
-      // mounts the app's one `TooltipProvider` above every page here, and a turn
-      // rendered with a relative `Time` reads it; rendering the page on its own
-      // steps outside that ancestor. `layout.test.tsx` holds the contract.
       createElement(
         TooltipProvider,
         null,
         await Page({
-          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+          params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         }),
       ),
     );
@@ -71,7 +32,7 @@ describe("fleets routes — detail header and summary", () => {
   it("fleet transcript survives a turn whose detail re-read fails", async () => {
     const listRow = {
       event_id: "ev_1",
-      fleet_id: "zom_1",
+      fleet_id: FLEET_ID,
       workspace_id: "ws_1",
       actor: "fleet",
       event_type: "fleet_run",
@@ -80,48 +41,25 @@ describe("fleets routes — detail header and summary", () => {
       wall_ms: null,
       failure_label: null,
       failure_detail: null,
-      checkpoint_id: null,
       cost_nanos: null,
       created_at: 1_777_507_200_000,
       updated_at: 1_777_507_200_000,
     };
+    const respond = mockFetchBilling(happyBilling);
     fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
-      }
-      // The thread read is what the chat renders from; the strip builds its
-      // summary off this page and refuses a body without `items`.
-      if (url.includes("/messages")) {
-        return { ok: true, status: 200, json: async () => ({ items: [listRow], total: null, next_cursor: null }) };
-      }
-      // The single-event read carries an identifier after /events/; the list
-      // read does not. Order matters — the list branch would swallow both.
-      if (/\/events\/[^/?]+/.test(url)) {
-        return { ok: false, status: 500, json: async () => ({ detail: "detail read failed" }) };
-      }
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [listRow], next_cursor: null }) };
-      }
-      return detailResponse({ name: "platform-ops", status: "active" });
+      if (url.includes("/messages")) return response({items: [listRow], total: null, next_cursor: null});
+      if (/\/events\/[^/?]+/.test(url)) return response({detail: "detail read failed"}, 500);
+      if (url.includes("/events")) return response({items: [listRow], next_cursor: null});
+      return respond(url);
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
-      // mounts the app's one `TooltipProvider` above every page here, and a turn
-      // rendered with a relative `Time` reads it; rendering the page on its own
-      // steps outside that ancestor. `layout.test.tsx` holds the contract.
       createElement(
         TooltipProvider,
         null,
         await Page({
-          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+          params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         }),
       ),
     );
@@ -129,56 +67,24 @@ describe("fleets routes — detail header and summary", () => {
   });
 
   it("fleet summary links an exact pending count to the filtered Approvals inbox", async () => {
+    const respond = mockFetchBilling(happyBilling, {fleet: {pending_approvals: 1}});
     fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) {
-        throw new Error("the chat never reads the inbox to render its count");
-      }
-      if (url.includes("/memories")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], total: 0, next_cursor: null }),
-        };
-      }
-      // The chat's thread read: a real (empty) thread page, not the list
-      // envelope the fall-through returns — the strip builds its summary from
-      // this shape and rightly refuses one without `items`.
-      if (url.includes("/messages")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], total: null, next_cursor: null }),
-        };
-      }
-      if (url.includes("/events")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ items: [], next_cursor: null }),
-        };
-      }
-      return detailResponse({ name: "platform-ops", status: "active", pending_approvals: 1 });
+      if (url.includes("/approvals")) throw new Error("the chat never reads the inbox to render its count");
+      return respond(url);
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
-      // mounts the app's one `TooltipProvider` above every page here, and a turn
-      // rendered with a relative `Time` reads it; rendering the page on its own
-      // steps outside that ancestor. `layout.test.tsx` holds the contract.
       createElement(
         TooltipProvider,
         null,
         await Page({
-          params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+          params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         }),
       ),
     );
     expect(markup).toContain("1 approval waiting");
-    expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
+    expect(markup).toContain(`href="/w/ws_1/approvals?fleetId=${FLEET_ID}"`);
   });
 
   it("redirects an obsolete Settings query to the canonical Chat URL", async () => {
@@ -186,10 +92,10 @@ describe("fleets routes — detail header and summary", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
       Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         searchParams: Promise.resolve({ view: "settings" }),
       }),
-    ).rejects.toThrow("redirect:/w/ws_1/fleets/zom_1");
+    ).rejects.toThrow(`redirect:/w/ws_1/fleets/${FLEET_ID}`);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

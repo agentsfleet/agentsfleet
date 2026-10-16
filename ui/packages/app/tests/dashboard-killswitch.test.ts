@@ -48,8 +48,8 @@ describe("KillSwitch component", () => {
     render(
       React.createElement(KillSwitch, {
         workspaceId: "ws_1",
-        fleet: { id: "zom_1", name: "alpha", status, created_at: "2026-04-22T00:00:00Z" },
-      } as never),
+        fleet: { id: "zom_1", status, etag: '"displayed-fleet"' },
+      }),
     );
   }
 
@@ -94,7 +94,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped", '"displayed-fleet"'),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
@@ -105,7 +105,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^resume$/i }));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active", '"displayed-fleet"'),
     );
   });
 
@@ -115,7 +115,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed", '"displayed-fleet"'),
     );
   });
 

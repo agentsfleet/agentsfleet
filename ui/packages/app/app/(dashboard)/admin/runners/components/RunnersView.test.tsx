@@ -33,15 +33,20 @@ const EMPTY: RunnerListResponse = { items: [], total: 0, next_cursor: null };
 
 describe("RunnersView", () => {
   it("should render the page grammar over the wall — title, section, empty wall", () => {
-    render(<RunnersView initial={EMPTY} />);
+    render(<RunnersView initial={EMPTY} canEnroll />);
     expect(screen.getByText("Runners")).toBeTruthy();
-    expect(screen.getByText("Manage runners")).toBeTruthy();
     expect(screen.getByLabelText("Runners")).toBeTruthy();
     expect(screen.getByText("No runners enrolled")).toBeTruthy();
   });
 
+  it("hides enrollment for a read-only runner operator", () => {
+    render(<RunnersView initial={EMPTY} canEnroll={false} />);
+    expect(screen.queryByRole("button", {name: "Add runner"})).toBeNull();
+    expect(screen.getByText("No runners enrolled")).toBeTruthy();
+  });
+
   it("should refresh the route when the enroll dialog reports a created runner", () => {
-    render(<RunnersView initial={EMPTY} />);
+    render(<RunnersView initial={EMPTY} canEnroll />);
     fireEvent.click(screen.getByRole("button", { name: "Add runner" }));
     expect(refresh).toHaveBeenCalledTimes(1);
   });

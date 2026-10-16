@@ -1,3 +1,4 @@
+import { executionInstructions } from "./fixtures/definition";
 /**
  * wall-live-counters.spec.ts — one operator's chat moves another operator's
  * wall, and moves the NUMBERS.
@@ -51,15 +52,9 @@ import {
 } from "./fixtures/execution";
 import { awaitTerminalTurn, messageFleet } from "./fixtures/chat-walk";
 import { observed, uniqueTag } from "./fixtures/observation";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import { workspaceHref } from "./fixtures/nav";
-import {
-  executionSkillMd,
-  getDefaultWorkspaceId,
-  readFleetCounters,
-  seedFleet,
-  waitForFleetActive,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, readFleetCounters, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import {
   readTileCounters,
@@ -107,10 +102,10 @@ test.describe("wall live counters", () => {
     // ── The acting session installs the fleet it will message ──
     const acting = await signedInContext(browser, FIXTURE_KEY.regular);
     const page = acting.page;
-    const fleetId = await installViaUI(page, TEMPLATE, {
+    const fleetId = await saveFleetViaUI(page, TEMPLATE, {
       handle: FIXTURE_KEY.regular,
       workspaceId,
-      skillMarkdown: executionSkillMd(TEMPLATE),
+      instructions: executionInstructions(),
     });
     await observed(JOURNEY_LEG.install, () =>
       waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),

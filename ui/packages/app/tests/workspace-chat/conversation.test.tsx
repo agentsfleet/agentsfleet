@@ -1,0 +1,95 @@
+import { useSyncExternalStore } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { DraftClient } from "@/lib/api/drafts";
+import type { DraftView } from "@/lib/api/draft-state";
+import { DraftConversation } from "@/components/domain/chat/DraftConversation";
+import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
+import { ChatFixture, CHAT_PROPS } from "./fixture";
+import { DRAFT, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
+
+let fixture: ChatFixture;
+let client: DraftClient;
+beforeEach(async () => {
+  fixture = new ChatFixture(); fixture.mount();
+  client = new DraftClient({...CHAT_PROPS, subject: "creator"});
+  await client.initialize();
+});
+afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
+function LiveConversation() {
+  const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
+  return <DraftConversation client={client} view={view} onReview={() => {}} />;
+}
+
+it("stops authoring at the durable watermark and replaces Working with the terminal result", async () => {
+  fixture.messages = [{...MESSAGE, role: "assistant", text: undefined, state: "running"}];
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    if ((typeof input === "string" ? input : input instanceof URL ? input.href : input.url).endsWith("/cancellations")) {
+      fixture.messages = [{...MESSAGE, role: "assistant", state: "cancelled", text: undefined}];
+      return response({cancelled_through: MESSAGE.sequence, stopped: [{sequence: MESSAGE.sequence, state: "cancelled"}]});
+    }
+    return base(input, init);
+  });
+  await client.resume(DRAFT.id); render(<LiveConversation />);
+  expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
+  expect(await screen.findByText("Authoring stopped.")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
+  expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+});
+
+it.each([
+  ["owner_billing", "Ask the account owner to add funds"],
+  ["new-recovery-action", "Refresh the durable status before continuing"],
+])("shows a recovery explanation for failed replies (%s)", (recovery_action, copy) => {
+  const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
+    text: undefined, failure: {reason: "Authoring failed", error_code: "UZ-TEST-001", recovery_action}}]};
+  render(<DraftConversation client={client} view={view} onReview={() => {}} />);
+  expect(screen.getByRole("log").textContent).toContain(copy);
+  expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
+  expect(screen.getByText(/Showing the latest conversation messages/)).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
+});
+
+it("loads more eligible authoring models and removes the control when the list ends", async () => {
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (path.includes("/models?")) return response(path.includes("starting_after=")
+      ? {items: [{...MODEL, ref: "model:second", label: "Second model"}], next_cursor: null}
+      : {items: [MODEL], next_cursor: "next"});
+    return base(input, init);
+  });
+  await client.initialize(); render(<LiveConversation />);
+  fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
+  await waitFor(() => expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull());
+  expect(client.getSnapshot().models.map((model) => model.label)).toEqual([MODEL.label, "Second model"]);
+  expect(client.getSnapshot().model).toBe(MODEL.ref);
+});
+
+it("does not offer more models after losing access, even when an older view had a cursor", () => {
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} onReview={() => {}} />);
+  expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull();
+  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
+});
+
+it("keeps the selected model available when loading the next page fails", async () => {
+  const next = Promise.withResolvers<Response>();
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.includes("/models?")) return path.includes("starting_after=")
+      ? next.promise : response({items: [MODEL], next_cursor: "next"});
+    return base(input, init);
+  });
+  await client.initialize(); render(<LiveConversation />);
+  fireEvent.click(screen.getByRole("button", {name: LOAD_MORE_COPY.models.label}));
+  expect(screen.getByRole("button", {name: "Loading…"})).toHaveProperty("disabled", true);
+  expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toContain(MODEL.label);
+  await act(async () => next.resolve(response({}, 503)));
+  expect(screen.getByRole("alert").textContent).toContain(LOAD_MORE_COPY.models.failure);
+  expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toContain(MODEL.label);
+  expect(screen.getByRole("button", {name: LOAD_MORE_COPY.models.label})).toHaveProperty("disabled", false);
+  expect(client.getSnapshot().models).toEqual([MODEL]);
+});

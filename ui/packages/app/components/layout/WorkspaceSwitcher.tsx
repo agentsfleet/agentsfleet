@@ -16,13 +16,15 @@ import { WORKSPACE_LABEL } from "./workspace-groups";
 
 type Props = {
   workspaces: TenantWorkspace[];
+  operatorScopes?: string[];
+  collapsed?: boolean;
 };
 
 const workspaceSwitcherLoader = createIntentModuleLoader(
   () => import("./WorkspaceSwitcherMenu"),
 );
 
-export default function WorkspaceSwitcher({ workspaces }: Props) {
+export default function WorkspaceSwitcher({ workspaces, operatorScopes = [], collapsed = false }: Props) {
   const pathname = usePathname();
   const workspaceSwitcher = useIntentModule(workspaceSwitcherLoader);
   const [activated, setActivated] = useState(false);
@@ -65,6 +67,8 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
     const Menu = workspaceSwitcher.module.default;
     return (
       <Menu
+        operatorScopes={operatorScopes}
+        collapsed={collapsed}
         open={open}
         workspaces={workspaces}
         onOpenChange={setOpen}
@@ -76,12 +80,13 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
   const loading =
     activated && workspaceSwitcher.status === INTENT_MODULE_STATUS.loading;
   return (
-    <div className="inline-flex min-w-0 items-center gap-2">
+    <div className="flex w-full min-w-0 items-center">
       <WorkspaceSwitcherTrigger
+        collapsed={collapsed}
         activeLabel={activeLabel}
         busy={loading}
         failed={failed}
-        aria-label={failed ? "Retry workspace menu" : "Select workspace"}
+        aria-label={failed ? "Retry account menu" : "Workspace and account menu"}
         aria-busy={loading}
         data-testid="workspace-switcher"
         onFocus={preloadWorkspaceMenu}

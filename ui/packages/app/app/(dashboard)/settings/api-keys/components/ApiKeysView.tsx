@@ -15,7 +15,7 @@ import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 
-const API_KEYS_DESCRIPTION = "Authenticate with the agentsfleet API.";
+const API_KEYS_DESCRIPTION = "Let your scripts and tools work with agentsfleet. Create a key for each connection.";
 
 type ApiKeysViewProps = {
   initial: ApiKeyListResponse | null;
@@ -37,17 +37,14 @@ export default function ApiKeysView({ initial, operatorOnly }: ApiKeysViewProps)
         <Alert variant="warning">
           <div>
             <AlertTitle>API keys need admin access</AlertTitle>
-            <AlertDescription>Ask a tenant admin to manage API keys.</AlertDescription>
+            <AlertDescription>Ask your account owner to give you access to API keys.</AlertDescription>
           </div>
         </Alert>
       ) : (
-        <Section asChild>
-          <section aria-label="API keys">
-            <SectionHeader as="p" actions={<CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />}>
-              Manage API keys
-            </SectionHeader>
+        <Section aria-label="Account API keys">
+            <SectionHeader as="p" actions={<CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />}>Account keys</SectionHeader>
             <ApiKeyList ref={listRef} initial={initial} />
-          </section>
+            <p className="text-label text-muted-foreground">Keys belong to your account. Keep them private and revoke any you no longer use.</p>
         </Section>
       )}
     </PageLayout>

@@ -32,6 +32,7 @@ vi.mock("lucide-react", () => {
     XIcon: make("XIcon"),
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),
+    SearchIcon: make("SearchIcon"),
     PencilIcon: make("PencilIcon"),
     PencilLineIcon: make("PencilLineIcon"),
     ArrowUpIcon: make("ArrowUpIcon"),
@@ -119,7 +120,7 @@ describe("SecretsList component", () => {
 
   it("renders the empty-state message when no secrets", async () => {
     await renderList([]);
-    expect(screen.getByText(/^No secrets$/i)).toBeTruthy();
+    expect(screen.getByText(/^Keep your credentials in one place$/i)).toBeTruthy();
   });
 
   it("renders one row per secret with name and a human timestamp", async () => {
@@ -142,7 +143,7 @@ describe("SecretsList component", () => {
     const user = userEvent.setup();
     await renderList();
 
-    for (const name of ["Name", "Time"]) {
+    for (const name of ["Name", "Created"]) {
       await user.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }

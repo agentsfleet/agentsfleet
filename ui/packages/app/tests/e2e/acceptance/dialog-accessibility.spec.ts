@@ -1,10 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
+import { FIXTURE_KEY } from "./fixtures/constants";
+import { withStagedPlatformEntry } from "./fixtures/native-setup";
+import { getDefaultWorkspaceId } from "./fixtures/seed";
+import { ADMIN_FLEET_LIBRARIES_PATH, EDIT, EDIT_NAME_LABEL, EDIT_TITLE } from "@/app/(dashboard)/admin/fleet-libraries/library-copy";
 
 const WIDTHS = [1440, 390, 320];
 const CREATE_LABEL = "Create";
 const CREATE_RUNNER = "Create runner";
+// A constant prefix per width: parallel widths never share a staged entry.
+const A11Y_ENTRY_PREFIX = "e2e-dialog-a11y-";
 const HOST_ERROR = "1–256 characters: letters, digits, dot, hyphen, underscore";
 
 for (const width of WIDTHS) {
@@ -40,32 +46,30 @@ for (const width of WIDTHS) {
     await expect(opener).toBeFocused();
   });
 
-  test(`library source tabs and upload footer remain accessible at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await signInAs(page, "operator");
-    await page.goto("/admin/fleet-libraries");
-    const opener = page.getByRole("button", { name: "Create fleet library", exact: true });
-    await opener.click();
-    const dialog = page.getByRole("dialog", { name: "Create fleet library" });
-    await expect(dialog).toHaveAccessibleDescription(/.+/);
-    await expect(dialog.getByRole("tab", { name: "GitHub", exact: true })).toBeVisible();
-    await expect(dialog).toHaveCSS("opacity", "1");
-    await expectAccessible(page, "GitHub library source");
-    const upload = dialog.getByRole("tab", { name: "Upload from computer", exact: true });
-    await upload.focus();
-    await page.keyboard.press("Enter");
-    await expect(upload).toHaveAttribute("aria-selected", "true");
-    await expectAccessible(page, "Upload library source");
-    const submit = dialog.getByRole("button", { name: CREATE_LABEL, exact: true });
-    await submit.scrollIntoViewIfNeeded();
-    await expect(submit).toBeInViewport();
-    await submit.click();
-    await expect(dialog.getByText("Add the SKILL.md body", { exact: true })).toBeVisible();
-    await expect(dialog.getByText("Add the TRIGGER.md body", { exact: true })).toBeVisible();
-    await expectAccessible(page, "Missing upload documents");
-    await expectNoPageOverflow(page);
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
-    await expect(opener).toBeFocused();
+  test(`the platform Library edit dialog stays accessible at ${width}px`, async ({ page }) => {
+    const slug = `${A11Y_ENTRY_PREFIX}${width}`;
+    const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.operator);
+    await withStagedPlatformEntry(workspace, slug, async () => {
+      await page.setViewportSize({ width, height: 900 });
+      await signInAs(page, FIXTURE_KEY.operator);
+      await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
+      const opener = page.getByRole("row").filter({ hasText: slug }).getByRole("button", { name: EDIT, exact: true });
+      await opener.focus();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog", { name: EDIT_TITLE });
+      await expect(dialog).toHaveAccessibleDescription(/.+/);
+      await expect(dialog).toHaveCSS("opacity", "1");
+      await expectAccessible(page, "Platform Library edit");
+      await dialog.getByLabel(EDIT_NAME_LABEL, { exact: true }).fill("");
+      const save = dialog.getByRole("button", { name: "Save", exact: true });
+      await save.scrollIntoViewIfNeeded();
+      await expect(save).toBeInViewport();
+      await expect(save).toBeDisabled();
+      await expectAccessible(page, "Platform Library edit without a name");
+      await expectNoPageOverflow(page);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(opener).toBeFocused();
+    });
   });
 }

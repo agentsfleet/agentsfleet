@@ -11,7 +11,6 @@ import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
 // Cause lines in the runner's own shape: prose naming what it refused on.
-const BUNDLE_REFUSAL = "the fleet bundle could not be fetched and verified";
 const SANDBOX_REFUSAL = "this host could not build a sandbox for the run";
 // A cause no runner build sends today, e.g. one carried by a pre-Rust row.
 const UNLISTED_CAUSE = "no instructions configured";
@@ -46,7 +45,7 @@ function failedMessage(
 }
 
 describe("fleetFailureCopy — startup_posture sentences", () => {
-  it.each([BUNDLE_REFUSAL, SANDBOX_REFUSAL, UNLISTED_CAUSE])(
+  it.each([SANDBOX_REFUSAL, UNLISTED_CAUSE])(
     "reads every startup cause as the runner's refusal: %s",
     (detail) => {
       expect(eventOutcome(failedEvent({ failureDetail: detail }))).toBe(
@@ -56,8 +55,8 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
   );
 
   it("reads the cause out of the em-dash in the outcome when no detail rides beside it", () => {
-    expect(eventOutcome(failedEvent({ outcome: `failed — ${BUNDLE_REFUSAL}` }))).toBe(
-      `${RUNNER_REFUSED} — ${BUNDLE_REFUSAL}`,
+    expect(eventOutcome(failedEvent({ outcome: `failed — ${SANDBOX_REFUSAL}` }))).toBe(
+      `${RUNNER_REFUSED} — ${SANDBOX_REFUSAL}`,
     );
   });
 

@@ -59,6 +59,8 @@ interface SignUpOptions {
 
 interface SignUpSession {
   sessionJwt: string;
+  /** The Clerk session, so an API client can re-mint `sessionJwt` once it expires. */
+  sessionId: string;
   workspaceId?: string;
 }
 
@@ -105,10 +107,11 @@ export async function signUpAs(
   if (options.requireWorkspaceSession) {
     return {
       sessionJwt,
+      sessionId,
       workspaceId: await waitForTenantWorkspace(page, email, sessionJwt),
     };
   }
-  return { sessionJwt };
+  return { sessionJwt, sessionId };
 }
 
 async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: string): Promise<string> {
@@ -125,7 +128,7 @@ async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: str
     if (apiState.workspaceId) {
       await page.goto(`/w/${apiState.workspaceId}/fleets`);
       const rendered = await page
-        .getByRole("heading", { name: "Getting started" })
+        .getByRole("heading", { name: "What should your fleet do?" })
         .first()
         .waitFor({ timeout: 5_000 })
         .then(() => true)

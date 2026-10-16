@@ -37,7 +37,7 @@ function liveStream() {
 }
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
-  return { id: "f1", name: "alpha", status: "active", created_at: 0, updated_at: 0, ...over };
+  return { id: "f1", name: "alpha", status: "active", created_at: 0, updated_at: 0, events_processed: 0n, budget_used_nanos: 0n, ...over };
 }
 
 function renderWall(fleets: Fleet[], cursor: string | null = null) {
@@ -76,7 +76,7 @@ describe("FleetWall", () => {
     renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
     expect(screen.getByRole("status").textContent).toContain("1 live");
-    expect(screen.getByRole("link", { name: /install fleet/i })).toBeTruthy();
+    expect(screen.getByText("Your fleets")).toBeTruthy();
   });
 
   it("refuses to claim live before the stream is connected and greeted", () => {

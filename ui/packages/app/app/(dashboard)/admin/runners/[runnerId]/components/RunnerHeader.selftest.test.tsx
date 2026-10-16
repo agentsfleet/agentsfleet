@@ -15,15 +15,16 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () => {
   const { Button } = await import("@agentsfleet/design-system");
+  const { EDIT_POLICY_LABEL } = await import("../../components/RunnerListCells");
   return {
-    default: ({ onSaved }: { onSaved: () => void }) => <Button onClick={onSaved}>Edit policy</Button>,
+    default: ({ onSaved }: { onSaved: () => void }) => <Button onClick={onSaved}>{EDIT_POLICY_LABEL}</Button>,
   };
 });
 
 const requestRunnerSelftestActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: vi.fn(),
-  updateRunnerPolicyAction: vi.fn(),
+  updateRunnerAction: vi.fn(),
   deleteRunnerAction: vi.fn(),
   requestRunnerSelftestAction: (...args: unknown[]) => requestRunnerSelftestActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
@@ -32,12 +33,21 @@ vi.mock("../../actions", () => ({
 }));
 
 import { RunnerHeader } from "./RunnerHeader";
+import { SELFTEST_ACTION_CONFIG } from "../../components/RunnerListCells";
 
 const RUNNER_ID = "01J2WQ8F3K7VZ9XB4N6MTYD5AR";
-const SELFTEST_LABEL = "Run checks";
+const SELFTEST_LABEL = SELFTEST_ACTION_CONFIG.label;
 const SELFTEST_PENDING_LABEL = "Checks requested";
 
 afterEach(() => cleanup());
+it("keeps a failed checks request recoverable without exposing transport details", async () => {
+  requestRunnerSelftestActionMock.mockRejectedValueOnce(new Error("private-transport-error"));
+  render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+  fireEvent.click(screen.getByRole("button", {name: SELFTEST_LABEL}));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Try again"));
+  expect(screen.getByRole("alert").textContent).not.toContain("private-transport-error");
+  await waitFor(() => expect(screen.getByRole("button", {name: SELFTEST_LABEL})).toHaveProperty("disabled", false));
+});
 beforeEach(() => {
   refresh.mockReset();
   push.mockReset();
@@ -54,7 +64,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     labels: [],
     last_seen_at: Date.now(),
     created_at: Date.now(),
-    assigned_policy: null,
+    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
     degraded_reason: null,
@@ -118,6 +128,7 @@ describe("RunnerHeader self-test control", () => {
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
     expect(await screen.findByRole("alert")).toBeTruthy();
 
+    await waitFor(() => expect(screen.getByRole("button", { name: SELFTEST_LABEL })).toHaveProperty("disabled", false));
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
     await waitFor(() => {
       expect(requestRunnerSelftestActionMock).toHaveBeenCalledTimes(2);

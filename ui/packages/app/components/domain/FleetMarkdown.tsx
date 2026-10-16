@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useState, type ReactNode } from "react";
+import { createContext, memo, useContext, useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -107,6 +107,13 @@ const COMPONENTS: Components = {
  * cool for the rest of the product, which is interface rather than prose.
  */
 const BODY_CLASS = "space-y-md font-sans text-reading leading-reading text-text-chat [font-variation-settings:'wght'_380]";
+
+/** Defer text and completion together so the final parse sees the final text. */
+export const FleetReplyMarkdown = memo(function FleetReplyMarkdown({ text, streaming }: { text: string; streaming: boolean }) {
+  const snapshot = useMemo(() => ({ text, streaming }), [text, streaming]);
+  const deferred = useDeferredValue(snapshot);
+  return deferred.streaming ? <FleetStreamingMarkdown text={deferred.text} /> : <FleetMarkdown>{deferred.text}</FleetMarkdown>;
+});
 
 export const FleetMarkdown = memo(function FleetMarkdown({ children }: { children: string }) {
   return (

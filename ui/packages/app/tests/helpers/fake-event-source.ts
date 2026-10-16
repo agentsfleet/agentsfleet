@@ -76,8 +76,12 @@ export class FakeEventSource {
       this.startedStreams.add(frame.event_id);
       this.nextStreamSeq.set(frame.event_id, seq + 1);
     }
-    const ev = { data: JSON.stringify(wire) } as MessageEvent;
-    for (const fn of named) fn(ev);
+    this.emitNamed(wire.kind, JSON.stringify(wire));
+  }
+
+  emitNamed(name: string, data: string): void {
+    const ev = new MessageEvent(name, {data});
+    for (const fn of this.listeners.get(name) ?? []) fn(ev);
   }
 
   // Raw bytes on the daemon's no-kind fallback channel, which arrives as
@@ -100,7 +104,7 @@ export class FakeEventSource {
   }
 
   // The daemon's last frame to a caller who lost access, as
-  // rustd/crates/afd_sse/src/frame.rs `Frame::access_revoked` writes it.
+  // rustd/crates/afd_sse/src/frame/mod.rs `Frame::access_revoked` writes it.
   revokeAccess(): void {
     const ev = { data: JSON.stringify({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ERROR_CODE.AUTH_FORBIDDEN }) } as MessageEvent;
     for (const fn of this.listeners.get(FRAME_KIND.ACCESS_REVOKED) ?? []) fn(ev);

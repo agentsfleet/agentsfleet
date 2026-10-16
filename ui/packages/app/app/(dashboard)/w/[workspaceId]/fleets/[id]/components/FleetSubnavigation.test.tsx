@@ -40,7 +40,7 @@ describe("FleetSubnavigation", () => {
   it("every fleet tab is a link that says when its view is on the way", () => {
     linkStatus.pending = true;
     render(<FleetSubnavigation workspaceId="ws_1" fleetId="fleet_1" activeView={FLEET_VIEW.chat} />);
-    for (const name of ["Chat", "Events", "Memory", "Skill", "Trigger"]) {
+    for (const name of ["Chat", "Events", "Memory", "Setup", "Trigger"]) {
       const label = screen.getByRole("link", { name }).querySelector("[data-pending]");
       expect(label?.getAttribute("data-pending"), name).toBe("true");
     }

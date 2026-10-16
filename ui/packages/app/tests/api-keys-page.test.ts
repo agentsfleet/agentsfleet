@@ -11,7 +11,7 @@ const redirect = vi.fn((path: string) => {
 const authMock = vi.fn();
 const listApiKeysMock = vi.fn();
 
-vi.mock("next/navigation", () => ({ redirect, usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("not-found"); }, redirect, usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
@@ -62,13 +62,13 @@ describe("settings index redirect", () => {
   it("ignores unknown notice values instead of reflecting query text", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    await expect(SettingsPage({ searchParams: Promise.resolve({ notice: "untrusted" }) })).rejects.toThrow("redirect:/settings/api-keys");
+    await expect(SettingsPage({ searchParams: Promise.resolve({ notice: "untrusted" }) })).rejects.toThrow("not-found");
   });
 
-  it("redirects /settings to /settings/api-keys (Workspace tab folded in)", async () => {
+  it("returns not-found for bare /settings", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    await expect(SettingsPage()).rejects.toThrow("redirect:/settings/api-keys");
+    await expect(SettingsPage()).rejects.toThrow("not-found");
   });
 
   it("redirects /settings straight to /sign-in when there is no token (no double redirect)", async () => {
@@ -114,8 +114,8 @@ describe("api-keys page", () => {
     mockAuth();
     listApiKeysMock.mockResolvedValueOnce({
       items: [
-        { id: "a", key_name: "ci-runner", active: true, created_at: 2, last_used_at: null, revoked_at: null },
-        { id: "b", key_name: "old-zapier", active: false, created_at: 1, last_used_at: null, revoked_at: 1 },
+        { id: "a", key_name: "ci-runner", active: true, created_at: 2, revoked_at: null },
+        { id: "b", key_name: "old-zapier", active: false, created_at: 1, revoked_at: 1 },
       ],
       total: 2,
       next_cursor: null,

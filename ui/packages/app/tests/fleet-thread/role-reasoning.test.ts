@@ -67,7 +67,7 @@ describe("FleetThread — reasoning disclosure", () => {
     expect(screen.getByRole("button", { name: THOUGHT }).textContent).toBe("Thought · 8.5s");
   });
 
-  it("opens the fold once the block has streamed a moment", () => {
+  it("keeps the fold closed while reasoning streams", () => {
     // The decoder marks an open thinking block until its closing tag arrives.
     mockStream([
       ev({ role: "assistant", actor: "fleet", status: "received", reasoning: "still weighing it", thinking: true }),
@@ -78,7 +78,7 @@ describe("FleetThread — reasoning disclosure", () => {
       expect(screen.getByRole("button", { name: THINKING })).toBeTruthy();
       expect(screen.queryByText("still weighing it", { selector: "p" })).toBeNull();
     });
-    expect(screen.getByText("still weighing it", { selector: "p" })).toBeTruthy();
+    expect(screen.queryByText("still weighing it", { selector: "p" })).toBeNull();
   });
 
   it("lets the operator open a finished fold", () => {
@@ -137,6 +137,8 @@ describe("FleetThread — reasoning disclosure", () => {
     afterOpenDelay(() => renderThread());
 
     expect(screen.getByRole("button", { name: THINKING })).toBeTruthy();
+    expect(screen.queryByText("reading the diff", { selector: "p" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: THINKING }));
     expect(screen.getByText("reading the diff", { selector: "p" })).toBeTruthy();
   });
 

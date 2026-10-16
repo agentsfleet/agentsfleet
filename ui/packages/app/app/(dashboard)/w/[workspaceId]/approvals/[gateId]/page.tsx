@@ -48,7 +48,7 @@ export default async function ApprovalDetailPage({
 
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader className="flex-col sm:flex-col">
         <div className="flex items-center gap-3">
           <PageTitle>{gate.proposed_action || `${gate.tool_name}:${gate.action_name}`}</PageTitle>
           <Badge variant={statusVariant}>{gate.status}</Badge>

@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { useId } from "react";
 import nextDynamic from "next/dynamic";
 import {
@@ -7,11 +8,9 @@ import {
   AlertDescription,
   AlertTitle,
   type AlertVariant,
-  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   formatTimeAbsolute,
@@ -28,7 +27,6 @@ import {
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import { useEventDetail } from "./use-event-detail";
 import {
-  copiedRequestContext,
   formatRequestValue,
   isRequestContextRecord,
   parseRequestContext,
@@ -60,16 +58,13 @@ type EventTone = {
   Icon: LucideIcon;
 };
 
-const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
-const COPY_EVENT_ID_LABEL = "Copy event ID";
-const CREATED_LABEL = "Created";
 const EVENT_DETAILS_TITLE = "Event details";
 const EVENT_RESULT_MAX_CHARS = 20_000;
 const FIX_TITLE = "Fix";
 // Shown only when the row predates the recorded failure cause — with a cause
 // present the guidance above is already specific enough to act on.
 const NO_CAUSE_ADVICE =
-  "This event did not record which check failed. Retry it once; if it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.";
+  "This event did not record which check failed. Retry it once; if it fails again, ask a workspace administrator to investigate.";
 const LOCAL_TIME_FALLBACK = "Local time";
 const NO_RESULT = "No result recorded";
 const NO_REQUEST_CONTEXT = "No request context recorded";
@@ -126,7 +121,6 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
   const result = truncateResult(recordedResult);
   const runnerDiagnostic = row.failure_label === "runner_crash" ? row.failure_detail?.trim() : null;
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
-  const diagnostic = formatEventDetailsForCopy(row, detail, result, response);
   const guidance = response ? null : guidanceFor(row.failure_label);
 
   return (
@@ -137,10 +131,6 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
         {runnerDiagnostic ? <RunnerDiagnostic detail={runnerDiagnostic} /> : null}
         <RequestContext row={row} detail={detail} />
         {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
-        <DialogFooter className="border-t border-border pt-lg">
-          <CopyButton value={row.event_id} label={COPY_EVENT_ID_LABEL} />
-          <CopyButton value={diagnostic} label={COPY_DIAGNOSTIC_LABEL} />
-        </DialogFooter>
       </div>
     </>
   );
@@ -171,7 +161,7 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
           </DialogDescription>
         </div>
         <span className="flex shrink-0 items-baseline gap-sm text-label text-muted-foreground">
-          <span>{CREATED_LABEL}</span>
+          <span>{TIME_LABEL.created}</span>
           <Time
             value={created}
             format="relative"
@@ -293,35 +283,6 @@ function hasCause(row: EventRow): boolean {
 function formatCreatedTooltip(created: Date): string {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || LOCAL_TIME_FALLBACK;
   return `${formatTimeAbsolute(created)} · ${timeZone}`;
-}
-
-function formatEventDetailsForCopy(row: EventRow, detail: EventDetail | null, result: string, response: string): string {
-  const created = new Date(row.created_at);
-  return JSON.stringify({
-    event_id: row.event_id,
-    fleet_id: row.fleet_id,
-    workspace_id: row.workspace_id,
-    status: row.status,
-    result,
-    recorded_response: response || null,
-    created_at: Number.isNaN(created.getTime()) ? String(row.created_at) : created.toISOString(),
-    source: {
-      actor: row.actor,
-      event_type: row.event_type,
-    },
-    usage: {
-      tokens: row.tokens,
-      cost_nanos: row.cost_nanos,
-      wall_ms: row.wall_ms,
-    },
-    request_context: detail === null ? null : copiedRequestContext(detail.request_json),
-    internal_diagnostics: {
-      failure_class: row.failure_label,
-      failure_detail: row.failure_detail,
-      checkpoint_id: row.checkpoint_id,
-      resumes_event_id: row.resumes_event_id,
-    },
-  }, null, 2);
 }
 
 function truncateResult(value: string): string {

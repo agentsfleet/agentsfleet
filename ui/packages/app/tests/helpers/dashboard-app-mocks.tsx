@@ -35,10 +35,10 @@ export const listWorkspaceFleetLibraryMock = vi.fn();
 export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
-  (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
->(async (ws, zid, status) => {
+  (ws: string, zid: string, status: string, ifMatch: string) => Promise<ActionResult<unknown>>
+>(async (ws, zid, status, ifMatch) => {
   try {
-    return { ok: true, data: await stopFleetMock(ws, zid, status, "tok") };
+    return { ok: true, data: await stopFleetMock(ws, zid, status, ifMatch, "tok") };
   } catch (e) {
     const err = e as Error & { status?: number };
     return { ok: false, error: err.message ?? String(e), status: err.status };
@@ -65,9 +65,6 @@ export function fleetsApiMock() {
   return {
     listFleets: listFleetsMock,
     setFleetStatus: stopFleetMock,
-    stopFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "stopped", tok),
-    resumeFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "active", tok),
-    killFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "killed", tok),
     getFleet: vi.fn(),
     installFleet: vi.fn(),
     deleteFleet: vi.fn(),
@@ -142,8 +139,7 @@ export function secretsApiMock() {
 
 // Mocks the fleet-template gallery client (`@/lib/api/fleet-library`). Both the
 // raw reader and its React cache() wrapper resolve to the same vi.fn so a test
-// can drive either entry point through one mock. M103 replaced the legacy
-// bundle client (github-import / paste) with this template-only gallery read.
+// can drive either entry point through one mock.
 export function fleetLibraryMock() {
   return {
     listWorkspaceFleetLibrary: listWorkspaceFleetLibraryMock,

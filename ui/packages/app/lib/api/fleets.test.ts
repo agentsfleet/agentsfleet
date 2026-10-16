@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FLEET_DETAIL, FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { ApiError } from "./errors";
 
 const fetchMock = vi.fn();
@@ -6,11 +7,11 @@ vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: 0, updated_at: 0 };
+const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: 0, updated_at: 0, events_processed: "0", budget_used_nanos: "0" };
 
 describe("listFleets", () => {
   it("GET /v1/workspaces/:ws/fleets with bearer, returns envelope", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [fleet], total: 1, next_cursor: null }) });
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [fleet], total: null, next_cursor: null }) });
     const { listFleets } = await import("./fleets");
     const res = await listFleets("ws_1", "tok");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -18,6 +19,22 @@ describe("listFleets", () => {
       expect.objectContaining({ method: "GET", headers: expect.objectContaining({ Authorization: "Bearer tok" }) }),
     );
     expect(res.items[0]?.id).toBe("zom_1");
+  });
+
+  it("decodes required decimal-string counters without rounding above 2^53", async () => {
+    const exact = "9007199254740993";
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [{ ...fleet, events_processed: exact, budget_used_nanos: exact }], total: null, next_cursor: null }) });
+    const { listFleets } = await import("./fleets");
+    const result = await listFleets("ws_1", "tok");
+    expect(result.total).toBeNull();
+    expect(result.items[0]?.events_processed).toBe(9007199254740993n);
+    expect(result.items[0]?.budget_used_nanos).toBe(9007199254740993n);
+  });
+
+  it.each([undefined, 9, "1.5", "-1", "1e3"])("refuses an invalid REST counter %j", async (value) => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [{ ...fleet, events_processed: value, budget_used_nanos: "0" }], total: null, next_cursor: null }) });
+    const { listFleets } = await import("./fleets");
+    await expect(listFleets("ws_1", "tok")).rejects.toThrow();
   });
 
   it("throws ApiError on 401", async () => {
@@ -29,7 +46,7 @@ describe("listFleets", () => {
   it("test_fleets_client_uses_guideline_cursor_names", async () => {
     // Sends the guideline request spelling, never the retired one, and reads
     // the continuation from next_cursor.
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: "cur_3" }) });
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: null, next_cursor: "cur_3" }) });
     const { listFleets } = await import("./fleets");
     const res = await listFleets("ws_1", "tok", { starting_after: "cur_2", limit: 10 });
     const url = fetchMock.mock.calls[0]![0] as string;
@@ -40,167 +57,86 @@ describe("listFleets", () => {
   });
 });
 
-const detail = {
-  id: "zom_1",
-  name: "platform-ops",
-  status: "active",
-  source_markdown: "# SKILL",
-  trigger_markdown: null,
-  bundle_content_hash: null,
-  triggers: null,
-  events_processed: 3,
-  budget_used_nanos: 4000,
-  created_at: 0,
-  updated_at: 0,
-};
-
-// A Headers double so the client can read the ETag off the response.
-function headers(map: Record<string, string>): Headers {
-  return { get: (k: string) => map[k.toLowerCase()] ?? null } as unknown as Headers;
+const detail = FLEET_DETAIL;
+const ETAG = detail.etag;
+function answer(value: unknown = detail, etag: string = ETAG) {
+  return {ok: true, status: 200, headers: new Headers({etag}), json: async () => value};
 }
 
-describe("getFleet", () => {
-  it("hits GET /fleets/{id} and returns the fleet plus its ETag", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: headers({ etag: '"abc123"' }),
-      json: async () => detail,
-    });
-    const { getFleet } = await import("./fleets");
-    const { fleet: got, etag } = await getFleet("ws_1", "zom_1", "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(got.id).toBe("zom_1");
-    expect(got.events_processed).toBe(3);
-    expect(etag).toBe('"abc123"');
+describe("native fleet detail", () => {
+  it("preserves exact nanos and independent permissions and derives triggers from native setup", async () => {
+    fetchMock.mockResolvedValue(answer());
+    const {getFleet} = await import("./fleets");
+    const result = await getFleet(WORKSPACE, FLEET_ID, "tok");
+    expect(result.etag).toBe(ETAG);
+    expect(result.fleet.budget_used_nanos).toBe("9007199254740993");
+    expect(result.fleet.pending_approvals).toBe(2);
+    expect(result.fleet.memory_access).toEqual({read: true, publish: false});
+    expect(result.fleet.triggers).toEqual([]);
+    expect(result.fleet.definition.config).toEqual(detail.definition.config);
   });
-
-  it("propagates a 404 as ApiError (missing or cross-workspace)", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 404,
-      headers: headers({}),
-      json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
-    });
-    const { getFleet } = await import("./fleets");
-    const err = (await getFleet("ws_1", "missing", "tok").catch((e) => e)) as ApiError;
-    expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(404);
+  it("decodes an omitted trigger list as chat and steer only", async () => {
+    const config = {...detail.definition.config, "x-agentsfleet": {tools: []}};
+    fetchMock.mockResolvedValue(answer({...detail, definition: {...detail.definition, config}}));
+    const {getFleet} = await import("./fleets");
+    expect((await getFleet(WORKSPACE, FLEET_ID, "tok")).fleet.triggers).toEqual([]);
   });
-
-  it("rejects a successful detail response with a missing or empty ETag", async () => {
-    const { FLEET_ETAG_REQUIRED, getFleet } = await import("./fleets");
-    for (const responseEtag of [undefined, "", "   "]) {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: headers(responseEtag === undefined ? {} : { etag: responseEtag }),
-        json: async () => detail,
-      });
-      await expect(getFleet("ws_1", "zom_1", "tok")).rejects.toThrow(FLEET_ETAG_REQUIRED);
-    }
+  it("rejects the deleted trigger variant in a server projection", async () => {
+    const config = {...detail.definition.config, "x-agentsfleet": {triggers: [{type: "api"}]}};
+    fetchMock.mockResolvedValue(answer({...detail, definition: {...detail.definition, config}}));
+    const {getFleet} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow();
   });
-});
-
-describe("saveFleetSource", () => {
-  it("sends If-Match and returns the fresh etag", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: headers({ etag: '"new"' }),
-      json: async () => ({ fleet_id: "zom_1", config_revision: 5, etag: '"new"' }),
-    });
-    const { saveFleetSource } = await import("./fleets");
-    const res = await saveFleetSource("ws_1", "zom_1", { source_markdown: "# edited" }, '"old"', "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-      expect.objectContaining({
-        method: "PATCH",
-        headers: expect.objectContaining({ "If-Match": '"old"' }),
-      }),
-    );
-    expect(res.etag).toBe('"new"');
-    expect(res.config_revision).toBe(5);
+  it.each(["", "   "])("refuses an empty ETag %j", async (etag) => {
+    fetchMock.mockResolvedValue(answer(detail, etag));
+    const {getFleet, FLEET_ETAG_REQUIRED} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow(FLEET_ETAG_REQUIRED);
   });
-
-  it("a stale If-Match throws ApiError 412 carrying the current etag", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 412,
-      headers: headers({ etag: '"current"' }),
-      json: async () => ({ error_code: "UZ-AGT-014", detail: "stale", etag: '"current"' }),
-    });
-    const { saveFleetSource } = await import("./fleets");
-    const err = (await saveFleetSource("ws_1", "zom_1", { source_markdown: "x" }, '"stale"', "tok").catch((e) => e)) as ApiError;
-    expect(err.status).toBe(412);
-    expect(err.code).toBe("UZ-AGT-014");
-    expect(err.etag).toBe('"current"');
+  it("refuses mismatched body and header versions", async () => {
+    fetchMock.mockResolvedValue(answer(detail, '\"other\"'));
+    const {getFleet} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow("disagree");
   });
-
-  it("rejects a successful save response with a missing or empty ETag", async () => {
-    const { FLEET_ETAG_REQUIRED, saveFleetSource } = await import("./fleets");
-    for (const responseEtag of [undefined, "", "   "]) {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: headers({}),
-        json: async () => ({ fleet_id: "zom_1", config_revision: 5, etag: responseEtag }),
-      });
-      await expect(
-        saveFleetSource("ws_1", "zom_1", { source_markdown: "# edited" }, '"old"', "tok"),
-      ).rejects.toThrow(FLEET_ETAG_REQUIRED);
-    }
+  it.each([{...detail, definition: undefined}, {...detail, budget_used_nanos: Number.MAX_SAFE_INTEGER + 1},
+    {...detail, definition: {...detail.definition, config: {}}}])("refuses malformed native projections", async (invalid) => {
+    fetchMock.mockResolvedValue(answer(invalid));
+    const {getFleet} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow();
+  });
+  it("encodes caller-controlled segments", async () => {
+    fetchMock.mockResolvedValue(answer());
+    const {getFleet} = await import("./fleets");
+    await getFleet("ws/1", "fleet?outside", "tok");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/ws%2F1/fleets/fleet%3Foutside"), expect.anything());
+  });
+  it("preserves a private or foreign resource refusal", async () => {
+    fetchMock.mockResolvedValue({ok: false, status: 404, json: async () => ({detail: "unavailable"})});
+    const {getFleet} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toMatchObject({status: 404});
   });
 });
 
-describe("setFleetStatus", () => {
-  it("PATCH /v1/workspaces/:ws/fleets/:id with body {status:'stopped'} returns updated fleet", async () => {
-    const stopped = { ...fleet, status: "stopped" };
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => stopped });
-    const { stopFleet } = await import("./fleets");
-    const result = await stopFleet("ws_1", "zom_1", "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ status: "stopped" }),
-      }),
-    );
-    expect(result.status).toBe("stopped");
+describe("conditional fleet lifecycle", () => {
+  it.each(["active", "stopped", "killed"] as const)("sends the displayed resource tag for %s", async (status) => {
+    fetchMock.mockResolvedValue(answer({...detail, status}));
+    const {setFleetStatus} = await import("./fleets");
+    const result = await setFleetStatus(WORKSPACE, FLEET_ID, status, ETAG, "tok");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/fleets/${FLEET_ID}`), expect.objectContaining({
+      method: "PATCH", headers: expect.objectContaining({"If-Match": ETAG}), body: JSON.stringify({status}),
+    }));
+    expect(result.status).toBe(status);
+    expect(result.setup_revision).toBe(detail.setup_revision);
   });
-
-  it("resumeFleet sends body {status:'active'}", async () => {
-    const active = { ...fleet, status: "active" };
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => active });
-    const { resumeFleet } = await import("./fleets");
-    await resumeFleet("ws_1", "zom_1", "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "active" }) }),
-    );
+  it("requires a resource tag before sending", async () => {
+    const {setFleetStatus} = await import("./fleets");
+    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "active", "", "tok")).rejects.toThrow("ETag");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
-
-  it("killFleet sends body {status:'killed'}", async () => {
-    const killed = { ...fleet, status: "killed" };
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => killed });
-    const { killFleet } = await import("./fleets");
-    await killFleet("ws_1", "zom_1", "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "killed" }) }),
-    );
-  });
-
-  it("throws ApiError UZ-AGT-010 on 409 (transition not allowed)", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: "transition not allowed", error_code: "UZ-AGT-010" }) });
-    const { stopFleet } = await import("./fleets");
-    const err = await stopFleet("ws_1", "zom_1", "tok").catch((e) => e) as ApiError;
-    expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(409);
-    expect(err.code).toBe("UZ-AGT-010");
+  it.each([409, 412])("preserves %i without rebasing and replaying a lifecycle change", async (status) => {
+    fetchMock.mockResolvedValue({ok: false, status, json: async () => ({detail: "changed", error_code: "UZ-AGT-014"})});
+    const {setFleetStatus} = await import("./fleets");
+    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "stopped", ETAG, "tok")).rejects.toMatchObject({status});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -208,18 +144,18 @@ describe("deleteFleet", () => {
   it("DELETE /v1/workspaces/:ws/fleets/:id returns undefined on 204", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, json: vi.fn() });
     const { deleteFleet } = await import("./fleets");
-    const result = await deleteFleet("ws_1", "zom_1", "tok");
+    const result = await deleteFleet("ws_1", "zom_1", ETAG, "tok");
     expect(result).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-      expect.objectContaining({ method: "DELETE" }),
+      expect.objectContaining({ method: "DELETE", headers: expect.objectContaining({"If-Match": ETAG}) }),
     );
   });
 
   it("throws ApiError on 404", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({ detail: "not found", error_code: "UZ-AGT-009" }) });
     const { deleteFleet } = await import("./fleets");
-    await expect(deleteFleet("ws_1", "zom_1", "tok")).rejects.toBeInstanceOf(ApiError);
+    await expect(deleteFleet("ws_1", "zom_1", ETAG, "tok")).rejects.toBeInstanceOf(ApiError);
   });
 });
 
@@ -253,20 +189,5 @@ describe("steerFleet", () => {
     const err = await steerFleet("ws_1", "zom_1", { message: "", operation_id: "op-empty" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(400);
-  });
-});
-
-describe("path encoding", () => {
-  it("encodes the workspace and fleet ids so a slashy id can not escape the route", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: (k: string) => (k.toLowerCase() === "etag" ? '"v1"' : null) },
-      json: async () => detail,
-    });
-    const { getFleet } = await import("./fleets");
-    await getFleet("ws/1", "z 2", "tok");
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("/v1/workspaces/ws%2F1/fleets/z%202");
   });
 });

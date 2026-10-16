@@ -13,7 +13,7 @@ import { getModelLibrary } from "./model_library";
 import { modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model-library-types";
 
 // Mirrors the GET /v1/models wire shape from
-// rustd/crates/afd_api_tenant/src/handler/tenant/models.rs.
+// rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs.
 const LIBRARY_OK: ModelLibrary = {
   version: "2026-04-29",
   models: [

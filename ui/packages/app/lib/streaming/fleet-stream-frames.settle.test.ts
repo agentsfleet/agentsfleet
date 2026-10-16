@@ -21,7 +21,7 @@ const PATH_A = "a.md";
 const REQUEST_MS = 400;
 
 // Hostile wire input, through the real parser: it checks only `kind`.
-function completedWith(name: string, ms: number, outcome: Record<string, unknown>, call_id?: string): LiveFrame {
+function completedWith(name: string, ms: number, outcome: Record<string, unknown>, call_id = CALL_ONE): LiveFrame {
   const frame = parseLiveFrame(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms, call_id, ...outcome }));
   if (frame === null) throw new Error("the parser refused a frame it should let through");
   return frame;
@@ -64,39 +64,18 @@ describe("settling a turn's tool calls", () => {
     const completed = applyLiveFrame(live, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
     const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, { status: TOOL_CALL_STATUS.SUCCEEDED }, CALL_ONE), REPEAT_AT);
     expect(late[0]?.tools?.[0]).toEqual(openCall({ ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED }));
-    // One that names no status still clears the guess rather than keeping it.
-    const unsaid = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, {}, CALL_ONE), REPEAT_AT);
-    expect(unsaid[0]?.tools?.[0]).toEqual(openCall({ ms: REQUEST_MS, done: true }));
-    // Paired by timing when the runner names no call id.
-    const anonymous = applyLiveFrame(
-      [evt({ id: "e1", status: "received", tools: [openCall({ callId: undefined })] })],
-      { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" },
-      COMPLETED_AT,
-    );
-    const paired = applyLiveFrame(anonymous, completedWith(READ, REQUEST_MS, { status: TOOL_CALL_STATUS.FAILED }), REPEAT_AT);
-    expect(paired[0]?.tools).toHaveLength(1);
-    expect(paired[0]?.tools?.[0]).toMatchObject({ status: TOOL_CALL_STATUS.FAILED, done: true });
-    expect(paired[0]?.tools?.[0]?.closedAtSettle).toBeUndefined();
+    // A missing required status leaves the interrupted guess standing.
+    expect(applyLiveFrame(completed, completedWith(READ, REQUEST_MS, {}, CALL_ONE), REPEAT_AT)).toBe(completed);
   });
 
-  it("should keep a repeat of a reported call off the call its turn closed", () => {
-    // No call ids: the first call reported, the second was still open when the
-    // turn ended. Tool frames can repeat, so the first one's completion may land again.
-    const first = openCall({ callId: undefined, ms: 100, done: true, status: TOOL_CALL_STATUS.SUCCEEDED });
-    const live = [evt({ id: "e1", status: "received", tools: [first, openCall({ callId: undefined })] })];
-    const completed = applyLiveFrame(live, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
-    expect(completed[0]?.tools?.[1]).toMatchObject({ status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true });
-    // Its figure restates the first call, so it is the first call's repeat.
-    expect(applyLiveFrame(completed, completedWith(READ, 100, { status: TOOL_CALL_STATUS.SUCCEEDED }), REPEAT_AT)).toBe(completed);
-    // One past that figure is the second call's own, and lands on it.
-    const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, { status: TOOL_CALL_STATUS.SUCCEEDED }), REPEAT_AT);
-    expect(late[0]?.tools).toEqual([first, openCall({ callId: undefined, ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED })]);
-    // A repeated start lands its arguments on the closed call, opening no other.
-    const started = parseLiveFrame(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: READ, args_redacted: { path: PATH_A } }));
-    if (started === null) throw new Error("the parser refused a frame it should let through");
-    const restarted = applyLiveFrame(completed, started, REPEAT_AT);
-    expect(restarted[0]?.tools).toHaveLength(2);
-    expect(restarted[0]?.tools?.[1]).toMatchObject({ args: { path: PATH_A }, closedAtSettle: true });
+  it("keeps a reported call's repeat off a different interrupted call", () => {
+    const first = openCall({callId: CALL_ONE, ms: 100, done: true, status: TOOL_CALL_STATUS.SUCCEEDED});
+    const second = openCall({callId: CALL_TWO});
+    const live = [evt({id: "e1", status: "received", tools: [first, second]})];
+    const completed = applyLiveFrame(live, {kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed"}, COMPLETED_AT);
+    expect(applyLiveFrame(completed, completedWith(READ, 100, {status: TOOL_CALL_STATUS.SUCCEEDED}, CALL_ONE), REPEAT_AT)).toBe(completed);
+    const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, {status: TOOL_CALL_STATUS.FAILED}, CALL_TWO), REPEAT_AT);
+    expect(late[0]?.tools).toEqual([first, {...second, ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.FAILED}]);
   });
 
   it("test_settle_interrupts_open_live_calls", () => {

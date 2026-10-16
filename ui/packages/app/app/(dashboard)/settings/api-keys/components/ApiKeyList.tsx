@@ -1,11 +1,13 @@
 "use client";
 
-import { type Ref, useImperativeHandle, useMemo, useState, useTransition } from "react";
+import { TIME_LABEL } from "@/lib/time-labels";
+import { type Ref, useDeferredValue, useImperativeHandle, useMemo, useState, useTransition } from "react";
 import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
 import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";
+import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
 
@@ -46,6 +48,8 @@ export default function ApiKeyList({
   const [sort, setSort] = useState<ApiKeySort | null>(null);
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const query = useDeferredValue(search.trim().toLowerCase());
 
   // A re-fetch whose failure the user is told about.
   function reload() {
@@ -94,13 +98,16 @@ export default function ApiKeyList({
     });
   }
 
-  const rows = useMemo(() => sortApiKeys(items, sort ?? DEFAULT_SORT), [items, sort]);
+  const rows = useMemo(() => sortApiKeys(items.filter((item) => item.key_name.toLowerCase().includes(query)), sort ?? DEFAULT_SORT), [items, sort, query]);
   const sortKey = sort === null ? undefined : sort === "-created_at" || sort === "created_at" ? "activity" : "name";
   const sortDirection = sort === null ? undefined : sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
 
   return (
     <div className="space-y-4">
+      {items.length > 0 ? <CollectionToolbar label="Search API keys" value={search} onChange={setSearch}
+        summary={`${rows.length} of ${items.length} keys`} /> : null}
       <DataTable
+        isLoading={pending}
         columns={buildColumns({
           pending,
           onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
@@ -112,12 +119,11 @@ export default function ApiKeyList({
         sortKey={sortKey}
         sortDirection={sortDirection}
         onSortChange={(key) => setSort(NEXT_SORT[key as "name" | "activity"][sort ?? DEFAULT_SORT])}
-        pagination={false}
         empty={
           <EmptyState
             icon={<KeyRoundIcon size={28} />}
-            title="No API keys yet"
-            description="Create one for outside tools."
+            title={query ? "No matching keys" : "Connect your first tool"}
+            description={query ? "Try another name or clear your search." : "Create an API key for a script, automation, or service. You’ll copy its value once after creating it."}
           />
         }
       />
@@ -134,34 +140,19 @@ function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-2 min-w-0">
-        <span className="truncate text-sm">{k.key_name}</span>
-        <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
+        <span className="truncate text-body-sm font-medium">{k.key_name}</span>
+        <Badge variant={k.active ? "green" : "default"}>{k.active ? "Active" : "Revoked"}</Badge>
       </div>
       <div className="sm:hidden"><KeyActivityCell k={k} /></div>
     </div>
   );
 }
 
-// created_at is always a present epoch; last_used_at / revoked_at are pre-guarded
-// as nullable, so Time renders only for a real timestamp (never for null).
 function KeyActivityCell({ k }: { k: ApiKeyRow }) {
   return (
     <div className="flex flex-col items-start gap-xs text-label leading-label text-muted-foreground">
       <span><span className="sm:hidden">Created </span><Time value={new Date(k.created_at)} format="relative" className="tabular-nums" /></span>
-      <span>
-      {k.last_used_at ? (
-        <>
-          last used <Time value={new Date(k.last_used_at)} format="relative" className="tabular-nums" />
-        </>
-      ) : (
-        "never used"
-      )}
-      {k.revoked_at ? (
-        <>
-          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" className="tabular-nums" />
-        </>
-      ) : null}
-      </span>
+      {k.revoked_at ? <span>revoked <Time value={new Date(k.revoked_at)} format="relative" className="tabular-nums" /></span> : null}
     </div>
   );
 }
@@ -201,14 +192,14 @@ function buildColumns({
 }): DataTableColumn<ApiKeyRow>[] {
   return [
     {
-      key: "name",
+      key: "name", primary: true,
       header: "Name",
       cell: (k) => <KeyNameCell k={k} />,
       sortable: true,
     },
     {
       key: "activity",
-      header: "Time",
+      header: TIME_LABEL.created,
       hideOnMobile: true,
       cell: (k) => <KeyActivityCell k={k} />,
       sortable: true,

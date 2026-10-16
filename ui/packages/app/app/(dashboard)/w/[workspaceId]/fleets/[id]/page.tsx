@@ -1,3 +1,4 @@
+import { RecentFleetVisit } from "@/components/layout/RecentFleets";
 import type { ReactNode } from "react";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
@@ -25,12 +26,12 @@ import {
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
 import TriggerPanel from "./components/TriggerPanel";
-import SkillEditor from "./components/SkillEditor";
+import { SetupPanel } from "./components/SetupPanel";
 import MemoryPanel from "./components/MemoryPanel";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";
-import { FleetInstallGate } from "./components/FleetInstallGate";
+import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
@@ -40,7 +41,6 @@ import {
   FLEET_VIEW,
   resolveFleetView,
 } from "./components/FleetSubnavigation";
-import { SOURCE_FIELD } from "./components/console-copy";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -122,6 +122,7 @@ export default async function FleetDetailPage({
         claimsViewport && "h-full min-h-0 overflow-clip",
       )}
     >
+      <RecentFleetVisit workspace={workspaceId} id={fleet.id} name={fleet.name} />
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <FleetHeader
         workspaceId={workspaceId}
@@ -129,11 +130,8 @@ export default async function FleetDetailPage({
         exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined}
       />
 
-      <FleetInstallGate
-        workspaceId={workspaceId}
-        fleetId={fleet.id}
-        fleetName={fleet.name}
-        status={fleet.status}
+      <FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} />
+      <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
           claimsViewport && "h-full overflow-clip",
@@ -159,7 +157,7 @@ export default async function FleetDetailPage({
             {content}
           </div>
         </div>
-      </FleetInstallGate>
+      </div>
     </div>
   );
 }
@@ -180,8 +178,8 @@ async function loadFleetView(
       return loadEventsView(context, data);
     case FLEET_VIEW.memory:
       return loadMemoryView(context, data);
-    case FLEET_VIEW.skill:
-      return <SourceView context={context} field={SOURCE_FIELD.skill} />;
+    case FLEET_VIEW.setup:
+      return <SetupPanel workspaceId={context.workspaceId} fleet={context.fleet} />;
     case FLEET_VIEW.trigger:
       return loadTriggerView(context);
     default:
@@ -245,48 +243,15 @@ async function loadMemoryView(
       workspaceId={workspaceId}
       fleetId={fleet.id}
       entries={memories?.items ?? null}
-      access={fleet.memory_access ?? null}
+      access={fleet.memory_access}
       canGrant={canGrant}
-    />
-  );
-}
-
-function SourceView({
-  context,
-  field,
-}: {
-  context: PageContext;
-  field: typeof SOURCE_FIELD.skill;
-}) {
-  return <SourceEditor context={context} field={field} fillAvailableSpace />;
-}
-
-function SourceEditor({
-  context,
-  field,
-  fillAvailableSpace = false,
-}: {
-  context: PageContext;
-  field: "skill" | "trigger";
-  fillAvailableSpace?: boolean;
-}) {
-  const { workspaceId, fleet, etag } = context;
-  return (
-    <SkillEditor
-      workspaceId={workspaceId}
-      fleetId={fleet.id}
-      field={field}
-      sourceMarkdown={fleet.source_markdown}
-      triggerMarkdown={fleet.trigger_markdown}
-      etag={etag}
-      fillAvailableSpace={fillAvailableSpace}
     />
   );
 }
 
 async function loadTriggerView(context: PageContext) {
   const { workspaceId, fleet, token } = context;
-  const triggers = fleet.triggers ?? [];
+  const triggers = fleet.triggers;
   const lastDeliveryByKey = await resolveLastDeliveries(
     workspaceId,
     fleet.id,
@@ -295,7 +260,6 @@ async function loadTriggerView(context: PageContext) {
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-lg">
-      <SourceEditor context={context} field={SOURCE_FIELD.trigger} />
       <TriggerPanel triggers={triggers} lastDeliveryByKey={lastDeliveryByKey} />
     </div>
   );

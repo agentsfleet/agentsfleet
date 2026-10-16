@@ -24,7 +24,6 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: 40_000_000,
     created_at: OPENED_AT,
@@ -140,8 +139,8 @@ describe("event_complete — a row the timeline never opened", () => {
     expect(events[0]?.createdAt.getTime()).toBe(OPENED_AT);
   });
 
-  it("carries a continuation's checkpoint and resumed event, and dates an unstamped update by its creation", () => {
-    const stamped = { ...row({ checkpoint_id: "ck_1", resumes_event_id: "e0" }) } as Partial<EventRow>;
+  it("carries a continuation's resumed event, and dates an unstamped update by its creation", () => {
+    const stamped = { ...row({ resumes_event_id: "e0" }) } as Partial<EventRow>;
     delete stamped.updated_at;
     const [event] = applyLiveFrame([], {
       kind: FRAME_KIND.EVENT_COMPLETE,

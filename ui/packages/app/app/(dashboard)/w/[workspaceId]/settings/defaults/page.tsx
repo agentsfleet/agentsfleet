@@ -18,7 +18,7 @@ export default async function SettingsDefaultsPage({
 
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader className="flex-col sm:flex-col">
         <PageTitle>Defaults</PageTitle>
       </PageHeader>
       <EmptyState

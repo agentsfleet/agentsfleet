@@ -24,7 +24,6 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: 40_000_000,
     created_at: 1_700_000_000_000,
@@ -35,7 +34,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
 
 /** The thread's row is the list row plus the two bodies the strip ignores. */
 function turn(over: Partial<EventRow> = {}): EventDetail {
-  return { ...row(over), request_json: "{}", response_text: "done" };
+  return { ...row(over), request_json: "{}", response_text: "done", tool_calls: null };
 }
 
 function event(over: Partial<FleetEvent> = {}): FleetEvent {

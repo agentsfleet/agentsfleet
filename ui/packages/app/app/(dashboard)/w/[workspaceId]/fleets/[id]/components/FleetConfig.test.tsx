@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import FleetConfig from "./FleetConfig";
 import { DELETE_MEMORY_TRAP_NOTICE } from "./console-copy";
+import { FLEET } from "@/tests/helpers/draft-fixtures";
 
 vi.mock("../../actions", () => ({ deleteFleetAction: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -10,7 +11,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 afterEach(() => cleanup());
 
 function renderConfig() {
-  return render(<FleetConfig workspaceId="ws_1" fleetId="agt_1" fleetName="platform-ops" />);
+  return render(<FleetConfig workspaceId="ws_1" fleetId="agt_1" fleetName="platform-ops" etag={FLEET.etag} />);
 }
 
 describe("FleetConfig", () => {

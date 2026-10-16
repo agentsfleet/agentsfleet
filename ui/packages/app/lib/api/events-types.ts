@@ -30,17 +30,16 @@ export function buildQuery(opts?: EventsQuery): string {
 
 // Live frames published on `fleet:{id}:activity` (Redis pub/sub), fanned out
 // as SSE messages by the backend handler. `hello`, `catching_up` and
-// `access_revoked` are rustd/crates/afd_sse/src/frame.rs's `KIND_*` control
+// `access_revoked` are rustd/crates/afd_sse/src/frame/mod.rs's `KIND_*` control
 // frames. The four mid-run frames are the
-// `Published` enum in rustd/crates/afd_fleet/src/lease/activity.rs, where the
+// `Published` enum in rustd/crates/afd_fleet/src/lease/activity/mod.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
-// frames are the daemon's own `TailFrame` in rustd/crates/afd_api_wire/src/tail.rs:
+// frames are the daemon's own `TailFrame` in rustd/crates/afd_api_wire/src/tail/mod.rs:
 // `event_admitted` when a person's message is accepted, before any runner has
 // it, `event_received` when the lease opens the row, `event_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
-// sync with those enums; the install frames below are declared nowhere on the
-// server — the SSE layer reads a payload's leading `kind` and forwards it.
+// sync with those enums.
 export const FRAME_KIND = {
   EVENT_ADMITTED: "event_admitted",
   EVENT_RECEIVED: "event_received",
@@ -51,18 +50,6 @@ export const FRAME_KIND = {
   EVENT_COMPLETE: "event_complete",
   GATE_OPENED: "gate_opened",
   GATE_RESOLVED: "gate_resolved",
-  // Synthetic install-progression frames. The retired daemon published these
-  // from a thread that slept after the 201 and then flipped
-  // installing→active; the current install does that flip inside its own
-  // pipeline and emits no `install:*` frame at all
-  // (rustd/crates/afd_fleet_lifecycle/src/install.rs). The InstallStates
-  // surface still advances its rendered step off these names, so they stay
-  // here as the client's own vocabulary rather than a mirror of a server
-  // constant — nothing on the server declares them.
-  INSTALL_CREATING: "install:creating",
-  INSTALL_PROVISIONING: "install:provisioning",
-  INSTALL_READY: "install:ready",
-  INSTALL_ERROR: "install:error",
   HELLO: "hello",
   CATCHING_UP: "catching_up",
   // The last frame of a stream whose caller lost access to what it streams.

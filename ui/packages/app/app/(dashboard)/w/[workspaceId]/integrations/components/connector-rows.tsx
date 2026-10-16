@@ -5,8 +5,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
-  DashboardRow,
-  IconAction,
+  Button,
+  DashboardPanel,
+  DashboardPanelHeader,
+  DashboardPanelTitle,
+  DashboardPanelDescription,
+  Spinner,
   StatusPill,
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
@@ -23,7 +27,7 @@ import {
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { CONNECTOR_NOT_CONFIGURED_DOCS_URI, CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
-import { presentErrorString } from "@/lib/errors";
+import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 
 const NOT_CONNECTED_LABEL = "Not connected";
 const CONNECTED_LABEL = "Connected";
@@ -121,7 +125,7 @@ export function OAuthConnectorRow({
       }
       window.location.href = result.data.install_url;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Connection failed");
+      setError(unexpectedErrorMessage(cause, `connect ${entry.display_name}`));
     } finally {
       setConnecting(false);
     }
@@ -144,7 +148,7 @@ export function OAuthConnectorRow({
       }
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Disconnect failed");
+      setError(unexpectedErrorMessage(cause, `disconnect ${entry.display_name}`));
     } finally {
       setDisconnecting(false);
     }
@@ -156,65 +160,30 @@ export function OAuthConnectorRow({
       ? identity
         ? `${INSTALLED_ON_PREFIX}${identity}`
         : CONNECTED_DESCRIPTION
-      : "Connect in one click — no token to paste.";
+      : "Choose Connect to authorize access with your provider.";
 
-  return (
-    <DashboardRow
-      data-testid={`integration-${entry.id}`}
-      stackActionOnMobile
-      icon={<Icon size={16} />}
-      title={entry.display_name}
-      description={
-        <>
-          {description}
-          {error ? (
-            <Alert variant="destructive" className="mt-2">
-              {error}
-            </Alert>
-          ) : null}
-        </>
-      }
-      action={
-        <div className="flex items-center justify-between gap-2 sm:justify-start">
-          <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>
-            {pill.label}
-          </StatusPill>
-          {!entry.configured ? (
-            <a
-              href={CONNECTOR_NOT_CONFIGURED_DOCS_URI}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-sm text-body-sm text-primary underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <BookOpenIcon size={14} aria-hidden />
-              {SETUP_STEPS_LABEL}
-            </a>
-          ) : isConnected ? (
-            // Glyphs, matching every other row action in the product. The
-            // label is the tooltip AND the accessible name, so "Disconnect
-            // GitHub" survives the words leaving the button.
-            <IconAction
-              variant="ghost"
-              label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
-              onClick={() => void disconnect()}
-              disabled={disconnecting}
-              aria-busy={disconnecting}
-            >
-              <UnplugIcon size={14} />
-            </IconAction>
-          ) : (
-            <IconAction
-              variant="ghost"
-              label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
-              onClick={() => void connect()}
-              disabled={connecting}
-              aria-busy={connecting}
-            >
-              <PlugIcon size={14} />
-            </IconAction>
-          )}
-        </div>
-      }
-    />
-  );
+  return <DashboardPanel data-testid={`integration-${entry.id}`} className="flex flex-col gap-xl p-2xl">
+    <DashboardPanelHeader>
+      <div className="flex items-center gap-lg">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-foreground" aria-hidden="true"><Icon size={22} /></span>
+        <DashboardPanelTitle>{entry.display_name}</DashboardPanelTitle>
+      </div>
+      <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
+    </DashboardPanelHeader>
+    <DashboardPanelDescription className="flex-1">{description}</DashboardPanelDescription>
+    {error ? <Alert variant="destructive">{error}</Alert> : null}
+    <div className="flex items-center justify-end border-t border-border pt-lg">
+      {!entry.configured ? <Button variant="ghost" size="sm" asChild>
+        <a href={CONNECTOR_NOT_CONFIGURED_DOCS_URI} target="_blank" rel="noreferrer"><BookOpenIcon size={16} aria-hidden="true" />{SETUP_STEPS_LABEL}</a>
+      </Button> : isConnected ? <Button variant="ghost" size="sm"
+        aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
+        disabled={disconnecting} aria-busy={disconnecting} onClick={() => void disconnect()}>
+        {disconnecting ? <Spinner size="sm" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
+      </Button> : <Button variant="secondary" size="sm"
+        aria-label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
+        disabled={connecting} aria-busy={connecting} onClick={() => void connect()}>
+        {connecting ? <Spinner size="sm" /> : <PlugIcon size={16} aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
+      </Button>}
+    </div>
+  </DashboardPanel>;
 }

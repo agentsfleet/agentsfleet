@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
+  ActionForm,
+  Alert,
   CopyButton,
   Dialog,
   DialogContent,
@@ -28,7 +30,7 @@ import {
 import { InfoIcon, PlusIcon } from "lucide-react";
 import { type CreatedRunner } from "@/lib/api/runners";
 import { HOST_ID_REGEX, parseLabels } from "@/lib/api/runners-types";
-import { presentErrorString } from "@/lib/errors";
+import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 import { createRunnerAction } from "../actions";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -41,6 +43,7 @@ import {
 } from "./PolicyFields";
 
 const RUNNER_TOKEN_WARNING = "Runner token is shown once. Copy it now.";
+const ENROLL_ACTION = "enroll the runner";
 const CREATE_RUNNER_TOOLTIP = "Enroll a host to run fleets.";
 // The selection is an assignment the host must satisfy — never a description
 // of the host (Dimension 4.3); the per-field copy in PolicyFields agrees.
@@ -69,6 +72,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
   // DialogContent), so this fires only from the X or the explicit button.
   // Discarding `created` drops the raw agt_r from React state → out of the DOM.
   function handleOpenChange(next: boolean) {
+    if (pending && created === null) return;
     if (next) {
       setOpen(true);
       return;
@@ -95,13 +99,14 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
     }
     const assigned_policy = assignment.policy;
     startTransition(async () => {
+      try {
       const r = await createRunnerAction({
         host_id: values.host_id.trim(),
         assigned_policy,
         labels: parsedLabels.labels,
       });
       if (!r.ok) {
-        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "enroll the runner" }));
+        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: ENROLL_ACTION }));
         return;
       }
       // Reveal first, capture second — the one-time token must render even if
@@ -111,6 +116,9 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         runner_id: r.data.runner_id,
         sandbox_tier: assigned_policy.sandbox_tier,
       });
+      } catch (cause) {
+        setApiError(unexpectedErrorMessage(cause, ENROLL_ACTION));
+      }
     });
   }
 
@@ -126,7 +134,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
           so it needs the same bounded height and scroll to keep its actions
           reachable on a short viewport. */}
       <DialogContent
-        className="max-h-svh overflow-y-auto"
+        closeDisabled={pending && created === null}
         onInteractOutside={(e) => {
           if (created) e.preventDefault();
         }}
@@ -187,7 +195,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
               <DialogDescription>{CREATE_RUNNER_DESCRIPTION}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form
+              <ActionForm
                 onSubmit={(e) => {
                   void form.handleSubmit(onSubmit)(e);
                 }}
@@ -224,7 +232,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                     </FormItem>
                   )}
                 />
-                {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+                {apiError ? <Alert variant="destructive">{apiError}</Alert> : null}
                 <DialogFooter>
                   <Button
                     type="button"
@@ -239,7 +247,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                     Create
                   </TooltipButton>
                 </DialogFooter>
-              </form>
+              </ActionForm>
             </Form>
           </>
         )}

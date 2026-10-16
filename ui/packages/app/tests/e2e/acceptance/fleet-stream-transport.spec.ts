@@ -139,7 +139,7 @@ function eventRow(createdAt: number): Omit<EventRow, "fleet_id" | "workspace_id"
     event_id: EVENT_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
     created_at: createdAt, updated_at: createdAt, tokens: 12_345, wall_ms: 2_500,
     cost_nanos: 1_250_000_000, failure_label: null, failure_detail: null,
-    checkpoint_id: null, resumes_event_id: null,
+    resumes_event_id: null,
   };
 }
 

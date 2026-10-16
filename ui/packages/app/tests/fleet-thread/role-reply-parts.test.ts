@@ -2,7 +2,6 @@ import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { LOADING_VERBS } from "@/components/layout/loading-verbs";
 
 // The reply as assistant-ui message parts, rendered through the real runtime:
 // the operator's turn splits into its trigger and a reply message whose status
@@ -71,7 +70,7 @@ describe("FleetThread — reply parts", () => {
     const streaming = ev({ id: "evt_stream", role: "user", actor: "operator", text: "Go", status: "received", reply: "Half an answer" });
     mockStream([streaming]);
     const view = renderThread();
-    expect(within(replyRow()).getByLabelText("streaming")).toBeTruthy();
+    expect(within(replyRow()).getByLabelText("streaming").className).toContain("sr-only");
     expect(within(replyRow()).queryByRole("button", { name: COPY_REPLY })).toBeNull();
     expect(messageRoot(replyRow()).getAttribute("data-settled")).toBeNull();
 
@@ -129,8 +128,7 @@ describe("FleetThread — reply parts", () => {
     mockStream([ev({ id: "evt_working", role: "user", actor: "operator", text: "Run it", status: "received" })]);
     renderThread();
     const working = within(replyRow()).getByRole("status", { name: "Working" });
-    expect(working.querySelector("[data-braille-spinner]")).toBeTruthy();
-    const verb = LOADING_VERBS.find((candidate) => working.textContent?.includes(`${candidate}…`));
-    expect(verb).toBeDefined();
+    expect(working.querySelector("[data-signal-spinner]")).toBeTruthy();
+    expect(working.textContent).toContain("Working…");
   });
 });

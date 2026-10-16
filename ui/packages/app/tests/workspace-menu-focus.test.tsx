@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "reader" }), AuthSignOutButton: ({ children }: { children: React.ReactNode }) => children }));
 
 const { pathname } = vi.hoisted(() => ({ pathname: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -39,7 +40,7 @@ describe("lazy workspace menu entry focus", () => {
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Workspace 1" }));
     await user.keyboard("{End}");
-    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Create workspace" }));
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Sign out" }));
     await user.keyboard("{Home}");
     expect(document.activeElement).toBe(first);
   });

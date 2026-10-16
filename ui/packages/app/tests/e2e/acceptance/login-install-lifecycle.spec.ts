@@ -16,7 +16,7 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
@@ -46,12 +46,12 @@ test.describe("login → install → lifecycle", () => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Install via the dashboard template gallery. A killed-but-not-deleted
-    // row from an interrupted run is the server's to suffix around. The
-    // onboard targets the fixture's default workspace — the one active in the
+    // Save through the private chat's Review setup. A killed-but-not-deleted
+    // row from an interrupted run is the server's to suffix around. The chat
+    // targets the fixture's default workspace — the one active in the
     // browser here.
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const fleetId = await installViaUI(page, FLEET_PREFIX, {
+    const fleetId = await saveFleetViaUI(page, FLEET_PREFIX, {
       handle: FIXTURE_KEY.regular,
       workspaceId,
     });
