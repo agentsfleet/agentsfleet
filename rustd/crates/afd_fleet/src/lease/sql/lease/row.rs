@@ -51,7 +51,7 @@ WITH held AS (
       metered_output_tokens = CASE WHEN $25::boolean THEN 0 ELSE metered_output_tokens END,
       last_metered_at       = CASE WHEN $25::boolean THEN $16 ELSE last_metered_at END,
       updated_at            = CASE WHEN $25::boolean THEN $16 ELSE updated_at END
-  WHERE fleet_id = $3::uuid AND fencing_seq = $13 AND leased_until >= $16
+  WHERE fleet_id = $3::uuid AND fencing_seq = $13 AND leased_until > $16
   RETURNING fleet_id
 ), inserted AS (
   INSERT INTO fleet.runner_leases

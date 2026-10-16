@@ -70,11 +70,11 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         ActivityFrame::ToolCallStarted(ToolCallStarted {
             name: TOOL,
             args_redacted: Cow::Borrowed("{}"),
-            call_id: Some(CALL),
+            call_id: CALL,
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: TOOL,
-            text_kind: None,
+            text_kind: afd_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: None,
             stream_start: false,
             stream_contiguous: false,
@@ -83,8 +83,8 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         ActivityFrame::ToolCallCompleted(ToolCallCompleted {
             name: TOOL,
             ms: 0,
-            call_id: Some(CALL),
-            status: None,
+            call_id: CALL,
+            status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
             output_head: None,
             output_tail: None,
             output_line_count: None,
@@ -93,7 +93,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         ActivityFrame::ToolCallProgress(ToolCallProgress {
             name: TOOL,
             elapsed_ms: 0,
-            call_id: Some(CALL),
+            call_id: CALL,
         }),
     ]
 }

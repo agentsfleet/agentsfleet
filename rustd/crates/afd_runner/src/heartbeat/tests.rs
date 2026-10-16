@@ -29,6 +29,8 @@ fn beat_body(controllers: &[String]) -> String {
             "egress_enforcement": true,
         },
         "selftest": null,
+        "holds": [],
+        "closing": false,
     })
     .to_string()
 }

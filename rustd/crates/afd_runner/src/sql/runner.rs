@@ -16,10 +16,10 @@ use afd_db::statement::Bound;
 pub const INSERT_RUNNER_WITH_EVENT: &str = "\
 WITH inserted AS (
   INSERT INTO fleet.runners
-  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
+  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
    last_seen_at, created_at, updated_at, network_policy, registry_allowlist, worker_count,
    degraded, degraded_reason)
-VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint,
+VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, $7::bigint, $8::bigint, $8::bigint,
         $13::text, $14::jsonb, $15::int, $16::bool, $17::text)
   RETURNING id
 )

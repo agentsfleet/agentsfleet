@@ -53,7 +53,7 @@ async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status
     .bind(service)
     .bind(status)
     .bind("a fixture asked")
-    .bind(requests::ENROLLED_AT)
+    .bind(requests::enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");

@@ -18,7 +18,7 @@ use afd_runner::Verdict;
 use afd_runner::reconcile::{
     Guarantee, REASON_BUBBLEWRAP_MISSING, REASON_CGROUP_CONTROLLERS_MISSING,
     REASON_EGRESS_ENFORCEMENT_UNAVAILABLE, REASON_LANDLOCK_UNAVAILABLE, REASON_NETWORK_NEEDS_CAGE,
-    REASON_NO_ASSIGNED_POLICY, REASON_NO_CAPABILITY_REPORT, REASON_SECCOMP_UNAVAILABLE, reconcile,
+    REASON_NO_CAPABILITY_REPORT, REASON_SECCOMP_UNAVAILABLE, reconcile,
 };
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 
@@ -36,6 +36,7 @@ fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static
 /// A host that can enforce everything.
 fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        build_id: None,
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec![
@@ -53,15 +54,6 @@ fn reason_of(verdict: Verdict) -> &'static str {
     verdict.reason().unwrap_or("<healthy>")
 }
 
-/// A row with no assignment degrades on its own, before anything is asked of
-/// the host.
-#[test]
-fn test_no_assignment_degrades_before_the_host_is_consulted() {
-    let verdict = reconcile(None, Some(&capable()));
-
-    assert_eq!(reason_of(verdict), REASON_NO_ASSIGNED_POLICY);
-}
-
 /// A cage tier that has never reported is degraded, not optimistically healthy.
 ///
 /// This is the fail-CLOSED window: between minting a token and the host's first
@@ -71,7 +63,7 @@ fn test_no_assignment_degrades_before_the_host_is_consulted() {
 fn test_a_cage_tier_with_no_report_is_degraded() {
     let policy = assigned(SandboxTier::LandlockFull, NetworkPolicy::AllowAll);
 
-    let verdict = reconcile(Some(&policy), None);
+    let verdict = reconcile(&policy, None);
 
     assert_eq!(reason_of(verdict), REASON_NO_CAPABILITY_REPORT);
 }
@@ -85,7 +77,7 @@ fn test_a_cage_tier_with_no_report_is_degraded() {
 fn test_a_tier_that_demands_nothing_needs_no_report() {
     let policy = assigned(SandboxTier::DevNone, NetworkPolicy::AllowAll);
 
-    assert_eq!(reconcile(Some(&policy), None), Verdict::Healthy);
+    assert_eq!(reconcile(&policy, None), Verdict::Healthy);
 }
 
 /// An isolating posture on a cage-less tier is refused structurally.
@@ -98,7 +90,7 @@ fn test_an_isolating_posture_needs_a_tier_that_builds_a_cage() {
     for network in [NetworkPolicy::DenyAllEgress, NetworkPolicy::AllowListEgress] {
         let policy = assigned(SandboxTier::DevNone, network);
 
-        let verdict = reconcile(Some(&policy), Some(&capable()));
+        let verdict = reconcile(&policy, Some(&capable()));
 
         assert_eq!(
             reason_of(verdict),
@@ -115,7 +107,7 @@ fn test_a_capable_host_under_a_full_assignment_is_healthy() {
         let policy = assigned(tier, NetworkPolicy::AllowListEgress);
 
         assert_eq!(
-            reconcile(Some(&policy), Some(&capable())),
+            reconcile(&policy, Some(&capable())),
             Verdict::Healthy,
             "{tier:?} with every guarantee proven must not be degraded"
         );
@@ -153,7 +145,7 @@ fn test_each_unmet_guarantee_names_itself_in_a_fixed_order() {
             "the fixture must actually withhold {guarantee:?}"
         );
         assert_eq!(
-            reason_of(reconcile(Some(&policy), Some(&host))),
+            reason_of(reconcile(&policy, Some(&host))),
             reason,
             "a host missing only {guarantee:?} must be told exactly that"
         );
@@ -168,6 +160,7 @@ fn test_each_unmet_guarantee_names_itself_in_a_fixed_order() {
 fn test_the_first_unmet_guarantee_wins() {
     let policy = assigned(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress);
     let nothing = CapabilityReport {
+        build_id: None,
         landlock: false,
         seccomp: false,
         cgroup_controllers: Vec::new(),
@@ -176,7 +169,7 @@ fn test_the_first_unmet_guarantee_wins() {
     };
 
     assert_eq!(
-        reason_of(reconcile(Some(&policy), Some(&nothing))),
+        reason_of(reconcile(&policy, Some(&nothing))),
         REASON_LANDLOCK_UNAVAILABLE,
         "a host missing everything is told the first thing, not the last"
     );
@@ -192,11 +185,11 @@ fn test_egress_control_is_demanded_by_the_posture_not_the_tier() {
     let open = assigned(SandboxTier::LandlockFull, NetworkPolicy::AllowAll);
 
     assert_eq!(
-        reason_of(reconcile(Some(&allowlisted), Some(&host))),
+        reason_of(reconcile(&allowlisted, Some(&host))),
         REASON_EGRESS_ENFORCEMENT_UNAVAILABLE
     );
     assert_eq!(
-        reconcile(Some(&open), Some(&host)),
+        reconcile(&open, Some(&host)),
         Verdict::Healthy,
         "an assignment that permits everything outbound demands no control over it"
     );
@@ -215,7 +208,7 @@ fn test_a_partial_controller_set_does_not_prove_resource_limits() {
     };
 
     assert_eq!(
-        reason_of(reconcile(Some(&policy), Some(&partial))),
+        reason_of(reconcile(&policy, Some(&partial))),
         REASON_CGROUP_CONTROLLERS_MISSING
     );
 }

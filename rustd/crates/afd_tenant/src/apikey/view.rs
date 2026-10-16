@@ -77,8 +77,6 @@ pub struct KeyRow {
     pub active: bool,
     /// When it was minted.
     pub created_at_ms: i64,
-    /// When it last authenticated, if it ever has.
-    pub last_used_at_ms: Option<i64>,
     /// When it stopped working, if it has.
     pub revoked_at_ms: Option<i64>,
 }
@@ -95,7 +93,6 @@ impl KeyRow {
             name: row.try_get("key_name").map_err(row_unreadable)?,
             active: row.try_get("active").map_err(row_unreadable)?,
             created_at_ms: row.try_get("created_at").map_err(row_unreadable)?,
-            last_used_at_ms: row.try_get("last_used_at").map_err(row_unreadable)?,
             revoked_at_ms: row.try_get(COLUMN_REVOKED_AT).map_err(row_unreadable)?,
         }))
     }

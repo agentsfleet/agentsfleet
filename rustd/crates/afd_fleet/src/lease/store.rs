@@ -50,6 +50,7 @@ pub struct Leases {
     cursor: ReadyCursor,
     ready_prefix: ReadyPrefix,
     doorbell: Doorbell,
+    ticket: Option<afd_runner::capacity::choice::Ticket>,
 }
 
 impl Leases {
@@ -63,7 +64,20 @@ impl Leases {
             cursor: ReadyCursor::new(),
             ready_prefix: ReadyPrefix::production(),
             doorbell: Doorbell::new(),
+            ticket: None,
         }
+    }
+
+    pub(super) fn with_ticket(
+        mut self,
+        ticket: Option<afd_runner::capacity::choice::Ticket>,
+    ) -> Self {
+        self.ticket = ticket;
+        self
+    }
+
+    pub(super) const fn ticket(&self) -> Option<afd_runner::capacity::choice::Ticket> {
+        self.ticket
     }
 
     /// The same store, taking rung partitions from `doorbell`.

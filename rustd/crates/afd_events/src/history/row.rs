@@ -32,8 +32,6 @@ pub struct EventRow {
     pub failure_label: Option<String>,
     /// The operator-readable cause line, absent when none was carried.
     pub failure_detail: Option<String>,
-    /// The session checkpoint this run wrote, when it wrote one.
-    pub checkpoint_id: Option<String>,
     /// The event this one continues, set on a continuation.
     pub resumes_event_id: Option<String>,
     /// Epoch milliseconds the row was created.
@@ -52,7 +50,7 @@ pub struct EventRow {
 impl EventRow {
     /// How many columns [`Self::read`] consumes, so a statement selecting
     /// more after them can name where its own begin.
-    pub const COLUMNS: usize = 15;
+    pub const COLUMNS: usize = 14;
 
     /// Decode one row, naming the column that refused.
     ///
@@ -71,11 +69,10 @@ impl EventRow {
             wall_ms: row.try_get(7).map_err(row_malformed("wall_ms"))?,
             failure_label: row.try_get(8).map_err(row_malformed("failure_label"))?,
             failure_detail: row.try_get(9).map_err(row_malformed("failure_detail"))?,
-            checkpoint_id: row.try_get(10).map_err(row_malformed("checkpoint_id"))?,
-            resumes_event_id: row.try_get(11).map_err(row_malformed("resumes_event_id"))?,
-            created_at: row.try_get(12).map_err(row_malformed("created_at"))?,
-            updated_at: row.try_get(13).map_err(row_malformed("updated_at"))?,
-            cost_nanos: row.try_get(14).map_err(row_malformed("cost_nanos"))?,
+            resumes_event_id: row.try_get(10).map_err(row_malformed("resumes_event_id"))?,
+            created_at: row.try_get(11).map_err(row_malformed("created_at"))?,
+            updated_at: row.try_get(12).map_err(row_malformed("updated_at"))?,
+            cost_nanos: row.try_get(13).map_err(row_malformed("cost_nanos"))?,
         })
     }
 
@@ -98,7 +95,6 @@ impl EventRow {
             wall_ms: self.wall_ms,
             failure_label: self.failure_label.as_deref().map(Cow::Borrowed),
             failure_detail: self.failure_detail.as_deref().map(Cow::Borrowed),
-            checkpoint_id: self.checkpoint_id.as_deref().map(Cow::Borrowed),
             resumes_event_id: self.resumes_event_id.as_deref().map(Cow::Borrowed),
             created_at: self.created_at,
             updated_at: self.updated_at,

@@ -99,6 +99,11 @@ async fn test_first_chunk_records_active_lease_stages() {
         );
     }
     let expired = held().await;
+    // Lapsed: its deadline is now behind the clock the activity target reads.
+    expired
+        .fixtures
+        .lapse_lease(expired.issued.lease_id.as_str())
+        .await;
     let target = expired
         .leases
         .load_activity_target(expired.issued.lease_id.as_str(), &expired.runner)
@@ -107,7 +112,7 @@ async fn test_first_chunk_records_active_lease_stages() {
         .expect("the held lease exists");
     assert!(
         !target.timing_eligible,
-        "the fixture lease is already expired"
+        "the lapsed lease is not eligible for timing"
     );
     expired
         .fixtures
@@ -297,7 +302,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
 fn chunk() -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(CHUNK_TEXT),
-        text_kind: Some(afd_wire::activity::StreamTextKind::Answer),
+        text_kind: afd_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: Some(42),
         stream_start: true,
         stream_contiguous: true,

@@ -1,10 +1,10 @@
 //! The background work no request pays for.
 //!
-//! Six sweepers keep the runner plane honest between requests: a runner that
+//! The sweepers keep the runner plane honest between requests: a runner that
 //! stopped beating has to be noticed, a lease its holder abandoned has to
-//! become leasable again, history has to stop growing, a repair a human
-//! approved has to be dispatched, an admission the queue never took has to be
-//! re-appended, and one whose entry the queue LOST has to be found at all.
+//! become leasable again, history has to stop growing, an admission the queue
+//! never took has to be re-appended, and one whose entry the queue LOST has to
+//! be found at all.
 //! None of them belongs on a request path — every one is unbounded work on
 //! someone else's row.
 //!
@@ -28,7 +28,6 @@ pub mod liveness;
 pub mod rebuild;
 pub mod reclaim;
 pub mod reconcile;
-pub mod repair;
 pub mod replay;
 pub mod retention;
 

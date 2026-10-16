@@ -80,7 +80,7 @@ fn base_item(
         labels: labels(&labels_json)?,
         last_seen_at,
         created_at: row.try_get(6).map_err(&column)?,
-        assigned_policy: columns.decode().map(own_policy),
+        assigned_policy: own_policy(columns.decode()?),
         achievable: policy::capability(capability_json.as_deref()).map(own_capability),
         degraded: verdict.degraded,
         degraded_reason: verdict.reason,
@@ -125,6 +125,7 @@ fn own_bind(bind: ExtraBind<'_>) -> ExtraBind<'static> {
 
 fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
     CapabilityReport {
+        build_id: report.build_id.map(|value| Cow::Owned(value.into_owned())),
         landlock: report.landlock,
         seccomp: report.seccomp,
         cgroup_controllers: report

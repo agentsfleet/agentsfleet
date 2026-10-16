@@ -15,8 +15,7 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
-    DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
     DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
     DETAIL_EVENT_MALFORMED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
     DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
@@ -37,6 +36,8 @@ impl Error {
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => true,
+            ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
+            ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Admission { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             _ => false,
@@ -55,127 +56,80 @@ impl Error {
     /// The registry code this failure answers with.
     ///
     /// Exhaustive, so a new kind fails the build until it is given one — the
-    /// same device `afd_auth::Error::code` uses.
+    /// same device `afd_auth::Error::code` uses. The arms group by family, and
+    /// each family's reason is written here rather than between the arms, so
+    /// the table reads as one table:
+    ///
+    /// - **Delegated** — billing, runner, authoring, admission, credential,
+    ///   gate, events, outbound and memory each already decide which of their
+    ///   failures is an outage and which is their own fault. A second copy of
+    ///   that mapping here is the drift this crate's module header warns about.
+    /// - **This process failing** — a clock that cannot name an instant, a
+    ///   host that cannot draw random bytes, a queue that will not answer, a
+    ///   mask that cannot be built, and a producer writing an entry this daemon
+    ///   cannot execute are not the caller's request being wrong. An earlier
+    ///   draft answered `Mint` with `UUIDV7_INVALID_ID_SHAPE`, a 400 that told
+    ///   an operator their enrolment was malformed while the fault was here. A
+    ///   stored config this daemon cannot read joins them: the finer code an
+    ///   operator would want does not exist in a registry this family does not
+    ///   own, and the parser's own error survives in the source chain.
+    /// - **Vault body** — a body that will not parse answers its own code,
+    ///   because its SHAPE is a fact the operator who stored it can act on.
+    /// - **Lease lifecycle** — six refusals, six codes. They are one fact (this
+    ///   runner may not do this to this lease) observed at six moments, and the
+    ///   runner acts differently on every one.
+    /// - **Messages** — no thread, or the run has spoken its fill. Neither is a
+    ///   fault, and the model acts on each differently.
+    /// - **Corrupt sequence** — the same code a column that will not parse
+    ///   answers: this IS that, found by range rather than by shape.
+    /// - **Mint** — GitHub keeps two codes because an App installation has its
+    ///   own reconnect semantics, and a runner meeting UZ-GH-001 knows a HUMAN
+    ///   must reinstall the App. The refresh connectors share one code with two
+    ///   sentences, so a Zoho failure never routes a runner to GitHub's
+    ///   reconnect.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            // Delegated, not restated: the billing crate already decides which
-            // of its failures are an outage and which are a statement fault,
-            // and a second copy of that mapping here is the drift this crate's
-            // own module header warns about.
             ErrorKind::Billing { ref source } => source.code(),
+            ErrorKind::Runner { ref source } => source.code(),
+            ErrorKind::Authoring { ref source } => source.code(),
             ErrorKind::Admission { ref source } => source.code(),
-            // Delegated for the reason Billing is: the credential plane already
-            // decides which of its failures is an outage and which is a fault.
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
-            // Delegated for the same reason: `afd_outbound` already decides
-            // which of its failures are an outage and which are its own fault.
             ErrorKind::Outbound { ref source } => source.code(),
+            ErrorKind::Memory { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            // A daemon whose clock cannot name an instant, and a host that
-            // cannot draw random bytes, are both THIS process failing — not the
-            // caller's request being wrong. An earlier draft answered `Mint`
-            // with `UUIDV7_INVALID_ID_SHAPE`, which is a 400: it told an
-            // operator their enrolment was malformed while the fault was here.
-            // The queue joins these rather than getting a code of its own: a
-            // new code would fire the ERROR REGISTRY gate over a registry this
-            // family does not own. Every provider-resolution failure answers
-            // the same code, and a vault envelope that will not open joins
-            // them because which check failed is an oracle. The finer
-            // `UZ-PROVIDER-*` codes belong to the TENANT plane's handler —
-            // declaring them here for a path that cannot emit them would be an
-            // unreferenced code that looks like coverage.
-            // `Envelope` is a producer writing an entry this daemon cannot
-            // execute — not the asking runner's fault, so it answers as an
-            // internal failure rather than a 4xx telling a healthy runner to
-            // stop asking.
+            ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Envelope { .. }
             | ErrorKind::EnvelopeMalformed { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Queue { .. }
-            // A stored config this daemon cannot read joins the family for the
-            // registry reason the queue does: the finer code an operator would
-            // want does not exist in the registry, and minting one here
-            // would fire the ERROR REGISTRY gate over a registry this family
-            // does not own. The parser's own error says which rule the
-            // document broke, and it survives in the source chain.
             | ErrorKind::ConfigUnreadable { .. }
-            // A mask that cannot be built is this process failing, and the
-            // message it would have guarded is not sent.
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            // Two vault failures, two codes: a failed decrypt answers the
-            // internal code above because which check failed is an oracle,
-            // while a body that will not parse answers this one because the
-            // body's SHAPE is a fact the operator who stored it can act on.
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
-            // The one provider-family failure with a code of its own, because
-            // it is the one an operator can ACT on: the fleet named a
-            // credential and nobody stored it.
-            // The six lease-lifecycle refusals, each with its own registry
-            // code. None of them is an internal failure and none is a bad
-            // request: they are all one fact — this runner may not do this to
-            // this lease — observed at six different moments, and the runner
-            // acts differently on every one. That is why they do not share a
-            // code the way the provider family above does.
             ErrorKind::StaleFence => error_code::RUN_STALE_FENCING_TOKEN,
             ErrorKind::LeaseNotFound => error_code::RUN_LEASE_NOT_FOUND,
             ErrorKind::LeaseLost => error_code::RUN_LEASE_LOST,
             ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
-            // The two message refusals: the event has no thread, or the run
-            // has spoken its fill. Neither is a fault, and the model acts on
-            // each differently — one says it in the answer, the other stops.
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
             ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,
-            // A corrupt row, so the same code a column that will not parse
-            // answers — this IS that, found by range rather than by shape.
             ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
-            // A 404, and it is the one 404 on this plane that is not a
-            // refusal: a skill-only bundle stores no snapshot, so this is what
-            // the ordinary case looks like from the wire.
-            ErrorKind::BundleMissing => error_code::FLEET_BUNDLE_NOT_FOUND,
-            // Three ways for a snapshot to be unservable, one code, because
-            // the RUNNER acts identically on all three — it re-polls. What
-            // separates them for an operator is `detail` below and the source
-            // chain in the log.
-            ErrorKind::BundleUnconfigured
-            | ErrorKind::BundleStorage { .. }
-            | ErrorKind::BundleOversized { .. } => error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-            // The mint family. A workspace that connected nothing and a handle
-            // naming an unknown connector are one code, for the reason their
-            // shared sentence gives.
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
-            // GitHub keeps two codes where the refresh connectors share one,
-            // because an App installation has its own reconnect semantics,
-            // and a runner that meets UZ-GH-001 knows a
-            // HUMAN must reinstall an App rather than that a token exchange
-            // failed.
             ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,
             ErrorKind::GithubMintFailed => error_code::GH_MINT_FAILED,
-            // One code, two sentences: a Zoho failure must never route a runner
-            // to GitHub's reconnect, and which of the two it was is what the
-            // detail says.
             ErrorKind::ConnectorReconnectRequired | ErrorKind::ConnectorMintFailed => {
                 error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED
             }
             ErrorKind::GrantRequired => error_code::GRANT_NOT_FOUND,
-            // Three refusals, three codes, because the remedies differ: wait
-            // for a human, re-raise the card against the reach the fleet now
-            // declares, or answer a new approval.
-            // Delegated: `afd_memory` owns the memory codes and decides them.
-            ErrorKind::Memory { ref source } => source.code(),
-            // The login family. Each field answers its own code because the
-            // command line renders a different prompt for each — a bad key is
-            // the client's own bug, a bad code is the person's typing.
         }
     }
 
@@ -200,6 +154,8 @@ impl Error {
             // describe one failure two ways.
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Memory { ref source } => source.detail(),
+            ErrorKind::Runner { ref source } => source.detail(),
+            ErrorKind::Authoring { ref source } => source.detail(),
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -227,6 +183,7 @@ impl Error {
             ErrorKind::Scrub { .. } => afd_core::error::DETAIL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
+            ErrorKind::SetupUnavailable => "The fleet needs a reviewed native setup before it can run",
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
             ErrorKind::LeaseNotFound => DETAIL_LEASE_NOT_FOUND,
             ErrorKind::LeaseLost => DETAIL_LEASE_LOST,
@@ -235,15 +192,6 @@ impl Error {
             ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
             ErrorKind::MessageNoChannel => DETAIL_MESSAGE_NO_CHANNEL,
             ErrorKind::MessageLimitReached => DETAIL_MESSAGE_LIMIT,
-            ErrorKind::BundleMissing => DETAIL_BUNDLE_NOT_FOUND,
-            ErrorKind::BundleUnconfigured => DETAIL_BUNDLE_STORAGE_UNAVAILABLE,
-            // An oversized object joins the store failure rather than getting a
-            // sentence of its own. The size is a fact about what an operator
-            // stored, and telling the asking runner would say more about this
-            // deployment's contents than a bundle fetch should.
-            ErrorKind::BundleStorage { .. } | ErrorKind::BundleOversized { .. } => {
-                DETAIL_BUNDLE_FETCH_FAILED
-            }
             ErrorKind::IntegrationNotConnected => DETAIL_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => DETAIL_MINT_UNCONFIGURED,
             ErrorKind::GithubReconnectRequired => DETAIL_GITHUB_RECONNECT,

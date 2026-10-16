@@ -17,11 +17,9 @@
 //! one, because it is the state nothing recovered before the ledger question
 //! and the one past the page is what proves the question's cursor wraps.
 //!
-//! The dead holder costs nothing to stage. Every lease here is issued at the
-//! fixtures' instant, which is months behind the real clock, so a lease left
-//! unsettled is `active` and past `lease_expires_at` by the only clock the
-//! sweeper reads. The live holder is the one that has to be issued at the real
-//! instant.
+//! The dead holder is staged by its deadlines: an unsettled `active` lease whose
+//! lease and claim deadlines are moved behind the database clock, which issue,
+//! renewal and the next claim read. The live holder's lease is left as issued.
 //!
 //! # What "recovered" means
 //!
@@ -56,7 +54,7 @@ use afd_wire::event::EventType;
 
 use crate::queue;
 use crate::report_seed::DEEP_POOL;
-use crate::requests::ENROLLED_AT;
+use crate::requests::enrolled_at;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -112,11 +110,11 @@ fn ledger(fixtures: &Fixtures) -> Admissions {
 }
 
 /// A fleet whose one admission was delivered and leased at `at`, and never
-/// settled. At the fixtures' instant that is a dead holder; at the real
-/// instant, a live one.
+/// settled, by a holder that is still renewing it.
 async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMillis) -> Staged {
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(fixtures).await;
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let funded_at = at.as_millis();
+    fixtures.seed_wallet(&tenant, DEEP_POOL, funded_at).await;
     let key = producer_key(&fleet);
     let admitted = ledger(fixtures)
         .admit(admission(&fleet, &workspace, &key))
@@ -157,6 +155,15 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
         event_id: admitted.stored.id,
         lease_id: Some(issued.lease_id.as_str().to_owned()),
     }
+}
+
+/// [`delivered_and_leased`], by a holder that died: both deadlines have passed.
+async fn dead_holder(fixtures: &Fixtures, leases: &Leases, at: UnixMillis) -> Staged {
+    let staged = delivered_and_leased(fixtures, leases, at).await;
+    let lease = staged.lease_id.as_deref().expect("leased");
+    fixtures.lapse_lease(lease).await;
+    fixtures.lapse_slot(&staged.fleet).await;
+    staged
 }
 
 /// A fleet whose one admission is receipted and sits on the stream unread.
@@ -244,13 +251,13 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     let fixtures = Fixtures::create_with_queue().await;
     let leases = fixtures.leases();
     let streams = FleetStreams::new(fixtures.queue().clone());
-    let staged_at = UnixMillis::from_millis(ENROLLED_AT);
+    let staged_at = UnixMillis::from_millis(enrolled_at());
 
     // ── Every state the ledger can express, each on its own fleet.
     let population = usize::try_from(STRANDED).expect("a hundred-odd fleets fit a usize");
     let mut stranded = Vec::with_capacity(population);
     for _ in 0..population {
-        stranded.push(delivered_and_leased(&fixtures, &leases, staged_at).await);
+        stranded.push(dead_holder(&fixtures, &leases, staged_at).await);
     }
     let live = delivered_and_leased(&fixtures, &leases, clock::now()).await;
     let queued = queued_undelivered(&fixtures).await;

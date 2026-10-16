@@ -1,6 +1,6 @@
 //! What a clone of the lanes shares with the original.
 //!
-//! Its own binary rather than a case inside `lanes.rs`, deliberately. That
+//! Its own binary rather than a case inside `lanes/main.rs`, deliberately. That
 //! suite's ceiling proof measures how many deliveries are in flight at once
 //! and waits on a high-water mark; every additional `multi_thread` test in the
 //! same binary competes for the same worker threads, and the ceiling test has

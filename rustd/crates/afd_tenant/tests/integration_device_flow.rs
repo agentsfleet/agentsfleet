@@ -19,7 +19,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::{Approval, Code, Opening};
-use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
+use afd_tenant::session::{Fingerprint, SessionStatus, Sessions};
 
 use crate::dragonfly_harness::DragonflyHarness;
 
@@ -260,15 +260,17 @@ async fn test_device_flow_terminal_states_are_terminal() {
         .expect_err("consumed");
     assert_eq!(refusal.code(), error_code::SESSION_CONSUMED);
 
-    // And a cancel of it cannot un-redeem it.
+    // And a bulk abort by its owner cannot un-redeem it.
+    let aborted = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    assert!(!aborted.contains(&opened.session_id), "{aborted:?}");
     let refusal = sessions
-        .cancel(&opened.session_id, APPROVER)
+        .poll(&opened.session_id)
         .await
         .expect_err("consumed");
     assert_eq!(refusal.code(), error_code::SESSION_CONSUMED);
 }
 
-/// Dimension 1.2 — a login is cancellable by its owner and by nobody else.
+/// A login is aborted by its owner's bulk cancel and by nobody else's.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
@@ -284,27 +286,21 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
         .await
         .expect("approve");
 
-    let refusal = sessions
-        .cancel(&opened.session_id, "user_someone_else")
+    let foreign = sessions
+        .cancel_all("user_someone_else")
         .await
-        .expect_err("foreign");
-    assert_eq!(refusal.code(), error_code::AUTH_FORBIDDEN);
+        .expect("cancel all");
+    assert!(!foreign.contains(&opened.session_id), "{foreign:?}");
 
-    assert_eq!(
-        sessions
-            .cancel(&opened.session_id, APPROVER)
-            .await
-            .expect("cancel"),
-        Cancelled::Now,
-        "the first cancel performs the transition"
+    let first = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    assert!(
+        first.contains(&opened.session_id),
+        "the owner's cancel performs the transition: {first:?}"
     );
-    assert_eq!(
-        sessions
-            .cancel(&opened.session_id, APPROVER)
-            .await
-            .expect("cancel"),
-        Cancelled::Already,
-        "a repeat changes nothing, so nothing is audited twice"
+    let repeat = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    assert!(
+        !repeat.contains(&opened.session_id),
+        "a repeat changes nothing, so nothing is audited twice: {repeat:?}"
     );
 
     let refusal = sessions

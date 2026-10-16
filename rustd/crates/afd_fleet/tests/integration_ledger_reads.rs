@@ -1,11 +1,9 @@
-//! The two readers of a ledger row, after slot 915 changed what is in it.
+//! The two readers of a ledger row.
 //!
 //! One is the budget drain, which the renew path runs every few seconds of
-//! every live run. Its index led with `fleet_id` partly because the dropped
-//! foreign key's `ON DELETE SET NULL` required that column to lead, and an
-//! over-eager cleanup could read the retired justification as a reason to drop
-//! the index. The claim worth pinning is the PLAN, not the index definition: a
-//! definition test stays green against a plan that stopped using it.
+//! every live run, through an index led by `fleet_id`. The claim worth pinning
+//! is the PLAN, not the index definition: a definition test stays green
+//! against a plan that stopped using it.
 //!
 //! The other is the charges page, which gained a column. A `SELECT` listing a
 //! column the row struct does not read, or a struct reading one the statement
@@ -128,9 +126,9 @@ async fn test_m201_budget_drain_plan_unchanged() {
 
 /// Charges for many fleets in one workspace, so the drain's index has a reason.
 ///
-/// The decoy fleet identifiers name no `core.fleets` row, which slot 915 is
-/// what permits: the column stopped being a foreign key, so a ledger row may
-/// now name a fleet that does not exist. Seeding this way needs no fleet rows,
+/// The decoy fleet identifiers name no `core.fleets` row, which the column
+/// permits: it is no foreign key, so a ledger row may name a fleet that does
+/// not exist. Seeding this way needs no fleet rows,
 /// no install, and no cleanup beyond the enclosing rollback.
 async fn seed_decoy_charges(connection: &mut sqlx::PgConnection, held: &Held, workspace: &str) {
     sqlx::query(
@@ -168,9 +166,9 @@ async fn seed_decoy_charges(connection: &mut sqlx::PgConnection, held: &Held, wo
 /// select it is a runtime error no compiler catches.
 ///
 /// Both states in one page: the fixture's receive charge carries the name it
-/// captured, and a hand-seeded row carries none, standing for every charge
-/// written before slot 915. A reader that unwrapped the column would pass the
-/// first and fail the second.
+/// captured, and a hand-seeded row carries none, as a charge does whose fleet
+/// row was unreadable when it was written. A reader that unwrapped the column
+/// would pass the first and fail the second.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_m201_charge_row_decodes_fleet_name() {
@@ -183,8 +181,8 @@ async fn test_m201_charge_row_decodes_fleet_name() {
         .await
         .expect("a tenant's charges page must read");
 
-    // Found by its event, not its fleet: the seeded row names the same fleet
-    // now that `fleet_id` is NOT NULL, so the fleet no longer tells them apart.
+    // Found by its event, not its fleet: the seeded row names the same fleet,
+    // so the fleet does not tell them apart.
     let captured = page
         .iter()
         .find(|row| row.event_id == held.event_id)
@@ -201,14 +199,14 @@ async fn test_m201_charge_row_decodes_fleet_name() {
         "the identifier the dashboard derives a callsign from must survive the read"
     );
 
-    let legacy = page
+    let nameless = page
         .iter()
         .find(|row| row.event_id == nameless_event(&held))
-        .expect("the hand-seeded pre-915 charge must be on the page");
+        .expect("the hand-seeded nameless charge must be on the page");
     assert_eq!(
-        legacy.fleet_name, None,
+        nameless.fleet_name, None,
         "a charge with no captured name must decode to None rather than erroring \
-         — every row written before slot 915 is in that state"
+         — the charge write records NULL when the fleet row cannot be read"
     );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
@@ -218,7 +216,7 @@ async fn test_m201_charge_row_decodes_fleet_name() {
 /// Dimension 3.1. The second page reads the new column too.
 ///
 /// `Billing::charges` runs one of TWO statements depending on whether the
-/// caller is resuming, and both gained `fleet_name` at slot 915. Every other
+/// caller is resuming, and both select `fleet_name`. Every other
 /// test here takes the first page, which leaves the resumed one — a separate
 /// `SELECT` list, maintained by hand beside its twin — proven by nothing.
 ///
@@ -267,9 +265,9 @@ async fn test_m201_charge_row_decodes_fleet_name_when_resuming() {
     held.fixtures.cleanup().await;
 }
 
-/// The event id of the row standing in for a charge written before slot 915.
+/// The event id of the row standing in for a charge with no captured name.
 fn nameless_event(held: &Held) -> String {
-    format!("{}-pre-915", held.event_id)
+    format!("{}-nameless", held.event_id)
 }
 
 /// The identifier that row is written under.
@@ -284,15 +282,12 @@ fn nameless_row_id(held: &Held) -> Uuid7 {
     Uuid7::encode(held.now, bytes).expect("a well-formed identifier")
 }
 
-/// A charge carrying no captured name, as a pre-915 row does.
+/// A charge carrying no captured name.
 ///
-/// It once carried no `fleet_id` either, because a pre-915 purge nulled both
-/// through the foreign key slot 915 removed. Slot 916 made that column
-/// `NOT NULL`, so a row without one is no longer a state the database can
-/// hold, and seeding one tested a value nothing can reach (RULE TVR). The null
-/// this fixture is actually about is `fleet_name`, which stays nullable for
-/// exactly the reason slot 915 gave: a charge written before it has no name to
-/// carry, and one whose fleet row was unreadable still had to be written.
+/// `fleet_id` is `NOT NULL`, so the row names the fixture's fleet. The null
+/// this fixture is about is `fleet_name`, which the charge write leaves NULL
+/// when the fleet row cannot be read, because a missing name must never cost
+/// a charge.
 async fn seed_nameless_charge(held: &Held) {
     let workspace = workspace_of(held).await;
     let mut connection = held
@@ -317,7 +312,7 @@ async fn seed_nameless_charge(held: &Held) {
     .bind(&held.fleet)
     .execute(&mut *connection)
     .await
-    .expect("the pre-915 charge must insert");
+    .expect("the nameless charge must insert");
 }
 
 /// The workspace the fixture's fleet belongs to.

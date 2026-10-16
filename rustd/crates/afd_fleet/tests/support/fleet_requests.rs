@@ -11,13 +11,27 @@
 )]
 
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, NetworkPolicy, RegisterRequest, SandboxTier,
 };
 
-/// A fixed instant, so a row's stamps are asserted rather than observed.
-pub(crate) const ENROLLED_AT: i64 = 1_760_000_000_000;
+/// The instant this test binary's runners enrol at: the wall clock the first
+/// time a suite asks, then fixed, so a row's stamps are asserted rather than
+/// observed.
+///
+/// The wall clock rather than a constant, because issuing and renewing a lease
+/// and counting a host's live leases read the DATABASE's clock. A lease stamped
+/// from another instant has either lapsed before it was written or outlives
+/// every sweep, and the meter would charge the distance between the two
+/// clocks. A suite that needs a lease to lapse ages its row, not its clock.
+static ENROLLED: LazyLock<i64> = LazyLock::new(|| afd_core::clock::now().as_millis());
+
+/// [`ENROLLED`]'s value.
+pub(crate) fn enrolled_at() -> i64 {
+    *ENROLLED
+}
 
 /// How far this suite advances between beats.
 ///
@@ -73,6 +87,7 @@ pub(crate) fn enrolment_tagged(
 /// A host that proves everything.
 pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        build_id: None,
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec![

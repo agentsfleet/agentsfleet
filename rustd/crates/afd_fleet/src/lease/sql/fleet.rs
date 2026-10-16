@@ -13,19 +13,16 @@
 /// `$1::uuid` because sqlx binds a `&str` as `text` and `core.fleets.id` is a
 /// `UUID` column; the cast lets Postgres compare the two.
 ///
-/// # `execution_id` is deliberately absent
-///
-/// Nothing on this path reads or clears an execution handle: the column has no
-/// production writer of a value and no production reader, and what it tries to
-/// express — which fleet is executing right now — is `fleet.runner_leases`,
-/// which has the fence and the TTL that make the answer trustworthy. A handle
-/// with no expiry can only go stale.
+/// Which fleet is executing right now is `fleet.runner_leases`, which has the
+/// fence and the TTL that make the answer trustworthy; the session row is only
+/// the resume bookmark.
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_WITH_SESSION: &str = "\
-SELECT f.workspace_id::text, f.config_json::text, f.source_markdown, f.status,
-       f.bundle_content_hash, f.name, s.context_json::text
+SELECT f.workspace_id::text, r.definition::text, f.status,
+       r.runtime_model_ref, f.name, s.context_json::text, r.policy_semantics
 FROM core.fleets f
+LEFT JOIN core.fleet_definition_revisions r ON r.id = f.current_definition_revision_id AND r.fleet_id = f.id
 LEFT JOIN core.fleet_sessions s ON s.fleet_id = f.id
 WHERE f.id = $1::uuid";
 
@@ -36,6 +33,7 @@ WHERE f.id = $1::uuid";
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_CONFIG: &str = "\
-SELECT f.config_json::text
+SELECT r.definition::text
 FROM core.fleets f
+JOIN core.fleet_definition_revisions r ON r.id = f.current_definition_revision_id AND r.fleet_id = f.id
 WHERE f.id = $1::uuid";

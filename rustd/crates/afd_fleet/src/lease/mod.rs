@@ -17,6 +17,7 @@ pub mod affinity;
 mod answer;
 pub mod assign;
 pub mod bracket;
+mod claim;
 pub mod commit;
 pub mod coverage;
 mod deliver;

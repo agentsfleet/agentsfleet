@@ -21,7 +21,7 @@ use afd_fleet::lease::Leases;
 
 use super::{at, hold, id, live};
 use crate::queue;
-use crate::requests::ENROLLED_AT;
+use crate::requests::enrolled_at;
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
@@ -51,10 +51,10 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
         &fixtures,
         &fleet,
         &holder,
-        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+        enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
-    let now = at(ENROLLED_AT + 1);
+    let now = at(enrolled_at() + 1);
     let named = [id(&fleet)];
 
     let claimed = leases
@@ -91,7 +91,7 @@ async fn test_an_idle_poll_naming_an_unmarked_held_fleet_costs_no_postgres() {
 
     for _poll in 0..READY_PARTITIONS {
         let (polled, cost) = leases
-            .select_measured(&holder, &named, at(ENROLLED_AT))
+            .select_measured(&holder, &named, at(enrolled_at()))
             .await;
         assert!(polled.expect("the poll answers").is_none());
         assert_eq!(cost.database_roundtrips, 0, "{cost:?}");
@@ -103,7 +103,7 @@ async fn test_an_idle_poll_naming_an_unmarked_held_fleet_costs_no_postgres() {
 /// that faults is passed over, as a runner backs off and polls again.
 async fn first_leased(store: &Leases, runner: &Uuid7, held: &[Uuid7]) -> Option<Uuid7> {
     for _poll in 0..READY_PARTITIONS {
-        if let Ok(Some(acquired)) = store.select(runner, held, at(ENROLLED_AT)).await {
+        if let Ok(Some(acquired)) = store.select(runner, held, at(enrolled_at())).await {
             return Some(acquired.fleet_id);
         }
     }

@@ -74,9 +74,6 @@ pub(crate) enum ErrorKind {
     #[error("the presented code did not match the session's stored digest")]
     SessionCodeRejected,
 
-    #[error("this device-flow login session belongs to another identity")]
-    SessionNotOwner,
-
     #[error("an api-key field was refused: {field}")]
     ApiKeyFieldInvalid { field: ApiKeyField },
 
