@@ -52,6 +52,15 @@ describe("private setup proxy", () => {
     expect((await proxy(["drafts"], {method: METHOD.post, body: "x".repeat(SETUP_BODY_LIMIT_BYTES + 1)})).status).toBe(413);
     expect(credential).not.toHaveBeenCalled();
   });
+  it("forwards a schedule sync retry with no body and no JSON media type", async () => {
+    upstream.mockResolvedValue(response({schedule_id: REVISION_ID, sync: "synced"}));
+    const parts = ["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"];
+    const request = new Request(`${APP_ORIGIN}${BASE}/${parts.join("/")}`, {method: METHOD.post, headers: {Origin: APP_ORIGIN}});
+    const result = await handlers.POST(request, {params: Promise.resolve({workspaceId: WORKSPACE, setupPath: parts})});
+    expect(result.status).toBe(200);
+    const forwarded = upstream.mock.calls[0]?.[1];
+    expect(forwarded.body).toBeUndefined(); expect(forwarded.headers.get("Content-Type")).toBeNull();
+  });
   it("returns private unauthorized state without forwarding when the session expired", async () => {
     credential.mockResolvedValue(null);
     const result = await proxy(["models"]);
@@ -124,6 +133,7 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "events", "stream"], METHOD.get],
     [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
+    [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
     [["fleet-libraries"], METHOD.get], [["fleet-libraries"], METHOD.post], [["fleet-libraries", "owned"], METHOD.get],
     [["fleet-libraries", LIBRARY_ID], METHOD.get], [["fleet-libraries", "platform-recipe"], METHOD.get], [["fleet-libraries", LIBRARY_ID], METHOD.delete],
     [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.get], [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.post], [["fleet-libraries", LIBRARY_ID, "revisions", REVISION_ID], METHOD.get],
@@ -139,6 +149,9 @@ describe("setup route whitelist", () => {
     [["fleets"], METHOD.get], [["fleets", "invalid"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", "invalid"], METHOD.get],
+    [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.get],
+    [["fleets", FLEET_ID, "schedules", "invalid", "sync"], METHOD.post],
+    [["fleets", FLEET_ID, "schedules", REVISION_ID, "other"], METHOD.post],
     [["drafts", DRAFT_ID, "messages"], METHOD.patch],
     [["fleet-libraries"], METHOD.patch], [["fleet-libraries", LIBRARY_ID], METHOD.patch],
     [["fleet-libraries", ""], METHOD.get], [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.patch],

@@ -21,7 +21,7 @@ export async function proxySetup(request: Request, context: Context): Promise<Re
   const signal = AbortSignal.any([request.signal, route.stream ? connection.signal : AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
   try {
     let body: Uint8Array<ArrayBuffer> | undefined;
-    if (writing && request.method !== SETUP_METHOD.delete) {
+    if (writing && request.method !== SETUP_METHOD.delete && !route.bodyless) {
       if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== JSON_MEDIA_TYPE) {
         return setupProblem(415, SETUP_PROXY_DETAIL.mediaType);
       }

@@ -5,16 +5,15 @@ import { test, expect } from "@playwright/test";
 test.describe("auth-shell shared identity", () => {
   test("uses the static signal mark under normal and reduced motion", async ({ page }) => {
     await page.goto("/sign-in");
-    // The header and the hero each carry the mark; every one stays static.
+    // The header and the hero each carry the mark (a narrow screen hides one);
+    // every mark stays static, and at least one is shown.
     const marks = page.locator('[data-brand-mark="signal"]');
-    await expect(marks.first()).toBeVisible();
+    await expect(marks.locator("visible=true").first()).toBeVisible();
     const count = await marks.count();
-    expect(count).toBeGreaterThan(0);
     for (const reducedMotion of ["no-preference", "reduce"] as const) {
       await page.emulateMedia({ reducedMotion });
       for (let index = 0; index < count; index += 1) {
         const mark = marks.nth(index);
-        await expect(mark).toBeVisible();
         await expect(mark).toHaveAttribute("aria-hidden", "true");
         await expect(mark).not.toHaveAttribute("data-live");
         await expect(mark).toHaveCSS("animation-name", "none");
