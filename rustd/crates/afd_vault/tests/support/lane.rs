@@ -115,7 +115,7 @@ impl Lane {
     /// The four projection columns of one row, as text.
     ///
     /// `None` for a row that is not there. Each entry is `None` where the column
-    /// is NULL, which is how a pre-projection row reads.
+    /// is NULL.
     pub(crate) async fn meta_columns(&self, name: &str) -> Option<StoredProjection> {
         sqlx::query(
             "SELECT meta_kind, meta_provider, meta_base_url, meta_has_key \
@@ -196,8 +196,7 @@ impl Lane {
     /// The ciphertext columns are borrowed from a row this suite sealed, so the
     /// envelope is real; the projection is supplied verbatim, which is what lets
     /// a test say "these exact `meta_*` values list like this" without a second
-    /// writer in the loop. `None` for `kind` seeds a row from before the
-    /// projection columns existed.
+    /// writer in the loop. `None` for `kind` seeds a NULL `meta_kind`.
     pub(crate) async fn seed_projected_row(
         &self,
         name: &str,

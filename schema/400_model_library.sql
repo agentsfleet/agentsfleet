@@ -1,6 +1,6 @@
 -- Model → context-window + per-token-rate catalogue. Tenants read it through
 -- the authenticated `GET /v1/models`
--- (`rustd/crates/afd_api_tenant/src/handler/tenant/models.rs`). Both
+-- (`rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs`). Both
 -- the install-skill (platform-managed posture) and `agentctl tenant provider set`
 -- (self-managed posture) call the endpoint exactly once at provisioning time and
 -- pin the cap into the right place. The agent runtime never reads this table.

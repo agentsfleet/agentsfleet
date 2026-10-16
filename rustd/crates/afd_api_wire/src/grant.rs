@@ -120,13 +120,13 @@ mod tests {
             created_at: 1_777_507_200_000,
             approved_at: None,
             revoked_at: None,
-            reason: Cow::Borrowed("Declared by the fleet bundle at install"),
+            reason: Cow::Borrowed("Declared by the fleet's setup at install"),
         })
         .expect("the row serializes");
 
         assert_eq!(
             body,
-            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","service":"slack","status":"pending","created_at":1777507200000,"approved_at":null,"revoked_at":null,"reason":"Declared by the fleet bundle at install"}"#
+            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","service":"slack","status":"pending","created_at":1777507200000,"approved_at":null,"revoked_at":null,"reason":"Declared by the fleet's setup at install"}"#
         );
     }
 

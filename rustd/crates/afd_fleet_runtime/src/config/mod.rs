@@ -18,10 +18,11 @@
 mod anomaly;
 mod attach;
 mod binding_match;
+pub mod budget;
 mod condition;
 mod gates;
 mod policy;
-mod raw;
+pub(crate) mod raw;
 mod repository;
 mod trigger;
 
@@ -31,15 +32,18 @@ use garde::Validate as _;
 
 use crate::error::{Error, ErrorKind, Result, missing};
 use crate::name::{CredentialName, FleetName};
-use crate::provider::{ProviderRegistry, StaticRegistry};
 
 pub use self::anomaly::{AnomalyRule, Pattern};
-pub use self::attach::attach_mention;
+pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
 pub use self::gates::{Behavior, DEFAULT_TIMEOUT_MS, GatePolicy, GateRule};
-pub use self::policy::{Budget, ContextBudget, Dollars, Network};
-pub use self::repository::{Access, Mode, Recorded, RepositoryBinding};
-pub use self::trigger::{ChannelId, Cron, Mention, Trigger, Webhook, WebhookSignature};
+pub use self::policy::{ContextBudget, Network};
+pub use self::repository::{Access, Reach, Recorded, RepositoryBinding};
+pub use self::trigger::{
+    ChannelId, Cron, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS, Trigger,
+    VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,
+    WEBHOOK_SOURCE_LINEAR, WEBHOOK_SOURCE_SLACK, Webhook, WebhookSignature,
+};
 
 /// The key naming the fleet.
 const NAME: &str = "name";
@@ -50,21 +54,23 @@ const TOOLS: &str = "tools";
 /// The key naming what it may spend.
 const BUDGET: &str = "budget";
 
+/// The refusal a key outside the schema earns, wherever it is found.
+const REASON_UNSUPPORTED_KEY: &str = "unsupported configuration key";
+
 /// Every key the runtime block accepts.
 ///
 /// One list, read for one purpose: naming a runtime key found at the TOP level,
 /// which is an author who forgot to indent. The accepted set itself is the
-/// [`raw::Runtime`] struct, so there is no second copy of these twelve strings
+/// [`raw::Runtime`] struct, so there is no second copy of these eleven strings
 /// to drift into disagreement with it.
 /// `every_runtime_key_is_accepted_by_the_schema` proves this list still agrees.
-const RUNTIME_KEYS: [&str; 12] = [
+const RUNTIME_KEYS: [&str; 11] = [
     TRIGGERS,
     TOOLS,
     "credentials",
     "network",
     BUDGET,
     "gates",
-    "skill",
     "model",
     "context",
     "repositories",
@@ -94,8 +100,6 @@ pub struct FleetConfig {
     gates: Option<GatePolicy>,
     /// Which repositories its credentials may reach.
     repository_binding: Option<RepositoryBinding>,
-    /// A skill reference, stored but not resolved.
-    skill: Option<Box<str>>,
     /// An opaque model identifier, passed through untouched.
     model: Option<Box<str>>,
     /// Context-budget overrides, when it declares any.
@@ -108,35 +112,38 @@ impl FleetConfig {
     /// # Errors
     /// Whichever rule the document broke.
     pub fn authored(document: &str) -> Result<Self> {
-        Self::parse(document, Mode::Authoring, &StaticRegistry)
+        Self::parse(document)
     }
 
     /// Reads a document out of the datastore.
     ///
-    /// Differs from [`authored`](Self::authored) for exactly one shape — see
-    /// [`Mode`].
+    /// Uses exactly the same validation as [`authored`](Self::authored).
     ///
     /// # Errors
     /// Whichever rule the document broke.
     pub fn stored(document: &str) -> Result<Self> {
-        Self::parse(document, Mode::Stored, &StaticRegistry)
+        Self::parse(document)
     }
 
-    /// Reads a document against a caller-supplied provider registry.
-    ///
-    /// The registry is a parameter rather than a global so a deployment that
-    /// grows a provider — or a test that needs one — supplies it without this
-    /// crate changing.
-    ///
-    /// # Errors
-    /// Whichever rule the document broke.
-    pub fn parse(document: &str, mode: Mode, providers: &dyn ProviderRegistry) -> Result<Self> {
+    /// The one parse both entry points share.
+    fn parse(document: &str) -> Result<Self> {
         // Three stages, each owned by whoever does it best: serde reads the
         // shape, garde proves the bounds the schema declares, and `resolve`
         // applies the rules only this product knows.
-        let parsed: raw::Document = serde_json::from_str(document)?;
+        let mut ignored = false;
+        let mut decoder = serde_json::Deserializer::from_str(document);
+        let parsed: raw::Document = serde_ignored::deserialize(&mut decoder, |_path| {
+            ignored = true;
+        })?;
+        decoder.end()?;
+        if ignored {
+            return Err(ErrorKind::InvalidDefinition {
+                reason: REASON_UNSUPPORTED_KEY,
+            }
+            .into());
+        }
         parsed.validate()?;
-        Self::resolve(parsed, mode, providers)
+        Self::resolve(parsed)
     }
 
     /// Reads a document and shares it.
@@ -151,11 +158,7 @@ impl FleetConfig {
     }
 
     /// Applies the rules serde cannot know.
-    fn resolve(
-        parsed: raw::Document,
-        mode: Mode,
-        providers: &dyn ProviderRegistry,
-    ) -> Result<Self> {
+    fn resolve(parsed: raw::Document) -> Result<Self> {
         if let Some(misplaced) = parsed
             .extra
             .keys()
@@ -164,6 +167,13 @@ impl FleetConfig {
             return Err(Error::from(ErrorKind::RuntimeKeyOutsideBlock {
                 field: misplaced.as_str().into(),
             }));
+        }
+
+        if !parsed.extra.is_empty() {
+            return Err(ErrorKind::InvalidDefinition {
+                reason: REASON_UNSUPPORTED_KEY,
+            }
+            .into());
         }
 
         let mut runtime = parsed
@@ -179,17 +189,15 @@ impl FleetConfig {
         // Taken before the struct is consumed field-by-field: the binding
         // spans three keys and reads them together, which is what makes a
         // half-declared one detectable at all.
-        let repository_binding = RepositoryBinding::parse(&mut runtime, mode)?;
+        let repository_binding = RepositoryBinding::parse(&mut runtime)?;
 
         Ok(Self {
             name: parsed
                 .name
                 .ok_or_else(|| missing(NAME))
                 .and_then(|authored| FleetName::parse(&authored))?,
-            triggers: trigger::parse_set(
-                runtime.triggers.ok_or_else(|| missing(TRIGGERS))?,
-                providers,
-            )?,
+            // Absent is the empty set: a fleet woken only by messages.
+            triggers: trigger::parse_set(runtime.triggers.unwrap_or_default())?,
             // Already bounded by the schema, so this is ownership only.
             tools: runtime
                 .tools
@@ -213,13 +221,9 @@ impl FleetConfig {
                 .and_then(Budget::try_from)?,
             gates: runtime.gates.map(GatePolicy::try_from).transpose()?,
             repository_binding,
-            // Empty reads as absent for both: the runner treats an unset model
-            // as "resolve from the tenant selection", and an empty string is
-            // how a template that filled in nothing spells the same thing.
-            skill: runtime
-                .skill
-                .filter(|value| !value.is_empty())
-                .map(Into::into),
+            // Empty reads as absent: the runner treats an unset model as
+            // "resolve from the tenant selection", and an empty string is how a
+            // template that filled in nothing spells the same thing.
             model: runtime
                 .model
                 .filter(|value| !value.is_empty())
@@ -276,12 +280,6 @@ impl FleetConfig {
         self.repository_binding.as_ref()
     }
 
-    /// Its skill reference, stored but not resolved.
-    #[must_use]
-    pub fn skill(&self) -> Option<&str> {
-        self.skill.as_deref()
-    }
-
     /// Its opaque model identifier.
     #[must_use]
     pub fn model(&self) -> Option<&str> {
@@ -297,18 +295,18 @@ impl FleetConfig {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
     use super::{FleetConfig, RUNTIME_KEYS, raw};
 
     #[test]
     fn every_runtime_key_is_accepted_by_the_schema() {
         for key in RUNTIME_KEYS {
             let block = format!(r#"{{"{key}": null}}"#);
-            let runtime: raw::Runtime =
-                serde_json::from_str(&block).expect("null deserializes into any Option");
+            // A key the schema reads may still refuse `null` (`triggers` does:
+            // it is a list or absent). That refusal is proof enough the key is
+            // read, because an unknown key lands in `extra` and never errors.
+            let Ok(runtime) = serde_json::from_str::<raw::Runtime>(&block) else {
+                continue;
+            };
 
             assert!(
                 !runtime.extra.contains_key(key),

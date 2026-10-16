@@ -1,6 +1,6 @@
 //! The TLS posture a role's connection resolves to.
 //!
-//! Split from `config.rs` because it is one question with its own history and
+//! Split from `config/mod.rs` because it is one question with its own history and
 //! its own tests: given a connection URL, does the operator say what to do
 //! about transport security, and if not, what does this daemon do instead.
 //! Everything else in `config` reads knobs; this decides a security posture.

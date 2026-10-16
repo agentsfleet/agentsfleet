@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS billing.usage_ledger (
 -- delete, not a workspace delete, not a handler.
 --
 -- Four readers need SELECT — the charges list, the events-list cost join
--- (`rustd/crates/afd_events/src/history/statement.rs`), the per-fleet outcome
+-- (`rustd/crates/afd_events/src/history/statement/mod.rs`), the per-fleet outcome
 -- reads and the fleet delete path. The metered writes come from the same
 -- runtime role.
 GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO api_runtime;

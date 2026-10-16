@@ -8,7 +8,6 @@
 //! suites has nothing to race on. The support module is declared once and
 //! reached as `crate::support`.
 
-#[path = "support/mod.rs"]
 // The helper's panic was covered by the declaring suite's own `#![expect]`
 // while that suite was a crate root; the allowance now rides the declaration.
 #[allow(
@@ -17,12 +16,8 @@
 )]
 mod support;
 
-#[path = "frontmatter_corpus.rs"]
-mod frontmatter_corpus;
-#[path = "frontmatter_fields.rs"]
-mod frontmatter_fields;
-#[path = "frontmatter_mention.rs"]
-mod frontmatter_mention;
-
-#[path = "error_surface.rs"]
 mod error_surface;
+
+mod budget;
+
+mod definition;

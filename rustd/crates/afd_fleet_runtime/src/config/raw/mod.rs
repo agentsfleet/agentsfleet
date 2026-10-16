@@ -44,6 +44,8 @@
 
 mod document;
 mod gates;
+#[cfg(feature = "openapi")]
+pub(crate) mod openapi;
 mod policy;
 mod predicate;
 mod trigger;
@@ -78,11 +80,9 @@ const MAX_CREDENTIAL_LEN: usize = 128;
 const MAX_ALLOW_ENTRIES: usize = 64;
 /// Longest one host or path may be.
 const MAX_ALLOW_LEN: usize = 255;
-/// Longest a signature header may be.
-const MAX_SIGNATURE_HEADER_LEN: usize = 64;
 /// Longest a base branch may be.
 const MAX_BASE_BRANCH_LEN: usize = 255;
-/// Longest a fleet or skill reference may be.
+/// Longest a model reference, trigger source or other authored reference may be.
 const MAX_REFERENCE_LEN: usize = 255;
 /// How many channels one mention trigger names: exactly one.
 ///
@@ -97,3 +97,5 @@ const MAX_CHANNEL_ID_LEN: usize = 32;
 const REASON_WHITESPACE: &str = "it contains whitespace";
 /// See [`REASON_WHITESPACE`].
 const REASON_NOT_REPOSITORY: &str = "it is not `owner/name`";
+/// See [`REASON_WHITESPACE`].
+const REASON_RESERVED_SOURCE: &str = "`approval` is reserved for approval decisions";

@@ -72,10 +72,8 @@ fn a_size_one_past_any_bound_is_refused() {
     }
 }
 
-/// The lease the daemon sends today, before any fleet names a size, plus or
-/// minus the `limits` key.
-fn lease(limits: Option<&str>) -> String {
-    let limits = limits.map_or_else(String::new, |value| format!(r#","limits":{value}"#));
+/// The lease the daemon sends today, carrying `limits` as given.
+fn lease(limits: &str) -> String {
     format!(
         r#"{{"lease_id":"l","fencing_token":1,"lease_expires_at":0,"secret_delivery":"inline",
         "event":{{"event_id":"e","fleet_id":"f","workspace_id":"w","actor":"a",
@@ -85,27 +83,23 @@ fn lease(limits: Option<&str>) -> String {
         "inference_host":"h","base_url":null,"repository_binding":null,
         "http_origin_policies":[],"context":{{"tool_window":1,"memory_checkpoint_every":1,
         "stage_chunk_threshold":0.5,"model":"m","context_cap_tokens":0}}}},
-        "instructions":"","bundle":null{limits}}}"#
+        "instructions":"","limits":{limits},"history":[],"resume_hold":false}}"#
     )
 }
 
-/// A daemon that predates the field sends no key; the lease still decodes,
-/// sizeless, and re-encodes the null the field now writes.
+/// Null limits run at this runner's configured defaults, and re-encode null.
 #[test]
-fn a_lease_without_a_size_decodes_as_none() {
-    for text in [lease(None), lease(Some("null"))] {
-        let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
-        assert_eq!(payload.limits, None);
-        let encoded = serde_json::to_value(&payload).unwrap();
-        assert_eq!(encoded["limits"], serde_json::Value::Null);
-    }
+fn a_lease_with_null_limits_decodes_as_none() {
+    let text = lease("null");
+    let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    assert_eq!(payload.limits, None);
+    let encoded = serde_json::to_value(&payload).unwrap();
+    assert_eq!(encoded["limits"], serde_json::Value::Null);
 }
 
 #[test]
 fn a_lease_with_a_size_carries_it() {
-    let text = lease(Some(
-        r#"{"cpu_millis":4000,"memory_bytes":8589934592,"disk_bytes":21474836480}"#,
-    ));
+    let text = lease(r#"{"cpu_millis":4000,"memory_bytes":8589934592,"disk_bytes":21474836480}"#);
     let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
     assert_eq!(
         payload.limits,
@@ -142,33 +136,39 @@ fn the_published_bounds_are_the_enforced_ones() {
     }
 }
 
-/// A lease from a daemon that predates the field decodes with no turns, and
-/// re-encodes the empty list the field now always writes.
+/// The daemon always names the fleet's history and whether the held sandbox
+/// resumes; a lease missing either is refused rather than read as a default.
 #[test]
-fn test_lease_history_defaults_empty() {
-    let text = lease(None);
-    let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
-    assert_eq!(payload.history, [] as [afd_wire::lease::Turn<'_>; 0]);
-    let encoded = serde_json::to_value(&payload).unwrap();
-    assert_eq!(encoded["history"], serde_json::json!([]));
+fn a_lease_must_name_its_history_and_resume_hold() {
+    let text = lease("null");
+    for key in [r#","history":[]"#, r#","resume_hold":false"#] {
+        let missing = text.replace(key, "");
+        assert_ne!(missing, text, "{key} is in the fixture");
+        assert!(
+            serde_json::from_str::<LeasePayload<'_>>(&missing).is_err(),
+            "a lease without {key} must be refused"
+        );
+    }
+}
 
+/// Earlier turns round-trip in order.
+#[test]
+fn test_lease_history_round_trips() {
     let turns = serde_json::json!([{"message": "m1", "answer": "a1"}]);
-    let carried = text.replace(r#""lease_id""#, &format!(r#""history":{turns},"lease_id""#));
+    let carried = lease("null").replace(r#""history":[]"#, &format!(r#""history":{turns}"#));
     let payload: LeasePayload<'_> = serde_json::from_str(&carried).unwrap();
     assert_eq!(serde_json::to_value(&payload).unwrap()["history"], turns);
 }
 
-/// A lease from a daemon that predates the field decodes as building fresh,
-/// so no runner resumes a sandbox the daemon never said was the fleet's
-/// latest; one that sets it round-trips.
+/// A lease that resumes the held sandbox says so, and round-trips.
 #[test]
-fn test_lease_resume_hold_defaults_false() {
-    let text = lease(None);
-    let absent: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
-    let resumed = text.replace(r#""lease_id""#, r#""resume_hold":true,"lease_id""#);
+fn test_lease_resume_hold_round_trips() {
+    let text = lease("null");
+    let fresh: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    let resumed = text.replace(r#""resume_hold":false"#, r#""resume_hold":true"#);
     let present: LeasePayload<'_> = serde_json::from_str(&resumed).unwrap();
 
-    assert!(!absent.resume_hold);
+    assert!(!fresh.resume_hold);
     assert!(present.resume_hold);
     assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
 }

@@ -148,8 +148,7 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
     install_subscriber();
     let proxy = FaultProxy::cutting_on(lane_target(), b"BEGIN").await;
 
-    // A database of this test's own: the migrate below reaps, and reaping the
-    // shared lane database is what `config_through` documents.
+    // A database of this test's own, for the reason `config_through` documents.
     let database = TestDatabase::create().await;
     let name = database
         .database_name()

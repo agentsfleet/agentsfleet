@@ -8,22 +8,20 @@ use serde_json::{Map, Value};
 use super::predicate::is_token;
 use super::{MAX_ALLOW_ENTRIES, MAX_ALLOW_LEN};
 
-/// The `network` block.
+/// Where a fleet may reach on the network.
 #[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionNetwork))]
 pub(crate) struct Network {
-    /// Hosts the fleet may reach.
-    ///
-    /// May name nothing: a fleet with no egress is a legitimate and
-    /// deliberately restrictive posture.
+    /// The hosts the fleet may reach. An empty list blocks every outbound request.
     #[garde(inner(
         length(max = MAX_ALLOW_ENTRIES),
         inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))
     ))]
     pub(crate) allow: Option<Vec<String>>,
-    /// Whether egress is read-only.
+    /// Whether outbound requests are limited to reads.
     #[garde(skip)]
     pub(crate) read_only: Option<bool>,
-    /// Paths that stay writable under `read_only`.
+    /// The request paths that may still send `POST` when `read_only` is true.
     #[garde(inner(
         length(max = MAX_ALLOW_ENTRIES),
         inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))
@@ -31,60 +29,66 @@ pub(crate) struct Network {
     pub(crate) read_post_paths: Option<Vec<String>>,
 }
 
-/// The `budget` block.
-///
-/// Range is NOT declared here. A ceiling's bound is declared on `Dollars`'
-/// garde struct, beside `afd_validate::finite` — the rule a bare range
-/// silently admits NaN past — because the cap differs per field and the
-/// refusal names the field and the rule it broke, which a report on this
-/// document would answer as a generic out-of-bounds instead.
+/// Spending limits, each a decimal string of whole nanos.
+//
+// Decimal and numeric bounds are proved by `config::budget::BudgetCeiling`.
+// Unknown and legacy dollar keys are refused rather than silently ignored.
 #[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionBudget))]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Budget {
-    /// The daily ceiling, in dollars.
+    /// The daily limit: a decimal string of whole nanos, greater than zero.
+    #[serde(default, deserialize_with = "crate::optional::present")]
     #[garde(skip)]
-    pub(crate) daily_dollars: Option<f64>,
-    /// The monthly ceiling, in dollars.
+    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
+    pub(crate) daily_nanos: Option<String>,
+    /// The monthly limit, in the same form. Omit it to set no monthly limit.
+    #[serde(default, deserialize_with = "crate::optional::present")]
     #[garde(skip)]
-    pub(crate) monthly_dollars: Option<f64>,
+    #[cfg_attr(feature = "openapi", schema(nullable = false))]
+    pub(crate) monthly_nanos: Option<String>,
 }
 
-/// The `context` block.
-///
-/// `context_cap_tokens` repeats the struct's name because the WIRE key does;
-/// renaming the field would need a `serde(rename)` that says the same thing
-/// twice.
+/// Context-size settings for each run.
+//
+// `context_cap_tokens` repeats the struct's name because the WIRE key does;
+// renaming the field would need a `serde(rename)` that says the same thing
+// twice.
 #[expect(
     clippy::struct_field_names,
     reason = "the field names are the authored wire keys and cannot be renamed"
 )]
 #[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionContext))]
 pub(crate) struct Context {
-    /// Ceiling on the assembled context.
+    /// The most tokens a run's assembled context may hold.
     #[garde(skip)]
     pub(crate) context_cap_tokens: Option<Knob>,
-    /// How much of the window tool output may occupy.
+    /// How much of the context tool output may fill.
     #[garde(skip)]
     pub(crate) tool_window: Option<Knob>,
-    /// How often the run checkpoints its memory.
+    /// How often a run saves its memory.
     #[garde(skip)]
     pub(crate) memory_checkpoint_every: Option<Knob>,
-    /// The fraction of the window that triggers stage chunking.
-    ///
-    /// `finite` first, beside the range, because the range alone admits NaN;
-    /// and a value past `f32`'s range, `1e39`, arrives as +∞, which would
-    /// serialize into every lease as `null`.
+    /// The fraction of the context, from 0 to 1, at which a stage splits into chunks.
+    /// Zero means the runner chooses.
+    // `finite` first, beside the range, because the range alone admits NaN;
+    // and a value past `f32`'s range, `1e39`, arrives as +∞, which would
+    // serialize into every lease as `null`.
     #[garde(inner(custom(finite_fraction), range(min = FRACTION_MIN, max = FRACTION_MAX)))]
     pub(crate) stage_chunk_threshold: Option<f32>,
-    /// Every key in the block that is none of the above.
+    // Every key in the block that is none of the above. Ignored by the schema:
+    // the parser refuses each one by name.
     #[serde(flatten)]
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
     pub(crate) extra: Map<String, Value>,
 }
 
 /// The smallest fraction of the window: zero, which means "auto".
-const FRACTION_MIN: f32 = 0.0;
+pub(super) const FRACTION_MIN: f32 = 0.0;
 /// The largest: the whole window.
-const FRACTION_MAX: f32 = 1.0;
+pub(super) const FRACTION_MAX: f32 = 1.0;
 
 /// `afd_validate::finite` over an `f32`. Widening keeps NaN and both
 /// infinities as they are, so the rule answers exactly as it would on the
@@ -100,25 +104,27 @@ fn finite_fraction<C: ?Sized>(value: &f32, context: &C) -> garde::Result {
     afd_validate::finite(&f64::from(*value), context)
 }
 
-/// A context knob: a number, or the word that means "let the runner decide".
-///
-/// An untagged enum, so both spellings deserialize into one type and no caller
-/// downstream has to know that `"auto"` was ever a possibility, and no numeric
-/// accessor carries a wire spelling in its middle.
+/// A number, or `auto` to let the runner choose.
+//
+// An untagged enum, so both spellings deserialize into one type and no caller
+// downstream has to know that `"auto"` was ever a possibility, and no numeric
+// accessor carries a wire spelling in its middle.
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionContextSetting))]
 #[serde(untagged)]
 pub(crate) enum Knob {
     /// An explicit value.
     Set(u32),
-    /// The literal `"auto"`.
+    /// The word `auto`.
     Auto(Auto),
 }
 
-/// The only string a [`Knob`] accepts.
+/// The only word a context setting accepts.
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionContextAuto))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Auto {
-    /// Let the runner substitute its default.
+    /// Let the runner choose.
     Auto,
 }
 

@@ -96,7 +96,7 @@ pub(super) const FLEET: &[Problem] = &[
         // exhausted ceiling as an auth failure.
         status: 402,
         title: "Lease renewal blocked: fleet budget exhausted",
-        hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
+        hint: "The fleet reached its daily_nanos or monthly_nanos limit from its reviewed setup, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire
         // protocol.
         user_message: None,
@@ -150,7 +150,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_INVALID_CONFIG,
         status: 400,
         title: "Invalid fleet config",
-        hint: "Config JSON is malformed. Check the trigger, tools, credentials, and budget fields in TRIGGER.md frontmatter. See the [Authoring a fleet](/fleets/authoring) guide.",
+        hint: "Config JSON is malformed. Check the trigger, tools, credentials, and budget fields in the fleet's setup configuration. See the [Authoring a fleet](/fleets/authoring) guide.",
         user_message: Some(
             "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again.",
         ),
@@ -174,15 +174,6 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "That action is not valid from the fleet's current state. The error detail names the refused transition.",
         user_message: Some(
             "That action isn't available for this Fleet right now — check its current status and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_NAME_MISMATCH,
-        status: 400,
-        title: "Fleet files disagree on `name:`",
-        hint: "Top-level `name:` in `SKILL.md` must match `name:` in `TRIGGER.md`. Use one identity per Fleet Bundle.",
-        user_message: Some(
-            "This Fleet Bundle's files disagree on its name. `SKILL.md` and `TRIGGER.md` must match. Fix the source and try again.",
         ),
     },
     Problem {

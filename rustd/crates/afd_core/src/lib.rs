@@ -27,8 +27,9 @@
 // test-only crate legitimately goes unused by the library's own code — the
 // claim being made is about the SHIPPED library's dependency graph.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
-pub mod bundle;
+pub mod build;
 pub mod clock;
 pub mod credential;
 pub mod env;

@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS core.fleets (
 );
 
 -- Reader: the runner-placement candidate scan, SELECT_READY_CANDIDATES in
--- `rustd/crates/afd_fleet/src/lease/sql/lease.rs`. It filters
+-- `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs`. It filters
 -- `z.required_tags <@ (…)` against the polling runner's labels, bound as a
 -- constant array: the `column <@ constant` shape GIN can serve. Kept with the
 -- retired slot's caveat: `<@` is GIN's weak direction and the empty-set

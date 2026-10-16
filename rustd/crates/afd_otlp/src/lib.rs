@@ -26,6 +26,7 @@
 //! builds pipelines from a configuration it has already accepted.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 
 pub mod config;
 pub mod error;

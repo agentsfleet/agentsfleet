@@ -1,20 +1,19 @@
 //! Trigger parsing contracts, including set-level uniqueness.
 
-use super::{Cron, Trigger, WebhookSignature, parse_set, raw};
+use super::set::REASON_SVIX_NOT_FIRST;
+use super::{
+    Cron, MAX_TRIGGERS, Trigger, VERIFIED_WEBHOOK_SOURCES, WebhookSignature, parse_set, raw,
+};
 use crate::Error;
 use crate::error::ErrorKind;
-use crate::provider::StaticRegistry;
 
 #[test]
 fn cron_defaults_and_each_duplicate_class_are_deterministic() -> Result<(), Error> {
-    let parsed = parse_set(
-        vec![raw::Trigger::Cron {
-            schedule: Some("0 * * * *".to_owned()),
-            timezone: None,
-            message: None,
-        }],
-        &StaticRegistry,
-    )?;
+    let parsed = parse_set(vec![raw::Trigger::Cron {
+        schedule: Some("0 * * * *".to_owned()),
+        timezone: None,
+        message: None,
+    }])?;
     assert!(matches!(
         parsed.first(),
         Some(Trigger::Cron(Cron { schedule, timezone, message }))
@@ -24,100 +23,102 @@ fn cron_defaults_and_each_duplicate_class_are_deterministic() -> Result<(), Erro
     ));
 
     for duplicate in [
-        vec![raw::Trigger::Api, raw::Trigger::Api],
         vec![cron("one"), cron("two")],
         vec![webhook("github", None), webhook("github", None)],
     ] {
         assert!(matches!(
-            parse_set(duplicate, &StaticRegistry),
+            parse_set(duplicate),
             Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
         ));
     }
     Ok(())
 }
 
+/// The exported source names are exactly the scheme table's, in its order, so
+/// the prompt and the refusal built from them cannot drift from the ingress.
 #[test]
-fn webhook_signatures_use_provider_defaults_or_explicit_unknown_values() -> Result<(), Error> {
-    let known = parse_set(
-        vec![webhook(
-            "slack",
-            Some(raw::Signature {
-                secret_ref: Some("slack_signing_secret".to_owned()),
-                header: None,
-                prefix: None,
-                ts_header: None,
-            }),
-        )],
-        &StaticRegistry,
-    )?;
-    let Some(Trigger::Webhook(known)) = known.first() else {
-        return Err(ErrorKind::InvalidTriggerSet {
-            reason: "the known webhook fixture changed shape",
-        }
-        .into());
-    };
-    let Some(signature) = known.signature.as_ref() else {
-        return Err(ErrorKind::InvalidTriggerSet {
-            reason: "the known webhook fixture lost its signature",
-        }
-        .into());
-    };
-    assert_signature(
-        signature,
-        "x-slack-signature",
-        "v0=",
-        Some("x-slack-request-timestamp"),
-        "slack_signing_secret",
+fn verified_sources_are_the_schemes() {
+    let schemes: Vec<_> = afd_webhook::Scheme::ALL
+        .iter()
+        .map(|scheme| scheme.source())
+        .collect();
+    assert_eq!(VERIFIED_WEBHOOK_SOURCES.as_slice(), schemes.as_slice());
+}
+
+/// A source with a scheme this daemon ships needs nothing more; any other
+/// source is verifiable only on the Svix route, so it must name its secret.
+#[test]
+fn a_webhook_is_valid_only_when_some_route_can_verify_it() -> Result<(), Error> {
+    for source in VERIFIED_WEBHOOK_SOURCES {
+        parse_set(vec![webhook(source, None)])?;
+    }
+
+    let svix = parse_set(vec![webhook("stripe", Some(secret("stripe_svix")))])?;
+    assert!(matches!(
+        svix.first(),
+        Some(Trigger::Webhook(hook))
+            if hook.signature.as_ref().map(WebhookSignature::secret_ref) == Some("stripe_svix")
+    ));
+
+    assert!(matches!(
+        parse_set(vec![webhook("stripe", None)]),
+        Err(ref refused) if matches!(
+            refused.kind(),
+            ErrorKind::UnverifiableWebhookSource { provider } if &**provider == "stripe"
+        )
+    ));
+    Ok(())
+}
+
+/// The Svix route reaches only the fleet's first webhook trigger: a
+/// Svix-signed source parses there, and is refused after another webhook,
+/// including a second Svix-signed one, before Save could advertise an address
+/// that binds to the wrong trigger.
+#[test]
+fn a_svix_signed_source_is_accepted_only_as_the_first_webhook() -> Result<(), Error> {
+    let clerk = || webhook("clerk", Some(secret("clerk_signing")));
+    assert_eq!(
+        parse_set(vec![cron("tick"), clerk(), webhook("github", None)])?.len(),
+        3
     );
 
-    let explicit = parse_set(
-        vec![webhook(
-            "custom",
-            Some(raw::Signature {
-                secret_ref: Some("custom_secret".to_owned()),
-                header: Some("x-custom-signature".to_owned()),
-                prefix: Some("sig=".to_owned()),
-                ts_header: Some("x-custom-time".to_owned()),
-            }),
-        )],
-        &StaticRegistry,
-    )?;
-    let Some(Trigger::Webhook(explicit)) = explicit.first() else {
-        return Err(ErrorKind::InvalidTriggerSet {
-            reason: "the explicit webhook fixture changed shape",
-        }
-        .into());
-    };
-    let Some(signature) = explicit.signature.as_ref() else {
-        return Err(ErrorKind::InvalidTriggerSet {
-            reason: "the explicit webhook fixture lost its signature",
-        }
-        .into());
-    };
-    assert_signature(
-        signature,
-        "x-custom-signature",
-        "sig=",
-        Some("x-custom-time"),
-        "custom_secret",
-    );
+    for misplaced in [
+        vec![webhook("github", None), clerk()],
+        vec![clerk(), webhook("stripe", Some(secret("stripe_svix")))],
+    ] {
+        assert!(matches!(
+            parse_set(misplaced),
+            Err(ref refused) if matches!(
+                refused.kind(),
+                ErrorKind::InvalidTriggerSet { reason } if *reason == REASON_SVIX_NOT_FIRST
+            )
+        ));
+    }
+    Ok(())
+}
+
+/// An empty set is a fleet only ever talked to: it parses, and declares
+/// nothing that could wake it besides a message.
+#[test]
+fn an_empty_trigger_set_is_a_message_only_fleet() -> Result<(), Error> {
+    assert!(parse_set(Vec::new())?.is_empty());
     Ok(())
 }
 
 #[test]
 fn arity_and_required_trigger_fields_fail_closed() {
-    assert!(matches!(
-        parse_set(Vec::new(), &StaticRegistry),
-        Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
-    ));
+    // The count is proved before any entry is read, so nine copies of one
+    // trigger are refused for their number, not their sameness.
     assert!(matches!(
         parse_set(
-            std::iter::repeat_with(|| raw::Trigger::Api)
-                .take(9)
+            std::iter::repeat_with(|| cron("hourly"))
+                .take(MAX_TRIGGERS + 1)
                 .collect(),
-            &StaticRegistry
         ),
-        Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
+        Err(ref refusal) if matches!(
+            refusal.kind(),
+            ErrorKind::InvalidTriggerSet { reason } if *reason == super::set::REASON_SET_TOO_LARGE
+        )
     ));
     for trigger in [
         webhook("", None),
@@ -128,27 +129,14 @@ fn arity_and_required_trigger_fields_fail_closed() {
         },
     ] {
         assert!(matches!(
-            parse_set(vec![trigger], &StaticRegistry),
+            parse_set(vec![trigger]),
             Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidTriggerSet { .. })
         ));
     }
 
-    for signature in [
-        raw::Signature {
-            secret_ref: None,
-            header: Some("x-signature".to_owned()),
-            prefix: None,
-            ts_header: None,
-        },
-        raw::Signature {
-            secret_ref: Some("secret".to_owned()),
-            header: None,
-            prefix: None,
-            ts_header: None,
-        },
-    ] {
+    for secret_ref in [None, Some(String::new())] {
         assert!(matches!(
-            parse_set(vec![webhook("custom", Some(signature))], &StaticRegistry),
+            parse_set(vec![webhook("stripe", Some(raw::Signature { secret_ref }))]),
             Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidSignatureConfig { .. })
         ));
     }
@@ -172,15 +160,9 @@ fn webhook(source: &str, signature: Option<raw::Signature>) -> raw::Trigger {
     }
 }
 
-fn assert_signature(
-    signature: &WebhookSignature,
-    header: &str,
-    prefix: &str,
-    timestamp: Option<&str>,
-    secret: &str,
-) {
-    assert_eq!(signature.header(), header);
-    assert_eq!(signature.prefix(), prefix);
-    assert_eq!(signature.timestamp_header(), timestamp);
-    assert_eq!(signature.secret_ref(), secret);
+/// A signature block naming `secret_ref`.
+fn secret(secret_ref: &str) -> raw::Signature {
+    raw::Signature {
+        secret_ref: Some(secret_ref.to_owned()),
+    }
 }

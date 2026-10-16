@@ -1,0 +1,300 @@
+//! The `UZ-*` codes a client matches on, declared once each.
+//!
+//! This module is the registry of record for the whole product. Adding a code
+//! here is a public-contract decision: `REGISTRY` is what a client matches on,
+//! and `test_error_registry_unique` is what holds the list to one spelling each.
+//!
+//! Codes are added here as the milestone that emits them lands, never
+//! speculatively: an unreferenced code is dead code that looks like coverage.
+
+use std::fmt::{self, Display, Formatter};
+
+use serde::Serialize;
+
+/// A registry error code, spelled `UZ-<FAMILY>-<NNN>`.
+///
+/// Serialize-only by construction: the inner string is `'static` because every
+/// code is declared in this module, so there is nothing for a deserializer to
+/// borrow from or allocate into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct ErrorCode(&'static str);
+
+impl ErrorCode {
+    /// Declares a registry code, rejecting a malformed spelling at compile time.
+    ///
+    /// # Panics
+    /// During constant evaluation, if `code` is not spelled `UZ-<FAMILY>-<NNN>`.
+    /// Every call site in this module is a `const` item, so a bad spelling is a
+    /// build failure rather than a runtime surprise — the "correct by
+    /// construction" route out of `M-PANIC-ON-BUG`.
+    #[must_use]
+    pub const fn declare(code: &'static str) -> Self {
+        assert!(
+            is_registry_spelling(code),
+            "error code must be spelled UZ-<FAMILY>-<NNN>"
+        );
+        Self(code)
+    }
+
+    /// The code as it appears on the wire.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+
+    /// The declared code spelled `spelling`, or `None` when this build declares
+    /// no such code.
+    ///
+    /// For a code read off the wire, such as a problem body's `error_code`: a
+    /// spelling this build does not know stays unknown rather than being
+    /// guessed into the nearest declared one.
+    #[must_use]
+    pub fn lookup(spelling: &str) -> Option<Self> {
+        REGISTRY.iter().copied().find(|code| code.0 == spelling)
+    }
+}
+
+/// A failure that names its registry code, whichever crate raised it.
+///
+/// [`crate::error_shell!`] implements it for every crate-level error, so code
+/// that logs a failure from more than one crate takes `&impl Coded` once
+/// rather than repeating itself per error type.
+pub trait Coded: std::error::Error {
+    /// The registry code this failure answers with.
+    fn code(&self) -> ErrorCode;
+
+    /// The failure's own sentence, then each cause beneath it: what a log's
+    /// `reason` carries beside `error_code`, without the code a second time
+    /// or a captured backtrace.
+    fn told(&self) -> String;
+
+    /// Both fields a failure's log line carries, read once:
+    /// `let Logged { error_code, reason } = failure.logged();`, then the
+    /// `tracing` call at the call site, where the logging audit reads it.
+    fn logged(&self) -> Logged {
+        Logged {
+            error_code: self.code().as_str(),
+            reason: self.told(),
+        }
+    }
+}
+
+/// What a failure's log line says about it, named as the line's fields are
+/// (`LOGGING_STANDARD` §5 and §8A), so destructuring binds the locals the
+/// `tracing` call takes by shorthand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Logged {
+    /// The registry code, as the `error_code` field spells it.
+    pub error_code: &'static str,
+    /// [`Coded::told`]: the failure's sentence, then each cause beneath it.
+    pub reason: String,
+}
+
+impl Display for ErrorCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+/// Whether `code` matches `UZ-<FAMILY>-<NNN>`: an upper-case alphanumeric
+/// family, then exactly three digits.
+///
+/// Slice patterns rather than index arithmetic — the whole grammar is three
+/// `match`es, and every bound is proven by the pattern instead of by a
+/// comparison the reader has to check.
+const fn is_registry_spelling(code: &str) -> bool {
+    let [b'U', b'Z', b'-', tail @ ..] = code.as_bytes() else {
+        return false;
+    };
+    let mut rest = tail;
+
+    let mut family_len = 0usize;
+    while let [head @ (b'A'..=b'Z' | b'0'..=b'9'), tail @ ..] = rest {
+        let _ = head;
+        family_len += 1;
+        rest = tail;
+    }
+    if family_len == 0 {
+        return false;
+    }
+
+    matches!(rest, [b'-', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9'])
+}
+
+// One module per family, and the families are the ones the product already has:
+// a request's own faults, who a caller is, the fleet plane, and a third party
+// this daemon brokers with. Re-exported flat, so every call site still reads
+// `error_code::AUTH_FORBIDDEN` and the split is invisible outside this file.
+//
+// `problem` is split the same way and in the same order, deliberately: the two
+// tables are walked against each other by a test, and a family that lives in
+// comparable files is a family somebody can actually compare.
+mod auth;
+mod authoring;
+mod fleet;
+mod integration;
+mod invite;
+mod request;
+
+pub use self::auth::*;
+pub use self::authoring::*;
+pub use self::fleet::*;
+pub use self::integration::*;
+pub use self::invite::*;
+pub use self::request::*;
+
+/// Every code this crate declares, in declaration order.
+///
+/// The exhaustive list the registry tests walk. A code added above without a
+/// row here is invisible to the uniqueness and problem-entry checks, which is why
+/// `test_error_registry_unique` also asserts the count.
+pub const REGISTRY: &[ErrorCode] = &[
+    UUIDV7_INVALID_ID_SHAPE,
+    INVALID_REQUEST,
+    PAYLOAD_TOO_LARGE,
+    VAULT_DATA_INVALID,
+    VAULT_DATA_TOO_LARGE,
+    SECRET_NOT_FOUND,
+    SECRET_REFERENCED_BY_MODEL_ENTRIES,
+    SECRET_NAME_TAKEN,
+    WEBHOOK_FLEET_NOT_FOUND,
+    WEBHOOK_MALFORMED,
+    WEBHOOK_SIGNATURE_INVALID,
+    WEBHOOK_TIMESTAMP_STALE,
+    WEBHOOK_CREDENTIAL_NOT_CONFIGURED,
+    WEBHOOK_INSTALL_NOT_MAPPED,
+    WEBHOOK_SUBSCRIPTION_NOT_FOUND,
+    WEBHOOK_PAYLOAD_TOO_LARGE,
+    SCHEDULE_NOT_FOUND,
+    SCHEDULE_LIMIT_REACHED,
+    SCHEDULE_KEY_TAKEN,
+    SCHEDULE_SYNCING,
+    SCHEDULE_CAP_REACHED,
+    SCHEDULE_NOT_FLEET_OWNED,
+    SCHEDULE_NOT_RUNNABLE,
+    APPROVAL_NOT_FOUND,
+    APPROVAL_ALREADY_RESOLVED,
+    PREF_KEY_UNKNOWN,
+    PREF_VALUE_TOO_LARGE,
+    WORKSPACE_NAME_EXISTS,
+    LIBRARY_CURSOR_MALFORMED,
+    LIBRARY_CURSOR_MISMATCH,
+    LIBRARY_INPUT_OUT_OF_BOUNDS,
+    LIBRARY_DB_UNAVAILABLE,
+    INTERNAL_OPERATION_FAILED,
+    INTERNAL_DB_UNAVAILABLE,
+    INTERNAL_DB_QUERY,
+    STARTUP_ENV_CHECK,
+    STARTUP_DB_CONNECT,
+    STARTUP_MIGRATION_CHECK,
+    STARTUP_DRAGONFLY_CONNECT,
+    AUTH_INSUFFICIENT_SCOPE,
+    AUTH_UNAUTHORIZED,
+    AUTH_TOKEN_EXPIRED,
+    AUTH_FORBIDDEN,
+    SESSION_NOT_FOUND,
+    SESSION_EXPIRED,
+    VERIFICATION_FAILED,
+    SESSION_CONSUMED,
+    SESSION_ABORTED,
+    SESSION_NOT_APPROVED,
+    SESSION_ALREADY_APPROVED,
+    INVALID_PUBLIC_KEY,
+    INVALID_TOKEN_NAME,
+    INVALID_VERIFICATION_CODE,
+    INVALID_CIPHERTEXT,
+    INVALID_NONCE,
+    AUTH_UNAVAILABLE,
+    AUTH_CLI_CREDENTIAL_REVOKED,
+    AUTH_CLI_CREDENTIAL_NOT_FOUND,
+    AUTH_CLI_CREDENTIAL_EXCHANGE_FAILED,
+    AUTH_OWNER_ONLY,
+    APIKEY_REVOKED,
+    APIKEY_NOT_FOUND,
+    APIKEY_NAME_TAKEN,
+    APIKEY_ALREADY_REVOKED,
+    APIKEY_READONLY_FIELD,
+    APIKEY_MUST_REVOKE_FIRST,
+    RUN_INVALID_RUNNER_TOKEN,
+    RUN_STALE_FENCING_TOKEN,
+    RUN_LEASE_NOT_FOUND,
+    RUN_ADMIN_STATE_BLOCKED,
+    RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+    RUN_LEASE_LOST,
+    RUN_LEASE_RENEWAL_NO_CREDITS,
+    RUNNER_NOT_FOUND,
+    RUNNER_MUST_REVOKE_FIRST,
+    RUN_BUDGET_EXCEEDED,
+    RUN_SELFTEST_REFUSED,
+    MESSAGE_NO_CHANNEL,
+    MESSAGE_LIMIT_REACHED,
+    AGENTSFLEET_CREDENTIAL_MISSING,
+    AGENTSFLEET_NAME_EXISTS,
+    AGENTSFLEET_INVALID_CONFIG,
+    AGENTSFLEET_NOT_FOUND,
+    AGENTSFLEET_ALREADY_TERMINAL,
+    AGENTSFLEET_INSTALL_ROLLED_BACK,
+    AGENTSFLEET_SOURCE_STALE,
+    AGENTSFLEET_PAUSED_INGRESS,
+    EVENT_NOT_FOUND,
+    TOOL_CALL_NOT_FOUND,
+    AGENTSFLEET_OPERATION_CONFLICT,
+    MEM_AGENTSFLEET_NOT_FOUND,
+    MEM_UNAVAILABLE,
+    MEM_ENTRY_NOT_FOUND,
+    PROVIDER_SECRET_REF_REQUIRED,
+    PROVIDER_SECRET_NOT_FOUND,
+    PROVIDER_SECRET_DATA_MALFORMED,
+    PROVIDER_MODEL_NOT_IN_CATALOGUE,
+    PROVIDER_BASE_URL_INVALID,
+    PROVIDER_MODEL_NOT_FOUND,
+    PROVIDER_MODEL_IN_USE,
+    PROVIDER_MODEL_EXISTS,
+    PROVIDER_PLATFORM_KEY_MISSING,
+    TENANT_NO_PRIMARY_WORKSPACE,
+    PROVIDER_SOURCE_WORKSPACE_NOT_FOUND,
+    MODELS_DELETE_ACTIVE,
+    MODELS_SECRET_NOT_FOUND,
+    MODELS_DUPLICATE_ENTRY,
+    MODELS_ENTRY_NOT_FOUND,
+    API_BACKPRESSURE,
+    SSE_STREAM_CAP,
+    CRED_INTEGRATION_NOT_CONNECTED,
+    CRED_BROKER_NOT_CONFIGURED,
+    GH_RECONNECT_REQUIRED,
+    GH_MINT_FAILED,
+    GRANT_NOT_FOUND,
+    GRANT_REVOKE_NOT_FOUND,
+    CONNECTOR_OAUTH_EXCHANGE_FAILED,
+    CONNECTOR_NOT_CONFIGURED,
+    CONNECTOR_STATE_INVALID,
+    CONNECTOR_VENDOR_DEADLINE,
+    CONNECTOR_UNKNOWN,
+    CONNECTOR_INSTALLATION_OWNERSHIP,
+    CONNECTOR_INSTALLATION_LISTING_FAILED,
+    REPAIR_WRITE_UNAPPROVED,
+    REPAIR_BINDING_DRIFT,
+    REPAIR_SPEND_EXHAUSTED,
+    INVITE_NOT_FOUND,
+    INVITE_EMAIL_MISMATCH,
+    INVITE_CONFLICT,
+    MEMBER_LAST_OWNER,
+    INVITE_EMAIL_UNAVAILABLE,
+    AUTHORING_NOT_FOUND,
+    AUTHORING_STATE,
+    AUTHORING_STALE,
+    AUTHORING_PRECONDITION,
+    AUTHORING_REPLAY,
+    AUTHORING_REVIEW,
+    AUTHORING_BALANCE,
+    AUTHORING_MODEL,
+    AUTHORING_POLICY,
+    AUTHORING_TOKEN,
+    AUTHORING_CURSOR,
+    AUTHORING_FENCE,
+    AUTHORING_GONE,
+    AUTHORING_PROVIDER,
+    AUTHORING_UNKNOWN,
+    AUTHORING_TIMEOUT,
+];

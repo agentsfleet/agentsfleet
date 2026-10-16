@@ -19,6 +19,12 @@
 
 use sha2::{Digest as _, Sha256};
 
+/// Strong tag binding one native resource identity to its monotonic version.
+#[must_use]
+pub fn versioned(id: &crate::id::Uuid7, version: i64) -> String {
+    compute(&[Some(id.as_str().as_bytes()), Some(&version.to_be_bytes())])
+}
+
 /// The marker an absent field contributes.
 const FIELD_NULL: [u8; 1] = [0];
 

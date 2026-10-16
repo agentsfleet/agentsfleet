@@ -4,8 +4,7 @@
 //! classifies a refusal by BOTH status and code, so several entries here carry
 //! a note about which status is load-bearing. `UZ-AGT-*` is the fleet itself —
 //! its install, its configuration, its lifecycle. `UZ-MEM-*` is its memory,
-//! and `UZ-API-001` is the shed that happens before any of it. The bundle a
-//! fleet is installed from, and the library it is curated in, are `bundle.rs`.
+//! and `UZ-API-001` is the shed that happens before any of it.
 
 use super::ErrorCode;
 
@@ -63,7 +62,7 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// A 402, for the reason [`RUN_BUDGET_EXCEEDED`] is one: the runner classifies
 /// a renew refusal by status AND code. The two 402s are different pools — this
 /// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
-/// operator tops up for one and edits `TRIGGER.md` for the other.
+/// operator tops up for one and revises the fleet's reviewed setup for the other.
 pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
 /// No runner row matches an operator-supplied runner id.
@@ -81,8 +80,8 @@ pub const RUNNER_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-RUN-016")
 
 /// A fleet has reached a spend ceiling its own author declared.
 ///
-/// One code for both ceilings and both gates. `daily_dollars` and
-/// `monthly_dollars` answer the same code because an operator acts identically
+/// One code for both ceilings and both gates. `daily_nanos` and
+/// `monthly_nanos` answer the same code because an operator acts identically
 /// on either, and the issue-time refusal shares it with the mid-run kill at
 /// `/renew` because they are the same fact observed at two moments. The verdict
 /// that distinguishes them rides the log line, where it can be read without
@@ -132,8 +131,8 @@ pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
 /// `UZ-AGT-007` stays unassigned; its case answers
 /// [`VAULT_DATA_TOO_LARGE`](crate::error_code::VAULT_DATA_TOO_LARGE).
 ///
-/// One code for every way `TRIGGER.md` can be unusable — a missing fence,
-/// unreadable YAML, a field of the wrong type, a gate condition that parses to
+/// One code for every way a fleet's setup configuration can be unusable — a
+/// field of the wrong type, an unknown key, a gate condition that parses to
 /// nothing. `afd_fleet_runtime` tells those apart internally and this does not,
 /// deliberately: the caller's remedy is the same for all of them, which is to
 /// look at the document, and the distinction is in the log beside the request
@@ -157,14 +156,6 @@ pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
 /// fleet that has not been killed first. Both are "the state refuses you", and
 /// a client acts identically on either — read the current status, then decide.
 pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-010");
-
-/// A Fleet Bundle's two documents disagree about the fleet's name.
-///
-/// Checked at the WRITE boundary rather than at read time, because a bundle
-/// whose `SKILL.md` and `TRIGGER.md` name different fleets has no single
-/// identity to store — and storing one of the two would make whichever lost a
-/// silent lie for as long as the row lives.
-pub const AGENTSFLEET_NAME_MISMATCH: ErrorCode = ErrorCode::declare("UZ-AGT-011");
 
 /// The install could not be finished, and nothing was kept.
 ///

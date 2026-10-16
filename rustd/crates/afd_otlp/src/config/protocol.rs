@@ -28,7 +28,8 @@ const WHY_PROTOCOL: &str = "http/protobuf or http/json; this build carries no gR
 /// a value this type holds cannot be a third spelling nobody mapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Encoding {
-    /// `http/protobuf`, the default and what the retired daemon posted.
+    /// `http/protobuf`, the default the OpenTelemetry specification sets for
+    /// the protocol knob.
     #[default]
     HttpProtobuf,
     /// `http/json`, accepted because a collector may prefer it.

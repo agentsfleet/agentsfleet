@@ -201,33 +201,6 @@ async fn a_row_another_daemon_projected_lists_identically_from_here() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
-async fn a_row_from_before_the_projection_columns_lists_as_an_opaque_credential() {
-    // Not healed by decrypting. A heal-on-read path would put an envelope open
-    // back on this path and make "reads never decrypt" true only after warm-up,
-    // which is not a guarantee. `agentsfleetd backfill` is what fills these.
-    let lane = Lane::create().await;
-    lane.store("seed", PROVIDER_KEY).await;
-    lane.seed_projected_row("un-backfilled", "seed", None, None, None, None)
-        .await;
-
-    let listed = lane
-        .keyless_directory()
-        .list(&lane.workspace)
-        .await
-        .expect("a page must not fail over one row it cannot label");
-    let legacy = listed
-        .iter()
-        .find(|row| row.name == "un-backfilled")
-        .expect("the row still lists");
-
-    assert_eq!(legacy.kind(), Kind::CustomSecret);
-    assert_eq!(legacy.provider(), None);
-
-    lane.cleanup().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres"]
 async fn a_kind_this_build_does_not_know_sheds_its_descriptors_with_it() {
     // A newer daemon's vocabulary. Reporting the row as an opaque credential
     // while still presenting a provider label would contradict the union a

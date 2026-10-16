@@ -5,8 +5,10 @@
 
 #[path = "admin_shapes.rs"]
 mod admin_shapes;
-#[path = "pull_request_bundle.rs"]
-mod pull_request_bundle;
+// Gated with the feature it grades: the schema is the other half of the test.
+#[cfg(feature = "openapi")]
+#[path = "draft_patch_schema.rs"]
+mod draft_patch_schema;
 #[path = "redaction.rs"]
 mod redaction;
 // Gated with the feature it grades: without `openapi` there are no schemas.

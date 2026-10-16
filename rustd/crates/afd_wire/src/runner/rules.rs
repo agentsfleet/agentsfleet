@@ -1,11 +1,15 @@
 //! The bounds an enrolment, an assignment and a capability report are declared
-//! with, and the two `custom` rules garde has no built-in for.
+//! with, the two `custom` rules garde has no built-in for, and the label-list
+//! rule every writer of a runner's labels shares.
 //!
 //! The caps are declared once here so `agentsfleet-runner` and `agentsfleetd`
-//! agree on what is legal. The rules judge content only; each field's length is
-//! garde's own `length`, declared beside the rule.
+//! agree on what is legal. The content rules judge content only; each field's
+//! length is garde's own `length`, declared beside the rule.
+
+use std::borrow::Cow;
 
 use afd_validate::{ascii_digits, charset, nul_free};
+use garde::Validate as _;
 
 /// The longest host identifier an enrolment may name.
 pub const HOST_ID_MAX_BYTES: usize = 256;
@@ -45,6 +49,33 @@ pub const REPORT_CONTROLLERS_MAX: usize = 16;
 
 /// The longest one controller name may be.
 pub const CONTROLLER_NAME_MAX_BYTES: usize = 64;
+
+/// What [`label_list`] reports. Never read by a caller: each daemon route
+/// answers the path with its own sentence.
+const NOT_LABEL_LIST: &str = "must hold a bounded number of bounded labels";
+
+/// A label list borrowed from whichever request carries it.
+///
+/// The one place the label bounds are declared. Enrolment and the operator's
+/// label replacement both reach it through [`label_list`], so the two requests
+/// cannot drift apart on what a legal label set is.
+#[derive(garde::Validate)]
+#[garde(transparent)]
+struct LabelList<'r>(
+    #[garde(length(max = LABELS_MAX), inner(length(bytes, max = LABEL_MAX_BYTES)))]
+    &'r [Cow<'r, str>],
+);
+
+/// Every runner label list is at most [`LABELS_MAX`] labels of at most
+/// [`LABEL_MAX_BYTES`] bytes each.
+///
+/// # Errors
+/// [`NOT_LABEL_LIST`], at the field's own path, for a list past either bound.
+pub fn label_list<C: ?Sized>(labels: &[Cow<'_, str>], _context: &C) -> garde::Result {
+    LabelList(labels)
+        .validate()
+        .map_err(|_report| garde::Error::new(NOT_LABEL_LIST))
+}
 
 /// What [`registry_entry`] reports.
 const NOT_HOST_PORT: &str = "must be a bare host or host:port";

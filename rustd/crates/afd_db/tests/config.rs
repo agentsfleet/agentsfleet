@@ -75,7 +75,7 @@ fn test_malformed_url_is_refused_at_resolve() {
     }
 }
 
-/// Both spellings of the scheme are accepted, as `parseUrl` accepts both.
+/// Both spellings of the scheme are accepted, as libpq accepts both.
 #[test]
 fn test_both_url_schemes_are_accepted() {
     for url in [
