@@ -287,8 +287,8 @@ mod tests {
         );
         assert_eq!(
             line.field("cause_error_code"),
-            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
-            "the refused command's own code rides `cause_error_code`"
+            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            "the unavailable datastore's own code rides `cause_error_code`"
         );
         assert!(
             !reason.is_empty() && !reason.contains("[UZ-"),

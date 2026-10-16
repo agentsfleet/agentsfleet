@@ -86,8 +86,8 @@ mod tests {
         );
         assert_eq!(
             line.get("cause_error_code").map(String::as_str),
-            Some(error_code::INTERNAL_OPERATION_FAILED.as_str()),
-            "the refused command's own code rides `cause_error_code`"
+            Some(error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            "the unavailable datastore's own code rides `cause_error_code`"
         );
         assert_eq!(
             line.get("fleet_id").map(String::as_str),
