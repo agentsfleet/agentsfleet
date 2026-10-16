@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import unittest.mock
 from decimal import Decimal
 from pathlib import Path
@@ -20,6 +22,16 @@ import rustd_coverage as judge
 
 SCRIPT = Path(__file__).resolve().with_name("rustd_coverage.py")
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+
+
+def isolated_env():
+    """This process's environment without git's repository pointers.
+
+    A git hook exports GIT_DIR, GIT_INDEX_FILE and friends. Inherited, they
+    point every git call here at the hook's repository instead of the
+    scratch one, and the scratch commits overwrite that repository's index.
+    """
+    return {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
 
 
 def lcov(records):
@@ -102,7 +114,8 @@ class CommandLine(unittest.TestCase):
         self.base = self.git("rev-parse", "HEAD").strip()
 
     def git(self, *args):
-        return subprocess.run(GIT + list(args), cwd=self.root, check=True, capture_output=True, text=True).stdout
+        return subprocess.run(GIT + list(args), cwd=self.root, check=True, capture_output=True, text=True,
+                              env=isolated_env()).stdout
 
     def change(self):
         (self.root / "crates/a/src/kept.rs").write_text("fn a() {}\nfn b() {}\nfn c() {}\n")
@@ -114,7 +127,16 @@ class CommandLine(unittest.TestCase):
         report = self.root / "lcov-all.info"
         report.write_text(lcov(records))
         command = [sys.executable, str(SCRIPT), "--floor", "0", "--out", str(self.root / "lcov.info"), *extra, str(report)]
-        return subprocess.run(command, cwd=self.root, capture_output=True, text=True)
+        return subprocess.run(command, cwd=self.root, capture_output=True, text=True, env=isolated_env())
+
+    def test_a_hooks_git_environment_never_reaches_the_scratch_repository(self):
+        foreign = self.root / "foreign"
+        foreign.mkdir()
+        hook_env = {"GIT_DIR": str(foreign / ".git"), "GIT_INDEX_FILE": str(foreign / "index")}
+        with mock.patch.dict(os.environ, hook_env):
+            self.change()
+        self.assertFalse((foreign / "index").exists())
+        self.assertEqual(self.git("rev-list", "--count", "HEAD").strip(), "2")
 
     def test_a_touched_file_under_the_floor_fails_the_lane(self):
         self.change()
