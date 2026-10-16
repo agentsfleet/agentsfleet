@@ -41,24 +41,24 @@ fn rendered(triggers: &serde_json::Value) -> Vec<(String, String)> {
 }
 
 /// GitHub keeps its own route, every other shipped scheme gets the per-source
-/// route, one address per trigger, and a Svix-signed source gets the Svix
-/// route, the only one that can verify it.
+/// route, one address per trigger, and a Svix-signed source, which the parser
+/// keeps first, gets the Svix route, the only one that can verify it.
 #[test]
 fn each_webhook_source_gets_the_address_its_route_serves() {
     let addresses = rendered(&json!([
+        {"type": "webhook", "source": "stripe", "signature": {"secret_ref": "stripe_svix"}},
         {"type": "webhook", "source": "github"},
         {"type": "webhook", "source": "linear"},
         {"type": "webhook", "source": "slack"},
-        {"type": "webhook", "source": "stripe", "signature": {"secret_ref": "stripe_svix"}},
         {"type": "cron", "schedule": "0 9 * * *"}
     ]));
     assert_eq!(
         addresses,
         [
+            ("stripe", format!("{DEPLOYMENT}/v1/webhooks/svix/{FLEET}")),
             ("github", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/github")),
             ("linear", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/linear")),
             ("slack", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/slack")),
-            ("stripe", format!("{DEPLOYMENT}/v1/webhooks/svix/{FLEET}")),
         ]
         .map(|(source, url)| (source.to_owned(), url))
     );

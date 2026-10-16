@@ -5,14 +5,21 @@ import { test, expect } from "@playwright/test";
 test.describe("auth-shell shared identity", () => {
   test("uses the static signal mark under normal and reduced motion", async ({ page }) => {
     await page.goto("/sign-in");
-    const mark = page.locator('[data-brand-mark="signal"]');
-    await expect(mark).toBeVisible();
-    await expect(mark).toHaveAttribute("aria-hidden", "true");
-    await expect(mark).not.toHaveAttribute("data-live");
-    await expect(mark).toHaveCSS("animation-name", "none");
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(mark).toBeVisible();
-    await expect(mark).toHaveCSS("animation-name", "none");
+    // The header and the hero each carry the mark; every one stays static.
+    const marks = page.locator('[data-brand-mark="signal"]');
+    await expect(marks.first()).toBeVisible();
+    const count = await marks.count();
+    expect(count).toBeGreaterThan(0);
+    for (const reducedMotion of ["no-preference", "reduce"] as const) {
+      await page.emulateMedia({ reducedMotion });
+      for (let index = 0; index < count; index += 1) {
+        const mark = marks.nth(index);
+        await expect(mark).toBeVisible();
+        await expect(mark).toHaveAttribute("aria-hidden", "true");
+        await expect(mark).not.toHaveAttribute("data-live");
+        await expect(mark).toHaveCSS("animation-name", "none");
+      }
+    }
   });
 
   test("no decorative --pulse leaks into chrome (currency rule)", async ({ page }) => {

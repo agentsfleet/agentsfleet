@@ -17,6 +17,7 @@ import unittest
 sys.dont_write_bytecode = True
 
 import check_documentation_parity as checker
+routes = checker.route_tables
 
 BOUNDS_RS = """\
 pub const CALL_ID_MAX_BYTES: usize = 64;
@@ -98,9 +99,43 @@ def openapi() -> dict:
     }
 
 
+MACHINE_BASE = "/v1/runners/me/authoring-leases/{lease_id}"
+REMOVED_PATH = "W/library-entries"
+
+
+def route_page() -> str:
+    """Tables shaped like the architecture page's, each at its expected count."""
+    def table(marker: str, count: int, method: str, resource: str) -> str:
+        body = "".join(f"| N{i} | {method} {resource}/r{i} | note |\n" for i in range(count))
+        return f"{marker}{count}\n\n| Id | Route | Note |\n|---|---|---|\n{body}\n"
+    machine = "".join(f"| POST `/m{i}` | note |\n" for i in range(routes.MACHINE_ROUTES))
+    return (
+        table(routes.NEW_PERSON, routes.EXPECTED[routes.NEW_PERSON], "GET", "D")
+        + table(routes.CHANGED_PERSON, routes.EXPECTED[routes.CHANGED_PERSON], "PATCH", "F")
+        + table(routes.REMOVED_PERSON, routes.EXPECTED[routes.REMOVED_PERSON], "DELETE", REMOVED_PATH)
+        + f"{routes.MACHINE}`{MACHINE_BASE}`:\n\n| Route | Note |\n|---|---|\n{machine}"
+    )
+
+
+def served_paths() -> dict:
+    page = route_page()
+    owed = routes.person(page, routes.NEW_PERSON) + routes.person(page, routes.CHANGED_PERSON) + routes.machine(page)
+    paths: dict = {}
+    for path, method in owed:
+        paths.setdefault(path, {})[method.lower()] = described("served")
+    return paths
+
+
+def published() -> dict:
+    document = openapi()
+    document["paths"].update(served_paths())
+    return document
+
+
 def clean_tree() -> dict[str, str]:
     return {
-        checker.OPENAPI: json.dumps(openapi(), indent=2),
+        routes.PAGE: route_page(),
+        checker.OPENAPI: json.dumps(published(), indent=2),
         f"{checker.WIRE_SRC}/bounds.rs": BOUNDS_RS,
         checker.SCOPE_SRC: SCOPE_RS,
         checker.ROLE_SRC: ACCESS_RS,
@@ -166,6 +201,54 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
     def test_an_integer_expression_evaluates(self) -> None:
         self.assertEqual(65536, checker.evaluate("64 * 1_024"))
         self.assertEqual(9, checker.evaluate("4 + 5"))
+
+
+class RouteTablesMatchThePublishedRoutes(unittest.TestCase):
+    def lint_with(self, page: str, document: dict) -> str:
+        files = clean_tree()
+        files[routes.PAGE] = page
+        files[checker.OPENAPI] = json.dumps(document)
+        return lint_tree(files)[1]
+
+    def test_every_route_the_tables_name_must_be_served(self) -> None:
+        document = published()
+        unserved = routes.expand("D/r3")
+        del document["paths"][unserved]
+        output = self.lint_with(route_page(), document)
+        self.assertIn(f": {routes.RULE_UNSERVED}: the page names `GET {unserved}`", output)
+
+    def test_a_removed_route_is_served_under_no_method(self) -> None:
+        document = published()
+        removed = routes.expand(f"{REMOVED_PATH}/r0")
+        document["paths"][removed] = {"get": described("an alias left behind")}
+        output = self.lint_with(route_page(), document)
+        self.assertIn(f": {routes.RULE_REMOVED}: DELETE {removed} was removed with no alias, yet GET {removed}", output)
+
+    def test_a_table_that_lost_a_row_fails_even_with_its_heading_edited(self) -> None:
+        page = route_page().replace("| N16 | GET D/r16 | note |\n", "").replace(f"{routes.NEW_PERSON}17", f"{routes.NEW_PERSON}16")
+        output = self.lint_with(page, published())
+        self.assertIn(f": {routes.RULE_COUNT}: New person routes: 16 rows, heading 16, expected 17", output)
+
+    def test_a_prefix_expands_through_the_workspace(self) -> None:
+        self.assertEqual("/v1/workspaces/{workspace_id}/models", routes.expand("W/models"))
+        self.assertEqual(
+            "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions/{revision_id}",
+            routes.expand("G/revisions/{revision_id}"),
+        )
+        self.assertEqual("/v1/workspaces/{workspace_id}/drafts/{draft_id}", routes.expand("D"))
+        self.assertEqual("/v1/models", routes.expand("/v1/models"))
+
+    def test_a_row_the_published_routes_lack_is_reported_by_method_and_path(self) -> None:
+        invented = [(routes.expand("W/library-entries"), "GET")]
+        self.assertEqual(
+            ["GET /v1/workspaces/{workspace_id}/library-entries"],
+            routes.missing(invented, routes.served(published())),
+        )
+
+    def test_a_missing_architecture_page_is_a_finding(self) -> None:
+        files = {k: v for k, v in clean_tree().items() if k != routes.PAGE}
+        code, output = lint_tree(files)
+        self.assertIn(f": {routes.RULE_COUNT}: the architecture page is missing", output)
 
 
 if __name__ == "__main__":

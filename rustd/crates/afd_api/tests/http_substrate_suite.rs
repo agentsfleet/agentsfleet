@@ -4,8 +4,6 @@ mod harness;
 
 #[path = "admission_ceiling.rs"]
 mod admission_ceiling;
-#[path = "architecture_route_tables.rs"]
-mod architecture_route_tables;
 #[path = "header_limit.rs"]
 mod header_limit;
 #[path = "person_policy.rs"]
