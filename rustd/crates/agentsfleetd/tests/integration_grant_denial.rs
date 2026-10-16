@@ -55,7 +55,11 @@ async fn connect_and_declare(run: &Scenario) {
     .await
     .map(|text| serde_json::from_str(&text).expect("stored config JSON"))
     .expect("the fleet's config reads");
-    config["x-agentsfleet"]["credentials"] = json!([SERVICE]);
+    config
+        .get_mut("x-agentsfleet")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("the stored config carries its runtime block")
+        .insert("credentials".to_owned(), json!([SERVICE]));
     let definition =
         crate::e2e_native::definition(&config.to_string(), crate::e2e_seed::FIXTURE_INSTRUCTIONS);
     crate::e2e_native::reselect(
