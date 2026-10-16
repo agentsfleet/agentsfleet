@@ -139,7 +139,7 @@ describe("placeholder pages", () => {
     const m = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     );
-    expect(m).toContain("Events"); // PageTitle in the shell
+    expect(m).toContain("Workspace activity"); // PageTitle in the shell
     expect(m).toContain("data-skeleton"); // Skeleton fallback
     expect(m).not.toContain("Workspace events"); // data not yet resolved
   });
@@ -209,7 +209,7 @@ describe("placeholder pages", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
+  it("billing settings page renders balance and real usage without placeholder payment tabs", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 4_710_000_000,
@@ -242,10 +242,9 @@ describe("placeholder pages", () => {
     expect(m).toContain("Billing");
     expect(m).toContain('data-balance-card="1"');
     expect(m).toContain('data-usage-tab="1"');
-    // Radix Tabs only renders the active panel; assert the tab triggers
-    // are wired so Invoices / Payment method are reachable on click.
-    expect(m).toContain(">Invoices</button>");
-    expect(m).toContain(">Payment method</button>");
+    expect(m).toContain("Usage history");
+    expect(m).not.toContain(">Invoices</button>");
+    expect(m).not.toContain(">Payment method</button>");
   });
 
   it("billing settings page threads the URL cursor and page size into the charges fetch", async () => {

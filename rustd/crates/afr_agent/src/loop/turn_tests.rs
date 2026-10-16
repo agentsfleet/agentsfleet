@@ -100,10 +100,7 @@ async fn test_answer_streams_as_chunks() {
             _other => None,
         })
         .collect();
-    let kinds: Vec<_> = chunks
-        .iter()
-        .map(|chunk| chunk.text_kind.unwrap())
-        .collect();
+    let kinds: Vec<_> = chunks.iter().map(|chunk| chunk.text_kind).collect();
     assert_eq!(
         kinds,
         [

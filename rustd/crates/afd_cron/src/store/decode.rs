@@ -53,6 +53,9 @@ const COL_UPDATED_AT: &str = "updated_at";
 /// See [`COL_ID`].
 const COL_FIRE_AT: &str = "fire_at";
 
+/// See [`COL_ID`].
+const COL_RECIPE: &str = "recipe";
+
 /// What sqlx reports for a column this build cannot make sense of.
 ///
 /// A stored `desired_status` a newer daemon wrote, or an id that is not
@@ -93,6 +96,14 @@ impl FromRow<'_, PgRow> for Schedule {
             created_at: row.try_get(COL_CREATED_AT)?,
             updated_at: row.try_get(COL_UPDATED_AT)?,
             fire_at: row.try_get(COL_FIRE_AT)?,
+            recipe: row
+                .try_get::<Option<&str>, _>(COL_RECIPE)?
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(|source| sqlx::Error::ColumnDecode {
+                    index: COL_RECIPE.into(),
+                    source: Box::new(source),
+                })?,
         })
     }
 }

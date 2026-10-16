@@ -3,7 +3,7 @@ import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design
 export default function ApprovalDetailLoading() {
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader className="flex-col sm:flex-col">
         <PageTitle>
           <Skeleton className="h-6 w-40" />
         </PageTitle>

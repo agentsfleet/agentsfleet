@@ -1,102 +1,28 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
-import { useEffect, useId, useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ActivityIcon,
-  BookOpenIcon,
-  BotIcon,
-  BoxesIcon,
-  BrainCircuitIcon,
-  CheckCircle2Icon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CreditCardIcon,
-  KeyIcon,
-  KeyRoundIcon,
-  LibraryIcon,
-  PlugIcon,
-  ServerIcon,
-  UsersIcon,
-} from "lucide-react";
-import {
-  cn,
-  Button,
-  EYEBROW_CLASS,
-  Nav,
-  NavItem as NavigationItem,
-} from "@agentsfleet/design-system";
-import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import { cn, Nav } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import { SCOPE } from "@/lib/auth/scopes";
-import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
-import GettingStartedWidget from "./GettingStartedWidget";
+import { workspaceIdFromPath } from "@/lib/workspace-routes";
 import { SIDEBAR_COLUMN, useShellSidebarCollapsed } from "./shell-sidebar-state";
-import type { OnboardingPollingMode } from "./use-onboarding-progress";
+import { NavSection } from "./SidebarNavigationSections";
+import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigation-data";
 
-type NavEntry = {
-  label: string;
-  path: string;
-  icon: ComponentType<{ size?: number }>;
-  workspaceScoped?: boolean;
-  external?: boolean;
-};
+import { Suspense } from "react";
+import { DraftSidebarHistory } from "./DraftSidebarHistory";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { RecentFleets } from "./RecentFleets";
 
-type PlatformNavEntry = NavEntry & { scope: string };
+export { resolveActiveHref } from "./sidebar-navigation-data";
 
 type SidebarNavigationProps = {
+  workspaces?: TenantWorkspace[];
   pathname: string;
   workspaceId: string | null;
   operatorScopes: string[];
   collapsed: boolean;
-  gettingStartedPolling?: OnboardingPollingMode;
   onNavigate: () => void;
 };
-
-const NAV_SURFACE = "app_sidebar";
-
-const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Fleets", path: "fleets", icon: BotIcon, workspaceScoped: true },
-  { label: "Approvals", path: "approvals", icon: CheckCircle2Icon, workspaceScoped: true },
-  { label: "Events", path: "events", icon: ActivityIcon, workspaceScoped: true },
-];
-
-const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models", path: "settings/models", icon: BrainCircuitIcon, workspaceScoped: true },
-  { label: "Integrations", path: "integrations", icon: PlugIcon, workspaceScoped: true },
-  { label: "Secrets", path: "secrets", icon: KeyRoundIcon, workspaceScoped: true },
-  // "Fleet library", matching the platform entry below (Indy, 2026-09-22). The
-  // two are told apart by the group heading they sit under, not by the word:
-  // CONFIGURATION is this workspace's own onboarded entries, PLATFORM is the
-  // operator's catalogue. A workspace admin never sees the platform one at all,
-  // so for all but a handful of accounts the label is unambiguous on its own.
-  { label: "Fleet library", path: "library", icon: LibraryIcon, workspaceScoped: true },
-];
-
-const PLATFORM_NAV: PlatformNavEntry[] = [
-  { label: "Runners", path: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model library", path: "/admin/models", icon: BoxesIcon, scope: SCOPE.MODEL_READ },
-  {
-    label: "Fleet library",
-    path: "/admin/fleet-libraries",
-    icon: LibraryIcon,
-    scope: SCOPE.PLATFORM_LIBRARY_WRITE,
-  },
-];
-
-// Every person owns the account signup made them, so Members is always theirs
-// to manage; a joined account's people are its owner's page, not this one.
-const ORGANIZATION_NAV: NavEntry[] = [
-  { label: "Members", path: "/settings/members", icon: UsersIcon },
-  { label: "API Keys", path: "/settings/api-keys", icon: KeyIcon },
-  { label: "Billing", path: "/settings/billing", icon: CreditCardIcon },
-];
-
-const BOTTOM_NAV: NavEntry[] = [
-  { label: "Docs", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
-];
 
 export function DesktopSidebarNavigation({
   workspaces,
@@ -117,6 +43,7 @@ export function DesktopSidebarNavigation({
       )}
     >
       <SidebarNavigation
+        workspaces={workspaces}
         pathname={pathname}
         workspaceId={workspaceId}
         operatorScopes={operatorScopes}
@@ -127,188 +54,17 @@ export function DesktopSidebarNavigation({
   );
 }
 
-function resolveHref(entry: NavEntry, workspaceId: string | null): string {
-  if (entry.external || !entry.workspaceScoped) return entry.path;
-  return workspaceId ? workspacePath(workspaceId, entry.path) : "/";
-}
-
-// The single active winner: the LONGEST resolved href that prefixes the current
-// path. Computing it once — rather than letting each item self-decide — keeps
-// the invariant "exactly one nav item is active, and a nested route never lights
-// a sibling" true by construction. It holds even when a future nav path prefixes
-// another (e.g. `settings` alongside `settings/models`), which a per-item check
-// would double-light. `/` and `""` are entry-redirect stubs and never win.
-export function resolveActiveHref(hrefs: string[], pathname: string): string {
-  let active = "";
-  for (const href of hrefs) {
-    if (href === "" || href === "/") continue;
-    const hit = pathname === href || pathname.startsWith(`${href}/`);
-    if (hit && href.length > active.length) active = href;
-  }
-  return active;
-}
-
-function navSource(entry: NavEntry): string {
-  if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
-  const canonical = entry.workspaceScoped ? `/${entry.path}` : entry.path;
-  return `${NAV_SURFACE}_${canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
-}
-
-export function SidebarNavigation({
-  pathname,
-  workspaceId,
-  operatorScopes,
-  collapsed,
-  gettingStartedPolling = "desktop",
-  onNavigate,
-}: SidebarNavigationProps) {
-  const platformItems = PLATFORM_NAV.filter((entry) => operatorScopes.includes(entry.scope));
-  // Resolve the single active href across every internal item so no two items
-  // (and no group) can read active at once.
-  const activeHref = resolveActiveHref(
-    [...OPERATIONS_NAV, ...CONFIGURATION_NAV, ...platformItems, ...ORGANIZATION_NAV].map((entry) =>
-      resolveHref(entry, workspaceId),
-    ),
-    pathname,
-  );
+export function SidebarNavigation({ pathname, workspaceId, operatorScopes, collapsed, onNavigate, workspaces = [] }: SidebarNavigationProps) {
+  const activeHref = resolveActiveHref(PRIMARY_NAV.map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
-  return (
-    <Nav aria-label="Primary" className="flex flex-col h-full">
-      <NavSection label="Automations" items={OPERATIONS_NAV} {...shared} />
-      <NavSection label="Configuration" items={CONFIGURATION_NAV} {...shared} />
-      <PlatformSection items={platformItems} {...shared} />
-      <NavSection label="Organization" items={ORGANIZATION_NAV} {...shared} />
-      <div className="mt-auto">
-        {workspaceId && !collapsed ? (
-          <GettingStartedWidget
-            workspaceId={workspaceId}
-            pollingMode={gettingStartedPolling}
-          />
-        ) : null}
-        <NavSection items={BOTTOM_NAV} {...shared} />
-      </div>
-    </Nav>
-  );
-}
-
-type NavListProps = {
-  activeHref: string;
-  workspaceId: string | null;
-  onNavigate: () => void;
-  collapsed: boolean;
-};
-
-function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed }: NavListProps & { items: NavEntry[] }) {
-  const active = items.some((entry) => resolveHref(entry, workspaceId) === activeHref);
-  // Open by default: the group only renders for an operator holding a platform
-  // scope, so a platform admin sees Runners / Model library / Fleet library
-  // without a click. Still collapsible, and force-open whenever the current
-  // route lives inside it so the active item is never hidden.
-  const [open, setOpen] = useState(true);
-  const regionId = useId();
-
-  useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
-
-  if (items.length === 0) return null;
-  if (collapsed) return <NavSection items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} />;
-  return (
-    <NavGroup>
-      {/* The one group with a toggle renders its eyebrow at the same 16px
-          line, on the same column, as the three that do not. As a `sm`
-          control it was 32px tall with its text 5px to the right, and the gap
-          into this group measured 64px against 48 into every other. */}
-      <Button variant="ghost" size="eyebrow"
-        type="button"
-        aria-expanded={open}
-        aria-controls={regionId}
-        className={cn(
-          EYEBROW_CLASS,
-          "flex w-full items-center justify-between mb-2 text-muted-foreground hover:text-foreground",
-          active && "text-foreground",
-        )}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span>Platform</span>
-        {open ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
-      </Button>
-      <div id={regionId} hidden={!open} className="flex flex-col">
-        {open ? <NavItems items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} /> : null}
-      </div>
-    </NavGroup>
-  );
-}
-
-function NavSection({ label, items, ...props }: NavListProps & { label?: string; items: NavEntry[] }) {
-  return (
-    <NavGroup label={label} collapsed={props.collapsed}>
-      <NavItems items={items} {...props} />
-    </NavGroup>
-  );
-}
-
-function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: NavListProps & { items: NavEntry[] }) {
-  return items.map((entry) => {
-    const href = resolveHref(entry, workspaceId);
-    return (
-      <NavItem
-        key={entry.label}
-        href={href}
-        label={entry.label}
-        Icon={entry.icon}
-        external={entry.external}
-        active={!entry.external && href !== "" && href === activeHref}
-        collapsed={collapsed}
-        onClick={() => {
-          onNavigate();
-          trackNavigationClicked({ source: navSource(entry), surface: NAV_SURFACE, target: href });
-        }}
-      />
-    );
-  });
-}
-
-function NavGroup({ label, collapsed, children }: { label?: string; collapsed?: boolean; children: ReactNode }) {
-  return (
-    <div className="px-3 mb-6">
-      {label && !collapsed ? <div className={cn(EYEBROW_CLASS, "text-muted-foreground px-2 mb-2")}>{label}</div> : null}
-      {children}
+  return <Nav aria-label="Primary" className="flex h-full min-h-0 flex-col py-sm">
+    <NavSection items={PRIMARY_NAV} {...shared} />
+    {!collapsed ? <div className="min-h-0 flex-1 overflow-y-auto">
+      <Suspense><DraftSidebarHistory workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
+      <RecentFleets workspaceId={workspaceId} pathname={pathname} onNavigate={onNavigate} />
+    </div> : <div className="flex-1" />}
+    <div className="mt-auto shrink-0 p-3">
+      <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />
     </div>
-  );
-}
-
-function NavItem({
-  href,
-  label,
-  Icon,
-  active,
-  external,
-  collapsed,
-  onClick,
-}: {
-  href: string;
-  label: string;
-  Icon: ComponentType<{ size?: number }>;
-  active?: boolean;
-  external?: boolean;
-  collapsed?: boolean;
-  onClick: () => void;
-}) {
-  const content = (
-    <>
-      <Icon size={15} />
-      {collapsed ? null : label}
-    </>
-  );
-  const common = {
-    title: collapsed ? label : undefined,
-    "aria-label": collapsed ? label : undefined,
-    className: cn(collapsed && "justify-center px-0"),
-    onClick,
-  };
-  if (external) {
-    return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
-  }
-  return <NavigationItem asChild active={active} {...common}><Link href={href}>{content}</Link></NavigationItem>;
+  </Nav>;
 }

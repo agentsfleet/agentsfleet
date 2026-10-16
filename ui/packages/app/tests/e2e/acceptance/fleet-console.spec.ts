@@ -1,6 +1,6 @@
 /**
  * fleet-console.spec.ts — the operator lives on the fleet console: a local
- * navigation rail (Chat, Events, Memory, Skill, Trigger, Settings) beside one
+ * navigation rail (Chat, Events, Memory, Setup, Trigger) beside one
  * working surface at a time, with Chat as the action surface.
  *
  * The walk proves the two things a console must get right before anything
@@ -11,7 +11,7 @@
  *
  * Requires the full acceptance stack (seeded fleet + SSR auth). A regression
  * lands as a composer below the fold, a message that never leaves the field,
- * or a clipped Skill view.
+ * or a clipped Setup view.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -21,6 +21,8 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
+// `seedFleet` saves `fixtureDefinition`, whose default instructions are this line.
+const SEEDED_INSTRUCTIONS = "Acknowledge the request.";
 const SEND_TIMEOUT_MS = 10_000;
 // An idle fleet first flushes through the proxy on the daemon's 15s heartbeat.
 const STREAM_OPEN_TIMEOUT_MS = 30_000;
@@ -43,7 +45,7 @@ test.describe("fleet console", () => {
     await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     // Five destinations — lifecycle actions moved to the detail header, so
     // Settings is no longer a rail view.
-    for (const section of ["Chat", "Events", "Memory", "Skill", "Trigger"]) {
+    for (const section of ["Chat", "Events", "Memory", "Setup", "Trigger"]) {
       await expect(rail.getByRole("link", { name: section })).toBeVisible();
     }
 
@@ -82,20 +84,13 @@ test.describe("fleet console", () => {
     });
     await expect(textarea).toHaveValue("");
 
-    // test_non_chat_console_views_scroll_normally — the Skill view is ordinary
-    // page content: it is reachable and nothing is clipped away.
-    await rail.getByRole("link", { name: "Skill" }).click();
-    const source = page.getByLabel("Source");
-    await expect(source).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    const sourceToggle = source.getByRole("button", { name: /^(View|Hide) source$/ });
-    await expect(sourceToggle).toBeVisible();
-    if ((await sourceToggle.getAttribute("aria-expanded")) !== "true") {
-      await sourceToggle.click();
-    }
-    // The Skill view persists its disclosure state, so it may already be open.
-    // Either path must finish expanded with the seeded body visible.
-    await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
-    await expect(source.getByText("acceptance-seed").first()).toBeVisible();
+    // test_non_chat_console_views_scroll_normally — the Setup view is ordinary
+    // page content: it is reachable and its seeded instructions are not clipped away.
+    await rail.getByRole("link", { name: "Setup" }).click();
+    await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(page.getByText(SEEDED_INSTRUCTIONS).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Runtime configuration", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Improve in private chat" })).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its
     // own landmark so it is not confused with the sidebar destination.

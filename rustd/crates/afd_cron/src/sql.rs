@@ -28,7 +28,7 @@ macro_rules! row_columns {
     () => {
         "id::text, fleet_id::text, source, source_key, cron_expression, \
          timezone, message, once, desired_status, sync_status, generation, \
-         sync_token::text, sync_lease_until, last_error, created_at, updated_at, fire_at"
+         sync_token::text, sync_lease_until, last_error, created_at, updated_at, fire_at, recipe::text"
     };
 }
 
@@ -87,6 +87,12 @@ pub const SOURCE_KEY_EXISTS: &str = "SELECT 1::bigint FROM core.fleet_schedules 
 pub const SELECT_ONE: &str = concat!(
     select_row!(),
     " FROM core.fleet_schedules WHERE id = $1::uuid AND fleet_id = $2::uuid"
+);
+
+/// Locks one scoped schedule while checking its conditional edit.
+pub(crate) const LOCK_ONE: &str = concat!(
+    select_row!(),
+    " FROM core.fleet_schedules WHERE id=$1::uuid AND fleet_id=$2::uuid FOR UPDATE"
 );
 
 /// This fleet's schedules, oldest first.

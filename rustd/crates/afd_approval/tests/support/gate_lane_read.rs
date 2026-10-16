@@ -60,4 +60,25 @@ impl Lane {
             .expect("the event read must run")
             .and_then(|row| row.try_get::<Option<String>, _>(0).ok().flatten())
     }
+
+    /// Whether the ledger holds an admission for `action` that never got a
+    /// receipt — the row the replay sweeper owes an entry.
+    ///
+    /// Read through the real table rather than inferred from the call's answer:
+    /// "the queue refused and the work is still safe" is a claim about what is
+    /// in Postgres, and only Postgres can settle it.
+    pub(crate) async fn awaits_replay(&self, action: &str) -> bool {
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "SELECT receipt IS NULL FROM core.fleet_admissions \
+             WHERE producer = $1 AND producer_key = $2",
+        )
+        .bind(afd_admission::Producer::GateContinuation.as_str())
+        .bind(action)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the ledger reads")
+        .and_then(|row| row.try_get::<bool, _>(0).ok())
+        .unwrap_or(false)
+    }
 }

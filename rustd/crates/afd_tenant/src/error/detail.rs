@@ -54,9 +54,6 @@ pub const DETAIL_SESSION_NOT_APPROVED: &str = "Session not approved yet";
 /// Its refusal for a second approval of one session.
 pub const DETAIL_SESSION_ALREADY_APPROVED: &str = "This login session has already been approved";
 
-/// Its refusal for an abort by an identity that does not hold the session.
-pub const DETAIL_SESSION_NOT_OWNER: &str = "You do not own this login session";
-
 /// The verify dispatcher's refusal for six digits that did not match.
 pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match";
 

@@ -1,13 +1,15 @@
 //! Shared request parsing and refusal rendering for every API plane.
 
+mod authoring;
 pub mod encoding;
+pub use authoring::authoring_refusal;
 mod id_path;
-pub mod library_onboard;
 pub use self::encoding::BrokenEscape;
 pub use self::id_path::{IdPath, IdSegment};
 mod refusable;
 mod refusal;
 pub mod schedule;
+pub mod setup_input;
 
 use afd_observability::metrics::label::library::ReadOutcome;
 use http::StatusCode;

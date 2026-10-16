@@ -19,8 +19,8 @@ const NANOS_3_USD = 3_000_000_000; // $3.00 in nanos — pin test: literal is th
 
 const LIST_RESPONSE = {
   items: [
-    { name: "alpha", status: "active", events_processed: 7, budget_used_nanos: NANOS_3_USD },
-    { name: "beta", status: "stopped", events_processed: 0, budget_used_nanos: 0 },
+    { id: "01900000-0000-7000-8000-00000000a1fa", name: "alpha", status: "active", events_processed: "7", budget_used_nanos: String(NANOS_3_USD) },
+    { id: "01900000-0000-7000-8000-00000000be7a", name: "beta", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
   ],
 };
 

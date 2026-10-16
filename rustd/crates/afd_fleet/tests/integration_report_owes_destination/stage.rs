@@ -1,7 +1,7 @@
 //! One fleet, funded and leasable, and the verbs a report-owes case drives it
 //! through: admit, lease, report, read the ledger back.
 //!
-//! Split from the cases in `integration_report_owes_destination.rs` at the file
+//! Split from the cases in `integration_report_owes_destination/mod.rs` at the file
 //! cap. The cases state what is owed; this is the stage they state it on.
 
 use afd_admission::{Admission, Key, Producer, Reply};
@@ -14,7 +14,6 @@ use sqlx::Row as _;
 use crate::integration_admission_recovery::{admission, ledger, producer_key};
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
-use crate::requests::ENROLLED_AT;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
 
@@ -67,7 +66,9 @@ pub(super) struct Stage {
 pub(super) async fn stage() -> Stage {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
+        .await;
     let leases = fixtures.leases();
     let tenant = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     Stage {
@@ -167,7 +168,7 @@ impl Stage {
     /// commit lands: `commit_report` alone leaves it pending, and the next poll
     /// would hand the same event back instead of the next one.
     pub(super) async fn run_next(&self, run: i64) -> Committed {
-        let now = UnixMillis::from_millis(ENROLLED_AT + run * RUN_SPACING_MS);
+        let now = UnixMillis::from_millis(self.fixtures.enrolled_at() + run * RUN_SPACING_MS);
         let (lease_id, lease) = self.lease_next(now).await;
         let committed = self
             .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)

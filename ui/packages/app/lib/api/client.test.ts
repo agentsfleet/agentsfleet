@@ -202,8 +202,8 @@ describe("test_library_next_cancel_case — a navigation abort", () => {
     fetchMock.mockRejectedValue(abortError);
 
     await expect(
-      request("/v1/fleets/bundles", {}, "tok"),
-    ).rejects.toThrow("/v1/fleets/bundles");
+      request("/v1/models", {}, "tok"),
+    ).rejects.toThrow("/v1/models");
   });
 
   it("leaves a real transport failure alone", async () => {

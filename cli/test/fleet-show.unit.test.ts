@@ -19,8 +19,8 @@ const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
     jsonResponse(200, {
       items: [
-        { id: WANTED, name: "reviewer", status: "active" },
-        { id: OTHER, name: "responder", status: "stopped" },
+        { id: WANTED, name: "reviewer", status: "active", events_processed: "0", budget_used_nanos: "0" },
+        { id: OTHER, name: "responder", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
       ],
     }),
   [`GET /v1/workspaces/${WS_ID}/fleets/${WANTED}`]: () =>

@@ -13,6 +13,7 @@
  * global-teardown's backstop sweep (sweepLeakedFixtureFleets) lives here
  * too, next to the destructive-target guard every deletion must share.
  */
+import { FleetSchema } from "@/lib/api/draft-types";
 import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listFleets, listWorkspaces } from "./seed";
@@ -62,7 +63,6 @@ export async function cleanWorkspaceFleets(
   namePrefix?: string,
 ): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();
-  const c = clientFor(handle);
   const fleets = await listFleets(handle, workspaceId);
   const counts: SweepCounts = { removed: 0, failed: 0 };
   for (const z of fleets) {
@@ -73,12 +73,7 @@ export async function cleanWorkspaceFleets(
     // the reason for scoping does not hold and keeping nothing is the rule.
     if (namePrefix !== undefined && !z.name.startsWith(namePrefix)) continue;
     try {
-      if (z.status !== AGENTSFLEET_STATUS.killed) {
-        await c.patch(`/v1/workspaces/${workspaceId}/fleets/${z.id}`, {
-          status: AGENTSFLEET_STATUS.killed,
-        });
-      }
-      await c.delete(`/v1/workspaces/${workspaceId}/fleets/${z.id}`);
+      await purgeFixtureFleet(handle, workspaceId, z.id);
       counts.removed++;
     } catch (err) {
       // Counted, not swallowed. A stale-state row from an interrupted run is
@@ -169,7 +164,7 @@ const LIBRARY_SWEEP_PASS_CEILING = 50;
  * and a leaked library ENTRY is inert but cumulative: it stays in the install
  * gallery forever, because until M204 there was no verb that could remove it.
  * The pile-up is what pushed the seeded card off the gallery's first page and
- * made `installViaUI` miss it.
+ * made `saveFleetViaUI` miss it.
  *
  * No prefix scoping, and no `namePrefix` parameter to pass one. The whole
  * shape of the acceptance suite is re-onboarding ONE stable name per run, so
@@ -198,14 +193,14 @@ export async function cleanWorkspaceLibraryEntries(
   // seek past rows that shifted forward. Deleting from the front converges.
   for (let pass = 0; pass < LIBRARY_SWEEP_PASS_CEILING; pass += 1) {
     const page = await c.get<{ items?: Array<{ id: string; name?: string }> }>(
-      `/v1/workspaces/${workspaceId}/library-entries?limit=${LIBRARY_SWEEP_PAGE_SIZE}`,
+      `/v1/workspaces/${workspaceId}/fleet-libraries/owned?limit=${LIBRARY_SWEEP_PAGE_SIZE}`,
     );
     const entries = page.items ?? [];
     if (entries.length === 0) break;
     const removedBefore = counts.removed;
     for (const entry of entries) {
       try {
-        await c.delete(`/v1/workspaces/${workspaceId}/library-entries/${entry.id}`);
+        await c.delete(`/v1/workspaces/${workspaceId}/fleet-libraries/${encodeURIComponent(entry.id)}`);
         counts.removed++;
       } catch (err) {
         // Counted, not swallowed — the same reason the fleet sweep gives. A
@@ -341,4 +336,16 @@ async function revokeAndDeleteKey(
 ): Promise<void> {
   await client.patch(`/v1/api-keys/${id}`, { active: false });
   await client.delete(`/v1/api-keys/${id}`);
+}
+
+/** Reads current versions for both Kill and purge; stale replies stay visible. */
+export async function purgeFixtureFleet(handle: ClientHandle, workspaceId: string, fleetId: string): Promise<void> {
+  const client = clientFor(handle);
+  const endpoint = `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
+  let current = FleetSchema.parse(await client.get<unknown>(endpoint));
+  if (current.status !== AGENTSFLEET_STATUS.killed) {
+    current = FleetSchema.parse(await client.patch<unknown>(endpoint,
+      {status: AGENTSFLEET_STATUS.killed}, {"If-Match": current.etag}));
+  }
+  await client.delete(endpoint, {"If-Match": current.etag});
 }

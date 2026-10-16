@@ -52,18 +52,19 @@ describe("deriveTileLiveness — the tile is always exactly one kind (Inv. 1)", 
 
 describe("tile footer is server truth (Inv. 2)", () => {
   it("formats spend from budget_used_nanos, never token math", () => {
-    expect(formatTileSpend(1_200_000_000)).toBe("$1.20");
-    expect(formatTileSpend(0)).toBe("$0.00");
+    expect(formatTileSpend(1_200_000_000n)).toBe("$1.20");
+    expect(formatTileSpend(0n)).toBe("$0.00");
   });
 
-  it("renders a dash — not $0.00 — when the daemon did not send the field", () => {
-    expect(formatTileSpend(undefined)).toBe("—");
-    expect(formatTileEvents(undefined)).toBe("—");
+  it("renders large exact counters and rounds nanos to cents", () => {
+    expect(formatTileSpend(9007199254740993n)).toBe("$9007199.25");
+    expect(formatTileEvents(9007199254740993n)).toBe("9007199254740993");
+    expect(formatTileSpend(999999999n)).toBe("$1.00");
   });
 
-  it("renders a real zero distinctly from a missing field", () => {
-    expect(formatTileEvents(0)).toBe("0");
-    expect(formatTileEvents(7)).toBe("7");
+  it("renders zero and positive event counts", () => {
+    expect(formatTileEvents(0n)).toBe("0");
+    expect(formatTileEvents(7n)).toBe("7");
   });
 });
 

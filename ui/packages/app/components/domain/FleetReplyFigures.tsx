@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrailleSpinner } from "@agentsfleet/design-system";
+import { SignalSpinner } from "@agentsfleet/design-system";
 
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
-import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { formatCompactCount, formatElapsed, runFigure } from "@/lib/events/run-figures-format";
 import type { ReplyFigures } from "./fleetMessageReaders";
 
@@ -50,10 +49,8 @@ export function OmittedCalls({ count }: { count: number }) {
 }
 
 /** The library's `indicator` part: the reply is running and has nothing to show yet.
- * The status is named "Working" or "Queued"; the visible verb is whimsy and the
- * clock ticks, and a live region reads its content, not its name, so both are
- * hidden from assistive tech and the name is its spoken text. */
-export function Waiting({ queued, eventId, startedAtMs }: { queued: boolean; eventId: string; startedAtMs: number }) {
+ * Keep the label stable; only the isolated clock ticks. */
+export function Waiting({ queued, startedAtMs }: { queued: boolean; startedAtMs: number }) {
   const label = queued ? QUEUED_LABEL : WORKING_LABEL;
   return (
     <output
@@ -61,9 +58,9 @@ export function Waiting({ queued, eventId, startedAtMs }: { queued: boolean; eve
       aria-label={label}
       data-testid="fleet-working"
     >
-      <BrailleSpinner className="text-pulse" />
+      <SignalSpinner className="text-pulse" />
       <span className="sr-only">{label}</span>
-      <span aria-hidden="true" data-waiting-verb="">{loadingPhrase(queued ? QUEUED_LABEL : loadingVerbFor(eventId))}</span>
+      <span aria-hidden="true" data-waiting-verb="">{label}…</span>
       <ElapsedClock startedAtMs={startedAtMs} />
     </output>
   );

@@ -81,7 +81,7 @@ test("streamGet throws ApiError when the response is non-2xx", async () => {
     ok: false,
     status: 500,
     statusText: "Server Error",
-    text: async () => JSON.stringify({ error: { code: "UZ-EXT-001", message: "boom" } }),
+    text: async () => JSON.stringify({ error_code: "UZ-EXT-001", detail: "boom" }),
   }));
   await expect(
     streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
@@ -93,11 +93,11 @@ test("streamGet falls back from RFC 7807 detail to title", async () => {
     ok: false,
     status: 424,
     statusText: "Failed Dependency",
-    text: async () => JSON.stringify({ error_code: "UZ-BUNDLE-003", title: "Fleet Bundle secrets missing" }),
+    text: async () => JSON.stringify({ error_code: "UZ-AUTHOR-006", title: "Draft is no longer editable" }),
   }));
   await expect(
     streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
-  ).rejects.toMatchObject({ code: "UZ-BUNDLE-003", message: "Fleet Bundle secrets missing" });
+  ).rejects.toMatchObject({ code: "UZ-AUTHOR-006", message: "Draft is no longer editable" });
 });
 
 test("streamGet non-JSON error bodies fall back to status text and raw body", async () => {

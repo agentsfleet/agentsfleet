@@ -37,7 +37,6 @@ fn row() -> EventSummary<'static> {
         wall_ms: Some(12_000),
         failure_label: None,
         failure_detail: None,
-        checkpoint_id: None,
         resumes_event_id: None,
         created_at: 1_725_000_000_000,
         updated_at: 1_725_000_012_000,

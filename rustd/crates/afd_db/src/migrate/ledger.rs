@@ -22,7 +22,6 @@ use crate::error::{Result, query};
 /// are what an operator greps for, so two spellings of one step is two searches.
 const OP_LOAD_APPLIED: &str = "migrate.load_applied_versions";
 const OP_LOAD_FAILURES: &str = "migrate.load_failures";
-const OP_REAP: &str = "migrate.reap_orphans";
 
 const CREATE_AUDIT_SCHEMA: &str = "CREATE SCHEMA IF NOT EXISTS audit";
 
@@ -111,54 +110,12 @@ impl Ledger {
     /// Both tables are checked: a failure row from a version this binary does
     /// not know says the same thing an applied row does — the database was
     /// migrated by something newer.
-    ///
-    /// Note what this does NOT distinguish: a slot the canonical list RETIRED
-    /// reads as "absent" exactly like a version from the future does.
-    /// [`Self::version_unknown_at_or_above`] is the one that tells them apart,
-    /// and the one a reaping run must consult.
     #[must_use]
     pub fn version_ahead_of(&self, canonical: &BTreeSet<i32>) -> Option<i32> {
         self.applied
             .iter()
             .chain(self.failures.keys())
             .find(|version| !canonical.contains(version))
-            .copied()
-    }
-
-    /// The first recorded version at or above `floor` that `canonical` does not
-    /// contain, if any.
-    ///
-    /// The discriminator between the two kinds of unknown version, and the
-    /// reason it is a separate question from [`Self::version_ahead_of`]. The
-    /// line is the FLOOR — the lowest version this binary knows — not the
-    /// ceiling:
-    ///
-    /// - **Below the floor** — a slot from the numbering that preceded this
-    ///   one. The pre-v2.0 teardown deleted `001_*`…`005_*` when the scheme
-    ///   renumbered to `100`+, and left their rows behind; a migrate run is
-    ///   where those go. Reaping is correct.
-    /// - **At or above the floor and absent** — a slot inside the range THIS
-    ///   scheme owns, which this binary does not have. Something newer wrote
-    ///   it. Reaping it deletes another binary's migration history and then
-    ///   applies this binary's schema on top of one it does not understand.
-    ///
-    /// A ceiling test would only catch the second case when the unknown version
-    /// happens to be the highest. The numbering leaves gaps ON PURPOSE — `550`,
-    /// `551`, `560` — so a newer release filling one lands BELOW an older
-    /// binary's ceiling and read as a retired slot: the run reaped a live
-    /// migration's record and carried on. That is the case this asks about.
-    ///
-    /// Both tables are checked, for the reason above.
-    #[must_use]
-    pub fn version_unknown_at_or_above(
-        &self,
-        floor: i32,
-        canonical: &BTreeSet<i32>,
-    ) -> Option<i32> {
-        self.applied
-            .iter()
-            .chain(self.failures.keys())
-            .find(|version| **version >= floor && !canonical.contains(version))
             .copied()
     }
 }
@@ -183,56 +140,6 @@ pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<
             .map_err(|source| query("migrate.ensure_tables", source))?;
     }
     Ok(())
-}
-
-/// Deletes bookkeeping rows for slots that predate this numbering scheme.
-///
-/// # Why the floor is in the statement and not only in the caller
-///
-/// Deleting every row absent from the canonical list destroys another
-/// deployment's migration history: a version a NEWER binary wrote is absent
-/// from an older binary's list in exactly the way a retired slot is, and the
-/// number alone cannot tell them apart. The FLOOR can. Everything below the
-/// lowest version this binary knows belongs to the numbering that preceded it
-/// — the `001_*`…`005_*` files the pre-v2.0 teardown deleted when the scheme
-/// renumbered to `100`+ — and nothing a newer release adds lands there, because
-/// a newer release extends the scheme upward and into its reserved gaps.
-///
-/// [`crate::migrate::Migrator`] refuses the run over any unknown version at or
-/// above the floor before calling this; `version < $1` is that same invariant
-/// expressed where the deletion happens, so a future caller that forgets the
-/// check cannot destroy history with it. A caller with no canonical versions at
-/// all has no floor to apply and reaps nothing — an empty migration list is not
-/// a licence to empty the ledger.
-///
-/// # Errors
-/// Returns a query error when either delete fails.
-pub async fn reap_orphans(
-    connection: &mut PoolConnection<Postgres>,
-    canonical: &[i32],
-) -> Result<u64> {
-    // An empty migration list is not a licence to empty the ledger.
-    let Some(floor) = canonical.iter().copied().min() else {
-        return Ok(0);
-    };
-
-    let reaped = sqlx::query("DELETE FROM audit.schema_migrations WHERE version < $1")
-        .bind(floor)
-        .execute(&mut **connection)
-        .await
-        .map_err(|source| query(OP_REAP, source))?
-        .rows_affected();
-
-    sqlx::query("DELETE FROM audit.schema_migration_failures WHERE version < $1")
-        .bind(floor)
-        .execute(&mut **connection)
-        .await
-        .map_err(|source| query(OP_REAP, source))?;
-
-    if reaped > 0 {
-        tracing::info!(reaped, scope = "orphan_rows", event = "migration_reap");
-    }
-    Ok(reaped)
 }
 
 /// Records a version as applied, inside the caller's transaction.

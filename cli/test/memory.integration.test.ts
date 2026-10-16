@@ -195,7 +195,7 @@ describe("memory — error shapes", () => {
       const routes: MockRoutes = {
         [MEMORIES_ROUTE]: () =>
           jsonResponse(404, {
-            error: { code: "UZ-MEM-002", message: "fleet not found" },
+            error_code: "UZ-MEM-002", detail: "fleet not found",
             request_id: "req_mem_404",
           }),
       };
@@ -223,7 +223,7 @@ describe("memory — error shapes", () => {
       const routes: MockRoutes = {
         [MEMORIES_ROUTE]: () =>
           jsonResponse(500, {
-            error: { code: "UZ-MEM-003", message: "memory backend unavailable" },
+            error_code: "UZ-MEM-003", detail: "memory backend unavailable",
             request_id: "req_mem_503",
           }),
       };

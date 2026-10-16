@@ -31,12 +31,6 @@ pub const LIBRARY_STAGE_OBSERVATIONS_TOTAL: Declared<CounterKind> =
 pub const LIBRARY_READ_OUTCOME_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_library_read_outcome_total");
 
-/// `timeout` = pool starved; `error` = datastore down.
-///
-/// Labels: `pool_result`.
-pub const LIBRARY_POOL_RESULT_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_library_pool_result_total");
-
 /// Response bytes per surface.
 ///
 /// Labels: `surface`.

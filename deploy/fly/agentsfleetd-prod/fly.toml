@@ -19,7 +19,7 @@ primary_region = "iad"
 # Backpressure:
 #   In-flight request ceiling — 256 per instance, `DEFAULT_MAX_IN_FLIGHT` in
 #                      rustd/crates/afd_http/src/admission/mod.rs, installed at
-#                      boot by rustd/crates/agentsfleetd/src/serve.rs. It is a
+#                      boot by rustd/crates/agentsfleetd/src/serve/mod.rs. It is a
 #                      constant: no environment knob sets it. API-class routes
 #                      only: /healthz and /readyz are ops-class and are NEVER
 #                      shed (an overload must not blind the operators), and the
@@ -35,7 +35,7 @@ primary_region = "iad"
 #                      Budget ~13 KiB of heap + 1 client fd per stream; the
 #                      Dragonfly side is ONE shared SubscriptionHub pub/sub
 #                      connection per instance regardless of viewers
-#                      (rustd/crates/afd_dragonfly/src/hub.rs).
+#                      (rustd/crates/afd_dragonfly/src/hub/mod.rs).
 #                      Watch agentsfleet_sse_in_flight_streams +
 #                      agentsfleet_sse_dropped_frames_total.
 # Postgres connections this replica may open. Same reasoning as the

@@ -61,8 +61,8 @@ vi.mock("@agentsfleet/design-system", async () => {
   }) {
     return ReactModule.createElement("button", props, children);
   }
-  function WakePulse(props: React.HTMLAttributes<HTMLSpanElement>) {
-    return ReactModule.createElement("span", props);
+  function BrandMark(props: React.SVGProps<SVGSVGElement>) {
+    return ReactModule.createElement("svg", props);
   }
   function Spinner({ srLabel }: { srLabel?: string }) {
     return ReactModule.createElement("span", { role: "status" }, srLabel);
@@ -72,8 +72,10 @@ vi.mock("@agentsfleet/design-system", async () => {
   function cn(...values: unknown[]) {
     return values.filter(Boolean).join(" ");
   }
-  return { Button, Spinner, WakePulse, cn };
+  return { Button, Spinner, BrandMark, cn };
 });
+
+vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "person" }) }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => state.pathname,
@@ -139,7 +141,7 @@ describe("shell intent controls", () => {
     );
     render(<WorkspaceSwitcherTrigger activeLabel="Default workspace" />);
     const trigger = screen.getByRole("button", {
-      name: "Default workspace",
+      name: "Your workspace Default workspace",
     });
     expect(trigger.getAttribute("aria-busy")).toBeNull();
     expect(trigger.textContent).toContain("Default workspace");
@@ -270,7 +272,7 @@ describe("shell intent controls", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Retry workspace menu" }),
+      screen.getByRole("button", { name: "Retry account menu" }),
     );
     expect(loader.retry).toHaveBeenCalledOnce();
 

@@ -43,13 +43,13 @@ describe("fleet-stream-registry — frames that change nothing", () => {
     const es = sourceAt(0);
     es.open();
     const opened = listener.mock.calls.length;
-    es.emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: "read_file", args_redacted: {} });
-    es.emit({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
+    es.emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: "read_file", args_redacted: {} });
+    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
     const settled = getSnapshot(Z_A);
     const notified = listener.mock.calls.length;
     expect(notified).toBeGreaterThan(opened);
-    es.emit({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
-    es.emitRaw(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: { bad: "name" } }));
+    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
+    es.emitRaw(JSON.stringify({ call_id: { bad: "name" }, kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: { bad: "name" } }));
     expect(getSnapshot(Z_A)).toBe(settled);
     expect(listener).toHaveBeenCalledTimes(notified);
     release();

@@ -20,7 +20,7 @@
 --
 -- Owner decision, Indy, Sep 21, 2026. VERSION is 0.49.0, above the 0.30.0
 -- anchor, so slot 460 stays frozen history — its comment included — and the
--- superseding decision lives here and in docs/architecture/fleet_bundles.md.
+-- superseding decision lives here and in docs/architecture/fleet_definitions.md.
 --
 -- Exactly DELETE, and nothing wider: api_runtime already holds the other three
 -- verbs it exercises, and this is the only privilege the removal handler adds.

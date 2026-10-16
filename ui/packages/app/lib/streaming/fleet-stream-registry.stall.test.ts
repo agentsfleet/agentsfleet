@@ -228,7 +228,7 @@ describe("a running reply that stops hearing frames", () => {
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: THINKING, actor: ACTOR });
     await keepaliveFor(REPLY_STALL_MS - KEEPALIVE_MS);
-    source.emit({ kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: THINKING, name: DEPLOY_TOOL, elapsed_ms: 1 });
+    source.emit({ call_id: DEPLOY_TOOL, kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: THINKING, name: DEPLOY_TOOL, elapsed_ms: 1 });
     await keepaliveFor(REPLY_STALL_MS - KEEPALIVE_MS);
     expect(getFleetEventActionMock).not.toHaveBeenCalled();
 
@@ -288,7 +288,7 @@ describe("a running reply that stops hearing frames", () => {
     await vi.advanceTimersByTimeAsync(KEEPALIVE_MS);
     source.heartbeat();
     await vi.advanceTimersByTimeAsync(KEEPALIVE_MS);
-    source.emit({ kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: THINKING, name: DEPLOY_TOOL, elapsed_ms: 1 });
+    source.emit({ call_id: DEPLOY_TOOL, kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: THINKING, name: DEPLOY_TOOL, elapsed_ms: 1 });
     await vi.advanceTimersByTimeAsync(0);
     expect(getFleetEventActionMock).not.toHaveBeenCalled();
     release();

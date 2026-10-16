@@ -11,6 +11,7 @@ import { clerk } from "@clerk/testing/playwright";
 import { signInAs } from "./fixtures/auth";
 import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { getDefaultWorkspaceId } from "./fixtures/seed";
 
 const ROUTING_TEST_TIMEOUT_MS = 90_000;
 const ROUTING_TIMEOUT_MS = 30_000;
@@ -30,6 +31,20 @@ const PROTECTED_ROUTES = [
 
 test.describe("auth routing", () => {
   test.setTimeout(ROUTING_TEST_TIMEOUT_MS);
+
+  test("bare settings and workspace URLs return 404 while access notices remain available", async ({ page }) => {
+    await signInAs(page, FIXTURE_KEY.regular);
+    const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    for (const route of ["/settings", `/w/${workspace}`]) {
+      const response = await page.goto(route);
+      expect(response?.status()).toBe(404);
+      expect(new URL(page.url()).pathname).toBe(route);
+      await expect(page.getByRole("heading", { name: "Page not found", exact: true })).toBeVisible();
+    }
+    const notice = await page.goto("/settings?notice=models-platform-admin-only");
+    expect(notice?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: "Access restricted", exact: true })).toBeVisible();
+  });
 
   test("signed-in user can visit auth pages without losing dashboard access", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);

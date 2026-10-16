@@ -3,6 +3,10 @@
 //! Both carry a flattened `extra`, which is what lets [`super::super`] tell a
 //! runtime key authored one level too high apart from a key that is simply
 //! misspelled — two different author mistakes with two different fixes.
+//!
+//! Under the `openapi` feature these types also publish the Definition's
+//! shape. Their `///` lines are that published description; notes for the
+//! next maintainer stay in `//` comments, which the schema never reads.
 
 use garde::Validate;
 use serde::Deserialize;
@@ -15,84 +19,95 @@ use super::{
     Trigger,
 };
 
-///
-/// `name` is the only authored key outside the namespaced block; anything else
-/// found here is either a runtime key that needs indenting or a stray.
+/// The `config` member of a Definition: the fleet's name and its runtime settings.
+//
+// `name` is the only authored key outside the namespaced block; anything else
+// found here is either a runtime key that needs indenting or a stray.
 #[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionConfig))]
 pub(crate) struct Document {
-    /// The fleet's authored name. Its SHAPE is checked by `FleetName`, which is
-    /// a stronger statement than a length bound; the bound here only stops an
-    /// absurd value reaching that parser.
+    /// The fleet's name.
+    // Its SHAPE is checked by `FleetName`, which is a stronger statement than
+    // a length bound; the bound here only stops an absurd value reaching that
+    // parser.
     #[garde(inner(length(chars, min = 1, max = MAX_REFERENCE_LEN)))]
+    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) name: Option<String>,
-    /// The namespaced block every runtime key lives under.
+    /// Every runtime setting: triggers, tools, credentials, network, budget and gates.
     #[serde(rename = "x-agentsfleet")]
     #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) runtime: Option<Runtime>,
-    /// Every top-level key that is neither of the above.
+    // Every top-level key that is neither of the above. Ignored by the schema:
+    // the parser refuses each one by name.
     #[serde(flatten)]
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
     pub(crate) extra: Map<String, Value>,
 }
 
-/// The `x-agentsfleet` block.
+/// The `x-agentsfleet` block, which holds every runtime setting.
 #[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionRuntime))]
 pub(crate) struct Runtime {
-    /// What may wake this fleet.
-    ///
-    /// `dive` alone: garde refuses to combine it with `inner`, so the SET's
-    /// arity is proved beside its uniqueness rule in `trigger::parse_set`,
-    /// where both are one question — "is this a coherent set" — rather than
-    /// split across two layers.
+    /// What may start a run of this fleet besides a message sent to it. Omit
+    /// it, or leave it empty, for a fleet that is only ever talked to.
+    // `dive` alone: garde refuses to combine it with `inner`, so the SET's
+    // count is proved beside its uniqueness rule in `trigger::parse_set`,
+    // where both are one question — "is this a coherent set" — rather than
+    // split across two layers.
+    // Absent is the empty set, and an explicit null is still refused: it is a
+    // list or nothing at all.
+    #[serde(default, deserialize_with = "crate::optional::present")]
     #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(nullable = false))]
     pub(crate) triggers: Option<Vec<Trigger>>,
-    /// Which tools it may dispatch.
-    ///
-    /// May name nothing: a fleet that dispatches no tool is one that only
-    /// answers, which is a legitimate thing to author.
+    /// The tools this fleet may call. An empty list means the fleet only answers.
     #[garde(inner(
         length(max = MAX_TOOLS),
         inner(length(chars, min = 1, max = MAX_TOOL_LEN), custom(is_token))
     ))]
+    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) tools: Option<Vec<String>>,
-    /// Which secrets it may read. Their CHARSET is `CredentialName`'s.
+    /// The workspace secrets this fleet may read, by name.
+    // Their CHARSET is `CredentialName`'s.
     #[garde(inner(length(max = MAX_CREDENTIALS), inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN))))]
     pub(crate) credentials: Option<Vec<String>>,
-    /// Where it may reach on the network.
+    /// The hosts this fleet may reach.
     #[garde(dive)]
     pub(crate) network: Option<Network>,
-    /// What it may spend.
+    /// The most this fleet may spend.
     #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) budget: Option<Budget>,
-    /// Which actions need a human, and which patterns kill the run.
+    /// Which tool actions need a person's approval, and which repeated actions stop a run.
     #[garde(dive)]
     pub(crate) gates: Option<Gates>,
-    /// A skill reference, stored but not resolved.
-    #[garde(inner(length(chars, max = MAX_REFERENCE_LEN)))]
-    pub(crate) skill: Option<String>,
-    /// An opaque model identifier, passed through untouched.
+    /// The model this fleet runs on, passed to the runner unchanged.
     #[garde(inner(length(chars, max = MAX_REFERENCE_LEN)))]
     pub(crate) model: Option<String>,
-    /// Context-budget overrides.
+    /// Context-size settings for each run.
     #[garde(dive)]
     pub(crate) context: Option<Context>,
-    /// Which repositories its credentials may reach.
-    ///
-    /// Refuses an empty list: a binding that names nothing is not "every
-    /// repository", and a token scoped to nothing cannot mint.
+    /// The repositories this fleet's GitHub credentials may reach, as `owner/name`.
+    /// Set together with `repository_access`.
+    // Refuses an empty list: a binding that names nothing is not "every
+    // repository", and a token scoped to nothing cannot mint.
     #[garde(inner(
         length(min = 1, max = MAX_REPOSITORIES),
         inner(length(chars, min = 1, max = MAX_REPOSITORY_LEN), custom(is_repository))
     ))]
     pub(crate) repositories: Option<Vec<String>>,
-    /// How far that reach goes.
+    /// How far those credentials reach. Set together with `repositories`.
     #[garde(skip)]
     pub(crate) repository_access: Option<Access>,
-    /// The trusted base branch a write binding opens against.
+    /// The branch every pull request opens against. Required with `write`, refused with `read`.
     #[garde(inner(length(chars, min = 1, max = MAX_BASE_BRANCH_LEN), custom(is_branch_name)))]
     pub(crate) repository_base: Option<String>,
-    /// Every key under the block that is none of the above.
+    // Every key under the block that is none of the above. Ignored by the
+    // schema: the parser refuses each one by name.
     #[serde(flatten)]
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
     pub(crate) extra: Map<String, Value>,
 }

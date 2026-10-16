@@ -54,7 +54,6 @@ describe("api-key commands", () => {
     key_name: name,
     active: true,
     created_at: 1700000000000,
-    last_used_at: null,
     revoked_at: null,
   });
   // Two server pages split by a cursor boundary; the walk must cross it.
@@ -93,7 +92,7 @@ describe("api-key commands", () => {
         const text = out.read();
         expect(text).toContain("alpha-runner");
         expect(text).toContain("beta-runner");
-        expect(text).toContain("never");
+        expect(text).not.toContain("LAST_USED");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           "GET /v1/api-keys",
           "GET /v1/api-keys",

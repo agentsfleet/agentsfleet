@@ -20,7 +20,6 @@ test-util = [
   "afd_events/test-util",
   "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
-  "afd_library/test-util",
   "afd_tenant/test-util",
   "afd_vault/test-util",
 ]
@@ -38,6 +37,7 @@ afd_cron.workspace = true
 afd_connector.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
+afd_authoring.workspace = true
 afd_billing.workspace = true
 # The tenant's provider selection: the row the Models page reads and writes.
 afd_credential.workspace = true
@@ -54,7 +54,6 @@ afd_fleet_runtime.workspace = true
 afd_http.workspace = true
 # The memory page's view, boundary and row, read by the memory routes.
 afd_memory.workspace = true
-afd_library.workspace = true
 # The invite email's types: what a send is given and what it comes to.
 afd_mail.workspace = true
 afd_observability.workspace = true
@@ -84,6 +83,8 @@ tracing.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 # The trace capture a log line's fields are read back through.
 afd_core = { workspace = true, features = ["test-util"] }
+# A real datastore refusal, the only failure the shared fleet store lifts.
+afd_db.workspace = true
 
 [lints]
 workspace = true

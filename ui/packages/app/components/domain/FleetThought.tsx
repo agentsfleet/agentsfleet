@@ -7,7 +7,7 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  BrailleSpinner,
+  SignalSpinner,
 } from "@agentsfleet/design-system";
 
 import { formatSeconds } from "@/lib/utils";
@@ -27,18 +27,12 @@ const CLOCK_TICK_MS = 100;
 // The accordion's fold (tw-animate-css `accordion-up`, .2s), so the viewport
 // holds still for exactly that long.
 const FOLD_ANIMATION_MS = 200;
-// Reasoning that lands in one burst is live for a render or two. Opened then,
-// it folds at once and the prose flashes past; it opens only once it has
-// streamed for this long.
-const LIVE_OPEN_DELAY_MS = 400;
 // Only the tail can hold the latest sentence; scanning more costs every frame.
 const SENTENCE_TAIL_CHARS = 400;
-const SENTENCES = new Intl.Segmenter(undefined, { granularity: "sentence" });
+const SENTENCES = new Intl.Segmenter("en", { granularity: "sentence" });
 
 export type FleetThoughtProps = {
   live: boolean;
-  /** The reply's answer has started: a thought live after that stays folded. */
-  answered: boolean;
   reasoning: string;
   startedAtMs: number | null;
   endedAtMs: number | null;
@@ -46,21 +40,16 @@ export type FleetThoughtProps = {
 };
 
 /**
- * Open while it streams, because watching a fleet think is the only signal
- * during a long turn; closed once the answer lands, unless the operator opened
- * it. A model answering a short prompt reasons, answers, and reasons again:
- * the chip goes live again but stays folded, so the reply never opens and
- * folds a second time under the reader. Closed content unmounts, so a long
- * thought leaves no hidden DOM behind.
+ * Keep reasoning collapsed until requested. Stream updates never change the
+ * reader's choice or move the answer by opening and folding a growing panel.
+ * Closed content unmounts, so a long thought leaves no hidden DOM behind.
  */
-export function FleetThought({ live, answered, reasoning, startedAtMs, endedAtMs, children }: FleetThoughtProps) {
-  const [opened, setOpened] = useState<string | null>(null);
+export function FleetThought({ live, reasoning, startedAtMs, endedAtMs, children }: FleetThoughtProps) {
+  const [value, setValue] = useState("");
   // The item stays mounted through a fold; the content does not, so the lock
   // finds the scroller from here.
   const itemRef = useRef<HTMLDivElement | null>(null);
   const lockScroll = useScrollLock(itemRef, FOLD_ANIMATION_MS);
-  const autoOpen = useLiveFor(live && !answered, LIVE_OPEN_DELAY_MS);
-  const value = opened ?? (autoOpen ? THOUGHT_VALUE : "");
   // Taken as the fold commits and before it paints, for a click and for the
   // fold the answer triggers alike: the library locks before the height moves.
   const previous = useRef(value);
@@ -69,7 +58,7 @@ export function FleetThought({ live, answered, reasoning, startedAtMs, endedAtMs
     previous.current = value;
   }, [value, lockScroll]);
   return (
-    <Accordion type="single" collapsible value={value} onValueChange={setOpened} className="mb-md">
+    <Accordion type="single" collapsible value={value} onValueChange={setValue} className="mb-md">
       <AccordionItem ref={itemRef} value={THOUGHT_VALUE} className="border-0">
         <AccordionTrigger className="min-w-0 py-xs text-label text-text-dim hover:no-underline">
           {live ? (
@@ -91,21 +80,10 @@ export function FleetThought({ live, answered, reasoning, startedAtMs, endedAtMs
   );
 }
 
-/** True once `live` has held for `delayMs`; false again the moment it ends. */
-function useLiveFor(live: boolean, delayMs: number): boolean {
-  const [held, setHeld] = useState(false);
-  useEffect(() => {
-    if (!live) return;
-    const id = setTimeout(() => setHeld(true), delayMs);
-    return () => clearTimeout(id);
-  }, [live, delayMs]);
-  return live && held;
-}
-
 function LiveLabel({ reasoning, startedAtMs }: { reasoning: string; startedAtMs: number | null }) {
   return (
     <span className="flex min-w-0 items-center gap-sm">
-      <BrailleSpinner className="text-pulse" />
+      <SignalSpinner className="text-pulse" />
       <span className="shrink-0">
         {THOUGHT_LIVE_LABEL}
         {/* The clock and the sentence are for the eye. The chip sits in the

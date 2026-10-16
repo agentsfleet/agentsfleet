@@ -1,0 +1,318 @@
+//! Landing a connection: the handle sealed in the vault, and the row that
+//! routes the provider's events back.
+//!
+//! # The vault write is a claim-then-replace, and the order is deliberate
+//!
+//! `afd_vault` offers a create that refuses a name already held and a replace
+//! that refuses one that is not — deliberately, because the workspace secret
+//! surface wants both refusals. A connect wants neither: connecting for the
+//! first time and RECONNECTING are the same action to whoever pressed the
+//! button, and a person told "you already connected Slack" when their token was
+//! revoked has been given a dead end. So the create runs first and its
+//! name-taken refusal is read as "this is a reconnect", not as a failure.
+//!
+//! Two connects racing on one provider resolve to one grant — whichever wrote
+//! last — the outcome an advisory lock would give, reached without holding a
+//! lock across a vendor call.
+//!
+//! # The grant and its routing row commit together
+//!
+//! A row saying "this Slack team belongs to this workspace" with no vaulted bot
+//! token behind it is an ingress that resolves a workspace and then cannot
+//! answer; a grant nothing routes to reads connected and receives nothing. So
+//! [`Grants::land`] writes both in one transaction, after taking its turn on
+//! the workspace row; a Disconnect (`Grants::forget`) takes the same turn
+//! first, so the two never interleave, even on a first connect.
+
+pub mod holding;
+pub mod parse;
+
+use std::sync::atomic::{AtomicI64, Ordering};
+
+use afd_core::clock::UnixMillis;
+use afd_core::error_code;
+use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
+use afd_db::Db;
+use afd_vault::{SecretBody, SecretName, Vault};
+
+use sqlx::Acquire as _;
+
+use crate::error::{Result, query};
+use crate::provider::Provider;
+use crate::sql;
+
+pub use self::holding::{BotIdentity, Connection, Forgotten};
+pub use self::parse::{Grant, Install, InstallClaim};
+
+/// The context a failed install write reports under.
+const CONTEXT_INSTALL: &str = "record a connector install";
+
+/// Why the handle's serialization cannot fail — see [`handle_body`].
+///
+/// Named once rather than spelled at the site, so the invariant reads as a
+/// stated fact rather than as a hopeful message.
+const HANDLE_IS_ALWAYS_SERIALIZABLE: &str =
+    "a JSON object of strings and integers always serializes";
+
+/// The last connect stamp this process handed out.
+///
+/// It exists for a subtle reason: the broker's credential cache is keyed on a
+/// fingerprint over the handle's non-rotating fields, and several of those are
+/// constants (a label) or account-scoped (a data centre). Without a strictly
+/// increasing stamp, reconnecting to a DIFFERENT account inside one millisecond
+/// would produce the same fingerprint and keep serving the previous account's
+/// cached token until it expired.
+static LAST_CONNECT_STAMP: AtomicI64 = AtomicI64::new(0);
+
+/// A connect stamp strictly later than every one this process has handed out.
+///
+/// Monotonic rather than merely wall-clock — see [`LAST_CONNECT_STAMP`].
+fn connected_at(now: UnixMillis) -> UnixMillis {
+    let mut previous = LAST_CONNECT_STAMP.load(Ordering::Relaxed);
+    loop {
+        let next = now.as_millis().max(previous.saturating_add(1));
+        match LAST_CONNECT_STAMP.compare_exchange_weak(
+            previous,
+            next,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
+            Ok(_won) => return UnixMillis::from_millis(next),
+            // A stale read costs one retry; the exchange re-validates.
+            Err(current) => previous = current,
+        }
+    }
+}
+
+/// The grant's handle as the bytes the vault seals.
+///
+/// Rendered through `RawValue` rather than handed over as a tree: the vault
+/// stores the BYTES it was given, and `SecretBody` is the type that says those
+/// bytes are a non-empty JSON object within bound.
+///
+/// # Errors
+/// Reports a handle past the bound a vault row may hold.
+///
+/// # Panics
+/// Cannot. Infallible, and the reason is structural rather than statistical:
+/// the handle is a `Map<String, Value>` this crate built out of strings and
+/// integers, and serializing one has no error case — the failures
+/// `to_raw_value` reports come from a custom `Serialize` refusing or from a
+/// non-string map key, and neither is constructible here.
+fn handle_body(grant: &Grant) -> Result<SecretBody> {
+    #[expect(
+        clippy::expect_used,
+        reason = "a serde_json Map of strings and integers has no serialization failure; \
+                  see the paragraph above for why the arm is unconstructible"
+    )]
+    let raw = serde_json::value::to_raw_value(&grant.handle).expect(HANDLE_IS_ALWAYS_SERIALIZABLE);
+    Ok(SecretBody::parse(&raw)?)
+}
+
+/// Where a connection lands: the vault it is sealed in and the rows it routes.
+///
+/// Cheap to clone — [`Db`] is a handle over a shared pool and [`Vault`] holds
+/// its key behind an `Arc`.
+#[derive(Debug, Clone)]
+pub struct Grants {
+    /// Where the handle is sealed.
+    vault: Vault,
+    /// Where the routing row is written.
+    database: Db,
+    /// Where the routing row's identifier comes from.
+    ///
+    /// Held rather than built per call: an entropy source is a handle on the
+    /// system's, and a connect is rare enough that the handle costs nothing and
+    /// frequent enough that building one per call is pure waste.
+    entropy: Entropy,
+}
+
+impl Grants {
+    /// Binds the store to an opened vault, pool and entropy source.
+    #[must_use]
+    pub const fn new(vault: Vault, database: Db, entropy: Entropy) -> Self {
+        Self {
+            vault,
+            database,
+            entropy,
+        }
+    }
+
+    /// A connect stamp for a grant about to be sealed — see [`connected_at`].
+    #[must_use]
+    pub fn stamp(&self, now: UnixMillis) -> UnixMillis {
+        connected_at(now)
+    }
+
+    /// Seals `grant` for `workspace` and routes whatever it routes.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, an envelope that would not
+    /// seal, and a handle past the bound a vault row may hold. A name already
+    /// held is NOT an error — see the module note on why a reconnect is the
+    /// same action as a connect.
+    ///
+    /// # Panics
+    /// Cannot — see [`handle_body`] for why its one `expect` is unreachable.
+    pub async fn land(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+        grant: &Grant,
+        now: UnixMillis,
+    ) -> Result<()> {
+        let name = SecretName::parse(provider.grant_key())?;
+        let body = handle_body(grant)?;
+
+        // ONE transaction over both writes, because neither ordering is safe.
+        //
+        // The routing row says which workspace an account's inbound events
+        // belong to; the vaulted grant is the credential outbound spends. They
+        // describe the same installation and a reader that saw one without the
+        // other would be wrong in a way nothing surfaces: a sealed grant
+        // nothing routes reads CONNECTED while inbound resolves no workspace,
+        // and on a RECONNECT a routing row naming the new installation beside
+        // the old account's credential has inbound and outbound speaking to
+        // different accounts under one workspace.
+        //
+        // So they commit together or not at all. `sqlx::Transaction` rolls back
+        // when it is DROPPED, so every `?` below unwinds both writes without a
+        // rollback path of its own — the argument `crate::delete`'s note makes
+        // about compensating rollbacks being decoration.
+        //
+        // A Disconnect (`Grants::forget`) takes turns with it on the workspace
+        // row (`sql::LOCK_WORKSPACE`), which exists before the first connect
+        // writes anything; the grant then goes first, as in `forget`.
+        let mut connection = self.database.acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
+        Self::take_turn(&mut transaction, workspace, CONTEXT_INSTALL).await?;
+        self.seal(&mut transaction, workspace, &name, &body, now)
+            .await?;
+
+        if let Some(install) = grant.install.as_ref() {
+            Self::route_in(
+                &mut transaction,
+                workspace,
+                provider,
+                install,
+                now,
+                &self.entropy,
+            )
+            .await?;
+        }
+
+        transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;
+
+        tracing::info!(
+            workspace_id = workspace.as_str(),
+            provider = provider.id(),
+            event = "connector_connected",
+        );
+        Ok(())
+    }
+
+    /// Seals `body` under `name` inside the landing's transaction: a create,
+    /// and a replace when the name is already held.
+    ///
+    /// The create's name-taken refusal is read as "this is a reconnect", not
+    /// as a failure — see the module note on the claim-then-replace order.
+    async fn seal(
+        &self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+        now: UnixMillis,
+    ) -> Result<()> {
+        match self
+            .vault
+            .create_in(transaction, workspace, name, body, now)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(refused) if refused.code() == error_code::SECRET_NAME_TAKEN => {
+                self.vault
+                    .replace_in(transaction, workspace, name, body, now)
+                    .await?;
+                Ok(())
+            }
+            Err(other) => Err(other.into()),
+        }
+    }
+
+    /// Waits for, then holds, `workspace`'s turn to change a connection: the
+    /// first statement of a landing and of a Disconnect (`sql::LOCK_WORKSPACE`).
+    /// The lock lasts until the caller's transaction ends.
+    pub(super) async fn take_turn(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        context: &'static str,
+    ) -> Result<()> {
+        sqlx::query(sql::LOCK_WORKSPACE)
+            .bind(workspace.as_str())
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(context))?;
+        Ok(())
+    }
+
+    /// Points this provider account's inbound events at `workspace`.
+    ///
+    /// Takes the caller's transaction rather than acquiring its own, because
+    /// this row and the vaulted grant have to land together — see [`Self::land`]
+    /// on why either ordering alone leaves a state a reader cannot detect.
+    /// Associated rather than a method so the borrow of `self.vault` in `seal`
+    /// does not collide with a `&self` held across this call.
+    async fn route_in(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        provider: Provider,
+        install: &Install,
+        now: UnixMillis,
+        entropy: &Entropy,
+    ) -> Result<()> {
+        let id = entropy.uuid7(now)?;
+
+        // Let go of any OTHER account this workspace still routes for the
+        // provider, before claiming this one. The vault holds one handle per
+        // workspace and provider, so a surviving second row would send that
+        // account's deliveries here to be answered with the new account's
+        // credential — the silent state this function's own note argues
+        // against, reached by a second row rather than a half-written one.
+        // Same transaction, so a claim that fails takes the release with it.
+        sqlx::query(sql::RELEASE_OTHER_INSTALLS)
+            .bind(provider.id())
+            .bind(workspace.as_str())
+            .bind(&install.external_account_id)
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(CONTEXT_INSTALL))?;
+
+        let statement = match install.claim {
+            InstallClaim::Repoint => sql::UPSERT_INSTALL,
+            InstallClaim::Exclusive => sql::CLAIM_INSTALL,
+        };
+        let claimed = sqlx::query(statement)
+            .bind(id.as_str())
+            .bind(provider.id())
+            .bind(&install.external_account_id)
+            .bind(workspace.as_str())
+            .bind(&install.installed_by)
+            .bind(&install.scopes)
+            .bind(now.as_millis())
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(CONTEXT_INSTALL))?;
+        // An exclusive claim that touched no row met one another workspace
+        // holds. Raised inside the transaction, so the `?` above it unwinds
+        // the vault write too — see the paragraph in [`Self::land`].
+        if claimed.rows_affected() == 0 {
+            return Err(crate::error::installation_held_elsewhere());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

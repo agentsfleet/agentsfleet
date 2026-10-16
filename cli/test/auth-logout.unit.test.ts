@@ -191,13 +191,6 @@ describe("test_logout_when_logged_out_is_idempotent", () => {
     expect(rec.calls).toEqual([]);
     expect(rec.cleared).toEqual(["clear"]);
   });
-
-  test("a stored tenant key is not revoked — this client never minted it and holds no identifier for it", async () => {
-    const rec = makeRec();
-    await runLogout(rec, { credentialId: null });
-    expect(rec.calls.map((c) => c.path)).not.toContain(REVOKE_PATH);
-    expect(rec.cleared).toEqual(["clear"]);
-  });
 });
 
 describe("test_failed_revoke_reports_and_continues", () => {

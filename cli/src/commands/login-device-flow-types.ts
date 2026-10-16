@@ -4,7 +4,7 @@
 // (login.ts, tests) import unchanged.
 //
 // Server response shapes are confirmed against
-// rustd/crates/afd_api_tenant/src/handler/auth/session.rs and its session/
+// rustd/crates/afd_api_tenant/src/handler/auth/session/mod.rs and its session/
 // submodules — see the login-device-flow.ts header for
 // the per-endpoint status-code map.
 

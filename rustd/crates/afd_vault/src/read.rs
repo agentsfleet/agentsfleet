@@ -11,15 +11,10 @@
 //!
 //! # A row this build cannot describe still lists
 //!
-//! A row written before the projection columns existed carries NULL metadata,
-//! and a row written by a newer daemon may carry a `meta_kind` this build has
-//! no variant for. Both list as an opaque `custom_secret`, because a page of
-//! twenty credentials must not fail over one it cannot label.
-//!
-//! Neither is HEALED by decrypting here. A heal-on-read path would put an
-//! envelope open back on this path and make "reads never decrypt" true only
-//! after warm-up, which is not a guarantee. `agentsfleetd backfill` is what
-//! fills those rows.
+//! A row written by a newer daemon may carry a `meta_kind` this build has no
+//! variant for. It lists as an opaque `custom_secret`, because a page of twenty
+//! credentials must not fail over one it cannot label, and it is not healed by
+//! decrypting here: that would put an envelope open back on this path.
 
 use afd_core::id::Uuid7;
 use sqlx::Row as _;

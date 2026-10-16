@@ -10,16 +10,14 @@ vi.mock("@/lib/auth/client", () => ({
   AuthProvider: ({ children }: { children: ReactNode }) => children,
   AuthSessionKeeper: () => React.createElement("span", { [KEEPER_MARKER]: "" }),
 }));
-vi.mock("next/headers", () => ({
-  cookies: vi.fn().mockResolvedValue({ get: () => undefined }),
-}));
 vi.mock("@/components/analytics/AnalyticsBootstrap", () => ({ default: () => null }));
 
 import RootLayout from "@/app/layout";
 
 describe("root layout", () => {
-  it("should mount the session keeper once above every route's content", async () => {
-    const markup = renderToStaticMarkup(await RootLayout({ children: null }));
+  it("should mount the session keeper once above every route's content", () => {
+    const markup = renderToStaticMarkup(RootLayout({ children: null }));
     expect(markup.split(KEEPER_MARKER).length - 1).toBe(1);
+    expect(markup).toContain('data-theme="dark"');
   });
 });

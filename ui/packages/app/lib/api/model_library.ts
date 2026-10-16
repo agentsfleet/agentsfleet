@@ -1,6 +1,6 @@
 // The model library catalogue (core.model_library), read through the
 // authenticated GET /v1/models — see
-// rustd/crates/afd_api_tenant/src/handler/tenant/models.rs
+// rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs
 // for the wire shape. The dashboard fetches it once per session through a
 // token-minting Server Action (settings/models/actions.ts → getModelLibraryAction),
 // so the token never reaches the browser. The only static client-side model

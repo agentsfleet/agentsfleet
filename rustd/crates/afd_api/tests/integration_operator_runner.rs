@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
-const SUBJECT: &str = "user_live_runner_operator";
+pub(crate) const SUBJECT: &str = "user_live_runner_operator";
 const NOW: i64 = 1_760_000_000_000;
 const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[]}}"#;
 
@@ -233,7 +233,7 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
     }
 }
 
-async fn patch(
+pub(crate) async fn patch(
     router: &axum::Router,
     token: &str,
     path: &str,
@@ -242,24 +242,26 @@ async fn patch(
     send(router, Method::PATCH, path, Some(token), body).await
 }
 
-fn text<'value>(document: &'value Value, field: &str) -> &'value str {
+pub(crate) fn text<'value>(document: &'value Value, field: &str) -> &'value str {
     document
         .get(field)
         .and_then(Value::as_str)
         .expect("the response field is a string")
 }
 
-struct Fixture {
+/// One tenant credential holding every scope, and one seeded runner — shared
+/// with the label replacement's live suite, which needs exactly this.
+pub(crate) struct Fixture {
     lane: TestDatabase,
-    database: Db,
+    pub(crate) database: Db,
     tenant: String,
     key: String,
-    runner: String,
-    token: String,
+    pub(crate) runner: String,
+    pub(crate) token: String,
 }
 
 impl Fixture {
-    async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
@@ -272,7 +274,7 @@ impl Fixture {
         }
     }
 
-    async fn seed(&self) {
+    pub(crate) async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -287,8 +289,9 @@ impl Fixture {
              ) \
              INSERT INTO fleet.runners \
                (id, host_id, token_hash, sandbox_tier, admin_state, labels, \
-                last_seen_at, created_at, updated_at) \
-             VALUES ($6::uuid, $6, $6, 'dev_none', 'active', '[\"linux\"]', $5, $5, $5)",
+                network_policy, registry_allowlist, last_seen_at, created_at, updated_at) \
+             VALUES ($6::uuid, $6, $6, 'dev_none', 'active', '[\"linux\"]', \
+                'deny_all_egress', '[]', $5, $5, $5)",
         )
         .bind(&self.tenant)
         .bind(&self.key)
@@ -301,7 +304,7 @@ impl Fixture {
         .expect("the operator and runner seed");
     }
 
-    async fn cleanup(self, enrolled_runner: &str) {
+    pub(crate) async fn cleanup(self, enrolled_runner: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("DELETE FROM fleet.runners WHERE id = ANY($1::uuid[])")
             .bind(vec![self.runner.as_str(), enrolled_runner])

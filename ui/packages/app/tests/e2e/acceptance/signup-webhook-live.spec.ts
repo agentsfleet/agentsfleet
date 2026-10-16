@@ -63,15 +63,11 @@ test.describe("signup webhook live", () => {
 
     await page.goto(workspaceHref(signup.workspaceId, "fleets"));
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-    await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    // Two links now carry the step's name — the rail row and the page's one
-    // primary action above it — and both go to the same place: the recommended
-    // card, pre-selected, rather than the gallery's front door.
-    const installLinks = page.getByRole("main").getByRole("link", { name: /Install a fleet/ });
-    await expect(installLinks).toHaveCount(2);
-    const installHref = `${workspaceHref(signup.workspaceId, "fleets/new")}?library_id=github-pr-reviewer&library_visibility=public`;
-    await expect(installLinks.first()).toHaveAttribute("href", installHref);
-    await expect(installLinks.last()).toHaveAttribute("href", installHref);
+    const createLink = page.getByRole("main").getByRole("link", { name: "New fleet", exact: true });
+    await expect(createLink).toHaveCount(1);
+    const createHref = workspaceHref(signup.workspaceId, "fleets/new");
+    await expect(createLink).toHaveAttribute("href", createHref);
   });
 });

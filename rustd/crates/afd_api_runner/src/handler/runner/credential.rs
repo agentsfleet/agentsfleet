@@ -83,6 +83,11 @@ pub(crate) async fn handle<D: Services>(
     let Ok(request) = afd_http::handler::read_body::<MintCredentialRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
+    // Parsed here, so the lease lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any lease is the caller's mistake.
+    if let Err(refusal) = super::schedule::lease(&request.lease_id) {
+        return refusal.into_response();
+    }
 
     match services
         .leases()

@@ -124,7 +124,7 @@ describe("ActivityTable", () => {
     expect(screen.getByText(/quantum_jail/)).toBeTruthy();
   });
 
-  it("should sort by Time through the standard header control, on an uncounted feed", () => {
+  it("should sort by Occurred through the standard header control, on an uncounted feed", () => {
     render(
       <ActivityTable
         initial={{
@@ -143,9 +143,9 @@ describe("ActivityTable", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => (row.textContent?.includes("came online") ? "older" : "newer"));
-    fireEvent.click(screen.getByRole("button", { name: /time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /occurred/i }));
     const firstSort = orderOf();
-    fireEvent.click(screen.getByRole("button", { name: /time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /occurred/i }));
     // Two clicks walk both directions of the same comparator: the order must
     // invert, proving the column sorts on the record's real timestamp.
     expect(orderOf()).toEqual([...firstSort].reverse());

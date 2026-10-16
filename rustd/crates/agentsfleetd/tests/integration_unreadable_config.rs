@@ -16,14 +16,12 @@
 //! The decision recorded against it is that one bad document is one fleet's
 //! problem. This is the test that holds the daemon to it.
 //!
-//! # Why the neighbour's config is `{}` exactly
+//! # Why the neighbour's setup is `{}` exactly
 //!
-//! Not an arbitrary broken value: it is what the `afd_fleet` store suites
-//! leave in a shared lane database. They call `Leases::select` and `issue`
-//! directly, and only the PULL path resolves a configuration, so a fixture
-//! that never crosses this seam has never needed a document a fleet could
-//! really carry. Reproducing their row is what makes this test the lane's own
-//! failure rather than an invented one.
+//! Valid JSON that is not a fleet, selected as the fleet's setup revision under
+//! the current policy semantics. Admission reads only the semantics, so the
+//! neighbour's event is admitted; the PULL path is the first reader that parses
+//! the document, which is the seam this test holds.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -33,6 +31,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_db::test_util::{
+    FIXTURE_SETUP_MODEL_REF, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
+};
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 
@@ -41,8 +43,12 @@ use crate::e2e_event::enqueue;
 use crate::reads::event_column_of;
 use crate::wire::{capable_beat, poll_for_seeded_lease, poll_until, post, report_body};
 
-/// The document the store suites leave behind: valid JSON, and not a fleet.
+/// Valid JSON, and not a fleet.
 const UNREADABLE_CONFIG: &str = "{}";
+
+/// The digest the unreadable revision carries; nothing reads it before the
+/// parse refuses the document.
+const UNREADABLE_DIGEST: &str = "unreadable";
 
 /// The label the refusal writes, as an operator reads it.
 const CONFIG_UNREADABLE: &str = "config_unreadable";
@@ -50,30 +56,26 @@ const CONFIG_UNREADABLE: &str = "config_unreadable";
 /// The terminal status a refused event carries.
 const GATE_BLOCKED: &str = "gate_blocked";
 
-/// A second fleet in the scenario's workspace, holding a config nothing parses.
+/// A second fleet in the scenario's workspace, whose selected setup nothing parses.
 ///
 /// Its identifier is the scenario's own with a distinct trailing slot, so it
 /// satisfies the column's version-7 CHECK and cannot collide with any other
 /// scenario's fleet in a shared lane.
 async fn seed_unreadable_fleet(run: &Scenario) -> String {
     let fleet = format!("{}00f0", &run.fleet[..run.fleet.len() - 4]);
-    sqlx::query(
-        "INSERT INTO core.fleets
-           (id, workspace_id, tenant_id, name, source_markdown, config_json,
-            status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, $8, $8)",
-    )
-    .bind(&fleet)
-    .bind(&run.workspace)
-    .bind(&run.tenant)
-    .bind("e2e-unreadable-fleet")
-    .bind("# fixture")
-    .bind(UNREADABLE_CONFIG)
-    .bind("active")
-    .bind(run.seeded_at.as_millis())
-    .execute(&mut *run.booted.database.acquire().await.expect("connection"))
-    .await
-    .expect("the neighbour fleet must insert");
+    FleetSeed::new(&fleet, &run.workspace, &run.tenant, FLEET_STATUS_ACTIVE)
+        .name("e2e-unreadable-fleet")
+        .config(UNREADABLE_CONFIG)
+        .at(run.seeded_at.as_millis())
+        .setup(SetupRevision {
+            definition: UNREADABLE_CONFIG,
+            digest: UNREADABLE_DIGEST,
+            semantics: FIXTURE_SETUP_SEMANTICS,
+            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
+        })
+        .insert(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the neighbour fleet must insert");
     fleet
 }
 

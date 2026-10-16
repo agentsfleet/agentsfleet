@@ -1,24 +1,17 @@
 import { Suspense } from "react";
 import { credential, requireCredential } from "@/lib/auth/credential";
-import { PageHeader, PageLayout, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
+import { PageLayout, Section } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { getOnboarding, statusToInputs } from "@/lib/api/onboarding";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import FleetWall from "./components/FleetWall";
-import GettingStarted from "./components/GettingStarted";
+import { NewFleetEntrance } from "./components/NewFleetEntrance";
+import FleetsLoading from "./loading";
 
 export const dynamic = "force-dynamic";
 
-const FLEETS_DESCRIPTION =
-  "A fleet is an always-on AI agent that wakes on events, gathers evidence, and acts with your approval.";
 
-// The Wall — the workspace's only entry point (single-route refactor). With
-// zero fleets it renders the Getting Started checklist as its empty state; with
-// fleets it renders the tile grid. The page header adapts to which one shows,
-// so it can't paint "Fleets" over a first-run checklist — that means the header
-// waits on the data (no shell-first here), a deliberate trade for a truthful
-// title on a route that is now two surfaces in one.
+// Every workspace opens the fleet dashboard, with chat creation above its wall.
 export default async function FleetsPage({
   params,
 }: {
@@ -28,15 +21,14 @@ export default async function FleetsPage({
   await requireCredential();
 
   return (
-    <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
+    <Suspense fallback={<FleetsLoading />}>
       <FleetsData workspaceId={workspaceId} />
     </Suspense>
   );
 }
 
 // Async data region: the fleet page + billing in one pass, keyed by the URL
-// workspace. When empty, additionally gathers the onboarding signals so the
-// checklist renders from live state. Exported so it renders/tests in isolation.
+// workspace. Exported so it renders/tests in isolation.
 export async function FleetsData({ workspaceId }: { workspaceId: string }) {
   const token = await credential();
   if (!token) return null;
@@ -46,23 +38,9 @@ export async function FleetsData({ workspaceId }: { workspaceId: string }) {
     getTenantBillingCached(token).catch(() => null),
   ]);
 
-  if (page.items.length === 0) {
-    // One call for the whole checklist — the onboarding endpoint derives every
-    // signal server-side in a single query (Indy's consolidation).
-    const inputs = statusToInputs(await getOnboarding(workspaceId, token));
-    return (
-      <>
-        <ExhaustionBanner billing={billing} />
-        <GettingStarted workspaceId={workspaceId} inputs={inputs} />
-      </>
-    );
-  }
-
   return (
     <PageLayout>
-      <PageHeader description={FLEETS_DESCRIPTION}>
-        <PageTitle>Fleets</PageTitle>
-      </PageHeader>
+      <NewFleetEntrance workspaceId={workspaceId} />
       <ExhaustionBanner billing={billing} />
       <Section asChild>
         <section aria-label="Fleets">

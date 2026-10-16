@@ -12,7 +12,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 use sqlx::Acquire as _;
@@ -176,8 +176,15 @@ impl Fixture {
     }
 
     pub(crate) async fn seed(&self) {
-        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
+        self.seed_owner(&mut connection).await;
+        self.seed_entries(&mut connection).await;
+    }
+
+    /// The tenant, its workspace and API key, and the fleet the entries belong
+    /// to — everything the request authenticates and resolves through.
+    async fn seed_owner(&self, connection: &mut sqlx::PgConnection) {
+        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         sqlx::query(
             "WITH tenant AS ( \
                INSERT INTO core.tenants (id, name, created_at, updated_at) \
@@ -185,28 +192,37 @@ impl Fixture {
              ), workspace AS ( \
                INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
                VALUES ($2::uuid, $1::uuid, 'memory', $3, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1) \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($6::uuid, $2::uuid, $1::uuid, 'memory', '# fixture', '{}', \
-                     'active', 1, 1)",
+             INSERT INTO core.api_keys \
+               (id, tenant_id, key_name, description, key_hash, created_by, active, \
+                revoked_at, created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(SUBJECT)
         .bind(&self.key)
         .bind(digest.as_str())
-        .bind(&self.fleet)
         .execute(&mut *connection)
         .await
+        .expect("the authenticated tenant seeds");
+        FleetSeed::new(
+            &self.fleet,
+            self.workspace.as_str(),
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
+        )
+        .name("memory")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
         .expect("the authenticated fleet seeds");
+    }
 
+    /// Two memory entries, written as the memory runtime role writes them, at
+    /// consecutive instants so the page order is fixed.
+    async fn seed_entries(&self, connection: &mut sqlx::PgConnection) {
         let mut transaction = connection.begin().await.expect("memory seed begins");
         sqlx::query("SET LOCAL ROLE memory_runtime")
             .execute(&mut *transaction)

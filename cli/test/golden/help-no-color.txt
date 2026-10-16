@@ -34,7 +34,7 @@ SUBCOMMANDS
   billing      Tenant billing dashboard
   library      Browse this workspace's Fleet library gallery
   models       List the model catalogue this server serves
-  install      Install a Fleet from a library entry (--library <library_id>)
+  chat         Create, resume, and review a private workspace chat
   fleet        Fleet management subcommands
   list         List fleets in the active workspace (paginated)
   status       Show status for every fleet in the active workspace

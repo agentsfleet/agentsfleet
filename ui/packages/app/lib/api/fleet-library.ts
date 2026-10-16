@@ -1,231 +1,34 @@
-import { cache } from "react";
-import { request } from "./client";
-import type { WorkspaceLibraryEntriesResponse } from "./library-types";
-import type {
-  FleetLibraryGalleryResponse,
-  OnboardedLibraryEntry,
-  OnboardedPlatformLibraryEntry,
-  OnboardLibraryEntryRequest,
-  PlatformCatalogEntry,
-  PlatformCatalogPatch,
-  PlatformCatalogResponse,
-} from "../types";
+import { request, requestWithEtag } from "./client";
+import { PublishedSchema } from "./draft-types";
+import { PlatformEntriesSchema, PlatformEntrySchema, type PlatformPatch, type StagePlatform } from "./platform-library-types";
 
-const workspaceFleetLibrariesPath = (workspaceId: string) =>
-  `/v1/workspaces/${workspaceId}/fleet-libraries`;
+const PLATFORM_PATH = "/v1/admin/fleet-libraries";
+const libraryPath = (workspace: string) => `/v1/workspaces/${encodeURIComponent(workspace)}/fleet-libraries`;
+const platformPath = (id: string) => `${PLATFORM_PATH}/${encodeURIComponent(id)}`;
 
-// The workspace's OWN entries — a second collection, not a filter on the
-// gallery. The gallery answers what is installable here, which includes
-// platform rows this workspace neither owns nor can remove; this answers what
-// it onboarded. Separate paths, separate shapes, separate cursors: the split
-// the models domain settled before this one existed.
-const workspaceLibraryEntriesPath = (workspaceId: string) =>
-  `/v1/workspaces/${workspaceId}/library-entries`;
-const workspaceLibraryEntryPath = (workspaceId: string, entryId: string) =>
-  `${workspaceLibraryEntriesPath(workspaceId)}/${encodeURIComponent(entryId)}`;
-
-// The platform catalog has no workspace segment — it is a single tier shared by
-// every tenant, gated on `platform-library:write` rather than workspace
-// ownership (rustd/crates/afd_http/src/route/admin.rs, whose `Route::meta`
-// carries the scope). Every method needs that same scope: there is no read rung.
-const PLATFORM_FLEET_LIBRARIES_PATH = "/v1/admin/fleet-libraries";
-const platformEntryPath = (id: string) =>
-  `${PLATFORM_FLEET_LIBRARIES_PATH}/${encodeURIComponent(id)}`;
-
-// Fleet library gallery client. Mirrors the route table in
-// rustd/crates/afd_http/src/route/workspace.rs:
-//   GET /v1/workspaces/{ws}/fleet-libraries  (platform ∪ own-tenant entries)
-//
-// The gallery returns the union of the platform catalog and the caller-
-// workspace's own tenant entries — and nothing from another workspace. Each
-// entry carries `visibility`, so the install flow keys the create body off the
-// chosen tier (platform_library_id vs tenant_library_id). Metadata only — the
-// canonical bundle bytes live in R2, never in the response.
-// Rows per request. The endpoint pages at 50 by default and rejects a `limit` above 100
-// (`UZ-LIBRARY-003`), so asking for the maximum gives the largest window one
-// round-trip can buy.
-const GALLERY_PAGE_LIMIT = 100;
-
-// What an onboard POST is allowed to take, and why it is not the transport's
-// default. Onboarding is the one write on this surface that waits on a third
-// party: the backend fetches the repository tarball from GitHub before it
-// validates, stores or upserts anything.
-//
-// `DEFAULT_REQUEST_TIMEOUT_MS` is 10s and a POST gets `maxAttempts: 1`, which
-// is what failed: the acceptance trace for the operator-catalog spec records
-// `POST /admin/fleet-libraries` returning 200 at 10,102.9ms — our own abort at
-// the 10s default, reported to the operator as "the backend took too long to
-// answer" while the daemon was still legitimately fetching.
-//
-// 30s, not more. A warm import of the acceptance sample measured under 6s
-// end-to-end against api-dev, so this is roughly five times the observed cost:
-// enough for a cold Fly machine, a cold function and the two TLS handshakes the
-// daemon makes to api.github.com and codeload.github.com, without asking an
-// operator to watch a spinner for a minute. It deliberately does NOT cover
-// `github.rs`'s own 60s `REQUEST_TIMEOUT`, which is a capacity bound sized for
-// a worst-case 8 MiB bundle over a bad link, not an expected latency — a fetch
-// genuinely running that long should surface as a failure, not a longer wait.
-//
-// It must also stay UNDER the route segment's `maxDuration` (60s, declared on
-// the two pages that host these actions) so our own message wins the race
-// against a platform kill, which would surface as an opaque 504 instead.
-// `fleet-library.test.ts` pins that ordering.
-export const ONBOARD_BUNDLE_TIMEOUT_MS = 30_000;
-
-/** One wire page: `items` is that page alone, `next_cursor` null on the last. */
-type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
-  total: number | null;
-  next_cursor: string | null;
-};
-
-/** A gallery page plus what the caller needs to retain and to disclose. */
-export type FleetLibraryPageResult = FleetLibraryGalleryResponse & {
-  next_cursor: string | null;
-  total: number | null;
-};
-
-// ONE page per call. This replaced a walk that followed `next_cursor` to
-// exhaustion on every visit to the install screen.
-//
-// The walk was not paranoia: reading a single page drops every entry past the
-// server's page size *silently* — the cards simply do not render, with nothing
-// to tell the user they exist. Paging brings that hazard straight back, so the
-// protection is REPLACED rather than removed. `next_cursor` and `total` return
-// with the page, and Invariant 5 requires the caller to render what it has not
-// loaded instead of leaving it implied by a button.
-export async function listWorkspaceFleetLibrary(
-  workspaceId: string,
-  token: string,
-  startingAfter: string | null = null,
-): Promise<FleetLibraryPageResult> {
-  const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
-  if (startingAfter !== null) params.set("starting_after", startingAfter);
-
-  const body = await request<FleetLibraryGalleryPage>(
-    `${workspaceFleetLibrariesPath(workspaceId)}?${params.toString()}`,
-    { method: "GET" },
-    token,
-  );
-
-  return { items: body.items, next_cursor: body.next_cursor, total: body.total };
+export async function removeWorkspaceLibraryEntry(workspace: string, id: string, token: string): Promise<void> {
+  await request<void>(`${libraryPath(workspace)}/${encodeURIComponent(id)}`, {method: "DELETE"}, token);
 }
 
-export async function onboardWorkspaceFleetLibrary(
-  workspaceId: string,
-  body: OnboardLibraryEntryRequest,
-  token: string,
-): Promise<OnboardedLibraryEntry> {
-  return request<OnboardedLibraryEntry>(
-    workspaceFleetLibrariesPath(workspaceId),
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
-    },
-    token,
-  );
+export async function listPlatformFleetLibrary(token: string) {
+  return PlatformEntriesSchema.parse(await request<unknown>(PLATFORM_PATH, {method: "GET"}, token));
 }
 
-// Onboard an entry into the PLATFORM catalog — the operator-tier counterpart of
-// `onboardWorkspaceFleetLibrary` above. The server fetches the repository,
-// validates the bundle, writes the canonical tar to object storage, and only
-// then upserts the catalog row, taking the row id from the bundle's SKILL.md
-// frontmatter name. The onboarded row is stored `public`, which is what puts it
-// in every workspace's gallery beside the migration-seeded rows.
-//
-// The row is stored `draft` (M128): adding a fleet never publishes it. It reaches
-// no tenant until `publishPlatformFleetLibraryEntry` says so.
-export async function onboardPlatformFleetLibrary(
-  body: OnboardLibraryEntryRequest,
-  token: string,
-): Promise<OnboardedPlatformLibraryEntry> {
-  return request<OnboardedPlatformLibraryEntry>(
-    PLATFORM_FLEET_LIBRARIES_PATH,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(ONBOARD_BUNDLE_TIMEOUT_MS),
-    },
-    token,
-  );
+export async function stagePlatformFleetLibrary(body: StagePlatform, operation: string, token: string) {
+  return PublishedSchema.parse(await request<unknown>(PLATFORM_PATH, {
+    method: "POST", body: JSON.stringify(body), headers: {"Idempotency-Key": operation},
+  }, token));
 }
 
-// Per-request deduped gallery read. The gallery is rarely-changing metadata;
-// React's cache() collapses repeat reads within one RSC render (the dashboard
-// gallery and /fleets/new both list library entries) to a single round-trip.
-// Server-only — cache() is a React Server Component primitive.
-export const listWorkspaceFleetLibraryCached = cache(listWorkspaceFleetLibrary);
-
-// One page of the entries this workspace onboarded.
-//
-// `GALLERY_PAGE_LIMIT` is shared with the gallery because the server's bound
-// is the same: 100 is the largest window one round-trip buys, and asking for
-// more earns `UZ-LIBRARY-003`. The cursor is NOT shared — this collection
-// issues its own, bound to its own walk, and a gallery cursor spent here is
-// refused rather than silently resuming somewhere else.
-export async function listWorkspaceLibraryEntries(
-  workspaceId: string,
-  token: string,
-  startingAfter: string | null = null,
-): Promise<WorkspaceLibraryEntriesResponse> {
-  const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
-  if (startingAfter !== null) params.set("starting_after", startingAfter);
-
-  return request<WorkspaceLibraryEntriesResponse>(
-    `${workspaceLibraryEntriesPath(workspaceId)}?${params.toString()}`,
-    { method: "GET" },
-    token,
-  );
+export async function patchPlatformFleetLibraryEntry(id: string, body: PlatformPatch, ifMatch: string, token: string) {
+  const response = await requestWithEtag<unknown>(platformPath(id), {
+    method: "PATCH", body: JSON.stringify(body), headers: {"If-Match": ifMatch},
+  }, token);
+  const entry = PlatformEntrySchema.parse(response.data);
+  if (entry.etag !== response.etag) throw new Error("Platform Library body and response ETag disagree");
+  return entry;
 }
 
-// Remove one entry. Answers 204 whether a row left or not — an id already
-// gone and one naming another workspace's entry are indistinguishable by
-// design, so there is nothing to return and nothing to branch on.
-//
-// Permanent, and safe: a fleet installed from the entry copied the bundle at
-// install time and carries its own, so nothing installed stops working.
-export async function removeWorkspaceLibraryEntry(
-  workspaceId: string,
-  entryId: string,
-  token: string,
-): Promise<void> {
-  await request<void>(
-    workspaceLibraryEntryPath(workspaceId, entryId),
-    { method: "DELETE" },
-    token,
-  );
-}
-
-export const listWorkspaceLibraryEntriesCached = cache(listWorkspaceLibraryEntries);
-
-// ── The platform catalog (M128) ──────────────────────────────────────────────
-//
-// The operator's view of core.fleet_library. Unlike the workspace gallery it
-// hides nothing: drafts and rows whose bundle was never fetched are exactly what
-// the page exists to show. Metadata only — the server never returns bundle
-// markdown or an object-store key.
-
-export async function listPlatformFleetLibrary(token: string): Promise<PlatformCatalogResponse> {
-  return request<PlatformCatalogResponse>(PLATFORM_FLEET_LIBRARIES_PATH, { method: "GET" }, token);
-}
-
-// Curate the two fields no bundle can supply, and/or publish/unpublish. A bundle
-// refetch never overwrites what this writes.
-export async function patchPlatformFleetLibraryEntry(
-  id: string,
-  body: PlatformCatalogPatch,
-  ifMatch: string,
-  token: string,
-): Promise<PlatformCatalogEntry> {
-  return request<PlatformCatalogEntry>(
-    platformEntryPath(id),
-    { method: "PATCH", headers: { "If-Match": ifMatch }, body: JSON.stringify(body) },
-    token,
-  );
-}
-
-// Remove an entry. The server refuses while it is published (UZ-CATALOG-003) —
-// a live fleet is never taken from the tenants who can install it.
-export async function deletePlatformFleetLibraryEntry(id: string, token: string): Promise<void> {
-  await request<void>(platformEntryPath(id), { method: "DELETE" }, token);
+export async function deletePlatformFleetLibraryEntry(id: string, ifMatch: string, token: string): Promise<void> {
+  await request<void>(platformPath(id), {method: "DELETE", headers: {"If-Match": ifMatch}}, token);
 }

@@ -43,7 +43,9 @@ async fn preferences_onboarding_and_secrets_round_trip_through_http() {
 }
 
 async fn exercise_preferences(router: &axum::Router, token: &str, workspace: &str) {
-    let empty = send(
+    // The collection read is removed: a write answers with every preference,
+    // so nothing reads them apart from one.
+    let removed = send(
         router,
         Method::GET,
         &format!("{workspace}/preferences"),
@@ -51,10 +53,10 @@ async fn exercise_preferences(router: &axum::Router, token: &str, workspace: &st
         "",
     )
     .await;
-    assert_eq!(empty.status(), StatusCode::OK);
     assert_eq!(
-        json_body(empty).await.get("prefs"),
-        Some(&serde_json::json!({}))
+        removed.status(),
+        StatusCode::NOT_FOUND,
+        "the preferences collection is not served"
     );
 
     let written = send(

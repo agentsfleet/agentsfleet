@@ -11,7 +11,7 @@ use afd_auth::directory::Digest;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
@@ -157,43 +157,47 @@ impl Fixture {
              ), workspace AS ( \
                INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
                VALUES ($2::uuid, $1::uuid, 'stream', $3, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1) \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($6::uuid, $2::uuid, $1::uuid, 'streamed', '# fixture', '{}', \
-                     'active', 1, 1)",
+             INSERT INTO core.api_keys \
+               (id, tenant_id, key_name, description, key_hash, created_by, active, \
+                revoked_at, created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(SUBJECT)
         .bind(&self.key)
         .bind(digest.as_str())
-        .bind(&self.fleet)
         .execute(&mut *connection)
         .await
-        .expect("the authenticated workspace and fleet seed");
+        .expect("the authenticated workspace seeds");
+        FleetSeed::new(
+            &self.fleet,
+            self.workspace.as_str(),
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
+        )
+        .name("streamed")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("the live fleet seeds");
     }
 
     pub(crate) async fn seed_second_fleet(&self) -> String {
         let fleet = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'streamed-second', '# fixture', '{}', \
-                     'active', 2, 2)",
+        FleetSeed::new(
+            &fleet,
+            self.workspace.as_str(),
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
         )
-        .bind(&fleet)
-        .bind(self.workspace.as_str())
-        .bind(&self.tenant)
-        .execute(&mut *connection)
+        .name("streamed-second")
+        .at(2)
+        .native_setup()
+        .insert(&mut *connection)
         .await
         .expect("the second live fleet seeds");
         fleet

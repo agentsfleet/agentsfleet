@@ -57,6 +57,16 @@ pub struct FleetOnly {
     pub fleet_id: String,
 }
 
+/// One webhook source of a fleet addressed without its workspace.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct FleetSource {
+    /// `UUIDv7` of the fleet.
+    pub fleet_id: String,
+    /// The `source` of the fleet's webhook trigger, such as `linear`.
+    pub source: String,
+}
+
 /// One third-party provider.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
@@ -233,10 +243,44 @@ pub struct GateDecision {
     pub decision: String,
 }
 
-/// One bundle, addressed by the hash of its content.
+/// One creator-private draft inside one workspace.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Bundle {
-    /// Content hash of the bundle.
-    pub content_hash: String,
+pub struct Draft {
+    /// `UUIDv7` of the workspace.
+    pub workspace_id: String,
+    /// `UUIDv7` of the draft.
+    pub draft_id: String,
+}
+
+/// One Library entry a workspace can see.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct Library {
+    /// `UUIDv7` of the workspace.
+    pub workspace_id: String,
+    /// Opaque Library identifier: a platform slug or an owned `UUIDv7`.
+    pub library_id: String,
+}
+
+/// One immutable revision of a Library entry.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct LibraryRevision {
+    /// `UUIDv7` of the workspace.
+    pub workspace_id: String,
+    /// Opaque Library identifier: a platform slug or an owned `UUIDv7`.
+    pub library_id: String,
+    /// `UUIDv7` of the revision.
+    pub revision_id: String,
+}
+
+/// One platform Library entry, addressed by its stable slug.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct PlatformLibrary {
+    /// Stable platform slug. The bound is the one `afd_authoring` enforces on
+    /// it with garde, published so a client learns it before the 400.
+    #[param(min_length = 1, max_length = 128)]
+    pub id: String,
 }

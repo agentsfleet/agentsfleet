@@ -1,8 +1,9 @@
+import { executionInstructions, WEBHOOK_EVENT_WORKFLOW_RUN, fixtureDefinition, webhookConfig } from "./fixtures/definition";
 /**
  * fleet-webhook-delivery.spec.ts — one signed GitHub delivery wakes a fleet
  * exactly once, and its exact replay wakes nothing.
  *
- * Wire: a fleet whose TRIGGER.md declares a GitHub `workflow_run` webhook and
+ * Wire: a fleet whose runtime config declares a GitHub `workflow_run` webhook and
  * names a workspace secret → that secret is stored → a captured GitHub
  * delivery is signed with it and posted to the fleet's webhook route → the
  * daemon accepts it and names the event → the identical bytes are posted
@@ -22,7 +23,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import type { EventsPage } from "@/lib/api/events";
-import { SOURCE_KIND_UPLOAD } from "@/lib/types";
+
+import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
@@ -31,13 +33,7 @@ import {
   EVENT_STATUS,
   failWith,
 } from "./fixtures/execution";
-import {
-  executionSkillMd,
-  getDefaultWorkspaceId,
-  WEBHOOK_EVENT_WORKFLOW_RUN,
-  waitForFleetActive,
-  webhookTriggerMd,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 // The library converges on one row per body; the fleet is named per run.
@@ -46,12 +42,10 @@ const FLEET_PREFIX = "fleet-webhook-";
 // The workspace secret the trigger names. Not `github`: that name is the
 // GitHub CONNECTION's handle, and a fleet secret must never shadow it.
 //
-// CONSTANT, and deliberately. The name goes into `trigger_markdown`, so a
-// per-run name changed the bundle's BYTES and the library minted a fresh row
-// every run — the accumulation `install-ui.ts` records reaching a hundred
-// rows and pushing the platform catalogue off its first page. Secrets upsert
-// by name, so rotating only the VALUE still gives each run a secret no stale
-// row can verify against, while the bundle stays byte-identical.
+// CONSTANT, and deliberately. The name goes into the fleet's runtime config,
+// so a per-run name would give every run a different setup to review. Secrets
+// upsert by name, so rotating only the VALUE still gives each run a secret no
+// stale fleet can verify against, while the setup stays byte-identical.
 const CREDENTIAL_NAME = "acceptance-webhook-secret";
 const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
@@ -90,23 +84,9 @@ const REPLAY_GRACE_POLLS = 5;
 const REPLAY_GRACE_MS = POLL_INTERVAL_MS * REPLAY_GRACE_POLLS;
 const JOURNEY_TIMEOUT_MS = 240_000;
 
-interface OnboardTemplateResp {
-  id: string;
-}
-
-interface CreateFleetResp {
-  fleet_id: string;
-}
-
 interface Accepted {
   event_id: string;
   replayed: boolean;
-}
-
-function apiBase(): string {
-  const url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url) throw new Error("NEXT_PUBLIC_API_URL must be set");
-  return url;
 }
 
 function sign(secret: string, body: Uint8Array): string {
@@ -116,8 +96,8 @@ function sign(secret: string, body: Uint8Array): string {
 
 // The webhook route is unauthenticated by design — GitHub holds no bearer —
 // so this is a plain fetch, not the fixture client.
-async function deliver(fleetId: string, body: Uint8Array, secret: string, delivery: string) {
-  const response = await fetch(`${apiBase()}/v1/webhooks/${fleetId}/github`, {
+async function deliver(webhookUrl: string, body: Uint8Array, secret: string, delivery: string) {
+  const response = await fetch(webhookUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -140,32 +120,24 @@ async function webhookEvents(workspaceId: string, fleetId: string) {
   return page.items.filter((item) => item.event_type === EVENT_TYPE_WEBHOOK);
 }
 
-/** The secret, the library row and the fleet a delivery needs to land on. */
+/** The workspace signing secret and saved fleet a delivery needs. */
 async function arrangeWebhookFleet(workspaceId: string, tag: string) {
   const tenant = clientFor(FIXTURE_KEY.regular);
   // The VALUE is random per run, so a stale row from an interrupted run can
   // never verify this run's delivery; the NAME is not, because it rides the
-  // bundle bytes — see CREDENTIAL_NAME.
+  // saved setup — see CREDENTIAL_NAME.
   const secret = crypto.randomBytes(24).toString("hex");
   await tenant.post(`/v1/workspaces/${workspaceId}/secrets`, {
     name: CREDENTIAL_NAME,
     data: { [WEBHOOK_SECRET_FIELD]: secret },
   });
 
-  const library = await tenant.post<OnboardTemplateResp>(
-    `/v1/workspaces/${workspaceId}/fleet-libraries`,
-    {
-      source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: executionSkillMd(WEBHOOK_TEMPLATE),
-      trigger_markdown: webhookTriggerMd(WEBHOOK_TEMPLATE, CREDENTIAL_NAME),
-    },
-  );
-  const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${workspaceId}/fleets`, {
-    tenant_library_id: library.id,
-    name: `${FLEET_PREFIX}${tag}`,
-  });
-  await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.fleet_id);
-  return { fleetId: fleet.fleet_id, secret };
+  const fleet = await saveFixtureFleet(FIXTURE_KEY.regular, workspaceId,
+    fixtureDefinition(WEBHOOK_TEMPLATE, executionInstructions(), webhookConfig(WEBHOOK_TEMPLATE, CREDENTIAL_NAME)), `${FLEET_PREFIX}${tag}`);
+  await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+  const webhook = fleet.webhook_urls.find((entry) => entry.source === "github");
+  if (!webhook) throw new Error("Save reply did not include the GitHub webhook URL");
+  return { fleetId: fleet.id, webhookUrl: webhook.url, secret };
 }
 
 /**
@@ -219,18 +191,18 @@ test.describe("fleet webhook delivery", () => {
 
     const tag = crypto.randomUUID().slice(0, 8);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const { fleetId, secret } = await arrangeWebhookFleet(workspaceId, tag);
+    const { fleetId, webhookUrl, secret } = await arrangeWebhookFleet(workspaceId, tag);
 
     // ── One delivery, accepted and named ──
     const body = new Uint8Array(fs.readFileSync(CAPTURED_DELIVERY));
     const delivery = crypto.randomUUID();
-    const first = await deliver(fleetId, body, secret, delivery);
+    const first = await deliver(webhookUrl, body, secret, delivery);
     expect(first.status, JSON.stringify(first.body)).toBe(HTTP_ACCEPTED);
     expect(first.body.replayed).toBe(false);
     expect(first.body.event_id.length).toBeGreaterThan(0);
 
     // ── The exact replay, reported as one and naming the same event ──
-    const replay = await deliver(fleetId, body, secret, delivery);
+    const replay = await deliver(webhookUrl, body, secret, delivery);
     expect(replay.status, JSON.stringify(replay.body)).toBe(HTTP_ACCEPTED);
     expect(replay.body.replayed).toBe(true);
     expect(replay.body.event_id).toBe(first.body.event_id);

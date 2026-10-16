@@ -93,7 +93,7 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
             nth: 10,
             event,
             provider: UNKNOWN_CONNECTOR,
-            destination: Some(DESTINATION),
+            destination: DESTINATION,
             receipt: None,
             answer: ANSWER,
         },

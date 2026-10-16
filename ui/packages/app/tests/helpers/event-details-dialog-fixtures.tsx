@@ -7,18 +7,6 @@ import { EventDetailsDialog } from "@/components/domain/EventDetailsDialog";
 import type { EventDetail } from "@/lib/api/events";
 import { serveDetail } from "./event-details-dialog-served";
 
-export const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
-
-export function stubClipboardWriteText() {
-  if (!navigator.clipboard) {
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: async () => {} },
-      configurable: true,
-    });
-  }
-  return vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-}
-
 export function event(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
@@ -30,12 +18,12 @@ export function event(over: Partial<EventDetail> = {}): EventDetail {
     status: "fleet_error",
     request_json: "{}",
     response_text: null,
+    tool_calls: null,
     tokens: 1,
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,
     updated_at: now,

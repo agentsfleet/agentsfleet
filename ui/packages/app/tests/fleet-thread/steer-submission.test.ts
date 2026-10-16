@@ -8,7 +8,6 @@ import React from "react";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { ACTOR } from "@/lib/events/event-summary";
 import type { AppendMessage } from "@assistant-ui/react";
-import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
 import { MintUnavailable } from "@/lib/streaming/operation-id";
 
@@ -69,8 +68,6 @@ describe("FleetThread — steer submission", () => {
   });
 
   it("posts the steer under a named operation and reconciles the optimistic message on ok", async () => {
-    const refreshed = vi.fn();
-    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
     const discardOptimistic = vi.fn();
@@ -86,10 +83,8 @@ describe("FleetThread — steer submission", () => {
     expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", ACTOR.PENDING_STEER, `${ACTOR.STEER_PREFIX}${SUBJECT}`);
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42", false);
     expect(discardOptimistic).not.toHaveBeenCalled();
-    expect(refreshed).toHaveBeenCalledTimes(1);
     // Acknowledged: nothing is left to recover.
     expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
-    unsubscribe();
   });
 
   it("test_send_with_no_known_account_names_no_sender", async () => {

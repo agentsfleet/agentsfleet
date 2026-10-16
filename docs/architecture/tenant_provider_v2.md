@@ -10,7 +10,7 @@ workaround the port carries cites this file as its expiry date.
 ## The principle
 
 The activation transaction runs three statements inside `BEGIN`/`COMMIT`, one
-explicit row lock and one decrypt (`rustd/crates/afd_credential/src/provider/activate.rs`):
+explicit row lock and one decrypt (`rustd/crates/afd_credential/src/provider/activate/mod.rs`):
 lock and read the credential, insert the registry entry, then gate and write the
 selection. That is the FLOOR for the current schema — each remaining step
 compensates for a named piece of schema debt. Query tuning below that floor is polishing the
@@ -106,5 +106,5 @@ V2-1 first: it deletes shared machinery both later steps would otherwise have
 to respect. Then V2-2, then V2-3. Each is independently shippable; all three
 are single-writer migrations (see §V2-1). Until they land, `agentsfleetd`
 carries the treaty as-is, and every such site carries a comment naming the
-section here that deletes it (`afd_credential/src/provider/activate.rs`,
+section here that deletes it (`afd_credential/src/provider/activate/mod.rs`,
 `afd_credential/src/provider/sql.rs`).

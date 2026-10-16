@@ -10,7 +10,7 @@
 //! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
 //! crosses the same three stores in the same order the daemon crosses them.
 //!
-//! # What this suite is for, and what `webhook_fleet_route.rs` keeps
+//! # What this suite is for, and what `webhook_fleet_route/mod.rs` keeps
 //!
 //! The route's policy — which events a trigger admits, what a paused fleet is
 //! answered, which actor a wake records — is proven with no datastore and stays
@@ -30,7 +30,9 @@ use crate::harness;
 #[path = "ingress_live/fixture.rs"]
 mod fixture;
 
-use self::fixture::{CREDENTIAL, Fixture, Runnable, SIGNING_SECRET, SOURCE, Secret, WRONG_SECRET};
+use self::fixture::{
+    CREDENTIAL, Fixture, Runnable, SECOND_SOURCE, SIGNING_SECRET, SOURCE, Secret, WRONG_SECRET,
+};
 use self::harness::webhook as signed;
 use self::harness::{json_body, send_with_headers};
 use afd_core::error_code;
@@ -133,6 +135,55 @@ async fn the_same_delivery_arriving_twice_is_claimed_once() {
         document.get("replayed").and_then(Value::as_bool),
         Some(true),
         "the sender's retry of one delivery must not wake the fleet twice: {document}"
+    );
+
+    fixture.cleanup().await;
+}
+
+/// `RUN_FAILURE`, signed for `source`'s scheme, to that source's own route.
+async fn deliver_to(
+    router: &axum::Router,
+    fleet: &afd_core::id::Uuid7,
+    source: &str,
+) -> (StatusCode, Value) {
+    let scheme = Scheme::for_source(source).expect("a source with a shipped scheme");
+    let proof = signed::signature(scheme, SIGNING_SECRET, RUN_FAILURE.as_bytes());
+    let headers = vec![
+        (signed::name(scheme.signature_header()), proof.as_str()),
+        (signed::name(signed::HEADER_EVENT), EVENT_WORKFLOW_RUN),
+    ];
+    let path = format!("/v1/webhooks/{fleet}/{source}");
+    let answer = send_with_headers(router, Method::POST, &path, None, RUN_FAILURE, &headers).await;
+    let status = answer.status();
+    (status, json_body(answer).await)
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn identical_bytes_to_two_sources_are_two_events_and_a_retry_is_one() {
+    // The per-source routes key a delivery by its body's hash, so the repeat
+    // key must carry the source: the same bytes from two configured sources
+    // are two events, and the same bytes twice to one source are one.
+    let fixture = Fixture::create().await;
+    fixture.seed(Runnable::Active, Secret::Stored).await;
+    let router = fixture.router();
+    let replayed = |document: &Value| document.get("replayed").and_then(Value::as_bool);
+
+    for source in [SOURCE, SECOND_SOURCE] {
+        let (status, document) = deliver_to(&router, &fixture.fleet, source).await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{source}: {document}");
+        assert_eq!(
+            replayed(&document),
+            Some(false),
+            "{source} is its own event: {document}"
+        );
+    }
+    let (status, document) = deliver_to(&router, &fixture.fleet, SECOND_SOURCE).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{document}");
+    assert_eq!(
+        replayed(&document),
+        Some(true),
+        "a retry to one source is a repeat: {document}"
     );
 
     fixture.cleanup().await;

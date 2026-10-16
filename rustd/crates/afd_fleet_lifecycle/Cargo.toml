@@ -2,7 +2,7 @@
 name = "afd_fleet_lifecycle"
 # One aggregated test binary; see tests/lifecycle_suite.rs for why.
 autotests = false
-description = "A workspace's fleets: install, read, edit, purge — the lifecycle around the runtime."
+description = "A workspace's fleets as one shared store: list, live set, counters, purge."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,47 +21,24 @@ workspace = true
 # other: telemetry knows nothing about fleets, and a readiness mark this crate
 # could not write is a fact only this crate holds.
 afd_observability.workspace = true
-# The only writer of `core.integration_grants`: an install asks through it for
-# every mintable credential the bundle declares, rather than inserting a row the
-# approval resolve would have to trust.
-afd_approval.workspace = true
-# Which declared credentials must be MINTED rather than shipped stored — the
-# classifier the lease path already runs, so an install and a delivery agree
-# about what needs a grant.
-afd_credential.workspace = true
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
-# The retry LOOP around the install's stream setup — the counter and the
-# terminal rule, the part a hand-rolled loop gets wrong. The delays stay
-# `afd_dragonfly::Backoff`.
-backon.workspace = true
 afd_core.workspace = true
-# Entropy for the fleet identifiers the install mints.
-afd_crypto.workspace = true
-# The Postgres pool every statement here runs on.
+# The Postgres pool every statement here runs on, and its one database clock.
 afd_db.workspace = true
-# The workspace's credential names, read before an install writes a row: a
-# bundle declaring a secret nobody stored installs a fleet that cannot run.
-afd_vault.workspace = true
-# The per-fleet event stream and its consumer group. The install's whole
-# guarantee is that both exist before the 201, so this is not an optional edge:
-# it is the reason this crate is not a pure Postgres store.
+# Composes that clock into the purge's tombstone statement at compile time.
+const_format.workspace = true
+# The per-fleet event stream and readiness mark a purge forgets after the row.
 afd_dragonfly.workspace = true
-# `SKILL.md` and `TRIGGER.md` are parsed at the write boundary — an install and
-# a config PATCH both store the JSON this produces, and neither may store a
-# document the lease path could not read back.
-afd_fleet_runtime.workspace = true
-# The gate status spelling the detail read counts pending approvals under —
-# read from the wire vocabulary, never restated here (RULE UFS).
+# The counter snapshot the live wall's `hello` carries.
 afd_api_wire.workspace = true
+afd_wire.workspace = true
 # One fleet enumeration per workspace per tick, shared by every live stream
 # watching it — and `get`/`insert` coalesce the misses a cadence produces.
 moka.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-# The authored placement-tag bounds, declared on the tags they bound.
-garde.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
@@ -74,15 +51,13 @@ test-util = [
 
 [dev-dependencies]
 # The integration lane drives a real Postgres and a real Redis, so it needs a
-# runtime with threads under it — the concurrent-write race is worthless on a
-# single-threaded one, because the interleaving it exists to force cannot happen.
+# runtime with threads under it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-# The fixture reaches Redis directly to seed and inspect keys the store owns.
-redis = { workspace = true }
-# The fixture seals a real credential handle, which is JSON: the install
-# classifies a declared credential by opening one, so a lane that could not
-# write one could not prove the grant request at all.
-serde_json.workspace = true
+# The fixture mints the identifiers its rows carry.
+afd_crypto.workspace = true
+# The lane fixture and the fleet seed its rows go in through. A dev-dependency
+# feature only.
+afd_db = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "lifecycle_suite"

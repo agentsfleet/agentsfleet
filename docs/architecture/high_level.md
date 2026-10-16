@@ -11,7 +11,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Claim | Value | Owner section |
 |---|---|---|
 | The product | a durable runtime for one operational outcome — shipped as AI agents that wake on production events | §1 |
-| The pillars | open source · self-managed provider keys · markdown-defined | §1 |
+| The pillars | open source · self-managed provider keys · chat-authored | §1 |
 | Deployment | hosted-only in v2; self-host deferred to v3 | §1 |
 | The wedge | `platform-ops`: GitHub Actions deploy-failure responder + manual operator steer | §1, §2 |
 | The minimum viable product (MVP) promise | "Operational outcomes do not fall into limbo" | §4 |
@@ -59,11 +59,11 @@ Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
 - **Self-managed provider keys.** Operators can bring their own large-language-model provider key; new tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
-- **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
+- **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet; explicit Library publication makes a revision reusable.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean Linux host outside Fly.io is a v3 workstream.
 
-The `agentsfleet` command-line interface (CLI) plus the first-party Fleet library ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
+The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, plus the Library ([`user_flow.md`](./user_flow.md) §8.0) are what make the v2 pillars reachable from a cold start.
 
 ### The first problem we solve
 
@@ -131,9 +131,9 @@ Typed automation solves repetitive known paths well, but it is weak when:
 
 - the evidence needed changes by incident
 - the next step depends on interpretation, not a fixed branch
-- the operator wants to iterate behavior by editing prompts and trigger docs instead of rewriting typed control flow
+- the operator wants to iterate behavior by changing instructions and policy in chat instead of rewriting typed control flow
 
-v2 should keep a minimal typed envelope for safety, durability, auth, approvals, and idempotency. The operational behavior itself should stay primarily natural-language-driven through `SKILL.md`, `TRIGGER.md`, and the consumer's own operating instructions.
+v2 should keep a minimal typed envelope for safety, durability, auth, approvals, and idempotency. The operational behavior itself should stay primarily natural-language-driven through each fleet's reviewed instructions and the consumer's own operating instructions.
 
 ### Why this is not automatically a good business
 
@@ -186,10 +186,10 @@ Primary job:
 Trigger modes:
 
 - **Webhook.** GitHub Actions posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`), which wakes only fleets subscribed to that repository and event ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). An App delivery lands as `actor=github-app`; the manual fleet-addressed route lands as `actor=webhook:github`.
-- **Cron.** A periodic production health check, stored by `agentsfleet` and synchronously registered with Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
+- **Cron.** A periodic production health check, stored by `agentsfleet` and mirrored to Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
-All three flow through the same reasoning loop. The fleet does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
+All three flow through the same reasoning loop. The fleet does not branch on actor type — its instructions describe the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
@@ -207,13 +207,13 @@ The MVP ships an internal-only diagnosis posted to the operator's Slack. The lon
 
 Structural changes from MVP to bastion:
 
-1. **Per-fleet audience routing** — `TRIGGER.md` / `x-agentsfleet:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
+1. **Per-fleet audience routing** — the setup's `config` (`x-agentsfleet`) gains `audiences: [internal_slack, customer_status, customer_email]`; the instructions draft per-audience summaries from the same evidence.
 2. **Status-page rendering surface** — a hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
 3. **Broadcast channels** — the fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
-4. **Approval gating per audience** — `SKILL.md` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
+4. **Approval gating per audience** — the setup's `gates` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
 5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.fleet_events` retention becomes per-actor configurable.
 
-What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is a `SKILL.md` authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
+What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is an instructions authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
 
 ### 6.2 Slack Rung 1 — hired durable agents
 
@@ -221,7 +221,7 @@ Where the human front door points after the CLI/dashboard wedge. M206 built the 
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
-- **Rung 1 — hired durable agents (follow-on).** From the same Slack surface, a recurring need converts into a durable agent that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
+- **Rung 1 — hired durable agents (follow-on).** From the same Slack surface, a recurring need converts into a durable agent that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds Save from a pinned Library revision + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 
 ### 6.3 Security Reviewer — a prebuilt fleet
 
@@ -234,3 +234,9 @@ A customer-facing prebuilt fleet whose job is **security testing on the customer
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
 - **Fleet keys as a first-class principal** — deferred to v2.1.
+
+## Fleet authoring and runtime
+
+The same fleet lifecycle begins with privately authored setup. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Library publication creates a reusable immutable revision. Authoring has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
+
+The common architecture pages own this sequence: [fleet_definitions.md](fleet_definitions.md#validated-definition) owns setup and revisions; [data_flow.md](data_flow.md#fleet-setup-and-runtime-sequence) owns activation/admission/recovery; [runner_fleet.md](runner_fleet.md#authoring-leases) owns leasing and scoped dispatch; [runner_execution.md](runner_execution.md#private-content-and-report-retention) owns private copies; [billing_and_provider_keys.md](billing_and_provider_keys.md#authoring-admission-and-settlement) owns money; [web_app.md](web_app.md#workspace-setup-and-runtime-subjects) owns the interface. [API resources](api_resources.md) specifies wire shapes. Active implementation and acceptance proofs remain pending in the owning spec.

@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   Button,
   ConfirmDialog,
-  DataTable,
   type DataTableColumn,
   Section,
   SectionHeader,
@@ -12,7 +11,6 @@ import {
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
 import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
-import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
@@ -32,8 +30,8 @@ import {
   ProviderCell,
   type RegistryRow,
   StatusCell,
-  rowKey,
 } from "./ModelsRegistryCells";
+import { ModelsRegistryView } from "./ModelsRegistryView";
 import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
 
 type Props = {
@@ -49,6 +47,7 @@ const REMOVE_ACTION = "remove this model entry";
 
 export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
   const [pending, startTransition] = useTransition();
+  const readGeneration = useRef(0);
   const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
   // The secret list is NOT preloaded — the Add dialog loads it on open and
   // fails closed until it lands; the hook's docstring carries the why.
@@ -73,22 +72,11 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   const [removeTarget, setRemoveTarget] = useState<TenantModelEntry | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // The public model library — a FALLBACK for the Context column's rates line,
-  // used only where the server did not price a row (`identity.rate ?? …`). It
-  // is no longer fetched on mount, so on an ordinary visit this is empty and
-  // rows render their own server-provided rates. `preloadCatalogue` warms it on
-  // intent to open a dialog whose picker genuinely needs it.
+  // The catalogue warms on dialog intent; rows already carry their own rates.
   const { models: libraryModels, status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
-  // The platform default is live only when it BOTH wins resolution (no active
-  // tenant entry) and actually exists. Testing only the first half painted a
-  // green "Active" badge on a default that was never configured — and because
-  // ActionsCell short-circuits on a live default, it also suppressed the "No
-  // default is configured" warning that would have said so. A fresh tenant on a
-  // fresh install hits exactly that: core.model_library ships empty, so no
-  // platform default can exist yet, and the first fleet run fails
-  // PlatformKeyMissing while the UI reads healthy.
+  // An absent default must never be presented as active.
   const isDefaultLive = !hasActiveEntry && platformDefaultAvailable;
   // Hide the locked platform row outright when it is neither in effect nor
   // configurable-from-here: a self-managed tenant with no platform default was
@@ -115,6 +103,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   // replacement actually arrives. A failed refresh leaves what is on screen
   // alone and surfaces the fault — it must never fall back to empty.
   function refresh() {
+    const generation = ++readGeneration.current;
     startTransition(async () => {
       // try/catch because the action ROUND-TRIP itself can reject (network
       // failure, deploy skew) — `withToken` only catches server-side. An
@@ -122,6 +111,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
       // with no error boundary.
       try {
         const r = await listModelEntriesAction();
+        if (generation !== readGeneration.current) return;
         if (!r.ok) {
           setReadError(readErrorFrom(r));
           return;
@@ -133,6 +123,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         setNextCursor(r.data.next_cursor);
         setTotal(r.data.total);
       } catch (cause) {
+        if (generation !== readGeneration.current) return;
         setReadError({
           kind: LIBRARY_ERROR_KIND.unknown,
           detail: cause instanceof Error ? cause.message : undefined,
@@ -141,36 +132,23 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     });
   }
 
-  // Append the next page, retaining every row already loaded. Exactly one
-  // request per invocation — the walk this replaced issued as many as the
-  // registry had pages, on every ordinary visit.
-  //
-  // Takes the cursor rather than reading `nextCursor` behind a null guard: the
-  // control that calls this only renders when a next page exists, so the guard
-  // could never fire and the type now carries that invariant instead.
-  function loadMore(cursor: string) {
-    startTransition(async () => {
+  function loadMore(cursor: string): Promise<boolean> {
+    const generation = readGeneration.current;
+    return new Promise((resolve) => startTransition(async () => {
       try {
-        const r = await listModelEntriesAction(cursor);
-        if (!r.ok) {
-          setReadError(readErrorFrom(r));
-          return;
-        }
+        const result = await listModelEntriesAction(cursor);
+        if (generation !== readGeneration.current) { resolve(false); return; }
+        if (!result.ok) { setReadError(readErrorFrom(result)); resolve(false); return; }
         setReadError(null);
-        setEntries((prior) => [...prior, ...r.data.models]);
-        // A cursor that does not advance means the server is re-serving the
-        // same page; appending it forever would duplicate every row. The
-        // exhaustive walk this replaced threw on exactly this defect —
-        // treat it as terminal instead.
-        setNextCursor(r.data.next_cursor === cursor ? null : r.data.next_cursor);
-        setTotal(r.data.total);
-      } catch (cause) {
-        setReadError({
-          kind: LIBRARY_ERROR_KIND.unknown,
-          detail: cause instanceof Error ? cause.message : undefined,
-        });
+        setEntries((prior) => [...new Map([...prior, ...result.data.models].map((entry) => [entry.id, entry])).values()]);
+        setNextCursor(result.data.next_cursor === cursor ? null : result.data.next_cursor);
+        setTotal(result.data.total);
+        resolve(true);
+      } catch {
+        if (generation === readGeneration.current) setReadError({kind: LIBRARY_ERROR_KIND.unknown});
+        resolve(false);
       }
-    });
+    }));
   }
 
   // Only wired to the "Use default" button, which is disabled whenever
@@ -205,7 +183,6 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         return;
       }
       captureModelActivated(r.data);
-      requestOnboardingRefresh(workspaceId);
       refresh();
     });
   }
@@ -232,7 +209,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
 
   const columns: DataTableColumn<RegistryRow>[] = [
     { key: "provider", header: "Provider", sortable: true, cell: (row) => <ProviderCell row={row} platformDefault={platformDefault} /> },
-    { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
+    { key: "model", primary: true, header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     {
       key: "context",
       header: CONTEXT_HEADER,
@@ -296,37 +273,16 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
             />
           }
         >
-          Model registry
+          Available models
         </SectionHeader>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={rowKey}
-          caption="Models"
-          sortKey={sort?.key}
-          sortDirection={sort?.dir}
-          onSortChange={onSortChange}
-        />
+        <ModelsRegistryView columns={columns} rows={rows} platformDefault={platformDefault} sort={sort}
+          onSortChange={onSortChange} pending={pending}
+          onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />
 
-        {/*
-          Invariant 5. The walk this replaced guaranteed every row was present;
-          paging cannot, so what is NOT loaded is stated rather than left to be
-          inferred from whether a button happens to be rendered. With no total
-          the remainder cannot be named, but its existence still is.
-        */}
-        {nextCursor !== null ? (
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={() => loadMore(nextCursor)} disabled={pending}>
-              {pending ? "Loading…" : "Load more"}
-            </Button>
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {total !== null
-                ? `Showing ${entries.length} of ${total} models`
-                : `Showing ${entries.length} models — more available`}
-            </p>
-          </div>
-        ) : null}
+        {nextCursor !== null ? <p className="text-body-sm text-muted-foreground" aria-live="polite">
+          {total !== null ? `Showing ${entries.length} of ${total} models` : `Showing ${entries.length} models — more available`}
+        </p> : null}
 
         {/*
           A failed READ is not an empty registry. This renders alongside any

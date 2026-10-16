@@ -65,9 +65,9 @@ fn runtime_config() -> String {
     serde_json::json!({
         "name": "bench",
         "x-agentsfleet": {
-            "triggers": [{ "type": "api" }],
+            "triggers": [],
             "tools": [],
-            "budget": { "daily_dollars": 1.0 },
+            "budget": { "daily_nanos": afd_core::money::NANOS_PER_USD.to_string() },
         },
     })
     .to_string()

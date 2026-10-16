@@ -139,6 +139,7 @@ function applyChunk(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>,
 ): FleetEvent[] {
+  if (!["answer", "reasoning"].includes(frame.text_kind) || typeof frame.text !== "string") return prev;
   // Locate once and copy once, matching `applyToolStep` — a streaming reply
   // fires this per chunk, so a second full pass per frame is pure waste.
   const index = prev.findIndex((e) => e.id === frame.event_id);
@@ -241,7 +242,6 @@ function openFromCompletion(
     wall_ms: figure(frame.wall_ms),
     failure_label: text(frame.failure_label) || null,
     failure_detail: text(frame.failure_detail) || null,
-    checkpoint_id: typeof frame.checkpoint_id === "string" ? frame.checkpoint_id : null,
     resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
     created_at: createdAt,
     updated_at: figure(frame.updated_at) ?? createdAt,
@@ -262,7 +262,7 @@ export function mergeBackfill(
   // id for its STATUS and figures — an event that straddled an outage may sit
   // here as a partial chunk accumulation, and the durable row is the settled
   // one. It is NOT authoritative for the bodies: the events LIST carries
-  // none (`afd_events` history/statement.rs asserts the select omits
+  // none (`afd_events` history/statement/mod.rs asserts the select omits
   // `response_text`, and it omits `request_json` too), so taking the row
   // wholesale would blank a message the operator has already read. The live
   // text is kept for the same reason; the calls follow `settleTools`.

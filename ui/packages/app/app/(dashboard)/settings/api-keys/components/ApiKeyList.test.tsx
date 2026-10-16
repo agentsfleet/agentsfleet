@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
 // The list's server-action module pulls the network client (server-only). The
@@ -16,7 +16,6 @@ import ApiKeyList from "./ApiKeyList";
 import type { ApiKeyListResponse, ApiKeyRow } from "@/lib/api/api_keys";
 
 const CREATED_AT = Date.UTC(2026, 0, 2, 3, 4, 5); // 2026-01-02T03:04:05.000Z
-const LAST_USED_AT = Date.UTC(2026, 0, 3, 6, 7, 8);
 
 function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
   const item: ApiKeyRow = {
@@ -24,7 +23,6 @@ function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
     key_name: "ci-token",
     active: true,
     created_at: CREATED_AT,
-    last_used_at: LAST_USED_AT,
     revoked_at: null,
     ...row,
   };
@@ -43,24 +41,27 @@ function renderList(response: ApiKeyListResponse) {
 afterEach(() => cleanup());
 
 describe("ApiKeyList timestamps", () => {
-  it("renders created and last-used as <time> elements carrying ISO datetimes", () => {
-    const { container } = renderList(makeResponse());
-
-    // Row renders <time> elements for created + last-used, each carrying the
-    // canonical ISO datetime attribute from the epoch-ms field.
-    const times = Array.from(container.querySelectorAll("time"));
-    const isos = times.map((t) => t.getAttribute("dateTime"));
-    expect(isos).toContain(new Date(CREATED_AT).toISOString());
-    expect(isos).toContain(new Date(LAST_USED_AT).toISOString());
+  it("shows only the available created and revoked instants", () => {
+    const revoked = Date.UTC(2026, 0, 3, 6, 7, 8);
+    const {container} = renderList(makeResponse({active: false, revoked_at: revoked}));
+    const times = Array.from(container.querySelectorAll("time")).map((node) => node.getAttribute("dateTime"));
+    expect(times).toContain(new Date(CREATED_AT).toISOString());
+    expect(times).toContain(new Date(revoked).toISOString());
+    expect(container.textContent).not.toMatch(/last used|never used/i);
   });
-
-  it("renders no Time for a null last_used_at (guard preserved)", () => {
-    const { container } = renderList(makeResponse({ last_used_at: null }));
-    const isos = Array.from(container.querySelectorAll("time")).map((t) =>
-      t.getAttribute("dateTime"),
-    );
-    // Desktop and mobile each render the created timestamp; CSS selects one.
-    expect(isos).toEqual([new Date(CREATED_AT).toISOString(), new Date(CREATED_AT).toISOString()]);
-    expect(container.textContent).toContain("never used");
+  it("shows created time alone for an active key", () => {
+    const {container} = renderList(makeResponse());
+    expect(Array.from(container.querySelectorAll("time")).map((node) => node.getAttribute("dateTime")))
+      .toEqual([new Date(CREATED_AT).toISOString(), new Date(CREATED_AT).toISOString()]);
+    expect(container.textContent).not.toMatch(/last used|never used/i);
   });
+});
+
+it("filters and restores loaded API keys without a server reload", async () => {
+  renderList(makeResponse());
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search API keys"}), {target: {value: "missing"}});
+  await screen.findByText("No matching keys");
+  expect(screen.queryByRole("button", {name: "Revoke API key ci-token"})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
+  await waitFor(() => expect(screen.getByRole("button", {name: "Revoke API key ci-token"})).toBeTruthy());
 });

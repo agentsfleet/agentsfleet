@@ -1,7 +1,7 @@
 //! The HTTP device-flow login seam: opening, approving and redeeming one sign-in.
 
 use afd_core::clock::UnixMillis;
-use afd_tenant::session::{Cancelled, Fingerprint, Opened, Redeemed, Waiting, input};
+use afd_tenant::session::{Fingerprint, Opened, Redeemed, Waiting, input};
 
 /// Opening, approving and redeeming one command-line login.
 ///
@@ -54,17 +54,6 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send;
 
-    /// Cancels one login held by `owner`.
-    ///
-    /// # Errors
-    /// Refuses an id naming nothing held, a foreign session, and one already
-    /// redeemed; reports a queue that would not answer.
-    fn cancel(
-        &self,
-        session_id: &str,
-        owner: &str,
-    ) -> impl Future<Output = afd_tenant::Result<Cancelled>> + Send;
-
     /// Cancels every in-flight login `owner` holds, answering their ids.
     ///
     /// # Errors
@@ -110,14 +99,6 @@ impl DeviceFlow for afd_tenant::session::Sessions {
         now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send {
         Self::verify(self, session_id, code, fingerprint, now)
-    }
-
-    fn cancel(
-        &self,
-        session_id: &str,
-        owner: &str,
-    ) -> impl Future<Output = afd_tenant::Result<Cancelled>> + Send {
-        Self::cancel(self, session_id, owner)
     }
 
     fn cancel_all(

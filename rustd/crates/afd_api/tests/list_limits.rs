@@ -86,7 +86,6 @@ fn every_list_route() -> Vec<ListRoute> {
         ListRoute::new(format!("{workspace}/approvals"), 200, INVALID_REQUEST),
         ListRoute::new("/v1/models".to_owned(), 100, LIBRARY_BOUNDS),
         ListRoute::new(format!("{workspace}/fleet-libraries"), 100, LIBRARY_BOUNDS),
-        ListRoute::new(format!("{workspace}/library-entries"), 100, LIBRARY_BOUNDS),
         ListRoute::new("/v1/tenants/me/models".to_owned(), 100, LIBRARY_BOUNDS),
         ListRoute::new(
             "/v1/tenants/me/billing/charges".to_owned(),

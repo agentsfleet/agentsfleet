@@ -15,11 +15,10 @@
 //!
 //! The identity columns are UUID, not TEXT, and the `::text` casts are
 //! load-bearing: a driver reading a UUID column as text without one hands back
-//! raw bytes. `workspace_id` and `fleet_id` are both nullable and they are
-//! nullable for different reasons since schema/915: the workspace reference is
-//! still `ON DELETE SET NULL`, while `fleet_id` stopped being a foreign key at
-//! all — a null there now means a charge written before that slot, not a fleet
-//! that has since gone. `fleet_name` is nullable on the same terms.
+//! raw bytes. `workspace_id` is nullable because the workspace reference is
+//! `ON DELETE SET NULL`. `fleet_id` is `NOT NULL` and no foreign key, so a
+//! charge keeps naming a fleet that has since gone. `fleet_name` is nullable
+//! because the charge write records NULL when the fleet row cannot be read.
 //! `token_count_cached_input` is deliberately NOT selected: the charges
 //! response does not carry it.
 //!

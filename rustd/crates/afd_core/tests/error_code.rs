@@ -27,8 +27,12 @@ fn test_error_registry_unique() {
         REGISTRY.len(),
         "REGISTRY length disagrees with its distinct codes"
     );
-    // Every named constant is reachable from REGISTRY. A code added above the
-    // list but not into it is invisible to every check in this file.
+    assert_every_named_code_is_registered();
+}
+
+/// Every named constant is reachable from REGISTRY. A code added above the list
+/// but not into it is invisible to every check in this file.
+fn assert_every_named_code_is_registered() {
     for named in [
         error_code::UUIDV7_INVALID_ID_SHAPE,
         error_code::INVALID_REQUEST,
@@ -57,8 +61,6 @@ fn test_error_registry_unique() {
         // exists to close — a code reachable from no check is a code that can
         // quietly lose its entry.
         error_code::AGENTSFLEET_CREDENTIAL_MISSING,
-        error_code::FLEET_BUNDLE_NOT_FOUND,
-        error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         error_code::API_BACKPRESSURE,
         error_code::TOOL_CALL_NOT_FOUND,
     ] {

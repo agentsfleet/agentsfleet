@@ -19,7 +19,6 @@ const mockResponse = {
       tokens: 12,
       wall_ms: 340,
       failure_label: null,
-      checkpoint_id: null,
       resumes_event_id: null,
       created_at: 1_700_000_000_000,
       updated_at: 1_700_000_000_340,

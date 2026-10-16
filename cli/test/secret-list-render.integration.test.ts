@@ -160,8 +160,8 @@ describe("status — a parked Fleet says so", () => {
             id: FLEET_ID,
             name: "pr-reviewer",
             status: "active",
-            events_processed: 3,
-            budget_used_nanos: 0,
+            events_processed: "3",
+            budget_used_nanos: "0",
           },
         ],
       }),
@@ -208,49 +208,6 @@ describe("status — a parked Fleet says so", () => {
 
 });
 
-describe("status — a Fleet row the daemon sent without an identifier", () => {
-  const FLEETS = `/v1/workspaces/${WS_ID}/fleets`;
-  const APPROVALS_PATH = `/v1/workspaces/${WS_ID}/approvals`;
-
-  test("counts nothing against it rather than attributing another Fleet's gate", async () => {
-    await authedScope(async () => {
-      // Gate counts are keyed by Fleet identifier. A row without one must show
-      // zero, never inherit a count that belongs to a different Fleet.
-      const routes: MockRoutes = {
-        [`GET ${FLEETS}`]: () =>
-          jsonResponse(200, {
-            items: [{ name: "no-id", status: "active", events_processed: 0, budget_used_nanos: 0 }],
-          }),
-        [`GET ${APPROVALS_PATH}`]: () =>
-          jsonResponse(200, {
-            items: [
-              {
-                gate_id: "01900000-0000-7000-8000-000000099a01",
-                fleet_id: "01900000-0000-7000-8000-0000007670f7",
-                status: "pending",
-              },
-            ],
-          }),
-      };
-      await withMockApi(routes, async (apiUrl) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(["status"], {
-          stdout: out.stream,
-          stderr: err.stream,
-          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        expect(code).toBe(0);
-        const text = out.read();
-        expect(text).toContain("no-id");
-        // Its own count is zero; the other Fleet's pending gate is not borrowed.
-        expect(text).not.toContain("Waiting  ·  1");
-      });
-    });
-  });
-
-});
-
 describe("status — an inbox this credential cannot read", () => {
   const FLEETS_PATH = `/v1/workspaces/${WS_ID}/fleets`;
   const APPROVALS_PATH = `/v1/workspaces/${WS_ID}/approvals`;
@@ -267,8 +224,8 @@ describe("status — an inbox this credential cannot read", () => {
               id: "01900000-0000-7000-8000-0000007670f7",
               name: "pr-reviewer",
               status: "active",
-              events_processed: 3,
-              budget_used_nanos: 0,
+              events_processed: "3",
+              budget_used_nanos: "0",
             }],
           }),
         [`GET ${APPROVALS_PATH}`]: () =>
@@ -314,8 +271,8 @@ describe("status — an inbox this credential cannot read", () => {
               id: "01900000-0000-7000-8000-0000007670f7",
               name: "pr-reviewer",
               status: "active",
-              events_processed: 3,
-              budget_used_nanos: 0,
+              events_processed: "3",
+              budget_used_nanos: "0",
             }],
           }),
         [`GET ${APPROVALS_PATH}`]: () =>

@@ -38,7 +38,7 @@ pub struct ProblemResponse {
     request_id: String,
     current_state: Option<String>,
     etag: Option<String>,
-    missing_secrets: Option<Vec<String>>,
+    review_digest: Option<String>,
     resolution: Option<Resolution>,
 }
 
@@ -77,7 +77,7 @@ impl ProblemResponse {
             request_id: request_id.into(),
             current_state: None,
             etag: None,
-            missing_secrets: None,
+            review_digest: None,
             resolution: None,
         }
     }
@@ -120,25 +120,6 @@ impl ProblemResponse {
         }
     }
 
-    /// A 424, naming the credentials this workspace has yet to store.
-    ///
-    /// The names are the whole remedy. A caller told only that "secrets are
-    /// missing" has to diff the bundle's declared list against their own vault
-    /// by hand, which is work this daemon has already done to raise the
-    /// refusal.
-    #[must_use]
-    pub fn missing_secrets(
-        code: ErrorCode,
-        detail: impl Into<String>,
-        request_id: impl Into<String>,
-        missing: Vec<String>,
-    ) -> Self {
-        Self {
-            missing_secrets: Some(missing),
-            ..Self::new(code, detail, request_id)
-        }
-    }
-
     /// A 412, carrying the resource's current version.
     #[must_use]
     pub fn precondition_failed(
@@ -150,6 +131,24 @@ impl ProblemResponse {
         Self {
             etag: Some(etag.into()),
             ..Self::new(code, detail, request_id)
+        }
+    }
+
+    /// A stale-review409 includes only the new digest and the required state.
+    #[must_use]
+    pub fn review_changed(
+        detail: impl Into<String>,
+        request_id: impl Into<String>,
+        digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            review_digest: Some(digest.into()),
+            ..Self::conflict(
+                afd_core::error_code::AUTHORING_REVIEW,
+                detail,
+                request_id,
+                "review_required",
+            )
         }
     }
 
@@ -188,8 +187,8 @@ impl ProblemResponse {
         if let Some(etag) = &self.etag {
             body.insert("etag".to_owned(), etag.clone().into());
         }
-        if let Some(missing) = &self.missing_secrets {
-            body.insert("missing_secrets".to_owned(), missing.clone().into());
+        if let Some(digest) = &self.review_digest {
+            body.insert("review_digest".to_owned(), digest.clone().into());
         }
         if let Some(standing) = &self.resolution {
             body.insert("gate_id".to_owned(), standing.gate_id.clone().into());

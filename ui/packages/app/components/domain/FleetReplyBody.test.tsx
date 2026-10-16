@@ -41,7 +41,6 @@ const REPLY: ReplyContext = {
   errored: false,
   running: false,
   queued: false,
-  answered: false,
   eventId: "e1",
   reasoning: "",
   span: { startedAtMs: null, endedAtMs: null },

@@ -146,7 +146,7 @@ async fn test_a_key_another_fleet_holds_is_refused() {
             producer: Producer::Steer,
             key: Key::Repeated(&foreign_key),
             fleet: &holder.fleet,
-            workspace: &steered.workspace,
+            workspace: &holder.workspace,
             actor: ACTOR_MACHINE,
             event_type: EventType::Chat,
             request_json: REQUEST_JSON,

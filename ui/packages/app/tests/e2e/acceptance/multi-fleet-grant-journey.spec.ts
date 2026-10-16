@@ -1,8 +1,9 @@
+import { executionInstructions } from "./fixtures/definition";
 /**
  * multi-fleet-grant-journey.spec.ts — two fleets, two standing grants, and the
  * credit the work spent.
  *
- * Wire: install two fleets from the gallery, each declaring a credential the
+ * Wire: save two fleets from private chat, each declaring a credential the
  * workspace holds as a connector handle → each install leaves its OWN approved
  * grant, one per (fleet, service), and neither raises a card → a message to the
  * first fleet leases and runs, because the permission already stands → the
@@ -16,7 +17,7 @@
  * and answer each in the Approvals table. M202 retired that step:
  * `afd_approval::request::install` binds `status::APPROVED`, so an install
  * declaring a mintable credential writes the grant already granted. Installing
- * is the answer — you chose the fleet, and its bundle names the integration.
+ * is the answer — you chose the fleet, and its setup names the integration.
  *
  * So the journey now asserts the opposite of what it once did: no card reaches
  * the inbox, and the first delivery LEASES rather than parks. Parking still
@@ -67,7 +68,7 @@ import { APPROVAL_GATES_REGION_LABEL, rowForAgent } from "./fixtures/approvals-t
 import {
   chargedToFleets,
   connectorGrantFor,
-  connectorTriggerMd,
+  connectorConfig,
   CONNECTOR_SERVICE_GITHUB,
   ensureConnectorHandle,
   GRANT_STATUS,
@@ -77,14 +78,9 @@ import {
   readTenantBilling,
   REASON_DECLARED_AT_INSTALL,
 } from "./fixtures/grants";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import { workspaceHref } from "./fixtures/nav";
-import {
-  executionSkillMd,
-  getDefaultWorkspaceId,
-  readFleetCounters,
-  waitForFleetActive,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, readFleetCounters, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 // Two stable template names — the server suffixes a repeat, and a per-run
@@ -105,7 +101,7 @@ const GRANT_TIMEOUT_MS = 30_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BILLING_SETTLE_TIMEOUT_MS = 90_000;
 
-// Install (60s inside installViaUI) plus the execution budgets, with headroom
+// Install (60s inside saveFleetViaUI) plus the execution budgets, with headroom
 // that is deliberately not another retry.
 const INSTALL_TEST_TIMEOUT_MS = 240_000;
 const RUN_TEST_TIMEOUT_MS = 420_000;
@@ -137,14 +133,14 @@ function standing(grant: IntegrationGrant | null, callsign: string): Integration
   return grant;
 }
 
-/** What one gallery install needs: a real instruction body, and frontmatter
+/** What one reviewed save needs: a real instruction body, and runtime config
  * declaring the connector credential the workspace holds. */
 function connectorInstall(template: string) {
   return {
     handle: FIXTURE_KEY.regular,
     workspaceId,
-    skillMarkdown: executionSkillMd(template),
-    triggerMarkdown: connectorTriggerMd(template),
+    instructions: executionInstructions(),
+    config: connectorConfig(template),
   };
 }
 
@@ -184,8 +180,8 @@ test.describe.serial("multi-fleet grant journey", () => {
     await signInAs(page, FIXTURE_KEY.regular);
     // The template argument is spelled as a constant at the call site: a
     // per-run unique name mints a gallery row per run that nothing deletes.
-    const firstId = await installViaUI(page, TEMPLATE_FIRST, connectorInstall(TEMPLATE_FIRST));
-    const secondId = await installViaUI(page, TEMPLATE_SECOND, connectorInstall(TEMPLATE_SECOND));
+    const firstId = await saveFleetViaUI(page, TEMPLATE_FIRST, connectorInstall(TEMPLATE_FIRST));
+    const secondId = await saveFleetViaUI(page, TEMPLATE_SECOND, connectorInstall(TEMPLATE_SECOND));
     first = await activated(firstId);
     second = await activated(secondId);
     expect(first.callsign, "two fleets must not share one callsign").not.toBe(second.callsign);

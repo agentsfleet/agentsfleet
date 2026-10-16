@@ -2,7 +2,7 @@
 name = "afd_fleet_runtime"
 # One aggregated test binary; see tests/runtime_suite.rs for why.
 autotests = false
-description = "Fleet configuration: the stored authoring document, parsed once into the typed policy every gate reads."
+description = "Fleet configuration: the native setup Definition, parsed once into the typed policy every gate reads."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,12 +18,15 @@ categories.workspace = true
 # gate evaluator drives its rule-matching cases through; the production door
 # stays the validating `TryFrom`.
 test-util = []
+# Publishes the Definition's shape to the OpenAPI document, derived from the
+# same raw types the parser reads so a new key cannot be published apart from
+# being accepted. The wire crates enable it under their own `openapi`.
+openapi = ["dep:utoipa"]
 
 [dependencies]
 # The shared error hull (`error_shell!`/`error_lifts!`) and the registry code
 # every failure here is read under. Referenced, never re-declared — see `error`.
 afd_core.workspace = true
-semver.workspace = true
 # The signature wall owns the provider scheme strings; this crate resolves a
 # trigger's `source` to one rather than declaring a second copy (RULE UFS).
 afd_webhook.workspace = true
@@ -38,18 +41,22 @@ serde.workspace = true
 # `preserve_order` is load-bearing here rather than incidental: an unknown key
 # is reported in DOCUMENT order, so the same document always names the same key
 # first. Without it the answer follows hash order and two runs can disagree.
-#
-# The frontmatter converter leans on the same feature for a second reason: the
-# JSON it builds carries the AUTHORED key order, so a stored document lists its
-# keys as its author wrote them.
 serde_json.workspace = true
-# The YAML tokeniser, resolving nothing — see the rationale in the workspace
-# manifest. This crate is the only one that names it.
-yaml_serde.workspace = true
+sha2.workspace = true
+hex.workspace = true
+serde_ignored.workspace = true
 thiserror.workspace = true
+# The schema compiler, off by default: only the OpenAPI document build turns it on.
+utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
+# The stored fixture setup other suites seed through `FleetSeed::native_setup`,
+# pinned here against the parser that owns its format.
+afd_db = { workspace = true, features = ["test-util"] }
+# The schema-parity suite matches a published `pattern` the way a client
+# would; the crate itself never compiles a regular expression.
+regex.workspace = true
 
 [lints]
 workspace = true

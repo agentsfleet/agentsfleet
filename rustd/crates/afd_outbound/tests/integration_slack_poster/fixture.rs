@@ -12,7 +12,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::OutboundDelivery;
 use afd_dragonfly::streams::EventId;
 use afd_vault::{SecretBody, SecretName, Vault};
@@ -21,6 +21,9 @@ use super::{ANSWER, BOT_USER, CHANNEL, THREAD};
 
 /// The key every fixture seals under — the harness's own, not a deployment's.
 const FIXTURE_KEK: [u8; 32] = [7u8; 32];
+
+/// The status the seeded fleet carries.
+const FLEET_ACTIVE: &str = "active";
 
 /// A workspace whose fleet asked a question, and the grant that answers it.
 pub(super) struct Fixture {
@@ -95,23 +98,27 @@ impl Fixture {
              ), workspace AS ( \
                INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
                VALUES ($2::uuid, $1::uuid, 'slack-poster', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'slack-poster@example.test', 1, 1) \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($5::uuid, $2::uuid, $1::uuid, 'slack-poster-fleet', '# fixture', \
-                     '{}'::jsonb, 'active', 1, 1)",
+             INSERT INTO core.users \
+               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, $3, 'slack-poster@example.test', 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(&self.subject)
         .bind(&self.user)
-        .bind(self.fleet.as_str())
         .execute(&mut *connection)
+        .await
+        .expect("the tenant, workspace and person seed");
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.workspace.as_str(),
+            &self.tenant,
+            FLEET_ACTIVE,
+        )
+        .name("slack-poster-fleet")
+        .at(1)
+        .insert(&mut *connection)
         .await
         .expect("the tenant, workspace and fleet seed");
     }

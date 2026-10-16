@@ -47,7 +47,7 @@ pub(crate) enum HarnessProviders {
 
 impl HarnessProviders {
     /// The production store underneath, whichever arm this is.
-    const fn store(&self) -> &Providers {
+    pub(super) const fn store(&self) -> &Providers {
         match self {
             Self::Live(providers) | Self::NoPlatformDefault(providers) => providers,
         }

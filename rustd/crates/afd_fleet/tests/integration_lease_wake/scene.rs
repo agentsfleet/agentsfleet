@@ -11,7 +11,6 @@ use afd_fleet::lease::assign::measured::PollMeasurement;
 use afd_fleet::lease::{Acquired, Leases};
 
 use crate::queue;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
 
@@ -160,6 +159,11 @@ impl Scene {
     }
 
     /// One event appended to the fleet's stream.
+    ///
+    /// The shared enqueue also marks the production index, which this scene
+    /// never polls. That mark is cleared here: these scenes fill partitions to
+    /// their ceiling on purpose, and left in the production index the fill
+    /// would crowd every other suite's fleet that hashes there.
     async fn enqueue(&self, fleet: &Fleet) {
         queue::enqueue(
             self.fixtures.queue(),
@@ -168,9 +172,10 @@ impl Scene {
             ACTOR,
             EVENT_TYPE,
             REQUEST_JSON,
-            ENROLLED_AT,
+            self.fixtures.enrolled_at(),
         )
         .await;
+        queue::clear_ready(self.fixtures.queue(), &fleet.id).await;
     }
 
     /// The fleet marked, and its ring heard by this scene's doorbell.
@@ -198,7 +203,11 @@ impl Scene {
     pub(super) async fn poll(&self, runner: &Uuid7) -> (Option<Acquired>, PollMeasurement) {
         let (polled, cost) = self
             .leases
-            .select_measured(runner, &[], UnixMillis::from_millis(ENROLLED_AT))
+            .select_measured(
+                runner,
+                &[],
+                UnixMillis::from_millis(self.fixtures.enrolled_at()),
+            )
             .await;
         (polled.expect("the poll must not fault"), cost)
     }

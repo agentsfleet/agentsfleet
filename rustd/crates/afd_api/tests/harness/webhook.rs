@@ -15,6 +15,7 @@
 
 use afd_api_ingress::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use afd_fleet_lifecycle::FleetStatus;
@@ -70,6 +71,12 @@ pub(crate) const INSTALLATION: &str = "48765123";
 /// A trigger declaring GitHub with no allow-list — every event, no repository.
 pub(crate) const TRIGGER_GITHUB: &str = r#"[{"type":"webhook","source":"github"}]"#;
 
+/// The source the per-source route's fixture deliveries are signed for.
+pub(crate) const SOURCE_LINEAR: &str = "linear";
+
+/// A webhook trigger from [`SOURCE_LINEAR`].
+pub(crate) const TRIGGER_LINEAR: &str = r#"[{"type":"webhook","source":"linear"}]"#;
+
 /// A stored document carrying `triggers` and nothing else varying.
 ///
 /// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
@@ -83,7 +90,7 @@ pub(crate) fn document(triggers: &str) -> String {
           "x-agentsfleet": {{
             "triggers": {triggers},
             "tools": ["bash"],
-            "budget": {{ "daily_dollars": 1.0 }}
+            "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
           }}
         }}"#
     )

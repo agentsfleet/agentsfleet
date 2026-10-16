@@ -24,11 +24,14 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{FleetSeed, TestDatabase};
 use afd_tenant::preference::Preferences;
 
 /// The instant every fixture row is stamped with.
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
+
+/// The status the seeded fleet carries.
+const FLEET_ACTIVE: &str = "active";
 
 /// A migrated database, the store over it, and the rows one person needs.
 pub(crate) struct Lane {
@@ -80,18 +83,15 @@ impl Lane {
 
     /// Puts one fleet in the workspace, so `has_fleet` turns true.
     pub(crate) async fn seed_fleet(&self) {
-        sqlx::query(
-            "INSERT INTO core.fleets
-               (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                status, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'fixture', '# fixture',
-                     '{}'::jsonb, 'active', $4, $4)",
+        FleetSeed::new(
+            mint().as_str(),
+            self.workspace.as_str(),
+            self.tenant.as_str(),
+            FLEET_ACTIVE,
         )
-        .bind(mint().as_str())
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
+        .name("fixture")
+        .at(NOW_MS)
+        .insert(&mut *self.connection().await)
         .await
         .expect("seeding a fleet");
     }

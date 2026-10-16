@@ -1,39 +1,27 @@
-import { DisplayLG, List, ListItem, Section, SectionLabel } from "@agentsfleet/design-system";
+import { DisplayLG, Section } from "@agentsfleet/design-system";
+import { APP_SIGN_UP_URL, DOCS_URL, GITHUB_URL, SELF_HOSTED_URL } from "../config";
+import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 
-const AUDIENCES = [
-  {
-    id: "founders",
-    eyebrow: "For solo founders & small teams",
-    title: "One less job pulling you away from building.",
-    detail: "Start with a second pass on your pull requests or the investigation you keep putting off.",
-    points: ["Get review comments where you already work.", "Gather incident evidence without opening every dashboard yourself.", "Keep the final call on fixes and releases."],
-  },
-  {
-    id: "infra",
-    eyebrow: "For infrastructure leads",
-    title: "Delegate the investigation. Keep the controls.",
-    detail: "Put a bounded fleet alongside your existing tools, with explicit access and a result your team can inspect.",
-    points: ["Choose repositories, data sources, and permissions.", "Approve repository writes before repair begins.", "Inspect run history, evidence, and fleet spending."],
-  },
-] as const;
+const SOURCE_SURFACE = "source_strip";
+const EXTERNAL_TARGET = "_blank";
+const EXTERNAL_REL = "noopener noreferrer";
 
 export function AudienceSection() {
   return (
-    <Section asChild className="site-section audience-section" data-testid="audience-section">
-      <section aria-label="Built for founders and infrastructure teams">
-        <div className="wrap audience-layout">
-          {AUDIENCES.map((audience) => (
-            <div key={audience.id} className="audience-panel" data-testid={`audience-${audience.id}`}>
-              <SectionLabel as="p" className="mb-0">{audience.eyebrow}</SectionLabel>
-              <DisplayLG>{audience.title}</DisplayLG>
-              <p className="m-0 text-body-lg text-text-muted">{audience.detail}</p>
-              <List variant="plain" className="m-0 space-y-3">
-                {audience.points.map((point) => <ListItem key={point} bullet="arrow" className="text-body-sm text-text-muted">{point}</ListItem>)}
-              </List>
-            </div>
-          ))}
+    <Section asChild><section className="continuity-section" aria-label="Recurring work and controls" data-testid="audience-section">
+      <div className="wrap continuity-layout">
+        <div><DisplayLG>A job to come back to.<br />Context to build on.</DisplayLG><p className="continuity-lede">Configure a supported schedule, repository event, or Slack mention. Each trigger starts a new run with the job’s defined tools and access.</p><a href={DOCS_URL} className="text-pulse"
+          onClick={() => trackNavigationClicked({ source: "continuity_docs", surface: "continuity", target: "docs" })}>Read the product docs ↗</a></div>
+        <div className="continuity-details">
+          <div><span>01</span><div><h3>Keep the useful context.</h3><p>Workflows with memory tools can save findings for later runs. The Slack assistant uses its channel’s context. This is saved information, not a promise of automatic learning.</p></div></div>
+          <div><span>02</span><div><h3>Separate reads from writes.</h3><p>Reading logs, posting a Slack report, and changing code require different access. Choose resources and permissions for the job you enable.</p></div></div>
+          <div><span>03</span><div><h3>Inspect the work and the cost.</h3><p>Review run history and configure fleet budgets. An active run can cross a limit before its next budget check.</p></div></div>
         </div>
-      </section>
-    </Section>
+      </div>
+      <div className="wrap source-strip"><span>Built in the open. Inspect the runtime.</span><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackNavigationClicked({ source: "source_github", surface: SOURCE_SURFACE, target: "github" })}>GitHub ↗</a><span><a href={APP_SIGN_UP_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Hosted ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackNavigationClicked({ source: "source_self_hosted", surface: SOURCE_SURFACE, target: "self_hosted" })}>Self hosting in your infrastructure ↗</a></span></div>
+    </section></Section>
   );
 }

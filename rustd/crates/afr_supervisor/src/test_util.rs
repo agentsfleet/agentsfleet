@@ -62,16 +62,15 @@ impl Healthy {
     /// own.
     pub(crate) fn to(&self, verb: Option<Verb>) -> Value {
         match verb {
-            Some(Verb::Heartbeat) => value(&HeartbeatResponse {
-                status: HeartbeatStatus::Ok,
-                assigned_policy: Some(self.assigned.clone()),
-                degraded: false,
-                degraded_reason: None,
-                selftest_requested: false,
-                release_holds: Vec::new(),
-                heartbeat_interval_ms: self.interval_ms,
-            }),
-            Some(Verb::Lease) => value(&LeaseResponse {
+            // Authoring fixtures must provide their attempt-bound receipts.
+            Some(
+                Verb::AuthoringModel
+                | Verb::AuthoringActivity
+                | Verb::AuthoringRenew
+                | Verb::AuthoringReport,
+            ) => Value::Null,
+            Some(Verb::Heartbeat) => self.heartbeat(),
+            Some(Verb::Lease) => value(&LeaseResponse::<serde_json::Value> {
                 lease: None,
                 retry_after_ms: Some(self.interval_ms),
             }),
@@ -95,26 +94,10 @@ impl Healthy {
                 stored_count: 1,
                 skipped_count: 0,
             }),
-            Some(Verb::Me) => value(&SelfResponse {
-                id: RUNNER_ID.into(),
-                status: ACTIVE.into(),
-                host_id: RUNNER_HOST.into(),
-                sandbox_tier: Cow::Owned(
-                    value(&self.assigned.sandbox_tier)
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                ),
-                last_seen_at: 0,
-                assigned_policy: None,
-                achievable: None,
-                degraded: false,
-                degraded_reason: None,
-            }),
+            Some(Verb::Me) => self.me(),
             Some(
                 Verb::Activity
                 | Verb::Report
-                | Verb::Bundle
                 | Verb::Mint
                 | Verb::ScheduleCreate
                 | Verb::ScheduleList
@@ -126,6 +109,39 @@ impl Healthy {
             )
             | None => value(&ReportResponse { ok: true }),
         }
+    }
+
+    /// A healthy beat: the assignment and the cadence this daemon was given.
+    fn heartbeat(&self) -> Value {
+        value(&HeartbeatResponse {
+            status: HeartbeatStatus::Ok,
+            assigned_policy: self.assigned.clone(),
+            degraded: false,
+            degraded_reason: None,
+            selftest_requested: false,
+            release_holds: Vec::new(),
+            heartbeat_interval_ms: self.interval_ms,
+        })
+    }
+
+    /// This runner as a healthy daemon names it, on the assigned tier.
+    fn me(&self) -> Value {
+        value(&SelfResponse {
+            id: RUNNER_ID.into(),
+            status: ACTIVE.into(),
+            host_id: RUNNER_HOST.into(),
+            sandbox_tier: Cow::Owned(
+                value(&self.assigned.sandbox_tier)
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+            ),
+            last_seen_at: 0,
+            assigned_policy: self.assigned.clone(),
+            achievable: None,
+            degraded: false,
+            degraded_reason: None,
+        })
     }
 }
 

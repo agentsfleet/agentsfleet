@@ -10,30 +10,31 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{FleetSeed, TestDatabase};
 use afd_fleet_ops::RunnerLeaseHistory;
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 
-const SEED: &str = r"
+const SEED_SCOPE: &str = r"
 WITH inserted_tenant AS (
     INSERT INTO core.tenants (id, name, created_at, updated_at)
     VALUES ($1::uuid, 'Operator test', 1, 1)
-), inserted_workspaces AS (
-    INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-    VALUES
-      ($2::uuid, $1::uuid, 'primary', 'test', 2),
-      ($3::uuid, $1::uuid, 'secondary', 'test', 3)
-), inserted_fleets AS (
-    INSERT INTO core.fleets
-      (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
-    VALUES
-      ($4::uuid, $2::uuid, $1::uuid, 'Production', '# prod', '{}'::jsonb, 'active', 10, 10),
-      ($5::uuid, $3::uuid, $1::uuid, 'Canary', '# canary', '{}'::jsonb, 'active', 11, 11)
-), inserted_runners AS (
+)
+INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
+VALUES
+  ($2::uuid, $1::uuid, 'primary', 'test', 2),
+  ($3::uuid, $1::uuid, 'secondary', 'test', 3)
+";
+
+const SEED: &str = r"
+WITH inserted_runners AS (
     INSERT INTO fleet.runners
-      (id, host_id, token_hash, sandbox_tier, admin_state, labels, last_seen_at, created_at, updated_at)
+      (id, host_id, token_hash, sandbox_tier, admin_state, labels, network_policy,
+       registry_allowlist, last_seen_at, created_at, updated_at)
     VALUES
-      ($6::uuid, $16, $18, 'dev_none', 'active', '[]'::jsonb, 20, 20, 20),
-      ($7::uuid, $17, $19, 'dev_none', 'active', '[]'::jsonb, 21, 21, 21)
+      ($6::uuid, $16, $18, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
+       20, 20, 20),
+      ($7::uuid, $17, $19, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
+       21, 21, 21)
 ), inserted_events AS (
     INSERT INTO core.fleet_events
       (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms, failure_label, failure_detail, created_at, updated_at)
@@ -213,6 +214,24 @@ impl Fixtures {
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(SEED_SCOPE)
+            .bind(&self.tenant)
+            .bind(&self.workspace_a)
+            .bind(&self.workspace_b)
+            .execute(&mut *connection)
+            .await
+            .expect("the operator projection fixture seeds");
+        for (fleet, workspace, name, at) in [
+            (&self.fleet_a, &self.workspace_a, "Production", 10),
+            (&self.fleet_b, &self.workspace_b, "Canary", 11),
+        ] {
+            FleetSeed::new(fleet, workspace, &self.tenant, FLEET_STATUS_ACTIVE)
+                .name(name)
+                .at(at)
+                .insert(&mut *connection)
+                .await
+                .expect("the operator projection fixture seeds");
+        }
         sqlx::query(SEED)
             .bind(&self.tenant)
             .bind(&self.workspace_a)

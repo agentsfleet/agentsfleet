@@ -10,54 +10,14 @@ use super::{Error, ErrorKind, detail};
 fn data_only_refusals_have_stable_codes_details_and_no_causes() {
     let errors = [
         expected(
-            ErrorKind::SkillRejected.into(),
-            error_code::AGENTSFLEET_INVALID_CONFIG,
-            detail::SKILL_INVALID,
-        ),
-        expected(
-            ErrorKind::TriggerRejected.into(),
-            error_code::AGENTSFLEET_INVALID_CONFIG,
-            detail::INVALID_CONFIG,
-        ),
-        expected(
-            ErrorKind::NameMismatch.into(),
-            error_code::AGENTSFLEET_NAME_MISMATCH,
-            detail::NAME_MISMATCH,
-        ),
-        expected(
-            ErrorKind::NameExists.into(),
-            error_code::AGENTSFLEET_NAME_EXISTS,
-            detail::NAME_EXISTS,
-        ),
-        expected(
             ErrorKind::NotFound.into(),
             error_code::AGENTSFLEET_NOT_FOUND,
             detail::NOT_FOUND,
         ),
         expected(
-            ErrorKind::TransitionRefused.into(),
-            error_code::AGENTSFLEET_ALREADY_TERMINAL,
-            detail::TRANSITION_REFUSED,
-        ),
-        expected(
             ErrorKind::MustKillFirst.into(),
             error_code::AGENTSFLEET_ALREADY_TERMINAL,
             detail::MUST_KILL_FIRST,
-        ),
-        expected(
-            ErrorKind::InstallRolledBack.into(),
-            error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
-            detail::INSTALL_ROLLED_BACK,
-        ),
-        expected(
-            ErrorKind::LibraryEntryMissing.into(),
-            error_code::FLEET_BUNDLE_NOT_FOUND,
-            detail::LIBRARY_ENTRY_MISSING,
-        ),
-        expected(
-            ErrorKind::RequiredTagsInvalid.into(),
-            error_code::INVALID_REQUEST,
-            detail::REQUIRED_TAGS_INVALID,
         ),
     ];
 
@@ -113,28 +73,4 @@ fn assert_error(expected: &Expected, has_source: bool) {
     if expected.error.stale_tag().is_none() {
         assert_ne!(expected.code, error_code::AGENTSFLEET_SOURCE_STALE);
     }
-}
-
-/// A queue outage names the queue, not the database: the sentence sends an
-/// operator to the datastore that actually failed.
-#[test]
-fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
-    /// An environment with no knob set, so resolving a Dragonfly URL fails
-    /// without a server — the cheapest real `afd_dragonfly::Error` there is.
-    struct Unset;
-    impl afd_core::env::EnvSource for Unset {
-        fn get(&self, _key: &str) -> Option<String> {
-            None
-        }
-    }
-    let outage =
-        afd_dragonfly::DragonflyConfig::resolve(&Unset, afd_dragonfly::DragonflyRole::Default)
-            .err()
-            .map(Error::from);
-
-    // pin test: literal is the contract
-    assert_eq!(
-        outage.as_ref().map(Error::detail),
-        Some("Queue unavailable")
-    );
 }

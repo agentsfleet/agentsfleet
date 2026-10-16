@@ -76,7 +76,6 @@ pub(super) async fn run_one_to_settlement(
     runner: &Uuid7,
     now: UnixMillis,
 ) -> Completed {
-    let settled_at = now.saturating_add_millis(SLICE_MS);
     // Scoped to THIS fleet, not "whatever any partition offers". The expect
     // below always claimed it reached the fleet holding admitted work while
     // accepting any leasable fleet, and every line after it reads `fleet` --
@@ -126,6 +125,12 @@ pub(super) async fn run_one_to_settlement(
         .await
         .expect("the lease row must be written")
         .expect("the claim is still held");
+    // One slice after the meter's own stamp, which issue took from the
+    // database clock.
+    let settled_at = fixtures
+        .metered_since(fleet)
+        .await
+        .saturating_add_millis(SLICE_MS);
     let Settled::Claimed(charged) = fixtures
         .settle_alone(
             leases,

@@ -14,9 +14,9 @@
 //!
 //! # An unconfigured connector is not a boot refusal
 //!
-//! The rule [`crate::bundles`] and [`crate::identity::resolve`] both follow. A
-//! deployment that connected only GitHub is an ordinary deployment; one that
-//! connected nothing still serves every other verb. A mint for a connector this
+//! The rule [`crate::identity::resolve`] follows too. A deployment that
+//! connected only GitHub is an ordinary deployment; one that connected nothing
+//! still serves every other verb. A mint for a connector this
 //! deployment holds no credential for answers `UZ-CRED-002` — one endpoint
 //! refusing — rather than taking a healthy runner plane down at boot.
 

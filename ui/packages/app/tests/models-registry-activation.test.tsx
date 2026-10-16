@@ -1,0 +1,154 @@
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
+import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
+
+const WORKSPACE_ID = "ws_1";
+const MODEL_ID = "claude-sonnet-5";
+const PROVIDER = "anthropic";
+const SECRET_REF = "anthropic-prod";
+const CONTEXT_CAP_TOKENS = 200000;
+const CREATED_AT = 1_777_507_200_000;
+const MODEL_KIND = { providerKey: "provider_key" } as const;
+const PROVIDER_MODE = { selfManaged: "self_managed" } as const;
+const listModelEntriesActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
+const listSecretsActionMock = vi.fn();
+const setProviderSelfManagedActionMock = vi.fn();
+
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
+  getModelLibraryAction: vi.fn(),
+  listModelEntriesAction: listModelEntriesActionMock,
+  listSecretsAction: listSecretsActionMock,
+  setProviderSelfManagedAction: setProviderSelfManagedActionMock,
+  resetProviderAction: vi.fn(),
+  createModelEntryAction: vi.fn(),
+  updateModelEntryAction: vi.fn(),
+  deleteModelEntryAction: vi.fn(),
+  replaceSecretAction: replaceSecretActionMock,
+}));
+
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
+  createSecretAction: vi.fn(),
+  deleteSecretAction: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+function entry(active = false): TenantModelEntry {
+  return {
+    id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
+    model_id: MODEL_ID,
+    secret_ref: SECRET_REF,
+    provider: PROVIDER,
+    kind: MODEL_KIND.providerKey,
+    has_key: true,
+    active,
+    created_at: CREATED_AT,
+  };
+}
+
+function registry(active = false): TenantModelEntryList {
+  return {
+    models: [entry(active)],
+    platform_default_available: true,
+  };
+}
+
+async function renderTable() {
+  const { default: ModelsRegistryTable } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+  );
+  render(
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(ModelsRegistryTable, {
+        workspaceId: WORKSPACE_ID,
+        initialPage: { ...registry(), next_cursor: null, total: null },
+        initialError: null,
+      }),
+    ),
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
+  listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry() });
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("ModelsRegistryTable saved model activation", () => {
+  it("activates a saved model entry and refreshes the registry", async () => {
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        mode: PROVIDER_MODE.selfManaged,
+        provider: PROVIDER,
+        model: MODEL_ID,
+        context_cap_tokens: CONTEXT_CAP_TOKENS,
+        secret_ref: SECRET_REF,
+        platform_default_available: true,
+      },
+    });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry(true) });
+    await renderTable();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: SECRET_REF, model: MODEL_ID });
+
+  });
+
+  it("shows an activation failure and refreshes the registry", async () => {
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: false,
+      error: "rejected",
+      errorCode: "UZ-PROVIDER-003",
+    });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry() });
+    await renderTable();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: SECRET_REF, model: MODEL_ID });
+
+    expect(await screen.findByText(/rejected/i)).toBeTruthy();
+  });
+});
+
+describe("stored-secret list reaches the Add dialog", () => {
+  it("test_add_dialog_loads_secrets_on_open — the table fetches secrets when the dialog opens", async () => {
+    // The regression this guards is a WIRING bug, so it has to be asserted
+    // through the real table, not the dialog in isolation. Removing the eager
+    // page-level secrets preload left `secrets` at [] with nothing loading it
+    // on open; every dialog-level test kept passing because they inject the
+    // list as a prop.
+    //
+    // Why it mattered more than an empty picker: submit() resolves `existing`
+    // from this list to choose rotate-vs-create and to reject a name owned by
+    // another provider, and the secrets POST upserts server-side. An unloaded
+    // list therefore does not show "no options" — it silently overwrites the
+    // credential already holding that name.
+    listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
+    const user = userEvent.setup();
+    await renderTable();
+
+    expect(listSecretsActionMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /create model/i }));
+
+    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith(WORKSPACE_ID));
+  });
+});
+

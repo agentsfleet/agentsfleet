@@ -47,14 +47,6 @@ export function FleetHeader({
   fleet: FleetDetail;
   exhaustedAt?: number | null;
 }) {
-  const actionFleet = {
-    id: fleet.id,
-    name: fleet.name,
-    status: fleet.status,
-    created_at: fleet.created_at,
-    updated_at: fleet.updated_at,
-    triggers: fleet.triggers ?? undefined,
-  };
   return (
     <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
       <PageTitle className="sr-only">{fleet.name}</PageTitle>
@@ -75,9 +67,10 @@ export function FleetHeader({
             workspaceId={workspaceId}
             fleetId={fleet.id}
             fleetName={fleet.name}
+            etag={fleet.etag}
           />
         ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (
-          <KillSwitch workspaceId={workspaceId} fleet={actionFleet} />
+          <KillSwitch workspaceId={workspaceId} fleet={fleet} />
         ) : (
           <Badge aria-label={`Fleet status: ${fleet.status}`}>
             {fleet.status}

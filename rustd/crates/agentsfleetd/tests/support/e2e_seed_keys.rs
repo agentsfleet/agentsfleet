@@ -32,21 +32,27 @@ fn vault_row() -> String {
     afd_db::test_util::mint_id()
 }
 
-/// The credential body the platform strategy reads.
-///
-/// One field. `Platform::interpret` takes the endpoint, model and cap from the
-/// defaults ROW and only the key from the vault, so this is the whole shape —
-/// and it must be a JSON OBJECT, because `afd_core::json::object_from_slice`
-/// refuses an array at the top on purpose.
-const PROVIDER_KEY_BODY: &str = r#"{"api_key":"sk-fixture-not-a-credential"}"#;
+/// The bearer key every sealed fixture credential carries.
+const FIXTURE_API_KEY: &str = "sk-fixture-not-a-credential";
+
+/// What the tenant plane's write stores beside a provider key, so reads can
+/// rule on it before any decrypt.
+const PROVIDER_KEY_KIND: &str = "provider_key";
+
+/// The credential body runtime resolution reads: it vets the same body
+/// activation does, so the body names its provider.
+fn provider_key_body() -> String {
+    format!(r#"{{"provider":"{PROVIDER}","api_key":"{FIXTURE_API_KEY}"}}"#)
+}
 
 /// Seals a provider key into the default's source workspace.
 ///
-/// The final precondition the pull path needs. `Providers::resolve` opens
-/// `(source_workspace_id, provider)` out of the vault and refuses with
-/// "the tenant's provider selection names a vault row that is not held" when it
-/// is absent — so a scenario that seeded the DEFAULT without its key resolves
-/// an operator gap rather than a runnable fleet.
+/// The final precondition the pull path needs. Runtime resolution opens
+/// `(source_workspace_id, provider)` out of the vault only when the row's
+/// projection names that provider and holds a key, and it vets the body
+/// before dialling, so the seed writes both halves the tenant plane's write
+/// would. A scenario that seeded the DEFAULT without them resolves an operator
+/// gap rather than a runnable fleet.
 ///
 /// Sealed rather than inserted as plaintext: `afd_fleet::Vault` is read-only in
 /// this crate (writes are the tenant plane's, M178), and the envelope's
@@ -61,7 +67,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
         .seal(
             &kek,
             &Aad::new(workspace, PROVIDER),
-            PROVIDER_KEY_BODY.as_bytes(),
+            provider_key_body().as_bytes(),
         )
         .expect("the fixture credential seals");
 
@@ -74,8 +80,10 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, kek_version,
             encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag,
-            created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+            created_at, updated_at,
+            meta_kind, meta_provider, meta_has_key)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+                 $12, $3, TRUE)
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
     .bind(vault_row())
@@ -89,6 +97,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
     .bind(envelope.payload_ciphertext())
     .bind(envelope.payload_tag().as_slice())
     .bind(at)
+    .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
     .expect("the provider key seed must run");
@@ -131,21 +140,30 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, 
     .expect("the tenant credential seed must run");
 }
 
-/// Seals a credential the ACTIVATION ladder admits, under `name`.
-///
-/// [`seed_provider_key`]'s body deliberately carries no `provider` field — the
-/// runner path decrypts it only to dial, and a body that would also activate
-/// would let a scenario pass the ladder by accident. The tenant-plane walk
-/// needs the opposite: a body naming its provider (the field `UZ-PROVIDER-003`
-/// refuses without) and the projection columns the metadata gate reads before
-/// any decrypt, sealed under a name of the caller's own so the runner fixture
-/// keeps its shape.
+/// Seals a credential the ACTIVATION ladder admits, under `name`: the same
+/// body and projection [`seed_provider_key`] writes, under a name of the
+/// caller's own.
 pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &str, name: &str) {
+    seal_named(booted, workspace, name, Some(PROVIDER_KEY_KIND)).await;
+}
+
+/// Seals the same body under `name` with NO projection, as a row written
+/// before the vault recorded what it holds: the metadata gate refuses it
+/// before any decrypt (`UZ-PROVIDER-003`).
+pub(crate) async fn seed_unprojected_key(booted: &Booted, workspace: &str, name: &str) {
+    seal_named(booted, workspace, name, None).await;
+}
+
+async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&str>) {
     let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
-    let body = format!(r#"{{"provider":"{PROVIDER}","api_key":"sk-fixture-not-a-credential"}}"#);
     let envelope = Sealer::new()
-        .seal(&kek, &Aad::new(workspace, name), body.as_bytes())
+        .seal(
+            &kek,
+            &Aad::new(workspace, name),
+            provider_key_body().as_bytes(),
+        )
         .expect("the walk credential seals");
+    let projected = kind.map(|_kind| PROVIDER);
 
     let mut connection = booted
         .database
@@ -159,7 +177,7 @@ pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &str, name:
             created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
-                 'provider_key', $12, TRUE)",
+                 $12, $13, $14)",
     )
     .bind(vault_row())
     .bind(workspace)
@@ -172,7 +190,9 @@ pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &str, name:
     .bind(envelope.payload_ciphertext())
     .bind(envelope.payload_tag().as_slice())
     .bind(afd_core::clock::now().as_millis())
-    .bind(PROVIDER)
+    .bind(kind)
+    .bind(projected)
+    .bind(kind.map(|_kind| true))
     .execute(&mut *connection)
     .await
     .expect("the walk credential seed must run");

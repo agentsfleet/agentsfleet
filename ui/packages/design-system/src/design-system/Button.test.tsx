@@ -34,7 +34,7 @@ describe("Button", () => {
 
   it("applies the secondary variant", () => {
     render(<Button variant="secondary">Secondary</Button>);
-    expect(screen.getByRole("button").className).toContain("bg-secondary");
+    expect(screen.getByRole("button").className).toContain("bg-primary/10");
   });
 
   it("applies the ghost variant — muted text, transparent fill", () => {

@@ -2,7 +2,7 @@
 // without pulling the transport, whose retry policy is server-only.
 
 // Secret kinds, keyed off the server's `kind` discriminator. The string
-// values are verbatim with `Kind::as_str` in that projection.rs
+// values are verbatim with `Kind::as_str` in afd_vault/src/projection/mod.rs
 // (RULE UFS — cross-runtime parity); changing one without the other
 // silently breaks classification.
 export const SECRET_KIND = {

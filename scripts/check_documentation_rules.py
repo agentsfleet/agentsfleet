@@ -60,7 +60,9 @@ INTERNAL_DETAILS = (
 )
 
 REMOVED_COMMANDS = {
-    "agentsfleet install --from": "agentsfleet install --library <LIBRARY_ID>",
+    "agentsfleet install": "agentsfleet chat --library <LIBRARY_ID> --revision <REVISION_ID>",
+    "agentsfleet library create": "agentsfleet chat --publish <LABEL>",
+    "agentsfleet fleet update": "agentsfleet chat --fleet <FLEET_ID> --setup-revision <N>",
     "agentsfleet workspace add": "agentsfleet workspace create",
     "agentsfleet fleet-key add": "agentsfleet fleet-key create",
     "agentsfleet secret add": "agentsfleet secret create",

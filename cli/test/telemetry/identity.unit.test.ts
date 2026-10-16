@@ -24,6 +24,7 @@ import {
 import type { TelemetryConfig } from "../../src/services/telemetry/types.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SECONDS_PER_MINUTE = 60;
 
 function makeTempDir(): string {
   return mkdtempSync(path.join(tmpdir(), "agentsfleet-identity-test-"));
@@ -131,7 +132,7 @@ describe("resolveIdentity", () => {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: sessionId,
-      session_last_active: Date.now() - 10 * 60 * MS_PER_SECOND,
+      session_last_active: Date.now() - 10 * SECONDS_PER_MINUTE * MS_PER_SECOND,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -149,7 +150,7 @@ describe("resolveIdentity", () => {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: oldSessionId,
-      session_last_active: Date.now() - 31 * 60 * MS_PER_SECOND,
+      session_last_active: Date.now() - 31 * SECONDS_PER_MINUTE * MS_PER_SECOND,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));

@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#0b1113"/>
-  <circle cx="32" cy="32" r="15" fill="#5eead4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>agentsfleet</title>
+  <rect width="64" height="64" rx="12" fill="#151716"/>
+  <g transform="translate(8 8) scale(2)" fill="none" stroke="#b8f0ce" stroke-width="1.4" stroke-linecap="round">
+    <path d="M12 2v6m0 8v6M2 12h6m8 0h6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24"/>
+    <circle cx="12" cy="12" r="1.5" fill="#b8f0ce" stroke="none"/>
+  </g>
 </svg>

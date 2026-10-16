@@ -1,111 +1,68 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldAlertIcon, ShieldCheckIcon, ShieldIcon, type LucideIcon } from "lucide-react";
-import type { BadgeVariant } from "@agentsfleet/design-system";
-import {
-  badgeVariants,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Time,
-} from "@agentsfleet/design-system";
+import { ShieldAlertIcon, ShieldCheckIcon, ShieldIcon, ShieldXIcon, type LucideIcon } from "lucide-react";
+import { TooltipButton, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Time } from "@agentsfleet/design-system";
 import type { RunnerDetail } from "@/lib/api/runners";
 import { isSelftestStale } from "@/lib/api/runners-types";
 import { RunnerChecksReport } from "./RunnerChecksReport";
 import {
-  CHECKS_BADGE_FAILED_SUFFIX,
-  CHECKS_BADGE_NEVER,
-  CHECKS_BADGE_PASSED,
-  CHECKS_BADGE_PENDING,
-  CHECKS_BADGE_STALE,
-  CHECKS_DIALOG_DESCRIPTION,
+  CHECKS_BADGE_FAILED_SUFFIX, CHECKS_BADGE_NEVER, CHECKS_BADGE_PASSED,
+  CHECKS_BADGE_PENDING, CHECKS_BADGE_STALE, CHECKS_DIALOG_DESCRIPTION,
 } from "./runner-copy";
 
-const ICON_SIZE = 13;
+type Verdict = { text: string; Icon: LucideIcon; tone: string };
 
-type Verdict = { text: string; Icon: LucideIcon; variant: BadgeVariant };
-
-// The verdict, compressed to a word the identity line can carry: passed,
-// failed with a count, stale, pending, or never. It wears the Badge recipe so
-// it reads as one more pill beside the tier and labels, not as a stray link;
-// a failure is the one state that must be seen without a click, so it is the
-// one state painted red. The full report — every check by name, the mounts
-// it ran against — opens in a dialog from here rather than taking a card on
-// the page.
 function verdictFor(runner: RunnerDetail): Verdict {
-  const report = runner.selftest ?? null;
+  const report = runner.selftest;
   if (report === null) {
     return {
-      text: (runner.selftest_requested_at ?? null) !== null ? CHECKS_BADGE_PENDING : CHECKS_BADGE_NEVER,
+      text: runner.selftest_requested_at !== null ? CHECKS_BADGE_PENDING : CHECKS_BADGE_NEVER,
       Icon: ShieldIcon,
-      variant: "default",
+      tone: "text-muted-foreground",
     };
   }
   if (isSelftestStale(runner)) {
-    return { text: CHECKS_BADGE_STALE, Icon: ShieldAlertIcon, variant: "amber" };
+    return { text: CHECKS_BADGE_STALE, Icon: ShieldAlertIcon, tone: "text-warning" };
   }
   if (report.all_ok) {
-    return { text: CHECKS_BADGE_PASSED, Icon: ShieldCheckIcon, variant: "green" };
+    return { text: CHECKS_BADGE_PASSED, Icon: ShieldCheckIcon, tone: "text-success" };
   }
   const failed = report.checks.filter((check) => !check.ok).length;
-  return {
-    text: `${failed} ${CHECKS_BADGE_FAILED_SUFFIX}`,
-    Icon: ShieldAlertIcon,
-    variant: "destructive",
-  };
+  return { text: `${failed} ${CHECKS_BADGE_FAILED_SUFFIX}`, Icon: ShieldXIcon, tone: "text-destructive" };
 }
 
 export function RunnerChecksBadge({ runner }: { runner: RunnerDetail }) {
   const [open, setOpen] = useState(false);
   const verdict = verdictFor(runner);
-  const completedAt = runner.selftest_completed_at ?? null;
+  const label = `${verdict.text}. Open report`;
   return (
     <>
-      {/* The eyebrow size is geometry only: no fill, no padding of its own, so
-          the pill inside is the whole visible control and the button is its
-          hit area and focus ring. */}
-      <Button
-        type="button"
-        variant="ghost"
-        size="eyebrow"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen(true)}
-        className="h-auto gap-sm px-0 hover:bg-transparent"
-      >
-        <span className={badgeVariants({ variant: verdict.variant })}>
-          <verdict.Icon size={ICON_SIZE} aria-hidden="true" />
-          {verdict.text}
-        </span>
-        {completedAt !== null ? (
-          <Time
-            value={new Date(completedAt)}
-            format="relative"
-            tooltip={false}
-            className="font-sans text-label text-muted-foreground"
-          />
-        ) : null}
-      </Button>
+      <TooltipButton type="button" variant="ghost" size="icon-sm" className={`shrink-0 ${verdict.tone}`}
+        tooltip={<VerdictTooltip label={label} completedAt={runner.selftest_completed_at} />}
+        aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+        <verdict.Icon className="size-5" aria-hidden="true" />
+      </TooltipButton>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          {/* Titled after the host, not "Checks": the report's own first
-              heading is "Checks", and a dialog that said it too read the
-              word twice in three lines. */}
           <DialogHeader>
-            <DialogTitle>
-              {/* The host id is a technical value, so the mono face rides the
-                  value itself — the title primitive keeps its own type. */}
-              <code className="font-mono">{runner.host_id}</code>
-            </DialogTitle>
-            <DialogDescription className="font-sans">{CHECKS_DIALOG_DESCRIPTION}</DialogDescription>
+            <DialogTitle className="break-all pr-xl"><code className="font-mono">{runner.host_id}</code></DialogTitle>
+            <DialogDescription>{CHECKS_DIALOG_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <RunnerChecksReport runner={runner} />
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+function VerdictTooltip({ label, completedAt }: { label: string; completedAt: number | null }) {
+  const completed = completedAt === null ? null : new Date(completedAt);
+  return <div className="flex flex-col gap-xs">
+    <p className="font-medium">{label}</p>
+    {completed ? <>
+      <p>Last checked <Time value={completed} format="relative" tooltip={false} /></p>
+      <Time value={completed} format="absolute" tooltip={false} />
+    </> : null}
+  </div>;
 }

@@ -12,7 +12,7 @@
 use std::sync::{Arc, Mutex};
 
 use afd_core::test_util::trace::{Capture, CapturedEvent};
-use afd_fleet_runtime::config::{Access, RepositoryBinding};
+use afd_fleet_runtime::config::{Reach, RepositoryBinding};
 use axum::Router;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
@@ -127,7 +127,7 @@ fn reply((status, body): Answer) -> Response {
 }
 
 fn binding() -> RepositoryBinding {
-    RepositoryBinding::from_parts(vec!["acme/widgets".into()], Access::Read, None)
+    RepositoryBinding::from_parts(vec!["acme/widgets".into()], Reach::Read)
 }
 
 #[tokio::test]

@@ -20,7 +20,7 @@ use afd_wire::runner::{
 };
 
 use super::Verdict;
-use super::requests::{ENROLLED_AT, ONE_BEAT_MS, capable, enrolment};
+use super::requests::{ONE_BEAT_MS, capable, enrolment};
 use super::support::Fixtures;
 
 /// What a hold reconcile that did not land is logged under.
@@ -57,7 +57,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -67,6 +67,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
         (
             2 * ONE_BEAT_MS,
             CapabilityReport {
+                build_id: None,
                 landlock: false,
                 ..capable()
             },
@@ -83,7 +84,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     closing: false,
                 },
                 None,
-                UnixMillis::from_millis(ENROLLED_AT + offset),
+                UnixMillis::from_millis(fixtures.enrolled_at() + offset),
             )
             .await
             .expect("the capability transition must land");
@@ -106,7 +107,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .runners()
         .register(
             &enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("enrolment must succeed");
@@ -133,7 +134,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
             &enrolled.runner_id,
             &NO_REPORT,
             None,
-            UnixMillis::from_millis(ENROLLED_AT + ONE_BEAT_MS),
+            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
         )
         .await
         .expect("the stored report remains usable");
@@ -157,7 +158,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("enrolment must succeed");
@@ -171,7 +172,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
             &phantom,
             &NO_REPORT,
             None,
-            UnixMillis::from_millis(ENROLLED_AT),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await;
 
@@ -201,13 +202,19 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("enrolment must succeed");
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
-    let working = beats_holding(&fixtures, runner, &fleet, ENROLLED_AT + ONE_BEAT_MS).await;
+    let working = beats_holding(
+        &fixtures,
+        runner,
+        &fleet,
+        fixtures.enrolled_at() + ONE_BEAT_MS,
+    )
+    .await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     sqlx::query(MOVE_FLEETS)
         .execute(&mut *connection)
@@ -216,7 +223,13 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     drop(connection);
 
     let log = Capture::install();
-    let failed = beats_holding(&fixtures, runner, &fleet, ENROLLED_AT + 2 * ONE_BEAT_MS).await;
+    let failed = beats_holding(
+        &fixtures,
+        runner,
+        &fleet,
+        fixtures.enrolled_at() + 2 * ONE_BEAT_MS,
+    )
+    .await;
     let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
     drop(log);
 

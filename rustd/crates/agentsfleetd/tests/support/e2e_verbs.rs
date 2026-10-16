@@ -27,7 +27,7 @@ use axum::routing::post;
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 
-use crate::bundle_install::seal;
+use crate::definition_install::seal;
 use crate::e2e::{ACTOR, REQUEST_JSON, Scenario};
 use crate::e2e_event::ensure_group;
 

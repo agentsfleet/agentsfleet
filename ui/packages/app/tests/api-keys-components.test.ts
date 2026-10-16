@@ -41,7 +41,6 @@ const ACTIVE: ApiKeyRow = {
   key_name: "ci-runner",
   active: true,
   created_at: 1_716_000_000_000,
-  last_used_at: null,
   revoked_at: null,
 };
 const REVOKED: ApiKeyRow = {
@@ -49,7 +48,6 @@ const REVOKED: ApiKeyRow = {
   key_name: "old-zapier",
   active: false,
   created_at: 1_715_000_000_000,
-  last_used_at: 1_715_500_000_000,
   revoked_at: 1_715_900_000_000,
 };
 
@@ -78,31 +76,31 @@ describe("ApiKeyList component", () => {
 
   it("renders the empty-state message when there are no keys", async () => {
     await renderList(listResponse([]));
-    expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
+    expect(screen.getByText(/Connect your first tool/i)).toBeTruthy();
   });
 
   it("hides the sortable table while the list is empty (only the empty state shows)", async () => {
     await renderList(listResponse([]));
     expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
+    expect(screen.getByText(/Connect your first tool/i)).toBeTruthy();
   });
 
-  it("renders Name and Time as clickable, sortable column headers once keys exist", async () => {
+  it("renders Name and Created as clickable, sortable column headers once keys exist", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByRole("button", { name: /^name$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^time$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^created$/i })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("button", { name: /^time$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("none");
+    expect(screen.getByRole("button", { name: /^created$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
   });
 
-  it("renders active + revoked rows with status badges and 'never used'", async () => {
+  it("renders active and revoked rows with status badges", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByText("ci-runner")).toBeTruthy();
     expect(screen.getByText("old-zapier")).toBeTruthy();
-    expect(screen.getByText("active")).toBeTruthy();
-    expect(screen.getByText("revoked")).toBeTruthy();
-    expect(screen.getAllByText(/never used/i)).toHaveLength(2);
+    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Revoked")).toBeTruthy();
+    expect(screen.queryByText(/never used/i)).toBeNull();
   });
 
   it("active rows expose Revoke; revoked rows expose Delete", async () => {
@@ -140,7 +138,7 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByRole("table")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Time" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Created" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
   });
 
@@ -205,13 +203,11 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
   });
 
-  it("test_api_key_list_view_has_no_pagination_footer", async () => {
-    // The list is complete by construction — the client walks the cursor to
-    // exhaustion — so no paging control renders and every key is visible.
+  it("uses the shared pagination footer for the complete key list", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.queryByRole("button", { name: /next page/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /previous page/i })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: /rows per page/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /next page/i })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: /previous page/i })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("combobox", { name: /rows per page/i })).toBeTruthy();
     expect(screen.getByText("ci-runner")).toBeTruthy();
     expect(screen.getByText("old-zapier")).toBeTruthy();
   });
@@ -236,15 +232,15 @@ describe("ApiKeyList component", () => {
     expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 
-  it("clicking Time selects ascending order and toggles in place", async () => {
+  it("clicking Created selects ascending order and toggles in place", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
-    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
     expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
-    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("ascending");
-    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("ascending");
+    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
     expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
-    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("descending");
     expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 
@@ -252,7 +248,7 @@ describe("ApiKeyList component", () => {
     const twin = { ...ACTIVE, id: "0190cccc-cccc-7ccc-cccc-cccccccccccc", key_name: "twin" };
     await renderList(listResponse([twin, ACTIVE]));
     expect(shownNames()).toEqual(["ci-runner", "twin"]);
-    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
     expect(shownNames()).toEqual(["ci-runner", "twin"]);
   });
 

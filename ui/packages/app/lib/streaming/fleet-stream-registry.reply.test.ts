@@ -213,7 +213,7 @@ describe("fleet stream reply delivery", () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_lost", response_text: "Recovered after gap" }) });
     fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_lost", created_at: MISSED_AT_MS, response_text: null })]));
     const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
-    sourceAt(0).emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_lost", text: "<tool_result>PRIVATE" });
+    sourceAt(0).emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_lost", text: "<tool_result>PRIVATE" });
     reconnect();
     await flushBackfill();
     expect(getFleetEventActionMock).toHaveBeenCalledWith(WS, Z_A, "evt_lost");
@@ -227,13 +227,13 @@ describe("fleet stream reply delivery", () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_late", response_text: "Safe final answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({
+    source.emit({ text_kind: "answer",
       kind: FRAME_KIND.CHUNK,
       event_id: "evt_late",
       text: '{"name":"memory_recall","arguments":{"query":"PRIVATE"}}',
       stream_start: false,
     });
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_late", text: "PRIVATE continuation", stream_start: false });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_late", text: "PRIVATE continuation", stream_start: false });
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_late", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Safe final answer"));
@@ -248,7 +248,7 @@ describe("fleet stream reply delivery", () => {
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_pipe_gap", text: "Safe ", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Safe "));
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_pipe_gap", text: "PRIVATE mid-tool JSON", stream_start: false, stream_contiguous: false });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_pipe_gap", text: "PRIVATE mid-tool JSON", stream_start: false, stream_contiguous: false });
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_pipe_gap", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Recovered answer"));
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
@@ -263,7 +263,7 @@ describe("fleet stream reply delivery", () => {
     source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_batch_gap", text: "Checking ", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Checking "));
     // Sequence 1 contained the tool opener; publication lost that whole batch.
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_batch_gap", text: '{"secret":"PRIVATE"}', stream_seq: 2 });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_batch_gap", text: '{"secret":"PRIVATE"}', stream_seq: 2 });
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_batch_gap", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer"));
@@ -291,12 +291,12 @@ describe("fleet stream reply delivery", () => {
     release();
   });
 
-  it("keeps tool protocol hidden when the final row read fails", async () => {
+  it("drops an unclassified chunk when the final row read fails", async () => {
     vi.useRealTimers();
     failedAction.enabled = true;
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_read_failure", text: "<tool_result>PRIVATE" });
+    source.emitNamed(FRAME_KIND.CHUNK, JSON.stringify({kind: FRAME_KIND.CHUNK, event_id: "evt_read_failure", text: "<tool_result>PRIVATE"}));
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_read_failure", status: "processed" });
     await vi.waitFor(() => expect(failedAction.calls).toBe(1));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -332,7 +332,7 @@ describe("fleet stream reply delivery", () => {
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Answer."));
     expect(getSnapshot(Z_A).events[0]?.reasoning).toBe("Checking Done.");
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_orphan", text: "<tool_call>PRIVATE", stream_seq: 2 });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_orphan", text: "<tool_call>PRIVATE", stream_seq: 2 });
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     release();
   });
@@ -343,8 +343,8 @@ describe("fleet stream reply delivery", () => {
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_result", actor: "fleet" });
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_result", text: "<think>Checking <tool_result>echo </tool_result> PRIVATE" });
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_result", text: "</tool_result> Done.</think>Raw answer." });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_result", text: "<think>Checking <tool_result>echo </tool_result> PRIVATE" });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_result", text: "</tool_result> Done.</think>Raw answer." });
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_result", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Final answer"));
     expect(getFleetEventActionMock).toHaveBeenCalledWith(WS, Z_A, "evt_result");
@@ -357,7 +357,7 @@ describe("fleet stream reply delivery", () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_html", response_text: "Use `<div>` in JSX." }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_html", text: "Use `<div>` in JSX." });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_html", text: "Use `<div>` in JSX." });
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_html", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Use `<div>` in JSX."));
     release();
@@ -372,7 +372,7 @@ describe("fleet stream reply delivery", () => {
     sourceAt(0).fail();
     retryConnection(Z_A);
     const recovered = sourceAt(-1);
-    recovered.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_gap", text: "PRIVATE continuation" });
+    recovered.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_gap", text: "PRIVATE continuation" });
     recovered.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_gap", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Recovered answer"));
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");

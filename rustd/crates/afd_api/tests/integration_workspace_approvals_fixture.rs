@@ -14,7 +14,7 @@ use afd_auth::directory::Digest;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 
 use crate::integration_workspace_approvals::SUBJECT;
 
@@ -78,25 +78,11 @@ impl Fixture {
                INSERT INTO core.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
                VALUES ($4::uuid, $1::uuid, $3, 'approval-live@example.test', 1, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1) \
-             ), fleet AS ( \
-               INSERT INTO core.fleets \
-                 (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                  status, created_at, updated_at) \
-               VALUES ($7::uuid, $2::uuid, $1::uuid, 'approval', '# fixture', '{}', \
-                       'active', 1, 1) \
              ) \
-             INSERT INTO core.fleet_approval_gates \
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
-                proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
-                detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
-             VALUES ($8::uuid, $7::uuid, $2::uuid, $9, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $11, '', 'pending', \
-                     '', 1, NULL, $10, 0, 32)",
+             INSERT INTO core.api_keys \
+               (id, tenant_id, key_name, description, key_hash, created_by, active, \
+                revoked_at, created_at, updated_at) \
+             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -104,8 +90,33 @@ impl Fixture {
         .bind(&self.user)
         .bind(&self.key)
         .bind(digest.as_str())
-        .bind(&self.fleet)
+        .execute(&mut *connection)
+        .await
+        .expect("the authenticated approval tenant seeds");
+        FleetSeed::new(
+            &self.fleet,
+            self.workspace.as_str(),
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
+        )
+        .name("approval")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("the approval fleet seeds");
+        sqlx::query(
+            "INSERT INTO core.fleet_approval_gates \
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
+                proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
+                detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push', 'tool', \
+                     'open a pull request', '{}', 'one repository', $6, '', 'pending', \
+                     '', 1, NULL, $5, 0, 32)",
+        )
         .bind(&self.gate)
+        .bind(&self.fleet)
+        .bind(self.workspace.as_str())
         .bind(&self.action)
         .bind(&self.event)
         .bind(GATE_TIMEOUT_AT)
@@ -163,17 +174,16 @@ impl Fixture {
     pub(crate) async fn seed_second_fleet(&self) -> String {
         let other = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'approval-other', '# fixture', '{}', \
-                     'active', 1, 1)",
+        FleetSeed::new(
+            &other,
+            self.workspace.as_str(),
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
         )
-        .bind(&other)
-        .bind(self.workspace.as_str())
-        .bind(&self.tenant)
-        .execute(&mut *connection)
+        .name("approval-other")
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
         .await
         .expect("the second fleet seeds");
         other

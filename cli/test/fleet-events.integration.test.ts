@@ -265,7 +265,7 @@ describe("events — API error paths", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(401, {
-            error: { code: "UZ-AUTH-003", message: "Token expired" },
+            error_code: "UZ-AUTH-003", detail: "Token expired",
             request_id: "req_ev_401",
           }),
       };
@@ -287,7 +287,7 @@ describe("events — API error paths", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(500, {
-            error: { code: "UZ-INTERNAL-001", message: "Database unavailable" },
+            error_code: "UZ-INTERNAL-001", detail: "Database unavailable",
             request_id: "req_ev_500",
           }),
       };

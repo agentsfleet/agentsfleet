@@ -15,10 +15,11 @@ test.describe("Smoke", () => {
 
   test("brand favicon is wired and resolves", async ({ page }) => {
     await page.goto("/");
-    const href = await page.locator('link[rel="icon"]').getAttribute("href");
-    expect(href).toBe("/favicon.svg");
-    const res = await page.request.get(href!);
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute("href", "/favicon.svg");
+    const res = await page.request.get("/favicon.svg");
     expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("image/svg+xml");
+    expect(await res.text()).toContain("<svg");
   });
 
   test("brand meta description names agentsfleet", async ({ page }) => {
@@ -33,8 +34,10 @@ test.describe("Smoke", () => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
     await expect(page.getByTestId("pricing-cta-early-access")).toBeVisible();
-    await expect(page.getByTestId("pricing-block")).toContainText(/pricing will be confirmed before paid usage/i);
-    await expect(page.getByTestId("pricing-block")).not.toContainText(/\$\d|starter credit|start free/i);
+    // pin test: approved pricing and direct provider-billing wording.
+    await expect(page.getByTestId("pricing-block")).toContainText(/if you bring your own key, usage is billed by your provider directly/i);
+    await expect(page.getByTestId("pricing-early-access-banner")).toContainText("$0 to start · $25 credit included");
+    await expect(page.getByTestId("pricing-block")).not.toContainText(/starter credit|start free|unlimited/i);
   });
 
   test("llms surfaces are generated and reachable", async ({ page }) => {
@@ -72,9 +75,9 @@ test.describe("Smoke", () => {
   test("nav links are present on home", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: /primary/i });
-    await expect(nav.getByRole("link", { name: /^home$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^agents$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^how it works$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Product$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Get started$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^GitHub ↗$/ })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
   });
 
@@ -101,9 +104,9 @@ test.describe("Smoke", () => {
   test("reduced motion leaves the investigation static", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    for (const wire of await page.locator(".incident-wire").all()) {
-      await expect(wire).toHaveCSS("animation-name", "none");
-    }
+    await expect(page.locator(".signal-field > g")).toHaveCSS("animation-name", "none");
+    await page.getByRole("link", { name: /Investigate an incident.*Explore example run/ }).click();
+    await expect(page.getByTestId("how-it-works")).toHaveAttribute("data-running", "false");
     await expect(page.getByTestId("hero-headline")).toBeVisible();
   });
 });

@@ -7,6 +7,7 @@ const APPLY = process.argv.includes("--apply");
 const CK = process.env.CLERK_SECRET_KEY!;
 const SECRET = process.env.CLERK_WEBHOOK_SECRET!;
 const API = process.env.NEXT_PUBLIC_API_URL!;
+const CLERK_REQUEST_INTERVAL_MS = 60;
 const rows = fs.readFileSync(process.argv[2]!, "utf8").trim().split("\n")
   .map((l) => l.split("|")).filter((p) => p[0]?.startsWith("user_"));
 
@@ -16,7 +17,7 @@ for (const [id, email] of rows) {
   const r = await fetch(`https://api.clerk.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${CK}` } });
   (r.status === 404 ? orphans : live).push([id!, email ?? ""]);
   if (r.status !== 404 && r.status !== 200) console.log("  ?? unexpected", r.status, id);
-  await new Promise((s) => setTimeout(s, 60));
+  await new Promise((s) => setTimeout(s, CLERK_REQUEST_INTERVAL_MS));
 }
 console.log(`live in Clerk (KEEP): ${live.length}`);
 for (const [, e] of live) console.log("   keep:", e);

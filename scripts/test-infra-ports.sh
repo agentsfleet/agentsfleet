@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # test-infra-ports.sh — print the host ports this checkout's test infra should
-# publish on, as "<postgres> <redis> <qstash> <dragonfly-base>".
+# publish on, as "<postgres> <qstash> <dragonfly-base>".
 #
-#     bash scripts/test-infra-ports.sh     # e.g. "26400 26401 26402 26403"
+#     bash scripts/test-infra-ports.sh     # e.g. "26400 26402 26403"
 #
-# The fourth number is the FIRST of eight consecutive ports the Dragonfly
+# The third number is the FIRST of eight consecutive ports the Dragonfly
 # cluster publishes: four data ports, then four admin ports (offset 4). Eight
 # and not one because every node announces its own address and a redirect
 # names it, so the cluster needs its published numbers to equal the numbers
@@ -23,21 +23,21 @@
 # The test-infra services carry no `container_name`, so Compose namespaces them
 # per project and several worktrees can run the integration lane at once. The
 # first version of that fix also dropped the host-port side of the mapping
-# (`ports: ["6379"]`), letting Docker assign an ephemeral port per container.
+# (`ports: ["5432"]`), letting Docker assign an ephemeral port per container.
 #
 # That is not stable. An ephemeral published port is reallocated every time the
 # container is recreated OR restarted, while make/test-integration.mk resolves it
 # into a URL string exactly once per run. Any restart between that resolution and
 # the tests leaves the suite dialling a port nothing is listening on. Observed:
-# the Redis lane connected to :57390 while the container had moved to :63324, and
-# every test that opens a real Redis connection failed at TCP connect — which
+# a datastore lane connected to :57390 while the container had moved to :63324, and
+# every test that opens a real connection failed at TCP connect — which
 # reads as a pile of unrelated pub/sub failures, not as a port fault.
 #
 # ## Only LINKED worktrees are pinned
 #
 # A primary checkout — a normal clone, which is what CI always has — keeps the
-# conventional 5432/6379/8080. CI's workflow hardcodes `localhost:5432` and
-# `localhost:6379` into the connection strings it passes the test container and
+# conventional 5432/8080/7001. CI's workflow hardcodes `localhost:5432` into the
+# connection strings it passes the test container and
 # boots Compose on the host before the make target runs inside it; handing those
 # two invocations different ports is what broke the lane. Nothing about CI is
 # multi-checkout, so it has nothing to gain from pinning and everything to lose.
@@ -59,19 +59,18 @@
 set -euo pipefail
 
 DEFAULT_PG=5432
-DEFAULT_REDIS=6379
 DEFAULT_QSTASH=8080
 DEFAULT_DRAGONFLY=7001
 
-# Twelve ports per slot: three services plus the cluster's eight, and one
-# spare. 750 slots keep the whole range inside 20000-28999.
+# Twelve ports per slot: Postgres, QStash and the cluster's eight, with two
+# spares; slot offset 1 is unused, so no port moves when the old Redis slot went. 750 slots keep the whole range inside 20000-28999.
 SLOT_STRIDE=12
 SLOT_COUNT=750
 RANGE_START=20000
 
 # Not a git checkout at all -> nothing to isolate from; use the conventional ports.
 if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
@@ -81,7 +80,7 @@ git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null || echo "")"
 common_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .)" && pwd)"
 
 if [ -z "$git_dir" ] || [ "$git_dir" = "$common_dir" ]; then
-  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
@@ -95,7 +94,7 @@ elif command -v sha256sum >/dev/null 2>&1; then
 else
   # No hasher is not a reason to fail the build; the conventional ports are a
   # correct answer for a single checkout, which is the only case this can be.
-  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_REDIS" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
   exit 0
 fi
 
@@ -104,4 +103,4 @@ fi
 slot=$(( 16#${digest: -6} % SLOT_COUNT ))
 pg_port=$(( RANGE_START + slot * SLOT_STRIDE ))
 
-printf '%s %s %s %s\n' "$pg_port" "$(( pg_port + 1 ))" "$(( pg_port + 2 ))" "$(( pg_port + 3 ))"
+printf '%s %s %s\n' "$pg_port" "$(( pg_port + 2 ))" "$(( pg_port + 3 ))"

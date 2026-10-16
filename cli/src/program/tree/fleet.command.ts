@@ -1,10 +1,4 @@
-// The Fleet verbs: the library you install from, the lifecycle, and the vault.
-//
-// The lifecycle verbs sit at the top level rather than under a `fleet` group,
-// because they are what a person types most and `agentsfleet fleet stop` reads
-// as a stutter. The `fleet` group holds in-place updates only; its own help
-// says so, since a reader who finds the group first would otherwise conclude
-// `list` does not exist.
+// Fleet lifecycle, reusable native setup and the workspace vault.
 
 import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
@@ -19,12 +13,10 @@ import {
   stopEffectFromId,
 } from "../../commands/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet_list.ts";
-import { libraryEffect } from "../../commands/fleet_library.ts";
-import { libraryCreateEffectFromFlags } from "../../commands/fleet_library_create.ts";
-import { libraryListEffect } from "../../commands/fleet_library_list.ts";
+import { libraryEffectFromOptions } from "../../commands/fleet_library.ts";
+import { libraryListEffectFromOptions } from "../../commands/fleet_library_list.ts";
 import { libraryDeleteEffectFromArgs } from "../../commands/fleet_library_delete.ts";
 import { modelsEffectFromFlags } from "../../commands/models.ts";
-import { installEffectFromFlags, updateEffectFromArgs } from "../../commands/fleet_install.ts";
 import { logsEffectFromFlags } from "../../commands/fleet_logs.ts";
 import { eventsEffectFromFlags } from "../../commands/fleet_events.ts";
 import { steerEffectFromArgs } from "../../commands/fleet_steer.ts";
@@ -47,22 +39,14 @@ import {
   fleetFlag,
   fleetIdArgument,
   fleetIdOptionalArgument,
-  fromBundleFlag,
-  fromPathFlag,
-  githubFlag,
-  installLibraryDescription,
-  libraryFlag,
-  slackChannelFlag,
   listLimitFlag,
+  libraryLimitFlag,
   messageArgument,
   modelFlag,
-  nameFlag,
   providerFlag,
-  refFlag,
   secretNameArgument,
   sinceFlag,
   startingAfterFlag,
-  templateFlag,
   workspaceFlag,
 } from "./flags.ts";
 
@@ -78,75 +62,32 @@ const LIST = "list" as const;
 const DELETE = "delete" as const;
 const UPDATE = "update" as const;
 const SHOW = "show" as const;
-const CREATE = "create" as const;
-
-// ── library, models, install ────────────────────────────────────────
-
-const libraryCreateCommand = Command.make(CREATE, {
-  github: githubFlag,
-  from: fromBundleFlag,
-  template: templateFlag,
-  ref: refFlag,
-}).pipe(
-  Command.withDescription("Onboard a Fleet library into this workspace"),
-  guardedHandler(({ github, from, template, ref }) =>
-    libraryCreateEffectFromFlags({
-      github: opt(github),
-      from: opt(from),
-      template: opt(template),
-      revision: opt(ref),
-    }),
-  ),
-);
-
-// `list` and `delete` answer for the workspace's OWN entries; bare `library`
-// keeps printing the gallery, which is what `install --library` resolves
-// against. Redefining the bare command would change a shipped command's
-// meaning for every caller, so the new verbs are explicit.
-const libraryListCommand = Command.make(LIST).pipe(
-  Command.withDescription("List the Fleet libraries this workspace onboarded"),
-  guardedHandler(() => libraryListEffect),
+const libraryPaging = { startingAfter: startingAfterFlag, limit: libraryLimitFlag };
+const libraryListCommand = Command.make(LIST, libraryPaging).pipe(
+  Command.withDescription("List this workspace's published Fleet libraries"),
+  guardedHandler(({ startingAfter, limit }) => libraryListEffectFromOptions({
+    startingAfter: opt(startingAfter), limit: optNum(limit),
+  })),
 );
 
 const libraryDeleteCommand = Command.make(DELETE, {
   entryId: entryIdArgument,
 }).pipe(
-  Command.withDescription("Remove a Fleet library this workspace onboarded"),
+  Command.withDescription("Remove a published Fleet library owned by this workspace"),
   guardedHandler(({ entryId }) => libraryDeleteEffectFromArgs(entryId)),
 );
 
-export const libraryCommand = Command.make("library").pipe(
+export const libraryCommand = Command.make("library", libraryPaging).pipe(
   Command.withDescription("Browse this workspace's Fleet library gallery"),
-  guardedHandler(() => libraryEffect),
-  Command.withSubcommands([libraryCreateCommand, libraryListCommand, libraryDeleteCommand]),
+  guardedHandler(({ startingAfter, limit }) => libraryEffectFromOptions({
+    startingAfter: opt(startingAfter), limit: optNum(limit),
+  })),
+  Command.withSubcommands([libraryListCommand, libraryDeleteCommand]),
 );
 
 export const modelsCommand = Command.make("models", { provider: providerFlag }).pipe(
   Command.withDescription("List the model catalogue this server serves"),
   guardedHandler(({ provider }) => modelsEffectFromFlags({ provider: opt(provider) })),
-);
-
-export const installCommand = Command.make("install", {
-  library: libraryFlag,
-  name: nameFlag,
-  slackChannel: slackChannelFlag,
-}).pipe(
-  Command.withDescription(installLibraryDescription),
-  guardedHandler(({ library, name, slackChannel }) =>
-    installEffectFromFlags({ libraryId: opt(library), name: opt(name), slackChannel: opt(slackChannel) }),
-  ),
-);
-
-// ── the fleet group (in-place updates only) ─────────────────────────
-
-const fleetUpdateCommand = Command.make(UPDATE, {
-  fleetId: fleetIdArgument,
-  from: fromPathFlag,
-}).pipe(
-  Command.withDescription(
-    "Re-parse and PATCH a Fleet's TRIGGER.md + SKILL.md from a local bundle",
-  ),
-  guardedHandler(({ fleetId, from }) => updateEffectFromArgs(fleetId, opt(from))),
 );
 
 const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(
@@ -156,17 +97,11 @@ const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(
 
 export const fleetCommand = Command.make("fleet").pipe(
   Command.withDescription(
-    "Fleet management subcommands — in-place updates only.\n\n" +
-      "The lifecycle verbs are top-level commands, not under `fleet`:\n" +
-      "  agentsfleet list | status | logs | events | steer\n" +
-      "  agentsfleet library | install | stop | resume | kill | delete\n" +
-      // Someone who came here looking for `stop` has just been told it is
-      // somewhere else; the next line has to say where the full list is, or
-      // they are left guessing at the spelling of a command they never saw.
-      "Run `agentsfleet --help` for the full command list.",
+    "Inspect fleet setup. Improve it through agentsfleet chat --fleet <fleet_id>.\n" +
+    "Lifecycle commands are listed by agentsfleet --help.",
   ),
   Command.withShortDescription("Fleet management subcommands"),
-  Command.withSubcommands([fleetShowCommand, fleetUpdateCommand]),
+  Command.withSubcommands([fleetShowCommand]),
 );
 
 // ── lifecycle verbs ─────────────────────────────────────────────────

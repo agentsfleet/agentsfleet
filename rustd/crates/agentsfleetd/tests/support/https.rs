@@ -1,4 +1,4 @@
-//! An HTTPS fake for the upstreams a bundle names.
+//! An HTTPS fake for the upstreams a corpus fleet's setup names.
 //!
 //! One listener answers every host. A test CA signs a leaf naming them all,
 //! and the runner's egress client, routed to this address, trusts that CA

@@ -79,7 +79,7 @@ function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurre
   const seq = frame.stream_seq;
   const textKind = frame.text_kind;
   const expected = entry.replyNextSeq.get(frame.event_id);
-  if ((textKind !== "answer" && textKind !== "reasoning")
+  if (!["answer", "reasoning"].includes(textKind)
     || !Number.isSafeInteger(seq) || seq === undefined || seq < 0
     || frame.stream_contiguous !== true
     || (decoder !== undefined && (frame.stream_start === true || seq !== expected))

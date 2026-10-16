@@ -15,7 +15,7 @@ async fn test_lease_money_gate_refusal() {
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    let degraded = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
+    let degraded = post(&http, &run, "/v1/runners/me/leases", &fleet_poll()).await;
     assert_eq!(degraded.status().as_u16(), 200);
     assert_eq!(
         field(&json(degraded).await, "lease"),

@@ -162,7 +162,6 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["delete"], missingArgName: "fleet_id" },
   { args: ["events"], missingArgName: "fleet_id" },
   { args: ["steer"], missingArgName: "fleet_id" },
-  { args: ["fleet", "update"], missingArgName: "fleet_id" },
   { args: ["memory", "search"], missingArgName: "query" },
   { args: ["secret", "create"], missingArgName: "name" },
   { args: ["secret", "update"], missingArgName: "name" },
@@ -230,7 +229,7 @@ export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string
   ["logs"],
   ["grant", "list"],
   ["memory", "list"],
-  ["install"],
+  ["chat", "--no-input"],
 ];
 
 // A syntactically valid invocation whose identifier is malformed. The guard
@@ -256,7 +255,7 @@ export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> 
   ["billing", "show"],
   ["list"],
   // The catalogue is bearer-authed
-  // (rustd/crates/afd_api_tenant/src/handler/tenant/models.rs), so `models`
+  // (rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs), so `models`
   // must fail on the auth guard rather than dialing and surfacing a transport
   // error — the read happens before there is anything to read with.
   ["models"],

@@ -21,17 +21,14 @@ import {
   scheduleListEffectFromArgs,
   scheduleUpdateEffectFromArgs,
 } from "../src/commands/fleet_schedule.ts";
-import { installEffectFromFlags } from "../src/commands/fleet_install.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ValidationError, ConfigError } from "../src/errors/index.ts";
 import {
-  MEMORY_TEST_WS_ID,
   failureOf,
   httpLayerReturning,
   newCapture,
   runWith,
-  workspacesLayer,
 } from "./helpers-memory-layers.ts";
 
 const VALID_ID = "01900000-0000-7000-8000-0000000000aa";
@@ -250,51 +247,5 @@ describe("fleet_schedule floor arms", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(cap.infos.join("\n")).toContain("No schedules for this Fleet.");
-  });
-});
-
-// ── src/commands/fleet_install.ts ───────────────────────────────────────────
-
-describe("fleet_install floor arms", () => {
-  test("the gallery walk follows next_cursor and ends typed when no page holds the id", async () => {
-    const cap = newCapture();
-    const paths: string[] = [];
-    // Page 1 carries a cursor and no match; page 2 is the last page and has
-    // no match either — the walk must advance the cursor, stop at the end,
-    // and refuse with a typed error rather than a silent undefined.
-    const http = httpLayerByPath(
-      (path) =>
-        path.includes("starting_after")
-          ? { items: [{ id: "other-2" }], next_cursor: null }
-          : { items: [{ id: "other-1" }], next_cursor: "cur-2" },
-      paths,
-    );
-    const exit = await runWith(
-      installEffectFromFlags({ libraryId: "lib-missing" }),
-      { cap, http, workspaces: workspacesLayer() },
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(paths.length).toBe(2);
-    expect(paths[1]).toContain("starting_after=cur-2");
-    expect(paths[0]).toContain(MEMORY_TEST_WS_ID);
-  });
-
-  test("the gallery walk stops at its page cap instead of chasing cursors forever", async () => {
-    const cap = newCapture();
-    const paths: string[] = [];
-    let page = 0;
-    // Every page dangles another cursor. The walk must give up at its cap and
-    // refuse typed — an unbounded chase against a misbehaving server is the
-    // failure mode the cap exists to prevent.
-    const http = httpLayerByPath(() => {
-      page += 1;
-      return { items: [{ id: `other-${page}` }], next_cursor: `cur-${page}` };
-    }, paths);
-    const exit = await runWith(
-      installEffectFromFlags({ libraryId: "lib-never-found" }),
-      { cap, http, workspaces: workspacesLayer() },
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(paths.length).toBe(50); // pin test: literal is the contract (GALLERY_MAX_PAGES)
   });
 });

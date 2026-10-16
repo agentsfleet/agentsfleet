@@ -6,6 +6,8 @@
  */
 
 import { runFleetctl } from "./cli.js";
+import { Schema } from "effect";
+import { FleetSchema } from "../../../src/commands/chat/protocol.ts";
 
 type Env = Readonly<Record<string, string>>;
 
@@ -27,7 +29,7 @@ export class FleetNotFoundError extends Error {}
 // machine turned down answers `ErrorKind::TransitionRefused` (UZ-AGT-010, a
 // 409). `purge.rs` refuses a delete of a fleet nobody killed first with
 // `ErrorKind::MustKillFirst`, which maps to UZ-AGT-010 as well. Both mappings
-// live in `afd_fleet_lifecycle/src/error.rs`.
+// live in `afd_fleet_lifecycle/src/error/mod.rs`.
 //
 // One pattern PER CLASSIFICATION, not one shared alternation. A regex that
 // accepts both codes everywhere still passes when the daemon picks the wrong
@@ -64,25 +66,22 @@ export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycle
 export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
 export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): Promise<FleetRow> {
-  // `agentsfleet list --json` returns every fleet in the current workspace.
-  // Filter client-side because `agentsfleet status` is workspace-wide.
-  const statusArgs = ["list", "--json"];
   const result = await runFleetctl(
-    statusArgs,
+    ["fleet", "show", fleetId, "--json"],
     timeoutMs === undefined ? { env } : { env, timeoutMs },
   );
   if (result.code !== 0) {
-    throw new Error(`list (for status of ${fleetId}) exited ${result.code}: ${result.stderr.trim()}`);
+    if (/UZ-AGT-009|HTTP_404/.test(result.stderr)) {
+      throw new FleetNotFoundError(`fleet ${fleetId} is unavailable`);
+    }
+    throw new Error(`fleet show ${fleetId} exited ${result.code}: ${result.stderr.trim()}`);
   }
-  const payload = JSON.parse(result.stdout.trim() || "{}") as { items?: unknown };
-  const items: FleetRow[] = Array.isArray(payload.items) ? (payload.items as FleetRow[]) : [];
-  const match = items.find((z) => z.id === fleetId || z.fleet_id === fleetId);
-  if (!match) {
-    throw new FleetNotFoundError(
-      `fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`,
-    );
-  }
-  return match;
+  const payload = Schema.decodeUnknownSync(Schema.Struct({items: Schema.Array(FleetSchema)}))(
+    JSON.parse(result.stdout.trim()),
+  );
+  const fleet = payload.items[0];
+  if (payload.items.length !== 1 || fleet?.id !== fleetId) throw new Error("fleet show returned a different identity");
+  return fleet;
 }
 
 export async function expectStatus(

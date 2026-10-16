@@ -65,7 +65,7 @@ describe("HttpClient", () => {
       (async () =>
         new Response(
           JSON.stringify({
-            error: { code: "UZ-AUTH-002", message: "unauthorized" },
+            error_code: "UZ-AUTH-002", detail: "unauthorized",
           }),
           {
             status: 401,
@@ -100,7 +100,7 @@ describe("HttpClient", () => {
       (async () =>
         new Response(
           JSON.stringify({
-            error: { code: "UZ-INTERNAL-001", message: "db down" },
+            error_code: "UZ-INTERNAL-001", detail: "db down",
           }),
           {
             status: 500,
@@ -126,16 +126,15 @@ describe("HttpClient", () => {
       expect(fail?.message).toContain("retry");
     }
   });
-  test("ServerError lists missing Fleet Bundle secrets from RFC 7807", async () => {
+  test("ServerError preserves the draft refusal and request identity", async () => {
     setFetch(
       (async () =>
         new Response(
           JSON.stringify({
-            error_code: "UZ-BUNDLE-003",
+            error_code: "UZ-AUTHOR-006",
             detail:
-              "Fleet Bundle requires workspace secrets that are not present",
-            request_id: "req_bundle",
-            missing_secrets: ["fly", "upstash", "slack", "github"],
+              "Review this draft before saving",
+            request_id: "req_review",
           }),
           { status: 424 },
         )) as unknown as typeof globalThis.fetch,
@@ -157,9 +156,9 @@ describe("HttpClient", () => {
       const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail).toMatchObject({
         _tag: "ServerError",
-        code: "UZ-BUNDLE-003",
-        requestId: "req_bundle",
-        suggestion: "add: fly, upstash, slack, github",
+        code: "UZ-AUTHOR-006",
+        requestId: "req_review",
+        suggestion: "verify the request payload and retry",
       });
     }
   });

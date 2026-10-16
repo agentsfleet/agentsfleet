@@ -33,12 +33,7 @@ def listed(stdout: str, returncode: int = 0, stderr: str = "") -> subprocess.Com
 LISTING = listed(f"  [journeys] › {checker.EXECUTION_SPEC}:12:3 › a fleet executes\nTotal: 1 test in 1 file\n")
 
 EVENTS_TS = 'export const EVENTS = {\n  fleet_created: "fleet_created",\n} as const;\n'
-SEED_TS = "export function triggerMd(name: string) { return name; }\n"
-SPEC_TS = (
-    'import { triggerMd } from "./fixtures/seed";\n'
-    "await installViaUI(page, TEMPLATE_FIRST, {});\n"
-    'await page.waitForLoadState("load");\n'
-)
+SPEC_TS = 'await page.waitForLoadState("load");\n'
 CLIENT_TSX = '"use client";\nexport function Panel({ label }: { label: string }) {\n  const tokenCount = 3;\n  return <p>{label}{tokenCount}</p>;\n}\n'
 SERVER_TS = 'const bearer = await getToken();\nexport const headers = { Authorization: `Bearer ${bearer}` };\n'
 HANDOFF_TSX = '"use client";\nconst token = await getToken({ template: "api" });\n'
@@ -50,7 +45,6 @@ def clean_tree() -> dict[str, str]:
     return {
         checker.EVENTS_MODULE: EVENTS_TS,
         f"{APP}/components/track.ts": 'import { EVENTS } from "@/lib/analytics/events";\ncapture(EVENTS.fleet_created);\n',
-        checker.SHARED_SEED: SEED_TS,
         f"{checker.ACCEPTANCE}/install.spec.ts": SPEC_TS,
         f"{APP}/components/Panel.tsx": CLIENT_TSX,
         f"{APP}/lib/actions/with-token.ts": SERVER_TS,
@@ -91,8 +85,6 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
     def test_moved_rules_reject_seeded_violations(self) -> None:
         spec = f"{checker.ACCEPTANCE}/install.spec.ts"
         cases = {
-            "app-acceptance-builder": with_file(spec, SPEC_TS + "function skillMd() { return ''; }\n"),
-            "app-acceptance-template": with_file(spec, SPEC_TS.replace("TEMPLATE_FIRST", "`fleet-${Date.now()}`")),
             "app-acceptance-networkidle": with_file(spec, SPEC_TS.replace('"load"', '"networkidle"')),
             "app-event-literal": with_file(f"{APP}/tests/track.test.ts", 'expect(name).toBe("fleet_created");\n'),
             "app-api-template": with_file(f"{APP}/app/login/page.tsx", 'const t = await getToken({ template: "api" });\n'),

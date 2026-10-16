@@ -32,19 +32,40 @@ const REASON_WRITE_WITHOUT_BASE: &str = "a write binding must name the base it o
 /// How far a fleet's repository credentials reach.
 pub type Access = raw::Access;
 
-/// Whether the document being read is being authored or was already stored.
+/// How far a binding reaches, with a write's base carried by the write itself.
 ///
-/// The distinction exists for one shape and no other: write bindings saved
-/// before `repository_base` existed have no base to read. Authoring refuses
-/// them, so nobody creates another; stored admits them, so the lease path can
-/// surface a durable, actionable upgrade refusal instead of failing the whole
-/// parse and telling an operator nothing about which fleet to fix.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    /// A document being written now.
-    Authoring,
-    /// A document read back out of the datastore.
-    Stored,
+/// A read binding with a base, or a write binding without one, cannot be
+/// built: [`RepositoryBinding::parse`] refuses both at the boundary, so no
+/// reader below it re-checks the pairing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reach {
+    /// Fetch history, and nothing more.
+    Read,
+    /// Everything `Read` allows, plus opening a draft Pull Request.
+    Write {
+        /// The trusted branch every Pull Request opens against.
+        base: Box<str>,
+    },
+}
+
+impl Reach {
+    /// The access level a gate row records and the GitHub mint scopes by.
+    #[must_use]
+    pub const fn access(&self) -> Access {
+        match self {
+            Self::Read => Access::Read,
+            Self::Write { .. } => Access::Write,
+        }
+    }
+
+    /// The base a write opens against; a read has none.
+    #[must_use]
+    pub fn base(&self) -> Option<&str> {
+        match self {
+            Self::Read => None,
+            Self::Write { base } => Some(base.as_ref()),
+        }
+    }
 }
 
 /// Which repositories a fleet may reach, and how far.
@@ -52,13 +73,8 @@ pub enum Mode {
 pub struct RepositoryBinding {
     /// The repositories, as `owner/name`.
     repositories: Box<[Box<str>]>,
-    /// How far the reach goes.
-    access: Access,
-    /// The trusted base a write binding opens against.
-    ///
-    /// `None` on a read binding, and on a stored write binding saved before
-    /// this key existed — which the lease path refuses with a typed message.
-    base_branch: Option<Box<str>>,
+    /// How far the reach goes, and against which base a write opens.
+    reach: Reach,
 }
 
 impl RepositoryBinding {
@@ -68,16 +84,16 @@ impl RepositoryBinding {
         &self.repositories
     }
 
-    /// How far the reach goes.
+    /// How far the reach goes, and against which base a write opens.
     #[must_use]
-    pub const fn access(&self) -> Access {
-        self.access
+    pub const fn reach(&self) -> &Reach {
+        &self.reach
     }
 
-    /// The trusted base a write binding opens against.
+    /// The access level alone, for readers that scope by it.
     #[must_use]
-    pub fn base_branch(&self) -> Option<&str> {
-        self.base_branch.as_deref()
+    pub const fn access(&self) -> Access {
+        self.reach.access()
     }
 
     /// Builds a binding directly from its parts.
@@ -85,10 +101,9 @@ impl RepositoryBinding {
     /// Behind `test-util` (`M-TEST-UTIL`) for the reason
     /// [`GatePolicy::from_parts`](crate::config::GatePolicy::from_parts) is:
     /// the production door is [`Self::parse`] and it is the one that
-    /// VALIDATES — half-declared refused, a read binding refused a base, a
-    /// write binding required one. A second constructor that skipped that
-    /// would be a second way to build a binding, which is a way to build an
-    /// invalid one.
+    /// VALIDATES — half-declared refused, an empty list refused. [`Reach`]
+    /// already rules out a read with a base and a write without one, so a
+    /// test cannot build that pairing here either.
     ///
     /// The consumer is the credential mint in the sibling crate, whose subject
     /// is what a GitHub token came back reaching. Driving those cases through a
@@ -96,15 +111,10 @@ impl RepositoryBinding {
     /// whose parse is not what the test is about.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn from_parts(
-        repositories: Vec<Box<str>>,
-        access: Access,
-        base_branch: Option<Box<str>>,
-    ) -> Self {
+    pub fn from_parts(repositories: Vec<Box<str>>, reach: Reach) -> Self {
         Self {
             repositories: repositories.into_boxed_slice(),
-            access,
-            base_branch,
+            reach,
         }
     }
 
@@ -113,7 +123,7 @@ impl RepositoryBinding {
     /// # Errors
     /// [`Error::InvalidRepositoryBinding`] for a half-declared or empty
     /// binding, or [`Error::InvalidList`] for a malformed entry.
-    pub(crate) fn parse(authored: &mut raw::Runtime, mode: Mode) -> Result<Option<Self>> {
+    pub(crate) fn parse(authored: &mut raw::Runtime) -> Result<Option<Self>> {
         let repositories = authored.repositories.take();
         let base = authored.repository_base.take();
 
@@ -124,8 +134,7 @@ impl RepositoryBinding {
                 // refusal of an empty list — a token scoped to nothing cannot
                 // mint, so "names nothing" is not "every repository".
                 repositories: list.into_iter().map(Into::into).collect(),
-                base_branch: base_branch(access, base, mode)?,
-                access,
+                reach: reach(access, base)?,
             })),
             _ => Err(ErrorKind::InvalidRepositoryBinding {
                 reason: REASON_HALF_DECLARED,
@@ -179,26 +188,21 @@ impl RepositoryBinding {
     pub fn recorded(&self) -> Recorded<'_> {
         Recorded {
             repositories: &self.repositories,
-            access: self.access,
-            base: self.base_branch(),
+            access: self.reach.access(),
+            base: self.reach.base(),
         }
     }
 }
 
-/// Resolves the base branch for `access` under `mode`.
-fn base_branch(access: Access, authored: Option<String>, mode: Mode) -> Result<Option<Box<str>>> {
+/// Pairs the authored access level with its base, refusing either mismatch.
+fn reach(access: Access, authored: Option<String>) -> Result<Reach> {
     let refuse = |reason| ErrorKind::InvalidRepositoryBinding { reason }.into();
 
-    match (access, authored, mode) {
-        // Two ways to legitimately carry no base: a read binding never has
-        // one, and a stored write binding predates the key. The lease path
-        // tells them apart by the access level, which it already holds.
-        (Access::Read, None, _) | (Access::Write, None, Mode::Stored) => Ok(None),
-        (Access::Read, Some(_), _) => Err(refuse(REASON_READ_WITH_BASE)),
-        (Access::Write, None, Mode::Authoring) => Err(refuse(REASON_WRITE_WITHOUT_BASE)),
-        // Its SHAPE was proved by the schema; what is decided here is only
-        // whether a base belongs at all, which depends on access and mode.
-        (Access::Write, Some(base), _) => Ok(Some(base.into())),
+    match (access, authored) {
+        (Access::Read, None) => Ok(Reach::Read),
+        (Access::Read, Some(_)) => Err(refuse(REASON_READ_WITH_BASE)),
+        (Access::Write, None) => Err(refuse(REASON_WRITE_WITHOUT_BASE)),
+        (Access::Write, Some(base)) => Ok(Reach::Write { base: base.into() }),
     }
 }
 
@@ -209,7 +213,7 @@ mod tests {
         clippy::assertions_on_result_states,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Access, Mode, RepositoryBinding};
+    use super::{Reach, RepositoryBinding};
     use crate::config::raw;
     use crate::error::Error;
     use crate::error::ErrorKind;
@@ -217,17 +221,17 @@ mod tests {
 
     /// Deserializes AND validates, so a schema-declared rule is in force here
     /// exactly as it is on the real path.
-    fn parse(json: &str, mode: Mode) -> Result<Option<RepositoryBinding>, Error> {
+    fn parse(json: &str) -> Result<Option<RepositoryBinding>, Error> {
         let mut authored: raw::Runtime =
             serde_json::from_str(json).expect("test fixture is a runtime block");
         authored.validate()?;
-        RepositoryBinding::parse(&mut authored, mode)
+        RepositoryBinding::parse(&mut authored)
     }
 
     #[test]
     fn an_undeclared_binding_is_absent_rather_than_an_error() {
         assert!(
-            parse(r#"{"tools": []}"#, Mode::Authoring)
+            parse(r#"{"tools": []}"#)
                 .expect("declaring nothing is legitimate")
                 .is_none()
         );
@@ -235,7 +239,7 @@ mod tests {
 
     #[test]
     fn a_list_without_an_access_level_is_refused() {
-        let failure = parse(r#"{"repositories": ["a/b"]}"#, Mode::Authoring)
+        let failure = parse(r#"{"repositories": ["a/b"]}"#)
             .expect_err("a list alone does not know how far to reach");
 
         assert!(
@@ -246,63 +250,51 @@ mod tests {
 
     #[test]
     fn an_access_level_without_a_list_is_refused() {
-        assert!(parse(r#"{"repository_access": "read"}"#, Mode::Authoring).is_err());
+        assert!(parse(r#"{"repository_access": "read"}"#).is_err());
     }
 
     #[test]
     fn an_empty_list_is_refused_because_a_token_scoped_to_nothing_cannot_mint() {
-        assert!(
-            parse(
-                r#"{"repositories": [], "repository_access": "read"}"#,
-                Mode::Authoring
-            )
-            .is_err()
-        );
+        assert!(parse(r#"{"repositories": [], "repository_access": "read"}"#).is_err());
     }
 
     #[test]
     fn a_read_binding_takes_no_base() {
-        let binding = parse(
-            r#"{"repositories": ["agentsfleet/agentsfleet"], "repository_access": "read"}"#,
-            Mode::Authoring,
-        )
-        .expect("a read binding is complete without a base")
-        .expect("a binding was declared");
+        let binding =
+            parse(r#"{"repositories": ["agentsfleet/agentsfleet"], "repository_access": "read"}"#)
+                .expect("a read binding is complete without a base")
+                .expect("a binding was declared");
 
-        assert_eq!(binding.access(), Access::Read);
-        assert_eq!(binding.base_branch(), None);
+        assert_eq!(binding.reach(), &Reach::Read);
     }
 
     #[test]
     fn a_read_binding_that_names_a_base_is_refused() {
         assert!(parse(
-            r#"{"repositories": ["a/b"], "repository_access": "read", "repository_base": "main"}"#,
-            Mode::Authoring
+            r#"{"repositories": ["a/b"], "repository_access": "read", "repository_base": "main"}"#
         )
         .is_err());
     }
 
     #[test]
     fn a_write_binding_authored_without_a_base_is_refused() {
-        assert!(
-            parse(
-                r#"{"repositories": ["a/b"], "repository_access": "write"}"#,
-                Mode::Authoring
-            )
-            .is_err()
-        );
+        assert!(parse(r#"{"repositories": ["a/b"], "repository_access": "write"}"#).is_err());
     }
 
     #[test]
-    fn a_stored_write_binding_without_a_base_survives_for_the_lease_path_to_refuse() {
+    fn a_write_binding_carries_its_base_and_records_it() {
         let binding = parse(
-            r#"{"repositories": ["a/b"], "repository_access": "write"}"#,
-            Mode::Stored,
+            r#"{"repositories": ["a/b"], "repository_access": "write", "repository_base": "dev"}"#,
         )
-        .expect("a pre-base row must parse so the refusal can name the fleet")
+        .expect("a write binding with a base is complete")
         .expect("a binding was declared");
 
-        assert_eq!(binding.base_branch(), None);
+        assert_eq!(binding.reach(), &Reach::Write { base: "dev".into() });
+        let recorded = serde_json::to_value(binding.recorded()).expect("a record serializes");
+        assert_eq!(
+            recorded,
+            serde_json::json!({"repositories": ["a/b"], "access": "write", "base": "dev"})
+        );
     }
 
     #[test]
@@ -322,12 +314,9 @@ mod tests {
     #[test]
     fn a_branch_name_may_not_reach_outside_itself() {
         let binding = |base: &str| {
-            parse(
-                &format!(
-                    r#"{{"repositories": ["a/b"], "repository_access": "write", "repository_base": "{base}"}}"#
-                ),
-                Mode::Authoring,
-            )
+            parse(&format!(
+                r#"{{"repositories": ["a/b"], "repository_access": "write", "repository_base": "{base}"}}"#
+            ))
         };
 
         assert!(binding("main").is_ok());

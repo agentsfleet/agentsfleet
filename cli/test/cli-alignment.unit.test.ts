@@ -20,7 +20,8 @@ test("--help lists the fleet subcommand group", async () => {
   // The top-level body is a flat Commands list — each fleet op gets its
   // own line. The Subcommands block below it lists the namespaced secret
   // vault.
-  assert.ok(text.includes("install"), "install line missing");
+  assert.ok(text.includes("chat"),    "chat line missing");
+  assert.ok(!/^\s+install\s/m.test(text), "removed install verb still listed");
   assert.ok(text.includes("list"),    "list line missing");
   assert.ok(text.includes("status"),  "status line missing");
   assert.ok(text.includes("kill"),    "kill line missing");

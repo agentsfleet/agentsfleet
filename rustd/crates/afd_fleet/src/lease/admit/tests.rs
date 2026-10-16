@@ -104,7 +104,7 @@ async fn decided_on_a_dead_ledger(
 
     let log = Capture::install();
     let config = FleetConfig::authored(
-        r#"{"name":"fixture","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1}}}"#,
+        r#"{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#,
     )
     .expect("the fixture document is authorable");
     let (workspace, fleet, tenant) = (test_dead::id(2), test_dead::id(1), test_dead::id(3));

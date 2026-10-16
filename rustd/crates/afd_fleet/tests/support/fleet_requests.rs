@@ -10,14 +10,10 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::borrow::Cow;
-
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, NetworkPolicy, RegisterRequest, SandboxTier,
 };
-
-/// A fixed instant, so a row's stamps are asserted rather than observed.
-pub(crate) const ENROLLED_AT: i64 = 1_760_000_000_000;
+use std::borrow::Cow;
 
 /// How far this suite advances between beats.
 ///
@@ -73,6 +69,7 @@ pub(crate) fn enrolment_tagged(
 /// A host that proves everything.
 pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        build_id: None,
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec![

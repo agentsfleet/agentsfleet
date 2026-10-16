@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "Replies once to a live acceptance steer message without tools or credentials.",
+  "instructions_md": "# Steer probe\n\nReply with one short acknowledgement. Do not call tools.",
+  "config": {
+    "name": "steer-probe",
+    "x-agentsfleet": {
+      "model": "{{model}}",
+      "context": {
+        "context_cap_tokens": "{{context_cap_tokens}}"
+      },
+      "triggers": [],
+      "tools": [],
+      "credentials": [],
+      "network": {
+        "allow": [
+          "api.fireworks.ai"
+        ]
+      },
+      "budget": {
+        "daily_nanos": "1000000000"
+      }
+    }
+  }
+}

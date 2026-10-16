@@ -30,7 +30,7 @@ use utoipa::OpenApi as _;
     crate::handler::webhook::github_route::receive,
     crate::handler::webhook::identity_route::receive,
     crate::handler::webhook::qstash_route::receive,
-    crate::handler::webhook::receive_route::receive,
+    crate::handler::webhook::source_route::receive,
     crate::handler::webhook::svix_route::receive,
 ))]
 struct Plane;

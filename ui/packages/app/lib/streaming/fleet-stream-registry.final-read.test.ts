@@ -25,10 +25,10 @@ describe("fleet stream durable final read", () => {
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_late_activity", status: "processed", actor: "fleet", created_at: Date.now() });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer"));
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_late_activity", text: "PRIVATE late draft", stream_start: true, stream_contiguous: true, stream_seq: 0 });
-    source.emit({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_late_activity", name: "late_tool", args_redacted: true });
-    source.emit({ kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "evt_late_activity", name: "late_tool", elapsed_ms: 1 });
-    source.emit({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_late_activity", name: "late_tool", ms: 2 });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_late_activity", text: "PRIVATE late draft", stream_start: true, stream_contiguous: true, stream_seq: 0 });
+    source.emit({ call_id: "late_tool", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_late_activity", name: "late_tool", args_redacted: true });
+    source.emit({ call_id: "late_tool", kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "evt_late_activity", name: "late_tool", elapsed_ms: 1 });
+    source.emit({ call_id: "late_tool", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_late_activity", name: "late_tool", ms: 2 });
     expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer");
     expect(getSnapshot(Z_A).events[0]?.tools).toBeUndefined();
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
@@ -42,7 +42,7 @@ describe("fleet stream durable final read", () => {
       .mockResolvedValue({ ok: true, data: row({ event_id: "evt_transient", response_text: "Complete answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_transient", text: "Partial " });
+    source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_transient", text: "Partial " });
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_transient", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Complete answer"));
     expect(getFleetEventActionMock).toHaveBeenCalledTimes(2);
@@ -133,7 +133,7 @@ describe("fleet stream durable final read", () => {
       .mockResolvedValue({ ok: true, data: row({ event_id: "evt_retry", response_text: "Recovered after retry" }) });
     const entry = createEntry(WS, []);
     const apply = vi.fn();
-    dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.CHUNK, event_id: "evt_retry", text: "Partial", stream_start: true, stream_contiguous: true, stream_seq: 0 }, apply, () => true);
+    dispatchReplyFrame(entry, Z_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_retry", text: "Partial", stream_start: true, stream_contiguous: true, stream_seq: 0 }, apply, () => true);
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_retry", status: "processed" }, apply, () => true);
     await vi.waitFor(() => expect(entry.replyGaps.has("evt_retry")).toBe(true));
     await vi.waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalledTimes(1));
@@ -147,8 +147,8 @@ describe("fleet stream durable final read", () => {
     getFleetEventActionMock.mockReturnValueOnce(new Promise(() => {}));
     const entry = createEntry(WS, []);
     const apply = vi.fn();
-    dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.CHUNK, event_id: "evt_pending", text: "Draft", stream_start: true, stream_contiguous: true, stream_seq: 0 }, apply, () => true);
-    dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.CHUNK, event_id: "evt_pending", text: "PRIVATE", stream_seq: 2, stream_contiguous: true }, apply, () => true);
+    dispatchReplyFrame(entry, Z_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_pending", text: "Draft", stream_start: true, stream_contiguous: true, stream_seq: 0 }, apply, () => true);
+    dispatchReplyFrame(entry, Z_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_pending", text: "PRIVATE", stream_seq: 2, stream_contiguous: true }, apply, () => true);
     const terminal = row({ event_id: "evt_pending", status: "processed" });
     settleRepliesFromBackfill(entry, Z_A, [terminal], apply, () => true);
     settleRepliesFromBackfill(entry, Z_A, [terminal], apply, () => true);
@@ -190,7 +190,7 @@ describe("fleet stream durable final read", () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_late_gap", response_text: "History answer" }) });
     fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_late_gap", created_at: MISSED_AT_MS, response_text: null })]));
     const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
-    sourceAt(0).emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_late_gap", text: "PRIVATE mid-tool", stream_start: false });
+    sourceAt(0).emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_late_gap", text: "PRIVATE mid-tool", stream_start: false });
     reconnect();
     await flushBackfill();
     expect(getSnapshot(Z_A).events.find((event) => event.id === "evt_late_gap")?.reply).toBe("History answer");
@@ -215,12 +215,12 @@ describe("fleet stream durable final read", () => {
   it.each([
     { ok: false, data: undefined },
     { ok: true, data: row({ response_text: null }) },
-  ])("keeps protocol hidden when the final row is unavailable: %j", async (response) => {
+  ])("drops an unclassified chunk when the final row is unavailable: %j", async (response) => {
     vi.useRealTimers();
     getFleetEventActionMock.mockResolvedValue(response);
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_unavailable", text: "<tool_result>PRIVATE" });
+    source.emitNamed(FRAME_KIND.CHUNK, JSON.stringify({kind: FRAME_KIND.CHUNK, event_id: "evt_unavailable", text: "<tool_result>PRIVATE"}));
     source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_unavailable", status: "processed" });
     await vi.waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalled());
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");

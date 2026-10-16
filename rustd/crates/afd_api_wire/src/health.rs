@@ -12,7 +12,7 @@
 //!
 //! # Borrowed, like the rest of this crate
 //!
-//! [`Liveness`]'s four fields are `'static` in practice: the service name and
+//! [`Liveness`]'s build fields are `'static` in practice: the service name and
 //! the version are compile-time constants. `Cow<'a, str>` lets them be written
 //! without a copy while keeping the type shaped like its siblings.
 
@@ -39,6 +39,8 @@ pub struct Liveness<'a> {
     /// The commit this binary was built from, or `unknown` when the build was
     /// not told.
     pub commit: Cow<'a, str>,
+    /// Source digest shared with the app, runner and terminal client, when bound.
+    pub build_id: Option<Cow<'a, str>>,
 }
 
 /// Whether this instance should take traffic, and if not, why.
@@ -64,24 +66,25 @@ mod tests {
 
     use super::{Liveness, Readiness};
 
-    /// The liveness document is the four fields in the order [`Liveness`]
+    /// The liveness document is the build fields in the order [`Liveness`]
     /// declares them.
     ///
     /// Asserted as bytes: a probe is read by tools that log the body verbatim,
     /// and a reordered key is a diff in every one of their logs.
     #[test]
-    fn test_liveness_is_the_four_fields_in_declaration_order() {
+    fn test_liveness_is_the_build_fields_in_declaration_order() {
         let alive = Liveness {
             status: Cow::Borrowed("ok"),
             service: Cow::Borrowed("agentsfleetd"),
             version: Cow::Borrowed("2.0.0"),
             commit: Cow::Borrowed("unknown"),
+            build_id: None,
         };
 
         assert_eq!(
             serde_json::to_string(&alive).ok().as_deref(),
             Some(
-                r#"{"status":"ok","service":"agentsfleetd","version":"2.0.0","commit":"unknown"}"#
+                r#"{"status":"ok","service":"agentsfleetd","version":"2.0.0","commit":"unknown","build_id":null}"#
             ),
         );
     }

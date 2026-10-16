@@ -1,5 +1,5 @@
 export const SECRETS_PAGE_TITLE = "Secrets";
-export const SECRETS_PAGE_DESCRIPTION = "Secrets your fleets can use securely. Saved values stay hidden.";
+export const SECRETS_PAGE_DESCRIPTION = "Give your fleets access to services without putting credentials in a chat.";
 export const SECRET_ROW_DESCRIPTION = "Encrypted and hidden.";
 export const CREATE_SECRET_TOOLTIP = "Create an encrypted workspace secret.";
 

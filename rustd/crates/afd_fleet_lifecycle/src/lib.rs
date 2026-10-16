@@ -1,4 +1,4 @@
-//! A workspace's fleets: install, read, edit, purge.
+//! A workspace's fleets as one shared store: list, live set, counters, purge.
 //!
 //! # Why this is its own crate
 //!
@@ -7,18 +7,10 @@
 //! other; they meet at `core.fleets`, one writing the row and the other reading
 //! it, which is a table and not a dependency.
 //!
-//! Folding this in would have gone one of two wrong ways. `afd_fleet` is
-//! already 25,500 lines — three and a half times its nearest sibling, and the
-//! exact condition that forced `afd_tenant` out of it, where an edit to a
-//! 400-line module rebuilt everything. `afd_tenant` is the other candidate and
-//! is the wrong shape for a different reason: it would acquire a YAML parser
-//! and a Dragonfly stream client that its api-key, credential and login modules
-//! never call, and every edit to those would then rebuild both.
-//!
-//! What is here has exactly two edges out that its neighbours lack —
-//! [`afd_fleet_runtime`] for the authored documents, and `afd_dragonfly`'s stream
-//! client for the install guarantee — and both are load-bearing here and used
-//! nowhere else in the tenant-facing surface.
+//! Setup is not here. Every fleet is written by the native setup authority,
+//! `afd_authoring::Creations` — a person's reviewed Save, an explicit Apply,
+//! and the daemon's own system setup for a channel's resident — so one parser
+//! and one storage shape decide what a fleet may do.
 //!
 //! # What it does not contain
 //!
@@ -29,31 +21,22 @@
 //! workspace, in SQL, because that one it can enforce rather than trust.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 // Named for the lint's benefit: both are the integration lane's, and
 // `unused_crate_dependencies` counts a dev-dependency against the LIB target
 // unless the crate root says it knows about them.
 #[cfg(test)]
-use {redis as _, serde_json as _, tokio as _};
+use {afd_crypto as _, tokio as _};
 
 pub mod error;
 
-mod edit;
-mod install;
 mod live_set;
 mod purge;
 mod read;
 mod sql;
 
-use std::sync::Arc;
-
-use afd_approval::IntegrationGrants;
-use afd_credential::secrets::Registry;
-use afd_credential::vault::Vault;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
-use afd_vault::Directory;
 
 /// The purge's statements, for the lane that runs them against a live role.
 ///
@@ -74,99 +57,52 @@ pub mod purge_statements {
     pub const PURGE_CHILDREN: &[&str] = crate::sql::purge::PURGE_CHILDREN;
 }
 
-pub use self::edit::{ConfigSource, Patch, Patched, Requested};
 pub use self::error::{Error, Result};
-pub use self::install::{Install, Installed, LibrarySource, default_trigger};
-pub use self::read::{After, FleetDetail, FleetPage, FleetRow, Triggers};
+pub use self::read::{After, FleetPage, FleetRow, Triggers};
 
 /// The workspace's fleets, as one store.
 ///
-/// Holds Postgres, two views of Dragonfly, and an entropy source, because an
-/// install needs all of them in ONE operation: the row is written, the stream
-/// and its consumer group are created, and only then is the fleet real. A
-/// caller holding the pieces and sequencing them itself is a caller that can
-/// get the order wrong, and wrong here means a fleet whose first event arrives
-/// before anything exists to read it.
+/// Holds Postgres and two views of Dragonfly, because a purge removes the row
+/// and then forgets the stream and the readiness mark that hang off it.
 #[derive(Debug, Clone)]
 pub struct Fleets {
     database: Db,
     streams: FleetStreams,
     ready: ReadyIndex,
-    entropy: Entropy,
     /// One enumeration per workspace per tick, shared by every viewer of it.
     /// See [`live_set`] for why this read is cached where the others are not.
     live_sets: live_set::LiveSets,
-    /// The workspace's stored credential NAMES, for the install's pre-flight.
-    ///
-    /// Built here from the pool this store already holds rather than taken as a
-    /// fourth argument: which reads this crate needs is its own business, and a
-    /// composition root assembling the pair would be edited every time that
-    /// answer changed — the same argument [`Self::new`] makes about the two
-    /// Dragonfly views.
-    secrets: Directory,
-    /// The same directory's stored HANDLES, for the install's grant requests.
-    ///
-    /// A second surface over one table, beside [`Fleets::secrets`], and the two
-    /// ask genuinely different questions. The pre-flight asks what the
-    /// workspace HOLDS — a set difference over names, which needs no key. This
-    /// one asks what a held credential IS, and only the handle's own
-    /// `integration` field answers it, so it opens the envelope. The narrower
-    /// read stays narrow rather than being widened to serve both.
-    vault: Vault,
-    /// The connector set a declared credential is classified against.
-    ///
-    /// A field rather than an argument, for the reason the lease plane's is
-    /// one: which third parties this daemon ships with is a composition-root
-    /// fact, and an install handler is the last place that should get a vote.
-    connectors: Registry,
-    /// The grant surface an install asks through.
-    ///
-    /// `afd_approval` is the only writer of `core.integration_grants` — its own
-    /// resolve moves rows in the statement that answers a gate — so the install
-    /// asks through it rather than inserting a row the resolve would have to
-    /// trust.
-    grants: IntegrationGrants,
 }
 
 impl Fleets {
     /// Binds the store to already-connected handles.
     ///
-    /// Takes the Dragonfly CONNECTION and the Key Encryption Key and builds every
-    /// view over them, rather than taking the views: which of them this crate
-    /// needs is its own business, and a composition root assembling them would
-    /// have to be edited every time that answer changed.
+    /// Takes the Dragonfly CONNECTION and builds both views over it, rather
+    /// than taking the views: which of them this crate needs is its own
+    /// business, and a composition root assembling them would have to be
+    /// edited every time that answer changed.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, kek: Arc<Kek>, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Dragonfly) -> Self {
         Self {
-            database: database.clone(),
+            database,
             streams: FleetStreams::new(queue.clone()),
             ready: ReadyIndex::new(queue),
-            entropy: entropy.clone(),
             live_sets: live_set::live_sets(),
-            secrets: Directory::new(database.clone()),
-            vault: Vault::new(database.clone(), kek),
-            connectors: Registry::SHIPPED,
-            grants: IntegrationGrants::new(database, entropy),
         }
     }
 }
 
 /// Where a fleet stands in its life.
 ///
-/// A closed enum rather than a string, and that pays twice: the status machine
-/// in [`sql::PATCH_FLEET`] binds these as parameters, so a typo is a compile
-/// error rather than a predicate that silently matches no row; and
-/// [`Requested`] — what an API caller may ASK for — is a separate, smaller type,
-/// so `paused` is not a value a request can spell at all, and no hand-written
-/// check has to stand guard.
+/// A closed enum rather than a string: the statements here bind these as
+/// parameters, so a typo is a compile error rather than a predicate that
+/// silently matches no row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FleetStatus {
-    /// The row exists; its stream may not yet.
+    /// The row exists; its setup checks or its stream may not yet.
     ///
-    /// The state a fleet is born in and, in this daemon, one no caller observes
-    /// on a successful install: the flip to [`FleetStatus::Active`] happens
-    /// inside the install rather than on a worker afterwards. See
-    /// [`install`] for why that changed.
+    /// The state every fleet is born in. Setup activation flips it to
+    /// [`FleetStatus::Active`] only after a fresh locked recheck.
     Installing,
     /// Leasable. The only status the runner's candidate query admits.
     Active,

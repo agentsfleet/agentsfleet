@@ -19,7 +19,7 @@
  */
 
 import { runFleetctl } from "./cli.js";
-import type { AuthContext } from "./template-ops.ts";
+import type { AuthContext } from "./native-api.ts";
 
 /**
  * The gate kind the daemon raises for a mintable credential. Cross-runtime pair
@@ -42,7 +42,7 @@ export const CONNECTOR_SERVICE_GITHUB = "github";
  * static handle declares nothing to mint.
  *
  * Underscores, not hyphens: `CredentialName::parse` accepts ASCII alphanumerics
- * and `_` only, and a hyphen refuses the whole bundle as UZ-BUNDLE-001.
+ * and `_` only, and a hyphen refuses the whole Definition.
  */
 export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
 
@@ -54,7 +54,7 @@ const FIELD_INTEGRATION = "integration";
  * The provenance an install-time grant carries. Cross-runtime pair of
  * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
  */
-export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet bundle at install";
+export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet's setup at install";
 
 /** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
 export const GRANT_STATUS = {

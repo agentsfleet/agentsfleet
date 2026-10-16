@@ -24,6 +24,8 @@
 //! both are reads against a workspace this crate has no business holding a pool
 //! for.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod ceiling;
 pub mod error;
 pub mod fanin;

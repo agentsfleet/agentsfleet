@@ -18,7 +18,7 @@ import {
 
 // ── Actor vocabulary ──────────────────────────────────────────────────────
 // Mirrors what the server writes: `steer:<user_id>` / `steer:api`
-// (`steer_actor` / `ACTOR_MACHINE` in rustd/crates/afd_events/src/steer.rs),
+// (`steer_actor` / `ACTOR_MACHINE` in rustd/crates/afd_events/src/steer/mod.rs),
 // `webhook:<source>` (`actor` in
 // rustd/crates/afd_api_ingress/src/handler/webhook/mod.rs), a platform identity
 // such as `github-app` (`ACTOR_APP_GITHUB` in
@@ -146,7 +146,7 @@ export function senderInitialsFor(label: string): string {
 }
 
 // ── Runner failure vocabulary ─────────────────────────────────────────────
-// The runner's FailureClass tags (rustd/crates/afd_wire/src/report.rs) in
+// The runner's FailureClass tags (rustd/crates/afd_wire/src/report/mod.rs) in
 // plain English. A tag this list has not caught up to renders its own name
 // rather than throwing or hiding the failure.
 
@@ -205,7 +205,7 @@ export const OUTCOME = {
   FAILED: "The run failed.",
   // "Completed." and nothing more. This is reached for a processed row, and
   // the rows that reach it never carry the body: the page read is proven not
-  // to select `response_text` (afd_events history/statement.rs asserts it), and
+  // to select `response_text` (afd_events history/statement/mod.rs asserts it), and
   // a completion frame carries the terminal row without it. A `null` here means
   // UNREAD, never "no reply", so no sentence may claim one was never recorded.
   // The one surface that holds the body — the event detail dialog — says

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, within } from "@testing-library/react";
 
 import { GUIDANCE, OUTCOME } from "@/lib/events/event-summary";
-import { COPY_DIAGNOSTIC_LABEL, event, renderDialogWithBody } from "./helpers/event-details-dialog-fixtures";
+import { event, renderDialogWithBody } from "./helpers/event-details-dialog-fixtures";
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () =>
   (await import("./helpers/event-details-dialog-served")).fleetActionsMock(),
@@ -77,11 +77,7 @@ describe("EventDetailsDialog", () => {
     expect(dialog.queryByText("evt_header")).toBeNull();
     expect(dialog.getByText(/Source:/).textContent).toBe("Source: GitHub App");
     expect(dialog.getByText(/Type:/).textContent).toBe("Type: webhook");
-    expect(dialog.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
-    const copyDiagnostic = dialog.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
-    expect(copyDiagnostic.closest("div")?.className).toContain("justify-end");
-    expect(screen.queryByText(COPY_DIAGNOSTIC_LABEL)).toBeNull();
-    expect(screen.queryByText("Copy event details")).toBeNull();
+    expect(dialog.queryByRole("button", {name: /copy/i})).toBeNull();
     expect(screen.getAllByText("Created")).toHaveLength(1);
     expect(screen.queryByText("Updated")).toBeNull();
     const time = document.querySelector("time");

@@ -26,7 +26,7 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
@@ -35,7 +35,7 @@ import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/na
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
 // Stable, so the secondary workspace's library converges on one row — see
-// `installViaUI` on why a per-run name is a leak.
+// `saveFleetViaUI` on why a per-run name is a leak.
 const SEED_PREFIX = "ws-life";
 
 test.describe("multi-workspace + fleet lifecycle", () => {
@@ -60,7 +60,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     // Onboard + install against the secondary workspace — the one now active
     // in the browser, so the onboarded card renders on /w/<secondary>/fleets/new.
-    const fleetId = await installViaUI(page, SEED_PREFIX, {
+    const fleetId = await saveFleetViaUI(page, SEED_PREFIX, {
       handle: FIXTURE_KEY.regular,
       workspaceId: secondary.id,
     });

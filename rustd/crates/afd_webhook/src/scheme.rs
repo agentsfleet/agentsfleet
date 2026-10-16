@@ -88,12 +88,11 @@ impl Scheme {
 
     /// The `source` an authored trigger names this scheme's provider by.
     ///
-    /// The scheme and the name a person writes in `TRIGGER.md` belong together:
-    /// `afd_fleet_runtime`'s provider registry completes a trigger's signature
-    /// block from these strings, and the ingress verifies with the same value
-    /// it resolved. Two tables would let a fleet be configured with one
-    /// header and checked against another, and the resulting failure reads as
-    /// a wrong secret rather than a wrong header.
+    /// The scheme and the name a fleet's setup writes as its trigger `source`
+    /// belong together: `afd_fleet_runtime` accepts an unsigned webhook trigger
+    /// only for these names, and the ingress verifies with the same value it
+    /// resolved. Two tables would let a fleet be saved for a source the wall
+    /// then refuses, and every delivery to it would fail.
     #[must_use]
     pub const fn source(self) -> &'static str {
         match self {
@@ -106,9 +105,9 @@ impl Scheme {
     /// The scheme a trigger's `source` names, if this daemon ships one.
     ///
     /// `None` is "no scheme is declared for that name", which a caller answers
-    /// however its own surface requires — config parsing accepts it when the
-    /// trigger names its own header, and ingress refuses it as
-    /// [`Refusal::NotConfigured`].
+    /// however its own surface requires — config parsing accepts it only when
+    /// the trigger declares a Svix secret, and ingress refuses it as
+    /// [`Refusal::Unconfigured`].
     #[must_use]
     pub fn for_source(source: &str) -> Option<Self> {
         Self::ALL

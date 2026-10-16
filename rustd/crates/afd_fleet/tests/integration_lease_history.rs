@@ -18,7 +18,7 @@
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_db::test_util::mint_id;
+use afd_db::test_util::{FleetSeed, mint_id};
 use afd_events::{Cursor, History};
 use afd_fleet::lease::history::turns_before;
 use afd_wire::event::EventType;
@@ -66,18 +66,15 @@ impl Threads {
         .await
         .expect("seeding a workspace");
         for fleet in [&threads.fleet, &threads.other_fleet] {
-            sqlx::query(
-                "INSERT INTO core.fleets
-                   (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                    status, created_at, updated_at)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $1::text, '# fixture', '{}'::jsonb,
-                         'active', $4, $4)",
+            FleetSeed::new(
+                fleet,
+                &threads.workspace,
+                &tenant,
+                afd_state::sql::FLEET_STATUS_ACTIVE,
             )
-            .bind(fleet.as_str())
-            .bind(threads.workspace.as_str())
-            .bind(tenant.as_str())
-            .bind(SEED_MS)
-            .execute(&mut *connection)
+            .name(fleet)
+            .at(SEED_MS)
+            .insert(&mut *connection)
             .await
             .expect("seeding a fleet");
         }

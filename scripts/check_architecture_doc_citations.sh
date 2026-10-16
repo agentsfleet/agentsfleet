@@ -32,9 +32,7 @@ readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery"
 # entry here is a decision; leaving one behind after the note goes is drift.
 #   fleet.metering_periods — dropped in the schema rebuild; the billing page
 #   explains what replaced it.
-#   core.fleet_bundles — the per-workspace bundle table; the fleet-bundles page
-#   records that install resolves from a library tier instead.
-readonly RETIRED_TABLES="fleet.metering_periods core.fleet_bundles"
+readonly RETIRED_TABLES="fleet.metering_periods"
 
 doc_files() {
   find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort

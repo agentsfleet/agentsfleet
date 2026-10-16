@@ -70,6 +70,11 @@ pub(crate) async fn handle<D: Services>(
     Path(lease_id): Path<String>,
     body: Bytes,
 ) -> Response {
+    // Parsed first, so the lease lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any lease is the caller's mistake.
+    if let Err(refusal) = super::schedule::lease(&lease_id) {
+        return refusal.into_response();
+    }
     // Borrowed out of `body`: every frame's text and arguments are re-emitted
     // into the published payload unchanged, so owning them would copy a run's
     // entire output stream one chunk at a time.

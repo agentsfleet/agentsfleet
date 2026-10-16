@@ -10,17 +10,27 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
+import { LIBRARY_VISIBILITY } from "../src/commands/fleet-library-read.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 const ENTRY_ID = "01900000-0000-7000-8000-00000011b111";
+const REVISION_ID = "01900000-0000-7000-8000-00000011b112";
 const CREATED_MS = 1700000000000;
 
 // An age renders as digits plus one unit letter. If any of these reach a JSON
 // payload, the text renderer has leaked into the machine register.
 const AGE_SHAPED = /"\d+[smhdy]"/;
+
+// The Library read decodes the full card (src/commands/fleet-library-read.ts),
+// so a partial row would be refused before the JSON register is reached.
+const LIBRARY_CARD = {
+  id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests", visibility: LIBRARY_VISIBILITY.tenant,
+  created_at: CREATED_MS, requirements: {}, required_credentials_reasons: {},
+  head_revision_id: REVISION_ID, etag: '"library-1"',
+};
 
 const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -28,9 +38,9 @@ const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
     jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_MS }] }),
   [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
-    jsonResponse(200, { items: [{ id: ENTRY_ID, name: "reviewer", visibility: "tenant", created_at: CREATED_MS }] }),
+    jsonResponse(200, { items: [LIBRARY_CARD], next_cursor: null }),
   "GET /v1/api-keys": () =>
-    jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_MS, last_used_at: CREATED_MS }] }),
+    jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_MS }] }),
   "GET /v1/workspaces": () =>
     jsonResponse(200, { items: [{ id: WS_ID, name: "main", created_at: CREATED_MS }], tenant_id: "t", total: null, next_cursor: null }),
 };

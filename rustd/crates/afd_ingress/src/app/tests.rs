@@ -16,6 +16,7 @@
 )]
 
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::{Fanout, MAX_FANOUT, fanout, replay_id};
@@ -34,14 +35,18 @@ const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8ea0";
 /// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
 /// requires. Written out rather than loaded from a fixture so a reader sees the
 /// whole input beside the assertion.
-const SUBSCRIBED: &str = r#"{
+fn subscribed() -> String {
+    format!(
+        r#"{{
   "name": "ingress-fixture",
-  "x-agentsfleet": {
-    "triggers": [{"type":"webhook","source":"github","repositories":["owner/repo"]}],
+  "x-agentsfleet": {{
+    "triggers": [{{"type":"webhook","source":"github","repositories":["owner/repo"]}}],
     "tools": ["bash"],
-    "budget": { "daily_dollars": 1.0 }
-  }
-}"#;
+    "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
+  }}
+}}"#
+    )
+}
 
 /// A subscribed fleet, for the tests that only count them.
 fn subscriber() -> Binding {
@@ -51,7 +56,7 @@ fn subscriber() -> Binding {
         parse(FLEET),
         parse(WORKSPACE),
         FleetStatus::Active.as_str(),
-        SUBSCRIBED,
+        &subscribed(),
         SOURCE,
     )
     .expect("the document parses and the status is one this build knows")

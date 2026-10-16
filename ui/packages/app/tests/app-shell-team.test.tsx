@@ -10,21 +10,22 @@ vi.mock("@/lib/analytics/posthog", () => ({
   trackAppEvent: vi.fn(), trackNavigationClicked: vi.fn(), setAnalyticsContext: vi.fn(), captureProductEvent: vi.fn(),
 }));
 vi.mock("@clerk/nextjs", () => ({
+  SignIn: () => null, SignUp: () => null,
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  SignOutButton: ({ children }: { children: React.ReactNode }) => children, UserProfile: () => null,
   UserButton: () => React.createElement("div"),
   useUser: () => ({ user: null }),
   useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
-vi.mock("next/navigation", () => ({ usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
     React.createElement("a", props, children),
 }));
-vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
-vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({ default: () => React.createElement("div") }));
 
 import { ShellFrame } from "@/components/layout/ShellFrame";
 
-const MEMBERS_HREF = 'href="/settings/members"';
+
 const NOTICE = 'data-testid="invite-notice"';
 const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 1 }];
 
@@ -35,13 +36,6 @@ function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> 
 afterEach(() => vi.clearAllMocks());
 
 describe("shell for teams", () => {
-  it("should list Members first among the account settings", () => {
-    usePathname.mockReturnValue("/");
-    const markup = shell();
-    expect(markup).toContain(MEMBERS_HREF);
-    expect(markup.indexOf(MEMBERS_HREF)).toBeLessThan(markup.indexOf('href="/settings/api-keys"'));
-  });
-
   it("should show the invite notice above the page only while an invite waits", () => {
     usePathname.mockReturnValue("/w/ws_1/fleets");
     expect(shell({ waitingInvites: WAITING })).toContain(NOTICE);

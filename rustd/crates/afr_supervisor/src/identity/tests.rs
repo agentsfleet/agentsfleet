@@ -39,7 +39,7 @@ fn lease_spans(capture: &Capture) -> Vec<CapturedSpan> {
 }
 
 fn offered() -> LeasePayload<'static> {
-    let mut leased = lease(LEASE_ID, FLEET_ID, None);
+    let mut leased = lease(LEASE_ID, FLEET_ID);
     leased.policy.tools = Vec::new();
     leased
 }

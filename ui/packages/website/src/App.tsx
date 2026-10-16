@@ -1,10 +1,10 @@
 import { lazy, Suspense } from "react";
-import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react-router-dom";
-import { Button, WakePulse } from "@agentsfleet/design-system";
+import { Link, Route, Routes, ScrollRestoration, useLocation } from "react-router-dom";
+import { BrandMark, Button, Nav } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { WAITLIST_URL, DOCS_URL } from "./config";
-import { trackNavigationClicked } from "./analytics/posthog";
+import { APP_SIGN_IN_URL, APP_SIGN_UP_URL, DOCS_URL, GITHUB_URL } from "./config";
+import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
  * stays lean. Vite code-splits each React.lazy import by default. */
@@ -12,14 +12,16 @@ const Fleets = lazy(() => import("./pages/Fleets"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const NotFound = lazy(() => import("./pages/NotFound"));
-const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
+const DesignSystemGallery = import.meta.env.DEV ? lazy(() => import("./pages/DesignSystemGallery")) : null;
 
 const NAV_LINK_CLASS =
   "inline-flex min-h-11 min-w-11 items-center justify-center font-sans text-body-sm text-text-muted hover:text-text transition-colors";
 
 export default function App() {
+  const { pathname } = useLocation();
   return (
-    <div>
+    <div className={DesignSystemGallery && pathname === "/_design-system" ? undefined : "website-palette"}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <ScrollRestoration />
 
       <header className="topbar">
@@ -29,12 +31,7 @@ export default function App() {
             className="flex min-h-11 items-center gap-3 font-sans text-body font-medium text-text"
             data-testid="brand-link"
           >
-            <WakePulse
-              live
-              data-testid="brand-mark"
-              aria-hidden="true"
-              className="inline-block size-3 rounded-full bg-pulse"
-            />
+            <BrandMark data-testid="brand-mark" />
             <span>agentsfleet</span>
           </Link>
 
@@ -42,16 +39,14 @@ export default function App() {
           <DashboardAction />
         </div>
       </header>
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
-            <Route path="/fleets" element={<Navigate to="/agents" replace />} />
             <Route path="/agents" element={<Fleets />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
-            <Route path="/_design-system" element={<DesignSystemGallery />} />
+            {DesignSystemGallery ? <Route path="/_design-system" element={<DesignSystemGallery />} /> : null}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -63,16 +58,12 @@ export default function App() {
 
 function PrimaryNavigation() {
   return (
-    <nav aria-label="Primary" className="primary-navigation order-last flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 md:order-none md:w-auto md:gap-6">
-      <NavLink to="/" end className={NAV_LINK_CLASS}>
-        home
-      </NavLink>
-      <NavLink to="/agents" className={NAV_LINK_CLASS}>
-        agents
-      </NavLink>
-      <Link to="/#how-it-works" className={NAV_LINK_CLASS}>
-        how it works
+    <Nav aria-label="Primary" className="primary-navigation order-last flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 md:order-none md:w-auto md:gap-6">
+      <Link to="/#how-it-works" className={NAV_LINK_CLASS} onClick={() => trackNavigationClicked({ source: "header_nav_product", surface: "header", target: "example" })}>
+        Product
       </Link>
+      <a href={APP_SIGN_UP_URL} target="_blank" rel="noopener noreferrer" className={NAV_LINK_CLASS}
+        onClick={() => trackSignupStarted({ source: "header_early_access", surface: "header", mode: "humans" })}>Get started</a>
       <a
         href={DOCS_URL}
         target="_blank"
@@ -82,17 +73,19 @@ function PrimaryNavigation() {
           trackNavigationClicked({ source: "header_nav_docs", surface: "header", target: "docs" })
         }
       >
-        docs
+        Docs
       </a>
-    </nav>
+      <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={NAV_LINK_CLASS}
+        onClick={() => trackNavigationClicked({ source: "header_nav_source", surface: "header", target: "github" })}>GitHub ↗</a>
+    </Nav>
   );
 }
 
 function DashboardAction() {
   return (
-    <Button wrap asChild className="min-h-11" data-testid="header-install-cta">
+    <Button wrap asChild variant="outline" className="min-h-11" data-testid="header-install-cta">
       <a
-        href={WAITLIST_URL}
+        href={APP_SIGN_IN_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() =>
@@ -103,7 +96,7 @@ function DashboardAction() {
           })
         }
       >
-        dashboard
+        Sign in ↗
       </a>
     </Button>
   );

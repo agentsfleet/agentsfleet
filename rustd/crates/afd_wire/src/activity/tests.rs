@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use super::{ActivityAccepted, ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 /// The wire chunk a runner sends, with only the fields a case varies named.
-fn chunk(text: &'static str, text_kind: Option<StreamTextKind>) -> ActivityFrame<'static> {
+fn chunk(text: &'static str, text_kind: StreamTextKind) -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(text),
         text_kind,
@@ -19,23 +19,29 @@ fn chunk(text: &'static str, text_kind: Option<StreamTextKind>) -> ActivityFrame
     })
 }
 
-/// A tool frame's call id is optional and bounded; a chunk never names one,
+/// A tool frame's call id is required and bounded; a chunk never names one,
 /// and any other unknown field still refuses the frame.
 #[test]
 fn a_tool_frame_names_its_call_within_the_bound() {
     use super::{CALL_ID_MAX_BYTES, ToolCallCompleted};
-    let completed = |call_id: Option<String>| {
+    let completed = |call_id: String| {
         ActivityFrame::ToolCallCompleted(ToolCallCompleted {
-            call_id: call_id.map(Cow::Owned),
+            call_id: Cow::Owned(call_id),
             ..completed_frame()
         })
     };
-    assert!(completed(None).call_id_usable());
-    assert!(completed(Some("c".repeat(CALL_ID_MAX_BYTES))).call_id_usable());
-    assert!(!completed(Some(String::new())).call_id_usable());
-    assert!(!completed(Some("c".repeat(CALL_ID_MAX_BYTES + 1))).call_id_usable());
-    assert!(chunk("text", None).call_id_usable());
-    assert_eq!(chunk("text", None).call_id(), None);
+    assert!(completed("c".repeat(CALL_ID_MAX_BYTES)).call_id_usable());
+    assert!(!completed(String::new()).call_id_usable());
+    assert!(!completed("c".repeat(CALL_ID_MAX_BYTES + 1)).call_id_usable());
+    assert!(chunk("text", StreamTextKind::Answer).call_id_usable());
+    assert_eq!(chunk("text", StreamTextKind::Answer).call_id(), None);
+    let unnamed = serde_json::from_str::<ActivityFrame<'_>>(
+        r#"{"tool_call_progress":{"name":"shell","elapsed_ms":1}}"#,
+    );
+    assert!(
+        unnamed.is_err(),
+        "a tool frame that names no call is refused"
+    );
 
     let named: ActivityFrame<'_> = serde_json::from_str(
         r#"{"tool_call_progress":{"name":"shell","elapsed_ms":1,"call_id":"7"}}"#,
@@ -58,7 +64,9 @@ fn test_activity_frame_call_id_is_bounded() {
             format!(
                 r#"{{"tool_call_started":{{"name":"shell","args_redacted":"{{}}","call_id":"{call_id}"}}}}"#
             ),
-            format!(r#"{{"tool_call_completed":{{"name":"shell","ms":1,"call_id":"{call_id}"}}}}"#),
+            format!(
+                r#"{{"tool_call_completed":{{"name":"shell","ms":1,"call_id":"{call_id}","status":"succeeded"}}}}"#
+            ),
             format!(
                 r#"{{"tool_call_progress":{{"name":"shell","elapsed_ms":1,"call_id":"{call_id}"}}}}"#
             ),
@@ -88,7 +96,7 @@ fn test_the_acknowledgement_is_exactly_ok_true() {
 }
 
 #[test]
-fn typed_chunks_round_trip_and_old_runner_chunks_stay_untyped() {
+fn a_chunk_names_its_kind_or_is_refused() {
     // Whole-frame equality, not a destructure: it holds the variant and
     // every defaulted field to the same standard as the one field the case
     // is named for, and it leaves no unreachable `else` arm behind.
@@ -96,20 +104,19 @@ fn typed_chunks_round_trip_and_old_runner_chunks_stay_untyped() {
         r#"{"fleet_response_chunk":{"text":"thought","text_kind":"reasoning"}}"#,
     )
     .expect("typed runner chunk decodes");
-    assert_eq!(typed, chunk("thought", Some(StreamTextKind::Reasoning)));
-    let old: ActivityFrame<'_> =
-        serde_json::from_str(r#"{"fleet_response_chunk":{"text":"legacy"}}"#)
-            .expect("old runner chunk decodes");
-    assert_eq!(old, chunk("legacy", None));
+    assert_eq!(typed, chunk("thought", StreamTextKind::Reasoning));
+    let untyped =
+        serde_json::from_str::<ActivityFrame<'_>>(r#"{"fleet_response_chunk":{"text":"t"}}"#);
+    assert!(untyped.is_err(), "a chunk that names no kind is refused");
 }
 
-/// A completion with no outcome, as a runner that reports none sends it.
+/// A completion carrying only its required fields.
 fn completed_frame() -> super::ToolCallCompleted<'static> {
     super::ToolCallCompleted {
         name: Cow::Borrowed("shell"),
         ms: 1,
-        call_id: None,
-        status: None,
+        call_id: Cow::Borrowed("1"),
+        status: crate::tool_trace::ToolCallStatus::Succeeded,
         output_head: None,
         output_tail: None,
         output_line_count: None,
@@ -127,8 +134,8 @@ fn test_tool_call_completed_outcome_roundtrip() {
     ] {
         for exit_code in [None, Some(2)] {
             let sent = ActivityFrame::ToolCallCompleted(super::ToolCallCompleted {
-                call_id: Some(Cow::Borrowed("3")),
-                status: Some(status),
+                call_id: Cow::Borrowed("3"),
+                status,
                 output_head: Some(Cow::Borrowed("# agentsfleet\nline two")),
                 output_tail: Some(Cow::Borrowed("MIT")),
                 output_line_count: Some(214),
@@ -143,15 +150,25 @@ fn test_tool_call_completed_outcome_roundtrip() {
 }
 
 #[test]
-fn test_tool_call_completed_without_outcome_parses() {
-    let old: ActivityFrame<'_> =
-        serde_json::from_str(r#"{"tool_call_completed":{"name":"shell","ms":1}}"#)
-            .expect("a frame from a runner that reports no outcome parses");
-    assert_eq!(old, ActivityFrame::ToolCallCompleted(completed_frame()));
+fn test_tool_call_completed_requires_its_status() {
+    let unfinished = serde_json::from_str::<ActivityFrame<'_>>(
+        r#"{"tool_call_completed":{"name":"shell","ms":1,"call_id":"1"}}"#,
+    );
+    assert!(
+        unfinished.is_err(),
+        "a completion that says not how it ended is refused"
+    );
+    let bare: ActivityFrame<'_> = serde_json::from_str(
+        r#"{"tool_call_completed":{"name":"shell","ms":1,"call_id":"1","status":"succeeded"}}"#,
+    )
+    .expect("a completion with no output edges parses");
+    assert_eq!(bare, ActivityFrame::ToolCallCompleted(completed_frame()));
     assert_eq!(
-        serde_json::to_string(&old).ok().as_deref(),
-        Some(r#"{"tool_call_completed":{"name":"shell","ms":1}}"#),
-        "and re-encodes without the absent fields"
+        serde_json::to_string(&bare).ok().as_deref(),
+        Some(
+            r#"{"tool_call_completed":{"name":"shell","ms":1,"call_id":"1","status":"succeeded"}}"#
+        ),
+        "and re-encodes without the absent edges"
     );
 }
 
@@ -173,7 +190,7 @@ fn a_completion_edge_past_its_bound_is_unusable() {
     });
     assert!(!head.outcome_usable(), "six lines");
     assert!(
-        chunk("text", None).outcome_usable(),
+        chunk("text", StreamTextKind::Answer).outcome_usable(),
         "a chunk carries no edges"
     );
 }

@@ -30,7 +30,6 @@ use afd_fleet::lease::Delivery;
 use afd_fleet::lease::admit::{Admission, Request, money_gates};
 use afd_fleet_runtime::config::FleetConfig;
 
-use crate::requests::ENROLLED_AT;
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
 
@@ -50,43 +49,49 @@ const MODEL: &str = "fixture-model-no-rate";
 /// same parser that accepted the fleet's config at ingest, and there is no
 /// other way to make one — which is the point, since a ceiling that admits a
 /// run and a ceiling that stops one must never be read two ways.
-const TINY_DAILY_DOLLARS: &str = "0.000001";
+const TINY_DAILY_NANOS: &str = "1000";
 
 /// What one seeded ledger row drained, comfortably past the ceiling above.
 const SPENT_NANOS: i64 = 10_000_000;
 
 /// A ceiling far above what [`SPENT_NANOS`] drained.
 ///
-/// Named because it is the counterpart of [`TINY_DAILY_DOLLARS`]: the pair is
+/// Named because it is the counterpart of [`TINY_DAILY_NANOS`]: the pair is
 /// one fact — a spend that is over one ceiling and under the other — and a
 /// literal on each side could drift on one and still read as a pass.
-const AMPLE_DAILY_DOLLARS: &str = "1000";
+const AMPLE_DAILY_NANOS: &str = "1000000000000";
+
+/// The ceiling a workspace with no tenant row declares; its size is irrelevant,
+/// since the missing payer ends the delivery before any ceiling is read.
+const ORPHAN_DAILY_NANOS: &str = "10000000000";
 
 /// A config carrying `daily` as its whole budget.
-fn budgeted(daily_dollars: &str) -> FleetConfig {
+fn budgeted(daily_nanos: &str) -> FleetConfig {
     // The runtime block is where every knob lives — a `budget` at the top
     // level is refused by name, which is the parser telling an author to
     // indent rather than dropping the ceiling in silence.
     let document = format!(
-        r#"{{"name":"money-gates-fixture","x-agentsfleet":{{"triggers":[{{"type":"api"}}],
-             "tools":[],"budget":{{"daily_dollars":{daily_dollars}}}}}}}"#
+        r#"{{"name":"money-gates-fixture","x-agentsfleet":{{"triggers":[],
+             "tools":[],"budget":{{"daily_nanos":"{daily_nanos}"}}}}}}"#
     );
     FleetConfig::authored(&document).expect("the fixture document is authorable")
 }
 
-/// The request the pass is given, for `fleet` in `workspace`.
+/// The request the pass is given, for `fleet` in `workspace`, its event created
+/// at `created_at`.
 fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
     event: &'a str,
     config: &FleetConfig,
     delivery: Delivery,
+    created_at: UnixMillis,
 ) -> Request<'a> {
     Request {
         workspace_id: workspace,
         fleet_id: fleet,
         event_id: event,
-        event_created_at: UnixMillis::from_millis(ENROLLED_AT),
+        event_created_at: created_at,
         budget: config.budget(),
         posture: Posture::Platform,
         provider: PROVIDER,
@@ -113,7 +118,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, _tenant) = unique_ids();
     // Deliberately NOT seeded: this is the missing row under test.
-    let config = budgeted("10");
+    let config = budgeted(ORPHAN_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
@@ -124,8 +129,9 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
             "event-unowned",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(ENROLLED_AT),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a missing payer is a decision, not a fault the caller sees");
@@ -151,10 +157,16 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", ENROLLED_AT)
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
-    let config = budgeted(TINY_DAILY_DOLLARS);
+    let config = budgeted(TINY_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
@@ -165,8 +177,9 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
             "event-over-budget",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(ENROLLED_AT),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a breached ceiling is a decision, not a fault");
@@ -191,10 +204,16 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", ENROLLED_AT)
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
-    let config = budgeted(AMPLE_DAILY_DOLLARS);
+    let config = budgeted(AMPLE_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
@@ -205,8 +224,9 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
             "event-inside-budget",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(ENROLLED_AT),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("an admitted run is not a fault");
@@ -237,9 +257,15 @@ async fn a_redelivery_is_admitted_without_being_charged_again() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", ENROLLED_AT)
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
-    let config = budgeted(AMPLE_DAILY_DOLLARS);
+    let config = budgeted(AMPLE_DAILY_NANOS);
     let event = "event-redelivered";
 
     let decided = money_gates(
@@ -251,8 +277,9 @@ async fn a_redelivery_is_admitted_without_being_charged_again() {
             event,
             &config,
             Delivery::Repeat,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(ENROLLED_AT),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a redelivery is not a fault");
@@ -293,7 +320,7 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
     .bind(format!("event-already-spent-{fleet}"))
     .bind(MODEL)
     .bind(nanos)
-    .bind(ENROLLED_AT)
+    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the spend seeds");

@@ -8,13 +8,14 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
 use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex, Subscription};
 use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 
 use crate::support::{RING_QUIET_FOR, Recorder, connect_redis, heard_ring, listen_for_rings};
 
@@ -207,19 +208,24 @@ impl Fixture {
             "WITH tenant AS ( \
                INSERT INTO core.tenants (id, name, created_at, updated_at) \
                VALUES ($1::uuid, 'Reclaim faults', 1, 1) RETURNING id \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               SELECT $2::uuid, id, $2, 'test', 1 FROM tenant RETURNING id, tenant_id \
              ) \
-             INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, \
-               config_json, status, created_at, updated_at) \
-             SELECT $3::uuid, id, tenant_id, $3, '# fixture', '{}'::jsonb, 'active', 1, 1 \
-             FROM workspace",
+             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+             SELECT $2::uuid, id, $2, 'test', 1 FROM tenant",
         )
         .bind(&fixture.tenant)
         .bind(&workspace)
-        .bind(&fixture.fleet)
         .execute(&mut *connection)
+        .await
+        .expect("the fleet seeds");
+        FleetSeed::new(
+            &fixture.fleet,
+            &workspace,
+            &fixture.tenant,
+            FLEET_STATUS_ACTIVE,
+        )
+        .name(&fixture.fleet)
+        .at(1)
+        .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
         if stranded {
@@ -235,8 +241,10 @@ impl Fixture {
         sqlx::query(
             "WITH runner AS ( \
                INSERT INTO fleet.runners (id, host_id, token_hash, sandbox_tier, admin_state, \
-                 labels, last_seen_at, created_at, updated_at) \
-               VALUES ($1::uuid, $1, $1, 'dev_none', 'active', '[]', $6, $6, $6) RETURNING id \
+                 labels, network_policy, registry_allowlist, last_seen_at, created_at, \
+                 updated_at) \
+               VALUES ($1::uuid, $1, $1, 'dev_none', 'active', '[]', 'deny_all_egress', '[]', \
+                 $6, $6, $6) RETURNING id \
              ), event AS ( \
                INSERT INTO core.fleet_events (fleet_id, workspace_id, event_id, actor, \
                  event_type, status, request_json, created_at, updated_at) \

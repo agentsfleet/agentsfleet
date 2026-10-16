@@ -1,6 +1,6 @@
 //! Dimension 7.2 — the statements fill the columns they were written to fill.
 //!
-//! A binary of its own, beside `integration_runner_e2e.rs` (RULE FLL, split by
+//! A binary of its own, beside `integration_runner_e2e/mod.rs` (RULE FLL, split by
 //! concern): that suite asserts a SEQUENCE — the loop a runner walks — while
 //! this one asserts a SHAPE, and the two share only the scenario that produces
 //! the rows. Keeping them together meant one file carrying four recorded column

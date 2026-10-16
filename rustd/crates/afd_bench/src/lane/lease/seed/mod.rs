@@ -1,0 +1,319 @@
+//! Building the precondition a lease poll needs, once per fleet.
+//!
+//! # Three rows, a group, and a mark
+//!
+//! A fleet is leasable only when all of these hold, and any one missing makes
+//! the assignment pass look broken when it is the fixture that is:
+//!
+//! 1. `core.tenants`, `core.workspaces` and `core.fleets` exist AND AGREE — a
+//!    fleet carries its workspace's tenant through a composite key.
+//! 2. The fleet's stream has a consumer group, created before any read.
+//! 3. The readiness index carries a mark, or the poll returns before Postgres.
+//!
+//! No store verb creates a fleet: that is the tenant plane's job, so these
+//! three rows are inserted directly, exactly as `afd_fleet`'s own lease suites
+//! seed them.
+//!
+//! # Why the run prefix is in the NAME and not the identifier
+//!
+//! Every table here CHECKs the UUID version nibble, so an identifier cannot
+//! carry a text prefix and still be accepted. The prefix therefore lives in the
+//! `name` column of all three rows, and `sweep` deletes by name. The
+//! identifiers stay schema-legal and the sweep still recognises only its own
+//! work.
+//!
+//! # Placement tags keep concurrent runs apart
+//!
+//! `Leases::select` has no workspace or tenant in it — it peeks the GLOBAL
+//! readiness set and filters candidates by `required_tags <@ labels`. A fleet
+//! seeded with no tag is placeable by every other poller on the same datastore,
+//! including another bench run. One tag per run costs one array element and
+//! leaves the assignment pass under test rather than around it.
+
+use core::sync::atomic::{AtomicI64, Ordering};
+
+use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
+use afd_db::Db;
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
+use afd_runner::Runners;
+use afd_wire::event::Entry;
+use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
+
+use crate::error::Result;
+use crate::fixture::RunPrefix;
+
+/// Rows one seeded fleet inserts: its tenant, its workspace, and itself.
+///
+/// Named because the sweep counts rows and the ledger has to count the same
+/// unit — see the fixture block in the result file.
+pub const ROWS_PER_FLEET: u64 = 3;
+
+/// Rows one enrolled runner inserts.
+pub const ROWS_PER_RUNNER: u64 = 1;
+
+/// The actor every bench-written event carries, seeded or steered.
+///
+/// One spelling, so a reader grepping a stream for bench entries has one
+/// thing to grep for.
+pub const BENCH_ACTOR: &str = "bench:steer";
+
+/// The event type every seeded event carries.
+const EVENT_TYPE: &str = "steer";
+
+/// The body every bench-written event carries.
+///
+/// Generated content, never a tenant row echoed back: a fixture that copied
+/// real request text would put customer data in a bench result (RULE PRI).
+pub const BENCH_REQUEST_JSON: &str = "{\"prompt\":\"bench\"}";
+
+/// The clock every seeded row is stamped with, and the instant a poll is given.
+///
+/// A fixed past instant rather than "now": the candidate query orders by
+/// enrolment, and a population seeded across a moving clock would order by the
+/// accident of how long seeding took. One constant for every lane, so no two
+/// lanes seed against different clocks.
+pub const SEEDED_AT: i64 = 1_767_225_600_000;
+
+/// Empty configuration for a seeded fleet.
+const CONFIG_JSON: &str = "{}";
+
+/// Concurrent workers a seeded runner declares.
+///
+/// One, because this lane measures how fast leases are ISSUED, not how many a
+/// runner then executes: a higher ceiling would change what the runner does
+/// after the poll and nothing about the poll.
+const RUNNER_WORKERS: u32 = 1;
+
+/// Identifier kind, so one index yields three distinct v7-shaped ids.
+const KIND_TENANT: u32 = 1;
+
+/// Identifier kind for a workspace.
+const KIND_WORKSPACE: u32 = 2;
+
+/// Identifier kind for a fleet.
+const KIND_FLEET: u32 = 3;
+
+/// A seeded fleet and the identifiers it was built from.
+#[derive(Debug, Clone)]
+pub struct SeededFleet {
+    /// The fleet a poll can lease.
+    pub fleet: String,
+    /// Its workspace.
+    pub workspace: String,
+    /// Its billing tenant.
+    pub tenant: String,
+}
+
+/// An identifier the schema's `uuidv7` CHECK accepts.
+///
+/// The character after the second dash must be `7`. Process id plus index in
+/// the final group gives four billion distinct fleets per process, which is
+/// past anything the cardinality ladder climbs to.
+pub(crate) fn identifier(kind: u32, index: u64) -> String {
+    format!(
+        "0195b4ba-8d3a-7{kind:03x}-8abc-{:04x}{index:08x}",
+        std::process::id() & 0xffff
+    )
+}
+
+/// The tag that keeps this run's fleets placeable only by this run's runners.
+#[must_use]
+pub fn placement_tag(prefix: &RunPrefix) -> String {
+    prefix.name("tag")
+}
+
+/// Seed a fleet's rows and its consumer group, with NOTHING on the stream.
+///
+/// What the steer lane wants: the fleet has to exist and its group has to
+/// exist before a read, but the appends are the thing being measured and must
+/// happen inside the window rather than during setup.
+///
+/// # Errors
+///
+/// Whatever Postgres or Dragonfly refused.
+pub async fn empty_fleet(
+    database: &Db,
+    queue: &Dragonfly,
+    prefix: &RunPrefix,
+    tag: &str,
+    index: u64,
+    now: i64,
+) -> Result<SeededFleet> {
+    let seeded = identities(index);
+    rows(database, prefix, &seeded, tag, now).await?;
+    FleetStreams::new(queue.clone())
+        .ensure_group(&seeded.fleet)
+        .await?;
+    Ok(seeded)
+}
+
+/// Seed one ready fleet: three rows, a consumer group, an event, a mark.
+///
+/// # Errors
+///
+/// Whatever Postgres or Dragonfly refused, naming which.
+pub async fn ready_fleet(
+    database: &Db,
+    queue: &Dragonfly,
+    prefix: &RunPrefix,
+    tag: &str,
+    index: u64,
+    now: i64,
+) -> Result<SeededFleet> {
+    let seeded = identities(index);
+    rows(database, prefix, &seeded, tag, now).await?;
+    enqueue(queue, &seeded, EVENT_TYPE, now).await?;
+    Ok(seeded)
+}
+
+/// The three identifiers one index yields.
+pub(crate) fn identities(index: u64) -> SeededFleet {
+    SeededFleet {
+        fleet: identifier(KIND_FLEET, index),
+        workspace: identifier(KIND_WORKSPACE, index),
+        tenant: identifier(KIND_TENANT, index),
+    }
+}
+
+/// The tenant, workspace and fleet rows, in the order the keys require.
+pub(crate) async fn rows(
+    database: &Db,
+    prefix: &RunPrefix,
+    seeded: &SeededFleet,
+    tag: &str,
+    now: i64,
+) -> Result<()> {
+    let mut connection = database.acquire().await?;
+    sqlx::query(
+        "INSERT INTO core.tenants (id, name, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3, $3)
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&seeded.tenant)
+    .bind(prefix.name("tenant"))
+    .bind(now)
+    .execute(&mut *connection)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO core.workspaces (id, tenant_id, name, created_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4)
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&seeded.workspace)
+    .bind(&seeded.tenant)
+    .bind(prefix.name("workspace"))
+    .bind(now)
+    .execute(&mut *connection)
+    .await?;
+    fleet_row(&mut connection, prefix, seeded, tag, now).await
+}
+
+/// The fleet row itself, carrying the run's placement tag.
+async fn fleet_row(
+    connection: &mut sqlx::PgConnection,
+    prefix: &RunPrefix,
+    seeded: &SeededFleet,
+    tag: &str,
+    now: i64,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO core.fleets
+           (id, workspace_id, tenant_id, name, config_json,
+            status, created_at, updated_at, required_tags)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::jsonb, $6, $7, $7, $8)
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&seeded.fleet)
+    .bind(&seeded.workspace)
+    .bind(&seeded.tenant)
+    .bind(prefix.name("fleet"))
+    .bind(CONFIG_JSON)
+    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+    .bind(now)
+    .bind(vec![tag.to_owned()])
+    .execute(connection)
+    .await?;
+    Ok(())
+}
+
+/// One event of `event_type` on the fleet's stream, and the readiness mark
+/// that makes a poll look at it.
+///
+/// Both halves, because either alone is a state the daemon never produces:
+/// ingress appends and marks in one path.
+pub(crate) async fn enqueue(
+    queue: &Dragonfly,
+    seeded: &SeededFleet,
+    event_type: &str,
+    now: i64,
+) -> Result<()> {
+    let streams = FleetStreams::new(queue.clone());
+    streams.ensure_group(&seeded.fleet).await?;
+    let created = now.to_string();
+    // `Entry::queued_pairs` and NOT a hand-written field list. The list this
+    // seed carried went stale the moment the ledger added `event_id`: the
+    // reader refuses an entry without it as one nothing admitted, drops it,
+    // and the fleet looks empty — so the lane leased zero fleets and reported
+    // it as a lease-path result. Routing the shape through the producer's own
+    // helper is what makes that impossible to repeat: a field added there
+    // arrives here with it. `afd_fleet`'s queue fixture was repaired the same
+    // way and for the same reason.
+    let logical = afd_admission::logical_id(now, next_sequence());
+    let entry = Entry {
+        actor: BENCH_ACTOR,
+        event_type,
+        workspace_id: seeded.workspace.as_str(),
+        request_json: BENCH_REQUEST_JSON,
+        created_at: created.as_str(),
+    };
+    streams
+        .append(&seeded.fleet, &entry.queued_pairs(&logical))
+        .await?;
+    // The index mints the token, as it does for ingress: a lease poll that
+    // drains this fleet clears exactly the generation it peeked.
+    ReadyIndex::new(queue.clone()).mark(&seeded.fleet).await?;
+    Ok(())
+}
+
+/// The next sequence number a logical event id carries, unique in this process.
+///
+/// A logical id is `<millis>-<seq>`, and every fleet in one window is seeded at
+/// the same instant — so the millisecond alone would hand several entries the
+/// same identity, which is the one thing an identity may not do.
+fn next_sequence() -> i64 {
+    static SEQUENCE: AtomicI64 = AtomicI64::new(1);
+    SEQUENCE.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Enrol one runner carrying this run's placement tag.
+///
+/// # Errors
+///
+/// Whatever enrolment refused.
+pub async fn runner(database: &Db, host: &str, tag: &str, now: i64) -> Result<Uuid7> {
+    let runners = Runners::new(database.clone(), Entropy::new());
+    let request = RegisterRequest {
+        host_id: host.into(),
+        assigned_policy: AssignedPolicy {
+            sandbox_tier: SandboxTier::LandlockFull,
+            network_policy: NetworkPolicy::AllowListEgress,
+            registry_allowlist: Vec::new(),
+            worker_count: RUNNER_WORKERS,
+            extra_binds: Vec::new(),
+        },
+        // The placement tag, and nothing else: the candidate query filters
+        // `required_tags <@ labels`, so a runner carrying extra labels would
+        // still match and a runner missing this one never will.
+        labels: vec![tag.into()],
+    };
+    Ok(runners
+        .register(&request, UnixMillis::from_millis(now))
+        .await?
+        .runner_id)
+}
+
+#[cfg(test)]
+mod tests;

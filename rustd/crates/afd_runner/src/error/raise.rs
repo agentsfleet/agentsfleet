@@ -44,11 +44,6 @@ pub(crate) fn rejected(detail: &'static str) -> Error {
     ErrorKind::Rejected { detail }.into()
 }
 
-/// Reports a stored credential whose decrypted body is not a readable shape.
-pub(crate) fn vault_data_invalid() -> Error {
-    ErrorKind::VaultDataInvalid.into()
-}
-
 /// Reports an operator request addressed to no runner row.
 pub(crate) fn runner_not_found() -> Error {
     ErrorKind::RunnerNotFound.into()
@@ -62,6 +57,11 @@ pub(crate) fn selftest_refused() -> Error {
 /// Reports a runner row whose administrative state is outside the wire enum.
 pub(crate) fn admin_state_malformed() -> Error {
     ErrorKind::AdminStateMalformed.into()
+}
+
+/// Reports a runner row whose assigned tier or posture is outside the wire enum.
+pub(crate) fn assignment_malformed(column: &'static str) -> Error {
+    ErrorKind::AssignmentMalformed { column }.into()
 }
 
 /// Reports JSONB text that did not survive decoding into its wire value.
@@ -120,8 +120,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("runner still leased", runner_still_leased()),
         ("selftest refused", selftest_refused()),
         ("admin state malformed", admin_state_malformed()),
+        (
+            "assignment malformed",
+            assignment_malformed("network_policy"),
+        ),
         ("rejected", rejected(super::DETAIL_HOST_ID_BOUNDS)),
-        ("vault data invalid", vault_data_invalid()),
         (
             "datastore",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),

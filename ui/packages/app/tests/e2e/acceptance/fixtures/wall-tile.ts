@@ -21,7 +21,6 @@
  * update" apart from "there was nothing a two-decimal figure could show".
  */
 import type { Locator, Page } from "@playwright/test";
-import { NANOS_PER_USD } from "@/lib/types";
 
 /** Every tile card carries its kind — live, snapshot or drained — as data. The
  * card holds the words a person reads; the overlay link is only how it is
@@ -108,8 +107,9 @@ export async function readTileCounters(tile: Locator): Promise<TileCounters> {
 }
 
 /** The spend cell's own rendering of a nanos figure. Mirrors `formatTileSpend`. */
-export function renderTileSpend(nanos: number): string {
-  return `$${(nanos / NANOS_PER_USD).toFixed(SPEND_DECIMALS)}`;
+export function renderTileSpend(nanos: number | string): string {
+  const cents = (BigInt(nanos) + 5_000_000n) / 10_000_000n;
+  return `$${cents / 100n}.${String(cents % 100n).padStart(SPEND_DECIMALS, "0")}`;
 }
 
 /**
@@ -118,6 +118,6 @@ export function renderTileSpend(nanos: number): string {
  * Asked from the server's before/after figures, never from the rendered ones —
  * the rendered pair is what the caller is trying to grade.
  */
-export function spendMoved(beforeNanos: number, afterNanos: number): boolean {
+export function spendMoved(beforeNanos: number | string, afterNanos: number | string): boolean {
   return renderTileSpend(beforeNanos) !== renderTileSpend(afterNanos);
 }

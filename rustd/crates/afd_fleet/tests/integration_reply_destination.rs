@@ -47,12 +47,11 @@ const FOREIGN_EVENT: &str = "not-a-ledger-id";
 
 /// Every producer that owns no reply surface, which is every one but the
 /// continuation.
-const NO_SURFACE: [Producer; 5] = [
+const NO_SURFACE: [Producer; 4] = [
     Producer::Steer,
     Producer::Webhook,
     Producer::WebhookApp,
     Producer::ScheduleFire,
-    Producer::RepairVerification,
 ];
 
 /// A webhook admission that states `reply`.

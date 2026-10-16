@@ -43,9 +43,8 @@ export interface Credentials {
   api_url: string | null;
   // Server-side identifier of the credential in `token`, returned once at
   // mint. Kept so this terminal can revoke its own credential by name
-  // without listing every credential the person owns. Null for a record
-  // written before the credential exchange shipped, and for a directly
-  // supplied tenant key, which this client never minted and cannot revoke.
+  // without listing every credential the person owns. Null only in the
+  // signed-out record.
   credential_id: string | null;
 }
 

@@ -37,33 +37,11 @@ fn a_page_cursor_names_the_last_returned_row() {
 
     let response = page_response(&page);
 
-    assert_eq!(response.total, 1);
+    assert_eq!(response.total, None);
     assert_eq!(response.items[0].id, id);
     let parsed = parse_cursor(response.next_cursor.as_deref())
         .unwrap_or_else(|error| panic!("emitted cursor parses: {error:?}"))
         .unwrap_or_else(|| panic!("a page with more rows emits a cursor"));
     assert_eq!(parsed.created_at_ms, 42);
     assert_eq!(parsed.id.as_str(), id);
-}
-
-#[test]
-fn an_install_reply_builds_each_webhook_from_the_deployment() {
-    let installed = Installed {
-        id: fleet_id(),
-        name: "reviewer".to_owned(),
-        status: FleetStatus::Active,
-        webhook_sources: vec!["github".into(), "slack".into()],
-    };
-
-    let response = installed_response(&installed, "https://api.example.test");
-
-    assert_eq!(response.fleet_id, installed.id.as_str());
-    assert_eq!(response.webhook_urls.len(), 2);
-    assert_eq!(
-        response.webhook_urls[0].url,
-        format!(
-            "https://api.example.test/v1/webhooks/{}/github",
-            installed.id.as_str()
-        )
-    );
 }

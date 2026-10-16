@@ -45,6 +45,7 @@
 // no offsetting benefit. Gated on `not(test)` because the test build links
 // dev-dependencies into this same target.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod freshness;
 pub mod scheme;

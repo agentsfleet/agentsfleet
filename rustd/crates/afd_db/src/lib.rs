@@ -39,6 +39,7 @@
     clippy::multiple_crate_versions,
     reason = "sqlx-core pins the RustCrypto 0.10 line and ring's getrandom 0.2; this workspace is on the current line"
 )]
+#![deny(clippy::self_named_module_files)]
 
 pub mod config;
 pub mod constraint;

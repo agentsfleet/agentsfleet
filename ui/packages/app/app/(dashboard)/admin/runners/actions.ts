@@ -3,7 +3,7 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
-import { listRunners, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunnerPolicy, deleteRunner, requestRunnerSelftest, type RunnerListResponse, type RunnerLeaseResponse, type CreatedRunner, type RunnerAdminStateUpdate, type RunnerPolicyUpdate, type RunnerSelftestRequest, type ListParams, type LeaseListParams } from "@/lib/api/runners";
+import { listRunners, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, requestRunnerSelftest, type RunnerListResponse, type RunnerLeaseResponse, type CreatedRunner, type RunnerAdminStateUpdate, type RunnerEditResponse, type RunnerEdit, type RunnerSelftestRequest, type ListParams, type LeaseListParams } from "@/lib/api/runners";
 import { type AssignedPolicy, type RunnerAdminAction } from "@/lib/api/runners-types";
 
 export async function listRunnersAction(params: ListParams): Promise<ActionResult<RunnerListResponse>> {
@@ -31,12 +31,12 @@ export async function createRunnerAction(body: {
   );
 }
 
-/** Re-assign a runner's policy; the host applies it on its next heartbeat. */
-export async function updateRunnerPolicyAction(
+/** Save policy and label edits through the same runner write permission. */
+export async function updateRunnerAction(
   runnerId: string,
-  assignedPolicy: AssignedPolicy,
-): Promise<ActionResult<RunnerPolicyUpdate>> {
-  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunnerPolicy(t, runnerId, assignedPolicy)));
+  edit: RunnerEdit,
+): Promise<ActionResult<RunnerEditResponse>> {
+  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunner(t, runnerId, edit)));
 }
 
 export async function updateRunnerAdminStateAction(

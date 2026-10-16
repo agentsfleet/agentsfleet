@@ -4,7 +4,7 @@ import { SECRET_KIND } from "./secrets-types";
 // Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
 // server derives by decrypting each body and extracting everything but
-// `api_key` (see rustd/crates/afd_vault/src/projection.rs, and the sum type
+// `api_key` (see rustd/crates/afd_vault/src/projection/mod.rs, and the sum type
 // it feeds in rustd/crates/afd_vault/src/classified.rs). The client reads
 // that projection instead of guessing what each secret is.
 
@@ -45,7 +45,7 @@ export type CustomSecret = Extract<Secret, { kind: typeof SECRET_KIND.custom_sec
 
 /**
  * The decrypted secret body the vault stores (never returned on read). The
- * shape is open (`[key: string]: unknown`) because a SKILL.md references
+ * shape is open (`[key: string]: unknown`) because fleet tools reference
  * arbitrary fields by name, but the self-managed model-provider fields are
  * typed so the own-key + custom-endpoint write paths can't drift: `provider` +
  * optional `base_url` (required iff `provider === OPENAI_COMPATIBLE_PROVIDER`,
@@ -81,7 +81,7 @@ export function customEndpointsOf(secrets: Secret[]): CustomEndpointSecret[] {
   );
 }
 
-/** Opaque named secrets a SKILL.md reads by field path — never model providers. */
+/** Opaque named secrets fleet tools read by field path. */
 export function customSecretsOf(secrets: Secret[]): CustomSecret[] {
   return secrets.filter(
     (c): c is CustomSecret => c.kind === SECRET_KIND.custom_secret,

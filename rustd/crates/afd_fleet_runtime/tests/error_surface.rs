@@ -8,9 +8,9 @@
 //! # What this crate has that the others do not
 //!
 //! Every kind here reports ONE code, `UZ-AGT-008` — an authored document
-//! was rejected, and a caller cannot act on which rule it broke. `class()` is the
-//! discriminator instead, which is why this suite grades the class partition and
-//! not the code partition.
+//! was rejected, and a caller cannot act on which rule it broke. The structure
+//! an author needs is in the message, which is why this suite grades rendering
+//! and chains rather than a code partition.
 //!
 //! Every count below was MEASURED against the sample set, not chosen. Each is a
 //! pin: a lift swapped for a `to_string()` fails here instead of reaching an
@@ -25,10 +25,10 @@ use afd_fleet_runtime::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
 ///
-/// The three lifted kinds (`InvalidFieldType`, `OutOfBounds`,
-/// `FrontmatterUnreadable`) each keep their cause under a message of their own,
-/// so they report one. Every other kind here is a leaf that nothing caused.
-const WITH_SOURCE: usize = 3;
+/// The two lifted kinds (`InvalidFieldType`, `OutOfBounds`) each keep their
+/// cause under a message of their own, so they report one. Every other kind
+/// here is a leaf that nothing caused.
+const WITH_SOURCE: usize = 2;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 1;
 
@@ -107,25 +107,6 @@ fn every_code_is_one_the_registry_declares() {
         DISTINCT_CODES,
         "the kinds collapsed onto a different number of codes than {DISTINCT_CODES}, \
          which changes what a caller can discriminate on"
-    );
-}
-
-/// The class partitions the kinds where the code cannot.
-///
-/// All fourteen kinds report `UZ-AGT-008`, so `class()` is the only thing a
-/// caller can discriminate on. A class that collapsed would take that away
-/// silently — the code would still be right and the answer still useless.
-#[test]
-fn the_class_is_what_a_caller_discriminates_on() {
-    let classes: BTreeSet<String> = one_of_each_kind()
-        .iter()
-        .map(|(_, error)| format!("{:?}", error.class()))
-        .collect();
-    assert_eq!(
-        classes.len(),
-        5,
-        "the kinds collapsed onto {classes:?}; the code cannot tell them apart, \
-         so the class is the whole discriminator and a merge is a lost answer"
     );
 }
 

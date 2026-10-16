@@ -70,7 +70,7 @@ describe("mergeBackfill", () => {
   it("keeps the live bodies when a terminal list row reconciles over them", () => {
     // The regression: a reconnect backfills, the durable row wins on status --
     // and used to win on TEXT too, on the premise that it "carries the full
-    // final text". It does not. `afd_events` history/statement.rs asserts the
+    // final text". It does not. `afd_events` history/statement/mod.rs asserts the
     // listing select omits `response_text`, and it omits `request_json` with
     // it, so taking the row wholesale blanked a message already on screen.
     const live = evt({

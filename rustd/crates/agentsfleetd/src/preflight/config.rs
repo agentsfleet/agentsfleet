@@ -14,8 +14,6 @@ use afd_db::PoolConfig;
 use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
 
-use super::knobs::R2_REGION;
-
 /// The identity provider a deployment has, when it has one.
 ///
 /// Owned and complete: a value of this type means every knob the provider needs
@@ -45,7 +43,6 @@ pub struct BootConfig {
     pub(super) app_url: Dashboard,
     pub(super) api_url: Box<str>,
     pub(super) identity: IdentityConfig,
-    pub(super) bundles: Option<BundleStoreConfig>,
     pub(super) platform_admin_workspace: Option<Uuid7>,
     pub(super) qstash_token: Option<afd_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
@@ -71,36 +68,6 @@ pub struct PostHogConfig {
     pub project_key: Box<str>,
     /// The ingestion host, when this deployment names one.
     pub host: Option<Box<str>>,
-}
-
-/// The Fleet Bundle snapshot store's credentials, complete.
-///
-/// Owned and whole, like [`IdentityConfig`]: a value of this type means all
-/// four knobs were present, so nothing downstream re-checks.
-#[derive(Debug, Clone)]
-pub struct BundleStoreConfig {
-    /// The Cloudflare account the endpoint is derived from.
-    pub account_id: Box<str>,
-    /// The access key id the GET is signed with.
-    pub access_key_id: Box<str>,
-    /// The secret half of that key.
-    pub secret_access_key: Box<str>,
-    /// The bucket snapshots are stored in.
-    pub bucket: Box<str>,
-}
-
-impl BundleStoreConfig {
-    /// The account-scoped R2 endpoint, built from the account id.
-    #[must_use]
-    pub fn endpoint(&self) -> String {
-        format!("https://{}.r2.cloudflarestorage.com", self.account_id)
-    }
-
-    /// The region label R2 requires, which is fixed rather than configured.
-    #[must_use]
-    pub const fn region() -> &'static str {
-        R2_REGION
-    }
 }
 
 impl BootConfig {
@@ -186,7 +153,7 @@ impl BootConfig {
 
     /// The workspace this deployment's own platform credentials live in.
     ///
-    /// Optional for [`Self::bundles`]' reason: a deployment that mints no
+    /// A deployment that mints no
     /// third-party credentials still serves everything else, and refusing to
     /// boot would take the product down for an endpoint nobody called.
     #[must_use]
@@ -254,17 +221,5 @@ impl BootConfig {
     #[must_use]
     pub const fn qstash_signing_keys(&self) -> Option<&SigningKeys> {
         self.qstash_keys.as_ref()
-    }
-
-    /// The Fleet Bundle snapshot store, when this deployment has one.
-    ///
-    /// Optional where [`Self::identity`] is not: an R2 client is built only
-    /// when all four knobs are present, and everything else is served
-    /// regardless. Most deployments run fleets with no support files and never
-    /// reach the verb, so refusing to boot would take the whole product down
-    /// for an endpoint nobody called.
-    #[must_use]
-    pub const fn bundles(&self) -> Option<&BundleStoreConfig> {
-        self.bundles.as_ref()
     }
 }

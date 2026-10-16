@@ -6,7 +6,9 @@
     "ui/packages/website",
     "ui/packages/design-system"
   ],
-  "devDependencies": {},
+  "devDependencies": {
+    "zod": "^4.6.5"
+  },
   "overrides": {
     "playwright-core": "1.64.0"
   },

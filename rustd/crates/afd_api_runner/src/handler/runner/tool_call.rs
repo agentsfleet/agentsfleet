@@ -73,6 +73,11 @@ pub(crate) async fn handle<D: Services>(
     Path(lease_id): Path<String>,
     body: Bytes,
 ) -> Response {
+    // Parsed first, so the lease lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any lease is the caller's mistake.
+    if let Err(refusal) = super::schedule::lease(&lease_id) {
+        return refusal.into_response();
+    }
     if body.len() > DETAIL_POST_MAX_BYTES {
         return reject(afd_core::error_code::PAYLOAD_TOO_LARGE, DETAIL_TOO_LARGE);
     }

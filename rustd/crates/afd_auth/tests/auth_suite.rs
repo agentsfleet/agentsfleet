@@ -13,7 +13,6 @@
 
 #[path = "auth_error_taxonomy.rs"]
 mod auth_error_taxonomy;
-#[path = "bearer_prefix_routing.rs"]
 mod bearer_prefix_routing;
 #[path = "gate.rs"]
 mod gate;

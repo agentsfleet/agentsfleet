@@ -192,7 +192,7 @@ fn resuming_takes_at_most_one_pass_worth() {
 /// Every admission sorts above the first row key.
 ///
 /// Decided at compile time rather than in a test, for the reason
-/// `sweep/reconcile.rs` gives for its own bounds: a runtime check over two
+/// `sweep/reconcile/mod.rs` gives for its own bounds: a runtime check over two
 /// constants reports a bad edit as a red suite instead of as a build that does
 /// not produce a binary. Pinned at all because the statement binds this value
 /// as a real lower bound rather than as a stand-in for absence — `created_at`

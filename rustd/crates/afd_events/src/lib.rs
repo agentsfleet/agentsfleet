@@ -31,6 +31,8 @@
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.
 
+#![deny(clippy::self_named_module_files)]
+
 mod closed;
 mod counters;
 pub mod error;

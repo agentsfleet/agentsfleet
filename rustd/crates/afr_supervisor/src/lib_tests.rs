@@ -10,7 +10,7 @@ use std::time::Duration;
 use afd_core::error_code::RUN_STALE_FENCING_TOKEN;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
-use afd_wire::lease::LeaseResponse;
+use afd_wire::lease::{LeaseResponse, TaggedLease};
 use afr_sandbox::{HostProbe, Kvm, Limits};
 use bytes::Bytes;
 use tokio_util::sync::CancellationToken;
@@ -59,10 +59,12 @@ fn runner(plane: ControlPlane, home: StorageHome) -> Runner {
 fn one_lease_daemon(reports: Arc<AtomicUsize>) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
     let polled = AtomicUsize::new(0);
     daemon(move |call| match call.verb {
-        Verb::Lease if polled.fetch_add(1, Ordering::SeqCst) == 0 => Some(json(&LeaseResponse {
-            lease: Some(lease(GRANTED, FLEET_ID, None)),
-            retry_after_ms: None,
-        })),
+        Verb::Lease if polled.fetch_add(1, Ordering::SeqCst) == 0 => {
+            Some(json(&LeaseResponse::<serde_json::Value> {
+                lease: Some(TaggedLease::Fleet(Box::new(lease(GRANTED, FLEET_ID)))),
+                retry_after_ms: None,
+            }))
+        }
         Verb::Report => {
             reports.fetch_add(1, Ordering::SeqCst);
             None
@@ -116,9 +118,11 @@ async fn a_stop_on_the_first_beat_serves_nothing_and_a_report_the_daemon_cannot_
     leave_a_report(&home).await;
     let (plane, mut calls) = plane(daemon(|call| match call.verb {
         Verb::Heartbeat => Some(json(
-            &serde_json::json!({"status": "stop", "assigned_policy": null,
-            "degraded": false, "degraded_reason": null, "selftest_requested": false,
-            "heartbeat_interval_ms": INTERVAL_MS}),
+            &serde_json::json!({"status": "stop", "assigned_policy": {"sandbox_tier": "dev_none",
+            "network_policy": "allow_all", "registry_allowlist": [], "worker_count": 1,
+            "extra_binds": []}, "degraded": false, "degraded_reason": null,
+            "selftest_requested": false, "heartbeat_interval_ms": INTERVAL_MS,
+            "release_holds": []}),
         )),
         Verb::Report => Some(Answer::Fail(error::unavailable(Verb::Report, 503))),
         _other => None,
@@ -241,10 +245,12 @@ fn released(reason: Release) -> (String, String) {
 fn superseding_daemon(posts: Arc<AtomicUsize>) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
     let polled = AtomicUsize::new(0);
     daemon(move |call| match call.verb {
-        Verb::Lease if polled.fetch_add(1, Ordering::SeqCst) == 0 => Some(json(&LeaseResponse {
-            lease: Some(lease(GRANTED, FLEET_ID, None)),
-            retry_after_ms: None,
-        })),
+        Verb::Lease if polled.fetch_add(1, Ordering::SeqCst) == 0 => {
+            Some(json(&LeaseResponse::<serde_json::Value> {
+                lease: Some(TaggedLease::Fleet(Box::new(lease(GRANTED, FLEET_ID)))),
+                retry_after_ms: None,
+            }))
+        }
         Verb::Report if posts.fetch_add(1, Ordering::SeqCst) == 0 => {
             Some(Answer::Fail(error::unavailable(Verb::Report, 503)))
         }

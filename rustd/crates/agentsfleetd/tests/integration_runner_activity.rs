@@ -116,7 +116,7 @@ async fn test_activity_publish() {
         &http,
         &run,
         &path,
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
+        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
     )
     .await;
     assert_eq!(
@@ -179,7 +179,7 @@ async fn test_activity_publish() {
         &http,
         &run,
         &format!("/v1/runners/me/leases/{UNHELD_LEASE}/activity"),
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
+        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
     )
     .await;
     assert_eq!(
@@ -236,6 +236,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
         &json!({"frames": [{"tool_call_started": {
             "name": TOOL_NAME,
             "args_redacted": "this is not JSON",
+            "call_id": "1",
         }}]}),
     )
     .await;
@@ -260,7 +261,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
         &http,
         &run,
         &path,
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
+        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
     )
     .await;
     assert_eq!(

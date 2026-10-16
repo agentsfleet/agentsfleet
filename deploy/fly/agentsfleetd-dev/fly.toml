@@ -25,7 +25,7 @@ primary_region = "iad"
 # replicas at 8 is 16.
 #
 # The code's default is 20 (`SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS`,
-# 80/4 in afd_db/src/config.rs), and that file says in as many words that a
+# 80/4 in afd_db/src/config/mod.rs), and that file says in as many words that a
 # deployment knowing its own budget must set this knob — the budget travels
 # with the Postgres a deployment actually runs, which no source file can know.
 # Two replicas at 20 asked 40 of 17, and the instance that had to grow past its

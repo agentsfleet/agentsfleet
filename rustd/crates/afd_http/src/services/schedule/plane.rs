@@ -9,7 +9,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{
-    Change, DesiredStatus, FireTarget, Fired, NewSchedule, Reconciled, Refused,
+    Change, DesiredStatus, EditRequest, FireTarget, Fired, NewSchedule, Reconciled, Refused,
     Result as CronResult, Schedule,
 };
 use afd_db::Precondition;
@@ -23,6 +23,12 @@ const EVENT_RETIRED: &str = "schedule_once_retired";
 const EVENT_RETIRE_HELD: &str = "schedule_once_retire_held";
 
 impl FleetSchedules for SchedulePlane {
+    async fn edit(&self, request: EditRequest<'_>) -> CronResult<Reconciled> {
+        let token = self.token(request.now)?;
+        let held = self.store().edit(request, &token).await?;
+        self.service.reconcile(&held, &token, request.now).await
+    }
+
     async fn list(&self, workspace: &Uuid7, fleet: &Uuid7) -> CronResult<Vec<Schedule>> {
         if !self.store().holds_fleet(workspace, fleet).await? {
             return Ok(Vec::new());

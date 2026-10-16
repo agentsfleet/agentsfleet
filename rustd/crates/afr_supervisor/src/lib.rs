@@ -3,7 +3,7 @@
 //! It speaks the runner verbs through [`afd_wire`] and keeps every duty the
 //! daemon relies on — the worker pool, renewal, the report spooled before it is
 //! posted and drained until answered, the bounded activity sender, memory
-//! hydrate and fenced push, bundle fetch and the capability report
+//! hydrate and fenced push, native instructions and the capability report
 //! (`docs/architecture/runner_fleet.md` §The control protocol). Model keys live
 //! only here; no sandbox ever holds one. The boot sweep of what a crashed
 //! runner's sandboxes left is the engine's, built on [`StorageHome::sandboxes`].
@@ -32,7 +32,7 @@ pub mod error;
 pub mod workspace_clone;
 
 mod activity;
-mod bundles;
+mod authoring;
 mod client;
 mod credentials;
 mod drainer;
@@ -58,7 +58,6 @@ mod test_support;
 pub mod test_util;
 
 #[cfg(test)]
-#[path = "lease_telemetry_tests.rs"]
 mod lease_telemetry_tests;
 
 use std::sync::Arc;
@@ -76,7 +75,6 @@ pub use self::config::Config;
 pub use self::error::{Error, Result};
 pub use self::storage_home::StorageHome;
 
-use self::bundles::BundleCache;
 use self::client::HttpRunnerApi;
 use self::drainer::Drainer;
 use self::halt::Halt;
@@ -192,13 +190,14 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         limits,
         clock,
     } = runner;
+    let authoring_spool = open_authoring_spool(&home, &clock).await?;
     let lessee = Arc::new(Lessee {
         plane,
         engine,
         resolver: Box::new(SystemResolver),
         agent,
         spool: ReportSpool::new(&home),
-        bundles: BundleCache::new(&home),
+        authoring_spool,
         mirrors: Mirrors::new(home.mirrors(), origin),
         limits,
         holds: Holds::start(Arc::clone(&clock)),
@@ -218,12 +217,30 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         holds: &lessee.holds,
     };
     let pool = worker_pool::serve(Arc::clone(&lessee), watching);
-    tokio::join!(heartbeat, drainer.run(), pool);
+    let authoring_drain = lessee.authoring_spool.run(&lessee.plane, &lessee.halt);
+    tokio::join!(heartbeat, drainer.run(), authoring_drain, pool);
     lessee.holds.shutdown().await;
     if lessee.halt.token_refused() {
         return Err(error::token_refused());
     }
     Ok(())
+}
+
+/// Opens the authoring report spool under `home`, off the async workers
+/// because opening it touches the disk, then sweeps what an earlier process
+/// left in it — before [`serve_from`] starts any lease that could append.
+async fn open_authoring_spool(
+    home: &StorageHome,
+    clock: &Arc<dyn Clock>,
+) -> Result<report_spool::authoring::Spool> {
+    let spool_home = home.clone();
+    let spool_clock = Arc::clone(clock);
+    let authoring_spool = tokio::task::spawn_blocking(move || {
+        report_spool::authoring::Spool::open(&spool_home, spool_clock)
+    })
+    .await??;
+    authoring_spool.sweep().await?;
+    Ok(authoring_spool)
 }
 
 #[cfg(test)]

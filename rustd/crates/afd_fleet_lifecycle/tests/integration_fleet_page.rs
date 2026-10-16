@@ -3,7 +3,7 @@
 //! The first page and every later page are different statements over one
 //! column list, decoded by position. A walk one row at a time runs the later
 //! statement at every boundary, so it is compared row for row with the first
-//! statement's whole page; a neighbour's fleet installed just before the walk's
+//! statement's whole page; a neighbour's fleet created just before the walk's
 //! rows sits after every boundary and must never surface.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -12,11 +12,10 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{After, FleetRow, Install, LibrarySource};
+use afd_fleet_lifecycle::{After, FleetRow};
 
-use crate::integration_patch_visibility::installed;
 use crate::integration_wall_counters::{RAN, seed_counters};
-use crate::support::{LIBRARY_ID, Lane};
+use crate::support::Lane;
 
 /// A page larger than the lane seeds, so one read holds the whole workspace.
 const WHOLE_PAGE: u32 = 50;
@@ -36,25 +35,14 @@ async fn the_fleet_page_walks_one_workspace_and_both_statements_read_rows_alike(
     let lane = Lane::create().await;
     let mut own = Vec::new();
     for _ in 0..OWN_FLEETS {
-        own.push(installed(&lane).await.id);
+        own.push(lane.fleet().await);
     }
     let ran = own.last().expect("the walked workspace holds fleets");
     seed_counters(&lane, ran, RAN).await;
     let neighbour = lane.another_workspace().await;
     let theirs = lane
-        .fleets
-        .install(
-            &neighbour,
-            &Install {
-                source: LibrarySource::Platform(LIBRARY_ID),
-                name: None,
-                mention: None,
-            },
-            Lane::now().saturating_add_millis(-1),
-        )
-        .await
-        .expect("the neighbour's fleet installs")
-        .id;
+        .fleet_at(&neighbour, Lane::now().saturating_add_millis(-1))
+        .await;
     seed_counters(&lane, &theirs, RAN).await;
 
     let whole = lane

@@ -1,83 +1,54 @@
-# agentsfleet brand assets
+# agentsfleet brand kit
 
-Single source of truth for the brand-mark + wordmark used across
-GitHub avatars, README hero images, the Mintlify docs site, and
-press kits. Aligned to `docs/DESIGN_SYSTEM.md` ("Operational
-Restraint") — the cyan-mint pulse is currency, used here exactly
-once per asset, never decorated.
+The signal mark represents a configured fleet receiving a signal and doing its job. Eight strokes converge on a steady centre. The logo itself stays static; motion describes work in the product.
 
-## Files
+The shared identity is owned by [`BrandMark.tsx`](../ui/packages/design-system/src/design-system/BrandMark.tsx), [`tokens.css`](../ui/packages/design-system/src/tokens.css), and the [design system guide](../docs/DESIGN_SYSTEM.md). These exports match that identity. The website and app use the shared package; the documentation site mirrors its palette and assets.
 
-| Asset | Use |
-|---|---|
-| `agentsfleet-mark.svg` | GitHub avatar, app icon. 512×512, rounded square `--bg` background, single `--pulse` disc. |
-| `agentsfleet-mark-glow.svg` / `.png` | Hero contexts where the pulse needs to read as "live" (repo README hero, docs site hero, social cards). Same disc + a static wake-pulse halo. 512×512. |
-| `agentsfleet-dark.svg` | Horizontal lockup, Commit Mono "agentsfleet" wordmark for dark surfaces — transparent background, `--pulse` disc, `--text` ink. Docs nav (dark mode), press kits. 600×160. |
-| `agentsfleet-light.svg` | Light-surface variant — transparent background, `--pulse-dim` disc + `--bg` ink for contrast on white. Docs nav (light mode). 600×160. |
-| `favicon.svg` / `favicon.ico` | The mark cropped for favicon use. Website `public/`, `~/Projects/docs/` root. |
+## Ready to upload
 
-## Where to use each
+| File | Use |
+| --- | --- |
+| `avatar-512.png`, `github-avatar.png` | Square avatar for GitHub, X, or community profiles; padded for circular crops |
+| `avatar-1024.png` | Larger square avatar and press image |
+| `agentsfleet-mark.svg` | Scalable mark on charcoal |
+| `agentsfleet-mark-transparent.svg`, `.png` | Mint mark without a background; use on dark surfaces |
+| `agentsfleet-dark.svg`, `.png` | Transparent horizontal wordmark for dark backgrounds |
+| `agentsfleet-light.svg`, `.png` | Transparent horizontal wordmark for light backgrounds |
+| `github-social.png`, `.svg` | 1280 × 640 repository social preview |
+| `favicon.svg`, `favicon.ico` | Browser icon |
 
-### GitHub avatar (organisation + profile)
+Use the PNG avatars for profile uploads. No accounts or external profiles have been updated by generating these files.
 
-Use `agentsfleet-mark.svg` directly. GitHub renders SVG avatars at
-the standard sizes; the rounded-square cropping inside GitHub's
-avatar circle preserves the disc-on-dark composition.
+The `agentsfleet-mark-glow.svg` and `.png` files now contain the same static signal mark. Those existing filenames are retained by the companion docs site; there is no glow treatment.
 
-Upload via Settings → Profile → Profile picture (org and user
-profiles take the same asset). The org slug stays `agentsfleet`
-until the org-rename cutover spec lands.
+## Colours and typography
 
-### `~/Projects/.github/profile/README.md` (org profile)
+| Role | Dark | Light |
+| --- | --- | --- |
+| Page | `#151716` | `#f8f6f0` |
+| Main text | `#f2f0e9` | `#14251f` |
+| Signal / link | `#b8f0ce` | `#06695e` |
 
-The lockups are transparent, so a single `<img>` is unreadable on
-one of GitHub's two themes — always embed the theme-paired form:
+Interface text uses Instrument Sans, display headings Bricolage Grotesque, and code Commit Mono. SVG wordmarks outline Instrument Sans at weight 500. Social previews outline Bricolage Grotesque headings and Instrument Sans labels. SVG and PNG exports retain that lettering without installed fonts. Keep the brand lockup static and avoid stretching, gradients, and shadows. The chat activity loader can rotate the signal while it describes work. Keep at least one quarter of the mark’s width clear around it.
 
-```markdown
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)"
-      srcset="https://raw.githubusercontent.com/agentsfleet/agentsfleet/main/branding/agentsfleet-dark.svg">
-    <img src="https://raw.githubusercontent.com/agentsfleet/agentsfleet/main/branding/agentsfleet-light.svg" alt="agentsfleet" width="360">
-  </picture>
-</p>
-```
+## Propagation
 
-(The live org profile currently sources the docs-repo mirrors —
-`agentsfleet/docs` `logo/{dark,light}.svg`; same bytes once the
-propagation PR lands, so either source renders identically.)
+- Website favicon and app icons reference `ui/packages/design-system/assets/brand.svg`.
+- Docs use `logo/dark.svg`, `logo/light.svg`, `logo/mark-glow.svg`, and `favicon.svg` in the companion docs branch.
+- When changing the identity, update the shared component and tokens first, then regenerate this kit and refresh the docs mirrors together.
+- Deployment and uploads to GitHub, X, or other services are separate actions.
 
-### `~/Projects/docs/` (Mintlify docs site)
+## Branding coverage checked October 14, 2026
 
-Copy `favicon.svg` + `favicon.ico` to the docs repo root, and
-`agentsfleet-dark.svg` / `agentsfleet-light.svg` over
-`logo/dark.svg` / `logo/light.svg` (the paths `docs.json` names).
-`agentsfleet-mark-glow.svg` replaces `logo/mark-glow.svg` for the
-hero block. Mintlify serves SVG favicons natively; no
-rasterisation needed.
+The full wordmark belongs in README headers and social previews. The signal mark stays readable in small avatars and browser tabs.
+Website/app SVG icons resolve to the shared design-system source. ICO fallback, Apple touch icon, and website social metadata carry the same identity.
+The former orange design-system asset copies now match the shared mark and wordmarks.
+Invite HTML uses the charcoal, warm-white, and mint palette with a full mail-safe text wordmark.
 
-### Repo `README.md`
+GitHub organization name, description, and website were updated through the authorized API and read back.
+Organization-avatar and repository-social-image uploads still need a signed-in browser; GitHub's public organization-update API has no avatar field.
+The prepared files above are ready for those uploads. Local README changes take effect remotely only when published.
 
-Embed `agentsfleet-mark-glow.png` at the top (current shape) or
-the lockup pair via the same `<picture>` pattern as the org
-profile.
-
-## Source colours
-
-Every hex in these assets traces back to
-`ui/packages/design-system/src/tokens.css`:
-
-- `#0A0D0E` — `--bg` (dark mode brand surface; also the light
-  lockup's ink). Theme-fixed in the square marks (avatar, favicon,
-  glow) — those stay dark even in light surroundings; the lockups
-  are theme-paired instead (pick dark or light per surface).
-- `#5EEAD4` — `--pulse` (the wake-pulse, currency).
-- `#0D9488` — `--pulse-dim` as declared in the light-theme block
-  of `tokens.css` (the light lockup's disc, holds contrast on
-  white). Not hand-picked: the root/dark-theme `--pulse-dim` is
-  `#2DD4BF` per `docs/DESIGN_SYSTEM.md`; the light lockup
-  deliberately takes the light-theme value.
-- `#E6EAEC` — `--text` (dark-theme value; the dark lockup's ink).
-
-If the design system ever shifts those hexes, the branding assets
-ship a new release at the same time. The lockup never drifts.
+Remaining external surfaces: Clerk Account Portal branding, verification/reset emails, SMTP sender display name and delivery-domain settings,
+GitHub App icon and OAuth consent branding, npm/package social pages, community profiles, and product screenshots in docs.
+CLI installer publication and the unresolved agentsfleet.sh domain are separate release work.

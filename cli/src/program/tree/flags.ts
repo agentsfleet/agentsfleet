@@ -11,7 +11,6 @@
 
 import { Flag, Argument } from "effect/cli";
 import { EXAMPLE_UUIDV7, isValidId } from "../../lib/id.ts";
-import { LIBRARY_ID_PLACEHOLDER } from "../../constants/cli-flags.ts";
 import {
   HTTPS_SCHEME_PREFIX,
   OPENAI_COMPATIBLE_PROVIDER,
@@ -27,13 +26,11 @@ const NOT_A_UUIDV7 = `expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})` as const;
 const FLAG = {
   cron: "cron",
   data: "data",
-  from: "from",
   limit: "limit",
   message: "message",
   model: "model",
   name: "name",
   provider: "provider",
-  slackChannel: "slack-channel",
   timezone: "timezone",
 } as const;
 
@@ -48,13 +45,14 @@ const LIST_LIMIT_MIN = 1;
 const LIST_LIMIT_MAX = 200;
 const EVENTS_LIMIT_MAX = 500;
 const BILLING_LIMIT_MAX = 100;
+const LIBRARY_LIMIT_MAX = 100;
 
 // The placeholder a flag advertises in help. The library defaults to the
 // parsed TYPE — `--limit integer` — which names what the parser does rather
 // than what the operator types. The house convention is the value's role:
 // `--limit <n>`, `--cursor <token>`. The acceptance suite asserts it, because
 // the CLI is the highest-frequency surface this product has.
-const METAVAR = {
+export const METAVAR = {
   count: "<n>",
   id: "<id>",
   token: "<token>",
@@ -63,9 +61,6 @@ const METAVAR = {
   url: "<url>",
   glob: "<glob>",
   when: "<when>",
-  path: "<path>",
-  libraryId: "<library_id>",
-  channelId: "<channel_id>",
   json: "<json>",
   expression: "<expr>",
   timezone: "<tz>",
@@ -73,6 +68,9 @@ const METAVAR = {
   message: "<message>",
   text: "<text>",
   ref: "<ref>",
+  etag: "<etag>",
+  digest: "<digest>",
+  path: "<path>",
 } as const;
 
 /**
@@ -115,19 +113,6 @@ const idFlag = (name: string, description: string) =>
     Flag.optional,
   );
 
-/**
- * A Slack channel identifier: `C` for a public channel or `G` for a private
- * one, then at least `CHANNEL_MIN_BODY` upper-case letters or digits.
- *
- * The server's `ChannelId` checks the same shape, and the constant carries the
- * Rust name. Refused here so a typo never reaches a request; a direct
- * message's `D…` id is refused too, because a fleet answers in a channel.
- */
-const CHANNEL_MIN_BODY = 8;
-const SLACK_CHANNEL_ID_PATTERN = new RegExp(`^[CG][A-Z0-9]{${CHANNEL_MIN_BODY},}$`);
-export const NOT_A_SLACK_CHANNEL_ID =
-  "must be a Slack channel ID: C or G, then upper-case letters and digits" as const;
-
 const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   Flag.String(name).pipe(
     Flag.withDescription(description),
@@ -142,6 +127,10 @@ export const cursorFlag = textFlag("cursor", NEXT_CURSOR, METAVAR.token);
 export const startingAfterFlag = textFlag("starting-after", NEXT_CURSOR, METAVAR.id);
 
 export const listLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIST_LIMIT_MAX).pipe(
+  Flag.withDescription(PAGE_SIZE),
+  Flag.optional,
+);
+export const libraryLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIBRARY_LIMIT_MAX).pipe(
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );
@@ -207,28 +196,6 @@ export const dataReplacementFlag = textFlag(
   "Replacement JSON object, or @- to read stdin",
 );
 
-export const nameFlag = textFlag(
-  FLAG.name,
-  "Override the fleet name (install the same bundle more than once)",
-  METAVAR.name,
-);
-export const libraryFlag = textFlag("library", "Library id from `agentsfleet library`", METAVAR.libraryId);
-export const slackChannelFlag = Flag.String(FLAG.slackChannel).pipe(
-  Flag.withDescription("Slack channel ID whose mentions the fleet answers"),
-  Flag.filter((value: string) => SLACK_CHANNEL_ID_PATTERN.test(value), () => NOT_A_SLACK_CHANNEL_ID),
-  Flag.withMetavar(METAVAR.channelId),
-  Flag.optional,
-);
-export const fromPathFlag = textFlag(FLAG.from, "Skill bundle path", METAVAR.path);
-export const githubFlag = textFlag(
-  "github",
-  "Public GitHub repository carrying SKILL.md at its root",
-  METAVAR.name,
-);
-export const fromBundleFlag = textFlag(FLAG.from, "Local bundle directory to upload", METAVAR.path);
-export const templateFlag = textFlag("template", "First-party template id", METAVAR.id);
-export const refFlag = textFlag("ref", "Branch, tag, or commit (--github only)", METAVAR.ref);
-
 export const categoryFlag = textFlag("category", "Filter by category", METAVAR.name);
 export const actorFlag = textFlag("actor", "Filter by actor glob", METAVAR.glob);
 export const sinceFlag = textFlag("since", "RFC 3339 or duration (e.g. 2h)", METAVAR.when);
@@ -277,9 +244,6 @@ export const logoutAllFlag = Flag.Boolean("all").pipe(
   ),
   Flag.withDefault(false),
 );
-
-export const installLibraryDescription =
-  `Install a Fleet from a library entry (--library ${LIBRARY_ID_PLACEHOLDER})` as const;
 
 // ── Positional arguments ────────────────────────────────────────────
 

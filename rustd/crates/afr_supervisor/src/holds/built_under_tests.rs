@@ -31,7 +31,7 @@ type Change = fn(&mut ExecutionPolicy<'static>);
 
 /// The key the fixture lease's policy files once `change` is applied.
 fn key(change: Change) -> BuiltUnder {
-    let mut policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let mut policy = lease(LEASE_ID, FLEET_ID).policy;
     change(&mut policy);
     BuiltUnder::of(&policy, &Bound::Isolated)
 }
@@ -108,7 +108,7 @@ fn a_change_to_the_repository_binding_files_another_key() {
 /// another network the runner was assigned files another key.
 #[test]
 fn a_change_to_the_runners_egress_files_another_key() {
-    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let policy = lease(LEASE_ID, FLEET_ID).policy;
     let under = |egress: Bound| BuiltUnder::of(&policy, &egress);
 
     assert_eq!(under(Bound::Host), under(Bound::Host));
@@ -120,7 +120,7 @@ fn a_change_to_the_runners_egress_files_another_key() {
 /// sandbox takes the new addresses; another name files another key.
 #[test]
 fn an_allowlist_files_its_key_by_name_not_address() {
-    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let policy = lease(LEASE_ID, FLEET_ID).policy;
     let reaching = |names: &[&str], last: u8| {
         let entries = names
             .iter()

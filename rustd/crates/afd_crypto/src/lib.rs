@@ -29,6 +29,7 @@
 // reason the workspace manifest gives: cargo lints apply to every target, and a
 // dev-dependency legitimately goes unused by the library's own code.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod aad;
 pub mod entropy;

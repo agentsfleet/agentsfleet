@@ -15,28 +15,24 @@ import {
   clearCredentials as clearCredsRaw,
   type Credentials as CredentialsRecord,
 } from "../lib/state.ts";
-import {
-  CLI_CREDENTIAL_PATTERN,
-  TENANT_KEY_PREFIX,
-} from "../constants/cli-credential.ts";
+import { CLI_CREDENTIAL_PATTERN } from "../constants/cli-credential.ts";
 import { UnexpectedError } from "../errors/index.ts";
 
 export interface SaveAccessTokenInput {
   readonly token: Redacted.Redacted<string>;
   readonly sessionId: string | null;
   readonly apiUrl: string | undefined;
-  // Identifier of the minted credential, or null when this client did not
-  // mint it (a directly supplied tenant key).
-  readonly credentialId: string | null;
+  // Identifier of the minted credential, so `logout` can revoke it by name.
+  readonly credentialId: string;
 }
 
 // Every persisted field of the record, materialized from ONE disk read. The
 // single-field accessors each re-read credentials.json, so a command that
 // needs several fields pays several reads — and worse, reads that can span a
 // concurrent write. `credentialId` is the server-side identifier of the
-// stored credential (null when this client did not mint the stored value — a
-// supplied tenant key), kept in the same snapshot as the token so logout can
-// never revoke an id from a different record than the token it just used.
+// stored credential (null when nothing is stored), kept in the same snapshot
+// as the token so logout can never revoke an id from a different record than
+// the token it just used.
 export interface CredentialsSnapshot {
   readonly accessToken: Option.Option<Redacted.Redacted<string>>;
   readonly savedAt: number | null;
@@ -74,15 +70,10 @@ const loadRecord = (
 // the check has to live on the read path to catch a value some other code
 // path already wrote.
 //
-// The two credential classes are checked to different depths on purpose. A
-// minted credential is matched against its full declared shape, mirroring
-// `accepts_shape` in rustd/crates/afd_auth/src/authenticate.rs, so a
-// truncated paste fails here rather than at the server. A tenant key is
-// matched on its prefix alone: its shape is owned by the tenant-key module
-// and is not mirrored here, and a second copy of a shape we do not generate
-// would be a fact free to drift.
-const isPersistable = (token: string): boolean =>
-  CLI_CREDENTIAL_PATTERN.test(token) || token.startsWith(TENANT_KEY_PREFIX);
+// The value is matched against the minted credential's full declared shape,
+// mirroring `accepts_shape` in rustd/crates/afd_auth/src/authenticate.rs, so a
+// truncated paste fails here rather than at the server.
+const isPersistable = (token: string): boolean => CLI_CREDENTIAL_PATTERN.test(token);
 
 // The token gate shared by the single accessor and the snapshot: only a
 // well-shaped credential is ever surfaced as usable material. Whether that

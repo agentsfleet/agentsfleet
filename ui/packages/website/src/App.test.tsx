@@ -10,7 +10,7 @@ vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
 import { HERO_HEADLINE } from "./lib/marketing-copy";
-import { WAITLIST_URL } from "./config";
+import { APP_SIGN_IN_URL, APP_SIGN_UP_URL } from "./config";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -50,33 +50,36 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     expect(brands.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("renders the WakePulse brand-mark with data-live attribute", () => {
+  it("keeps the brand mark distinct from live activity", () => {
     renderApp();
     const mark = screen.getByTestId("brand-mark");
-    expect(mark).toHaveAttribute("data-live", "true");
+    expect(mark).not.toHaveAttribute("data-live");
   });
 
   it("renders primary navigation in topbar", () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: /primary/i });
-    expect(within(nav).getByRole("link", { name: /home/i })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: /^how it works$/i })).toHaveAttribute("href", "/#how-it-works");
-    expect(within(nav).getByRole("link", { name: /agents/i })).toBeInTheDocument();
+    const earlyAccess = within(nav).getByRole("link", { name: /Get started/i });
+    expect(earlyAccess).toHaveAttribute("href", APP_SIGN_UP_URL);
+    expect(earlyAccess).toHaveAttribute("target", "_blank");
+    expect(earlyAccess).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(nav).getByRole("link", { name: /^Product$/i })).toHaveAttribute("href", "/#how-it-works");
+    expect(within(nav).getByRole("link", { name: "GitHub ↗" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
     );
   });
 
-  it("routes the Dashboard link to the waitlist", () => {
+  it("routes sign-in to the existing app", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
-    expect(cta).toHaveAttribute("href", WAITLIST_URL);
+    expect(cta).toHaveAttribute("href", APP_SIGN_IN_URL);
     expect(cta).toHaveAttribute("target", "_blank");
     expect(cta).toHaveAttribute("rel", "noopener noreferrer");
-    expect(cta.textContent).toContain("dashboard");
+    expect(cta.textContent).toContain("Sign in");
   });
 
   it("clicking Dashboard tracks navigation", () => {
@@ -108,7 +111,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     ).toBeInTheDocument();
   });
 
-  it("renders fleets page at /fleets", async () => {
+  it("renders agents page at /agents", async () => {
     renderApp("/agents");
     expect(
       await screen.findByRole("heading", { level: 1 }, { timeout: LAZY_ROUTE_TIMEOUT_MS }),
@@ -189,7 +192,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   });
 });
 
-it.each([["/fleets", "This page is for agents."], ["/pricing", HERO_HEADLINE]])("keeps existing %s links working", async (path, heading) => {
+it.each(["/fleets", "/pricing"])("renders not-found at %s", async (path) => {
   renderApp(path);
-  expect(await screen.findByRole("heading", { level: 1, name: heading }, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { level: 1, name: "This page isn’t here." }, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
 });

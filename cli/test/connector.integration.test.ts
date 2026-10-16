@@ -219,7 +219,7 @@ describe("connector commands", () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
-          jsonResponse(500, { error: { code: "UZ-INTERNAL-002", message: "Database error" } }),
+          jsonResponse(500, { error_code: "UZ-INTERNAL-002", detail: "Database error" }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();

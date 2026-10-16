@@ -56,6 +56,7 @@
     clippy::multiple_crate_versions,
     reason = "redis and rustls pin transitive versions this workspace does not choose"
 )]
+#![deny(clippy::self_named_module_files)]
 
 pub mod capacity;
 pub mod client;

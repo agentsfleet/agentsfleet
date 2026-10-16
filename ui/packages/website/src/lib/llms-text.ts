@@ -10,11 +10,13 @@ import {
   SOURCE_CATEGORIES,
 } from "./marketing-copy";
 
+const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet. Publishing to the Library is a separate action.";
+
 export const MARKETING_POSITIONING_SUMMARY =
-  "Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and require human approval before configured repair work can merge or ship.";
+  `Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and work within configured access. An investigator does not change code; a separately configured repairer can open a draft pull request. Humans review and merge. ${NATIVE_SETUP_SUMMARY} The homepage run uses sample data.`;
 
 export const LLMS_FULL_INTRO =
-  "agentsfleet is an open-source runtime for AI agents that wake on events from production and your repositories. Each agent starts on one — an incident, a failed deploy, a pull request — reads only the sources you allow-list, and returns an evidence-backed result. Runs use the platform’s model or your own model key. Some runs end with diagnosis; configured repair work waits for human approval before anything merges or ships.";
+  `${PRODUCT_NAME} is an open-source runtime for AI agents that wake on events from production and your repositories. Each agent starts on one — an incident, a failed deploy, a pull request — reads only the sources you allow, and returns an evidence-backed result. Runs use the platform’s model or your own model key. Some runs end with diagnosis. The incident responder reads Grafana Loki and GitHub and can report to configured Slack and Jira destinations. A separately configured repairer needs an approved write grant to open a draft pull request. It never merges or deploys. ${NATIVE_SETUP_SUMMARY} The homepage conversation is an illustrative example using sample data; it does not connect tools or start real work.`;
 
 export type LlmsTextInputs = {
   docsUrl: string;
@@ -34,8 +36,8 @@ export function buildLlmsIndexText({
     `> ${MARKETING_POSITIONING_SUMMARY}`,
     "",
     "## Product",
-    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): prebuilt fleets that wake on your events`,
-    `- [Early access and pricing](${root}/#pricing): ${PRICING_COPY.status}. ${PRICING_COPY.note}`,
+    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): configure a specialist job; explore an illustrative incident run`,
+    `- [Getting started and pricing](${root}/#pricing): ${PRICING_COPY.status}. ${PRICING_COPY.note}`,
     "",
     "## Resources",
     `- [Docs](${docsUrl})`,

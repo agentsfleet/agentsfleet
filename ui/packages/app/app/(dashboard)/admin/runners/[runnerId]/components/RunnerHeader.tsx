@@ -3,14 +3,14 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLinkIcon } from "lucide-react";
-import { Alert, Button, CopyButton, TooltipButton } from "@agentsfleet/design-system";
+import { ArrowLeftIcon, ExternalLinkIcon, ServerIcon } from "lucide-react";
+import { Alert, Button, TooltipButton, PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { RefreshButton } from "@/components/domain/RefreshButton";
 import { type RunnerDetail, type RunnerListItem } from "@/lib/api/runners";
 import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE, type RunnerAdminState, type RunnerStateAction } from "@/lib/api/runners-types";
 import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 import { runnersIndexPath } from "@/lib/runner-routes";
-import { presentErrorString } from "@/lib/errors";
+import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 import {
   ACTION_CONFIG,
   DELETE_ACTION_CONFIG,
@@ -25,23 +25,14 @@ import {
   type RunnerDeleteConfirmTarget,
 } from "../../components/RunnerDialogs";
 import { updateRunnerAdminStateAction, deleteRunnerAction, requestRunnerSelftestAction } from "../../actions";
+import { RunnerChecksBadge } from "./RunnerChecksBadge";
 import { RunnerIdentityLine } from "./RunnerIdentityLine";
 import {
-  COPY_RUNNER_ID_LABEL,
   OPEN_GRAFANA_LABEL,
   REFRESH_RUNNER_LABEL,
   RUNNERS_CRUMB_LABEL,
   RUNNER_ACTIONS_LABEL,
-  RUNNER_BREADCRUMB_LABEL,
 } from "./runner-copy";
-
-// The FleetHeader shape verbatim: breadcrumb left, actions right, one
-// vertically-centred row, and NO second title — the breadcrumb already names
-// the host and the page's <h1> is screen-reader-only. The runner id is the
-// paste-into-a-ticket value, so it rides a CopyButton beside the breadcrumb
-// rather than 26 characters of visible text. Identity — status, isolation
-// tier, labels — is one line below; enrolment is not repeated here because
-// Activity's registered record carries it with the real date.
 
 const SelftestIcon = SELFTEST_ACTION_CONFIG.icon;
 
@@ -75,7 +66,7 @@ export function RunnerHeader({
   // carry one: `error` renders only inside RunnerActionConfirm, which stays
   // closed for a self-test, so a shared slot would swallow the refusal.
   const [selftestError, setSelftestError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
   // Painted at confirm, reconciled inside the same transition: success refreshes
   // the server tree, and a 409 or any failure ends the transition so the badge
   // falls back to the server-rendered state on its own.
@@ -97,6 +88,9 @@ export function RunnerHeader({
       startTransition(async () => {
         try {
           await work();
+        } catch (cause) {
+          setError(unexpectedErrorMessage(cause, "update this runner"));
+          router.refresh();
         } finally {
           resolve();
         }
@@ -127,17 +121,14 @@ export function RunnerHeader({
   function runSelftest() {
     setSelftestError(null);
     startTransition(async () => {
-      const result = await requestRunnerSelftestAction(runner.id);
-      if (!result.ok) {
-        setSelftestError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: SELFTEST_ACTION_CONFIG.errorAction,
-          }),
-        );
+      try {
+        const result = await requestRunnerSelftestAction(runner.id);
+        if (!result.ok) setSelftestError(presentErrorString({errorCode: result.errorCode,
+          message: result.error, action: SELFTEST_ACTION_CONFIG.errorAction}));
+        router.refresh();
+      } catch (cause) {
+        setSelftestError(unexpectedErrorMessage(cause, SELFTEST_ACTION_CONFIG.errorAction));
       }
-      router.refresh();
     });
   }
 
@@ -158,26 +149,13 @@ export function RunnerHeader({
 
   const runnerForDialog: RunnerListItem = runner;
 
-  return (
-    <div>
-      <div className="mb-md flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="sr-only">{runner.host_id}</h1>
-        <nav
-          aria-label={RUNNER_BREADCRUMB_LABEL}
-          className="flex min-w-0 items-center text-sm text-muted-foreground"
-        >
-          <Link href={runnersIndexPath()} className="hover:text-foreground">
-            {RUNNERS_CRUMB_LABEL}
-          </Link>
-          <span aria-hidden="true" className="mx-md">/</span>
-          <span className="truncate font-mono text-foreground">{runner.host_id}</span>
-          <CopyButton value={runner.id} label={COPY_RUNNER_ID_LABEL} className="ml-md" />
-        </nav>
+  const actions = (
         <div aria-label={RUNNER_ACTIONS_LABEL} className="flex flex-wrap items-center justify-end gap-sm">
           {canWrite ? (
             <EditPolicyDialogDynamic
               runnerId={runner.id}
               current={runner.assigned_policy}
+              currentLabels={runner.labels}
               onSaved={() => router.refresh()}
             />
           ) : null}
@@ -185,7 +163,7 @@ export function RunnerHeader({
             <Button
               variant="ghost"
               size="sm"
-              disabled={runner.selftest_requested_at !== null}
+              disabled={pending || runner.selftest_requested_at !== null}
               onClick={runSelftest}
             >
               <SelftestIcon aria-hidden="true" />
@@ -267,14 +245,26 @@ export function RunnerHeader({
               action above already ends on. */}
           <RefreshButton onRefresh={() => router.refresh()} label={REFRESH_RUNNER_LABEL} />
         </div>
-      </div>
+  );
+
+  return (
+    <div className="flex shrink-0 flex-col gap-xl">
+      <Link href={runnersIndexPath()} className="inline-flex w-fit items-center gap-sm text-body-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeftIcon size={14} aria-hidden="true" /> {RUNNERS_CRUMB_LABEL}
+      </Link>
+      <PageHeader className="flex-wrap" actions={actions}>
+        <div className="flex min-w-0 items-center gap-lg">
+          <ServerIcon className="size-6 shrink-0 text-pulse" aria-hidden="true" />
+          <PageTitle className="truncate">{runner.host_id}</PageTitle>
+          <RunnerChecksBadge runner={runner} />
+        </div>
+      </PageHeader>
+      <RunnerIdentityLine runner={runner} adminState={adminState} />
 
       {/* The self-test refusal reads here, beside the control that asked for
           it — the other two actions carry their errors inside their confirm
           dialog, which a self-test never opens. */}
       {selftestError ? <Alert variant="destructive" className="mb-md">{selftestError}</Alert> : null}
-
-      <RunnerIdentityLine runner={runner} adminState={adminState} />
 
       <RunnerActionConfirm
         target={confirmAction}

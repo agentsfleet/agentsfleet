@@ -46,7 +46,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `docs/architecture/runner_fleet.md` — §Datastore topology and the lease clear rules (drained, parked) this design must preserve.
 2. `docs/architecture/datastore_scaling.md` — why readiness was partitioned and how retention and admission budgets lean on the streams; every claim there is rewritten by §6.
-3. `rustd/crates/afd_fleet/src/lease/sql/lease.rs` — `CLAIM_AFFINITY_SLOT`, `RECLAIM_PRIOR_ACTIVE` and `SELECT_READY_CANDIDATES`: the slot and fence the new claim reuses.
+3. `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs` — `CLAIM_AFFINITY_SLOT`, `RECLAIM_PRIOR_ACTIVE` and `SELECT_READY_CANDIDATES`: the slot and fence the new claim reuses.
 4. `rustd/crates/afd_runner/src/sql/sweep.rs` — the repository's `FOR UPDATE SKIP LOCKED` shape, used by every replica's sweepers.
 5. `rustd/crates/afd_fleet/src/lease/sql/report.rs` — `CLAIM_AND_SETTLE`, whose fence guard (`fencing_token >= fencing_seq`) already refuses a dead holder's late report; the settle stamp joins it.
 
@@ -59,20 +59,20 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `schema/933_fleet_admissions_queue.sql` (next free slot at CHORE(open)) | CREATE | lease, park and settle stamps, the unsettled partial index, grants, and the settled backfill |
 | `schema/934_fleet_admissions_drop_receipt.sql` | CREATE | drops `receipt` and its two partial indexes once nothing reads them (owner approval, Discovery Q3) |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | registers both migrations |
-| `rustd/crates/afd_admission/src/{admit,budget,lib,sql}.rs`, `budget/ceiling.rs` | EDIT | admit commits the row and rings the doorbell; both backlog budgets count unsettled rows |
-| `rustd/crates/afd_admission/src/{admit_receipt,replay,cursor,reconcile}.rs`, `reconcile/` | DELETE | stream append, receipt write-back and the three repairers of it |
-| `rustd/crates/afd_dragonfly/src/ready.rs`, `ready/` | DELETE | the readiness index and partitions; the doorbell moves to its own module |
-| `rustd/crates/afd_dragonfly/src/{streams,lib,capacity,kv}.rs`, `streams/consume.rs` | EDIT | inbound append, group create and autoclaim go; the outbound stream and the tail keep theirs |
-| `rustd/crates/afd_fleet/src/lease/{assign,envelope,event,reclaim,store,settle,finalize}.rs`, `assign/`, `pull/held.rs`, `report/steps.rs`, `sql/{lease,report}.rs` | EDIT | the claim takes a ledger row; park, expiry and settle move the row; no XACK, trim or `MARK_DELIVERED` |
+| `rustd/crates/afd_admission/src/{admit,budget/mod,lib,sql}.rs`, `budget/ceiling/mod.rs` | EDIT | admit commits the row and rings the doorbell; both backlog budgets count unsettled rows |
+| `rustd/crates/afd_admission/src/{admit_receipt,replay,cursor,reconcile/mod}.rs`, `reconcile/` | DELETE | stream append, receipt write-back and the three repairers of it |
+| `rustd/crates/afd_dragonfly/src/ready/mod.rs`, `ready/` | DELETE | the readiness index and partitions; the doorbell moves to its own module |
+| `rustd/crates/afd_dragonfly/src/{streams/mod,lib,capacity,kv}.rs`, `streams/consume.rs` | EDIT | inbound append, group create and autoclaim go; the outbound stream and the tail keep theirs |
+| `rustd/crates/afd_fleet/src/lease/{assign/mod,envelope,event,reclaim,store,settle,finalize}.rs`, `assign/`, `pull/held.rs`, `report/steps.rs`, `sql/{lease,report}.rs` | EDIT | the claim takes a ledger row; park, expiry and settle move the row; no XACK, trim or `MARK_DELIVERED` |
 | `rustd/crates/afd_fleet/src/lease/{restore,mark}.rs` | DELETE | group restore and mark clears |
-| `rustd/crates/afd_runner/src/sweep/{replay,reconcile}.rs`, `sweep/reconcile/` | DELETE | sweepers of a copy that no longer exists |
-| `rustd/crates/afd_runner/src/sweep/{mod,rebuild,reclaim,census}.rs`, `sweep/rebuild/`, `sweep/reclaim/`, `sql/sweep.rs` | EDIT | rebuild keeps only the outbound pass; reclaim loses the stream probe and re-mark; census publishes the backlog gauge |
-| `rustd/crates/afd_approval/src/inbox/resolve.rs` | EDIT | an answer clears the park stamp and rings the doorbell |
-| `rustd/crates/afd_gate/src/gate/{pause,store}.rs` | EDIT | no readiness clear; `status = active` already gates the claim |
+| `rustd/crates/afd_runner/src/sweep/{replay,reconcile/mod}.rs`, `sweep/reconcile/` | DELETE | sweepers of a copy that no longer exists |
+| `rustd/crates/afd_runner/src/sweep/{mod,rebuild/mod,reclaim/mod,census/mod}.rs`, `sweep/rebuild/`, `sweep/reclaim/`, `sql/sweep.rs` | EDIT | rebuild keeps only the outbound pass; reclaim loses the stream probe and re-mark; census publishes the backlog gauge |
+| `rustd/crates/afd_approval/src/inbox/resolve/mod.rs` | EDIT | an answer clears the park stamp and rings the doorbell |
+| `rustd/crates/afd_gate/src/gate/{pause,store/mod}.rs` | EDIT | no readiness clear; `status = active` already gates the claim |
 | `rustd/crates/afd_fleet_lifecycle/src/{install,purge,lib}.rs` | EDIT | no stream or group at install; no readiness clear at purge |
-| `rustd/crates/afd_events/src/history/queued.rs`, `history/statement/queued.rs`, `src/sql.rs` | EDIT | queued steers read unleased ledger rows; the duplicate merge goes |
-| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `src/producers/fleet.rs`, `docs/metrics.census.tsv`, `playbooks/operations/observability/assets/dashboard.json` | EDIT | `agentsfleet_fleet_ready_depth` goes; the backlog gauge changes producer |
-| `rustd/crates/afd_bench/src/lane/{lease,steer,cardinality,sweep}.rs` and their directories | EDIT | §1 ledger-claim variant; lanes stop seeding or counting readiness |
+| `rustd/crates/afd_events/src/history/queued/mod.rs`, `history/statement/queued.rs`, `src/sql.rs` | EDIT | queued steers read unleased ledger rows; the duplicate merge goes |
+| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `src/producers/fleet/mod.rs`, `docs/metrics.census.tsv`, `playbooks/operations/observability/assets/dashboard.json` | EDIT | `agentsfleet_fleet_ready_depth` goes; the backlog gauge changes producer |
+| `rustd/crates/afd_bench/src/lane/{lease/mod,steer/mod,cardinality/mod,sweep}.rs` and their directories | EDIT | §1 ledger-claim variant; lanes stop seeding or counting readiness |
 | tests under `rustd/crates/{afd_dragonfly,afd_fleet,afd_runner,afd_approval,afd_events,afd_admission,agentsfleetd}/tests/` that the discovery grep names | EDIT / DELETE | readiness and stream suites go; lease, reclaim and approval suites assert ledger state |
 | `docs/architecture/{runner_fleet,datastore_scaling,lease_flow,scaling,data_flow,concurrency}.md` | EDIT | one queue, described as the design |
 
@@ -92,7 +92,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | UFS | yes — new column names and the doorbell channel | named constants beside the statements that use them |
 | LOGGING | yes — the backlog gauge moves producer; removed sweeper events | event names from the logging standard; removed events leave no orphan reference |
 | ERROR REGISTRY | yes — stream-append and group-restore failures disappear | delete their variants with their callers; no reserved codes left dangling |
-| File & Function Length (≤350/≤50/≤70) | yes — `assign.rs`, `sql/lease.rs`, `admit.rs` | split the ledger claim into `assign/ledger.rs` if `assign.rs` nears the cap |
+| File & Function Length (≤350/≤50/≤70) | yes — `assign.rs`, `sql/lease/mod.rs`, `admit.rs` | split the ledger claim into `assign/ledger.rs` if `assign.rs` nears the cap |
 
 ## Prior-Art / Reference Implementations
 
@@ -236,9 +236,9 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 
 | File to delete | Verify |
 |----------------|--------|
-| `rustd/crates/afd_dragonfly/src/ready.rs` | `test ! -f rustd/crates/afd_dragonfly/src/ready.rs` |
-| `rustd/crates/afd_admission/src/replay.rs` | `test ! -f rustd/crates/afd_admission/src/replay.rs` |
-| `rustd/crates/afd_admission/src/reconcile.rs` | `test ! -f rustd/crates/afd_admission/src/reconcile.rs` |
+| `rustd/crates/afd_dragonfly/src/ready/mod.rs` | `test ! -f rustd/crates/afd_dragonfly/src/ready/mod.rs` |
+| `rustd/crates/afd_admission/src/replay/mod.rs` | `test ! -f rustd/crates/afd_admission/src/replay/mod.rs` |
+| `rustd/crates/afd_admission/src/reconcile/mod.rs` | `test ! -f rustd/crates/afd_admission/src/reconcile/mod.rs` |
 | `rustd/crates/afd_admission/src/cursor.rs` | `test ! -f rustd/crates/afd_admission/src/cursor.rs` |
 | `rustd/crates/afd_fleet/src/lease/restore.rs` | `test ! -f rustd/crates/afd_fleet/src/lease/restore.rs` |
 | `rustd/crates/afd_runner/src/sweep/replay.rs` | `test ! -f rustd/crates/afd_runner/src/sweep/replay.rs` |
@@ -283,7 +283,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 ## Discovery (consult log)
 
 - **Consults** — Indy (Oct 13, 2026, AskUserQuestion during M225_001 review round 2) picked "Spec it now (Recommended)" for this refactor as a pending spec, no code. Open human decisions, each blocking the boundary named:
-  - **Q1 (blocks §3)** — reverse the recorded design "The streams are the record" (`rustd/crates/afd_dragonfly/src/ready.rs:9-14` on `main`) and "PostgreSQL is the forge and Dragonfly a cache of it" (`rustd/crates/afd_runner/src/sweep/rebuild.rs:5`)? Not decided by this spec.
+  - **Q1 (blocks §3)** — reverse the recorded design "The streams are the record" (`rustd/crates/afd_dragonfly/src/ready/mod.rs:9-14` on `main`) and "PostgreSQL is the forge and Dragonfly a cache of it" (`rustd/crates/afd_runner/src/sweep/rebuild/mod.rs:5`)? Not decided by this spec.
   - **Q2 (blocks §4.4)** — idle fallback: a Postgres probe per silent poll, or a one-bit Dragonfly flag beside the doorbell; decided from §1's figures.
   - **Q3 (blocks the §5 drop migration)** — approve dropping `core.fleet_admissions.receipt` and its two indexes on a live datastore (`VERSION` 0.59.0, `.orly/dispatch/write_sql.md` §Repository schema policy).
   - **Q4 (blocks §2.2)** — cutover by backfill (default) or by a quiesce window that drains live streams first.

@@ -102,22 +102,13 @@ async fn rename(held: &Held, name: &str) {
 /// makes the renewal fail CLOSED with `BudgetExhausted` — deliberately, per the
 /// coverage suite next door. A test whose subject is the captured name has to
 /// clear that gate first or it never reaches the statement it is about.
-const DEEP_DAILY_BUDGET: &str = r#"{"name":"ledger-name","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1000}}}"#;
+const DEEP_DAILY_BUDGET: &str = r#"{"name":"ledger-name","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000000"}}}"#;
 
 /// Gives the fleet a ceiling its renewals can run under.
 async fn fund(held: &Held) {
-    let mut connection = held
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET config_json = $2::jsonb WHERE id = $1::uuid")
-        .bind(&held.fleet)
-        .bind(DEEP_DAILY_BUDGET)
-        .execute(&mut *connection)
-        .await
-        .expect("the fleet takes a readable ceiling");
+    held.fixtures
+        .native_config(&held.fleet, DEEP_DAILY_BUDGET)
+        .await;
 }
 
 /// Renews the held lease once, which meters a slice into the stage row.

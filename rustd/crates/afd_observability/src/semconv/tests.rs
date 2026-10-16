@@ -40,7 +40,7 @@ fn declared_labels() -> BTreeSet<String> {
 ///
 /// Both directions matter and they fail differently. A column with no constant
 /// is a key some producer is about to spell by hand, which is how one emitter
-/// ends up writing `pool_result` and another `poolResult` — two dimensions in
+/// ends up writing `runner_id` and another `runnerId` — two dimensions in
 /// the backend and no error anywhere. A constant with no column is the reverse
 /// defect: a key nothing exports, which reads as coverage and is dead code.
 #[test]

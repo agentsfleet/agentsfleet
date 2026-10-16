@@ -136,18 +136,12 @@ start_nodes() {
 # any uid (the daemon image runs as 65532); keys stay 0600.
 mint_certificates() {
   mkdir -p "$TLS_DIR"
-  if [ ! -s "$TLS_DIR/ca.crt" ] || [ ! -s "$TLS_DIR/server.crt" ] || [ ! -s "$TLS_DIR/server.key" ]; then
+  if [ ! -s "$TLS_DIR/ca.crt" ] || [ ! -s "$TLS_DIR/server.crt" ] || [ ! -s "$TLS_DIR/server.key" ] || [ ! -s "$TLS_DIR/bad-ca.crt" ]; then
     openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/ca.key" -out "$TLS_DIR/ca.crt" -days 3650       -subj "/CN=agentsfleet-local-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
     openssl req -newkey rsa:2048 -nodes -keyout "$TLS_DIR/server.key" -out "$TLS_DIR/server.csr" -subj "/CN=localhost" 2>/dev/null
     printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' >"$TLS_DIR/server.ext"
     openssl x509 -req -in "$TLS_DIR/server.csr" -CA "$TLS_DIR/ca.crt" -CAkey "$TLS_DIR/ca.key" -CAcreateserial       -out "$TLS_DIR/server.crt" -days 3650 -extfile "$TLS_DIR/server.ext" 2>/dev/null
-  fi
-  # Minted on its own condition rather than beside the server material above.
-  # A volume provisioned before this authority was renamed already carries a
-  # `ca.crt`, so folding it into that `if` would skip it forever and leave the
-  # refusal half of the trust proof with no certificate to present -- and the
-  # `chmod` below would then fail on a file that was never created.
-  if [ ! -s "$TLS_DIR/bad-ca.crt" ]; then
+    # The authority the refusal half of the trust proof presents.
     openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TLS_DIR/bad-ca.key" -out "$TLS_DIR/bad-ca.crt" -days 3650 -subj "/CN=agentsfleet-bad-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
   fi
   chmod 0644 "$TLS_DIR/ca.crt" "$TLS_DIR/server.crt" "$TLS_DIR/bad-ca.crt"

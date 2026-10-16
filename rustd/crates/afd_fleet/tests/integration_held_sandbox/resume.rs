@@ -14,15 +14,18 @@ use afd_fleet::lease::{Billed, Kind, Leases};
 
 use super::{at, hold, id, live};
 use crate::queue;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
 /// When a live hold made here lapses.
-const UNTIL: i64 = ENROLLED_AT + SANDBOX_HOLD_IDLE_MS;
+fn until(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS
+}
 
 /// When a short hold made here lapses.
-const SHORT: i64 = ENROLLED_AT + 10;
+fn short(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + 10
+}
 
 /// Whether `runner`'s won claim on `fleet` at `now` resumes its hold.
 async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7, now: i64) -> bool {
@@ -41,9 +44,9 @@ async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
 
-    assert!(resumes(&leases, &fleet, &holder, ENROLLED_AT + 1).await);
+    assert!(resumes(&leases, &fleet, &holder, fixtures.enrolled_at() + 1).await);
     fixtures.cleanup().await;
 }
 
@@ -55,14 +58,14 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
     let (never_held, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, SHORT).await;
+    hold(&leases, &fixtures, &fleet, &holder, short(&fixtures)).await;
 
     assert!(
-        !resumes(&leases, &fleet, &holder, SHORT + 1).await,
+        !resumes(&leases, &fleet, &holder, short(&fixtures) + 1).await,
         "lapsed"
     );
     assert!(
-        !resumes(&leases, &never_held, &holder, SHORT + 1).await,
+        !resumes(&leases, &never_held, &holder, short(&fixtures) + 1).await,
         "a slot whose last report recorded no hold"
     );
     fixtures.cleanup().await;
@@ -77,8 +80,8 @@ async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
-    let silent = ENROLLED_AT + RUNNER_OFFLINE_AFTER_MS + 1;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
+    let silent = fixtures.enrolled_at() + RUNNER_OFFLINE_AFTER_MS + 1;
 
     let others = leases
         .claim(&id(&fleet), &other, at(silent), LEASE_TTL_MS)
@@ -115,8 +118,8 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
-    let now = at(ENROLLED_AT + 1);
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
+    let now = at(fixtures.enrolled_at() + 1);
     let tenant_id = Uuid7::parse(&tenant).expect("a seeded tenant");
 
     let fresh = seed::select_fleet_within_rotations(&leases, &holder, now, &fleet)

@@ -1,283 +1,81 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Spinner,
-  Textarea,
-} from "@agentsfleet/design-system";
-import { CATALOG_STATUS_PUBLISHED, catalogStatus } from "@/lib/types";
-import type { PlatformCatalogEntry, PlatformCatalogPatch } from "@/lib/types";
-import { presentError, type ErrorPresentation } from "@/lib/errors";
-import { captureProductEvent } from "@/lib/analytics/posthog";
-import { EVENTS } from "@/lib/analytics/events";
+import type { PlatformEntry, PlatformPatch } from "@/lib/api/platform-library-types";
+import { useId, useState } from "react";
+import { useRouter } from "next/navigation";
+import { z } from "zod";
+import { ActionForm, Alert, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Spinner, Textarea } from "@agentsfleet/design-system";
+import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 import { patchPlatformLibraryAction } from "../actions";
+import { EDIT_DESCRIPTION, EDIT_DESCRIPTION_LABEL, EDIT_NAME_LABEL, EDIT_REASON_LABEL, EDIT_REASON_MISSING, EDIT_TITLE, PATCH_ACTION } from "../library-copy";
 
-import {
-  EDIT_DESCRIPTION,
-  EDIT_DESCRIPTION_LABEL,
-  EDIT_NAME_LABEL,
-  EDIT_REASON_LABEL,
-  EDIT_REASON_MISSING,
-  EDIT_SOURCE_REF_HINT,
-  EDIT_SOURCE_REF_LABEL,
-  EDIT_SOURCE_REPO_LABEL,
-  EDIT_SOURCE_WARNING,
-  EDIT_TITLE,
-  PATCH_ACTION,
-  SOURCE_REF_PATTERN,
-  SOURCE_SEGMENT_PATTERN,
-} from "../library-copy";
+type Props = {entry: PlatformEntry; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (entry: PlatformEntry) => void};
+const CredentialsSchema = z.object({credentials: z.array(z.string())});
 
-const FIELD_REPO = "repo";
-const FIELD_REF = "ref";
-const FIELD_BOTH = "both";
+export default function EditFleetDialog(props: Props) {
+  const state = useEditor(props);
+  return <Dialog open={props.open} onOpenChange={(open) => { if (!state.pending) props.onOpenChange(open); }}>
+    <DialogContent className="max-h-svh overflow-y-auto">
+      <DialogHeader><DialogTitle>{EDIT_TITLE}</DialogTitle><DialogDescription>{EDIT_DESCRIPTION}</DialogDescription></DialogHeader>
+      <ActionForm onSubmit={(event) => { event.preventDefault(); void state.save(); }}>
+        <EditorFields state={state} />
+        {state.error ? <Alert variant="destructive">{state.error}</Alert> : null}
+        <DialogFooter>
+          <Button type="button" variant="ghost" disabled={state.pending} onClick={() => props.onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" disabled={state.pending || !state.name.trim()}>{state.pending ? <Spinner size="sm" srLabel="Saving" /> : null}Save</Button>
+        </DialogFooter>
+      </ActionForm>
+    </DialogContent>
+  </Dialog>;
+}
 
-// The fields the operator owns, and the ones the bundle does.
-//
-// `description` and the per-credential copy were operator-owned from the start:
-// the server drops them from the refetch upsert so an edit here survives the next
-// `Fetch update` (M128 Invariant 4). M130 moves `name`, `source_repo`, and
-// `source_ref` across the same line — `name` joins that refetch exclusion list,
-// and a changed source discards the stored bundle, because the bundle was built
-// from the OLD repository and the row must never advertise a source it is not
-// serving.
-//
-// `id` is not here and never will be: it is the primary key, and a workspace
-// install references it as `platform_library_id`.
-export default function EditFleetDialog({
-  entry,
-  open,
-  onOpenChange,
-  onSaved,
-}: {
-  entry: PlatformCatalogEntry;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSaved: (entry: PlatformCatalogEntry) => void;
-}) {
-  // The BASELINE is frozen at dialog-open. Every revalidation refreshes the
-  // `entry` prop under a still-open dialog (the table re-resolves it by id), so
-  // comparing against the live prop would misread another operator's mid-flight
-  // change as THIS operator's edit — and send a repoint they never made. Fields
-  // are compared, and sent, against what this dialog actually showed them.
+function useEditor({entry, onSaved, onOpenChange}: Props) {
+  const router = useRouter();
+  // Revalidation cannot change what this dialog displayed or its conditional tag.
   const [baseline] = useState(entry);
   const [name, setName] = useState(baseline.name);
   const [description, setDescription] = useState(baseline.description);
-  const [sourceRepo, setSourceRepo] = useState(baseline.source_repo);
-  const [sourceRef, setSourceRef] = useState(baseline.source_ref);
-  const [reasons, setReasons] = useState<Record<string, string>>(
-    baseline.required_credentials_reasons ?? {},
-  );
+  const [reasons, setReasons] = useState(baseline.required_credentials_reasons);
   const [pending, setPending] = useState(false);
-  const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
-
-  // The credentials the BUNDLE declares are the ones the install gate will ask
-  // for, so they are the ones worth explaining. An operator cannot invent a
-  // credential the fleet never requests.
-  const credentials = baseline.requirements.credentials;
-
-  // Only what MOVED is validated and sent. This is one rule doing two jobs:
-  // a template/upload-sourced row carries a source that is not owner/repo shaped,
-  // and it must stay copy-editable — its untouched source is never sent, so it is
-  // never re-validated. And a stale dialog must not clobber another operator's
-  // newer copy (or resurrect refetch-pruned reasons) by re-sending fields the
-  // operator never touched.
-  const nameChanged = name !== baseline.name;
-  const repoChanged = sourceRepo !== baseline.source_repo;
-  const refChanged = sourceRef !== baseline.source_ref;
-  const descriptionChanged = description !== baseline.description;
-  const reasonsChanged =
-    JSON.stringify(reasons) !== JSON.stringify(baseline.required_credentials_reasons ?? {});
-
-  // Repointing the source throws the bundle away and withdraws the fleet. Say so
-  // while the operator can still change their mind, not after they saved.
-  const sourceChanged = repoChanged || refChanged;
-  const repoMalformed = repoChanged && !SOURCE_REF_PATTERN.test(sourceRepo);
-  // Tested raw, not trimmed — the raw value is what a save sends, so a stray
-  // space must block here rather than round-trip to the server's refusal.
-  const refInvalid = refChanged && !SOURCE_SEGMENT_PATTERN.test(sourceRef);
-  const nameInvalid = nameChanged && name.trim().length === 0;
-  const blocked = pending || nameInvalid || repoMalformed || refInvalid;
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPending(true);
-    setApiError(null);
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    setPending(true); setError(null);
     try {
-      // Send only what moved — nothing else exists on the wire. A save with
-      // zero moves is a close, not a write.
-      const patch: PlatformCatalogPatch = {};
-      if (nameChanged) patch.name = name;
-      if (descriptionChanged) patch.description = description;
-      if (reasonsChanged) patch.required_credentials_reasons = reasons;
-      if (repoChanged) patch.source_repo = sourceRepo;
-      if (refChanged) patch.source_ref = sourceRef;
-      if (Object.keys(patch).length === 0) {
-        onOpenChange(false);
-        return;
-      }
-
+      const patch: PlatformPatch = {};
+      if (name !== baseline.name) patch.name = name;
+      if (description !== baseline.description) patch.description = description;
+      if (JSON.stringify(reasons) !== JSON.stringify(baseline.required_credentials_reasons)) patch.required_credentials_reasons = reasons;
+      if (!Object.keys(patch).length) { onOpenChange(false); return; }
       const result = await patchPlatformLibraryAction(baseline.id, patch, baseline.etag);
-
-      // Repointing is the one edit here that withdraws a live fleet from every
-      // workspace gallery — the operator action worth an ops signal. A refusal
-      // is recorded too: a repoint nobody could complete is a signal, not an
-      // absence of one. ONE event per save (1 event = 1 operator action; a
-      // both-halves repoint must not double-count), and never the values
-      // themselves — a repository name can carry a private org.
-      if (sourceChanged) {
-        captureProductEvent(EVENTS.platform_library_source_changed, {
-          entry_id: baseline.id,
-          field: repoChanged && refChanged ? FIELD_BOTH : repoChanged ? FIELD_REPO : FIELD_REF,
-          was_published: catalogStatus(baseline) === CATALOG_STATUS_PUBLISHED,
-          outcome: result.ok ? "success" : "failure",
-        });
-      }
-
       if (!result.ok) {
-        setApiError(
-          presentError({ errorCode: result.errorCode, message: result.error, action: PATCH_ACTION }),
-        );
-        return;
+        setError(presentErrorString({errorCode: result.errorCode, message: result.error, action: PATCH_ACTION}));
+        router.refresh(); return;
       }
-      onSaved(result.data);
-      onOpenChange(false);
-    } finally {
-      setPending(false);
-    }
+      onSaved(result.data); onOpenChange(false);
+    } catch (cause) {
+      setError(unexpectedErrorMessage(cause, PATCH_ACTION));
+      router.refresh();
+    } finally { setPending(false); }
   }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-svh overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{EDIT_TITLE}</DialogTitle>
-          <DialogDescription>{EDIT_DESCRIPTION}</DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            void onSubmit(e);
-          }}
-          className="space-y-4"
-        >
-          <div className="space-y-2">
-            <Label htmlFor="fleet-name">{EDIT_NAME_LABEL}</Label>
-            <Input id="fleet-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="fleet-source-repo">{EDIT_SOURCE_REPO_LABEL}</Label>
-            <Input
-              id="fleet-source-repo"
-              value={sourceRepo}
-              aria-invalid={repoMalformed}
-              onChange={(e) => setSourceRepo(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="fleet-source-ref">{EDIT_SOURCE_REF_LABEL}</Label>
-            <Input
-              id="fleet-source-ref"
-              value={sourceRef}
-              aria-invalid={refInvalid}
-              onChange={(e) => setSourceRef(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">{EDIT_SOURCE_REF_HINT}</p>
-          </div>
-
-          {sourceChanged ? (
-            <Alert variant="destructive" data-testid="source-warning">
-              {EDIT_SOURCE_WARNING}
-            </Alert>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="fleet-description">{EDIT_DESCRIPTION_LABEL}</Label>
-            <Textarea
-              id="fleet-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          {credentials.length > 0 ? (
-            <div className="space-y-2">
-              <Label>{EDIT_REASON_LABEL}</Label>
-              {credentials.map((credential) => (
-                <CredentialReason
-                  key={credential}
-                  credential={credential}
-                  value={reasons[credential] ?? ""}
-                  onChange={(next) => setReasons((prev) => ({ ...prev, [credential]: next }))}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {apiError ? (
-            <Alert variant="destructive">
-              <div>{apiError.title}</div>
-              {apiError.body ? <div>{apiError.body}</div> : null}
-              {apiError.code ? <code className="text-mono leading-mono">{apiError.code}</code> : null}
-            </Alert>
-          ) : null}
-
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
-            <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={blocked}>
-              {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  const parsed = CredentialsSchema.safeParse(baseline.requirements);
+  return {name, setName, description, setDescription, reasons, setReasons, pending, error, save, credentials: parsed.success ? parsed.data.credentials : []};
 }
 
-// One credential's copy. An empty reason is called out rather than left blank:
-// the install gate WILL ask a user for this credential, and with no copy it
-// cannot say why. This marker is the only place an operator would find that out.
-function CredentialReason({
-  credential,
-  value,
-  onChange,
-}: {
-  credential: string;
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const unexplained = value.trim().length === 0;
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={`reason-${credential}`} className="text-xs text-muted-foreground">
-        {credential}
-      </Label>
-      <Input
-        id={`reason-${credential}`}
-        value={value}
-        placeholder={`why this fleet needs ${credential}`}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {unexplained ? (
-        <p data-testid={`reason-missing-${credential}`} className="text-xs text-muted-foreground">
-          {EDIT_REASON_MISSING}
-        </p>
-      ) : null}
-    </div>
-  );
+function EditorFields({state}: {state: ReturnType<typeof useEditor>}) {
+  const id = useId();
+  return <div className="space-y-md">
+    <div className="space-y-xs"><Label htmlFor={`${id}-name`}>{EDIT_NAME_LABEL}</Label><Input id={`${id}-name`} value={state.name} maxLength={100} disabled={state.pending} onChange={(event) => state.setName(event.target.value)} /></div>
+    <div className="space-y-xs"><Label htmlFor={`${id}-description`}>{EDIT_DESCRIPTION_LABEL}</Label><Textarea id={`${id}-description`} value={state.description} maxLength={2000} disabled={state.pending} onChange={(event) => state.setDescription(event.target.value)} /></div>
+    {state.credentials.length ? <div className="space-y-sm"><p className="text-sm font-medium">{EDIT_REASON_LABEL}</p>
+      {state.credentials.map((credential) => <CredentialReason key={credential} credential={credential} value={state.reasons[credential] ?? ""} disabled={state.pending}
+        onChange={(value) => state.setReasons((previous) => ({...previous, [credential]: value}))} />)}</div> : null}
+  </div>;
+}
+
+function CredentialReason({credential, value, disabled, onChange}: {credential: string; value: string; disabled: boolean; onChange: (value: string) => void}) {
+  const id = useId();
+  return <div className="space-y-xs">
+    <Label htmlFor={id}>{credential}</Label><Input id={id} value={value} maxLength={500} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+    {!value.trim() ? <p className="text-xs text-muted-foreground">{EDIT_REASON_MISSING}</p> : null}
+  </div>;
 }

@@ -4,7 +4,7 @@ description: Build the toolbox image from scripts/toolbox/manifest.txt, write it
 # One implementation for the release and the dev lane, so the dev runner admits
 # an image built, scanned and signed exactly as a release's is. The runner
 # admits an image only on a signature it can check offline against the public
-# key it is built with (`afr_sandbox/src/toolbox/manifest.rs`), so this action
+# key it is built with (`afr_sandbox/src/toolbox/manifest/mod.rs`), so this action
 # refuses to sign with a key whose public half is not that one: a release that
 # passed here would otherwise ship a runner that refuses its own toolbox.
 #
@@ -168,14 +168,14 @@ runs:
     #
     # cosign 3 signs a Sigstore bundle by default and ignores
     # `--output-signature`; the two `=false` flags keep the bare signature file
-    # the runner verifies. The key's first line in manifest.rs carries the
+    # the runner verifies. The key's first line in manifest/mod.rs carries the
     # `pub const … = "` prefix, which `sub` strips before the comparison.
     - name: Sign the release manifest with the key the runner is built with
       shell: bash
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         DIGEST: ${{ steps.image.outputs.digest }}
-        RUNNER_KEY_SOURCE: rustd/crates/afr_sandbox/src/toolbox/manifest.rs
+        RUNNER_KEY_SOURCE: rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"

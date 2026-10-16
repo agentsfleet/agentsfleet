@@ -27,8 +27,10 @@ async fn queue_loss_replays_without_duplicate_settlement() {
     let streams = FleetStreams::new(fixtures.queue().clone());
     let leases = fixtures.leases();
     let live = ledger(&fixtures);
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
+        .await;
 
     // Three admissions: the lease will take one and run it to settlement, and
     // the other two are the accepted work the loss must not lose.

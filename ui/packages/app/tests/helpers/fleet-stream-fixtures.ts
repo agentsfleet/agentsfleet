@@ -21,7 +21,6 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     tokens: null,
     wall_ms: null,
     failure_label: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     created_at: MS_PER_SECOND,
     updated_at: MS_PER_SECOND,

@@ -26,8 +26,7 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
     description = concat!(
         "Platform-admin operator-plane read of the whole fleet, newest first ",
         "over the composite (created_at, id) key. Under keyset pagination a ",
-        "runner enrolled mid-traversal never repeats or hides a row. The ",
-        "retired page, page_size and sort parameters are refused. Each row ",
+        "runner enrolled mid-traversal never repeats or hides a row. Each row ",
         "carries a derived `liveness` — never the stored auth state, never ",
         "the token hash. ",
     ),
@@ -123,7 +122,7 @@ fn item(row: &StoredItem) -> RunnerItem<'static> {
         labels: row.labels().iter().cloned().map(Cow::Owned).collect(),
         last_seen_at: row.last_seen_at(),
         created_at: row.created_at(),
-        assigned_policy: row.assigned_policy().cloned(),
+        assigned_policy: row.assigned_policy().clone(),
         achievable: row.achievable().cloned(),
         degraded: row.is_degraded(),
         degraded_reason: row

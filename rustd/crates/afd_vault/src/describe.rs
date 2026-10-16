@@ -127,9 +127,8 @@ fn read_descriptor(row: &PgRow) -> Result<(Box<str>, Descriptor)> {
     let stored_kind: Option<String> = row.try_get(1).map_err(&unreadable)?;
     let provider: Option<String> = row.try_get(2).map_err(&unreadable)?;
     let base_url: Option<String> = row.try_get(3).map_err(&unreadable)?;
-    // NULL on a row written before the projection columns existed. Absent is
-    // "no key we can prove", which is what the page renders, and never a key
-    // this read failed to look for.
+    // The column is nullable. Absent is "no key we can prove", which is what
+    // the page renders, and never a key this read failed to look for.
     let has_key: Option<bool> = row.try_get(4).map_err(&unreadable)?;
 
     let descriptor = Descriptor {

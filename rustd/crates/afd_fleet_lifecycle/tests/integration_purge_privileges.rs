@@ -17,7 +17,7 @@
 //! from the fleet row (schema/820). The first two tests drive what it does run
 //! under `SET ROLE api_runtime`: one that its `core` deletes all run, one that
 //! memory refuses `api_runtime` outright, which is why the purge leaves memory
-//! to the cascade. Neither proves `Fleets::purge` works, because each runs the
+//! to the cascade. Neither proves `Fleets::purge_tagged` works, because each runs the
 //! statements itself.
 //!
 //! So the last test calls the real `purge` through a pool authenticating as a
@@ -34,18 +34,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
-
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_lifecycle::purge_statements as statements;
 
-use crate::integration_patch_visibility::installed;
 use crate::integration_purge_ledger_identity::{
-    SEEDED, kill, rows_for, seed_everything_the_purge_destroys,
+    SEEDED, rows_for, seed_everything_the_purge_destroys,
 };
 use crate::support::{Lane, mint};
 
@@ -56,10 +51,6 @@ use crate::support::{Lane, mint};
 /// only way to make the suite meet what a request meets, because `api_runtime`
 /// is `NOLOGIN` and cannot be connected as directly.
 const PROBE: &str = "purge_probe";
-
-/// Any valid key: the purge decrypts nothing, so this only has to be well
-/// formed, and borrowing the lane's would mean widening its module for no gain.
-const PROBE_KEK: [u8; 32] = [0x4d; 32];
 
 /// A delete on memory, which `api_runtime` must be refused outright.
 const MEMORY_DELETE: &str = "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid";
@@ -205,18 +196,13 @@ async fn restricted(lane: &Lane) -> Fleets {
             ],
         )
         .await;
-    Fleets::new(
-        pool,
-        lane.queue.clone(),
-        Arc::new(Kek::from_bytes(PROBE_KEK)),
-        Entropy::new(),
-    )
+    Fleets::new(pool, lane.queue.clone())
 }
 
 /// The regression, bound to the code that shipped it.
 ///
 /// The two tests above prove the statements and the fence; neither proves that
-/// `Fleets::purge` empties every child, because both drive the statements
+/// `Fleets::purge_tagged` empties every child, because both drive the statements
 /// themselves. This one calls the real purge through a pool that holds only
 /// `api_runtime`, over a row in every child table, so a schema that withheld
 /// either DELETE, or a memory cascade the fence stopped, fails here and nowhere
@@ -225,13 +211,13 @@ async fn restricted(lane: &Lane) -> Fleets {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_itself_runs_as_api_runtime() {
     let lane = Lane::create().await;
-    let fleet = installed(&lane).await;
-    seed_everything_the_purge_destroys(&lane, &fleet.id).await;
-    kill(&lane, &fleet.id).await;
+    let fleet = lane.fleet().await;
+    seed_everything_the_purge_destroys(&lane, &fleet).await;
+    let tag = lane.kill(&fleet).await;
 
     restricted(&lane)
         .await
-        .purge(&lane.workspace, &fleet.id)
+        .purge_tagged(&lane.workspace, &fleet, &tag)
         .await
         .expect(
             "a pool holding only api_runtime must be able to purge: the memory \
@@ -242,7 +228,7 @@ async fn the_purge_itself_runs_as_api_runtime() {
     assert_eq!(lane.fleet_count(&lane.workspace).await, 0);
     for (table, _seeded) in SEEDED {
         assert_eq!(
-            rows_for(&lane, table, &fleet.id).await,
+            rows_for(&lane, table, &fleet).await,
             0,
             "a purge as api_runtime left rows in {table}"
         );

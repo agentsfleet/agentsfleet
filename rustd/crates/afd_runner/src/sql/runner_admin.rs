@@ -124,3 +124,18 @@ WITH current_state AS (
 )
 SELECT c.admin_state, EXISTS (SELECT 1 FROM updated) AS changed
 FROM current_state c";
+
+/// Replace one runner's labels, and no other column it carries.
+///
+/// Runs inside the edit's transaction, after [`SELECT_RUNNER_PATCH_STATE`]
+/// has locked the row and proved it exists. The policy, verdict and
+/// admin-state columns are absent from the `SET` on purpose: a label edit can
+/// never move the sandbox a host applies, and [`PATCH_RUNNER_ASSIGNED_POLICY`]
+/// names no label column in turn. `updated_at` moves only when the set
+/// changed, so a repeated edit leaves the row byte-identical.
+pub const REPLACE_RUNNER_LABELS: &str = "\
+UPDATE fleet.runners
+SET labels = $2::jsonb,
+    updated_at = CASE WHEN labels IS DISTINCT FROM $2::jsonb
+                      THEN $3::bigint ELSE updated_at END
+WHERE id = $1::uuid";

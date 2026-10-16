@@ -91,7 +91,7 @@ The quickstart uses a manual GitHub webhook. It does not claim the shared GitHub
 
 The manual route now accepts supported pull request actions. A clean platform onboarding depends on a valid root bundle in `agentsfleet/github-pr-reviewer`.
 
-That external repository lost its root `SKILL.md` and `TRIGGER.md` when the nested skill directory was deleted upstream. Indy authorized the fix; a PR restoring both files at repo root (matching this monorepo's `tests/fixtures/fleetbundle/github-pr-reviewer` fixture) is open at `agentsfleet/github-pr-reviewer#5`. The quickstart's clean-platform path stays blocked until that PR merges.
+That external repository lost its root `SKILL.md` and `TRIGGER.md` when the nested skill directory was deleted upstream. Indy authorized the fix; a PR restoring both files at repo root (matching this monorepo's `tests/fixtures/fleets/github-pr-reviewer` fixture) is open at `agentsfleet/github-pr-reviewer#5`. The quickstart's clean-platform path stays blocked until that PR merges.
 
 ## Architecture scenarios
 
@@ -103,7 +103,7 @@ The detailed deploy example moved out of `user_flow.md`. That file dropped from 
 
 ## Fleet bundle test fixture
 
-A test fixture is saved input used by automated tests. `tests/fixtures/fleetbundle/platform-ops/` is test-only input.
+A test fixture is saved input used by automated tests. `tests/fixtures/fleets/platform-ops/` is test-only input.
 
 The API, user interface (UI), and CLI do not load that directory in production. Acceptance tests upload its skill and trigger through the workspace library API.
 

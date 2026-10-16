@@ -9,7 +9,7 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 export const OWN_ACCOUNT_LABEL = "Yours";
 
 /** What follows an owner's name to name their account. Mirrors
- * `ACCOUNT_LABEL_SUFFIX` in `rustd/crates/afd_mail/src/invite.rs`, so the
+ * `ACCOUNT_LABEL_SUFFIX` in `rustd/crates/afd_mail/src/invite/mod.rs`, so the
  * invite email and the dashboard name an account the same way. */
 export const ACCOUNT_LABEL_SUFFIX = "'s account";
 

@@ -9,7 +9,8 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
-import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
+import { AGENT_TRIGGER_TYPE } from "@/lib/types";
+import { triggerKey } from "./trigger-key";
 
 export { triggerKey } from "./trigger-key";
 
@@ -19,9 +20,9 @@ type Props = {
 };
 
 const TRIGGERS_TITLE = "Configured triggers";
-const TRIGGERS_EMPTY_TITLE = "No triggers declared";
+const TRIGGERS_EMPTY_TITLE = "Chat and steer messages only";
 const TRIGGERS_EMPTY_DESCRIPTION =
-  "Add a trigger declaration to TRIGGER.md. Saved changes take effect on the next wake.";
+  "Open Setup and improve this fleet to add a trigger.";
 
 export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props) {
   return (
@@ -50,7 +51,7 @@ export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props
           </List>
         )}
         <p className="text-xs text-muted-foreground">
-          Edit <code className="font-mono">TRIGGER.md</code> above to change how this fleet wakes.
+          Use Improve from Setup to change how this fleet wakes. Review and Apply affect new work.
         </p>
       </CardContent>
     </Card>
@@ -83,8 +84,6 @@ function triggerLabel(trigger: FleetTrigger): string {
       return "Webhook";
     case AGENT_TRIGGER_TYPE.cron:
       return "Schedule";
-    case AGENT_TRIGGER_TYPE.api:
-      return "API ingress";
     case AGENT_TRIGGER_TYPE.mention:
       return "Chat mention";
   }
@@ -98,8 +97,6 @@ function triggerDetail(trigger: FleetTrigger): string {
     }
     case AGENT_TRIGGER_TYPE.cron:
       return trigger.schedule;
-    case AGENT_TRIGGER_TYPE.api:
-      return "Accepts events through the fleet API.";
     case AGENT_TRIGGER_TYPE.mention:
       return `${trigger.source} · ${trigger.channels.join(", ")}`;
   }

@@ -1,101 +1,40 @@
 import {
-  Alert,
-  Button,
-  Card,
-  CardContent,
-  cn,
-  EYEBROW_CLASS,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  UsageBar,
+  Alert, Button, DashboardPanel, DashboardPanelHeader, DashboardPanelDescription,
+  SectionLabel, Tooltip, TooltipContent, TooltipTrigger,
 } from "@agentsfleet/design-system";
 import { CoinsIcon } from "lucide-react";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
-import { formatDollars, type ChargeSummary } from "../lib/charges";
+import { formatDollars } from "../lib/charges";
 
-const BUY_CREDITS_TOOLTIP = `Email ${SUPPORT_EMAIL} to top up your balance.`;
+export type BillingBalanceCardProps = { billing: TenantBilling };
 
-export type BillingBalanceCardProps = {
-  billing: TenantBilling;
-  summary: ChargeSummary;
-};
-
-/**
- * Top-of-page balance card: amount + a full-width consumption meter (fills on
- * load) + a caption that rides the meter's end, with the Buy credits CTA pinned
- * top-right of the head row (no stranded gap). When the balance is exhausted
- * the headline switches to a destructive treatment and an alert appears.
- */
-export default function BillingBalanceCard({ billing, summary }: BillingBalanceCardProps) {
-  const isExhausted = billing.is_exhausted;
-
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-lg">
-        <div className="flex flex-row items-end justify-between gap-4">
-          <div>
-            {/* The eyebrow opens the card, and its line box carries about 4px of
-                half-leading above the capitals that the meter closing the card
-                does not carry below the track. The card pads both edges by the
-                same token, so the capitals sat visibly lower than the meter sat
-                high. The trim gives that half-leading back. */}
-            <div className={cn(EYEBROW_CLASS, "-mt-sm text-muted-foreground")}>
-              Balance
-            </div>
-            <div className="mt-1 text-display-md font-semibold leading-display-md tracking-normal tabular-nums">
-              <span
-                data-exhausted={isExhausted}
-                className={isExhausted ? "text-destructive" : undefined}
-                data-testid="balance-headline"
-              >
-                {formatDollars(billing.balance_nanos)}
-              </span>
-              <span className="ml-1.5 font-sans text-body font-normal text-muted-foreground">
-                USD
-              </span>
-            </div>
-          </div>
-          <BuyCreditsButton />
-        </div>
-
-        {/* No caption: it read "spent $X · N events" as though it were a
-            lifetime total, while it summed only the charge rows the page had
-            loaded — page two gave a different figure for the same account.
-            The balance above is the number an operator can act on. */}
-        <UsageBar data-testid="balance-meter" pct={summary.meterPct} />
-
-        {isExhausted ? (
-          <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New fleet events are gate-blocked until you top up — contact{" "}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
-              support
-            </a>{" "}
-            for a top-up.
-          </Alert>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function BuyCreditsButton() {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* A real mailto link, not a disabled control — a control that acts
-         * must not claim `disabled`/`aria-disabled` to assistive tech. Kept
-         * visually muted (outline variant) since there's no in-app purchase
-         * flow yet; the tooltip states exactly what clicking does. */}
-        <Button asChild data-testid="buy-credits-trigger">
-          <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip">
-            <CoinsIcon size={14} aria-hidden="true" />
-            Buy credits
-          </a>
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent id="buy-credits-tooltip">{BUY_CREDITS_TOOLTIP}</TooltipContent>
-    </Tooltip>
-  );
+export default function BillingBalanceCard({ billing }: BillingBalanceCardProps) {
+  return <DashboardPanel className="space-y-xl p-2xl">
+    <DashboardPanelHeader className="gap-xl">
+      <div className="space-y-md">
+        <SectionLabel>Available credits</SectionLabel>
+        <p className="flex items-baseline gap-md text-display-md font-semibold leading-display-md tabular-nums">
+          <span data-exhausted={billing.is_exhausted} data-testid="balance-headline"
+            className={billing.is_exhausted ? "text-destructive" : "text-foreground"}>{formatDollars(billing.balance_nanos)}</span>
+          <span className="text-body font-normal text-muted-foreground">USD</span>
+        </p>
+        <DashboardPanelDescription>Credits cover your fleets’ usage across this account.</DashboardPanelDescription>
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button asChild data-testid="buy-credits-trigger">
+            <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip"><CoinsIcon size={16} aria-hidden="true" />Buy credits</a>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent id="buy-credits-tooltip">Email {SUPPORT_EMAIL} to top up your balance.</TooltipContent>
+      </Tooltip>
+    </DashboardPanelHeader>
+    {billing.is_exhausted ? <Alert variant="warning">
+      Balance exhausted. Top up to let your fleets process new events.
+    </Alert> : null}
+    <DashboardPanelDescription className="border-t border-border pt-lg">
+      Need a top-up, an invoice, or billing help? <a href={`mailto:${SUPPORT_EMAIL}`} className="text-foreground underline underline-offset-4">Contact support</a>.
+    </DashboardPanelDescription>
+  </DashboardPanel>;
 }

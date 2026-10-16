@@ -4,6 +4,7 @@ import { memo, useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
+  CardTitle,
   cn,
   EYEBROW_CLASS,
   Time,
@@ -27,6 +28,7 @@ import {
   fleetRowState,
   formatTileEvents,
   formatTileSpend,
+  latestTileCounter,
   tileShouldStream,
   TILE_CATCHING_UP_EYEBROW,
   TILE_EVENTS_SUFFIX,
@@ -51,13 +53,13 @@ function FleetSigil({ identity, live }: { identity: FleetIdentity; live: boolean
     <WakePulse asChild live={live}>
       <div
         className={cn(
-          "flex size-14 shrink-0 items-center justify-center rounded-md border bg-surface-2",
+          "flex size-10 shrink-0 items-center justify-center rounded-md border bg-surface-2",
           live ? "border-pulse/50 text-pulse" : "border-border text-muted-foreground",
         )}
         data-fleet-sigil={identity.hashHex}
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" className="size-11" fill="none">
+        <svg viewBox="0 0 24 24" className="size-8" fill="none">
           <path d="M12 4V2M10 2h4M3 11H1M23 11h-2" stroke="currentColor" strokeWidth="1.25" />
           <rect x="3.5" y="4.5" width="17" height="16" rx="3" stroke="currentColor" />
           {identity.cells.map((cell) => (
@@ -203,39 +205,25 @@ type IdentityProps = Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyAc
   activity: string;
 };
 
-// The agent and its status lead, because they are what an operator scans a
-// wall for; what the fleet is doing right now follows. The operator's own name
-// for the fleet sits in the footer, where it tells two fleets apart.
 function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, activity, children }: IdentityProps) {
-  return (
-    <div className="flex items-start gap-xl">
+  return <div className="space-y-lg">
+    <div className="flex items-center justify-between gap-md">
       <FleetSigil identity={identity} live={live} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-md">
-          <div className="min-w-0 truncate font-medium" data-agent-name={identity.callsign}>
-            {agentDisplayName(fleet.id)}
-          </div>
-          <div className="flex shrink-0 items-center gap-md">
-            <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
-            <span className="flex items-center gap-sm text-body-sm leading-body-sm text-muted-foreground" data-fleet-status>
-              {children}
-              {statusLabel(fleet.status)}
-            </span>
-          </div>
-        </div>
-        <p className="mt-xs truncate text-body-sm leading-body-sm text-foreground" data-tile-activity>
-          {activity}
-        </p>
-      </div>
+      <span className="flex items-center gap-sm text-label text-muted-foreground" data-fleet-status>{children}{statusLabel(fleet.status)}</span>
     </div>
-  );
+    <div className="min-w-0 space-y-sm">
+      <CardTitle className="truncate" data-fleet-name>{fleet.name}</CardTitle>
+      <p className="truncate text-body-sm text-muted-foreground" data-tile-activity>{activity}</p>
+      <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
+    </div>
+  </div>;
 }
 
 function TileMetrics({ fleet, counters }: { fleet: Fleet; counters?: TileCounters }) {
   // A drained tile has no stream, and a live one has not yet been told where
   // the fleet stands; both show what the server rendered.
-  const spent = counters?.spentNanos ?? fleet.budget_used_nanos;
-  const processed = counters?.eventsProcessed ?? fleet.events_processed;
+  const spent = latestTileCounter(fleet.budget_used_nanos, counters?.spentNanos);
+  const processed = latestTileCounter(fleet.events_processed, counters?.eventsProcessed);
   return (
     <div className="flex items-center justify-between font-sans text-xs text-muted-foreground tabular-nums">
       <span><span className="font-mono">{formatTileSpend(spent)}</span> {TILE_SPEND_SUFFIX}</span>
@@ -254,7 +242,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
     // p-4/gap-3/gap-4/gap-2/mt-2/pt-3 before — six numbers, none of them the
     // inset that framed them.
     <Card
-      className="min-h-44"
+      className="min-h-48 p-xl"
       data-kind={kind}
     >
       <Link
@@ -275,12 +263,12 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
           {children}
         </TileIdentity>
         <TileMetrics fleet={fleet} counters={counters} />
-        <div className="mt-auto flex items-center justify-between gap-md border-t border-border pt-lg">
-          <span className="min-w-0 truncate font-mono text-label leading-label text-muted-foreground" data-fleet-name>
-            {fleet.name}
+        <div className="mt-auto flex items-center justify-between gap-md">
+          <span className="min-w-0 truncate text-label text-muted-foreground" data-agent-name={identity.callsign}>
+            {agentDisplayName(fleet.id)}
           </span>
           <span className="shrink-0 font-sans text-label font-medium text-pulse">
-            {MANAGE_FLEET_LABEL} →
+            Open →
           </span>
         </div>
       </div>

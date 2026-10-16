@@ -41,6 +41,14 @@ pub(crate) enum Verb {
     Heartbeat,
     /// The next event to run.
     Lease,
+    /// Scoped private model invocation; never automatically redispatched.
+    AuthoringModel,
+    /// Native proposal receipt for a private authoring attempt.
+    AuthoringActivity,
+    /// Retain an unexpired authoring slot.
+    AuthoringRenew,
+    /// Independent authoring accounting and optional answer.
+    AuthoringReport,
     /// More time on a held lease.
     Renew,
     /// Live-tail frames for a held lease.
@@ -53,8 +61,6 @@ pub(crate) enum Verb {
     Capture,
     /// A search of a fleet's memory past the window.
     Recall,
-    /// A fleet bundle by content hash.
-    Bundle,
     /// A scoped credential for a held lease.
     Mint,
     /// Finished calls' full records for a held lease.
@@ -81,16 +87,19 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 19] = [
+    pub(crate) const ALL: [Self; 22] = [
         Self::Heartbeat,
         Self::Lease,
+        Self::AuthoringModel,
+        Self::AuthoringActivity,
+        Self::AuthoringRenew,
+        Self::AuthoringReport,
         Self::Renew,
         Self::Activity,
         Self::Report,
         Self::Hydrate,
         Self::Capture,
         Self::Recall,
-        Self::Bundle,
         Self::Mint,
         Self::Records,
         Self::Me,
@@ -106,13 +115,15 @@ impl Verb {
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
-            Self::Hydrate | Self::Bundle | Self::Me | Self::ScheduleList | Self::ScheduleRuns => {
-                Method::Get
-            }
+            Self::Hydrate | Self::Me | Self::ScheduleList | Self::ScheduleRuns => Method::Get,
             Self::ScheduleUpdate => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Heartbeat
             | Self::Lease
+            | Self::AuthoringModel
+            | Self::AuthoringActivity
+            | Self::AuthoringRenew
+            | Self::AuthoringReport
             | Self::Renew
             | Self::Activity
             | Self::Report
@@ -131,13 +142,16 @@ impl Verb {
         match self {
             Self::Heartbeat => "heartbeat",
             Self::Lease => "lease",
+            Self::AuthoringModel => "authoring_model",
+            Self::AuthoringActivity => "authoring_activity",
+            Self::AuthoringRenew => "authoring_renew",
+            Self::AuthoringReport => "authoring_report",
             Self::Renew => "renew",
             Self::Activity => "activity",
             Self::Report => "report",
             Self::Hydrate => "hydrate",
             Self::Capture => "capture",
             Self::Recall => "recall",
-            Self::Bundle => "bundle",
             Self::Mint => "mint",
             Self::Records => "records",
             Self::Me => "me",
@@ -154,10 +168,13 @@ impl Verb {
     /// The registry code a failure of this verb is logged under.
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
-            Self::Bundle => error_code::FLEET_BUNDLE_FETCH_FAILED,
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Heartbeat
             | Self::Lease
+            | Self::AuthoringModel
+            | Self::AuthoringActivity
+            | Self::AuthoringRenew
+            | Self::AuthoringReport
             | Self::Renew
             | Self::Activity
             | Self::Report

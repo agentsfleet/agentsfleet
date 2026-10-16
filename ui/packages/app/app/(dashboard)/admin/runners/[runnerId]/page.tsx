@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireCredential } from "@/lib/auth/credential";
-import { Alert } from "@agentsfleet/design-system";
+import { Alert, PageLayout } from "@agentsfleet/design-system";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
@@ -90,18 +90,7 @@ export default async function RunnerDetailPage({
   const content = await renderRunnerView(runner, viewRead);
 
   return (
-    // gap-3xl, not a margin under the identity line: the header row and the
-    // view row are two blocks in the same column as the cards below them, and
-    // the page owns one rhythm for all of it. The identity line's own mb-2xl
-    // made this one gap 24 where every other gap on the page is 32.
-    //
-    // Desktop bounds the table to the remaining canvas. Mobile lets the page
-    // grow: wrapped controls must not consume the table's entire viewport.
-    // Return the canvas's bottom padding so the status line owns its inset.
-    <div
-      data-page-layout="full-height"
-      className="-mb-[var(--app-canvas-block)] flex flex-1 flex-col gap-3xl md:min-h-0 md:overflow-hidden"
-    >
+    <PageLayout fullHeight className="gap-xl md:overflow-hidden">
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}
@@ -109,14 +98,14 @@ export default async function RunnerDetailPage({
       />
       <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3xl">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-xl">
         <RunnerSubnavigation runnerId={runner.id} activeView={view} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{content}</div>
       </div>
       {/* The table and its status line form one section. Pull the line closer
           than the page's section gap, while preserving a small bottom inset. */}
-      <RunnerStatusLine runner={runner} className="-mt-lg shrink-0 pb-md" />
-    </div>
+      <RunnerStatusLine runner={runner} className="shrink-0" />
+    </PageLayout>
   );
 }
 
@@ -194,7 +183,7 @@ async function renderRunnerView(runner: RunnerDetail, read: RunnerViewRead): Pro
   }
   const initial = await read.initial;
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3xl">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-xl">
       {initial === REFUSED ? (
         <Alert variant="warning">
           {LEASES_LINK_STALE}{" "}

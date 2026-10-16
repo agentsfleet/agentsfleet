@@ -16,8 +16,6 @@ pub enum AuthRoute {
     /// `POST .../verify` — the CLI submits the six-digit code. No bearer: the
     /// code is the credential.
     VerifySession,
-    /// `DELETE` one session — an explicit cancel by its owner.
-    DeleteSession,
     /// `DELETE /v1/auth/sessions` — abort the caller's own in-flight logins.
     DeleteOwnSessions,
     /// The identity provider's own event delivery.
@@ -31,24 +29,18 @@ impl AuthRoute {
         Self::PollSession,
         Self::ApproveSession,
         Self::VerifySession,
-        Self::DeleteSession,
         Self::DeleteOwnSessions,
         Self::IdentityEventClerk,
     ];
 
     /// The verbs this route identity serves.
-    ///
-    /// `PollSession` and `DeleteSession` share a template and are told apart
-    /// by method alone — reading a login's state and cancelling it are one
-    /// path and two operations, which is the same split
-    /// [`super::RunnerRoute::MemoryHydrate`] carries.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::CreateSession | Self::VerifySession | Self::IdentityEventClerk => &[Verb::Post],
             Self::PollSession => &[Verb::Get],
             Self::ApproveSession => &[Verb::Patch],
-            Self::DeleteSession | Self::DeleteOwnSessions => &[Verb::Delete],
+            Self::DeleteOwnSessions => &[Verb::Delete],
         }
     }
 
@@ -64,7 +56,6 @@ impl AuthRoute {
             Self::VerifySession => (Guard::Open, "/v1/auth/sessions/{session_id}/verify"),
             Self::IdentityEventClerk => (Guard::PayloadSigned, "/v1/auth/identity-events/clerk"),
             Self::ApproveSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}/approve"),
-            Self::DeleteSession => (Guard::Bearer, "/v1/auth/sessions/{session_id}"),
             Self::DeleteOwnSessions => (Guard::Bearer, "/v1/auth/sessions"),
         };
         RouteMeta::new(guard, RouteClass::Api, template, Scopes::Always(NONE))

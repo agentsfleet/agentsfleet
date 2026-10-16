@@ -74,9 +74,9 @@ pub(crate) async fn seed_parents(database: &Db) {
 
     sqlx::query(
         "INSERT INTO core.fleets
-           (id, workspace_id, tenant_id, name, source_markdown, config_json,
+           (id, workspace_id, tenant_id, name, config_json,
             status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'outbound-fixture', '# fixture',
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'outbound-fixture',
                  '{}'::jsonb, 'active', $4, $4)
          ON CONFLICT (id) DO NOTHING",
     )
@@ -115,17 +115,15 @@ pub(crate) struct OwedRow<'a> {
     /// The connector id the row names, which need not be one any connector
     /// answers to.
     pub(crate) provider: &'a str,
-    /// `None` for a row naming nowhere.
-    pub(crate) destination: Option<&'a str>,
+    pub(crate) destination: &'a str,
     pub(crate) receipt: Option<&'a str>,
     pub(crate) answer: &'a str,
 }
 
 /// Writes `row` owed by the fixture fleet, bypassing the ledger's own verbs.
 ///
-/// For the rows those verbs refuse to write and a deployment can still hold:
-/// one naming a connector the catalogue no longer answers to, or one the report
-/// path wrote before it read a destination.
+/// For the row those verbs refuse to write and a deployment can still hold:
+/// one naming a connector the catalogue no longer answers to.
 pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
     let mut connection = database.acquire().await.expect("the ledger answers");
     sqlx::query(

@@ -24,11 +24,11 @@ import { HTTP_METHOD } from "../constants/http-method.ts";
 
 /** The daemon's answer to a decision: what the gate became and who made it. */
 interface ResolutionResponse {
-  readonly gate_id?: string | null;
-  readonly action_id?: string | null;
-  readonly outcome?: string | null;
-  readonly resolved_at?: number | string | null;
-  readonly resolved_by?: string | null;
+  readonly gate_id: string;
+  readonly action_id: string;
+  readonly outcome: string;
+  readonly resolved_at: number;
+  readonly resolved_by: string;
 }
 
 const decideEffect = Effect.fn("approvals.decide")(function* (
@@ -51,10 +51,9 @@ const decideEffect = Effect.fn("approvals.decide")(function* (
   // The outcome comes from the daemon rather than being assumed from the verb
   // the operator typed: a gate someone else already decided answers with the
   // decision that actually stands, and printing the typed verb would lie.
-  const outcome = res.outcome ?? decision;
   // One call answers both registers: the sentence a person reads and the
   // record a script parses, so neither can be emitted without the other.
-  yield* output.success(`Gate ${gateId} ${outcome}.`, { ...res });
+  yield* output.success(`Gate ${gateId} ${res.outcome}.`, { ...res });
 });
 
 export const approvalsApproveEffectFromArgs = (

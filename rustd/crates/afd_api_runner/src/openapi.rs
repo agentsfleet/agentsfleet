@@ -25,7 +25,10 @@ use utoipa::OpenApi as _;
 #[derive(utoipa::OpenApi)]
 #[openapi(paths(
     crate::handler::runner::activity::handle,
-    crate::handler::runner::bundle::handle,
+    crate::handler::runner::authoring::activity::handle,
+    crate::handler::runner::authoring::model_call::handle,
+    crate::handler::runner::authoring::renew::handle,
+    crate::handler::runner::authoring::report::handle,
     crate::handler::runner::credential::handle,
     crate::handler::runner::enrolment::handle,
     crate::handler::runner::heartbeat::handle,

@@ -12,6 +12,8 @@
 //! linked. Argument parsing, dispatch and the shutdown signal now live in
 //! [`agentsfleetd::cli`] and [`afd_core::signal`], where they can.
 
+#![deny(clippy::self_named_module_files)]
+
 use std::process::ExitCode;
 
 use afd_core::env::ProcessEnv;

@@ -36,15 +36,12 @@ import {
   EmptyState,
   StatusCard,
   Pagination,
-  Nav,
-  NavItem,
-  SectionLabel,
-  UsageBar,
 } from "@agentsfleet/design-system";
 import { DOCS_URL } from "../config";
+import { AppPrimitivesGallery } from "./DesignSystemDataGallery";
 
 /*
- * DesignSystemGallery — hidden smoke route at /_design-system.
+ * DesignSystemGallery — development-only smoke route at /_design-system.
  *
  * Purpose: contract test surface for the shared design-system package.
  * Playwright's tests/e2e/design-system-smoke.spec.ts visits this page
@@ -71,19 +68,6 @@ export default function DesignSystemGallery() {
   );
 }
 
-function AppPrimitivesGallery() {
-  return (
-    <Section data-testid="app-primitives">
-      <SectionLabel>App navigation and usage</SectionLabel>
-      <Nav aria-label="Example app sections" className="flex flex-wrap gap-sm">
-        <NavItem href="#app-fleets" active>Fleets</NavItem>
-        <NavItem href="#app-events">Events</NavItem>
-      </Nav>
-      <UsageBar label="Monthly run budget" pct={62} sublabel="Budget remaining for this month" />
-      <code className="font-mono text-mono">fleet_example</code>
-    </Section>
-  );
-}
 
 function TypographyButtonsGallery() {
   return (
@@ -346,7 +330,7 @@ function StatusPaginationGallery() {
 
       <Section>
         <h2>Pagination</h2>
-        <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
+        <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} aria-label="Example pagination" />
       </Section>
     </>
   );

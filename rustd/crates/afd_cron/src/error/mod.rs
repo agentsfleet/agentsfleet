@@ -1,0 +1,258 @@
+//! The one error type this crate returns, and what each failure tells a caller.
+//!
+//! Same shape as [`afd_ingress::Error`] and `afd_db::Error`
+//! (`M-ERRORS-CANONICAL-STRUCTS`): a struct carrying a captured backtrace over
+//! a private kind, with the code and the sentence decided together in one table
+//! rather than spelled at each raise site.
+//!
+//! # A vendor being down is not the same failure as a vendor saying no
+//!
+//! [`ErrorKind::UpstreamUnreachable`] and [`ErrorKind::UpstreamRefused`] are
+//! kept apart because a caller does different things with them (RULE ECL). The
+//! first is retryable and `:sync` will repair it on its own; the second is a
+//! request this daemon composed that the external scheduler will refuse again
+//! however many times it is sent, and retrying it forever would turn one bad
+//! cron expression into a permanent outbound load.
+//!
+//! Conditional edits preserve their refusal data in this type so callers can
+//! render the current tag or state without another read that could race.
+
+use afd_core::error_code::ErrorCode;
+
+mod answer;
+mod condition;
+pub mod detail;
+pub use condition::STATE_SYNCING;
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+
+pub use self::raise::retire_held;
+pub(crate) use self::raise::{
+    body_mismatch, destination_not_plain_origin, destination_unusable, keys_missing, query,
+    row_unreadable, signature_invalid, token_malformed, upstream_refused, upstream_unreadable,
+};
+
+/// The result every fallible function in this crate returns.
+///
+/// One alias per crate, defaulted to this crate's own [`Error`], so a reader
+/// never has to check WHICH error a signature returns to know it is this one
+/// (`RUST_ERROR_STANDARD` rule 1).
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+afd_core::error_shell!(
+    /// A schedule failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
+/// What actually went wrong. Crate-visible so a raise site can name the variant.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    #[error("the schedule patch does not match its source")]
+    Patch,
+    #[error("a conditional schedule edit requires its current tag")]
+    Precondition,
+    #[error("the schedule tag is stale")]
+    Stale { etag: String },
+    #[error("the schedule is being removed")]
+    Deleting,
+    #[error("the inherited schedule encoding is invalid")]
+    Json {
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("schedule input is invalid: {invalid:?}")]
+    Invalid { invalid: crate::Invalid },
+    #[error("schedule mutation refused: {refusal:?}")]
+    Refused { refusal: crate::Refused },
+    #[error("a schedule sync currently owns the row")]
+    Held,
+    #[error("the schedule revision is exhausted")]
+    Exhausted,
+    #[error("the datastore holding the schedule row would not answer")]
+    Datastore {
+        #[source]
+        source: afd_db::Error,
+    },
+
+    #[error("statement failed during {context}")]
+    Query {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
+    /// The identifier source would not answer, or produced no usable value.
+    ///
+    /// One kind for both halves of a mint, because a caller does the same thing
+    /// with either: a schedule cannot be created without an identifier, and
+    /// neither failure is one an operator can act on differently.
+    #[error("a schedule identifier could not be minted")]
+    Identifier {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    /// The fire's acceptance could not be recorded.
+    ///
+    /// Replaces the queue variant this crate used to carry: a queue that will
+    /// not take the entry no longer fails a fire, because the ledger row is
+    /// already durable and the replay sweeper owes it an entry. What is left
+    /// here is the database refusing the row, which IS a fire this daemon
+    /// did not accept.
+    #[error("the fire could not be admitted")]
+    Admission {
+        #[source]
+        source: afd_admission::Error,
+    },
+
+    /// The external scheduler could not be reached at all.
+    ///
+    /// A transport failure, a timeout, a DNS answer that never came. Retryable
+    /// by construction: nothing upstream has seen the request, so sending it
+    /// again cannot double anything.
+    #[error("the external scheduler could not be reached")]
+    UpstreamUnreachable {
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// The external scheduler answered, and the answer was no.
+    ///
+    /// Carries the status because it is the one fact that decides what an
+    /// operator does next — a 401 is a credential to rotate, a 4xx is a request
+    /// to fix, a 5xx is a vendor incident to wait out.
+    #[error("the external scheduler refused the request with status {status}")]
+    UpstreamRefused {
+        /// The HTTP status, as the vendor sent it.
+        status: u16,
+    },
+
+    /// A column of the schedule row this build cannot make sense of.
+    ///
+    /// A `desired_status` spelled by a newer daemon, or an id that is not a
+    /// canonical identifier. Neither is defaulted past — see [`crate::model`]
+    /// on what defaulting one would cost.
+    #[error("the schedule row's {column} is not a value this build can read")]
+    RowUnreadable {
+        /// The column, so an operator knows which one to go and look at.
+        column: &'static str,
+    },
+
+    /// A `once` schedule fired, and another syncer held its row, so it could
+    /// not yet be retired.
+    ///
+    /// An error rather than a logged shrug: the fire is admitted, but a row
+    /// left active would match its moment again next year. The caller answers
+    /// non-2xx, the sender repeats the fire, the ledger replays the same
+    /// event, and the retirement is tried again once the holder lets go.
+    #[error("the fired once-schedule is held by another syncer and is not yet retired")]
+    RetireHeld,
+
+    /// This deployment holds no signing key to check a fire against.
+    ///
+    /// Fail-closed: with no key there is nothing to verify, and accepting the
+    /// fire would let anyone who found the URL wake every fleet on it.
+    #[error("no signing key is configured to verify a schedule fire")]
+    KeysMissing,
+
+    /// The fire token is empty, longer than
+    /// [`crate::verifier::MAX_TOKEN_BYTES`], or not a token at all.
+    #[error("the schedule fire token is empty, oversized, or not a token")]
+    TokenMalformed,
+
+    /// Neither the current nor the next key produced the token's signature,
+    /// or its issuer, subject or window did not hold.
+    #[error("the schedule fire token did not verify under either signing key")]
+    SignatureInvalid,
+
+    /// The token is genuine and the body is not the one it was minted over:
+    /// the refusal that means somebody is replaying a captured token.
+    #[error("the schedule fire body is not the one its token was minted over")]
+    BodyMismatch,
+
+    /// The configured API URL is not a URL, or is too long once the ingress
+    /// path is on it.
+    #[error("the configured api url cannot carry a schedule callback")]
+    DestinationUnusable,
+
+    /// The configured API URL carries a query or a fragment — see
+    /// [`crate::qstash::destination_url`].
+    #[error("the configured api url carries a query or a fragment")]
+    DestinationNotPlainOrigin,
+}
+
+/// [`Error::refusal_word`] for a deployment holding no signing key.
+const REASON_KEYS_MISSING: &str = "signing_keys_absent";
+/// [`Error::refusal_word`] for a token past its bound or not a token.
+const REASON_TOKEN_MALFORMED: &str = "token_malformed";
+/// [`Error::refusal_word`] for a token neither key verifies.
+const REASON_SIGNATURE_INVALID: &str = "signature_invalid";
+/// [`Error::refusal_word`] for a genuine token over different bytes.
+const REASON_BODY_MISMATCH: &str = "body_mismatch";
+/// [`Error::refusal_word`] for every kind that is not a refused fire.
+const REASON_OPERATIONAL: &str = "operational_fault";
+
+/// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
+///
+/// Only the ones the fire-target reader raises on. A schedule ROW's columns are
+/// named by `store::decode`, which reads them through `FromRow` and reports a
+/// bad one as sqlx's own decode failure — one error path per query rather than
+/// two that could disagree about the same column.
+pub(crate) const COLUMN_FLEET: &str = "fleet_id";
+/// See [`COLUMN_FLEET`].
+pub(crate) const COLUMN_DESIRED_STATUS: &str = "desired_status";
+/// See [`COLUMN_FLEET`].
+pub(crate) const COLUMN_WORKSPACE: &str = "workspace_id";
+
+impl Error {
+    /// Whether sending the same request again could succeed.
+    ///
+    /// The question `:sync` asks, and the reason the two upstream variants are
+    /// separate — see the module note. A datastore that would not answer is
+    /// retryable for the same reason a vendor that would not answer is.
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::UpstreamUnreachable { .. } | ErrorKind::Datastore { .. }
+        )
+    }
+
+    /// The stable word an operator greps for when a schedule stops firing.
+    ///
+    /// One word per reason a fire was not believed, because each means a
+    /// different repair: a missing key is a deployment to configure, and a body
+    /// mismatch is somebody replaying a captured token. A word rather than a
+    /// `Debug` rendering, so a rename that meant nothing to the operator does
+    /// not change what they search for. Every other kind is this daemon
+    /// failing rather than a token being refused; `verify_at` raises none of
+    /// them, and they share one word so the answer is total.
+    ///
+    /// Not named `reason`: the HTTP edge's `Refusable::reason` is this error's
+    /// whole chain for the refusal log, and an inherent method of that name
+    /// would shadow it wherever the type is concrete.
+    #[must_use]
+    pub const fn refusal_word(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::KeysMissing => REASON_KEYS_MISSING,
+            ErrorKind::TokenMalformed => REASON_TOKEN_MALFORMED,
+            ErrorKind::SignatureInvalid => REASON_SIGNATURE_INVALID,
+            ErrorKind::BodyMismatch => REASON_BODY_MISMATCH,
+            _operational => REASON_OPERATIONAL,
+        }
+    }
+
+    /// The registry code this failure answers with.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        self.answer().0
+    }
+
+    /// The sentence the caller is told.
+    #[must_use]
+    pub fn detail(&self) -> &'static str {
+        self.answer().1
+    }
+}

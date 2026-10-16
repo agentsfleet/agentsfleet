@@ -30,8 +30,7 @@ export type JsonValue = string | number | boolean | null | readonly JsonValue[] 
 
 export type ToolArgs = { readonly [key: string]: JsonValue };
 
-/** What a finished call reported. Each field is absent when the runner sent
- * none, as an older runner does. */
+/** Live calls have no status until completion; output fields may be absent. */
 export type ToolOutcome = {
   status?: ToolCallStatus;
   outputHead?: string;
@@ -59,7 +58,7 @@ const ARGS = v.pipe(
 );
 
 const OUTCOME = v.object({
-  status: v.fallback(v.optional(TOOL_CALL_STATUS_SCHEMA), undefined),
+  status: TOOL_CALL_STATUS_SCHEMA,
   output_head: v.fallback(v.optional(v.string()), undefined),
   output_tail: v.fallback(v.optional(v.string()), undefined),
   output_line_count: v.fallback(v.optional(LINE_COUNT), undefined),
@@ -87,16 +86,15 @@ export function readToolArgs(value: unknown): ToolArgs | undefined {
   return parsed.success ? parsed.output : undefined;
 }
 
-/** The outcome fields a completion or a saved call carries, each one absent
- * when missing or malformed. */
-export function readToolOutcome(value: unknown): ToolOutcome {
+/** A completion requires status; malformed optional output fields are omitted. */
+export function readToolOutcome(value: unknown): ToolOutcome | null {
   const parsed = v.safeParse(OUTCOME, value);
-  return parsed.success ? outcomeOf(parsed.output) : {};
+  return parsed.success ? outcomeOf(parsed.output) : null;
 }
 
 function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
   return {
-    ...(status === undefined ? {} : { status }),
+    status,
     ...(output_head === undefined ? {} : { outputHead: output_head }),
     ...(output_tail === undefined ? {} : { outputTail: output_tail }),
     ...(output_line_count === undefined ? {} : { outputLineCount: output_line_count }),

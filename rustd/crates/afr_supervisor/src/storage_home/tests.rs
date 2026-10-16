@@ -17,7 +17,6 @@ fn opening_a_home_makes_its_directories_and_opening_it_again_keeps_them() {
     for directory in [
         home.sandboxes(),
         home.spool(),
-        home.bundles(),
         home.mirrors(),
         toolbox.incoming(),
         toolbox.images(),

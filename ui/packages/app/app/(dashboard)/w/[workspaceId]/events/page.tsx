@@ -55,7 +55,7 @@ export default async function EventsPage({
     // spanned correctly. Same shell, same result.
     <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={EVENTS_DESCRIPTION}>
-        <PageTitle>Events</PageTitle>
+        <PageTitle>Workspace activity</PageTitle>
       </PageHeader>
 
       <Suspense fallback={<Skeleton className="min-h-0 flex-1 rounded-lg" />}>

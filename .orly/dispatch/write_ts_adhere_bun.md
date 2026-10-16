@@ -312,6 +312,8 @@ The TypeScript-relevant gate cards (`ui-substitution`, `design-token`) dissolve 
 
 The design-system package (`ui/packages/design-system/src/index.ts` exports — `Section`, `Card`, `Badge`, `Button`, `Input`, `Dialog`, `Pagination`, `EmptyState`, `Tooltip`, `List`/`ListItem`, `WakePulse`, `Terminal`, `InstallBlock`, etc.) is the source of truth for visual primitives. Raw HTML in either dashboard or marketing files drifts from those tokens silently.
 
+**Record dates.** Label creation timestamps **Created** across tables and detail views. Other timestamps name their event: **Updated**, **Last used**, **Occurred**, **Expires**, or **Joined / invited**. Reuse shared app labels; avoid generic **Time** or **Date** headings. Render dates with the shared `Time` component.
+
 **Marketing-display typography — primitives now exist.** `<DisplayXL>` (marketing hero `<h1>`, `text-fluid-hero`) and `<DisplayLG>` (section heads `<h2>`, `text-fluid-display-lg`) ship from `@agentsfleet/design-system` and compose `font-mono` + the fluid text/leading/tracking tokens internally. Use them on marketing-display surfaces. Raw `<h1>+utilities` is no longer the carve-out — UI GATE blocks it. The dashboard's `<PageTitle>` (`text-heading ≈ 18px`) remains the correct primitive for app surfaces.
 
 This gate enforces "use the primitive when one exists" without enumerating the primitives in this rule (so the rule scales as the design-system grows).

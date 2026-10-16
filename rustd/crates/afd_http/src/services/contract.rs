@@ -14,9 +14,7 @@ use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_connector::Dashboard;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_fleet::bundle::Bundles;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -62,22 +60,6 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// returning both would put the money path behind every heartbeat.
     fn leases(&self) -> &Self::Leases;
 
-    /// The Fleet Bundle snapshot store.
-    ///
-    /// A concrete type where [`Services::Leases`] is an associated one, and the
-    /// difference is what each of them is over. A lease plane holds a Dragonfly
-    /// connection opened by CONNECTING, so a suite cannot build one; a bundle
-    /// store holds an `Arc<dyn ObjectStore>`, and `object_store` already ships
-    /// the in-memory backend a suite drives it with. The seam is inside the
-    /// type, so it does not also need to be a parameter on this trait.
-    ///
-    /// Not an `Option`. A deployment with no snapshot storage answers
-    /// `Bundles::unconfigured`, which refuses with a registry code and a
-    /// sentence like every other failure on this plane — see
-    /// [`afd_fleet::bundle::Bundles`] for why the absence is a value rather
-    /// than a `None` each handler would have to render for itself.
-    fn bundles(&self) -> &Bundles;
-
     /// What the device-flow login surface acts through.
     ///
     /// An associated type for the reason [`Services::Leases`] is one: the
@@ -112,6 +94,15 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace's fleets: list, install, read, edit, purge.
     fn fleets(&self) -> &Self::Fleets;
+
+    /// Creator-private setup shared by browser and terminal conversation clients.
+    fn authoring(&self) -> &afd_authoring::Drafts;
+    /// Human-reviewed native setup over the same private state and process key.
+    fn authoring_setup(&self) -> &afd_authoring::Setup;
+    /// Retained native Save, checked activation and initial-run recovery.
+    fn creations(&self) -> &afd_authoring::Creations;
+    /// Daemon-owned model invocation for scoped private setup leases.
+    fn authoring_models(&self) -> &afd_authoring::ModelCalls;
 
     /// What the workspace secret surface acts through.
     ///
@@ -257,7 +248,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// Where this instance's product events go.
     ///
-    /// A concrete type for the reason [`Services::bundles`] is one: it carries
+    /// A concrete type for the reason [`Services::analytics`] is one: it carries
     /// its own absence, so a deployment reporting nothing is a value rather
     /// than a `None` each handler would have to branch on.
     fn analytics(&self) -> &Analytics;
@@ -269,14 +260,14 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// opened by CONNECTING, while this holds a pub/sub hub and a semaphore,
     /// and `afd_sse::Live::detached` already lets a suite build one with no
     /// server behind it. The seam is inside the type, so it does not also need
-    /// to be a parameter on this trait — the same shape [`Services::bundles`]
+    /// to be a parameter on this trait — the same shape [`Services::analytics`]
     /// takes, and for the same reason.
     fn live(&self) -> &Live;
 
     /// What an interim message is posted through: the outbound worker's Slack
     /// poster, under the line's own marker part.
     ///
-    /// A concrete type for the reason [`Services::bundles`] is one: its seam is
+    /// A concrete type for the reason [`Services::analytics`] is one: its seam is
     /// inside it — the poster's API base — so a suite points it at a loopback
     /// Slack rather than stubbing the trait.
     fn interjector(&self) -> &afd_outbound::Interjector;
@@ -303,7 +294,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// Read-only cross-table projections for fleet operators.
     ///
-    /// A concrete type for the reason [`Services::bundles`] is one: it holds a
+    /// A concrete type for the reason [`Services::analytics`] is one: it holds a
     /// Postgres pool and nothing else, so `afd_db::Db::unreachable` is the
     /// whole of the seam a suite needs.
     fn runner_lease_history(&self) -> &RunnerLeaseHistory;
@@ -318,12 +309,6 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// Reveal-free platform-default administration.
     fn platform_keys(&self) -> &PlatformKeys;
-
-    /// Platform Fleet-library catalogue administration.
-    fn libraries(&self) -> &Libraries;
-
-    /// Validated Fleet-library source and snapshot onboarding.
-    fn library_imports(&self) -> &LibraryImports;
 
     /// This deployment's own base URL, as a minted credential records it.
     ///

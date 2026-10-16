@@ -124,13 +124,13 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
 // neither — a rendering gap must never fail a login that completed.
 const renderSuccess = Effect.fnUntraced(function* (
   sessionId: string,
-  identity: CallerIdentity | null,
+  identity: CallerIdentity,
 ) {
   const config = yield* CliConfig;
   const output = yield* Output;
-  const who = identity === null ? "" : identity.displayName ?? identity.email;
+  const who = identity.displayName ?? identity.email;
   yield* output.success(
-    identity !== null && who.length > 0
+    who.length > 0
       ? `signed in as ${who} — ${identity.tenantName}`
       : LOGIN_COMPLETE,
     {
@@ -138,10 +138,8 @@ const renderSuccess = Effect.fnUntraced(function* (
       session_id: sessionId,
       token_saved: true,
       api_url: config.apiUrl,
-      // Null when the deployment does not serve the identity read. Emitted
-      // either way, so a script reads one shape and tests the value.
-      email: identity?.email ?? null,
-      tenant_name: identity?.tenantName ?? null,
+      email: identity.email,
+      tenant_name: identity.tenantName,
     },
   );
 });

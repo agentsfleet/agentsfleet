@@ -4,7 +4,7 @@ import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfl
 export default function NotFoundContent() {
   return (
     <PageLayout>
-      <PageHeader><PageTitle>Page not found</PageTitle></PageHeader>
+      <PageHeader className="flex-col sm:flex-col"><PageTitle>Page not found</PageTitle></PageHeader>
       <EmptyState
         title="This page isn’t available"
         description="The link may have changed, or this item may no longer be available in your workspace."

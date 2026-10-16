@@ -49,8 +49,10 @@ const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 ///
 /// `zoho` is a connector provider rather than a webhook one, so
 /// [`Scheme::for_source`] answers `None` for it — which is the fail-closed
-/// branch, not a pass.
-const TRIGGER_UNKNOWN_SCHEME: &str = r#"[{"type":"webhook","source":"zoho"}]"#;
+/// branch, not a pass. It parses only because it names a Svix secret: the
+/// Svix route could verify it, and the HMAC wall still must not.
+const TRIGGER_UNKNOWN_SCHEME: &str =
+    r#"[{"type":"webhook","source":"zoho","signature":{"secret_ref":"zoho_svix"}}]"#;
 
 /// Where one fleet's GitHub deliveries arrive.
 fn path() -> String {

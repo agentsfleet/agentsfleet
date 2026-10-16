@@ -3,8 +3,7 @@
 use afd_api_wire::admin::{AdminState, RunnerAdminAction};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_wire::runner::AssignedPolicy;
-use sqlx::{Acquire as _, Row as _};
+use sqlx::Row as _;
 
 use crate::error::{
     Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
@@ -14,39 +13,14 @@ use crate::sql;
 use crate::store::Runners;
 
 const CONTEXT_TRANSITION: &str = "runner admin transition";
-const CONTEXT_POLICY: &str = "runner policy assignment";
 const CONTEXT_SELFTEST: &str = "runner self-test request";
 const CONTEXT_DELETE: &str = "runner record retirement";
-const COLUMN_ADMIN_STATE: &str = "admin_state";
+pub(crate) const COLUMN_ADMIN_STATE: &str = "admin_state";
 const COLUMN_CHANGED: &str = "changed";
 const COLUMN_LEASED: &str = "leased";
 const DETAIL_ACTION_REQUIRED: &str = "runner action does not change administrative state";
 const DETAIL_REVOKED_TERMINAL: &str =
     "revoked runners cannot transition back to cordoned or draining";
-const DETAIL_REVOKED_NO_POLICY: &str = "revoked runners cannot be re-assigned a policy";
-
-/// What a stored policy mutation needs to echo over HTTP.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PolicyAssigned {
-    /// The state retained by the runner.
-    admin_state: AdminState,
-    /// The worker count after applying the shared bounds.
-    worker_count: u32,
-}
-
-impl PolicyAssigned {
-    /// The runner state retained by the mutation.
-    #[must_use]
-    pub const fn admin_state(self) -> AdminState {
-        self.admin_state
-    }
-
-    /// The bounded count stored on the row.
-    #[must_use]
-    pub const fn worker_count(self) -> u32 {
-        self.worker_count
-    }
-}
 
 /// What a recorded self-test ask needs to echo over HTTP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,77 +117,6 @@ impl Runners {
         }
     }
 
-    /// Replaces a runner's assignment and reconciles its placement verdict in
-    /// the same transaction.
-    ///
-    /// Repeating the stored values is successful and appends no event. The row
-    /// lock covers the capability read, policy write, verdict write, and event,
-    /// so a tightened assignment is never visible beside a stale healthy
-    /// verdict.
-    ///
-    /// # Errors
-    /// Refuses an unsafe assignment, a missing runner, a revoked runner, a
-    /// malformed stored state, or an unavailable datastore.
-    pub async fn assign_policy(
-        &self,
-        runner: &Uuid7,
-        requested: &AssignedPolicy<'_>,
-        now: UnixMillis,
-    ) -> Result<PolicyAssigned> {
-        let validated = super::validate::assignment(requested)?;
-        let mut stored = requested.clone();
-        stored.worker_count = validated.worker_count.get();
-        let registry_json = super::spelling::render_list(&stored.registry_allowlist);
-        let extra_binds_json = super::spelling::render_list(&stored.extra_binds);
-        let event_id = self.admin_event_id(now)?;
-
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_POLICY))?;
-        let row = sqlx::query(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
-            .bind(runner.as_str())
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_POLICY))?
-            .ok_or_else(runner_not_found)?;
-        let state = stored_state(row.try_get(COLUMN_ADMIN_STATE), CONTEXT_POLICY)?;
-        if state == AdminState::Revoked {
-            return Err(rejected(DETAIL_REVOKED_NO_POLICY));
-        }
-        let capability_json: Option<String> = row
-            .try_get("capability_report")
-            .map_err(query(CONTEXT_POLICY))?;
-        let capability = super::policy::capability(capability_json.as_deref());
-        let verdict = super::reconcile::reconcile(Some(&stored), capability.as_ref());
-
-        sqlx::query(sql::runner_admin::PATCH_RUNNER_ASSIGNED_POLICY)
-            .bind(runner.as_str())
-            .bind(super::spelling::tier_wire(stored.sandbox_tier))
-            .bind(super::spelling::policy_wire(stored.network_policy))
-            .bind(registry_json)
-            // `assignment` clamped this into 1..=64, so the signed form is
-            // exact and matches the existing enrolment binder.
-            .bind(stored.worker_count.cast_signed())
-            .bind(now.as_millis())
-            .bind(event_id.as_str())
-            .bind("runner_policy_assigned")
-            .bind(sql::meta::SANDBOX_TIER)
-            .bind(sql::meta::NETWORK_POLICY)
-            .bind(sql::meta::REGISTRY_ALLOWLIST)
-            .bind(sql::meta::WORKER_COUNT)
-            .bind(verdict.is_degraded())
-            .bind(verdict.reason())
-            .bind(extra_binds_json)
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_POLICY))?;
-        transaction.commit().await.map_err(query(CONTEXT_POLICY))?;
-
-        Ok(PolicyAssigned {
-            admin_state: state,
-            worker_count: stored.worker_count,
-        })
-    }
-
     /// Records a self-test request for collection on the next heartbeat.
     ///
     /// # Errors
@@ -265,7 +168,10 @@ fn transition_result(
     Ok(target)
 }
 
-fn stored_state(raw: Result<String, sqlx::Error>, context: &'static str) -> Result<AdminState> {
+pub(crate) fn stored_state(
+    raw: Result<String, sqlx::Error>,
+    context: &'static str,
+) -> Result<AdminState> {
     let raw = raw.map_err(query(context))?;
     afd_core::spelling::from_spelling(&raw).ok_or_else(admin_state_malformed)
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
+import { useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // `useClientToken()` was retired in M64_006. Every dashboard mutation/read
 // now flows through a Server Action that calls `auth().getToken()`
@@ -71,7 +71,7 @@ export function useCurrentUser(): {
   isSignedIn: boolean;
   userId: string | null;
   emailAddress: string | null;
-  hasImage: boolean;
+  displayName: string | null;
 } {
   const { isLoaded, isSignedIn, user } = useUser();
   return {
@@ -79,7 +79,7 @@ export function useCurrentUser(): {
     isSignedIn: Boolean(isSignedIn),
     userId: user?.id ?? null,
     emailAddress: user?.primaryEmailAddress?.emailAddress ?? null,
-    hasImage: Boolean(user?.hasImage),
+    displayName: user?.fullName ?? user?.username ?? null,
   };
 }
 
@@ -91,7 +91,6 @@ export function useCurrentUser(): {
 // `@clerk/nextjs/server`. The lone surviving api-template mint is in
 // `app/cli-auth/[session_id]/page.tsx` — the CLI handshake carve-out.
 export const AuthProvider = ClerkProvider;
-export const AuthUserButton = UserButton;
-export { UserProfile as AuthUserProfile } from "@clerk/nextjs";
+export { SignOutButton as AuthSignOutButton, UserProfile as AuthUserProfile } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;

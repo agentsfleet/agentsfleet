@@ -1,3 +1,4 @@
+import { FLEET_ID, FLEET_DETAIL, response } from "../helpers/draft-fixtures";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -96,20 +97,14 @@ export const SAMPLE_TEMPLATES = [
   },
 ];
 
-// The single-fleet detail body getFleet now reads (M131 §1) — the fields the
-// detail page renders. Inline fetch mocks return this for `…/fleets/{id}`
-// instead of the old list envelope the list-scan getFleet used to page.
+// Detail routes share the native saved-fleet shape, with per-test overrides.
 export function detailBody(over: Record<string, unknown> = {}) {
   return {
-    id: "zom_1",
+    ...FLEET_DETAIL,
     name: "platform-ops",
     status: "active",
-    source_markdown: "# SKILL",
-    trigger_markdown: null,
-    bundle_content_hash: null,
-    triggers: null,
-    events_processed: 0,
-    budget_used_nanos: 0,
+    events_processed: "0",
+    budget_used_nanos: "0",
     pending_approvals: 0,
     created_at: 1,
     updated_at: 1,
@@ -118,77 +113,34 @@ export function detailBody(over: Record<string, unknown> = {}) {
 }
 
 export function detailResponse(over: Record<string, unknown> = {}) {
-  return {
-    ok: true,
-    status: 200,
-    headers: {
-      get: (key: string) =>
-        key.toLowerCase() === "etag" ? '"seed-etag"' : null,
-    },
-    json: async () => detailBody(over),
-  };
+  return response(detailBody(over), 200, {ETag: FLEET_DETAIL.etag});
 }
 
-export function mockFetchBilling(billing: BillingSnapshot, missingStatus = 404) {
-  fetchMock.mockImplementation(async (url: string) => {
+export function mockFetchBilling(billing: BillingSnapshot, {missingStatus = 404, fleet = {}}: {
+  missingStatus?: number; fleet?: Record<string, unknown>;
+} = {}) {
+  const respond = async (url: string): Promise<Response> => {
     if (url.endsWith("/v1/tenants/me/billing")) {
-      return { ok: true, status: 200, json: async () => billing };
+      return response(billing);
     }
-    if (url.includes("/approvals")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], next_cursor: null }),
-      };
+    if (url.includes("/approvals") || url.includes("/events")) {
+      return response({items: [], next_cursor: null});
     }
     if (url.includes("/memories")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], total: 0, next_cursor: null }),
-      };
+      return response({items: [], total: 0, next_cursor: null});
     }
-    // The chat's thread read: a real (empty) thread page, not the list
-    // envelope the fall-through returns — the strip builds its summary from
-    // this shape and rightly refuses one without `items`.
     if (url.includes("/messages")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], total: null, next_cursor: null }),
-      };
+      return response({items: [], total: null, next_cursor: null});
     }
-    if (url.includes("/events")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], next_cursor: null }),
-      };
-    }
-    // The single-fleet detail read (M131 §1): `…/fleets/{id}` with a trailing
-    // id segment. getFleet reads the fleet object directly (not a list scan); a
-    // fleet id other than the seeded one is a 404, which getFleet throws and
-    // the page maps to notFound(). The bare `…/fleets` list URL falls through
-    // to the list envelope below.
     const detailMatch = url.match(/\/fleets\/([^/]+)$/);
     if (detailMatch) {
-      if (detailMatch[1] !== "zom_1") {
-        return {
-          ok: false,
-          status: missingStatus,
-          headers: { get: () => null },
-          json: async () => ({
-            error_code: "UZ-AGT-009",
-            detail: "Fleet not found",
-          }),
-        };
+      if (detailMatch[1] !== FLEET_ID) {
+        return response({error_code: "UZ-AGT-009", detail: "Fleet not found"}, missingStatus);
       }
-      return detailResponse();
+      return detailResponse(fleet);
     }
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ items: [detailBody()], total: 1 }),
-    };
-  });
+    return response({items: [detailBody(fleet)], total: null, next_cursor: null});
+  };
+  fetchMock.mockImplementation(respond);
+  return respond;
 }

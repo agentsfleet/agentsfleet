@@ -54,7 +54,7 @@ impl RepositoryBinding {
             return false;
         };
         stated.access == self.access()
-            && stated.base.as_deref() == self.base_branch()
+            && stated.base.as_deref() == self.reach().base()
             && same_repositories(&stated.repositories, self.repositories())
     }
 }
@@ -85,17 +85,18 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
+    use afd_core::money::NANOS_PER_USD;
+
     use crate::FleetConfig;
-    use crate::config::{Mode, RepositoryBinding};
-    use crate::provider::StaticRegistry;
+    use crate::config::RepositoryBinding;
 
     /// The binding a document declares.
     fn binding(declared: &str) -> RepositoryBinding {
         let document = format!(
-            r#"{{"name":"probe","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],
-               "budget":{{"daily_dollars":1.0}},{declared}}}}}"#
+            r#"{{"name":"probe","x-agentsfleet":{{"triggers":[],"tools":[],
+               "budget":{{"daily_nanos":"{NANOS_PER_USD}"}},{declared}}}}}"#
         );
-        FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
+        FleetConfig::stored(&document)
             .expect("a stored document resolves")
             .repository_binding()
             .expect("the document declares a binding")

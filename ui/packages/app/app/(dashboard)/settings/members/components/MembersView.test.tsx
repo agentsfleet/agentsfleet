@@ -59,7 +59,7 @@ import { TEAM_CAPTION } from "./TeamTable";
 
 const WARNING = /\btext-warning\b/;
 const MUTED = /\btext-muted-foreground\b/;
-// Shown on a phone only; the Time column and the actions' status hide there.
+// Shown on a phone only; the timestamp column and the actions' status hide there.
 const PHONE_ONLY = '[class~="sm:hidden"]';
 const PHONE_HIDDEN = '[class~="hidden"]';
 

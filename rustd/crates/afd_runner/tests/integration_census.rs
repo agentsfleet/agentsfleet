@@ -20,7 +20,7 @@
 use afd_core::clock;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_observability::metrics::label::fleet::FleetStatusLabel;
 use afd_observability::producers::fleet::census::fleet_census_readings;
 use afd_runner::sweep::Sweep as _;
@@ -119,21 +119,13 @@ impl Fixture {
         .await
         .expect("the tenant and workspace seed");
         for (index, (fleet, status)) in self.fleets.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO core.fleets \
-                   (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                    status, created_at, updated_at) \
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '# test', '{}', $5, $6, $6)",
-            )
-            .bind(fleet)
-            .bind(&self.workspace)
-            .bind(&self.tenant)
-            .bind(format!("census-{index}"))
-            .bind(status.as_str())
-            .bind(now)
-            .execute(&mut *connection)
-            .await
-            .expect("the fleet row seeds");
+            let name = format!("census-{index}");
+            FleetSeed::new(fleet, &self.workspace, &self.tenant, status.as_str())
+                .name(&name)
+                .at(now)
+                .insert(&mut *connection)
+                .await
+                .expect("the fleet row seeds");
         }
     }
 

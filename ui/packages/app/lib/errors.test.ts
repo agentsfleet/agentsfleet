@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CURATED_ERROR_CODES, presentError, presentErrorString } from "./errors";
-import { RETRY_CODE_TIMEOUT } from "./api/errors";
+import { CURATED_ERROR_CODES, presentError, presentErrorString, unexpectedErrorMessage } from "./errors";
+import { ApiError, RETRY_CODE_TIMEOUT } from "./api/errors";
 
 describe("presentError", () => {
+  it("shows a typed API failure while concealing unknown transport internals", () => {
+    expect(unexpectedErrorMessage(new ApiError("Ask an owner to grant access", 403, "UZ-AUTH-001"), "open models"))
+      .toContain("Ask an owner to grant access");
+    expect(unexpectedErrorMessage(new Error("private transport details"), "open models"))
+      .toBe("Couldn't open models. Try again, or check Events for what blocked it.");
+  });
   it("maps a known errorCode to the curated title + body", () => {
     const p = presentError({ errorCode: "UZ-AUTH-401", action: "load the dashboard" });
     expect(p.title).toBe("Your session expired");
@@ -29,6 +35,13 @@ describe("presentError", () => {
   it("ignores a useless 'Failed to ...' server message in the fallback", () => {
     const p = presentError({ message: "Failed to delete Fleet", action: "delete this Fleet" });
     expect(p.title).toBe("Couldn't delete this Fleet. Try again, or check Events for what blocked it.");
+  });
+
+  it.each(["constructor", "toString", "__proto__"])("treats inherited key %s as an unknown error code", (errorCode) => {
+    expect(presentError({ errorCode, action: "load models" })).toEqual({
+      title: "Couldn't load models. Try again, or check Events for what blocked it.",
+      code: errorCode,
+    });
   });
 });
 
@@ -58,7 +71,7 @@ describe("presentErrorString", () => {
 });
 
 // The codes this session's audit curated (UZ-PROVIDER-*, UZ-VAULT-*,
-// UZ-BUNDLE-*, UZ-APPROVAL-*, plus most of the pre-existing entries) moved
+// UZ-LIBRARY-*, UZ-APPROVAL-*, plus most of the pre-existing entries) moved
 // to the backend's `user_message` (`Problem::user_message`, authored per code
 // under rustd/crates/afd_core/src/problem/) — see
 // client.test.ts's "prefers user_message over detail" for the mechanism.

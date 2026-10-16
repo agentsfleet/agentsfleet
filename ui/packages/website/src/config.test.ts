@@ -1,44 +1,52 @@
+import { createElement } from "react";
+import { render, screen } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
 
-/*
- * WAITLIST_URL is resolved once at module-evaluation time from three inputs in
- * precedence order: an explicit VITE_WAITLIST_URL override, then the prod host
- * when building for production, else the dev host. The build-target branch
- * (import.meta.env.PROD) only takes its prod arm in a production build, which
- * the test runtime never is — so we stub the env and re-import the module to
- * exercise every arm.
- */
+// Pin the user-facing destination independently of the configuration export.
+const HOSTED_SIGN_UP = "https://app.agentsfleet.net/sign-up";
+const PRODUCTION_APP = "https://app.agentsfleet.net";
+const DEVELOPMENT_APP = "https://app-dev.agentsfleet.net";
+const SIGNUP_LINKS = [/^Get started$/i, /^Hosted ↗$/, /^Create your first fleet/i];
 
-const PROD_HOST = "https://accounts.agentsfleet.net/waitlist";
-const DEV_HOST = "https://winning-wombat-65.accounts.dev/waitlist";
-
-async function loadWaitlistUrl(): Promise<string> {
+afterEach(() => {
+  vi.unstubAllEnvs();
   vi.resetModules();
-  const mod = await import("./config");
-  return mod.WAITLIST_URL;
-}
+});
 
-describe("WAITLIST_URL resolution", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+describe("Application destinations follow the configured build environment", () => {
+  it.each([
+    { configured: undefined, expected: PRODUCTION_APP, label: "missing" },
+    { configured: "", expected: PRODUCTION_APP, label: "empty" },
+    { configured: "   ", expected: PRODUCTION_APP, label: "whitespace-only" },
+    { configured: PRODUCTION_APP, expected: PRODUCTION_APP, label: "production" },
+    { configured: DEVELOPMENT_APP, expected: DEVELOPMENT_APP, label: "development preview" },
+    { configured: `${DEVELOPMENT_APP}/`, expected: DEVELOPMENT_APP, label: "trailing slash" },
+    { configured: ` ${DEVELOPMENT_APP}/// `, expected: DEVELOPMENT_APP, label: "whitespace and trailing slashes" },
+  ])("uses the expected app for $label configuration", async ({ configured, expected }) => {
+    vi.stubEnv("VITE_APP_BASE_URL", configured);
     vi.resetModules();
+    const { APP_SIGN_IN_URL, APP_SIGN_UP_URL } = await import("./config");
+    expect(APP_SIGN_IN_URL).toBe(`${expected}/sign-in`);
+    expect(APP_SIGN_UP_URL).toBe(`${expected}/sign-up`);
   });
+});
 
-  it("prefers a trimmed VITE_WAITLIST_URL override over the build-target hosts", async () => {
-    vi.stubEnv("VITE_WAITLIST_URL", "  https://accounts.staging.agentsfleet.net/waitlist  ");
-    vi.stubEnv("PROD", true);
-    expect(await loadWaitlistUrl()).toBe("https://accounts.staging.agentsfleet.net/waitlist");
-  });
-
-  it("uses the production host when building for prod with no override", async () => {
-    vi.stubEnv("VITE_WAITLIST_URL", "");
-    vi.stubEnv("PROD", true);
-    expect(await loadWaitlistUrl()).toBe(PROD_HOST);
-  });
-
-  it("uses the dev host when not building for prod and no override", async () => {
-    vi.stubEnv("VITE_WAITLIST_URL", "");
-    vi.stubEnv("PROD", false);
-    expect(await loadWaitlistUrl()).toBe(DEV_HOST);
+describe("Hosted sign-up destinations in the local website", () => {
+  it.each(["/", "/#how-it-works"])("opens the application from every entrance on %s", (path) => {
+    const router = createMemoryRouter([{ path: "*", element: createElement(App) }], { initialEntries: [path] });
+    render(createElement(RouterProvider, { router }));
+    for (const name of SIGNUP_LINKS) {
+      for (const link of screen.getAllByRole("link", { name })) {
+        expect(link).toHaveAttribute("href", HOSTED_SIGN_UP);
+        expect(link).toHaveAttribute("target", "_blank");
+        expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      }
+    }
+    const createLabel = path === "/" ? "Create your first fleet" : "Create fleet";
+    for (const link of screen.getAllByRole("link", { name: createLabel })) {
+      expect(link).toHaveAttribute("href", HOSTED_SIGN_UP);
+    }
   });
 });

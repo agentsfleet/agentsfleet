@@ -55,7 +55,7 @@ use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_retire::retire_fleet;
 use crate::e2e_seed::{
-    DEEP_POOL, FLEET_CONFIG_JSON, FLEET_NAME, enrolment, seed_fleet, seed_model_rate,
+    DEEP_POOL, FLEET_CONFIG_JSON, FLEET_NAME, scenario_enrolment, seed_fleet, seed_model_rate,
     seed_platform_default, seed_wallet,
 };
 use crate::e2e_seed_keys::seed_provider_key;
@@ -262,7 +262,7 @@ pub(crate) async fn scenario_with(
     // and stores only its digest, and a seeded row would let the suite present
     // a credential the daemon's own minting never produced.
     let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&enrolment(), now)
+        .register(&scenario_enrolment(&fleet), now)
         .await
         .expect("enrolment must succeed");
 

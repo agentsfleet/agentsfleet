@@ -33,7 +33,6 @@ function row(): EventRow {
     wall_ms: 10,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: null,
     created_at: SEED_AT,
@@ -89,7 +88,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
     const settled = renders;
 
     for (let i = 0; i < chunks; i += 1) {
-      emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "word " });
+      emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "word " });
     }
     expect(renders).toBe(settled);
 

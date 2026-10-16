@@ -3,7 +3,6 @@
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json
 - agentsfleet manifest: /agentsfleet-manifest.json (JSON Linked Data)
-- Skill description: /skill.md
 - Health/status: /heartbeat
 - Documentation: /docs
 
@@ -13,26 +12,24 @@ https://agentsfleet.net/v1
 ## Operations (operationId: method path)
 Status transitions ride PATCH on the fleet resource — body {status: "active"|"stopped"|"killed"}.
 "paused" is a platform-only state set by the anomaly gate; not callable from the API.
-- create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets
-- list_fleet_bundles: GET /v1/fleets/bundles
-- import_fleet_bundle: POST   /v1/workspaces/{workspace_id}/fleets/bundles/snapshots
-- get_fleet_bundle:    GET    /v1/workspaces/{workspace_id}/fleets/bundles/snapshots/{bundle_id}
-- update_fleet:        PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {config_json}
-- stop_fleet:          PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"stopped"}    — halt session, resumable
-- resume_fleet:        PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"active"}     — resume from stopped/paused
-- kill_fleet:          PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"killed"}     — terminal mark (irreversible)
+- create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets     # body: {source, name, review_digest, start} — saves a reviewed draft
+- patch_fleet:         PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {name?, status?}
+                       #   status "stopped" — halt session, resumable
+                       #   status "active"  — resume from stopped/paused
+                       #   status "killed"  — terminal mark (irreversible)
+- apply_fleet_revision: POST  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions   # apply a reviewed setup improvement
 - delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge; precondition status='killed'
 - post_fleet_message:  POST   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   # steer / chat
 - list_fleet_events:   GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
 - stream_fleet_events: GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream
 - ingest_connector_webhook: POST /v1/ingress/{provider}
 - ingest_qstash_schedule: POST /v1/ingress/qstash/schedules
-- ingest_fleet_webhook: POST  /v1/webhooks/{fleet_id}
+- receive_source_webhook: POST /v1/webhooks/{fleet_id}/{source}   # the URL Save returns per webhook trigger
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
-- list_workspace_fleet_library:     GET /v1/workspaces/{workspace_id}/fleet-libraries   # paged gallery: platform catalog ∪ this workspace's entries
+- list_workspace_libraries:     GET /v1/workspaces/{workspace_id}/fleet-libraries   # paged gallery: platform catalog ∪ this workspace's entries
 
 Every list above is a bounded keyset page: read `next_cursor` and follow it.
 A client that reads only the first page silently loses everything past it.
@@ -43,8 +40,10 @@ The QStash schedule ingress uses QStash delivery signatures instead of a bearer 
 
 ## Execution model
 A Fleet is a long-lived, event-driven autonomous worker scoped to a workspace.
-Inbound events arrive via `POST /v1/webhooks/{fleet_id}` (or other configured
-triggers) and are appended to the Fleet's event stream. The control plane
+Events reach it from its triggers (signed webhooks at
+`POST /v1/webhooks/{fleet_id}/{source}`, Svix-signed ones at
+`POST /v1/webhooks/svix/{fleet_id}`, schedules and chat mentions) and from
+steer messages, and each is appended to the Fleet's event stream. The control plane
 (`agentsfleetd`) assigns each event to a host-resident `agentsfleet-runner` via a lease;
 the runner runs the Fleet's loop, which can call tools, update state,
 and emit further events. Operators steer or kill running Fleets through the

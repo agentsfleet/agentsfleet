@@ -1,0 +1,337 @@
+//! What a signature-verified delivery is answered with.
+//!
+//! # Why these are here rather than beside their handlers
+//!
+//! Every one of these is a PUBLIC response body. A sender reads it from its own
+//! delivery log, the dashboard renders it, and `public/openapi.json` declares
+//! it — three readers that must agree on one shape. Defining them beside the
+//! axum handler puts that shape somewhere only the daemon can see, which is the
+//! arrangement this crate exists to prevent: `afd_api_tenant`, `_operator` and
+//! `_runner` all read their response types from here, and the ingress plane was
+//! the sole holdout.
+//!
+//! # The two digests are stream payloads, not HTTP bodies
+//!
+//! [`WorkflowRunDigest`] and [`PullRequestDigest`] are what a verified GitHub
+//! delivery BECOMES on the fleet's event stream. They are wire all the same, and
+//! more strictly so than a response: a fleet's prose reads these field names, so
+//! renaming one silently changes what every fleet sees. The struct is the shape
+//! of record, and its field order is part of it.
+
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+use serde::Serialize;
+
+/// What an accepted delivery is answered with.
+///
+/// `202`, and the event id, so a provider's delivery log carries the identifier
+/// an operator can search the fleet's history by. A replayed delivery answers
+/// the FIRST attempt's id rather than a new one. That is the whole point of
+/// the at-most-once claim, and a sender comparing two responses should see the
+/// same event both times.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct Accepted<'a> {
+    /// The event the fleet will run, or already ran.
+    #[serde(borrow)]
+    pub event_id: Cow<'a, str>,
+    /// Whether an earlier delivery already produced it.
+    ///
+    /// Reported rather than hidden. A provider debugging a duplicate wants to
+    /// know this daemon saw the repeat and declined to run twice. That is a
+    /// different fact from the delivery having been lost.
+    pub replayed: bool,
+}
+
+/// What a delivery this daemon deliberately dropped is answered with.
+///
+/// `200` and a reason, never a 4xx. Every one of these is a real,
+/// correctly-signed delivery that simply does not wake this fleet — a green
+/// build, a label edit, a paused fleet. Answering an error would put it in the
+/// sender's retry queue forever, and retrying changes none of them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct Ignored<'a> {
+    /// Which rule dropped it.
+    #[serde(borrow)]
+    pub ignored: Cow<'a, str>,
+}
+
+/// What an accepted App delivery is answered with.
+///
+/// Wider than a single acknowledgement, because one App delivery is many
+/// appends. A sender debugging its integration wants to know how many fleets
+/// this installation woke, and no single event id can show that number.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct FannedOut {
+    /// How many fleets subscribed to this delivery.
+    pub matched: usize,
+    /// How many of them this delivery actually appended an event for.
+    ///
+    /// Lower than `matched` when a fleet already ran this delivery. The claim
+    /// is per fleet. A retry that reaches a wider set than the first attempt
+    /// appends only for the fleets that had not seen it.
+    pub enqueued: usize,
+}
+
+/// What a `ping` is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct Pong<'a> {
+    /// The pong marker this deployment answers with.
+    #[serde(borrow)]
+    pub status: Cow<'a, str>,
+}
+
+// Deliberately NOT [`crate::approval::ResolvedResponse`]. That is the
+// dashboard's shape, carrying the gate id, the outcome and who decided it;
+// this is the shape the callback sender is owed, and the two differ because
+// their readers do.
+/// What the approval callback returns to the sender that resolved a gate.
+///
+/// This response repeats what the sender sent, plus a marker. It never reports
+/// who else answered the gate.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct Resolved<'a> {
+    /// The resolved marker this route answers with.
+    #[serde(borrow)]
+    pub status: Cow<'a, str>,
+    /// The gate that was answered.
+    #[serde(borrow)]
+    pub action_id: Cow<'a, str>,
+    /// The answer it was given.
+    #[serde(borrow)]
+    pub decision: Cow<'a, str>,
+}
+
+/// What an accepted schedule fire is answered with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct Fired<'a> {
+    /// The event the fleet will run, or already ran.
+    #[serde(borrow)]
+    pub event_id: Cow<'a, str>,
+    /// Whether an earlier attempt already produced it.
+    pub replayed: bool,
+}
+
+/// The echo a connector handshake is answered with.
+///
+/// One key, named by the provider, carrying the value the provider sent.
+// A one-key map rather than a struct because the KEY is provider data, and a
+// struct would fix it at compile time to whichever vendor was ported first.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct EchoAnswer<'a> {
+    /// The provider's own challenge field, echoed under its own name.
+    #[serde(flatten, borrow)]
+    pub field: BTreeMap<&'a str, &'a str>,
+}
+
+/// What `POST /v1/connectors/{provider}/events` answers with a 200.
+///
+/// One status, three documents: a handshake is echoed, a delivery that wakes
+/// nothing is acknowledged with its reason, and one that wakes a fleet names
+/// its event. All are 200 because all are correct outcomes for a correctly
+/// signed request, and a sender treats anything else as a retry.
+// Untagged, so the bytes are exactly the inner document's. The enum exists so
+// the published contract can say "one of these two" where a single `body =`
+// could only name one, and so the handler's two exits are one type. The schema
+// is written by hand below rather than derived: the derive publishes `oneOf`,
+// and the echo is a free-form object that ALSO matches `{"ignored": …}`, so a
+// strict client would refuse every ignored answer as ambiguous. `anyOf` is the
+// claim that is true.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum EventsAnswer<'a> {
+    /// The provider's challenge, echoed under the field name it arrived in.
+    Echo(EchoAnswer<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+    /// A delivery that woke a fleet, and the event it runs as. A provider's
+    /// retry answers the first delivery's event, with `replayed` set.
+    Accepted(Accepted<'a>),
+}
+
+/// What `POST /v1/ingress/{provider}` answers with a 200.
+///
+/// A handshake is answered with the provider's own word. A delivery that
+/// wakes nothing is answered with its reason. Both are correct outcomes for a
+/// correctly signed request.
+// Untagged, so the bytes are exactly the inner document's; the two shapes are
+// disjoint (one requires `status`, the other `ignored`), so `oneOf` is exact.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum AppIngressAnswer<'a> {
+    /// The handshake, answered with the word the provider expects.
+    Pong(Pong<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+/// What `POST /v1/auth/identity-events/clerk` answers with a 200.
+///
+/// An event that opened or found an account names it; one that changes nothing
+/// says why.
+// Untagged and disjoint, as [`AppIngressAnswer`].
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum IdentityAnswer<'a> {
+    /// The workspace the event opened, or the one it already had.
+    Opened(AccountOpened<'a>),
+    /// A delivery this daemon deliberately did not act on, and why.
+    Ignored(Ignored<'a>),
+}
+
+/// What a fleet woken by a chat mention is told: its event's `request_json`.
+///
+/// `message` is the field a chat run reads, the same one a steer carries; the
+/// rest says where the question was asked and how it was routed, so a fleet
+/// and an operator reading the event both see why this fleet answered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct MentionRequest<'a> {
+    /// The mention with the bot and any addressed name removed, then the
+    /// thread under a fixed heading when it could be read.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+    /// The channel the mention arrived in.
+    #[serde(borrow)]
+    pub channel_id: Cow<'a, str>,
+    /// The thread an answer is posted under.
+    #[serde(borrow)]
+    pub reply_thread_ts: Cow<'a, str>,
+    /// How routing chose this fleet.
+    #[serde(borrow)]
+    pub route: MentionRoute<'a>,
+    /// What the thread re-read found.
+    pub thread: MentionThread,
+}
+
+/// How a mention reached the fleet it woke.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct MentionRoute<'a> {
+    /// `addressed`, `sole` or `resident`.
+    #[serde(borrow)]
+    pub verdict: Cow<'a, str>,
+    /// The fleet's name.
+    #[serde(borrow)]
+    pub fleet: Cow<'a, str>,
+}
+
+/// What a mention's thread re-read found.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MentionThread {
+    /// Whether the thread could be read at all.
+    pub fetched: bool,
+    /// How many of its messages the fleet was told.
+    pub count: usize,
+    /// Whether a cap cut the thread short.
+    pub truncated: bool,
+}
+
+/// The flat object a `workflow_run` becomes on the stream.
+///
+/// Field names and order are the stream's format: a fleet's prose reads them.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowRunDigest<'a> {
+    /// The run's page on the forge.
+    #[serde(borrow)]
+    pub run_url: Cow<'a, str>,
+    /// The commit the run was taken at.
+    #[serde(borrow)]
+    pub head_sha: Cow<'a, str>,
+    /// How the run ended.
+    #[serde(borrow)]
+    pub conclusion: Cow<'a, str>,
+    /// The repository it belongs to.
+    #[serde(borrow)]
+    pub repo: Cow<'a, str>,
+    /// Which attempt this was.
+    pub attempt: i64,
+    /// The forge's own id for the run.
+    pub run_id: i64,
+    /// The branch the run was taken on.
+    #[serde(borrow)]
+    pub head_branch: Cow<'a, str>,
+    /// The workflow that produced it.
+    #[serde(borrow)]
+    pub workflow_name: Cow<'a, str>,
+    /// When this daemon accepted the delivery.
+    #[serde(borrow)]
+    pub received_at: Cow<'a, str>,
+}
+
+/// The flat object a `pull_request` becomes on the stream.
+///
+/// Field names and order are the stream's format, as on [`WorkflowRunDigest`].
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct PullRequestDigest<'a> {
+    /// What happened to the pull request.
+    #[serde(borrow)]
+    pub action: Cow<'a, str>,
+    /// The repository it belongs to.
+    #[serde(borrow)]
+    pub repo: Cow<'a, str>,
+    /// Its number within the repository.
+    pub number: u64,
+    /// Its title, as the author wrote it.
+    #[serde(borrow)]
+    pub title: Cow<'a, str>,
+    /// Its page on the forge.
+    #[serde(borrow)]
+    pub url: Cow<'a, str>,
+    /// Whether it is open or closed.
+    #[serde(borrow)]
+    pub state: Cow<'a, str>,
+    /// Whether it is still a draft.
+    pub draft: bool,
+    /// Who opened it.
+    #[serde(borrow)]
+    pub author: Cow<'a, str>,
+    /// The branch being merged FROM.
+    #[serde(borrow)]
+    pub head_ref: Cow<'a, str>,
+    /// The branch being merged INTO.
+    #[serde(borrow)]
+    pub base_ref: Cow<'a, str>,
+    /// The commit the run was taken at.
+    #[serde(borrow)]
+    pub head_sha: Cow<'a, str>,
+    /// When this daemon accepted the delivery.
+    #[serde(borrow)]
+    pub received_at: Cow<'a, str>,
+}
+
+/// What a signup event is answered with.
+///
+/// The workspace rather than the person. An operator reads the provider's
+/// delivery log to ask whether the signup landed. The workspace is what they
+/// can then go and look at. The subject is already in the request.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountOpened<'a> {
+    /// The default workspace the account was opened with.
+    #[serde(borrow)]
+    pub workspace_id: Cow<'a, str>,
+    /// What that workspace is called.
+    #[serde(borrow)]
+    pub workspace_name: Cow<'a, str>,
+    /// `true` on a fresh account, `false` when this delivery was a replay.
+    pub created: bool,
+}
+
+#[cfg(feature = "openapi")]
+mod schema;
+
+#[cfg(test)]
+mod tests;

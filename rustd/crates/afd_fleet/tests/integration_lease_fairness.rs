@@ -25,7 +25,7 @@ use crate::requests;
 use crate::seed;
 use crate::support;
 
-use self::requests::{ENROLLED_AT, enrolment_tagged, placement_tag};
+use self::requests::{enrolment_tagged, placement_tag};
 use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, unique_ids};
 use self::support::Fixtures;
 
@@ -82,7 +82,7 @@ impl From<(String, String, String)> for Population {
 
 impl Population {
     /// The hot partition: many ready fleets the runner cannot place.
-    async fn seed_hot(&self, fixtures: &Fixtures) {
+    async fn seed_hot(&self, fixtures: &Fixtures, index: &ReadyIndex) {
         let hot = Partition::new(0).expect("the first partition exists");
         for n in 0..HOT_FLEETS {
             let fleet = fleet_in(
@@ -91,15 +91,28 @@ impl Population {
                 usize::try_from(n).expect("the hot count fits a usize"),
             );
             fixtures
-                .seed_fleet(&fleet, &self.workspace, &self.tenant, HOT_TAG, ENROLLED_AT)
+                .seed_fleet(
+                    &fleet,
+                    &self.workspace,
+                    &self.tenant,
+                    HOT_TAG,
+                    fixtures.enrolled_at(),
+                )
                 .await;
-            queue::mark_ready(fixtures.queue(), &fleet).await;
+            index
+                .mark(&fleet)
+                .await
+                .expect("the private index takes a mark");
         }
     }
 
     /// The cold partitions: one placeable fleet each, holding an event.
     /// Answers the fleets and an enrolment carrying every one of their tags.
-    async fn seed_cold(&self, fixtures: &Fixtures) -> (BTreeSet<String>, RegisterRequest<'static>) {
+    async fn seed_cold(
+        &self,
+        fixtures: &Fixtures,
+        index: &ReadyIndex,
+    ) -> (BTreeSet<String>, RegisterRequest<'static>) {
         let mut request = enrolment_tagged(
             SandboxTier::LandlockFull,
             NetworkPolicy::AllowListEgress,
@@ -107,12 +120,18 @@ impl Population {
             &placement_tag(&self.base),
         );
         let mut expected = BTreeSet::new();
-        for index in 1..=COLD_FLEETS {
-            let partition = Partition::new(index).expect("a low partition exists");
+        for number in 1..=COLD_FLEETS {
+            let partition = Partition::new(number).expect("a low partition exists");
             let fleet = fleet_in(&self.base, partition, 0);
             let tag = placement_tag(&fleet);
             fixtures
-                .seed_fleet(&fleet, &self.workspace, &self.tenant, &tag, ENROLLED_AT)
+                .seed_fleet(
+                    &fleet,
+                    &self.workspace,
+                    &self.tenant,
+                    &tag,
+                    fixtures.enrolled_at(),
+                )
                 .await;
             request.labels.push(Cow::Owned(tag));
             queue::enqueue(
@@ -122,9 +141,13 @@ impl Population {
                 ACTOR,
                 EVENT_TYPE,
                 REQUEST_JSON,
-                ENROLLED_AT,
+                fixtures.enrolled_at(),
             )
             .await;
+            index
+                .mark(&fleet)
+                .await
+                .expect("the private index takes a mark");
             expected.insert(fleet);
         }
         (expected, request)
@@ -141,17 +164,22 @@ impl Population {
 async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
     let fixtures = Fixtures::create_with_queue().await;
     let population = Population::from(unique_ids());
-    population.seed_hot(&fixtures).await;
-    let (expected, request) = population.seed_cold(&fixtures).await;
+    // A private index: the hot partition this run fills is its own, so no
+    // other suite's fleet that hashes there competes with ninety-six
+    // unplaceable marks for a poll's sample.
+    let prefix = ReadyPrefix::private(&format!("skewed-{}", population.base));
+    let index = ReadyIndex::under(fixtures.queue().clone(), prefix.clone());
+    population.seed_hot(&fixtures, &index).await;
+    let (expected, request) = population.seed_cold(&fixtures, &index).await;
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed")
         .runner_id;
 
-    let store = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let store = fixtures.leases().with_ready_prefix(prefix);
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let mut leased = BTreeSet::new();
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = store
@@ -205,12 +233,12 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
     }
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed")
         .runner_id;
     fixtures
-        .make_sticky(&behind_the_ring, runner.as_str(), ENROLLED_AT)
+        .make_sticky(&behind_the_ring, runner.as_str(), fixtures.enrolled_at())
         .await;
     let doorbell = Doorbell::new();
     doorbell.ring(rung);
@@ -218,7 +246,7 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
         .leases()
         .with_ready_prefix(prefix)
         .with_doorbell(doorbell.clone());
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let first = store
         .select(&runner, &[], now)
@@ -258,7 +286,7 @@ async fn seed_marked(
             &population.workspace,
             &population.tenant,
             &tag,
-            ENROLLED_AT,
+            fixtures.enrolled_at(),
         )
         .await;
     queue::enqueue(
@@ -268,7 +296,7 @@ async fn seed_marked(
         ACTOR,
         EVENT_TYPE,
         REQUEST_JSON,
-        ENROLLED_AT,
+        fixtures.enrolled_at(),
     )
     .await;
     index

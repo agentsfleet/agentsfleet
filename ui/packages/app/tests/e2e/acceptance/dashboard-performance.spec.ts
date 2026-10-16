@@ -1,16 +1,15 @@
 import * as crypto from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import {
-  getDefaultWorkspaceId,
-  seedFleet,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import {
   gotoWorkspace,
   workspaceUrlPattern,
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { withStagedPlatformEntry } from "./fixtures/native-setup";
+import { ADMIN_FLEET_LIBRARIES_PATH, EDIT, EDIT_TITLE } from "@/app/(dashboard)/admin/fleet-libraries/library-copy";
 import {
   installPaintBoundaryAudit,
   readBlankFrameEvidence,
@@ -18,21 +17,19 @@ import {
 } from "./fixtures/blank-frame-audit";
 
 const ROUTE_TIMEOUT_MS = 10_000;
+// The staged platform entry whose Edit dialog loads on intent.
+const INTENT_ENTRY = "e2e-intent-loading";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
 // The shell's `data-surface` lands with the layout, before the Fleets route's
 // own Suspense boundary resolves: on a slow read the canvas is still the
 // route's text-free skeleton, and an audit installed then counts the server's
 // latency as blank shell frames. Gate on content only the loaded route
-// carries — the Fleets region (the wall) or the Getting started title (the
-// empty wall) — so the audit measures navigation, not the first read.
+// carries — the Fleets region, present even with an empty wall — so the audit
+// measures navigation, not the first read.
 async function expectFleetsRouteLoaded(page: Page): Promise<void> {
   const wall = page.getByRole("region", { name: "Fleets", exact: true });
-  const emptyWall = page.getByRole("heading", {
-    name: "Getting started",
-    level: 1,
-  });
-  await expect(wall.or(emptyWall)).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
+  await expect(wall).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
 }
 
 async function installBlankFrameAudit(page: Page): Promise<void> {
@@ -212,31 +209,28 @@ test.describe("authenticated dashboard fluidity", () => {
         }
       });
 
-      await signInAs(page, FIXTURE_KEY.operator);
-      await page.goto("/admin/fleet-libraries");
-      applicationOrigin = new URL(page.url()).origin;
-      // Gate on content only the LOADED view carries — the route's loading
-      // skeleton renders the same h1, and waiting for network silence is
-      // unreachable here (the Clerk testing proxy holds retried FAPI
-      // requests in-flight; the suite-hygiene test bans that wait).
-      const trigger = page.getByRole("button", {
-        name: "Create fleet library",
+      const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.operator);
+      await withStagedPlatformEntry(workspace, INTENT_ENTRY, async () => {
+        await signInAs(page, FIXTURE_KEY.operator);
+        await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
+        applicationOrigin = new URL(page.url()).origin;
+        // Gate on the staged row — the route's loading skeleton renders the
+        // same h1, and waiting for network silence is unreachable here (the
+        // Clerk testing proxy holds retried FAPI requests in-flight; the
+        // suite-hygiene test bans that wait).
+        const trigger = page.getByRole("row").filter({ hasText: INTENT_ENTRY })
+          .getByRole("button", { name: EDIT, exact: true });
+        await expect(trigger).toBeVisible();
+        scriptRequests.length = 0;
+
+        // Save-Data turns hover speculation off, so pointing at Edit loads nothing.
+        await trigger.hover();
+        expect(scriptRequests).toHaveLength(0);
+
+        await trigger.click();
+        await expect(page.getByRole("dialog", { name: EDIT_TITLE })).toBeVisible();
+        expect(scriptRequests.length).toBeGreaterThan(0);
       });
-      await expect(trigger).toBeVisible();
-      scriptRequests.length = 0;
-
-      await trigger.hover();
-      await expect(trigger).toHaveAttribute(
-        "data-intent-hover",
-        "suppressed",
-      );
-      expect(scriptRequests).toHaveLength(0);
-
-      await trigger.click();
-      await expect(
-        page.getByRole("dialog", { name: "Create fleet library" }),
-      ).toBeVisible();
-      expect(scriptRequests.length).toBeGreaterThan(0);
     },
   );
 

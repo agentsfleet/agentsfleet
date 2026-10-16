@@ -1,4 +1,4 @@
-//! The write-bound bundles, end to end: each repairer reconciles, reads, and
+//! The write-bound fleets, end to end: each repairer reconciles, reads, and
 //! writes through the Git Data API under the rules the daemon compiled for its
 //! lease — the one branch it named, a draft against the trusted base — with a
 //! token minted through the real grant check and broker.
@@ -20,12 +20,12 @@ use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;
 use serde_json::{Value, json};
 
-use crate::bundle_install::{Secret, install_bundle};
-use crate::bundle_repair::{
+use crate::definition_install::{Secret, install_definition};
+use crate::definition_repair::{
     DIAGNOSIS_ONLY, DRAFT_URL, GITHUB, HEAD_SHA, Repo, file_at_head, github_auth, head_reads,
     routes, script,
 };
-use crate::bundle_run::{assert_token_stayed_on_the_wire, body_at, posts, run_event};
+use crate::definition_run::{assert_token_stayed_on_the_wire, body_at, posts, run_event};
 use crate::fake_model::FakeModel;
 use crate::https::{Reply, Route, Upstream};
 
@@ -110,7 +110,7 @@ fn assert_repaired_on_named_branch(
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_ci_repairer_opens_one_draft_pull_request() {
     let mut supervisor = Supervisor::new();
-    let run = install_bundle(&mut supervisor, "ci-repairer", &[], None).await;
+    let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let upstream = Upstream::serve(routes(LINKWARDEN, None, file_at_head())).await;
     let (model, transcript) =
         FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
@@ -223,7 +223,7 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
             &AGENTSFLEET.path(&format!("compare/main~1...{HEAD_SHA}")),
             vec![Reply::json(
                 200,
-                &json!({"files": [{"filename": crate::bundle_repair::FILE}]}),
+                &json!({"files": [{"filename": crate::definition_repair::FILE}]}),
             )],
         ),
     ]);
@@ -238,7 +238,7 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_incident_repairer_ships_or_stops() {
     let mut supervisor = Supervisor::new();
-    let run = install_bundle(&mut supervisor, "incident-repairer", &telemetry(), None).await;
+    let run = install_definition(&mut supervisor, "incident-repairer", &telemetry(), None).await;
     let upstream = Upstream::serve(incident_upstream(file_at_head())).await;
     let (model, transcript) =
         FakeModel::deciding(script(AGENTSFLEET, incident_reads(), vec![bulk_write()]));

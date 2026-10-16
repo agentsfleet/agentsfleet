@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agentsfleet installer — bootstraps the agentsfleet CLI + platform-ops skill.
+# agentsfleet installer — installs the agentsfleet command-line interface (CLI).
 #
 # Usage:
 #   curl -fsSL https://agentsfleet.dev | bash
@@ -8,7 +8,6 @@
 #
 # Environment variables:
 #   AGENTSFLEET_INSTALL  - install prefix (default: ~/.agentsfleet); CLI lands in <prefix>/bin
-#   AGENTSFLEET_HOST     - force the agent host (claude|amp|codex|opencode); skips detection
 #
 # agentsfleet is a Node CLI distributed on npm, so Node.js (node + npm) is required.
 #
@@ -19,17 +18,14 @@
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 readonly PKG="@agentsfleet/cli"
-readonly SKILL_REF="agentsfleet/skills"
-readonly NEXT_CMD="/agentsfleet-install-platform-ops"
+readonly NEXT_CMD="agentsfleet login"
 readonly NODE_MIN="18"
 readonly NODE_URL="https://nodejs.org"
-readonly HOST_CANDIDATES=(claude amp codex opencode)
 
 # Exit codes
 readonly EX_NET=1     # network unreachable / DNS failure
 readonly EX_NPM=2     # npm install failed (non-network)
 readonly EX_PREFIX=3  # install prefix not writable
-readonly EX_HOST=4    # host detection ambiguous
 readonly EX_NODE=5    # Node toolchain missing
 
 # ─── Colors (only when stdout is a terminal) ─────────────────────────────────
@@ -73,23 +69,6 @@ parse_args() {
   Expected a semantic version, e.g. 0.37.0. Usage:
     curl -fsSL https://agentsfleet.dev | bash -s v0.37.0"
   fi
-}
-
-# ─── Host detection ──────────────────────────────────────────────────────────
-
-detect_host() {
-  HOST="${AGENTSFLEET_HOST:-}"
-  [[ -n "$HOST" ]] && return 0
-  local found=() candidate
-  for candidate in "${HOST_CANDIDATES[@]}"; do
-    command -v "$candidate" >/dev/null 2>&1 && found+=("$candidate")
-  done
-  if (( ${#found[@]} > 1 )); then
-    die "$EX_HOST" "multiple agent hosts found on PATH: ${found[*]}.
-  The skill install destination differs per host, so pick one:
-    AGENTSFLEET_HOST=${found[0]} curl -fsSL https://agentsfleet.dev | bash"
-  fi
-  HOST="${found[0]:-generic}"
 }
 
 # ─── Prerequisites ───────────────────────────────────────────────────────────
@@ -160,24 +139,6 @@ install_cli() {
   fi
 }
 
-# ─── Skill install (npx) ─────────────────────────────────────────────────────
-
-install_skill() {
-  info "Adding the platform-ops skill (npx skills add ${SKILL_REF})..."
-  local ok=0
-  if [[ "$HOST" == "generic" ]]; then
-    if npx --yes skills add "$SKILL_REF" </dev/null; then ok=1; fi
-  else
-    if npx --yes skills add "$SKILL_REF" --host="$HOST" </dev/null; then ok=1; fi
-  fi
-  if (( ! ok )); then
-    local manual="npx skills add ${SKILL_REF}"
-    [[ "$HOST" != "generic" ]] && manual="${manual} --host=${HOST}"
-    warn "skill install did not complete. Run it manually:
-    ${manual}"
-  fi
-}
-
 # ─── PATH setup ──────────────────────────────────────────────────────────────
 
 shell_config_path() {
@@ -212,14 +173,9 @@ setup_path() {
 
 print_next() {
   echo ""
-  if [[ "$HOST" == "generic" ]]; then
-    success "agentsfleet installed."
-    info "Add the platform-ops skill to your agent host, then run:"
-    bold "    ${Cyan}${NEXT_CMD}${Off}"
-  else
-    success "agentsfleet + platform-ops skill installed for ${HOST}."
-    bold "  Run ${Cyan}${NEXT_CMD}${Off}${Bold} in ${HOST} to get started.${Off}"
-  fi
+  success "agentsfleet installed."
+  info "Sign in to get started:"
+  bold "    ${Cyan}${NEXT_CMD}${Off}"
   echo ""
 }
 
@@ -231,11 +187,9 @@ main() {
   parse_args "$@"
   [[ "${EUID:-$(id -u)}" -eq 0 ]] && warn "running as root is not required for a ~/.agentsfleet install."
   require_node
-  detect_host
   ensure_prefix
   maybe_prompt_upgrade
   install_cli
-  install_skill
   setup_path
   print_next
 }

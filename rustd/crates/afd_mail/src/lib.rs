@@ -11,6 +11,8 @@
 //! the retry. The caller — the invite route — commits the invite and its
 //! attempt number first, so nothing here can lose an invite.
 
+#![deny(clippy::self_named_module_files)]
+
 mod deliver;
 mod error;
 mod invite;
