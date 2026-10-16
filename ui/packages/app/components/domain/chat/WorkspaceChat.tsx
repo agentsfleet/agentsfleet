@@ -1,7 +1,7 @@
 "use client";
 
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
-import type { Source } from "@/lib/api/draft-types";
+import type { Schedule, Source } from "@/lib/api/draft-types";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
@@ -16,6 +16,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { useDraftSidebarBridge } from "@/components/layout/DraftSidebarHistory";
 import { SetupProgress } from "./SetupProgress";
+import { ScheduleSync } from "./ScheduleSync";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean};
 const ignore = (): void => undefined;
@@ -54,6 +55,7 @@ function ChatSurface({client, workspace, subject}: {client: DraftClient; workspa
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [reviewOpen, setReviewOpen] = useState(false);
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
+  const retrySchedule = (schedule: Schedule): void => { void client.syncSchedule(schedule).catch(ignore); };
   const review = (): void => {
     setReviewOpen(true);
     captureProductEvent(EVENTS.draft_review_opened, {workspace_id: workspace, draft_id: view.draft?.id});
@@ -62,10 +64,12 @@ function ChatSurface({client, workspace, subject}: {client: DraftClient; workspa
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col gap-md" data-fleet-authoring>
     {view.error ? <ChatError client={client} view={view} workspace={workspace} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
+    <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
     {view.models.length === 0 && !view.busy && !view.inaccessible && !view.error ? <Alert variant="warning">Add a model to this workspace to start chatting.
       <Button variant="link" asChild><Link href={`/w/${workspace}/settings/models`}>Open model settings</Link></Button></Alert> : null}
     <DraftConversation client={client} view={view} onReview={review} />
-    {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy} onContinue={() => { void client.retry().catch(ignore); }} /> : null}
+    {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy}
+      onContinue={() => { void client.retry().catch(ignore); }} onRetrySchedule={retrySchedule} /> : null}
     {reviewOpen ? <ReviewSetup client={client} view={view} workspace={workspace} open={reviewOpen} onOpenChange={setReviewOpen} /> : null}
   </div>;
 }

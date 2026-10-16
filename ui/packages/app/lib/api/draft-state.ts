@@ -1,4 +1,4 @@
-import type { Definition, Draft, DraftCard, Fleet, Message, Review, WorkspaceModel } from "./draft-types";
+import type { Definition, Draft, DraftCard, Fleet, Message, Review, Schedule, WorkspaceModel } from "./draft-types";
 import { DRAFT_LIST_STATUS } from "./draft-list-types";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
@@ -14,6 +14,8 @@ export type DraftView = {
   readonly reviewed: Review | null;
   readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string} | null;
   readonly fleet: Fleet | null;
+  /** The schedules the last Apply returned; any not `synced` may never fire. */
+  readonly schedules: readonly Schedule[];
   readonly busy: boolean;
   readonly pending: boolean;
   readonly inaccessible: boolean;
@@ -24,5 +26,5 @@ export type DraftView = {
 export type DrawerEdit = {readonly definition: Definition; readonly instanceName: string; readonly runtimeModel?: string};
 
 export const EMPTY_DRAFT_VIEW: DraftView = {draft: null, messages: [], models: [], cards: [], moreModels: false, moreChats: false, listStatus: DRAFT_LIST_STATUS.loading,
-  model: "", reviewed: null, fleet: null, busy: false, pending: false, inaccessible: false, error: null, notice: null,
+  model: "", reviewed: null, fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,
   truncated: false, preview: null};

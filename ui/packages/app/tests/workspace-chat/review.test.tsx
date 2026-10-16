@@ -92,7 +92,7 @@ it("applies a linked improvement and publishes a subsequent immutable revision",
   const base = fixture.fetch.getMockImplementation()!;
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`)) return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"'});
+    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`)) return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: []});
     if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`)) return response({etag: PUBLICATION.etag});
     if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}/revisions`)) return response(PUBLICATION);
     return base(input, init);
@@ -103,4 +103,19 @@ it("applies a linked improvement and publishes a subsequent immutable revision",
   await act(async () => client.review());
   fireEvent.click(screen.getByRole("button", {name: "Publish next revision"}));
   await screen.findByText(/Published Library revision/);
+});
+
+it("retries an unregistered schedule on the fleet the review just saved", async () => {
+  const owed = {schedule_id: "sched-9", fleet_id: FLEET_ID, sync: "syncing", last_error: null};
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith("/fleets") && init?.method === "POST") return response({...FLEET, status: "active", setup: {state: "ready", checks: []}, schedules: [owed]}, 201);
+    if (path.endsWith("/schedules/sched-9/sync")) return response({...owed, sync: "synced"});
+    return base(input, init);
+  });
+  render(<LiveReview />);
+  fireEvent.click(screen.getByRole("button", {name: "Save fleet"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
+  await screen.findByText(`${FLEET.name} is ready`);
 });

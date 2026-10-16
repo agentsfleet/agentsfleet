@@ -47,3 +47,17 @@ it("pins improvement to the displayed revision and requires renewed access revie
   const href = screen.getByRole("link", {name: "Improve in private chat"}).getAttribute("href");
   expect(href).toContain(`fleet=${FLEET.id}&setup_revision=${FLEET.setup_revision}`);
 });
+
+it("retries an unregistered schedule through its sync route and reports a refusal", async () => {
+  const failed = {schedule_id: "sched-1", fleet_id: FLEET.id, sync: "failed", last_error: "refused"};
+  const fetchMock = vi.fn(async (_input: string, _init?: RequestInit) => new Response(JSON.stringify({...failed, sync: "synced", last_error: null}), {status: 200}));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<FleetRecovery fleet={{...FLEET, schedules: [failed]}} workspace={WORKSPACE} />);
+  fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(fetchMock.mock.calls[0]?.[0]).toBe(`/live/v1/workspaces/${WORKSPACE}/fleets/${FLEET.id}/schedules/sched-1/sync`);
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({error_code: "UZ-X", user_message: "Scheduler unavailable"}), {status: 503}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
+  expect((await screen.findByText("Scheduler unavailable")).textContent).toBe("Scheduler unavailable");
+  vi.unstubAllGlobals();
+});

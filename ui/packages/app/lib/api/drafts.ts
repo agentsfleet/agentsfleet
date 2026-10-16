@@ -15,8 +15,9 @@ import { followDraft } from "./draft-events";
 import { REQUEST_METHOD, losesAccess, setupErrorMessage, setupRequest, SetupUnavailable, type SetupRequest } from "./draft-request";
 import {
   AcceptedSchema, AppliedSchema, CancellationSchema, CreatedMessageSchema, DRAFT_STATE, DraftSchema, FleetSchema,
-  MessageInputSchema, PublishedSchema, SETUP_HEADERS, SOURCE_KIND, START_KIND, isRunning,
+  MessageInputSchema, PublishedSchema, SETUP_HEADERS, SOURCE_KIND, START_KIND, ScheduleSchema, appliedNotice, isRunning,
 } from "./draft-types";
+import { scheduleSynced, scheduleSyncPath, type Schedule } from "./draft-schedules";
 
 export type PlatformPublisher = (body: StagePlatform, operation: string) => Promise<unknown>;
 
@@ -202,9 +203,9 @@ export class DraftClient {
       const body = {draft_candidate_id: draft.candidate.id, review_digest: review.review_digest};
       const headers = {[SETUP_HEADERS.match]: this.#setupTag};
       await this.#operation.run({apply: body, headers}, async (key) => {
-        await this.#request({path: `${this.#base}/fleets/${draft.linked_fleet_id}/revisions`, method: REQUEST_METHOD.post,
+        const applied = await this.#request({path: `${this.#base}/fleets/${draft.linked_fleet_id}/revisions`, method: REQUEST_METHOD.post,
           body, headers: {...headers, [SETUP_HEADERS.key]: key}}, AppliedSchema);
-        this.#update({reviewed: null, notice: "Fleet setup updated. New work uses this setup revision."});
+        this.#update({reviewed: null, schedules: applied.schedules, notice: appliedNotice(applied.schedules)});
       });
     });
   }
@@ -251,6 +252,12 @@ export class DraftClient {
       else throw new SetupUnavailable("There is no operation to retry.", 409);
       this.#startWatching();
     });
+  }
+
+  /** Retries one schedule's registration through its `:sync` action, the one the CLI names. */
+  syncSchedule(schedule: Schedule): Promise<void> {
+    const path = scheduleSyncPath(this.#base, schedule);
+    return this.#act(async () => this.#update(scheduleSynced(this.#snapshot, await this.#request({method: REQUEST_METHOD.post, path}, ScheduleSchema))));
   }
 
   stop(): Promise<void> {
@@ -334,7 +341,7 @@ export class DraftClient {
   #reset(): void {
     this.#view.abort(); this.#view = new AbortController(); this.#history.clear(); this.#operation.clear();
     this.#continueSave = undefined; this.#setupTag = undefined; this.#watching = undefined;
-    this.#update({draft: null, messages: [], reviewed: null, preview: null, fleet: null, error: null, notice: null, truncated: false});
+    this.#update({draft: null, messages: [], reviewed: null, preview: null, fleet: null, schedules: [], error: null, notice: null, truncated: false});
   }
   #update(patch: Partial<DraftView>): void {
     if (this.#owner.signal.aborted) return;

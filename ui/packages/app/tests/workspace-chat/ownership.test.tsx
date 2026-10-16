@@ -61,3 +61,20 @@ it("continues a saved fleet from the conversation without reopening its review",
   expect(screen.getByText("repairer is ready")).toBeTruthy();
   expect(continued).toBe(true);
 });
+
+it("retries a saved fleet's unregistered schedule from the conversation", async () => {
+  fixture.draft = {...DRAFT, state: "saving", linked_fleet_id: FLEET_ID};
+  const owed = {schedule_id: "sched-1", fleet_id: FLEET_ID, sync: "failed", last_error: null};
+  const base = fixture.fetch.getMockImplementation()!;
+  let synced = false;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, status: "active", setup: {state: "ready", checks: []}, schedules: [owed]});
+    if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && init?.method === "POST") { synced = true; return response({...owed, sync: "synced"}); }
+    return base(input, init);
+  });
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
+  await screen.findByText("repairer is ready");
+  expect(synced).toBe(true);
+});

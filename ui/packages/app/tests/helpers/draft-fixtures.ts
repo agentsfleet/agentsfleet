@@ -20,7 +20,8 @@ export const DRAFT: Draft = {id: DRAFT_ID, state: DRAFT_STATE.editing, title: "I
   candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition, canonical_digest: "candidate-one", policy_semantics: REVIEW.policy_semantics}};
 export const FLEET: Fleet = {id: FLEET_ID, name: "repairer", status: "installing", etag: '"fleet-one"', setup_etag: '"setup-one"',
   setup_revision: "1", webhook_urls: [], setup: {state: "waiting", checks: [{kind: "credentials", subject: "github", state: "blocked",
-    next_action: {kind: "workspace_connections", label: "Connect GitHub", href: `/w/${WORKSPACE}/integrations`}}]}, start: {kind: START_KIND.none}};
+    next_action: {kind: "workspace_connections", label: "Connect GitHub", href: `/w/${WORKSPACE}/integrations`}}]}, start: {kind: START_KIND.none},
+  schedules: []};
 export const FLEET_DETAIL = {...FLEET, definition: REVIEW.effective.definition, created_at: 0, updated_at: 0,
   policy_semantics: REVIEW.policy_semantics, needs_re_review: false, events_processed: "3", budget_used_nanos: "9007199254740993",
   pending_approvals: 2, memory_access: {read: true, publish: false}};

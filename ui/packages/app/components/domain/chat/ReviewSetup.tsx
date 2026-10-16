@@ -23,7 +23,8 @@ export function ReviewSetup({client, view, workspace, open, onOpenChange}: {clie
         <Button variant="outline" disabled={view.busy || !view.draft?.candidate} onClick={() => { void client.review().catch(ignore); }}>Refresh review</Button></div>
       {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
       {view.notice ? <Alert>{view.notice}</Alert> : null}
-      {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy} onContinue={() => { void client.retry().catch(ignore); }} />
+      {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy} onContinue={() => { void client.retry().catch(ignore); }}
+        onRetrySchedule={(schedule) => { void client.syncSchedule(schedule).catch(ignore); }} />
         : view.busy && !view.draft ? <p className="text-sm text-muted-foreground">Loading selected setup…</p>
         : view.error && !view.draft && !view.preview ? null
         : editing || !view.draft ? <DefinitionEditor key={view.draft?.candidate?.id ?? view.preview?.revision ?? "blank"} client={client} view={view} onReviewed={() => setEditing(false)} />

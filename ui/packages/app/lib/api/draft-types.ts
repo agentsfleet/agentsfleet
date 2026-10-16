@@ -10,6 +10,8 @@ export const MESSAGE_STATE = {
 } as const;
 export const SOURCE_KIND = {blank: "blank", definition: "definition", library: "library", fleet: "fleet"} as const;
 export const START_KIND = {none: "none", runNow: "run_now"} as const;
+/** `SyncStatus` in rustd/crates/afd_cron/src/model.rs; only `synced` means the external scheduler will fire it. */
+export const SCHEDULE_SYNC = {syncing: "syncing", synced: "synced", failed: "failed"} as const;
 export const SETUP_HEADERS = {match: "If-Match", key: "Idempotency-Key"} as const;
 export const MESSAGE_MAX_BYTES = 32 * 1024;
 export const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
@@ -57,6 +59,10 @@ export const MessageSchema = z.object({
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
+// The published schedule `View`; sync stays an open string so an unknown state counts as not registered.
+export const ScheduleSchema = z.object({
+  schedule_id: z.string(), fleet_id: z.string(), sync: z.string(), last_error: z.string().nullable().optional(),
+});
 export const FleetSchema = z.object({
   id: z.uuidv7(), name: z.string(), status: z.string(), etag: z.string(), setup_etag: z.string(), setup_revision: decimal,
   webhook_urls: z.array(z.object({source: z.string(), url: z.url()})),
@@ -65,11 +71,13 @@ export const FleetSchema = z.object({
     kind: z.literal(START_KIND.runNow), state: z.enum(["pending", "accepted", "blocked"]),
     event_id: z.string().optional(), error_code: z.string().optional(),
   })]),
+  schedules: z.array(ScheduleSchema),
 });
 export const PublishedSchema = z.object({
   library_id: z.string(), revision_id: z.uuidv7(), head_revision_id: z.uuidv7(), etag: z.string(),
 });
-export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: decimal, setup_etag: z.string(), etag: z.string()});
+export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: decimal, setup_etag: z.string(), etag: z.string(),
+  schedules: z.array(ScheduleSchema)});
 export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive(),
@@ -86,12 +94,22 @@ export type Draft = z.infer<typeof DraftSchema>;
 export type Review = z.infer<typeof ReviewSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 export type Fleet = z.infer<typeof FleetSchema>;
+export type Schedule = z.infer<typeof ScheduleSchema>;
 export type WorkspaceModel = z.infer<typeof ModelsSchema>["items"][number];
 export type DraftCard = z.infer<typeof DraftCardsSchema>["items"][number];
 export type Source = {kind: typeof SOURCE_KIND.blank} | {kind: typeof SOURCE_KIND.definition; definition: Definition}
   | {kind: typeof SOURCE_KIND.library; library_id: string; revision_id: string}
   | {kind: typeof SOURCE_KIND.fleet; fleet_id: string; setup_revision: string};
 export type Start = {kind: typeof START_KIND.none} | {kind: typeof START_KIND.runNow; message: string};
+
+/** A schedule the scheduler has not confirmed: it may never fire until its registration is retried. */
+export function scheduleOwed(schedule: Schedule): boolean { return schedule.sync !== SCHEDULE_SYNC.synced; }
+
+/** What Apply reports: success only when every schedule it returned is registered. */
+export function appliedNotice(schedules: readonly Schedule[]): string {
+  return schedules.some(scheduleOwed) ? "Fleet setup updated, but a schedule is not registered yet."
+    : "Fleet setup updated. New work uses this setup revision.";
+}
 
 export function isRunning(message: Message): boolean {
   return message.state === MESSAGE_STATE.queued || message.state === MESSAGE_STATE.running;

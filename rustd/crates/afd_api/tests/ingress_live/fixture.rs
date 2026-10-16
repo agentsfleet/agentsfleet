@@ -209,14 +209,18 @@ impl Fixture {
     }
 }
 
-/// The stored document, declaring one webhook trigger.
+/// The second verifiable source the stored document declares.
+pub(super) const SECOND_SOURCE: &str = "linear";
+
+/// The stored document, declaring two webhook triggers on one credential.
 fn document() -> String {
     format!(
         r#"{{
           "name": "ingress-live-fleet",
           "x-agentsfleet": {{
             "triggers": [
-              {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}}
+              {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}},
+              {{"type":"webhook","source":"{SECOND_SOURCE}","credential_name":"{CREDENTIAL}"}}
             ],
             "tools": ["bash"],
             "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}

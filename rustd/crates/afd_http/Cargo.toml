@@ -40,6 +40,7 @@ afd_db.workspace = true
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_ops.workspace = true
+afd_fleet_runtime.workspace = true
 afd_identity.workspace = true
 # The invite email the invite routes send through, behind `services::InviteMail`.
 afd_mail.workspace = true
