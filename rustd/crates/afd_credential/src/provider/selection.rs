@@ -116,9 +116,10 @@ impl Providers {
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a `source_workspace_id` that
-    /// is not an identifier, and an active row carrying no model — which is a
-    /// row that predates a proper default-set and must be re-set through the
-    /// dashboard rather than resolved to an unpriced model.
+    /// is not an identifier, and an active row carrying no model. Only
+    /// deactivation clears the model, so an active row without one is corrupt
+    /// and must be re-set through the dashboard rather than resolved to an
+    /// unpriced model.
     pub async fn platform_default(&self) -> Result<Option<PlatformDefault>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::SELECT_ACTIVE_PLATFORM_DEFAULT)
@@ -173,9 +174,10 @@ pub(crate) fn read_selection(row: &PgRow) -> Result<Selection> {
 
 /// One `core.platform_provider_defaults` row, typed.
 fn read_platform_default(row: &PgRow) -> Result<PlatformDefault> {
-    // A NULL model means the active row predates a proper default-set. It fails
-    // like a MISSING key rather than resolving: an unpriced model would bill
-    // nothing and look like a working configuration.
+    // Deactivation clears the model, and this read takes active rows only, so
+    // a NULL model here is a corrupt row. It fails like a MISSING key rather
+    // than resolving: an unpriced model would bill nothing and look like a
+    // working configuration.
     let model = optional_text(row, 2, CONTEXT_PLATFORM)?
         .ok_or_else(|| provider_malformed(FIELD_PLATFORM_MODEL))?;
     let workspace: String = row.try_get(1).map_err(query(CONTEXT_PLATFORM))?;

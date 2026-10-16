@@ -11,9 +11,9 @@
 //! carry instead of what the tenant activated.
 //!
 //! The credential's own `model` is therefore parsed — a non-string is still
-//! malformed — and then deliberately unread on this path. It survives only as
-//! the legacy fallback for a bare tenant-plane `PUT /provider` that passes no
-//! model, which is M178's surface and not this one's.
+//! malformed — and then deliberately unread on this path. Activation reads it
+//! as the default it stores when the provider request names no model
+//! (`agentsfleet tenant provider create --secret X` without `--model`).
 //!
 //! # The key is optional, for exactly one provider
 //!
@@ -60,9 +60,8 @@ pub(super) struct Credential {
     ///
     /// Unread on the RESOLUTION path — the model lives on the tenant's
     /// registry entry, so reading it here would resolve whatever a stale
-    /// secret happened to carry. Activation reads it as the fallback for a
-    /// bare `PUT /provider` that names no model, which is the one caller the
-    /// module note said would earn it.
+    /// secret happened to carry. Activation reads it as the default it stores
+    /// when the provider request names no model.
     #[serde(default)]
     pub(super) model: Option<Box<str>>,
     /// A custom endpoint, validated against `provider` before anything is
@@ -139,7 +138,10 @@ impl Resolution for SelfManaged {
 ///
 /// A blank key and an absent key are the same fact, so they are one arm here
 /// rather than two.
-fn bearer(api_key: Option<SecretString>, keyless_permitted: bool) -> Result<SecretString> {
+pub(super) fn bearer(
+    api_key: Option<SecretString>,
+    keyless_permitted: bool,
+) -> Result<SecretString> {
     match api_key {
         Some(key) if !key.is_empty() => Ok(key),
         _absent_or_blank if keyless_permitted => Ok(SecretString::new(String::new())),
@@ -221,11 +223,11 @@ mod tests {
         strategy()
             .interpret(br#"{"provider":"openai","api_key":"sk","model":42}"#)
             .unwrap_err();
-        // Ignored: a legacy credential carrying one does not override the
-        // tenant's activated model.
+        // Ignored: a credential carrying one does not override the tenant's
+        // activated model.
         let resolved = strategy()
             .interpret(br#"{"provider":"openai","api_key":"sk","model":"gpt-4o-mini"}"#)
-            .expect("a legacy credential still resolves");
+            .expect("a credential carrying a model resolves");
         assert_eq!(&*resolved.model, "claude-opus-5");
     }
 

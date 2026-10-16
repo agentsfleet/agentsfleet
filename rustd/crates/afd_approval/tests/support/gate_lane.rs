@@ -59,7 +59,7 @@ use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{FleetSeed, TestDatabase};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -105,6 +105,9 @@ pub(crate) const WINDOW_MS: i64 = 60_000;
 /// second table, and these tests are about the gate row's own transition.
 const KIND: &str = "repository_write";
 
+/// The status the fixture fleet carries.
+const FLEET_ACTIVE: &str = "active";
+
 /// A migrated database, a queue, and one fleet to hang gates from.
 pub(crate) struct Lane {
     /// Held, not used: `TestDatabase::shared` is what resolves the lane's URL,
@@ -135,7 +138,7 @@ impl Lane {
         Self::open(mint().as_str().to_owned(), mint().as_str().to_owned()).await
     }
 
-    /// Opens the lane over `workspace` and `fleet`, seeding both idempotently.
+    /// Opens the lane over `workspace` and `fleet`, seeding both.
     async fn open(workspace: String, fleet: String) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
@@ -180,7 +183,7 @@ impl Lane {
     /// standing grant raised at install time rather than by an event.
     pub(crate) async fn seed_runless_gate(&self, timeout_at: i64) -> String {
         let action = afd_db::test_util::mint_id();
-        self.seed_row(&action, timeout_at, None).await;
+        self.seed_row(&action, timeout_at, NOW_MS, None).await;
         action
     }
 
@@ -188,8 +191,13 @@ impl Lane {
     /// re-raised action, which the park writes as a second row rather than
     /// reopening the first.
     pub(crate) async fn seed_gate_for(&self, action: &str, timeout_at: i64) {
-        self.seed_row(action, timeout_at, Some(afd_db::test_util::mint_id()))
-            .await;
+        self.seed_row(
+            action,
+            timeout_at,
+            NOW_MS,
+            Some(afd_db::test_util::mint_id()),
+        )
+        .await;
     }
 
     /// Seeds one pending gate stamped at `created_at`, returning its action id.
@@ -200,31 +208,24 @@ impl Lane {
     /// comparison and therefore needs several rows sharing one.
     pub(crate) async fn seed_gate_at(&self, created_at: i64, timeout_at: i64) -> String {
         let action = afd_db::test_util::mint_id();
-        sqlx::query(
-            "INSERT INTO core.fleet_approval_gates
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-                resolved_by, status, detail, created_at, updated_at, event_id,
-                spend_count, spend_ceiling)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
-                     $5, 'open a pull request', '{}'::jsonb, 'one repository',
-                     $6, '', 'pending', '', $7, NULL, $8, 0, 32)",
+        self.seed_row(
+            &action,
+            timeout_at,
+            created_at,
+            Some(afd_db::test_util::mint_id()),
         )
-        .bind(mint().as_str())
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
-        .bind(&action)
-        .bind(KIND)
-        .bind(timeout_at)
-        .bind(created_at)
-        .bind(afd_db::test_util::mint_id())
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("the gate row must insert");
+        .await;
         action
     }
 
-    async fn seed_row(&self, action: &str, timeout_at: i64, event_id: Option<String>) {
+    /// Inserts one pending gate row: what every seeder above writes through.
+    async fn seed_row(
+        &self,
+        action: &str,
+        timeout_at: i64,
+        created_at: i64,
+        event_id: Option<String>,
+    ) {
         sqlx::query(
             "INSERT INTO core.fleet_approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
@@ -241,7 +242,7 @@ impl Lane {
         .bind(action)
         .bind(KIND)
         .bind(timeout_at)
-        .bind(NOW_MS)
+        .bind(created_at)
         .bind(event_id)
         .execute(&mut *self.connection().await)
         .await
@@ -249,29 +250,6 @@ impl Lane {
     }
 
     /// One pooled connection, for the fixture's own reads and writes.
-    /// Whether the ledger holds an admission for `action` that never got a
-    /// receipt — the row the replay sweeper owes an entry.
-    ///
-    /// Read through the real table rather than inferred from the call's answer:
-    /// "the queue refused and the work is still safe" is a claim about what is
-    /// in Postgres, and only Postgres can settle it.
-    pub(crate) async fn awaits_replay(&self, action: &str) -> bool {
-        use sqlx::Row as _;
-
-        let mut connection = self.connection().await;
-        sqlx::query(
-            "SELECT receipt IS NULL FROM core.fleet_admissions \
-             WHERE producer = $1 AND producer_key = $2",
-        )
-        .bind(afd_admission::Producer::GateContinuation.as_str())
-        .bind(action)
-        .fetch_optional(&mut *connection)
-        .await
-        .expect("the ledger reads")
-        .and_then(|row| row.try_get::<bool, _>(0).ok())
-        .unwrap_or(false)
-    }
-
     async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool
             .acquire()
@@ -309,19 +287,16 @@ impl Lane {
         .await
         .expect("seeding a workspace");
 
-        sqlx::query(
-            "INSERT INTO core.fleets
-               (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                status, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'fixture-fleet', '# fixture',
-                     '{}'::jsonb, 'active', $4, $4)
-             ON CONFLICT (id) DO NOTHING",
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.workspace.as_str(),
+            self.tenant.as_str(),
+            FLEET_ACTIVE,
         )
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
+        .name("fixture-fleet")
+        .at(NOW_MS)
+        .native_setup()
+        .insert(&mut *connection)
         .await
         .expect("seeding a fleet");
     }

@@ -57,7 +57,7 @@ pub(super) fn wire_binding(authored: &Authored) -> RepositoryBinding<'_> {
         },
         // A read binding opens no Pull Request, so it has no base to name. The
         // wire field is not optional, and empty is how "none" is spelled there.
-        base_branch: authored.base_branch().unwrap_or_default().into(),
+        base_branch: authored.reach().base().unwrap_or_default().into(),
     }
 }
 

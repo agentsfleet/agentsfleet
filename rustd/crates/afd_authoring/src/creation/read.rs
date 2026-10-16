@@ -1,0 +1,144 @@
+//! Shared fleet reads retain setup progress without exposing any private conversation.
+
+use super::{CONTEXT, Creations, SetupProgress, etag, progress, sql, stored::Stored};
+use crate::{
+    Access, Result, access,
+    error::{ErrorKind, raise::query},
+    review,
+    types::{Review, StartOutcome},
+};
+use afd_core::id::Uuid7;
+use afd_fleet_runtime::Definition;
+use serde::Serialize;
+use sqlx::{Connection as _, PgConnection};
+
+const PENDING: &str = "pending";
+
+/// Native fleet snapshot used by browser and terminal adapters.
+#[derive(Debug, Serialize)]
+pub struct SavedFleet {
+    /// Shared runtime identity, unrelated to private draft ownership.
+    pub id: Uuid7,
+    /// Instance slug.
+    pub name: String,
+    /// Existing fleet lifecycle vocabulary.
+    pub status: String,
+    /// Name/status version.
+    pub etag: String,
+    /// Definition-only version.
+    pub setup_etag: String,
+    /// Decimal setup revision.
+    pub setup_revision: String,
+    /// Policy interpretation of this setup.
+    pub policy_semantics: String,
+    /// Effective authority drift needs a new review before activation.
+    pub needs_re_review: bool,
+    /// Shared immutable setup, without conversation or credentials.
+    pub definition: Definition,
+    /// Actual current installation checks.
+    pub setup: SetupProgress,
+    /// Initial admission outcome, independent of completed work.
+    pub start: StartOutcome,
+    /// Creation time, UTC milliseconds.
+    pub created_at: i64,
+    /// Latest resource mutation, UTC milliseconds.
+    pub updated_at: i64,
+    /// Exact activity count.
+    pub events_processed: String,
+    /// Exact billed nanos.
+    pub budget_used_nanos: String,
+    /// Current unanswered approval gates.
+    pub pending_approvals: i64,
+    /// Current independent shared-memory read permission.
+    pub memory_reads_workspace: bool,
+    /// Current independent shared-memory publication permission.
+    pub memory_publishes_workspace: bool,
+}
+
+impl Creations {
+    /// Reads current shared setup and live prerequisites without advancing it.
+    ///
+    /// # Errors
+    /// Refuses missing fleets and current access loss; preserves store failures.
+    pub async fn read(&self, access: Access<'_>, fleet: &Uuid7) -> Result<SavedFleet> {
+        let (row, review) = self.snapshot(access, fleet).await?;
+        Ok(project(row, &review))
+    }
+
+    pub(super) async fn snapshot(
+        &self,
+        access: Access<'_>,
+        fleet: &Uuid7,
+    ) -> Result<(Stored, Review)> {
+        let mut connection = self.setup.drafts.database.acquire().await?;
+        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        access::current(&mut tx, access).await?;
+        let row = lock(&mut tx, access.workspace, fleet).await?;
+        let checked = self.review(&mut tx, &row).await?;
+        tx.commit().await.map_err(query(CONTEXT))?;
+        Ok((row, checked))
+    }
+
+    pub(super) async fn review(
+        &self,
+        connection: &mut PgConnection,
+        row: &Stored,
+    ) -> Result<Review> {
+        let mut context = row.setup_context.context.clone();
+        context.linked_fleet_id = Some(row.id.clone());
+        review::build(
+            &self.setup,
+            connection,
+            &context,
+            &row.setup_context.candidate(row.definition.clone()),
+            afd_core::clock::now().as_millis(),
+        )
+        .await
+    }
+}
+
+pub(super) async fn lock(
+    connection: &mut PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> Result<Stored> {
+    let locked: Option<String> = sqlx::query_scalar(sql::LOCK)
+        .bind(fleet.as_str())
+        .bind(workspace.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    locked.ok_or(ErrorKind::FleetMissing)?;
+    let row: Option<String> = sqlx::query_scalar(sql::LOCKED)
+        .bind(fleet.as_str())
+        .bind(workspace.as_str())
+        .bind(PENDING)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    crate::draft::value(&row.ok_or(ErrorKind::FleetMissing)?)
+}
+
+fn project(row: Stored, review: &Review) -> SavedFleet {
+    let setup = progress::current(&row, review);
+    SavedFleet {
+        etag: etag(&row.id, row.resource_version),
+        setup_etag: etag(&row.id, row.setup_version),
+        setup_revision: row.setup_version.to_string(),
+        needs_re_review: row.setup_context.review_digest != review.review_digest,
+        policy_semantics: row.setup_context.policy_semantics,
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        definition: row.definition,
+        setup,
+        start: row.initial_start.outcome,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        events_processed: row.events_processed.to_string(),
+        budget_used_nanos: row.budget_used_nanos.to_string(),
+        pending_approvals: row.pending_approvals,
+        memory_reads_workspace: row.memory_reads_workspace,
+        memory_publishes_workspace: row.memory_publishes_workspace,
+    }
+}

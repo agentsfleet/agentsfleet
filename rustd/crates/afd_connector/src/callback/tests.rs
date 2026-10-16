@@ -4,7 +4,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use super::{Dashboard, Handoff, connected_url, relay_uri, relay_url};
+use super::{Dashboard, connected_url, relay_uri};
 use crate::provider::Provider;
 use afd_core::id::Uuid7;
 
@@ -21,12 +21,9 @@ fn dashboard(base: &str) -> Dashboard {
 
 /// The relay spells the route the dashboard actually mounts.
 ///
-/// Its sibling below compares the minted URI against the returned one, and
-/// both come out of `relay`, so it agrees with itself however the path is
-/// built — it passed green while `RELAY_PATH` was one `"api/connectors"`
-/// string that `path_segments_mut` encoded to a single `api%2Fconnectors`
-/// segment. A vendor matches the registered callback URL literally, so the
-/// literal is what has to be pinned.
+/// A vendor matches the registered callback URL literally, so the literal is
+/// what has to be pinned: `path_segments_mut` encodes a slash inside a segment,
+/// and a single `"api/connectors"` entry came out as `api%2Fconnectors`.
 #[test]
 fn the_relay_spells_the_route_the_dashboard_mounts() {
     assert_eq!(
@@ -38,34 +35,6 @@ fn the_relay_spells_the_route_the_dashboard_mounts() {
         assert!(
             !minted.contains('%'),
             "`{provider}` relay carries percent-encoding: {minted}",
-        );
-    }
-}
-
-/// The relay a code is minted against is the relay it comes back to.
-///
-/// The load-bearing property of this module: an exchange echoes the
-/// redirect URI, so a relay that differed from the minted one by a slash
-/// fails at the vendor with `redirect_uri_mismatch` — which reads like a
-/// rotated client secret and sends an operator to the wrong place.
-#[test]
-fn the_minted_redirect_uri_is_the_relay_the_browser_returns_to() {
-    let base = dashboard(DASHBOARD);
-    for provider in Provider::ALL.iter().copied() {
-        let minted = relay_uri(&base, provider);
-        let returned = relay_url(
-            &base,
-            provider,
-            Handoff {
-                state: "s",
-                ..Handoff::default()
-            },
-        );
-
-        assert_eq!(
-            returned.split('?').next(),
-            Some(minted.as_str()),
-            "`{provider}` must return to the relay its code was minted against",
         );
     }
 }
@@ -89,53 +58,6 @@ fn a_trailing_slash_on_the_base_does_not_become_a_double_slash() {
 fn a_page_keeps_the_base_sub_path_and_encodes_each_segment_as_one() {
     let page = dashboard("https://app.example.test/dash/").page(["invites", "a/b"]);
     assert_eq!(page.as_str(), "https://app.example.test/dash/invites/a%2Fb");
-}
-
-/// An absent parameter is omitted, never sent empty.
-///
-/// `location=` is the one that bites: Zoho redeems only at the data centre
-/// that issued the code, and an empty location reads as "unspecified" in
-/// one place and as a value in another.
-#[test]
-fn an_absent_parameter_is_omitted_rather_than_sent_empty() {
-    let url = relay_url(
-        &dashboard(DASHBOARD),
-        Provider::Zoho,
-        Handoff {
-            code: Some("abc"),
-            state: "signed",
-            ..Handoff::default()
-        },
-    );
-
-    assert!(url.contains("code=abc"));
-    assert!(url.contains("state=signed"));
-    assert!(!url.contains("location"));
-    assert!(!url.contains("installation_id"));
-}
-
-/// Every parameter a provider can send survives encoding.
-///
-/// The `&` is the case the hand-rolled encoder this replaces got wrong: a
-/// code carrying one would otherwise split into two parameters and the
-/// exchange would redeem a truncated code.
-#[test]
-fn a_parameter_carrying_a_separator_does_not_split_into_two() {
-    let url = relay_url(
-        &dashboard(DASHBOARD),
-        Provider::Slack,
-        Handoff {
-            code: Some("a&state=forged"),
-            state: "real",
-            location: Some("eu"),
-            installation_id: Some("42"),
-        },
-    );
-
-    assert!(url.contains("code=a%26state%3Dforged"));
-    assert_eq!(url.matches("state=").count(), 1);
-    assert!(url.contains("location=eu"));
-    assert!(url.contains("installation_id=42"));
 }
 
 /// A base no page can hang off is refused when it is read, so no request

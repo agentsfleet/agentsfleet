@@ -51,7 +51,9 @@ mod endpoint;
 pub mod entries;
 mod managed;
 mod platform;
+mod registered;
 mod resolved;
+mod runtime;
 mod secret_kind;
 mod selection;
 pub mod sql;
@@ -76,7 +78,9 @@ pub use self::entries::{
     Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,
     Retargeted,
 };
+pub use self::registered::{PLATFORM_MODEL_REF, RegisteredModel, registered_model};
 pub use self::resolved::{Dialled, Resolved};
+pub use self::runtime::{RuntimeModel, runtime_model};
 pub use self::secret_kind::SecretKind;
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;

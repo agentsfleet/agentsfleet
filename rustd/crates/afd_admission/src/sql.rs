@@ -27,7 +27,7 @@
 /// it costs no second round trip on the path every producer takes.
 ///
 /// `$13` arrives already measured — see `Admissions::deployment_estimate` and
-/// the note in `budget/ceiling.rs`. It used to be a `count(*)` over
+/// the note in `budget/ceiling/mod.rs`. It used to be a `count(*)` over
 /// `receipt IS NULL` right here, which read well and cost a walk of every
 /// waiting row on every accepted event: the partial index keeps that walk off
 /// the table but not off the rows, so the price rose with the backlog and
@@ -102,6 +102,13 @@ pub(crate) const RECORD_RECEIPT: &str = "\
 UPDATE core.fleet_admissions
 SET receipt = $2, updated_at = $3
 WHERE id = $1::uuid AND receipt IS NULL";
+
+/// One producer key, locked without waiting behind a sibling confirmation.
+pub(crate) const CONFIRM_ADMISSION: &str = "\
+SELECT id::text, fleet_id::text, workspace_id::text, actor, event_type,
+       request_json, event_created_at, created_at, seq, receipt
+FROM core.fleet_admissions WHERE producer=$1 AND producer_key=$2
+FOR UPDATE SKIP LOCKED";
 
 /// The admitted rows that never got a receipt, oldest first, locked for this
 /// pass.

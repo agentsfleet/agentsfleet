@@ -27,6 +27,8 @@
 //! be a pure function instead of something buried beside a connection. This
 //! module takes that as the rule rather than the exception.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 pub mod budget;

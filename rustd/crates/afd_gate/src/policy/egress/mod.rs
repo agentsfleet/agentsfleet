@@ -24,7 +24,7 @@
 mod read;
 mod write;
 
-use afd_fleet_runtime::config::{Access, RepositoryBinding};
+use afd_fleet_runtime::config::{Reach, RepositoryBinding};
 use afd_wire::policy::{HttpOriginPolicy, HttpRequestRule};
 
 /// The only host these rules govern.
@@ -35,9 +35,6 @@ pub const CREDENTIAL_GITHUB: &str = "github";
 
 /// Why a write binding names no branch for its lease to write on.
 pub const DETAIL_NO_REPAIR_BRANCH: &str = "a write binding needs the branch its lease authorised";
-
-/// Why a write binding names no base for a Pull Request to open against.
-pub const DETAIL_NO_BASE_BRANCH: &str = "a write binding must name the base it opens against";
 
 /// Why a write binding names none, or several, where the locked rules bound one.
 pub const DETAIL_NOT_EXACTLY_ONE_REPOSITORY: &str = "a write binding bounds exactly one repository";
@@ -65,8 +62,8 @@ pub fn build<'a>(
         .flat_map(|repository| read::rules(repository))
         .collect();
 
-    if binding.access() == Access::Write {
-        requests.extend(write::rules(binding, repair_branch)?);
+    if let Reach::Write { base } = binding.reach() {
+        requests.extend(write::rules(binding, base, repair_branch)?);
     }
 
     Ok(vec![HttpOriginPolicy {

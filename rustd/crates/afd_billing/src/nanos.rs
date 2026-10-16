@@ -9,22 +9,10 @@
 //! the daemon is what charges a lease, and a client renders the charge it was
 //! served rather than recomputing it, so a bump lands here and nowhere else.
 //!
-//! # Why not a decimal crate
-//!
-//! A fixed-point decimal is the textbook answer for money, and it does not help
-//! HERE: the float is already in the input. An authored ceiling arrives as
-//! `f64` — `Dollars` holds one, because the authoring document spells
-//! `daily_dollars: 5.0` and it parses as a float — and [`Nanos::from_dollars`]
-//! converts it once, rounding `dollars * 1e9` to the nearest nano. Routing that
-//! through a decimal would add a second rounding at the boundary and move some
-//! ceilings by one nano.
-//!
-//! The place to argue for decimals is the schema — make the authored ceiling a
-//! decimal string and the float disappears at the source. That is a schema
-//! change, this milestone changes no schema, and doing half of it here would
-//! leave the product with two roundings instead of one.
+//! Authored ceilings are decimal strings of integer nanos. The runtime parser
+//! proves their bounds; conversion into ledger units preserves every nano.
 
-use afd_fleet_runtime::config::Dollars;
+use afd_fleet_runtime::config::BudgetCeiling;
 
 /// A quantity of credit, in nanos.
 ///
@@ -61,17 +49,6 @@ pub const ESTIMATE_FLOOR_INPUT_TOKENS: i64 = 100;
 
 /// The output-token floor the issue-time estimate is sized against.
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: i64 = 100;
-
-/// [`NANOS_PER_USD`] as a float, for the one conversion that needs it.
-///
-/// A separate literal rather than `NANOS_PER_USD as f64`, and not to silence a
-/// lint: an `i64`-to-`f64` cast is lossy in general — `f64` carries 53 bits of
-/// mantissa against 64 bits of integer — so writing the cast invites a reader
-/// to wonder whether the scale factor is exact. It is: 10^9 is well under
-/// 2^53, so this literal and the integer constant name the same number with no
-/// rounding between them, and `afd_core::money` asserts that headroom where the
-/// integer is declared.
-const NANOS_PER_USD_F64: f64 = 1e9;
 
 /// Tokens in the unit a catalogue rate is quoted per.
 ///
@@ -117,29 +94,10 @@ impl Nanos {
 
     /// A declared ceiling, in nanos.
     ///
-    /// Total, with no guard clause, and the absent guard is the point. A
-    /// function taking a bare `f64` would have to open by mapping a non-finite
-    /// or non-positive value to zero, because a caller may hand it anything.
-    /// [`Dollars`] cannot be built from a value that is not finite, not
-    /// positive, or above its cap — `Dollars::parse` refuses all three — so
-    /// that branch here would be unreachable code asserting a property the
-    /// argument already carries.
-    ///
-    /// There is no overflow branch either, for a different reason: Rust's
-    /// float-to-integer cast saturates by language rule, so a product past
-    /// `i64::MAX` cannot wrap here even if a future cap change made it
-    /// reachable. Rounding is to nearest, so a ceiling of one nano is one nano
-    /// rather than zero.
+    /// Preserves an already validated ceiling without rounding.
     #[must_use]
-    pub fn from_dollars(dollars: Dollars) -> Self {
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "the float-to-integer cast saturates by language rule, \
-                      so a product past `i64::MAX` clamps rather than wraps; \
-                      `Dollars` bounds the input four orders of magnitude \
-                      below that point anyway"
-        )]
-        Self((dollars.dollars() * NANOS_PER_USD_F64).round() as i64)
+    pub const fn from_ceiling(ceiling: BudgetCeiling) -> Self {
+        Self(ceiling.nanos())
     }
 
     /// This quantity plus `other`, refusing to wrap.
@@ -168,7 +126,7 @@ impl Nanos {
     /// Whether spending has reached `ceiling`.
     ///
     /// Refused AT equality, not past it: a fleet that has spent exactly its
-    /// `daily_dollars` runs no further.
+    /// `daily_nanos` runs no further.
     #[must_use]
     pub const fn has_reached(self, ceiling: Self) -> bool {
         self.0 >= ceiling.0
@@ -221,8 +179,8 @@ mod tests {
     )]
 
     use super::{
-        ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD,
-        NANOS_PER_USD_F64, Nanos, RUN_NANOS_PER_SEC, SliceRates, slice_charge,
+        ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
+        RUN_NANOS_PER_SEC, SliceRates, slice_charge,
     };
 
     /// The rates a self-managed tenant meters at: runtime only.
@@ -293,17 +251,16 @@ mod tests {
         // second: an epsilon comparison would admit the very drift this
         // catches.
         const { assert!(NANOS_PER_USD < (1_i64 << 53)) }
-        const { assert!(NANOS_PER_USD_F64 == 1_000_000_000.0_f64) }
 
         // And a five-dollar daily ceiling is five billion nanos.
         assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
 
         let config = afd_fleet_runtime::FleetConfig::stored(
-            r#"{"name":"b","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":5}}}"#,
+            r#"{"name":"b","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"5000000000"}}}"#,
         )
         .expect("the fixture document is well-formed");
         assert_eq!(
-            Nanos::from_dollars(config.budget().daily()),
+            Nanos::from_ceiling(config.budget().daily()),
             Nanos::from_i64(5 * NANOS_PER_USD)
         );
     }

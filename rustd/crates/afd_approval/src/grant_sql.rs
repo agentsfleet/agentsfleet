@@ -105,34 +105,3 @@ WITH requested AS (
   RETURNING id
 )
 SELECT (SELECT COUNT(*) FROM raised), requested.status FROM requested";
-
-/// Writes the grant an install already answers, and reports the status that stands.
-///
-/// One statement rather than an insert followed by an update: a row that lands
-/// `pending` and is approved a moment later has a window in which a delivery is
-/// refused for a grant nobody was going to be asked about.
-///
-/// `DO UPDATE` that writes the status back UNCHANGED, which is how a conflict
-/// still returns its row. `DO NOTHING` does not: the insert skips, and the
-/// statement's snapshot predates a row a concurrent installer committed a
-/// moment ago, so a `SELECT` beside it finds nothing either and the caller gets
-/// zero rows where it expected one. The no-op update takes the row lock instead
-/// and returns what stands.
-///
-/// It must stay a no-op. `status = core.integration_grants.status` re-writes the
-/// value already there, so a re-install cannot un-revoke a grant a person
-/// revoked — [`REVOKE_GRANT`] is meant to outlive the next install, and an
-/// upsert that set `status = EXCLUDED.status` would quietly undo it.
-///
-/// `approved_at` and `created_at` take the same instant deliberately: nobody
-/// was asked, so the moment the row was written IS the moment it was answered.
-///
-/// `$1` grant, `$2` fleet, `$3` service, `$4` approved status, `$5` reason,
-/// `$6` now.
-pub(crate) const GRANT_AT_INSTALL: &str = "\
-INSERT INTO core.integration_grants
-  (id, fleet_id, service, status, requested_reason, approved_at, created_at)
-VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
-ON CONFLICT (fleet_id, service)
-DO UPDATE SET status = core.integration_grants.status
-RETURNING status";

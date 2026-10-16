@@ -62,7 +62,7 @@ async fn a_refused_admission_reason_carries_no_code_prefix() {
 
     let refused = admissions
         .admit(Admission {
-            producer: Producer::RepairVerification,
+            producer: Producer::ScheduleFire,
             key: Key::Repeated("log-reasons"),
             fleet: FLEET,
             workspace: FLEET,

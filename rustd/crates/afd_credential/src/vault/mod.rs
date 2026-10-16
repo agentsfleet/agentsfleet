@@ -35,8 +35,10 @@ use sqlx::postgres::PgRow;
 
 use crate::error::{Result, query, vault_open};
 
+mod inspect;
 pub mod rotate;
 pub mod sql;
+pub use inspect::CredentialInspection;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRET: &str = "vault credential";
