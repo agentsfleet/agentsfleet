@@ -7,12 +7,12 @@ use std::sync::atomic::AtomicUsize;
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_sandbox::Limits;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    Answer, FakeAgent, FakeEngine, FakeResolver, GRANTED_UNTIL, INTERVAL_MS, clock, drain, json,
-    plane,
+    Answer, Calls, FakeAgent, FakeEngine, FakeResolver, GRANTED_UNTIL, INTERVAL_MS, bounded, clock,
+    drain, plane,
 };
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
@@ -35,7 +35,7 @@ pub(crate) struct Rig {
     root: tempfile::TempDir,
     pub(crate) home: StorageHome,
     pub(crate) lessee: Arc<Lessee>,
-    pub(crate) calls: mpsc::UnboundedReceiver<Call>,
+    pub(crate) calls: Calls,
     pub(crate) shutdown: CancellationToken,
     pub(crate) runs: Arc<AtomicUsize>,
     pub(crate) peak: Arc<AtomicUsize>,
@@ -136,7 +136,11 @@ impl Rig {
     ) -> crate::Result<()> {
         let (turns, coordinator) = FleetTurns::start();
         tokio::spawn(coordinator);
-        self.lessee.run(&turns, lease, egress).await
+        bounded(
+            "Rig::run_under / lessee.run",
+            self.lessee.run(&turns, lease, egress),
+        )
+        .await
     }
 
     /// Where the repository `owner/name` is served from: `<origins>/owner/name.git`.
@@ -166,7 +170,35 @@ pub(crate) fn daemon(
         interval_ms: INTERVAL_MS,
         granted_until: GRANTED_UNTIL,
     };
-    move |call| special(call).unwrap_or_else(|| json(&healthy.to(Some(call.verb))))
+    let replies: std::collections::HashMap<_, _> = [
+        Verb::Heartbeat,
+        Verb::Lease,
+        Verb::Renew,
+        Verb::Hydrate,
+        Verb::Capture,
+        Verb::Recall,
+        Verb::Records,
+        Verb::Me,
+        Verb::Activity,
+        Verb::Report,
+    ]
+    .into_iter()
+    .map(|verb| {
+        let body = serde_json::to_vec(&healthy.to(Some(verb))).unwrap();
+        (verb, bytes::Bytes::from(body))
+    })
+    .collect();
+    move |call| {
+        special(call).unwrap_or_else(|| {
+            let body = replies.get(&call.verb).unwrap_or_else(|| {
+                panic!(
+                    "unexpected fake daemon request: {} {}",
+                    call.verb, call.path
+                )
+            });
+            Answer::Reply(body.clone())
+        })
+    }
 }
 
 /// The body of the last report the daemon received.

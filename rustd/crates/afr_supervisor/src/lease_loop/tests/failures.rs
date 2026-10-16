@@ -81,10 +81,13 @@ async fn a_lease_arriving_as_the_pool_shuts_down_is_reported_not_run() {
     let (turns, coordinator) = FleetTurns::start();
     drop(coordinator);
 
-    rig.lessee
-        .run(&turns, &lease(LEASE_ID, FLEET_ID), &Egress::closed())
-        .await
-        .unwrap();
+    crate::test_support::bounded(
+        "lease arriving during shutdown",
+        rig.lessee
+            .run(&turns, &lease(LEASE_ID, FLEET_ID), &Egress::closed()),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
