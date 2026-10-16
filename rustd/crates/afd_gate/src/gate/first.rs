@@ -14,7 +14,7 @@
 //! not already carry. The grant names the fleet, the fleet's binding names the
 //! repositories and the access level, and the mint narrows the token to exactly
 //! those. What bounds a write fleet now is that grant, the fleet's
-//! `budget.daily_dollars`, and `agentsfleet grant delete`.
+//! `budget.daily_nanos`, and `agentsfleet grant delete`.
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};

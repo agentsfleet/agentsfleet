@@ -49,6 +49,7 @@
 // no offsetting benefit. Gated on `not(test)` because the test build links
 // dev-dependencies into this same target.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 mod admission;
 mod admit;
@@ -60,6 +61,7 @@ mod reconcile;
 mod repeat;
 mod replay;
 pub mod sql;
+mod stage;
 
 use std::sync::Arc;
 
@@ -74,7 +76,8 @@ pub use self::cursor::LedgerBacklog;
 pub use self::error::{Error, Result};
 pub use self::reconcile::{DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
 pub use self::repeat::Repeated;
-pub use self::replay::Replayed;
+pub use self::replay::{Confirmation, Replayed};
+pub use self::stage::PreparedAdmission;
 
 /// What an admission decided.
 #[derive(Debug, Clone, PartialEq, Eq)]

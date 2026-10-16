@@ -37,7 +37,7 @@ use afd_wire::policy::repository::{
 };
 use afd_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
-use super::{DETAIL_NO_BASE_BRANCH, DETAIL_NO_REPAIR_BRANCH, DETAIL_NOT_EXACTLY_ONE_REPOSITORY};
+use super::{DETAIL_NO_REPAIR_BRANCH, DETAIL_NOT_EXACTLY_ONE_REPOSITORY};
 use crate::error::{Result, rejected};
 
 /// The endpoints a write binding may POST to with nothing locked.
@@ -60,15 +60,14 @@ const PULL_FIELDS: [&str; 3] = [FIELD_TITLE, FIELD_BODY, FIELD_MAINTAINER_CAN_MO
 ///
 /// # Errors
 /// A rejection when the binding cannot be bounded — every available default
-/// would be a widening, so all three refuse.
+/// would be a widening, so both refuse. `base` comes from the binding's
+/// `Reach::Write`, which cannot exist without one.
 pub(super) fn rules<'a>(
     binding: &RepositoryBinding,
+    base: &str,
     repair_branch: Option<&str>,
 ) -> Result<Vec<HttpRequestRule<'a>>> {
     let branch = repair_branch.ok_or_else(|| rejected(DETAIL_NO_REPAIR_BRANCH))?;
-    let base = binding
-        .base_branch()
-        .ok_or_else(|| rejected(DETAIL_NO_BASE_BRANCH))?;
     // The locked rules below name ONE repository. Several would mean they bound
     // the first and left the rest reachable — safe by accident rather than by
     // construction, and no longer safe the moment someone extends this.

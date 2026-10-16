@@ -17,18 +17,17 @@ use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::Mode;
-use afd_fleet_runtime::provider::StaticRegistry;
 use afd_gate::gate::Check;
 use sqlx::Acquire as _;
 
 pub(crate) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+const FLEET_STATUS_ACTIVE: &str = "active";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -37,18 +36,16 @@ pub(crate) fn config(repository_write: bool) -> FleetConfig {
         ""
     };
     let document = format!(
-        r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],"budget":{{"daily_dollars":1.0}}{repository}}}}}"#
+        r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"1000000000"}}{repository}}}}}"#
     );
-    FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
-        .expect("the stored fixture config resolves")
+    FleetConfig::stored(&document).expect("the stored fixture config resolves")
 }
 
 pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     let document = format!(
-        r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],"budget":{{"daily_dollars":1.0}},"gates":{gates}}}}}"#
+        r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"1000000000"}},"gates":{gates}}}}}"#
     );
-    FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
-        .expect("the gate policy fixture resolves")
+    FleetConfig::stored(&document).expect("the gate policy fixture resolves")
 }
 
 pub(crate) fn dragonfly_config() -> DragonflyConfig {
@@ -113,20 +110,24 @@ impl Fixture {
                INSERT INTO core.tenants (id, name, created_at, updated_at) \
                VALUES ($1::uuid, 'Gate lifecycle', 1, 1) \
                RETURNING id \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               SELECT $2::uuid, id, $2, 'test', 1 FROM tenant \
-               RETURNING id, tenant_id \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at) \
-             SELECT $3::uuid, id, tenant_id, $3, '# gate', '{}', 'active', 1, 1 \
-             FROM workspace",
+             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+             SELECT $2::uuid, id, $2, 'test', 1 FROM tenant",
         )
         .bind(self.tenant.as_str())
         .bind(self.workspace.as_str())
-        .bind(self.fleet.as_str())
         .execute(&mut *connection)
+        .await
+        .expect("the gate scope seeds");
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.workspace.as_str(),
+            self.tenant.as_str(),
+            FLEET_STATUS_ACTIVE,
+        )
+        .name(self.fleet.as_str())
+        .at(1)
+        .insert(&mut *connection)
         .await
         .expect("the gate scope seeds");
     }
@@ -166,28 +167,6 @@ impl Fixture {
         .fetch_one(&mut *connection)
         .await
         .expect("the gate rows are readable")
-    }
-
-    /// Restates the recorded kind of `event_id`'s pending gate.
-    ///
-    /// The one way to stand up a row of a kind no daemon path raises any more.
-    /// The PARK is real — the rules path wrote both the Postgres row and the
-    /// Dragonfly reference that finds it — and only the `gate_kind` column is
-    /// rewritten, which is precisely the variable under test: an event parked
-    /// by an earlier build must still resolve from the gate it was parked on.
-    pub(crate) async fn restate_kind(&self, event_id: &str, kind: &str) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        let changed = sqlx::query(
-            "UPDATE core.fleet_approval_gates SET gate_kind = $3 \
-             WHERE fleet_id = $1::uuid AND event_id = $2 AND status = 'pending'",
-        )
-        .bind(self.fleet.as_str())
-        .bind(event_id)
-        .bind(kind)
-        .execute(&mut *connection)
-        .await
-        .expect("the recorded kind is restated");
-        assert_eq!(changed.rows_affected(), 1);
     }
 
     pub(crate) async fn activate(&self) {

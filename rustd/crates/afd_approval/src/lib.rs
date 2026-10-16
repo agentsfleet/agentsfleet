@@ -33,6 +33,8 @@
 //! this" from "somebody already had". A read-then-write would let both believe
 //! they won and both tell their person so.
 
+#![deny(clippy::self_named_module_files)]
+
 mod decision;
 pub mod error;
 mod grant;

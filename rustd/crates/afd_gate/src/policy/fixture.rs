@@ -11,9 +11,8 @@
     reason = "a fixture asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::Mode;
-use afd_fleet_runtime::provider::StaticRegistry;
 
 use afd_billing::rates::Posture;
 use afd_credential::provider::{Dialled, Resolved};
@@ -35,11 +34,10 @@ pub(super) const RESOLVED_CAP_TOKENS: u32 = 256_000;
 /// When `runtime` does not compose into a document the stored mode resolves.
 pub(super) fn config(runtime: &str) -> FleetConfig {
     let document = format!(
-        r#"{{"name":"probe","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],
-           "budget":{{"daily_dollars":1.0}}{runtime}}}}}"#
+        r#"{{"name":"probe","x-agentsfleet":{{"triggers":[],"tools":[],
+           "budget":{{"daily_nanos":"{NANOS_PER_USD}"}}{runtime}}}}}"#
     );
-    FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
-        .expect("a stored document resolves")
+    FleetConfig::stored(&document).expect("a stored document resolves")
 }
 
 /// A resolved platform provider, optionally dialling a custom endpoint.
