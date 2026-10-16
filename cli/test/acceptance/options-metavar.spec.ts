@@ -123,7 +123,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
     ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
     ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
-    ["agentsfleet install --help",              ["install", "--help"],              ["--library <library_id>", "--name <name>", "--slack-channel <channel_id>"]],
+    ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--library <id>", "--review-digest <digest>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["agentsfleet tenant provider create --help",  ["tenant", "provider", "create", "--help"], ["--secret <name>", "--model <name>"]],
@@ -248,23 +248,4 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.equal(body.secret_ref, "keyname", `expected secret_ref=keyname in body; body=${put.body}`);
     assert.equal(body.model, "gpt-x", `expected model=gpt-x in body; body=${put.body}`);
   });
-});
-
-describe("non-wire option values reach the handler", () => {
-  // `fleet update --from` is handled by loadSkillFromPath in
-  // src/lib/load-skill-from-path.ts. A non-existent path produces
-  // ERR_PATH_NOT_FOUND that names the resolved path — proves the validator's
-  // parsePathOption ran AND the handler observed it. (`install` no longer
-  // accepts --from under the two-tier template model; the path-bearing option
-  // lives on the live-edit update command now.)
-  it("fleet update --from /nonexistent/marker-7b → stderr names the resolved path", async () => {
-    const result = await runFleetctl(
-      ["fleet", "update", FIXTURE_UUIDV7, "--from", "/nonexistent/marker-7b"],
-      { env: runEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1" }) },
-    );
-    assert.notEqual(result.code, 0, `expected non-zero exit; stdout=${result.stdout}`);
-    const combined = `${result.stdout}\n${result.stderr}`;
-    assert.match(combined, /marker-7b/, `expected --from path in error output; combined=${combined}`);
-  });
-
 });

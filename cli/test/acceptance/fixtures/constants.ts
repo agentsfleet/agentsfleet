@@ -41,30 +41,6 @@ export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.terminated,
 ];
 
-export const PLATFORM_OPS_SAMPLE_DIR = "tests/fixtures/fleetbundle/platform-ops";
-
-// Matches the frontmatter `name:` the fixture bundle declares — which is also
-// the slug of the agentsfleet/platform-ops repository and the fleet-library
-// catalog id. The importer takes the catalog row id straight from this name, so
-// the three must agree or an onboard mints a second entry instead of filling
-// the seeded one. The acceptance helpers replace this exact name with a
-// run-prefixed one so parallel runs don't collide on the uniqueness constraint.
-export const PLATFORM_OPS_FIXTURE_NAME = "platform-ops";
-export const STEER_PROBE_SAMPLE_DIR = "tests/fixtures/fleetbundle/steer-probe";
-export const STEER_PROBE_FIXTURE_NAME = "steer-probe";
-
-// The model every live-dialing fixture pins into its `{{model}}` slot. It must
-// name a model the provider actually serves: a fleet installed on a
-// non-existent id dies at its first model call as `fleet_error` / `ApiError`,
-// with no hint that the identifier is the fault — the provider's 404 and a
-// rejected credential collapse into the same label upstream. This was pinned
-// as `kimi-k2.6` for months while every live steer died before reaching the
-// provider for an unrelated reason; Fireworks writes the decimal as `p`
-// (`kimi-k2p6`), so that id never resolved. Named once here because two
-// fixtures substitute it and a silent drift between them costs the same
-// unreadable failure.
-export const ACCEPTANCE_PROVIDER_MODEL = "accounts/fireworks/models/kimi-k3";
-
 export const LOGIN_POLL_MS = 500;
 
 export const LOGIN_TIMEOUT_SEC = 60;

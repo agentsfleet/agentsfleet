@@ -22,7 +22,6 @@ import {
   CLI_CREDENTIAL_PATTERN,
   CLI_CREDENTIAL_PREFIX,
   MAX_MACHINE_NAME_LEN,
-  TENANT_KEY_PREFIX,
 } from "../src/constants/cli-credential.ts";
 import { CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
 import { TEST_JWT, makeRecorder } from "./login-acceptance-fixtures.ts";
@@ -83,9 +82,9 @@ describe("test_non_prefixed_value_is_refused_on_load", () => {
     expect(Option.isSome(await loadToken())).toBe(true);
   });
 
-  test("a tenant key loads — it is a different credential class, refused at the route rather than at the file", async () => {
-    await plant(`${TENANT_KEY_PREFIX}${hex("b")}`);
-    expect(Option.isSome(await loadToken())).toBe(true);
+  test("a tenant key in the file reads as logged out — only `AGENTSFLEET_API_KEY` carries one", async () => {
+    await plant(`agt_t${hex("b")}`);
+    expect(Option.isNone(await loadToken())).toBe(true);
   });
 
   test("the prefix alone is not enough: truncated, over-long, upper-case, and non-hex bodies are all refused", async () => {

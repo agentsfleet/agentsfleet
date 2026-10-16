@@ -54,7 +54,7 @@ const answer = (status: number, body: unknown): ResponseLike => ({
 });
 const created = (body: unknown): ResponseLike => answer(HTTP_CREATED, body);
 const nameTaken = (): ResponseLike =>
-  answer(HTTP_CONFLICT, { error: { code: ERR_SECRET_NAME_TAKEN, message: "Secret name already taken" } });
+  answer(HTTP_CONFLICT, { error_code: ERR_SECRET_NAME_TAKEN, detail: "Secret name already taken" });
 
 /** Bun's shape for a certificate the client would not accept. */
 const rejectedCertificate = (): TypeError =>

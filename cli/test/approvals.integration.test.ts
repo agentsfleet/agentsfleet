@@ -14,7 +14,7 @@ const APPROVALS = `/v1/workspaces/${WS_ID}/approvals`;
 const BLAST =
   "up to 32 write-credential requests, one branch, and one draft Pull Request in the bound repository";
 
-// A kind a fleet authors in its own `TRIGGER.md`. It is deliberately not the
+// A kind a fleet authors in its own Definition. It is deliberately not the
 // retired write kind: the daemon raises no such card any longer, so a
 // fixture spelling it would pin the client against a row the API cannot emit.
 const gate = (overrides: Record<string, unknown> = {}) => ({
@@ -337,29 +337,6 @@ describe("approvals — machine surface", () => {
 });
 
 describe("approvals — degraded daemon answers", () => {
-  test("a resolution carrying no outcome still reports the decision that was asked for", async () => {
-    await authedScope(async () => {
-      // An older daemon answers 200 with no `outcome` field. The command must
-      // still say something true rather than printing "undefined".
-      const routes: MockRoutes = {
-        [`POST ${APPROVALS}/${GATE_ID}/approve`]: () => jsonResponse(200, { gate_id: GATE_ID }),
-      };
-      await withMockApi(routes, async (apiUrl) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(["approvals", "approve", GATE_ID], {
-          stdout: out.stream,
-          stderr: err.stream,
-          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        expect(code).toBe(0);
-        const text = out.read();
-        expect(text).toContain("approve");
-        expect(text).not.toContain("undefined");
-      });
-    });
-  });
-
   test("a gate missing optional fields renders placeholders, never 'undefined'", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {

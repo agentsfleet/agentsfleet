@@ -1,6 +1,6 @@
 {
   "name": "@agentsfleet/cli",
-  "version": "0.60.0",
+  "version": "0.61.0",
   "description": "agentsfleet CLI",
   "repository": {
     "type": "git",
@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
     "lint:fix": "oxlint src test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && bun scripts/stamp-build.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

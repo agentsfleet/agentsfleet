@@ -55,7 +55,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   WS_ID_KEY,
@@ -206,7 +206,7 @@ if (!isLive) {
         // install targets the *current* workspace (no --workspace flag on
         // the install command), so select WS-A first.
         await useWorkspace(env, wsA);
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = fleetIdOf(installed);
         const installedName = installed[AGENT_NAME_KEY];
         assert.ok(

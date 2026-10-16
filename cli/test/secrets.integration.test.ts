@@ -79,7 +79,7 @@ describe("secret commands", () => {
       const routes: MockRoutes = {
         [`PUT /v1/workspaces/${WS_ID}/secrets/ghost`]: () =>
           jsonResponse(404, {
-            error: { code: "UZ-VAULT-003", message: "secret not found in this workspace" },
+            error_code: "UZ-VAULT-003", detail: "secret not found in this workspace",
           }),
       };
       await withMockApi(routes, async (apiUrl) => {
@@ -100,7 +100,7 @@ describe("secret commands", () => {
       const routes: MockRoutes = {
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(409, {
-            error: { code: "UZ-VAULT-005", message: "Secret name already taken" },
+            error_code: "UZ-VAULT-005", detail: "Secret name already taken",
           }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -130,7 +130,7 @@ describe("secret commands", () => {
       const routes: MockRoutes = {
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(409, {
-            error: { code: "UZ-VAULT-009", message: "Vault sealed" },
+            error_code: "UZ-VAULT-009", detail: "Vault sealed",
           }),
       };
       await withMockApi(routes, async (apiUrl) => {

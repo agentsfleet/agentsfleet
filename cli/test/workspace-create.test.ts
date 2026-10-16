@@ -28,10 +28,8 @@ test("workspace create does not persist local state when API create fails", asyn
         headers: makeHeaders([]),
         text: async () =>
           JSON.stringify({
-            error: {
-              code: "INTERNAL_ERROR",
-              message: "Failed to create workspace",
-            },
+            error_code: "INTERNAL_ERROR",
+            detail: "Failed to create workspace",
             request_id: "req_abc123",
           }),
       };

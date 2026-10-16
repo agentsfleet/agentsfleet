@@ -40,7 +40,7 @@ export async function startLocalStubServer(opts?: LocalStubPolicy): Promise<Loca
       respondJson(res, 200, { status: policy.pollStatus ?? "pending" });
       return;
     }
-    respondJson(res, 404, { error: { code: "NOT_FOUND", message: `no route: ${req.method} ${reqUrl}` } });
+    respondJson(res, 404, { error_code: "NOT_FOUND", detail: `no route: ${req.method} ${reqUrl}` });
   });
 
   await new Promise<void>((resolve, reject) => {

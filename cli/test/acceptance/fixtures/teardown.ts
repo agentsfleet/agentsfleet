@@ -10,6 +10,9 @@
  * regardless of global tenant state.
  */
 
+import { Schema } from "effect";
+import { nativeRequest, readAuthContext, type AuthContext } from "./native-api.ts";
+
 import { ACCEPTANCE_RUN_PREFIX, TERMINAL_STATUSES } from "./constants.ts";
 import { runFleetctl } from "./cli.js";
 import type { FleetRow } from "./lifecycle.ts";
@@ -66,46 +69,40 @@ export async function cleanWorkspaceFleets(
   return mine.length;
 }
 
-/**
- * Remove the library entries a run onboarded.
- *
- * `cleanWorkspaceFleets` was this lane's entire teardown, and a fleet is not
- * the only row a spec creates: `library-onboard-live` onboards two entries per
- * run and deleted neither. They are inert on their own and they accumulate —
- * the gallery listing grows every run until somebody clears it by hand, and a
- * listing large enough to be truncated is what made `library --json` report a
- * row it had just printed as missing. The mess and the mis-parse were the same
- * mess.
- *
- * Prefix-scoped like the fleet sweep beside it, for the same reason: specs run
- * against a shared fixture workspace, and an unscoped delete takes a sibling's
- * row out from under it mid-test.
- */
+/** Deletes only this run's explicitly published, workspace-owned entries. */
 export async function cleanWorkspaceLibraryEntries(
   env: Env,
   options: TeardownOptions = {},
 ): Promise<number> {
-  // `workspaceId` rides in `TeardownOptions` for symmetry with the fleet
-  // sweep; the CLI resolves the workspace from its own state, so nothing here
-  // needs to read it.
-  const runPrefix = options.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
-  let removed = 0;
-  const listed = await runFleetctl(["library", "--json"], { env });
-  if (listed.code !== 0) return removed;
-  let rows: Array<{ id?: string; name?: string }>;
-  try {
-    const open = listed.stdout.indexOf("{");
-    if (open < 0) return removed;
-    rows = (JSON.parse(listed.stdout.slice(open)) as { items?: typeof rows }).items ?? [];
-  } catch {
-    // A listing this teardown cannot read is not a reason to fail a run that
-    // already passed; the e2e lane's ownership sweep is the backstop.
-    return removed;
+  const ctx = await readAuthContext(env);
+  if (options.workspaceId && options.workspaceId !== ctx.workspaceId) {
+    throw new Error("Library cleanup workspace differs from the terminal session");
   }
-  for (const row of rows) {
-    if (!row.id || !row.name?.startsWith(runPrefix)) continue;
-    const deleted = await runFleetctl(["library", "delete", row.id], { env });
-    if (deleted.code === 0) removed++;
+  const prefix = options.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
+  const entries = await ownedLibraryEntries(ctx);
+  const mine = entries.filter((entry) => entry.name.startsWith(prefix));
+  for (const entry of mine) await nativeRequest(ctx, `/fleet-libraries/${encodeURIComponent(entry.id)}`, "DELETE");
+  return mine.length;
+}
+
+const libraryPage = Schema.Struct({
+  items: Schema.Array(Schema.Struct({id: Schema.String, name: Schema.String})),
+  next_cursor: Schema.NullOr(Schema.String),
+});
+const CLEANUP_PAGES_MAX = 100;
+
+async function ownedLibraryEntries(ctx: AuthContext): Promise<Array<{id: string; name: string}>> {
+  const entries: Array<{id: string; name: string}> = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < CLEANUP_PAGES_MAX; page++) {
+    const suffix = `/fleet-libraries/owned?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const result = Schema.decodeUnknownSync(libraryPage)(await nativeRequest(ctx, suffix));
+    entries.push(...result.items);
+    cursor = result.next_cursor;
+    if (cursor === null) return entries;
+    if (seen.has(cursor)) throw new Error("Library cleanup cursor did not advance");
+    seen.add(cursor);
   }
-  return removed;
+  throw new Error("Library cleanup exceeded its page bound");
 }
