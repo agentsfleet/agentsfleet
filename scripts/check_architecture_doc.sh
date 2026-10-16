@@ -140,7 +140,7 @@ if [ -f "$ARCH_DIR/data_flow.md" ] && [ -f "$ARCH_DIR/user_flow.md" ] && [ -f "$
   if ! grep -q "QStash owns the clock" "$ARCH_DIR/user_flow.md"; then
     err "architecture_schedule_ownership: user_flow.md must state QStash owns the clock"
   fi
-  if ! grep -q "synchronously registered with Upstash QStash" "$ARCH_DIR/high_level.md"; then
+  if ! grep -q "mirrored to Upstash QStash" "$ARCH_DIR/high_level.md"; then
     err "architecture_schedule_ownership: high_level.md must name Upstash QStash as the cron provider"
   fi
   if ! grep -q "Upstash QStash" "$ARCH_DIR/README.md"; then

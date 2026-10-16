@@ -23,6 +23,15 @@ adds that llvm-cov instruments, against --patch-floor. That is Codecov's
 `rust-afd` patch status (codecov.yml), graded here as well so the lane's verdict
 does not wait on, or depend on, an asynchronous status nobody requires.
 
+With --per-file-floor it also grades every file that patch touches, whole: each
+`.rs` file the diff adds, modifies or renames (a pure move included), and that
+the report measures, must have at least that share of ALL its instrumented
+lines covered, not only the changed ones. Indy, Oct 15, 2026: "its 99% of the
+rust git diff patch files", and on renames: "Grade renames too". A file the
+report does not measure (a crate's `tests/` target) is not coverable here, the
+same rule the patch grade applies. Codecov has no per-file status, so this
+grade is the only one.
+
 Exit 0 when every floor holds, 1 when one does not, 2 when the inputs are unusable.
 """
 import argparse
@@ -191,6 +200,19 @@ def diff_against(base):
     return changed_lines(result.stdout)
 
 
+def touched_against(base):
+    """Every `.rs` path HEAD adds, modifies or renames over `base`, at its new path.
+
+    Read from git's file list, not the hunks: a pure rename has no hunk, and it
+    is still a file the patch touches.
+    """
+    command = ["git", "diff", "--name-only", "-M", "--diff-filter=d", "--no-color", "--no-ext-diff", base, "HEAD", "--", "*.rs"]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise UnusableReport(f"git diff --name-only {base} HEAD failed: {result.stderr.strip()}")
+    return sorted(line for line in result.stdout.splitlines() if line)
+
+
 def patch_grade(merged, changed):
     """(covered, total, unhit) over the changed lines llvm-cov instruments.
 
@@ -200,7 +222,7 @@ def patch_grade(merged, changed):
     covered = total = 0
     unhit = []
     for relative, lines in sorted(changed.items()):
-        source = next((merged[path] for path in sorted(merged) if path == relative or path.endswith("/" + relative)), None)
+        source = _measured(merged, relative)
         if source is None:
             continue
         for line in sorted(lines):
@@ -213,6 +235,22 @@ def patch_grade(merged, changed):
             else:
                 unhit.append(f"{relative}:{line}")
     return covered, total, unhit
+
+
+def file_grades(merged, touched):
+    """(relative, covered, total, unhit lines) for each measured file the patch touches."""
+    grades = []
+    for relative in sorted(touched):
+        source = _measured(merged, relative)
+        if source is None or not source.lines:
+            continue
+        unhit = sorted(line for line, hits in source.lines.items() if hits == 0)
+        grades.append((relative, len(source.lines) - len(unhit), len(source.lines), unhit))
+    return grades
+
+
+def _measured(merged, relative):
+    return next((merged[path] for path in sorted(merged) if path == relative or path.endswith("/" + relative)), None)
 
 
 def load(paths, revision):
@@ -261,6 +299,21 @@ def report_patch(covered, total, unhit, floor):
     return EXIT_FLOOR_MISSED
 
 
+def report_files(grades, floor):
+    failing = [grade for grade in grades if not holds(grade[1], grade[2], floor)]
+    if not failing:
+        print(f"✓ [rustd] per-file coverage: all {len(grades)} measured files the patch touches are >= {floor}%")
+        return 0
+    print(f"✗ [rustd] per-file coverage: {len(failing)} of {len(grades)} files the patch touches are < {floor}%:")
+    for relative, covered, total, unhit in failing[:UNHIT_SHOWN]:
+        shown = ",".join(str(line) for line in unhit[:UNHIT_SHOWN])
+        more = f" … +{len(unhit) - UNHIT_SHOWN}" if len(unhit) > UNHIT_SHOWN else ""
+        print(f"    {covered * 100 / total:8.4f}%  {covered}/{total}  {relative}  unhit: {shown}{more}")
+    if len(failing) > UNHIT_SHOWN:
+        print(f"    … and {len(failing) - UNHIT_SHOWN} more files")
+    return EXIT_FLOOR_MISSED
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--floor", required=True, help="line floor, in percent")
@@ -268,12 +321,18 @@ def main(argv=None):
     parser.add_argument("--revision", help="the commit every report must carry in its .rev sidecar")
     parser.add_argument("--patch-base", help="grade the lines HEAD adds over this revision")
     parser.add_argument("--patch-floor", default="99", help="patch floor, in percent (codecov.yml's rust-afd target)")
+    parser.add_argument("--per-file-floor", help="floor, in percent, for each whole file the patch touches")
     parser.add_argument("reports", nargs="+", type=Path)
     args = parser.parse_args(argv)
     try:
         floor, patch_floor = Decimal(args.floor), Decimal(args.patch_floor)
+        file_floor = Decimal(args.per_file_floor) if args.per_file_floor is not None else None
     except InvalidOperation:
-        print(f"✗ [rustd] --floor {args.floor!r} / --patch-floor {args.patch_floor!r}: not a number", file=sys.stderr)
+        print(f"✗ [rustd] --floor {args.floor!r} / --patch-floor {args.patch_floor!r} / "
+              f"--per-file-floor {args.per_file_floor!r}: not a number", file=sys.stderr)
+        return EXIT_UNUSABLE
+    if file_floor is not None and not args.patch_base:
+        print("✗ [rustd] --per-file-floor grades the files a patch touches: it needs --patch-base", file=sys.stderr)
         return EXIT_UNUSABLE
     try:
         merged = load(args.reports, args.revision)
@@ -281,6 +340,7 @@ def main(argv=None):
         if total == 0:
             raise UnusableReport("the reports hold no lines: nothing was measured")
         changed = diff_against(args.patch_base) if args.patch_base else None
+        touched = touched_against(args.patch_base) if file_floor is not None else None
     except (UnusableReport, OSError) as failure:
         print(f"✗ [rustd] coverage merge refused: {failure}", file=sys.stderr)
         return EXIT_UNUSABLE
@@ -288,6 +348,8 @@ def main(argv=None):
     verdict = report(covered, total, floor, merged, args.out)
     if changed is not None:
         verdict = max(verdict, report_patch(*patch_grade(merged, changed), patch_floor))
+        if file_floor is not None:
+            verdict = max(verdict, report_files(file_grades(merged, touched), file_floor))
     return verdict
 
 

@@ -3,8 +3,7 @@
 
 Each rule compares two things the repository declares in separate places and
 that must agree: a schema file with the migration list, a component name with
-every other component name, a default with the benchmark behind it, a bundle's
-prose with the gates the daemon still has.
+every other component name, a default with the benchmark behind it.
 
     python3 scripts/check_rust_source.py [--root <dir>]
 
@@ -39,14 +38,6 @@ MANUAL_NAME = re.compile(r"^impl utoipa::ToSchema for (?P<name>\w+)")
 MIGRATION_LIST = "rustd/crates/afd_db/src/migration.rs"
 MIGRATION_ENTRY = re.compile(r'migration!\("(?P<file>[^"]+)"\)')
 SCHEMA_GLOB = "schema/*.sql"
-
-# --- A bundle never promises a retired gate --------------------------------
-BUNDLES = "tests/fixtures/fleetbundle"
-BUNDLE_DOCUMENTS = ("SKILL.md", "TRIGGER.md")
-# The per-event approval card the daemon retired: the standing integration
-# grant authorises a repository write, so a bundle promising the card tells its
-# model about a gate that never opens.
-RETIRED_GATE = "approval card"
 
 # --- The stream ceiling is a measured rung ----------------------------------
 KNOBS = "rustd/crates/agentsfleetd/src/preflight/knobs.rs"
@@ -120,18 +111,6 @@ def check_migration_list(root: Path) -> list[lib.Finding]:
     return findings
 
 
-def check_bundle_prose(root: Path) -> list[lib.Finding]:
-    documents = sorted(p for name in BUNDLE_DOCUMENTS for p in (root / BUNDLES).glob(f"*/{name}"))
-    if not documents:
-        return [lib.Finding(BUNDLES, 1, "rust-bundle-retired-gate", "no bundle document found to read; the fixtures moved")]
-    findings = []
-    for document in documents:
-        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), start=1):
-            if RETIRED_GATE in line.lower():
-                findings.append(lib.Finding(lib.relative(root, document), number, "rust-bundle-retired-gate", f"the bundle promises the retired {RETIRED_GATE}"))
-    return findings
-
-
 def check_stream_ceiling(root: Path) -> list[lib.Finding]:
     def finding(message: str) -> list[lib.Finding]:
         return [lib.Finding(KNOBS, 1, "rust-stream-ceiling", message)]
@@ -159,7 +138,7 @@ def check_stream_ceiling(root: Path) -> list[lib.Finding]:
     return []
 
 
-RULES = (check_schema_names, check_migration_list, check_bundle_prose, check_stream_ceiling)
+RULES = (check_schema_names, check_migration_list, check_stream_ceiling)
 
 
 def lint(root: Path) -> list[lib.Finding]:

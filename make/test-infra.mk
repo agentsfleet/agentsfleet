@@ -22,14 +22,12 @@
 # `?=` so an explicit override still wins. Computed once per make invocation.
 TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
 AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
-# Word 2 was the Redis service's slot. Redis is retired; the word stays in the
-# allocator so every other port keeps the number its running containers have.
-AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
+AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 2,$(TEST_INFRA_PORTS)),8080)
 # The first of the Dragonfly cluster's four published data ports; the last is
 # derived so compose can publish them as one range. The four admin ports that
 # follow are loopback-only inside the container -- scripts/dragonfly-cluster.sh
 # is the only thing that speaks to them, through `docker compose exec`.
-AGENTSFLEET_DRAGONFLY_BASE_PORT ?= $(or $(word 4,$(TEST_INFRA_PORTS)),7001)
+AGENTSFLEET_DRAGONFLY_BASE_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),7001)
 # Four cluster nodes and the TLS node: BASE..BASE+4 published, admin ports
 # beyond them stay inside the container (scripts/dragonfly-cluster.sh).
 AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 4 )))
@@ -73,21 +71,21 @@ export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 #
 # 127.0.0.1, not `localhost`. The name costs a resolver round trip on every
 # connection, and on macOS it occasionally costs a five-second one: measured
-# over 20 sequential Redis connects, `localhost` ran a 566 ms median with a
+# over 20 sequential Dragonfly connects, `localhost` ran a 566 ms median with a
 # 6343 ms worst case, and the literal address ran 246 ms with a 2194 ms worst.
 # Every live test opens its own connection, so the median is multiplied across
 # the lane and the tail is what made `ConnectTimeout` a coin flip against the
-# 5 s connect budget. The Redis certificate carries `IP:127.0.0.1` in its SAN
+# 5 s connect budget. The Dragonfly certificate carries `IP:127.0.0.1` in its SAN
 # beside `DNS:localhost`, so TLS verification is unaffected.
 TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
 # `redis://`, not `rediss://`, and the reason is measured rather than assumed.
 #
-# A TLS connect to the lane's Redis runs a 232 ms median against 0.1 ms for
+# A TLS connect to the lane's Dragonfly runs a 232 ms median against 0.1 ms for
 # plain TCP to the same server, and that difference is a handshake re-proving a
 # certificate authority which is identical on every one of the two hundred
 # connects a lane opens. It is not merely slow: a connect's budget starts
 # BEFORE the connection is admitted, so the queue those handshakes build is
-# what spends the budget, and a perfectly healthy Redis answers `ConnectTimeout`
+# what spends the budget, and a perfectly healthy Dragonfly answers `ConnectTimeout`
 # to whichever test sat deepest in it.
 #
 # Nothing about TLS goes unproven. It moves to `TEST_DRAGONFLY_TLS_URL` below and is
@@ -106,10 +104,10 @@ TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(AGENTSFLEET_DRAGONFL
 # Cert path — populated by _ensure-test-infra after the datastore is healthy.
 # Do NOT shell-expand at parse time; the container may not be running yet when
 # the Makefile is first evaluated.
-TEST_DRAGONFLY_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+TEST_DRAGONFLY_CA_CERT ?= $(CURDIR)/.tmp/dragonfly-ca.crt
 # The authority that signed nothing here, for the refusal half of the trust
 # dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
-TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/redis-bad-ca.crt
+TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/dragonfly-bad-ca.crt
 # How a test moves slots or resets the cluster: the script, inside its own
 # container, with the caller's arguments appended. The suites know one command
 # line and nothing about docker; the admin ports it reaches never leave the

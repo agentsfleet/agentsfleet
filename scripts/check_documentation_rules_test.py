@@ -59,9 +59,14 @@ class CommandTextTests(unittest.TestCase):
     def test_accepts_current_command(self) -> None:
         issues = checker.lint_removed_commands(
             Path("cli/src/example.ts"),
-            'const hint = "agentsfleet install --library library_id";\n',
+            'const hint = "agentsfleet chat --library library_id --revision revision_id";\n',
         )
         self.assertEqual([], issues)
+
+    def test_rejects_every_removed_setup_command(self) -> None:
+        for removed in ("agentsfleet install --library x", "agentsfleet library create --github o/r", "agentsfleet fleet update f"):
+            issues = checker.lint_removed_commands(Path("cli/src/example.ts"), f'const hint = "{removed}";\n')
+            self.assertTrue(any("DOC-09" in issue for issue in issues), removed)
 
     def test_checks_command_line_help_descriptions(self) -> None:
         text = 'description: "A powerful command for fleets",\n'

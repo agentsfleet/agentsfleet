@@ -28,13 +28,6 @@ TS = (".ts", ".tsx")
 
 # --- The acceptance suite ----------------------------------------------------
 ACCEPTANCE = f"{APP}/tests/e2e/acceptance"
-SHARED_SEED = f"{ACCEPTANCE}/fixtures/seed.ts"
-# A spec-local bundle builder is how installs started failing with
-# UZ-BUNDLE-001: the copies drifted from the importer's required keys.
-LOCAL_BUILDER = re.compile(r"\bfunction (?:triggerMd|skillMd|emptyBodySkillMd)\b")
-# A per-run template name mints a library row per run that nothing deletes.
-INSTALL_CALL = re.compile(r"installViaUI\(\s*page,\s*(?P<template>[^,]+),")
-CONSTANT_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # Unreachable while the Clerk testing proxy holds retried requests in flight.
 NETWORK_IDLE = "networkidle"
 JOURNEYS_PROJECT = "journeys"
@@ -83,12 +76,6 @@ def check_acceptance_suite(root: Path) -> list[lib.Finding]:
     found = []
     for path in lib.source_files(root / ACCEPTANCE, (".ts",), include_tests=True):
         code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        builder = LOCAL_BUILDER.search(code)
-        if builder and lib.relative(root, path) != SHARED_SEED:
-            found.append(finding(root, path, code, builder.start(), "app-acceptance-builder", f"build bundles with {SHARED_SEED}, never a local copy"))
-        for call in INSTALL_CALL.finditer(code):
-            if not CONSTANT_NAME.match(call["template"].strip()):
-                found.append(finding(root, path, code, call.start(), "app-acceptance-template", "name the installed template with a constant; a per-run name leaks a library row"))
         at = code.find(NETWORK_IDLE)
         if at != -1:
             found.append(finding(root, path, code, at, "app-acceptance-networkidle", f"never wait for {NETWORK_IDLE}; the Clerk testing proxy keeps requests in flight"))

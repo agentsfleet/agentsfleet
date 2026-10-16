@@ -136,8 +136,7 @@
       "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
       "models": [
         { "model_id": "deepseek-flash", "context_cap_tokens": 1000000, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "DeepSeek-V4.1-Flash; the API spells it unversioned. Peak rate seeded: DeepSeek bills 01:00-04:00 and 06:00-10:00 UTC on weekdays at 2x off-peak, and the catalogue holds one rate (Indy chose peak, 2026-10-09). Verified 2026-10-09." },
-        { "model_id": "deepseek-v4-pro", "context_cap_tokens": 1000000, "input": 1.32, "cached_input": 0.044, "output": 3.96, "note": "Serves DeepSeek-V4-Pro-0813. Peak rate seeded: DeepSeek bills 01:00-04:00 and 06:00-10:00 UTC on weekdays at 2x off-peak, and the catalogue holds one rate (Indy chose peak, 2026-10-09). Verified 2026-10-09." },
-        { "model_id": "deepseek-v4-flash", "context_cap_tokens": 1000000, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "Retired 2026-09-10; DeepSeek still accepts the name, serves it with V4.1-Flash and bills it at the Flash price, so it stays priced as deepseek-flash until callers move. Verified 2026-10-09." }
+        { "model_id": "deepseek-v4-pro", "context_cap_tokens": 1000000, "input": 1.32, "cached_input": 0.044, "output": 3.96, "note": "Serves DeepSeek-V4-Pro-0813. Peak rate seeded: DeepSeek bills 01:00-04:00 and 06:00-10:00 UTC on weekdays at 2x off-peak, and the catalogue holds one rate (Indy chose peak, 2026-10-09). Verified 2026-10-09." }
       ]
     },
     "kimi": {

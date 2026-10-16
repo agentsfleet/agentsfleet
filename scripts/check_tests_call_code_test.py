@@ -24,7 +24,7 @@ SUBJECTS = {
     "deploy/baremetal/deploy.sh": "#!/usr/bin/env bash\n",
     "make/quality.mk": "lint-all:\n",
     "cli/test/fixtures/reply.json": "{}\n",
-    "tests/fixtures/fleetbundle/reviewer/SKILL.md": "---\nname: reviewer\n---\n",
+    "tests/fixtures/fleets/reviewer/definition.json": "{}\n",
     "rustd/crates/afd_auth/src/lib.rs": "pub fn f() {}\n",
 }
 
@@ -57,9 +57,9 @@ class SeededReads(unittest.TestCase):
         fixtures = {
             "cli/test/reply.unit.test.ts": 'const reply = readFileSync(join(import.meta.dir, "fixtures", "reply.json"), "utf8");\n',
             "rustd/crates/afd_fleet_runtime/tests/corpus.rs": (
-                'const CORPUS: &str = "../../../tests/fixtures/fleetbundle";\n'
+                'const CORPUS: &str = "../../../tests/fixtures/fleets";\n'
                 'let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(CORPUS);\n'
-                'let raw = std::fs::read_to_string(dir.join("reviewer/SKILL.md"));\n'
+                'let raw = std::fs::read_to_string(dir.join("reviewer/definition.json"));\n'
             ),
             "cli/test/reply_test.sh": 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\ngrep -q x "$SCRIPT_DIR/fixtures/reply.json"\n',
             "scripts/reply_test.py": 'ROOT = Path(__file__).parent\nreply = (ROOT / "fixtures" / "reply.json").read_text()\n',
