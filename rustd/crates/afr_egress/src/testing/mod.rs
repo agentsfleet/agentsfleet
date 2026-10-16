@@ -25,6 +25,8 @@ use crate::mint::{Mint, Minted};
 use crate::transport::{Inbound, Outbound, Transport};
 
 mod resolver;
+#[cfg(test)]
+mod tests;
 
 pub use self::resolver::FakeResolver;
 
@@ -222,6 +224,7 @@ pub fn inbound(status: u16, body: &str) -> Inbound {
 /// The policy a closed guard admits under: no host, no credential.
 static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
     inference: None,
+    model_context_tokens: 0,
     network_policy: NetworkPolicy {
         allow: Vec::new(),
         read_only: true,
@@ -245,19 +248,11 @@ static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPo
     },
 });
 
+/// The same refusing mint used by suites that expect no credential access.
+static CLOSED_MINT: LazyLock<CountingMint> = LazyLock::new(CountingMint::never);
+
 /// A guard that admits nothing and mints nothing.
 #[must_use]
 pub fn closed() -> Egress<'static> {
-    Egress::new("", &CLOSED, &Closed, &SystemClock)
-}
-
-/// The mint of a guard that admits nothing.
-#[derive(Debug)]
-struct Closed;
-
-#[async_trait::async_trait]
-impl Mint for Closed {
-    async fn mint(&self, _integration: &str) -> Result<Minted> {
-        Err(Error::mint_refused(MINT_REFUSED, NEVER))
-    }
+    Egress::new("", &CLOSED, &*CLOSED_MINT, &SystemClock)
 }

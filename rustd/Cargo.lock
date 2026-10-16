@@ -1134,6 +1134,7 @@ name = "afr_providers"
 version = "0.62.0"
 dependencies = [
  "afd_core",
+ "afd_identity",
  "afd_inference",
  "afd_wire",
  "afr_agent",

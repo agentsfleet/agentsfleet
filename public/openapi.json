@@ -18510,7 +18510,7 @@
           "context_cap_tokens": {
             "type": "integer",
             "format": "int32",
-            "description": "The active model's context cap in tokens, or zero when unresolved.",
+            "description": "The fleet's operating context cap, or zero when unresolved.",
             "minimum": 0
           },
           "memory_checkpoint_every": {
@@ -20548,6 +20548,12 @@
               "$ref": "#/components/schemas/Mintable"
             },
             "description": "Credentials the run may mint on demand."
+          },
+          "model_context_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Saved physical model context, independent of the fleet's operating cap.\nZero is unresolved and cannot authorize a provider connection.",
+            "minimum": 0
           },
           "network_policy": {
             "$ref": "#/components/schemas/NetworkPolicy",

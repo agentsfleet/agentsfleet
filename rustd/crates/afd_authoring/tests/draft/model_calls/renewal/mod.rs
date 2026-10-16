@@ -1,5 +1,6 @@
 //! Renewal and dispatch observe expiry after actual database lock waits.
 
+mod authorization;
 mod expiry;
 mod lock_wait;
 

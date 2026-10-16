@@ -56,6 +56,7 @@ url.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+afd_identity.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # The log capture the retry and key suites read their lines through.

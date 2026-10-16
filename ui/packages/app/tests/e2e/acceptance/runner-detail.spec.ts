@@ -184,6 +184,7 @@ test.describe("runner detail", () => {
     await agentCellFor(failedRow, fleetId).click();
     const review = page.getByRole("dialog", { name: REVIEW_LEASE_TITLE });
     await expect(review).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await review.getByRole("button", { name: "Technical details" }).click();
     await expect(review.getByText("Fencing token")).toBeVisible();
     await expect(review.getByText(failureSentenceFor(EXPECTED_FAILURE_TAG))).toBeVisible();
     await expect(review.getByText(/request_json|request payload/i)).toHaveCount(0);

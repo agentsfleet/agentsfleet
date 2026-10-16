@@ -17,7 +17,6 @@
 
 use std::fmt;
 use std::ops::ControlFlow;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use afd_wire::activity::StreamTextKind;
 use afr_telemetry::labels::{Provider as ProviderLabel, RetryReason};
@@ -36,21 +35,20 @@ use crate::provider::{Call, Chunk, End, Provider, Replay, Request, Usage};
 use crate::request;
 use crate::retry::ATTEMPTS;
 use afd_wire::inference::ModelInference;
+use afd_wire::policy::ExecutionPolicy;
 
 /// The log line a turn opened again writes.
 const EVENT_REOPENED: &str = "provider_turn_reopened";
-/// The prefix a call the provider sent without an id is given, numbered.
-const UNNAMED_CALL: &str = "call_";
 
 /// One lease's provider: a rig model and the wire it speaks.
 pub(crate) struct Turns {
     model: DynModel<Completion>,
     settings: ModelInference,
+    model_context_tokens: u32,
     context_tokens: u32,
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
-    unnamed: AtomicU64,
 }
 
 impl fmt::Debug for Turns {
@@ -68,17 +66,16 @@ impl Turns {
     pub(crate) fn new(
         model: DynModel<Completion>,
         settings: &ModelInference,
-        context_tokens: u32,
+        policy: &ExecutionPolicy<'_>,
         lease_id: &str,
-        provider: &str,
     ) -> Self {
         Self {
             model,
             settings: settings.clone(),
-            context_tokens,
+            model_context_tokens: policy.model_context_tokens,
+            context_tokens: policy.context.context_cap_tokens,
             lease_id: lease_id.into(),
-            provider: provider.into(),
-            unnamed: AtomicU64::new(0),
+            provider: policy.provider.as_ref().into(),
         }
     }
 
@@ -92,18 +89,10 @@ impl Turns {
         }
     }
 
-    /// A call to `name` with `arguments`, under a stable id when `id` is
-    /// blank.
-    fn call(&self, id: &CallId, name: String, arguments: serde_json::Value) -> Call {
-        let wire_id = id.wire();
-        let id = if wire_id.is_empty() {
-            let number = self.unnamed.fetch_add(1, Ordering::Relaxed) + 1;
-            format!("{UNNAMED_CALL}{number}")
-        } else {
-            wire_id.into_owned()
-        };
+    /// Preserve the provider's call identity or the local identity issued by rig.
+    fn call(id: &CallId, name: String, arguments: serde_json::Value) -> Call {
         Call {
-            id,
+            id: id.wire().into_owned(),
             name,
             arguments,
         }
@@ -115,10 +104,10 @@ impl Turns {
     /// The conversation cannot be sent, or rig could not start the reply.
     fn open(&self, request: &Request<'_>) -> Result<CompletionStream> {
         let built = request::request(self.settings.api, request)?;
-        let route = afd_inference::Configured::new(&self.settings, self.context_tokens)
+        let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
             .map_err(raise::configuration)?;
         let built = route
-            .bound_output(request.model, built)
+            .bound_output(request.model, built, self.context_tokens)
             .map_err(raise::configuration)?;
         self.model
             .stream(built)
@@ -211,7 +200,7 @@ impl Reading {
     /// Reads the stream's next item.
     async fn step(mut self, turns: &Turns) -> Step {
         match self.stream.next().await {
-            Some(Ok(Item::Event(event))) => match chunk(turns, event) {
+            Some(Ok(Item::Event(event))) => match chunk(event) {
                 Some(chunk) => {
                     self.shown = true;
                     Step::Break((Ok(chunk), Pass::Reading(self)))
@@ -233,7 +222,7 @@ impl Reading {
 }
 
 /// The chunk one event is, when it is one the seam carries.
-fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
+fn chunk(event: StreamEvent) -> Option<Chunk> {
     match event {
         StreamEvent::Text { text, .. } => Some(Chunk::Text {
             kind: StreamTextKind::Answer,
@@ -248,7 +237,7 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
             ..
         } => {
             let name = String::from(call.function.name);
-            Some(Chunk::Call(turns.call(
+            Some(Chunk::Call(Turns::call(
                 &call.id,
                 name,
                 call.function.invalid_arguments.map_or_else(

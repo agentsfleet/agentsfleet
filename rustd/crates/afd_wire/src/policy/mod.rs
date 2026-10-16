@@ -174,7 +174,7 @@ pub struct ContextBudget<'a> {
     /// The active model, carried through without interpretation.
     #[serde(borrow)]
     pub model: Cow<'a, str>,
-    /// The active model's context cap in tokens, or zero when unresolved.
+    /// The fleet's operating context cap, or zero when unresolved.
     pub context_cap_tokens: u32,
 }
 
@@ -199,6 +199,10 @@ pub struct ExecutionPolicy<'a> {
     /// Saved model inference settings, required for runtime provider connections.
     #[serde(default)]
     pub inference: Option<crate::inference::ModelInference>,
+    /// Saved physical model context, independent of the fleet's operating cap.
+    /// Zero is unresolved and cannot authorize a provider connection.
+    #[serde(default)]
+    pub model_context_tokens: u32,
     /// Provider credential for this run. Secret — never logged, never echoed.
     #[serde(borrow)]
     pub api_key: Cow<'a, str>,

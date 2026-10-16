@@ -17,7 +17,11 @@ async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_ou
         .execute(&mut *f.connection().await)
         .await
         .expect("unconfigure one model");
-    for purpose in [None, Some(ModelPurpose::Authoring)] {
+    for purpose in [
+        None,
+        Some(ModelPurpose::Authoring),
+        Some(ModelPurpose::Runtime),
+    ] {
         let page = f
             .drafts
             .models(

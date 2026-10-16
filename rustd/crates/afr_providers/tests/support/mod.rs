@@ -217,7 +217,7 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
         "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": request, "created_at": 1},
-        "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": tools, "secrets_map": {"github": {"token": TOKEN, "host": "api.github.com"}},
             "mintable": [], "provider": provider, "api_key": KEY, "inference_host": "",
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
