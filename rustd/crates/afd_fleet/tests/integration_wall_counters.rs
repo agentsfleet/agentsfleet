@@ -33,7 +33,6 @@ use afd_fleet::lease::envelope::Acquired;
 use sqlx::Row as _;
 
 use crate::queue;
-use crate::requests::enrolled_at;
 use crate::seed::{Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -77,7 +76,7 @@ async fn parked() -> Parked {
     let tail = hub.subscribe(&fleet_activity_channel(&fleet));
     await_subscribed(&fixtures, &fleet).await;
 
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let leases = fixtures.leases();
     let held = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
@@ -236,7 +235,7 @@ async fn a_parked_event_moves_no_budget() {
 async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(run.fixtures.enrolled_at());
 
     let again = run
         .fixtures

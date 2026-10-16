@@ -24,7 +24,6 @@ use afd_fleet::lease::Delivery;
 
 use crate::integration_admission_recovery::{admission, ledger, producer_key};
 use crate::queue;
-use crate::requests::enrolled_at;
 use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -84,7 +83,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     let cursor = Cursor::after(last.row.created_at, &last.row.event_id);
 
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(enrolled_at());
+    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
     let acquired = select_fleet_within_rotations(&leases, &runner, polled_at, &fleet)
         .await
         .expect("the fleet holding the steers is leasable");
@@ -140,7 +139,7 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         .expect("a live queue admits the webhook");
 
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(enrolled_at());
+    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
     let acquired = select_fleet_within_rotations(&leases, &runner, polled_at, &fleet)
         .await
         .expect("the fleet holding the webhook is leasable");

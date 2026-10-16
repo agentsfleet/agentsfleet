@@ -16,7 +16,7 @@ use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use super::scene::{Fleet, Scene, partition, scene};
 use super::{CMD_DEL, CMD_SET, NOT_A_HASH, RUNG_PEEK_FAILURES};
-use crate::requests::{enrolled_at, enrolment_tagged, placement_tag};
+use crate::requests::{enrolment_tagged, placement_tag};
 
 /// The partition a fresh store's cursor names first.
 const CURSOR: u16 = 0;
@@ -50,7 +50,10 @@ async fn shared_runners(scene: &Scene) -> (String, [Uuid7; 2]) {
         let enrolled = scene
             .fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(enrolled_at()))
+            .register(
+                &request,
+                UnixMillis::from_millis(scene.fixtures.enrolled_at()),
+            )
             .await
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);
@@ -68,7 +71,7 @@ async fn fleet_in(scene: &Scene, partition: Partition, tag: &str, runners: &[Uui
     let (workspace, tenant) = (fresh_id(), fresh_id());
     scene
         .fixtures
-        .seed_fleet(&id, &workspace, &tenant, tag, enrolled_at())
+        .seed_fleet(&id, &workspace, &tenant, tag, scene.fixtures.enrolled_at())
         .await;
     Fleet {
         id,

@@ -50,7 +50,6 @@ use afd_core::id::Uuid7;
 use afd_fleet::lease::Acquired;
 use sqlx::Row as _;
 
-use crate::requests::enrolled_at;
 use crate::seed::{ACTOR, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
 
@@ -172,7 +171,7 @@ async fn ready(fixtures: &Fixtures) -> Ready {
         ACTOR,
         EVENT_TYPE_CHAT,
         REQUEST_JSON,
-        enrolled_at(),
+        fixtures.enrolled_at(),
     )
     .await;
     Ready {
@@ -191,7 +190,7 @@ async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
     crate::seed::select_fleet_within_rotations(
         &fixtures.leases(),
         &ready.runner,
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
         &ready.fleet,
     )
     .await
@@ -205,7 +204,7 @@ async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> String 
         .lease_claimed(
             claimed,
             &ready.runner,
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("every gate verdict is a decision, not a fault")

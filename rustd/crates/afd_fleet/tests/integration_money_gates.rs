@@ -30,7 +30,6 @@ use afd_fleet::lease::Delivery;
 use afd_fleet::lease::admit::{Admission, Request, money_gates};
 use afd_fleet_runtime::config::FleetConfig;
 
-use crate::requests::enrolled_at;
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
 
@@ -78,19 +77,21 @@ fn budgeted(daily_nanos: &str) -> FleetConfig {
     FleetConfig::authored(&document).expect("the fixture document is authorable")
 }
 
-/// The request the pass is given, for `fleet` in `workspace`.
+/// The request the pass is given, for `fleet` in `workspace`, its event created
+/// at `created_at`.
 fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
     event: &'a str,
     config: &FleetConfig,
     delivery: Delivery,
+    created_at: UnixMillis,
 ) -> Request<'a> {
     Request {
         workspace_id: workspace,
         fleet_id: fleet,
         event_id: event,
-        event_created_at: UnixMillis::from_millis(enrolled_at()),
+        event_created_at: created_at,
         budget: config.budget(),
         posture: Posture::Platform,
         provider: PROVIDER,
@@ -128,8 +129,9 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
             "event-unowned",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a missing payer is a decision, not a fault the caller sees");
@@ -155,7 +157,13 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", enrolled_at())
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(TINY_DAILY_NANOS);
@@ -169,8 +177,9 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
             "event-over-budget",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a breached ceiling is a decision, not a fault");
@@ -195,7 +204,13 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", enrolled_at())
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(AMPLE_DAILY_NANOS);
@@ -209,8 +224,9 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
             "event-inside-budget",
             &config,
             Delivery::First,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("an admitted run is not a fault");
@@ -241,7 +257,13 @@ async fn a_redelivery_is_admitted_without_being_charged_again() {
     let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, "money-gates", enrolled_at())
+        .seed_fleet(
+            &fleet,
+            &workspace,
+            &tenant,
+            "money-gates",
+            fixtures.enrolled_at(),
+        )
         .await;
     let config = budgeted(AMPLE_DAILY_NANOS);
     let event = "event-redelivered";
@@ -255,8 +277,9 @@ async fn a_redelivery_is_admitted_without_being_charged_again() {
             event,
             &config,
             Delivery::Repeat,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         ),
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(fixtures.enrolled_at()),
     )
     .await
     .expect("a redelivery is not a fault");
@@ -297,7 +320,7 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
     .bind(format!("event-already-spent-{fleet}"))
     .bind(MODEL)
     .bind(nanos)
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the spend seeds");

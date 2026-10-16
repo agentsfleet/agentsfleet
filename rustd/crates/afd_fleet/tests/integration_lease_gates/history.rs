@@ -26,7 +26,6 @@ use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry
 use super::seed::seed_provider_resolution;
 use super::{NO_LEASE, READ_BOUND_CONFIG, set_config};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
-use crate::requests::enrolled_at as enrolled;
 use crate::seed::{ACTOR, seeded_parts};
 use crate::support::Fixtures;
 
@@ -64,7 +63,9 @@ impl Chat {
         let fixtures = Fixtures::create_with_queue().await;
         let (fleet, workspace, tenant, [runner, spare]) = seeded_parts::<2>(&fixtures).await;
         set_config(&fixtures, &fleet, READ_BOUND_CONFIG).await;
-        fixtures.seed_wallet(&tenant, DEEP_POOL, enrolled()).await;
+        fixtures
+            .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
+            .await;
         let default = seed_provider_resolution(&fixtures, &fleet).await;
         Self {
             fixtures,
@@ -199,12 +200,18 @@ impl Chat {
     }
 
     /// Asks [`FIRST_MESSAGE`], leases it and answers [`FIRST_ANSWER`]: one
-    /// finished turn, settled by `enrolled() + SLICE_MS`.
+    /// finished turn, settled by `self.fixtures.enrolled_at() + SLICE_MS`.
     async fn first_turn(&self) {
-        self.ask(EventType::Chat, FIRST_MESSAGE, enrolled()).await;
-        let first = self.lease(&self.runner, enrolled()).await;
-        self.answer(&self.runner, &first, FIRST_ANSWER, enrolled() + SLICE_MS)
+        self.ask(EventType::Chat, FIRST_MESSAGE, self.fixtures.enrolled_at())
             .await;
+        let first = self.lease(&self.runner, self.fixtures.enrolled_at()).await;
+        self.answer(
+            &self.runner,
+            &first,
+            FIRST_ANSWER,
+            self.fixtures.enrolled_at() + SLICE_MS,
+        )
+        .await;
     }
 }
 
@@ -221,10 +228,16 @@ async fn test_follow_up_lease_carries_the_previous_turn() {
     let chat = Chat::open().await;
     chat.first_turn().await;
     let asked = chat
-        .ask(EventType::Chat, FOLLOW_UP, enrolled() + SLICE_MS)
+        .ask(
+            EventType::Chat,
+            FOLLOW_UP,
+            chat.fixtures.enrolled_at() + SLICE_MS,
+        )
         .await;
 
-    let follow_up = chat.lease(&chat.runner, enrolled() + 2 * SLICE_MS).await;
+    let follow_up = chat
+        .lease(&chat.runner, chat.fixtures.enrolled_at() + 2 * SLICE_MS)
+        .await;
 
     assert_eq!(follow_up.event_id, asked);
     assert_eq!(follow_up.history, first_turn());
@@ -238,14 +251,27 @@ async fn test_follow_up_lease_carries_the_previous_turn() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_second_message_waits_for_the_first_and_carries_it() {
     let chat = Chat::open().await;
-    let asked = chat.ask(EventType::Chat, FIRST_MESSAGE, enrolled()).await;
-    let second = chat.ask(EventType::Chat, FOLLOW_UP, enrolled() + 1).await;
-
-    let first = chat.lease(&chat.runner, enrolled()).await;
-    let waiting = chat.claim(&chat.spare, enrolled() + 1).await;
-    chat.answer(&chat.runner, &first, FIRST_ANSWER, enrolled() + SLICE_MS)
+    let asked = chat
+        .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
-    let follow_up = chat.lease(&chat.spare, enrolled() + 2 * SLICE_MS).await;
+    let second = chat
+        .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.enrolled_at() + 1)
+        .await;
+
+    let first = chat.lease(&chat.runner, chat.fixtures.enrolled_at()).await;
+    let waiting = chat
+        .claim(&chat.spare, chat.fixtures.enrolled_at() + 1)
+        .await;
+    chat.answer(
+        &chat.runner,
+        &first,
+        FIRST_ANSWER,
+        chat.fixtures.enrolled_at() + SLICE_MS,
+    )
+    .await;
+    let follow_up = chat
+        .lease(&chat.spare, chat.fixtures.enrolled_at() + 2 * SLICE_MS)
+        .await;
 
     assert_eq!(first.event_id, asked);
     assert!(
@@ -266,10 +292,16 @@ async fn test_non_chat_lease_carries_no_history_through_the_plane() {
     let chat = Chat::open().await;
     chat.first_turn().await;
     let delivered = chat
-        .ask(EventType::Webhook, "a push landed", enrolled() + SLICE_MS)
+        .ask(
+            EventType::Webhook,
+            "a push landed",
+            chat.fixtures.enrolled_at() + SLICE_MS,
+        )
         .await;
 
-    let webhook = chat.lease(&chat.runner, enrolled() + 2 * SLICE_MS).await;
+    let webhook = chat
+        .lease(&chat.runner, chat.fixtures.enrolled_at() + 2 * SLICE_MS)
+        .await;
 
     assert_eq!(webhook.event_id, delivered);
     assert!(webhook.history.is_empty(), "{:?}", webhook.history);
@@ -284,7 +316,11 @@ async fn test_follow_up_lease_is_issued_when_its_thread_will_not_answer() {
     let chat = Chat::open().await;
     chat.first_turn().await;
     let asked = chat
-        .ask(EventType::Chat, FOLLOW_UP, enrolled() + SLICE_MS)
+        .ask(
+            EventType::Chat,
+            FOLLOW_UP,
+            chat.fixtures.enrolled_at() + SLICE_MS,
+        )
         .await;
     let silent = Plane {
         thread: Arc::new(History::new(unreachable_db())),
@@ -292,7 +328,11 @@ async fn test_follow_up_lease_is_issued_when_its_thread_will_not_answer() {
     };
 
     let follow_up = chat
-        .lease_through(&silent, &chat.runner, enrolled() + 2 * SLICE_MS)
+        .lease_through(
+            &silent,
+            &chat.runner,
+            chat.fixtures.enrolled_at() + 2 * SLICE_MS,
+        )
         .await;
 
     assert_eq!(follow_up.event_id, asked);
@@ -306,11 +346,19 @@ async fn test_follow_up_lease_is_issued_when_its_thread_will_not_answer() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_lease_history_stops_at_its_own_event() {
     let chat = Chat::open().await;
-    let asked = chat.ask(EventType::Chat, FIRST_MESSAGE, enrolled()).await;
-    chat.finished(FOLLOW_UP, FIRST_ANSWER, enrolled() + SLICE_MS)
+    let asked = chat
+        .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
+    chat.finished(
+        FOLLOW_UP,
+        FIRST_ANSWER,
+        chat.fixtures.enrolled_at() + SLICE_MS,
+    )
+    .await;
 
-    let leased = chat.lease(&chat.runner, enrolled() + 2 * SLICE_MS).await;
+    let leased = chat
+        .lease(&chat.runner, chat.fixtures.enrolled_at() + 2 * SLICE_MS)
+        .await;
 
     assert_eq!(leased.event_id, asked);
     assert!(leased.history.is_empty(), "{:?}", leased.history);
@@ -325,11 +373,13 @@ async fn test_lease_history_stops_at_its_own_event() {
 async fn test_runner_lease_issued_logs_queue_wait() {
     const WAITED_MS: i64 = 350;
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, FIRST_MESSAGE, enrolled()).await;
+    chat.ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+        .await;
 
     let log = afd_core::test_util::trace::Capture::install();
     let polled = std::time::Instant::now();
-    chat.lease(&chat.runner, enrolled() + WAITED_MS).await;
+    chat.lease(&chat.runner, chat.fixtures.enrolled_at() + WAITED_MS)
+        .await;
     let call_ms = i64::try_from(polled.elapsed().as_millis()).expect("a short call");
     let issued = log.only("runner_lease_issued");
     drop(log);

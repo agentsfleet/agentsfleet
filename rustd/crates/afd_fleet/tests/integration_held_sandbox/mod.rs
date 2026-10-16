@@ -37,7 +37,7 @@ use afd_runner::heartbeat::holds::prove;
 use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use sqlx::Row as _;
 
-use crate::requests::{capable, enrolled_at};
+use crate::requests::capable;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -78,7 +78,7 @@ async fn live(fixtures: &Fixtures, runner: &Uuid7) {
         capability_report: Some(capable()),
         ..beat(&[])
     };
-    beats_at(fixtures, runner, &request, enrolled_at()).await;
+    beats_at(fixtures, runner, &request, fixtures.enrolled_at()).await;
 }
 
 /// `runner` beats `request` at `now`, its holds list proved as the handler
@@ -100,7 +100,7 @@ async fn beats_at(
 /// `runner` claims `fleet`, and its report releases the slot holding the
 /// sandbox until `until`.
 async fn hold(leases: &Leases, fixtures: &Fixtures, fleet: &str, runner: &Uuid7, until: i64) {
-    let now = at(enrolled_at());
+    let now = at(fixtures.enrolled_at());
     let claimed = leases
         .claim(&id(fleet), runner, now, LEASE_TTL_MS)
         .await
@@ -134,8 +134,8 @@ async fn test_report_stores_hold_under_fencing() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = at(enrolled_at());
-    let until = enrolled_at() + SANDBOX_HOLD_IDLE_MS;
+    let now = at(fixtures.enrolled_at());
+    let until = fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS;
 
     let first = leases
         .claim(&id(&fleet), &runner, now, LEASE_TTL_MS)
@@ -154,7 +154,7 @@ async fn test_report_stores_hold_under_fencing() {
         .await
         .expect("lands");
     let stored = slot(&fixtures, &fleet).await;
-    let later = at(enrolled_at() + 1);
+    let later = at(fixtures.enrolled_at() + 1);
     let second = leases
         .claim(&id(&fleet), &runner, later, LEASE_TTL_MS)
         .await
@@ -188,12 +188,12 @@ async fn test_heartbeat_clears_dropped_holds() {
     let (kept, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let until = enrolled_at() + SANDBOX_HOLD_IDLE_MS;
+    let until = fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS;
     live(&fixtures, &runner).await;
     hold(&leases, &fixtures, &kept, &runner, until).await;
     hold(&leases, &fixtures, &dropped, &runner, until).await;
     // A full interval after the holds were reported, so the beat may clear.
-    let now = enrolled_at() + HEARTBEAT_INTERVAL_MS;
+    let now = fixtures.enrolled_at() + HEARTBEAT_INTERVAL_MS;
 
     let both = beats_at(&fixtures, &runner, &beat(&[&kept, &dropped]), now).await;
     let one = beats_at(&fixtures, &runner, &beat(&[&kept]), now).await;
@@ -217,7 +217,7 @@ async fn test_inactive_fleet_hold_destroyed() {
         &fixtures,
         &fleet,
         &runner,
-        enrolled_at() + SANDBOX_HOLD_IDLE_MS,
+        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
@@ -228,7 +228,7 @@ async fn test_inactive_fleet_hold_destroyed() {
         .await
         .expect("the owner stops the fleet");
     drop(connection);
-    let now = enrolled_at() + 1;
+    let now = fixtures.enrolled_at() + 1;
 
     let stopped = beats_at(&fixtures, &runner, &beat(&[&fleet]), now).await;
     let stranger = beats_at(&fixtures, &other, &beat(&[&foreign]), now).await;

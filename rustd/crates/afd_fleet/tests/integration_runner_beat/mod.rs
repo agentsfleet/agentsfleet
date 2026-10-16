@@ -33,7 +33,7 @@ use afd_wire::runner::{
     CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
 
-use self::requests::{ONE_BEAT_MS, capable, enrolled_at, enrolment};
+use self::requests::{ONE_BEAT_MS, capable, enrolment};
 use self::support::Fixtures;
 
 /// The first beat bumps liveness, stores the report, clears the verdict, and
@@ -45,7 +45,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -62,7 +62,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
             &enrolled.runner_id,
             &beat,
             None,
-            UnixMillis::from_millis(enrolled_at() + ONE_BEAT_MS),
+            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
         )
         .await
         .expect("a beat against a reachable datastore");
@@ -79,7 +79,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     );
     assert_eq!(
         fixtures.runner_column(&runner, "last_seen_at").await,
-        Some((enrolled_at() + ONE_BEAT_MS).to_string())
+        Some((fixtures.enrolled_at() + ONE_BEAT_MS).to_string())
     );
     assert!(
         fixtures
@@ -109,7 +109,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -122,7 +122,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
                 &enrolled.runner_id,
                 &NO_REPORT,
                 None,
-                UnixMillis::from_millis(enrolled_at() + beat * ONE_BEAT_MS),
+                UnixMillis::from_millis(fixtures.enrolled_at() + beat * ONE_BEAT_MS),
             )
             .await
             .expect("a beat must not fail");
@@ -135,7 +135,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
     );
 
     // A beat after the lapse threshold IS a transition, and gets its event.
-    let lapsed = enrolled_at() + 2 * ONE_BEAT_MS + RUNNER_OFFLINE_AFTER_MS + 1;
+    let lapsed = fixtures.enrolled_at() + 2 * ONE_BEAT_MS + RUNNER_OFFLINE_AFTER_MS + 1;
     fixtures
         .runners()
         .heartbeat(
@@ -169,7 +169,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -193,7 +193,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
             &enrolled.runner_id,
             &beat,
             None,
-            UnixMillis::from_millis(enrolled_at() + ONE_BEAT_MS),
+            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
         )
         .await
         .expect("a malformed report must not fail the beat");
@@ -212,7 +212,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     );
     assert_eq!(
         fixtures.runner_column(&runner, "last_seen_at").await,
-        Some((enrolled_at() + ONE_BEAT_MS).to_string()),
+        Some((fixtures.enrolled_at() + ONE_BEAT_MS).to_string()),
         "liveness landed anyway — that is the whole point of the leniency"
     );
 
@@ -232,7 +232,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -254,7 +254,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
     };
-    let beat_at = enrolled_at() + ONE_BEAT_MS;
+    let beat_at = fixtures.enrolled_at() + ONE_BEAT_MS;
 
     let answered = runners
         .heartbeat(

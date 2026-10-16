@@ -25,7 +25,7 @@ use crate::requests;
 use crate::seed;
 use crate::support;
 
-use self::requests::{enrolled_at, enrolment_tagged, placement_tag};
+use self::requests::{enrolment_tagged, placement_tag};
 use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, unique_ids};
 use self::support::Fixtures;
 
@@ -96,7 +96,7 @@ impl Population {
                     &self.workspace,
                     &self.tenant,
                     HOT_TAG,
-                    enrolled_at(),
+                    fixtures.enrolled_at(),
                 )
                 .await;
             index
@@ -125,7 +125,13 @@ impl Population {
             let fleet = fleet_in(&self.base, partition, 0);
             let tag = placement_tag(&fleet);
             fixtures
-                .seed_fleet(&fleet, &self.workspace, &self.tenant, &tag, enrolled_at())
+                .seed_fleet(
+                    &fleet,
+                    &self.workspace,
+                    &self.tenant,
+                    &tag,
+                    fixtures.enrolled_at(),
+                )
                 .await;
             request.labels.push(Cow::Owned(tag));
             queue::enqueue(
@@ -135,7 +141,7 @@ impl Population {
                 ACTOR,
                 EVENT_TYPE,
                 REQUEST_JSON,
-                enrolled_at(),
+                fixtures.enrolled_at(),
             )
             .await;
             index
@@ -167,13 +173,13 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
     let (expected, request) = population.seed_cold(&fixtures, &index).await;
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed")
         .runner_id;
 
     let store = fixtures.leases().with_ready_prefix(prefix);
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let mut leased = BTreeSet::new();
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = store
@@ -227,12 +233,12 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
     }
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(enrolled_at()))
+        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect("enrolment must succeed")
         .runner_id;
     fixtures
-        .make_sticky(&behind_the_ring, runner.as_str(), enrolled_at())
+        .make_sticky(&behind_the_ring, runner.as_str(), fixtures.enrolled_at())
         .await;
     let doorbell = Doorbell::new();
     doorbell.ring(rung);
@@ -240,7 +246,7 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
         .leases()
         .with_ready_prefix(prefix)
         .with_doorbell(doorbell.clone());
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let first = store
         .select(&runner, &[], now)
@@ -280,7 +286,7 @@ async fn seed_marked(
             &population.workspace,
             &population.tenant,
             &tag,
-            enrolled_at(),
+            fixtures.enrolled_at(),
         )
         .await;
     queue::enqueue(
@@ -290,7 +296,7 @@ async fn seed_marked(
         ACTOR,
         EVENT_TYPE,
         REQUEST_JSON,
-        enrolled_at(),
+        fixtures.enrolled_at(),
     )
     .await;
     index

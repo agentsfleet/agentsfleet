@@ -16,7 +16,6 @@
 )]
 
 use crate::queue;
-use crate::requests;
 use crate::seed;
 use crate::support;
 use afd_billing::{Cumulative, Meter, SliceRates};
@@ -25,7 +24,6 @@ use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL_MS, MAX_RUNTIME_MS};
 use afd_fleet::lease::{Billed, Delivery, Renewed};
 
-use self::requests::enrolled_at;
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
 
@@ -73,9 +71,9 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         ..
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     fixtures
-        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
         .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
@@ -195,9 +193,9 @@ async fn test_renew_after_reclaim_is_lost() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     fixtures
-        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
         .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
@@ -272,11 +270,11 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
         ..
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     // Funded at issue: the lease must be grantable, or this test would be
     // proving the ISSUE gate and not the renewal one.
     fixtures
-        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
         .await;
     // Priced, so the run has a floor to fail to cover. The catalogue ships
     // EMPTY and `MODEL` is a fixture spelling no admin would curate, so without
@@ -284,7 +282,7 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
     // refuse and this test asserting the wrong code for the right outcome.
     fixtures
-        .seed_model_rate(PROVIDER, MODEL, enrolled_at())
+        .seed_model_rate(PROVIDER, MODEL, fixtures.enrolled_at())
         .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
@@ -315,7 +313,9 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
 
     // The pool runs dry mid-run. Nothing about the lease changes; the gate is
     // read LIVE, which is the property this asserts.
-    fixtures.seed_wallet(&tenant, 0, enrolled_at()).await;
+    fixtures
+        .seed_wallet(&tenant, 0, fixtures.enrolled_at())
+        .await;
 
     let refusal = plane
         .renew(

@@ -18,7 +18,6 @@ use super::{
     REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
 };
 use crate::report_seed::FIXTURE_KEK_HEX;
-use crate::requests::enrolled_at;
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
 
@@ -58,7 +57,7 @@ pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -
             source_workspace_id: &workspace,
             model: MODEL,
             context_cap_tokens: CONTEXT_CAP_TOKENS,
-            created_at: enrolled_at(),
+            created_at: fixtures.enrolled_at(),
         },
     )
     .await
@@ -85,7 +84,7 @@ async fn seed_model_rate(fixtures: &Fixtures) {
     .bind(INPUT_NANOS_PER_MTOK)
     .bind(CACHED_INPUT_NANOS_PER_MTOK)
     .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the catalogue seed must run");
@@ -126,7 +125,7 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
     .bind(sealed.payload_nonce().as_slice())
     .bind(sealed.payload_ciphertext())
     .bind(sealed.payload_tag().as_slice())
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
@@ -170,7 +169,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
     .bind(format!("event-lease-gates-spent-{}", ready.fleet))
     .bind(MODEL)
     .bind(nanos)
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .bind(fixture_id())
     .execute(&mut *connection)
     .await
@@ -191,7 +190,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 ///
 /// # Two clocks
 ///
-/// The verb is driven at [`enrolled_at()`], a fixed instant in the past, but
+/// The verb is driven at [`fixtures.enrolled_at()`], a fixed instant in the past, but
 /// `record` derives the key's time-to-live from the REAL clock. A deadline in
 /// fixture time would ask for a negative lifetime. So the deadline is real-now
 /// plus an hour, which is un-lapsed under both readings.
@@ -221,7 +220,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     .bind(KIND_EVENT)
     .bind(deadline)
     .bind(status)
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .bind(&ready.event_id)
     .execute(&mut *connection)
     .await
@@ -250,7 +249,7 @@ fn fixture_id() -> String {
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host provides entropy");
-    Uuid7::encode(UnixMillis::from_millis(enrolled_at()), bytes)
+    Uuid7::encode(afd_core::clock::now(), bytes)
         .expect("a v7 identifier encodes")
         .as_str()
         .to_owned()
@@ -307,7 +306,7 @@ pub(super) async fn seed_write_gate(
     .bind(KIND_REPOSITORY_WRITE)
     .bind(deadline)
     .bind(STATUS_APPROVED)
-    .bind(enrolled_at())
+    .bind(fixtures.enrolled_at())
     .bind(&ready.event_id)
     .bind(stated_binding)
     .bind(REPOSITORY_WRITE_SPEND_CEILING)

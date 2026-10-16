@@ -23,7 +23,7 @@ use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use self::requests::{enrolled_at, enrolment_tagged, placement_tag};
+use self::requests::{enrolment_tagged, placement_tag};
 use afd_db::test_util::mint_id;
 
 use self::support::Fixtures;
@@ -75,7 +75,7 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(enrolled_at()))
+            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
             .await
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);
@@ -97,12 +97,18 @@ async fn test_lease_affinity_race() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, enrolled_at())
+        .seed_fleet(
+            &ids.fleet,
+            &ids.workspace,
+            &ids.tenant,
+            &tag,
+            fixtures.enrolled_at(),
+        )
         .await;
     let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     // Every contender claims the same slot at the same instant. Awaited
     // together rather than in sequence so the datastore, not this loop, decides
@@ -149,12 +155,18 @@ async fn test_reclaim_bumps_fence() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, enrolled_at())
+        .seed_fleet(
+            &ids.fleet,
+            &ids.workspace,
+            &ids.tenant,
+            &tag,
+            fixtures.enrolled_at(),
+        )
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let first = leases
         .claim(&fleet, &first_runner, now, LEASE_TTL_MS)
@@ -202,12 +214,18 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, enrolled_at())
+        .seed_fleet(
+            &ids.fleet,
+            &ids.workspace,
+            &ids.tenant,
+            &tag,
+            fixtures.enrolled_at(),
+        )
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let stale = leases
         .claim(&fleet, &first_runner, now, LEASE_TTL_MS)
@@ -265,12 +283,18 @@ async fn test_a_reclaiming_claim_preserves_the_meter() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, enrolled_at())
+        .seed_fleet(
+            &ids.fleet,
+            &ids.workspace,
+            &ids.tenant,
+            &tag,
+            fixtures.enrolled_at(),
+        )
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let first = leases
         .claim(&fleet, &first_runner, now, LEASE_TTL_MS)

@@ -25,7 +25,6 @@ use afd_fleet::lease::{Acquired, Leases};
 use afd_observability::test_util::Capture;
 
 use crate::queue;
-use crate::requests::enrolled_at;
 use crate::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, seeded_parts, select_within_one_rotation};
 use crate::support::Fixtures;
 
@@ -80,7 +79,7 @@ impl Scene {
             ACTOR,
             EVENT_TYPE,
             REQUEST_JSON,
-            enrolled_at(),
+            self.fixtures.enrolled_at(),
         )
         .await;
         self.index
@@ -138,7 +137,7 @@ impl Scene {
 async fn test_mark_written_during_poll_survives() {
     let capture = Capture::install();
     let scene = scene().await;
-    let mut now = enrolled_at();
+    let mut now = scene.fixtures.enrolled_at();
 
     // A drained fleet: marked, and nothing owed. The poll that finds it so
     // clears the mark, and counts the claim that found nothing.
@@ -199,7 +198,7 @@ async fn test_mark_written_during_poll_survives() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_entry_pending_elsewhere_is_delivered() {
     let scene = scene().await;
-    let now = enrolled_at();
+    let now = scene.fixtures.enrolled_at();
     let event_id = scene.send().await;
     let stranded = FleetStreams::new(scene.fixtures.queue().clone())
         .read_new(&scene.fleet, DEAD_REPLICA)
@@ -237,7 +236,7 @@ async fn test_entry_pending_elsewhere_is_delivered() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_candidates_skip_held_slots() {
     let scene = scene().await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(scene.fixtures.enrolled_at());
     let [holder, other] = &scene.runners;
     scene.send().await;
     scene

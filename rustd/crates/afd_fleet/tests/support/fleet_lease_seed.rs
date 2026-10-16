@@ -24,7 +24,7 @@ use afd_fleet::lease::{Acquired, Leases};
 use afd_runner::heartbeat::holds::prove;
 use afd_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
 
-use crate::requests::{capable, enrolled_at, enrolment_tagged, placement_tag};
+use crate::requests::{capable, enrolment_tagged, placement_tag};
 use crate::support::Fixtures;
 
 /// Distinguishes fleets created by one process, so two runs never share one.
@@ -98,7 +98,7 @@ pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
         ACTOR,
         EVENT_TYPE,
         REQUEST_JSON,
-        enrolled_at(),
+        fixtures.enrolled_at(),
     )
     .await;
     Seeded {
@@ -129,7 +129,7 @@ async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
             runner,
             &request,
             held.as_ref(),
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("the first beat lands");
@@ -148,7 +148,7 @@ pub(crate) async fn seeded_parts<const N: usize>(
     // see `Fixtures::seed_fleet` on why the assignment pass needs it.
     let tag = placement_tag(&fleet);
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, &tag, enrolled_at())
+        .seed_fleet(&fleet, &workspace, &tenant, &tag, fixtures.enrolled_at())
         .await;
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
@@ -160,7 +160,7 @@ pub(crate) async fn seeded_parts<const N: usize>(
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(enrolled_at()))
+            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
             .await
             .expect("enrolment must succeed");
         reports_capable(fixtures, &enrolled.runner_id).await;

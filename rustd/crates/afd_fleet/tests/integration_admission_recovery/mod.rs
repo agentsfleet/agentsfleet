@@ -54,7 +54,6 @@ use tokio::sync::Mutex;
 
 use crate::queue;
 use crate::report_seed::{DEEP_POOL, SLICE_MS, SLICE_NANOS, run_fee_meter};
-use crate::requests::enrolled_at;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
 
@@ -160,7 +159,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<1>(&fixtures).await;
     let streams = FleetStreams::new(fixtures.queue().clone());
     let live = ledger(&fixtures);
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     // ── Stop after the receipt: a healthy admission, so the pass below has
     // something it must leave alone.

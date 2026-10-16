@@ -11,7 +11,6 @@ use afd_dragonfly::streams::fleet_stream_key;
 
 use super::scene::{partition, scene};
 use super::{CMD_DEL, CMD_SET, NOT_A_HASH, RUNG_PEEK_FAILURES};
-use crate::requests::enrolled_at;
 
 /// The cursor's partition cannot be read, but the doorbell rang another: the
 /// rung peek serves the poll and its fleet is leased.
@@ -54,7 +53,7 @@ async fn test_both_peeks_refused_fail_the_poll() {
         .select_measured(
             &fleet.runners[0],
             &[],
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
         )
         .await;
     scene.raw(&rotation, CMD_DEL, None).await;
@@ -88,7 +87,7 @@ async fn test_a_rung_claim_that_faults_leaves_the_ring_clear() {
         .select_measured(
             &fleet.runners[0],
             &[],
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
         )
         .await;
     scene.raw(&stream, CMD_DEL, None).await;
