@@ -8,7 +8,10 @@ import copy
 import io
 import json
 import os
+from pathlib import Path
 import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -37,11 +40,42 @@ def completed_machine() -> dict:
 
 
 class DeployTests(unittest.TestCase):
+    def test_should_flush_progress_before_the_child_can_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            acknowledged = Path(temporary) / "progress-seen"
+
+            class Progress(io.StringIO):
+                def flush(self):
+                    if "release progress" in self.getvalue():
+                        acknowledged.touch()
+                    super().flush()
+
+            program = (
+                "import sys, time\nfrom pathlib import Path\n"
+                "print('release progress', flush=True)\n"
+                "deadline = time.monotonic() + 2\n"
+                "while not Path(sys.argv[1]).exists():\n"
+                " if time.monotonic() >= deadline: sys.exit(19)\n"
+                " time.sleep(0.01)\n"
+            )
+            original = subprocess.Popen
+
+            def start(_command, **options):
+                return original([sys.executable, "-c", program, str(acknowledged)], **options)
+
+            output = Progress()
+            with patch.object(deploy_fly.subprocess, "Popen", side_effect=start):
+                with patch.object(deploy_fly, "read_machine") as read, contextlib.redirect_stdout(output):
+                    self.assertEqual(deploy_fly.deploy(APP, ARGUMENTS), 0)
+            self.assertEqual(output.getvalue(), "release progress\n")
+            read.assert_not_called()
+
     def run_deploy(self, results: list, machine: object = None):
-        with patch.object(deploy_fly.subprocess, "run", side_effect=results) as run:
+        with patch.object(deploy_fly, "run_logged", side_effect=results) as run:
             with patch.object(deploy_fly, "read_machine", return_value=machine) as read:
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    code = deploy_fly.deploy(APP, ARGUMENTS)
+                with patch.object(deploy_fly.subprocess, "run", side_effect=lambda *args, **kwargs: run(*args, **kwargs)):
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        code = deploy_fly.deploy(APP, ARGUMENTS)
         return code, run, read
 
     def test_should_leave_a_successful_deploy_alone(self):
@@ -86,10 +120,22 @@ class DeployTests(unittest.TestCase):
     def test_should_stop_when_the_machine_cannot_be_verified(self):
         for error in (OSError("unreachable"), ValueError("invalid reply")):
             with self.subTest(error=type(error)), patch.object(deploy_fly, "read_machine", side_effect=error):
-                with patch.object(deploy_fly.subprocess, "run", return_value=subprocess.CompletedProcess([], 31, RACE)) as run:
-                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                        self.assertEqual(deploy_fly.deploy(APP, ARGUMENTS), 31)
+                with patch.object(deploy_fly, "run_logged", return_value=subprocess.CompletedProcess([], 31, RACE)) as run:
+                    with patch.object(deploy_fly.subprocess, "run") as retry:
+                        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                            self.assertEqual(deploy_fly.deploy(APP, ARGUMENTS), 31)
+                        retry.assert_not_called()
                     self.assertEqual(run.call_count, 1)
+
+    def test_should_keep_merged_output_and_the_child_exit_status(self):
+        program = "import sys; print('release stdout', flush=True); print('release stderr', file=sys.stderr); sys.exit(17)"
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = deploy_fly.run_logged([sys.executable, "-c", program])
+        self.assertEqual(result.returncode, 17)
+        self.assertEqual(result.stdout, output.getvalue())
+        self.assertIn("release stdout\n", result.stdout)
+        self.assertIn("release stderr\n", result.stdout)
 
 
 class ReleaseProofTests(unittest.TestCase):

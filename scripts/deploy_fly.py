@@ -80,10 +80,19 @@ def read_machine(app: str, machine: str) -> object:
         return json.load(response)
 
 
+def run_logged(command: list[str]) -> subprocess.CompletedProcess[str]:
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1) as process:
+        assert process.stdout is not None
+        output = []
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            output.append(line)
+        return subprocess.CompletedProcess(command, process.wait(), "".join(output))
+
+
 def deploy(app: str, arguments: list[str]) -> int:
     command = ["flyctl", "deploy", "--app", app, *arguments]
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
-    print(result.stdout, end="", flush=True)
+    result = run_logged(command)
     if result.returncode == 0:
         return 0
     machine = release_machine(result.stdout)
