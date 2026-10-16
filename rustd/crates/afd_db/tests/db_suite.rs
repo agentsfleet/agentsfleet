@@ -35,11 +35,9 @@ mod integration_fleet_events_tool_calls;
 mod integration_ledger_identity;
 #[path = "integration_ledger_key.rs"]
 mod integration_ledger_key;
-#[path = "integration_migrate.rs"]
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]
 mod integration_migrate_batch;
-#[path = "integration_migrate_faults.rs"]
 mod integration_migrate_faults;
 #[path = "integration_platform_default.rs"]
 mod integration_platform_default;

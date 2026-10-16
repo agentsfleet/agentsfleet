@@ -5,7 +5,7 @@
 )]
 use super::{
     CredentialName, FleetName, MAX_CREDENTIAL_LEN, MAX_NAME_LEN, REASON_CREDENTIAL_CHARSET,
-    REASON_EMPTY, REASON_NAME_CHARSET, REASON_TOO_LONG, Version,
+    REASON_EMPTY, REASON_NAME_CHARSET, REASON_TOO_LONG,
 };
 
 #[test]
@@ -61,51 +61,12 @@ fn a_credential_reference_at_the_bound_is_accepted() {
 }
 
 #[test]
-fn a_three_part_version_is_a_version() {
-    assert_eq!(
-        Version::parse("1.0.1").expect("a semver triple").as_str(),
-        "1.0.1"
-    );
-}
-
-#[test]
-fn a_zero_part_is_allowed_but_a_leading_zero_is_not() {
-    assert!(Version::parse("0.1.0").is_ok(), "`0` is a legitimate part");
-    assert!(
-        Version::parse("01.1.0").is_err(),
-        "`01` and `1` would order differently as strings"
-    );
-}
-
-#[test]
-fn a_version_of_the_wrong_arity_is_refused() {
-    assert!(Version::parse("1.0").is_err(), "two parts is not a triple");
-    assert!(
-        Version::parse("1.0.0.1").is_err(),
-        "four parts is not a triple"
-    );
-}
-
-#[test]
-fn a_prerelease_suffix_is_refused_until_a_consumer_ranks_it() {
-    assert!(Version::parse("1.0.0-alpha").is_err());
-}
-
-#[test]
-fn an_empty_part_is_refused() {
-    assert!(Version::parse("1..0").is_err());
-    assert!(Version::parse(".1.0").is_err());
-}
-
-#[test]
-fn validated_names_and_versions_display_as_authored() {
+fn validated_names_display_as_authored() {
     let fleet = FleetName::parse("reviewer").expect("fleet name is valid");
     let credential = CredentialName::parse("GITHUB_TOKEN").expect("credential name is valid");
-    let version = Version::parse("1.2.3").expect("version is valid");
 
     assert_eq!(fleet.to_string(), "reviewer");
     assert_eq!(credential.to_string(), "GITHUB_TOKEN");
-    assert_eq!(version.to_string(), "1.2.3");
 }
 
 #[test]

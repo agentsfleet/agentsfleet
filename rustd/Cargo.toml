@@ -15,10 +15,10 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_authoring", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.60.0"
+version = "0.61.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -36,6 +36,8 @@ keywords = ["agentsfleet", "daemon", "runner"]
 categories = ["network-programming"]
 
 [workspace.dependencies]
+# Exact model tokenization for the daemon authoring boundary.
+tiktoken-rs = { version = "0.12.1", default-features = false }
 percent-encoding = "2.3.2"
 # Every known secret value replaced in one pass over a tool's output, a frame
 # or a reply: leftmost-longest multi-pattern matching, rather than one scan per
@@ -57,6 +59,7 @@ afd_api_runner = { path = "crates/afd_api_runner" }
 afd_api_tenant = { path = "crates/afd_api_tenant" }
 afd_approval = { path = "crates/afd_approval" }
 afd_auth = { path = "crates/afd_auth" }
+afd_authoring = { path = "crates/afd_authoring" }
 # What a lease costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
@@ -88,8 +91,8 @@ afd_http = { path = "crates/afd_http" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
-# login modules would then rebuild behind a YAML parser and a Redis stream
-# client they never call.
+# login modules would then rebuild behind a configuration parser and a Redis
+# stream client they never call.
 afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
@@ -100,12 +103,11 @@ afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
 # What a signed delivery is resolved against. Not folded into `afd_events`,
 # which owns the same table's reads: this needs the vault and the config
-# parser, and adding them there would put AES-GCM and a YAML-shaped document
-# reader behind every history page the dashboard asks for. The same argument
+# parser, and adding them there would put AES-GCM and a configuration
+# document reader behind every history page the dashboard asks for. The same argument
 # `afd_vault` makes for not living in `afd_fleet`.
 afd_cron = { path = "crates/afd_cron" }
 afd_ingress = { path = "crates/afd_ingress" }
-afd_library = { path = "crates/afd_library" }
 # Product email: the invite rendered from templates kept in this repository and
 # sent over SMTP through the relay the `smtp-relay` platform bag names. Its own
 # crate so the transport, its TLS posture and the templates have one owner, and
@@ -213,29 +215,6 @@ garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 # so without it every sentence would spell the bound a second time.
 const_format = { version = "0.2.36", default-features = false }
 
-# The YAML frontmatter of an authored `TRIGGER.md`.
-#
-# The spec's default was a maintained `serde_yaml` fork, and the first EXECUTE
-# pass rejected every one of them — `serde_norway` last published Dec 2024,
-# `serde_yml` self-deprecated — and fell back to `saphyr-parser`, a bare
-# tokeniser, on the reasoning that any resolving crate would type scalars wrong
-# for a parity port.
-#
-# That reasoning was tested against the wrong crate and is retracted. `yaml_serde`
-# is the maintained `serde_yaml` fork under the YAML organisation itself
-# (github.com/yaml/yaml-serde), and probed against the cases the hand-rolled
-# coercion table existed to defend it agrees on all of them: `01` stays "01",
-# `0123456` stays a string, `NO` does not become false, `NaN` stays text. It
-# also gets RIGHT the one case the table got wrong — a quoted `"true"` is the
-# string, where a bare tokeniser cannot see quote style and collapsed it to a
-# boolean.
-#
-# What it costs: three spellings resolve where the table stringified them
-# (`1e5`, `0x1F`, `+1`). No document in `tests/fixtures/` uses any of them, and
-# `config_json` is written at install/patch rather than re-parsed on read, so
-# no stored configuration changes meaning. Recorded as a declared divergence.
-yaml_serde = { version = "0.10.7", default-features = false }
-
 # The command line, derived rather than hand-rolled.
 #
 # A hand-parsed `--port` loop over argv is how a daemon ends up reading
@@ -256,18 +235,11 @@ clap = { version = "4.6.6", default-features = false, features = ["std", "derive
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
-# RFC entity-tag and conditional-request parsing. The grammar includes quoted
-# commas and strong/weak comparison rules that should not be reimplemented.
-headers = { version = "0.4.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
 # stored class is built from. Already in the lock via sqlx; taken directly
 # because a hand-written `write!("{:02x}")` loop is a place for a leading zero
 # to go missing, and this workspace prefers a crate to a re-derivation.
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
-semver = { version = "1.0.28", default-features = false, features = ["std"] }
-serde_yaml_ng = { version = "0.10.0", default-features = false }
-tar = { version = "0.4.46", default-features = false }
-flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
@@ -365,9 +337,8 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 # `aws_lc_rs::signature::RsaPublicKeyComponents` has the same shape, which is
 # deliberate: AWS-LC-RS is published as a ring-compatible library.
 #
-# What changed is that the choice stopped being free. `object_store` enables
-# `aws-lc-rs` as a DEFAULT feature with no ring alternative, and reqwest 0.13
-# collapsed its TLS features so plain `rustls` forces it too. Keeping ring
+# What changed is that the choice stopped being free. reqwest 0.13 collapsed
+# its TLS features so plain `rustls` forces `aws-lc-rs`. Keeping ring
 # alongside would put TWO `CryptoProvider`s in one binary — the failure the
 # previous pin existed to avoid — so the resolution is one provider, not a
 # pin that can no longer hold.
@@ -409,14 +380,14 @@ posthog-rs = { version = "0.25.3", default-features = false, features = ["async-
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
-# The JWKS fetch, the provider capability call, and the object-store transport.
+# The JWKS fetch and the provider capability call.
 #
 # WAS PINNED TO 0.12 DELIBERATELY, and that pin is now released rather than
 # forgotten. Its reason was exact: 0.13 collapsed the TLS features so plain
 # `rustls` forces `aws-lc-rs`, which would have put a SECOND rustls provider
-# beside ring. `object_store` forces `aws-lc-rs` regardless — it is a default
-# feature there with no ring alternative — so the pin could no longer deliver
-# what it was for, and the workspace resolves to one provider instead.
+# beside ring. The JWKS verifier above and sqlx below now run on `aws-lc-rs`
+# too, so 0.12's ring path would itself be the second provider, and the
+# workspace resolves to one provider instead.
 #
 # Two properties the 0.12 features bought are GONE, and both are behaviour:
 #
@@ -477,9 +448,9 @@ httpdate = { version = "1.0.3", default-features = false }
 # sqlx reads at handshake time.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
-    # aws-lc-rs, not ring: `object_store` and reqwest 0.13 both force that
-    # provider, and two providers in one binary is the state this feature was
-    # originally pinned to prevent.
+    # aws-lc-rs, not ring: reqwest 0.13 forces that provider, and two
+    # providers in one binary is the state this feature was originally pinned
+    # to prevent.
     "tls-rustls-aws-lc-rs",
     "postgres",
 ] }
@@ -587,7 +558,7 @@ axum = { version = "0.8.9", default-features = false, features = [
 # where `RANDOM_SEED` is the compile-time constant `0x6261636b6f6e`
 # (`backon-1.6.0/src/backoff/mod.rs:18`). Every process then draws the SAME
 # "jittered" sequence, which is the reconnect storm the jitter exists to
-# prevent, silently. `keys_and_config.rs`'s spread assertion is what catches a
+# prevent, silently. `keys_and_config/mod.rs`'s spread assertion is what catches a
 # future edit that drops it again.
 backon = { version = "1.6.0", default-features = false, features = ["std", "tokio-sleep"] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
@@ -622,7 +593,7 @@ hyper-util = { version = "0.1.20", default-features = false, features = [
     "http2",
 ] }
 # The integration lane's HTTPS fakes, dev-only: rcgen issues a test CA and a
-# leaf for the upstream hosts a bundle names, and rustls serves them through
+# leaf for the upstream hosts a fleet setup names, and rustls serves them through
 # tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
 # with here, so no second crypto backend arrives.
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
@@ -633,26 +604,13 @@ tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_
 # a web framework to do it.
 http = { version = "1.5.0", default-features = false, features = ["std"] }
 
-# The Fleet Bundle store. R2 is S3-compatible, and this is the Apache Arrow
-# project's own object-store crate rather than a hand-rolled signer: one
-# authenticated GET by content hash is still SigV4, and a hand-written SigV4 is
-# the kind of security plumbing that earns a CVE for saving a dependency.
+# The byte buffer hyper and axum carry a body in, named directly by the runner
+# crates whose own types hold one, and by `afd_api`'s live tests.
 #
-# It also ships an in-memory backend, which is what the bundle-fetch tests run
-# against — no network, the same reason `afd_auth`'s directory is a trait.
-#
-# `aws` is the only cloud feature enabled; the others would link signers for
-# stores this product does not use.
-object_store = { version = "0.14.1", default-features = false, features = ["aws"] }
-
-# The byte buffer `object_store` answers a GET with, named here so the Fleet
-# Bundle store can hand one back without copying it into a `Vec` first.
-#
-# Not new surface: axum, hyper and `object_store` all already resolve it, so a
-# direct entry pins the version the lockfile carries rather than adding a
-# dependency. It is listed because `unused_crate_dependencies` makes a crate's
-# manifest a statement about what that crate actually names in its own types,
-# and `afd_fleet::bundle::Snapshot` names this one.
+# Not new surface: axum and hyper already resolve it, so a direct entry pins the
+# version the lockfile carries rather than adding a dependency. It is listed
+# because `unused_crate_dependencies` makes a crate's manifest a statement about
+# what that crate actually names in its own types.
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
 # The checksum the cluster keys slots by, for the readiness partition of a
 # fleet — the driver already compiles it in; naming it here is what lets
@@ -891,8 +849,8 @@ seccompiler = { version = "0.5.0", default-features = false }
 # The JSON-RPC 2.0 envelope the executor protocol rides — request, response,
 # notification and error object — rather than a hand-written copy of the spec.
 jsonrpsee-types = { version = "0.26.1", default-features = false }
-# Scratch directories and atomically persisted files: the report spool, the
-# bundle cache and every test that needs a real filesystem.
+# Scratch directories and atomically persisted files: the report spool and
+# every test that needs a real filesystem.
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.

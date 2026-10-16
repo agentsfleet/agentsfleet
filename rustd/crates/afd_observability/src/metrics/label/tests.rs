@@ -20,10 +20,6 @@ use crate::metrics::registry::{Policy, Registry};
 fn label_products() -> Vec<(&'static str, usize)> {
     vec![
         (
-            http::HTTP_TRACE_SUPPRESSED_TOTAL.wire_name(),
-            http_labels::TraceSuppression::ALL.len(),
-        ),
-        (
             http::OTLP_ENTRIES_DISCARDED_TOTAL.wire_name(),
             http_labels::Signal::ALL.len() * http_labels::DiscardReason::ALL.len(),
         ),
@@ -56,22 +52,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::ReplayOutcome::ALL.len(),
         ),
         (
-            fleet::REPAIR_PROVIDER_RESULTS_TOTAL.wire_name(),
-            fleet_labels::ProviderResult::ALL.len(),
-        ),
-        (
-            fleet::REPAIR_CORRELATIONS_TOTAL.wire_name(),
-            fleet_labels::Correlation::ALL.len(),
-        ),
-        (
-            fleet::REPAIR_SYNTHETIC_EVENTS_TOTAL.wire_name(),
-            fleet_labels::SyntheticEvent::ALL.len(),
-        ),
-        (
-            fleet::REPAIR_VERIFIER_RUNS_TOTAL.wire_name(),
-            fleet_labels::VerifierRun::ALL.len(),
-        ),
-        (
             fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),
@@ -90,10 +70,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
         (
             library::LIBRARY_READ_OUTCOME_TOTAL.wire_name(),
             library_labels::Surface::ALL.len() * library_labels::ReadOutcome::ALL.len(),
-        ),
-        (
-            library::LIBRARY_POOL_RESULT_TOTAL.wire_name(),
-            library_labels::PoolResult::ALL.len(),
         ),
         (
             library::LIBRARY_PAYLOAD_BYTES_TOTAL.wire_name(),
@@ -152,15 +128,10 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::cost::ChargeClass),
         set!(crate::metrics::label::cost::ErrorType),
         set!(crate::metrics::label::fleet::SignupFailure),
-        set!(crate::metrics::label::fleet::ProviderResult),
-        set!(crate::metrics::label::fleet::Correlation),
-        set!(crate::metrics::label::fleet::SyntheticEvent),
-        set!(crate::metrics::label::fleet::VerifierRun),
         set!(crate::metrics::label::fleet::HistoryCut),
         set!(crate::metrics::label::fleet::HeldClaim),
         set!(crate::metrics::label::fleet::AdmissionOutcome),
         set!(crate::metrics::label::fleet::ReplayOutcome),
-        set!(crate::metrics::label::http::TraceSuppression),
         set!(crate::metrics::label::http::Signal),
         set!(crate::metrics::label::http::DiscardReason),
         set!(crate::metrics::label::http::OmittedAttribute),
@@ -168,7 +139,6 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::library::Surface),
         set!(crate::metrics::label::library::Stage),
         set!(crate::metrics::label::library::ReadOutcome),
-        set!(crate::metrics::label::library::PoolResult),
     ]
 }
 

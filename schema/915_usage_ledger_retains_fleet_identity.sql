@@ -31,7 +31,7 @@
 --    schema/710 grants no DELETE here, so it leaves only with the tenant that
 --    paid. What survives is bounded and authored rather than observed — a
 --    64-byte lower-case kebab slug the operator typed and `FleetName::parse`
---    refused anything else from (`afd_fleet_runtime/src/name.rs`). It is the
+--    refused anything else from (`afd_fleet_runtime/src/name/mod.rs`). It is the
 --    same string `/fleets` already returns to the same authenticated reader.
 --    A charge the wallet was debited for has to say what it paid for, and a
 --    callsign alone does not answer that for the person reading the bill.

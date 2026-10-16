@@ -168,9 +168,28 @@ pub async fn shard_channels(redis: &Dragonfly, pattern: &str) -> Result<Vec<Stri
     Ok(channels)
 }
 
+/// The consumer groups one fleet's stream carries, by name.
+///
+/// `XINFO GROUPS` is a read: it creates nothing and moves no cursor, so a
+/// proof that a lost acknowledgement still left exactly one group can look
+/// without changing what it asserts.
+///
+/// # Errors
+/// Returns a command error when the stream cannot be read, including when the
+/// stream does not exist.
+pub async fn fleet_groups(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<String>> {
+    let key = redis.physical_key(&crate::streams::fleet_stream_key(fleet_id));
+    let mut cmd = redis::cmd(CMD_XINFO);
+    cmd.arg(XINFO_GROUPS).arg(&key);
+    let reply: redis::streams::StreamInfoGroupsReply = redis.command(CMD_XINFO, &key, &cmd).await?;
+    Ok(reply.groups.into_iter().map(|group| group.name).collect())
+}
+
 /// The command [`fleet_entries`] issues, and its bounds.
 const CMD_XRANGE: &str = "XRANGE";
 const RANGE_OLDEST: &str = "-";
 const RANGE_NEWEST: &str = "+";
 const CMD_PUBSUB: &str = "PUBSUB";
 const SHARD_CHANNELS: &str = "SHARDCHANNELS";
+const CMD_XINFO: &str = "XINFO";
+const XINFO_GROUPS: &str = "GROUPS";

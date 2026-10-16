@@ -47,7 +47,7 @@
 )]
 mod subscriber;
 
-#[path = "support/fake_redis.rs"]
+#[path = "support/fake_redis/mod.rs"]
 #[allow(
     clippy::expect_used,
     clippy::panic,
@@ -114,19 +114,16 @@ mod integration_cluster_prototypes;
 mod integration_cluster_readiness;
 #[path = "integration_cluster_recovery.rs"]
 mod integration_cluster_recovery;
-#[path = "integration_cluster_semantics.rs"]
 mod integration_cluster_semantics;
 #[path = "integration_hub.rs"]
 mod integration_hub;
 #[path = "integration_hub_exclusive.rs"]
 mod integration_hub_exclusive;
-#[path = "integration_namespace.rs"]
 mod integration_namespace;
 #[path = "integration_partitioned_ready.rs"]
 mod integration_partitioned_ready;
 #[path = "integration_ready.rs"]
 mod integration_ready;
-#[path = "integration_retention.rs"]
 mod integration_retention;
 #[path = "integration_session.rs"]
 mod integration_session;
@@ -134,7 +131,6 @@ mod integration_session;
 mod integration_streams;
 #[path = "integration_tls_trust.rs"]
 mod integration_tls_trust;
-#[path = "keys_and_config.rs"]
 mod keys_and_config;
 #[path = "misbehaving_server.rs"]
 mod misbehaving_server;

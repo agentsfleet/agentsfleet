@@ -19,13 +19,13 @@
 //!
 //! # Two degrades, not one
 //!
-//! A spelling this build cannot place was always a degrade. The union adds a
-//! second the flat struct could not express: a `provider_key` or
-//! `custom_endpoint` row whose `meta_provider` is NULL has a kind but not the
-//! field that kind REQUIRES — the wire union spells `provider: string`, not
-//! optional — so it degrades the same way. Both are logged at `debug` for the
-//! reason the original decision recorded: an un-backfilled row is expected on
-//! an older database, and a page of them must not be a wall of warnings.
+//! A spelling this build cannot place degrades to [`Classified::CustomSecret`].
+//! The union adds a second degrade the flat struct could not express: a
+//! `provider_key` or `custom_endpoint` row whose `meta_provider` is NULL has a
+//! kind but not the field that kind REQUIRES — the wire union spells
+//! `provider: string`, not optional — so it degrades the same way. Both are
+//! logged at `debug`: the row still lists, and a page of them must not be a
+//! wall of warnings.
 
 use crate::projection::Kind;
 
@@ -102,17 +102,12 @@ impl Classified {
         base_url: Option<String>,
     ) -> Self {
         let Some(kind) = stored.and_then(Kind::parse) else {
-            // `debug`, not `warn`: an un-backfilled row is expected on a
-            // database older than the projection columns. The stored spelling
-            // is carried so a peer daemon's vocabulary is visible when it
-            // appears, and `backfilled` tells a spelling this build cannot
-            // place apart from a row that never got one.
+            // `debug`, not `warn`: the row still lists. The stored spelling is
+            // carried so a newer daemon's vocabulary is visible when it appears.
             let spelling = stored.unwrap_or_default();
-            let backfilled = stored.is_some();
             tracing::debug!(
                 column = COLUMN_KIND,
                 stored = spelling,
-                backfilled,
                 name,
                 event = "secret_kind_degraded",
             );
@@ -204,10 +199,9 @@ mod tests {
 
     /// Every history that leaves a row unplaceable degrades the same way.
     ///
-    /// Ported from `labelled`'s suite when that function folded in here: `None`
-    /// is a row from before the projection columns; the versioned spelling is a
-    /// peer daemon's newer vocabulary; the empty string and the upper-cased
-    /// spelling are corruptions. The stored spelling is exact-match on purpose —
+    /// `None` is a row with no spelling in its nullable column; the versioned
+    /// spelling is a newer daemon's vocabulary; the empty string and the
+    /// upper-cased spelling are corruptions. The stored spelling is exact-match on purpose —
     /// a case-insensitive parse would quietly accept a value no writer of this
     /// column ever produced.
     #[test]
@@ -219,7 +213,7 @@ mod tests {
             Some("PROVIDER_KEY"),
         ] {
             assert_eq!(
-                Classified::classify(stored, "pre-backfill", None, None),
+                Classified::classify(stored, "unplaceable", None, None),
                 Classified::CustomSecret,
                 "stored {stored:?}"
             );

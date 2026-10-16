@@ -176,6 +176,28 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("930_fleet_events_actor_index.sql"),
     migration!("931_fleet_schedules_fire_at.sql"),
     migration!("932_runner_affinity_held_until.sql"),
+    // 933/934 are reserved by the independent schedule ownership workstream.
+    migration!("935_authoring_drafts.sql"),
+    migration!("936_authoring_messages.sql"),
+    migration!("937_authoring_candidates.sql"),
+    migration!("938_authoring_attempts.sql"),
+    migration!("939_authoring_dispatches.sql"),
+    migration!("940_authoring_accounting.sql"),
+    migration!("941_native_setup_revisions.sql"),
+    migration!("942_authoring_replay_receipts.sql"),
+    migration!("943_authoring_report_receipts.sql"),
+    migration!("944_runner_claim_choice.sql"),
+    migration!("945_authoring_failure_facts.sql"),
+    migration!("946_authoring_source_pins.sql"),
+    migration!("947_resumable_native_setup.sql"),
+    migration!("948_inherited_schedule_recipes.sql"),
+    migration!("949_native_platform_library.sql"),
+    migration!("950_drop_fleet_bundle_storage.sql"),
+    migration!("951_fleet_obligations_destination_required.sql"),
+    migration!("952_fleet_sessions_drop_execution.sql"),
+    migration!("953_drop_repair_storage.sql"),
+    migration!("954_drop_dead_columns.sql"),
+    migration!("955_runner_policy_required.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

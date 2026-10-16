@@ -17,6 +17,7 @@
 //! into — so the piece boot adds is the endpoint, not the design.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 
 // `unused_crate_dependencies` is a crate attribute, so it also grades the lib's
 // own test target — and fires there for a dev-dependency only the suites in
@@ -42,4 +43,4 @@ pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
 #[cfg(feature = "test-util")]
 pub use self::product::Recorded;
-pub use self::product::{Analytics, InviteEmailOutcome, Telemetry};
+pub use self::product::{Analytics, AuthoringStep, InviteEmailOutcome, Telemetry};

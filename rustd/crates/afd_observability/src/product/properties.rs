@@ -1,7 +1,7 @@
 //! What each event carries, key by key.
 //!
 //! Split from the enum beside it for length, and the cut is the natural one:
-//! `telemetry.rs` answers what the events ARE, and this answers what each one
+//! `telemetry/mod.rs` answers what the events ARE, and this answers what each one
 //! says. Both halves are the same contract with the analytics on the other end,
 //! so the property keys live here with the arms that write them rather than
 //! being named in one file and used in another.
@@ -9,7 +9,7 @@
 use posthog_rs::Event;
 use sha2::{Digest as _, Sha256};
 
-use super::Telemetry;
+use super::{AuthoringStep, Telemetry};
 
 /// The workspace an event happened in.
 const KEY_WORKSPACE_ID: &str = "workspace_id";
@@ -41,6 +41,16 @@ const KEY_INVITE_ID: &str = "invite_id";
 const KEY_ATTEMPT: &str = "attempt";
 /// The relay's SMTP reply code.
 const KEY_REPLY: &str = "reply";
+/// The private draft a funnel step is about.
+const KEY_DRAFT_ID: &str = "draft_id";
+/// The terminal state an accepted message reached.
+const KEY_STATE: &str = "state";
+/// The Library entry a publication committed to.
+const KEY_LIBRARY_ID: &str = "library_id";
+/// The revision a publication committed.
+const KEY_REVISION_ID: &str = "revision_id";
+/// Whether a publication was an entry's first or a later revision.
+const KEY_KIND: &str = "kind";
 /// `PostHog`'s own deduplication key.
 ///
 /// Not ours to rename: ingestion drops a second event carrying an `$insert_id`
@@ -195,6 +205,38 @@ impl Telemetry {
                 if let Some(reply) = outcome.reply() {
                     put(KEY_REPLY, reply.into());
                 }
+            }
+            Self::Authoring {
+                workspace_id, step, ..
+            } => {
+                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
+                step.describe(&mut put);
+            }
+        }
+    }
+}
+
+impl AuthoringStep {
+    /// The step's own keys: identifiers as text, words as written. Nothing
+    /// else is a field, so nothing else can be written.
+    fn describe(&self, put: &mut impl FnMut(&'static str, serde_json::Value)) {
+        match self {
+            Self::MessageAccepted { draft_id } => put(KEY_DRAFT_ID, draft_id.as_str().into()),
+            Self::MessageFinished { draft_id, state } => {
+                put(KEY_DRAFT_ID, draft_id.as_str().into());
+                put(KEY_STATE, (*state).into());
+            }
+            Self::SetupFinished { fleet_id } | Self::SetupCancelled { fleet_id } => {
+                put(KEY_FLEET_ID, fleet_id.as_str().into());
+            }
+            Self::LibraryPublished {
+                library_id,
+                revision_id,
+                kind,
+            } => {
+                put(KEY_LIBRARY_ID, library_id.as_str().into());
+                put(KEY_REVISION_ID, revision_id.as_str().into());
+                put(KEY_KIND, (*kind).into());
             }
         }
     }

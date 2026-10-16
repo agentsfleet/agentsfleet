@@ -2,12 +2,13 @@
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::panic,
     reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
 
 use afd_wire::activity::{ActivityAccepted, ActivityRequest};
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
-use afd_wire::lease::LeaseResponse;
+use afd_wire::lease::{LeaseResponse, TaggedLease};
 use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
 use afd_wire::report::{
     RenewRequest, RenewResponse, ReportRequest, ReportResponse, ReportTelemetry,
@@ -18,7 +19,7 @@ use serde_json::Value;
 
 /// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
 /// at several offsets and every cut must fail as a typed error.
-const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"lease_id":"lease_id","fencing_token":504,"lease_expires_at":931,"secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":426},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","bundle":{"content_hash":"content_hash"}},"retry_after_ms":34}"#;
+const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":931,"secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":426},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
 
 /// A malformed payload must produce a typed error, never a panic and never a
 /// half-built value. Truncation is the realistic shape: a connection dropped
@@ -151,7 +152,6 @@ fn test_daemon_payload_with_unknown_field_decodes() {
         "",
         "/lease",
         "/lease/event",
-        "/lease/bundle",
         "/lease/policy",
         "/lease/policy/network_policy",
         "/lease/policy/mintable/0",
@@ -167,7 +167,10 @@ fn test_daemon_payload_with_unknown_field_decodes() {
 
     let decoded = serde_json::from_slice::<LeaseResponse<'_>>(&grown).unwrap();
 
-    assert_eq!(decoded.lease.unwrap().fencing_token, 504);
+    let TaggedLease::Fleet(lease) = decoded.lease.unwrap() else {
+        panic!("the fixture grants fleet work");
+    };
+    assert_eq!(lease.fencing_token, 504);
 }
 
 /// The assigned policy, as every reply that carries it spells it, with a bind
@@ -182,19 +185,40 @@ const GROWN_POLICY: &str = r#"{"sandbox_tier":"landlock_full","network_policy":"
 /// pointers rather than a test per type that drifts as the list grows.
 #[test]
 fn test_every_runner_bound_reply_accepts_an_unknown_field() {
+    let cases = policy_carrying_replies()
+        .into_iter()
+        .chain(lease_verb_replies());
+
+    for (name, body, decodes) in cases {
+        assert!(
+            decodes(body.as_bytes()),
+            "the {name} reply refused a key it does not carry"
+        );
+    }
+}
+
+/// The two replies that carry the assigned policy, grown at both levels by
+/// [`GROWN_POLICY`] as well as at their own.
+fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
     let heartbeat = format!(
-        r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"heartbeat_interval_ms":10000,"future":1}}"#
+        r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"heartbeat_interval_ms":10000,"future":1}}"#
     );
     let own = format!(
         r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":1,"assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
     );
-    let cases: [(&str, String, Decodes); 9] = [
+    [
         ("heartbeat", heartbeat, |b| {
             serde_json::from_slice::<HeartbeatResponse<'_>>(b).is_ok()
         }),
         ("self", own, |b| {
             serde_json::from_slice::<SelfResponse<'_>>(b).is_ok()
         }),
+    ]
+}
+
+/// The replies to the verbs a runner makes while it holds a lease.
+fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
+    [
         (
             "hydrate",
             r#"{"memory":[{"key":"k","content":"c","category":"core","future":1}],"future":1}"#
@@ -227,14 +251,7 @@ fn test_every_runner_bound_reply_accepts_an_unknown_field() {
             r#"{"stored_count":1,"skipped_count":0,"future":1}"#.to_owned(),
             |b| serde_json::from_slice::<ToolCallRecordsStored>(b).is_ok(),
         ),
-    ];
-
-    for (name, body, decodes) in &cases {
-        assert!(
-            decodes(body.as_bytes()),
-            "the {name} reply refused a key it does not carry"
-        );
-    }
+    ]
 }
 
 /// What the runner WRITES stays closed: an unknown key is refused on sight,

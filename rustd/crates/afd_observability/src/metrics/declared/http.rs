@@ -38,17 +38,6 @@ pub const SSE_HUB_RECONNECTS_TOTAL: Declared<CounterKind> =
 /// 0 when the worker should be up.
 pub const WORKER_RUNNING: Declared<GaugeKind> = Declared::new("agentsfleet_worker_running");
 
-/// Span budget shedding; storms stay visible.
-///
-/// Labels: `reason`.
-pub const HTTP_TRACE_SUPPRESSED_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_http_trace_suppressed_total");
-
-/// Exporter ring fill per signal.
-///
-/// Labels: `signal`.
-pub const OTLP_QUEUE_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_otlp_queue_depth");
-
 /// Telemetry loss counted at the source.
 ///
 /// Labels: `signal,reason`.

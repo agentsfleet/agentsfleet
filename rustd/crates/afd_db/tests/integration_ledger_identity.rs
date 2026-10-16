@@ -94,9 +94,8 @@ async fn test_m201_ledger_carries_fleet_name_column() {
             .try_get::<String, _>("is_nullable")
             .expect("is_nullable decodes"),
         "YES",
-        "fleet_name must be nullable: every row written before slot 915 has no \
-         name to carry, and a charge whose fleet row was unreadable still has \
-         to be written"
+        "fleet_name must be nullable: a charge whose fleet row was unreadable \
+         is still written, with no name"
     );
     assert_eq!(
         column
@@ -132,16 +131,28 @@ async fn test_m201_upgrade_from_populated_ledger() {
         .iter()
         .position(|migration| migration.version() == LEDGER_IDENTITY)
         .expect("slot 915 is registered");
-    // `get`, not a slice index: the boundary is derived from a `position` on
-    // this same list, so it cannot be out of range — but the lane denies
-    // `clippy::indexing_slicing`, and a test that panics on a slice bound
-    // reports the panic rather than the schema fault it exists to catch.
+    apply_up_to_slot(&db, boundary).await;
+    seed_charges(&db).await;
+    apply_through_slot(&db, boundary).await;
+    assert_charges_survived(&db).await;
+
+    database.cleanup().await;
+}
+
+/// Migrates a fresh database to the slot BEFORE 915, so what follows is an
+/// upgrade rather than an install.
+///
+/// `get`, not a slice index: the boundary is derived from a `position` on this
+/// same list, so it cannot be out of range — but the lane denies
+/// `clippy::indexing_slicing`, and a test that panics on a slice bound reports
+/// the panic rather than the schema fault it exists to catch.
+async fn apply_up_to_slot(db: &afd_db::Db, boundary: usize) {
     let head = MIGRATIONS
         .get(..boundary)
         .expect("the slot's own index is within its own list");
     let applied = Migrator::new()
         .with_migrations(head)
-        .run(&db)
+        .run(db)
         .await
         .expect("the list up to slot 915 applies to a fresh database");
     assert!(
@@ -149,20 +160,22 @@ async fn test_m201_upgrade_from_populated_ledger() {
         "the pre-upgrade database must not already carry slot 915, or this \
          test seeds rows into the schema it is meant to be upgrading from"
     );
+}
 
-    seed_charges(&db).await;
-
-    // Sliced to END at 915 rather than running the whole list, so "and nothing
-    // else" keeps meaning what it says. Running to the tip asserted the same
-    // thing only while 915 happened to be the last slot: 916 landed and this
-    // read `[915, 916]`, failing a test about slot 915 for a reason that had
-    // nothing to do with slot 915.
+/// Applies slot 915 to the populated ledger, and asserts it applied nothing else.
+///
+/// Sliced to END at 915 rather than running the whole list, so "and nothing
+/// else" keeps meaning what it says. Running to the tip asserted the same thing
+/// only while 915 happened to be the last slot: 916 landed and this read
+/// `[915, 916]`, failing a test about slot 915 for a reason that had nothing to
+/// do with slot 915.
+async fn apply_through_slot(db: &afd_db::Db, boundary: usize) {
     let through = MIGRATIONS
         .get(..=boundary)
         .expect("the slot's own index is within its own list");
     let upgrade = Migrator::new()
         .with_migrations(through)
-        .run(&db)
+        .run(db)
         .await
         .expect("slot 915 applies to a populated ledger");
     assert_eq!(
@@ -170,7 +183,11 @@ async fn test_m201_upgrade_from_populated_ledger() {
         vec![LEDGER_IDENTITY],
         "the upgrade must apply slot 915 and nothing else"
     );
+}
 
+/// Asserts every seeded charge is still there, worth what it was, against the
+/// fleet it named, and carrying no fabricated name.
+async fn assert_charges_survived(db: &afd_db::Db) {
     let mut connection = db.acquire().await.expect("a pooled connection");
     let rows = sqlx::query(
         "SELECT id::text, fleet_id::text, fleet_name, credit_deducted_nanos
@@ -208,14 +225,12 @@ async fn test_m201_upgrade_from_populated_ledger() {
             row.try_get::<Option<String>, _>("fleet_name")
                 .expect("fleet_name decodes"),
             None,
-            "a row that predates the capture must read NULL — the slot \
-             deliberately does not backfill, and a fabricated name here would \
-             be indistinguishable from one the daemon actually captured"
+            "an existing charge must read NULL — the slot does not backfill, \
+             and a fabricated name here would be indistinguishable from one \
+             the daemon actually captured"
         );
     }
     drop(connection);
-
-    database.cleanup().await;
 }
 
 /// A tenant, a workspace, a live fleet, and two charges against it.
@@ -224,7 +239,31 @@ async fn test_m201_upgrade_from_populated_ledger() {
 /// still a foreign key — so the fleet row is a precondition here, not decoration.
 pub(crate) async fn seed_charges(db: &afd_db::Db) {
     let mut connection = db.acquire().await.expect("a pooled connection");
+    seed_owner(&mut connection).await;
 
+    for charge in CHARGES {
+        sqlx::query(
+            "INSERT INTO billing.usage_ledger
+               (id, tenant_id, workspace_id, fleet_id, event_id,
+                charge_type, posture, model, credit_deducted_nanos,
+                event_created_at, created_at, last_charged_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $1, 'receive',
+                     'platform', 'claude-opus-5', $5, $6, $6, $6)",
+        )
+        .bind(charge)
+        .bind(TENANT)
+        .bind(WORKSPACE)
+        .bind(FLEET)
+        .bind(CHARGED_NANOS)
+        .bind(AT)
+        .execute(&mut *connection)
+        .await
+        .expect("seeding a charge");
+    }
+}
+
+/// The tenant, workspace and live fleet every seeded charge points at.
+async fn seed_owner(connection: &mut sqlx::PgConnection) {
     sqlx::query(
         "INSERT INTO core.tenants (id, name, created_at, updated_at)
          VALUES ($1::uuid, 'fixture', $2, $2)",
@@ -247,6 +286,7 @@ pub(crate) async fn seed_charges(db: &afd_db::Db) {
     .expect("seeding a workspace");
 
     sqlx::query(
+        // Slot-era shape: `source_markdown` is NOT NULL until slot 950 drops it.
         "INSERT INTO core.fleets
            (id, workspace_id, tenant_id, name, source_markdown, config_json,
             status, created_at, updated_at)
@@ -260,24 +300,4 @@ pub(crate) async fn seed_charges(db: &afd_db::Db) {
     .execute(&mut *connection)
     .await
     .expect("seeding a fleet");
-
-    for charge in CHARGES {
-        sqlx::query(
-            "INSERT INTO billing.usage_ledger
-               (id, tenant_id, workspace_id, fleet_id, event_id,
-                charge_type, posture, model, credit_deducted_nanos,
-                event_created_at, created_at, last_charged_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $1, 'receive',
-                     'platform', 'claude-opus-5', $5, $6, $6, $6)",
-        )
-        .bind(charge)
-        .bind(TENANT)
-        .bind(WORKSPACE)
-        .bind(FLEET)
-        .bind(CHARGED_NANOS)
-        .bind(AT)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a charge");
-    }
 }

@@ -3,18 +3,30 @@
 //! Split from the type itself so [`super`] holds the vocabulary — the kinds and
 //! the code they are all read under — while this holds the ways to produce one.
 
+use afd_core::json::Unreadable;
+
 use super::{Error, ErrorKind};
 
 // Every lift is a `From`, so `?` does the conversion at the call site and no
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
-// All three carry a POSITION their own message renders — serde's line and
-// column, garde's refused path, the YAML parser's stop point — which is why
-// none of them is restated here.
+// garde's report renders the refused PATH, never the value, so it lifts as is.
 afd_core::error_lifts!(Error, ErrorKind:
-    serde_json::Error => InvalidFieldType,
     garde::Report => OutOfBounds,
-    yaml_serde::Error => FrontmatterUnreadable,
 );
+
+/// A serde refusal, lifted through [`Unreadable`].
+///
+/// Hand-written rather than generated because the lift CONVERTS: serde quotes
+/// the value it refused, and a setup sent in the wrong shape is its author's
+/// private text, so the cause keeps serde's position and expected type and
+/// drops the value before anything can render it.
+impl From<serde_json::Error> for Error {
+    fn from(source: serde_json::Error) -> Self {
+        Self::from(ErrorKind::InvalidFieldType {
+            source: Unreadable::from(source),
+        })
+    }
+}
 
 /// A required key that deserialized to `None`.
 ///
@@ -25,7 +37,7 @@ pub(crate) fn missing(field: &'static str) -> Error {
     ErrorKind::MissingRequiredField { field }.into()
 }
 
-/// The three kinds this crate lifts, each still carrying its cause.
+/// The two kinds this crate lifts, each still carrying its cause.
 ///
 /// Apart from [`one_of_each_kind`] only because that list is at its length
 /// cap. These are the kinds that are NOT transparent, so they are the ones a
@@ -35,7 +47,6 @@ fn lifted_kinds() -> Vec<(&'static str, Error)> {
     use serde::de::Error as _;
 
     let unreadable_field = serde_json::Error::custom("a string where an integer belongs");
-    let unreadable_frontmatter = yaml_serde::Error::custom("a sequence where a mapping belongs");
     let mut out_of_bounds = garde::Report::new();
     out_of_bounds.append(
         garde::Path::new("tools"),
@@ -46,7 +57,7 @@ fn lifted_kinds() -> Vec<(&'static str, Error)> {
         (
             "invalid field type",
             ErrorKind::InvalidFieldType {
-                source: unreadable_field,
+                source: Unreadable::from(unreadable_field),
             }
             .into(),
         ),
@@ -54,13 +65,6 @@ fn lifted_kinds() -> Vec<(&'static str, Error)> {
             "out of bounds",
             ErrorKind::OutOfBounds {
                 source: out_of_bounds,
-            }
-            .into(),
-        ),
-        (
-            "frontmatter unreadable",
-            ErrorKind::FrontmatterUnreadable {
-                source: unreadable_frontmatter,
             }
             .into(),
         ),
@@ -78,6 +82,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 
     let mut kinds = vec![
         ("missing required field", missing("name")),
+        (
+            "invalid definition",
+            ErrorKind::InvalidDefinition { reason: REASON }.into(),
+        ),
         (
             "runtime key outside block",
             ErrorKind::RuntimeKeyOutsideBlock {
@@ -105,14 +113,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         (
-            "invalid version",
-            ErrorKind::InvalidVersion {
-                version: "one".into(),
-                reason: REASON,
-            }
-            .into(),
-        ),
-        (
             "invalid credential ref",
             ErrorKind::InvalidCredentialRef {
                 name: "not a ref".into(),
@@ -123,7 +123,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "invalid budget",
             ErrorKind::InvalidBudget {
-                field: "budget.daily_dollars",
+                field: "budget.daily_nanos",
                 reason: REASON,
             }
             .into(),
@@ -141,17 +141,19 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             ErrorKind::InvalidTriggerSet { reason: REASON }.into(),
         ),
         (
+            "unverifiable webhook source",
+            ErrorKind::UnverifiableWebhookSource {
+                provider: "stripe".into(),
+            }
+            .into(),
+        ),
+        (
             "invalid signature config",
             ErrorKind::InvalidSignatureConfig {
                 provider: "github".into(),
                 reason: REASON,
             }
             .into(),
-        ),
-        ("frontmatter missing", ErrorKind::FrontmatterMissing.into()),
-        (
-            "duplicate key",
-            ErrorKind::DuplicateKey { key: "name".into() }.into(),
         ),
         (
             "invalid repository binding",

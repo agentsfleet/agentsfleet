@@ -1,10 +1,5 @@
 //! What one authenticated catalogue read records, stage by stage.
 //!
-//! Two of the seven families have no producer here and say so by name in
-//! `crate::metrics::produced`: the response cache is a declared non-port, so no
-//! read consults one, and the connection acquire happens inside the store where
-//! a read path cannot see how it ended.
-//!
 //! Stage timing is recorded as two counters — elapsed and observations —
 //! rather than one summary, because `rate(duration)/rate(observations)` is the
 //! mean cost of a STAGE and `sql` fires twice per registry read. Dividing by

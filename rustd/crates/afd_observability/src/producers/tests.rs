@@ -1,4 +1,4 @@
-//! Dimension 2.1 — every declared family is fed, or is excused by name.
+//! Dimension 2.1 — every declared family is fed.
 
 #![expect(
     clippy::expect_used,
@@ -12,7 +12,6 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 
 use super::{GaugeSources, Producers};
 use crate::metrics::instrument::Instruments;
-use crate::metrics::produced::UNPRODUCED;
 use crate::metrics::registry::Registry;
 use crate::semconv;
 
@@ -26,7 +25,7 @@ fn instruments() -> Instruments {
     )
 }
 
-/// Every family the contract declares is claimed by a producer, or excused.
+/// Every family the census declares is claimed by a producer.
 ///
 /// # What this proves, and what it does not
 ///
@@ -36,68 +35,23 @@ fn instruments() -> Instruments {
 /// It does not prove the producer ever fires; that belongs to each producing
 /// path's own test, and no single test could stand in for all of them.
 ///
-/// The excused set is read from the ledger rather than hard-coded here, so the
-/// two cannot drift: a family that stops being excused has to gain a producer
-/// on the same commit or this fails.
+/// A family whose mechanism this daemon does not run has no row in the
+/// census, so there is no excused set: every unclaimed family is a failure.
 #[test]
 fn every_census_family_has_a_producer() {
     let instruments = instruments();
     let _producers = Producers::claim(&instruments, &GaugeSources::silent())
         .expect("every producer names a family the census declares");
 
-    let unclaimed: BTreeSet<String> = instruments
+    let unfed: BTreeSet<String> = instruments
         .unclaimed()
         .into_iter()
         .map(|family| family.to_string())
         .collect();
-    let excused: BTreeSet<String> = UNPRODUCED.iter().map(|row| row.family.to_owned()).collect();
-
-    let unfed: Vec<&String> = unclaimed.difference(&excused).collect();
     assert!(
         unfed.is_empty(),
-        "the census declares families nothing produces and nothing excuses: {unfed:?}"
+        "the census declares families nothing produces: {unfed:?}"
     );
-
-    let over_excused: Vec<&String> = excused.difference(&unclaimed).collect();
-    assert!(
-        over_excused.is_empty(),
-        "the ledger excuses families that DO have a producer, so the excuse is \
-         stale and hides a real one: {over_excused:?}"
-    );
-}
-
-/// Every excused family is one the census still declares.
-///
-/// The other direction of the same rot: a family dropped from the contract
-/// leaves an excuse behind that reads, to anybody grepping, like a gap this
-/// daemon still has.
-#[test]
-fn every_excused_family_is_still_declared() {
-    let registry = Registry::declared().expect("the compiled-in census reads");
-    for row in UNPRODUCED {
-        assert!(
-            registry.family(row.family).is_ok(),
-            "`{}` is excused from production and the census no longer declares it",
-            row.family
-        );
-    }
-}
-
-/// Every excuse says something.
-///
-/// A blank reason is worse than no ledger: it passes the test above, prints an
-/// empty sentence at boot, and tells a reader the absence was considered when
-/// nobody wrote down what the consideration was.
-#[test]
-fn every_excuse_carries_a_reason() {
-    for row in UNPRODUCED {
-        assert!(
-            row.why.len() > 20,
-            "`{}` is excused with nothing that explains it: {:?}",
-            row.family,
-            row.why
-        );
-    }
 }
 
 /// Claiming twice over one set is not an error, and claims nothing new.

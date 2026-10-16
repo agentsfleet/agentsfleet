@@ -144,9 +144,9 @@ impl FleetStreams {
 
     /// Claims one entry stranded in a dead consumer's pending list.
     ///
-    /// Entries delivered to a consumer that no longer reads — a retired daemon
-    /// instance, a legacy per-probe consumer name — sit in that consumer's
-    /// pending list forever, because `XREADGROUP >` only ever hands out entries
+    /// Consumer names are stable per process, so entries delivered to a daemon
+    /// instance that has since exited sit in its consumer's pending list
+    /// forever, because `XREADGROUP >` only ever hands out entries
     /// nobody has seen. Nothing recovers them except claiming them away, which
     /// is what this does; the lease path's takeover then re-enters the
     /// entry into the lease flow on the next poll.

@@ -15,7 +15,8 @@
     reason = "these signatures are garde's `custom` callback contract, not this crate's choice"
 )]
 
-use super::{REASON_NOT_REPOSITORY, REASON_WHITESPACE};
+use super::{REASON_NOT_REPOSITORY, REASON_RESERVED_SOURCE, REASON_WHITESPACE};
+use crate::config::trigger::WEBHOOK_SOURCE_APPROVAL;
 
 /// Refuses an entry carrying whitespace.
 ///
@@ -25,6 +26,20 @@ use super::{REASON_NOT_REPOSITORY, REASON_WHITESPACE};
 pub(super) fn is_token(entry: &String, (): &()) -> garde::Result {
     if carries_whitespace(entry) {
         return Err(garde::Error::new(REASON_WHITESPACE));
+    }
+    Ok(())
+}
+
+/// Refuses the one webhook source name a literal route already answers.
+///
+/// A webhook's source is the last segment of the address Save hands back,
+/// `/v1/webhooks/{fleet_id}/{source}`, and `/v1/webhooks/{fleet_id}/approval`
+/// is the approval-decision route (`afd_http::route::webhook`), which the
+/// router matches first. A trigger named `approval` would be handed an address
+/// that delivers its events somewhere else.
+pub(super) fn is_not_reserved_source(source: &String, (): &()) -> garde::Result {
+    if source == WEBHOOK_SOURCE_APPROVAL {
+        return Err(garde::Error::new(REASON_RESERVED_SOURCE));
     }
     Ok(())
 }

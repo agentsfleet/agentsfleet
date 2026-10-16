@@ -48,8 +48,10 @@
 // breach the no-runtime invariant. Gated on `not(test)` because the test build
 // links dev-dependencies into this same target.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod activity;
+pub mod authoring;
 pub mod credentials;
 pub mod event;
 pub mod lease;

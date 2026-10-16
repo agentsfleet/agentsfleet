@@ -23,7 +23,6 @@ fn test_route_templates_compose_from_their_segments() {
         ("credentials_mint", paths::RUNNER_CREDENTIALS_MINT),
         ("memory", paths::RUNNER_MEMORY_FLEET),
         ("memory_recall", paths::RUNNER_MEMORY_RECALL),
-        ("bundle", paths::RUNNER_BUNDLE),
         ("activity", paths::LEASE_ACTIVITY),
         ("renew", paths::LEASE_RENEW),
         ("tool_calls", paths::LEASE_TOOL_CALLS),
@@ -48,7 +47,6 @@ fn test_route_templates_compose_from_their_segments() {
     credentials_mint /v1/runners/me/credentials/mint
     memory           /v1/runners/me/memory/{fleet_id}
     memory_recall    /v1/runners/me/memory/{fleet_id}/recall
-    bundle           /v1/runners/me/bundles/{content_hash}
     activity         /v1/runners/me/leases/{lease_id}/activity
     renew            /v1/runners/me/leases/{lease_id}/renew
     tool_calls       /v1/runners/me/leases/{lease_id}/tool-calls

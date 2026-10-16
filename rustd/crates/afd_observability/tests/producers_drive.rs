@@ -34,7 +34,7 @@ use core::time::Duration;
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use afd_observability::metrics::label::fleet::{
-    AdmissionOutcome, ReadyWake, ReplayOutcome, SignupFailure, SyntheticEvent, VerifierRun,
+    AdmissionOutcome, ReadyWake, ReplayOutcome, SignupFailure,
 };
 use afd_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -82,7 +82,6 @@ fn test_every_fleet_producer_runs_its_body() {
     install();
 
     producers::fleet::ready_depth_observed(3);
-    producers::fleet::repair_backlog_observed(7, 42);
     producers::fleet::signup_bootstrapped();
     producers::fleet::signup_replayed();
     producers::fleet::lease_polled(11, 2, 3);
@@ -122,24 +121,8 @@ fn test_every_fleet_producer_runs_its_body() {
         SignupFailure::MissingEmail,
         SignupFailure::UnverifiedEmail,
         SignupFailure::DatabaseError,
-        SignupFailure::PoolUnavailable,
-        SignupFailure::MetadataWriteback,
     ] {
         producers::fleet::signup_failed(reason);
-    }
-}
-
-/// Every repair producer fires, over both closed outcome sets.
-#[test]
-fn test_every_repair_producer_runs_its_body() {
-    install();
-
-    producers::fleet::repair::dispatch_retried();
-    for outcome in [SyntheticEvent::Emitted, SyntheticEvent::Replayed] {
-        producers::fleet::repair::event(outcome);
-    }
-    for outcome in [VerifierRun::Queued, VerifierRun::Completed] {
-        producers::fleet::repair::run(outcome);
     }
 }
 

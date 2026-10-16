@@ -34,7 +34,7 @@ pub struct RunnerItem<'a> {
     pub created_at: i64,
     /// Policy currently assigned to the host.
     #[serde(borrow)]
-    pub assigned_policy: Option<AssignedPolicy<'a>>,
+    pub assigned_policy: AssignedPolicy<'a>,
     /// Capability report most recently supplied by the host.
     #[serde(borrow)]
     pub achievable: Option<CapabilityReport<'a>>,
