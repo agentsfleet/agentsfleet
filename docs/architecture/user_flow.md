@@ -30,8 +30,8 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Trigger declarations | 0–8 entries, unique on `(type, source)`; none is a fleet woken only by messages | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
 | Cron authority | QStash (Upstash's hosted scheduler) owns the clock | Save stores the schedule intent in the same transaction; `afd_cron` mirrors it to QStash; the runner owns no timer | §8.3 |
 | Steer | always accepted | same single ingress as webhook and cron: a `core.fleet_admissions` row, then an `XADD` with `actor=steer:<user>` | §8.3 |
-| Model/cap overlay | per-field, at lease time | `config` `model: ""` / `context_cap_tokens: 0` / absent ⇒ overlay from the provider the revision's `runtime_model_ref` resolves to | §8.7 |
-| Cap resolution time | provider-set time | the lease reads the stored cap; it never calls out at trigger time | §8.7 |
+| Model identity | selected at lease time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
+| Context limits | saved physical window and separate operating cap | each lease reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
 | Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
 | Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended; shipped by M206_002 | §8.8 |
 
@@ -61,7 +61,7 @@ The dual-posture model/cap resolution diagram lives in §8.7 — it is that sect
 | Hosted-only v2 | launch claim is "open-source software (OSS) + self-managed + chat-authored", not "self-hostable"; integration burden earns v3 | §8.0.1 |
 | Browser and terminal share one draft API | one validator, one review digest, one Save; neither client has a private path | §8.1 |
 | Chat is the only authoring input | file, GitHub, and template import and Markdown export were removed by owner decision ([`decisions.md`](../reviews/workspace-setup/decisions.md) §"Chat-only authoring amendment") | §8.1 |
-| Visible sentinels (`""`, `0`) in the setup's `config` | a reviewer can spot "inherits from the selected model" at a glance; an absent key is the safety net | §8.7 |
+| Zero or absent operating cap inherits the saved window | model identity stays bound to the reviewed selection while the setup controls wrap-up | §8.7 |
 | `/credentials` page removed outright, not redirected | provider keys live on `/settings/models`; custom secrets on `/secrets` | §8.7 |
 
 ---
@@ -239,60 +239,48 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 ## §8.7 Model and context-cap origin (platform vs. self-managed)
 
-Two things travel together: the **model** the runner's fleet invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
+The draft selects a credentialed model, and Save pins its reference on the immutable revision as `runtime_model_ref`. Both platform-managed and self-managed execution resolve that reference at lease time. The selected row in `core.model_library` supplies the model identity, endpoint, API format, physical context window and maximum output length. Authored `config` model text cannot replace that selection.
 
-The setup flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json`. The draft selects a runtime model, and Save pins it on the revision as `runtime_model_ref`; the setup's `config` carries resolved-or-sentinel model/cap values.** Doctor's checks and what it leaves out are in §8.2.2 step 2. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. The CLI never reads the model library directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+The setup flow starts with `agentsfleet doctor --json` for connectivity and workspace health (§8.2.2 step 2). Model selection uses the workspace's available-model list: owner registrations with credentials and the enabled platform default. A catalogue row without saved inference settings or a matching credential is not an eligible model. `agentsfleet tenant provider show --json` describes the account's provider posture; it does not override a revision's selected model.
 
-```
-                     PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
-                  ─────────────────────────────────       ─────────────────────────────────
-setup flow     →   doctor --json (health)                  doctor --json (health)
-                    server_reachable: true  ✓              server_reachable: true  ✓
-                    workspace_selected: true ✓             workspace_selected: true ✓
-                    workspace_binding_valid: ✓             workspace_binding_valid: ✓
-                  ─ if any health check fails: print      ─ same health-fail short-circuit ─
-                    `agentsfleet login` and STOP. ─
-                  tenant provider show --json:                tenant provider show --json:
-                    {mode=platform,                           {mode=self_managed,
-                     model=accounts/fireworks/models/kimi-k3, provider=fireworks,
-                     context_cap_tokens=1048576}              model=accounts/.../kimi-k3,
-                  (billing show → balance state)                context_cap_tokens=1048576}
-                  branch on mode → write config               branch on mode → write config
-                  pin into config (resolved):                 pin into config (sentinels):
-                    model: accounts/fireworks/models/kimi-k3  model: ""
-                    context_cap_tokens: 1048576               context_cap_tokens: 0
-
-tenant provider → (nothing — synth-default                → agentsfleet tenant provider create
-                   stays in place)                            --secret account-fireworks-key
-                                                              → API loads vault row
-                                                              → API reads core.model_library
-                                                              → upsert tenant_model_selection row
-                                                                {mode=self_managed, provider, model,
-                                                                 context_cap_tokens, secret_ref}
-
-trigger fires  → lease resolve:                            → lease resolve:
-                   Providers::resolve()                       Providers::resolve()
-                     no row → synth-default                    follows secret_ref to vault
-                   config has resolved cap →                   returns mode=self_managed + cap + key
-                   use it directly.                          config sentinels overlay:
-                                                               model "" or absent → overlay
-                                                               cap 0   or absent → overlay
-
-lease render    → context_cap_tokens=1048576                  → context_cap_tokens=1048576
-                  model=accounts/fireworks/models/kimi-k3       model=accounts/.../kimi-k3
-                  api_key=<from admin workspace vault>          api_key=<fw_LIVE_…>
-
-L3 run chunking
-                → threshold = 0.75 × 1048576                  → threshold = 0.75 × 1048576
+```text
+Reviewed revision: runtime_model_ref
+                  |
+          Resolve the exact reference
+                  |
+        +---------+------------------------+
+        |                                  |
+Owner model registration           Enabled platform default
+core.tenant_model_entries          core.platform_provider_defaults
+        |                                  |
+Owner workspace vault              Admin workspace vault
+        |                                  |
+        +----------------+-----------------+
+                         |
+              Selected core.model_library row
+              model + endpoint + API format
+              physical window + maximum output
+                         |
+                  ExecutionPolicy
+                         |
+        +----------------+-----------------+
+        |                                  |
+Saved model_context_tokens         context.context_cap_tokens
+Physical request limit             Authored nonzero operating cap,
+                                   otherwise saved physical window
+        |                                  |
+Final output bounded by            Wrap-up threshold defaults to
+remaining physical headroom        0.75 x operating cap
+and saved maximum output
 ```
 
-**Overlay rule (per-field, independent, applied at lease time):** `config` `model: ""` OR the `model` key absent ⇒ overlay from the provider the revision's `runtime_model_ref` resolves to (`rustd/crates/afd_fleet/src/lease/pull/mod.rs`, `rustd/crates/afd_gate/src/policy/context.rs`). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values are respected as-is. The setup carries the *visible* sentinels (`""`, `0`) under self-managed posture so a reviewer can spot at a glance that "this fleet inherits from the selected model"; an absent key is the safety net.
+**Model identity and context limits have separate jobs.** `afd_credential::Providers::resolve_reference` loads the exact owner registration or active platform default, its saved model metadata, and its vault credential. `afd_gate` carries that metadata into `ExecutionPolicy`; its context resolver always uses the selected model (`rustd/crates/afd_credential/src/provider/{runtime/resolve,registered/sql}.rs`, `rustd/crates/afd_gate/src/policy/{build,context}.rs`). Credentials remain in the daemon and runner supervisor, outside the sandbox and browser.
 
-`x-agentsfleet.model` and `x-agentsfleet.context.*` are first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`rustd/crates/afd_wire/src/policy/mod.rs`) *before* sentinel defaults are substituted, so values the setup pins win against runtime defaults.
+An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap sets the operating threshold for wrapping up; it leaves `ExecutionPolicy.model_context_tokens` unchanged. After tools stop, the final answer can use the remaining physical headroom, bounded by the saved maximum output length (`rustd/crates/afd_inference/src/budget.rs`). The other `x-agentsfleet.context.*` knobs retain their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
 
-Caps are resolved at provider-set time, never at trigger time ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read").
+The lease reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
 
-**Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill (the dashboard read of `tenant provider show`). The secret-driven **switch-list** flips the active provider in one click. It calls the same self-managed provider-set as `tenant provider create`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Edit** replaces the credential whole via PUT (§8.3), prefilled from the projected row — provider, base URL, and model are editable, and the key is re-entered because a stored secret is never readable. The `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
+**Dashboard equivalent — the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry. The draft's model picker lists eligible configured models and selects a default. The platform administrator manages the shared catalogue and default; users manage their own registrations and credentials. Saved credentials are never returned to the browser. The former `/credentials` page remains removed; custom secrets live on `/secrets`.
 
 ## §8.8 Slack as a resident surface (Rung 0) — M106
 

@@ -23,7 +23,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Layer 3 authority | enforced | past the threshold the runner logs `context_cap_reached`, offers no more tools and asks for the answer; the fleet's prose owns the snapshot | §4 |
 | Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
 | Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
-| Cap resolution | pinned at provider-set time, read per lease | the revision's `runtime_model_ref` names the model; `""` / `0` in the setup's `config` inherit that model and its cap | §4 |
+| Cap resolution | saved catalogue window, read per lease | the revision's `runtime_model_ref` selects the model; an absent or zero operating cap inherits its physical window | §4 |
 
 ## Traps
 
@@ -108,17 +108,13 @@ Every fleet reasoning loop lives inside one run of the runner's agent loop ([`ru
 
 The block sits in the fleet's `config`:
 
-- `model` is an opaque pass-through that the control plane forwards into the lease `ExecutionPolicy` (the engine's `ContextBudget.model`). An empty string or an absent key inherits the model the revision's `runtime_model_ref` resolves to at lease time.
+- `model` is parsed as setup metadata. The revision's `runtime_model_ref` selects the execution model at lease time; authored model text cannot replace that identity.
 - `tool_window` is the rolling tool-result window size. `"auto"` and `0` are equivalent: both let the runtime pick.
 - `memory_checkpoint_every` calls `memory_store` every N tool calls.
 - `stage_chunk_threshold` is the fraction (0 to 1) of the context window at which a stage chunks.
-- `context_cap_tokens` is the active model's context window. `0` or absent inherits the resolved model's cap at lease time, the same shape as an empty `model`.
+- `context_cap_tokens` is the operating cap used for wrap-up. `0` or absent inherits the selected model's saved physical window. Authored caps leave that physical window unchanged.
 
-**Wire-shape parser status.** Both `x-agentsfleet.model` and the four
-`x-agentsfleet.context.*` knobs are parsed into `FleetConfig`, carried in the
-lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
-run. Operator overrides take effect; absent or zero fields fall through to
-the runtime defaults below, resolved per lease (`rustd/crates/afd_gate/src/policy/context.rs`).
+**Wire-shape parser status.** The four `x-agentsfleet.context.*` knobs are parsed into `FleetConfig` and applied through the lease's `ContextBudget`. Absent or zero values use the runtime defaults below. The saved model supplies execution identity and the separate `ExecutionPolicy.model_context_tokens` physical window (`rustd/crates/afd_gate/src/policy/{context,build}.rs`).
 
 ### How the three layers compose (defence-in-depth, not override)
 
@@ -163,7 +159,7 @@ The runtime ships with model-tier-aware defaults the user inherits without any c
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
 - `tool_window: auto` resolves per lease from the active model's context cap: **30** when the cap is at least one million tokens, **10** when it is at or below two hundred thousand, and **20** for every cap in between or an unknown cap (`rustd/crates/afd_gate/src/policy/context.rs`).
 
-The model's context cap is **not** baked into the runtime. Unless the setup's `config` sets one, each lease takes it from the model the revision's `runtime_model_ref` names: an owner-registered entry in `core.tenant_model_entries`, whose cap comes from the model library, or `platform-default`, read from `core.platform_provider_defaults` (`rustd/crates/afd_credential/src/provider/registered/sql.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
+Each lease reads the selected model's physical window from `core.model_library`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql.rs`, `rustd/crates/afd_gate/src/policy/build.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
 
 ### When a user does want to override (rare)
 
