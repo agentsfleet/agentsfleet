@@ -127,6 +127,6 @@ async fn nullability(db: &Db) -> String {
 fn sqlstate(error: &sqlx::Error) -> Option<String> {
     error
         .as_database_error()
-        .and_then(|database| database.code())
-        .map(|code| code.into_owned())
+        .and_then(sqlx::error::DatabaseError::code)
+        .map(std::borrow::Cow::into_owned)
 }
