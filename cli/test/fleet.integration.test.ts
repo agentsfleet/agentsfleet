@@ -9,9 +9,11 @@ import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import { FLEET } from "./chat/fixture.ts";
 import { AGENTSFLEET_STATUS } from "../src/constants/fleet-status.ts";
+import { FLEET_LIST_INVALID } from "../src/commands/fleet.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
 const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
+const IDLE_ID = "01900000-0000-7000-8000-000000c0ffef";
 const CREATE_HINT = "Create reviewed setup with: agentsfleet chat";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fleet_test" }, fn);
@@ -30,7 +32,7 @@ describe("status", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
           jsonResponse(200, {
-            items: [{ name: "big-bot", status: "active", events_processed: "9007199254740993", budget_used_nanos: "123456789012345678901234567" }],
+            items: [{ id: FLEET_ID, name: "big-bot", status: "active", events_processed: "9007199254740993", budget_used_nanos: "123456789012345678901234567" }],
           }),
       };
       await withMockApi(routes, async (apiUrl) => {
@@ -53,8 +55,8 @@ describe("status", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
           jsonResponse(200, {
             items: [
-              { name: "my-bot", status: "active", events_processed: 42, budget_used_nanos: 1_230_000_000 },
-              { name: "idle-bot", status: "stopped", events_processed: 0, budget_used_nanos: null },
+              { id: FLEET_ID, name: "my-bot", status: "active", events_processed: "42", budget_used_nanos: "1230000000" },
+              { id: IDLE_ID, name: "idle-bot", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
             ],
           }),
       };
@@ -101,29 +103,44 @@ describe("status", () => {
     });
   });
 
-  test("missing items field treated as empty list", async () => {
+  // The daemon always sends `items` and both counters as decimal strings. A body
+  // that does not is refused by name before any row renders: `BigInt("12.5")`
+  // used to throw a bare SyntaxError out of the table instead.
+  test.each([
+    ["a non-integer counter", { items: [{ id: FLEET_ID, name: "my-bot", status: "active", events_processed: "1", budget_used_nanos: "12.5" }] }],
+    ["a missing counter", { items: [{ id: FLEET_ID, name: "my-bot", status: "active", events_processed: "1" }] }],
+    ["a row without an identifier", { items: [{ name: "my-bot", status: "active", events_processed: "0", budget_used_nanos: "0" }] }],
+    ["a body without items", {}],
+  ])("%s is refused as FLEET_LIST_INVALID without a stack", async (_label, body) => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(200, {}),
+        [`GET /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(200, body),
       };
-      await withMockApi(routes, async (apiUrl) => {
+      await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
+        const err = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
-        expect(code).toBe(0);
-        const output = out.read();
-        expect(output).toContain("No fleets running");
-        expect(output).toContain(CREATE_HINT);
-        expect(output).not.toContain("install");
+        expect(code).not.toBe(0);
+        const text = `${out.read()}\n${err.read()}`;
+        expect(text).toContain(FLEET_LIST_INVALID);
+        expect(text).not.toContain("SyntaxError");
+        expect(text).not.toMatch(/^\s+at /mu);
+        expect(text).not.toContain("my-bot");
+        // Refused before the approvals inbox is read: nothing renders.
+        expect(calls.map((c) => c.path)).toEqual([`/v1/workspaces/${WS_ID}/fleets`]);
       });
     });
   });
 
   test("--json emits the raw API JSON envelope", async () => {
     await authedScope(async () => {
-      const payload = { items: [{ name: "bot-a", status: "active", events_processed: 7 }] };
+      const payload = {
+        items: [{ id: FLEET_ID, name: "bot-a", status: "active", events_processed: "7", budget_used_nanos: "0", created_at: 1 }],
+        total: null, next_cursor: null,
+      };
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(200, payload),
       };
@@ -134,8 +151,9 @@ describe("status", () => {
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
-        const parsed = JSON.parse(out.read()) as typeof payload;
-        expect(parsed.items?.[0]?.name).toBe("bot-a");
+        // The validated body is printed as the daemon sent it, keys the
+        // decoder does not read included.
+        expect(JSON.parse(out.read())).toMatchObject(payload);
       });
     });
   });
