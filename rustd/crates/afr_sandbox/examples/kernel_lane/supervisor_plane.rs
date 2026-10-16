@@ -180,5 +180,9 @@ fn lease(tools: &[&str], repository: bool, expires: i64) -> Result<Value, Failed
             base_branch: "main".into(),
         });
     }
-    Ok(serde_json::to_value(lease)?)
+    // The poll reply tags each lease with its kind, as the daemon does.
+    Ok(serde_json::to_value(afd_wire::lease::TaggedLease::<
+        '_,
+        Value,
+    >::Fleet(Box::new(lease)))?)
 }

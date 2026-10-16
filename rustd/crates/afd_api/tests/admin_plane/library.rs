@@ -9,7 +9,8 @@ const ENTRY: &str = "/v1/admin/fleet-libraries/example";
 const KEY: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const TAG: &str = "\"native-library-one\"";
 const STAGE: &str = r#"{"workspace_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02","draft_candidate_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d03","label":"Native example"}"#;
-const ENVELOPE_BYTES_MAX: usize = afd_wire::authoring::ENVELOPE_BYTES_MAX;
+/// The setup body cap the library routes parse under.
+const ENVELOPE_BYTES_MAX: usize = afd_http::handler::setup_input::SETUP_BODY_BYTES_MAX;
 
 #[tokio::test]
 async fn publication_requires_scope_and_a_replay_key_before_storage() {
