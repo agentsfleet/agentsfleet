@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { PlatformCatalogEntry } from "@/lib/types";
+import type { PlatformEntry } from "@/lib/api/platform-library-types";
 import {
   createIntentModuleLoader,
   useIntentModule,
@@ -25,10 +25,10 @@ export default function EditFleetDialogDynamic({
   onOpenChange,
   onSaved,
 }: {
-  entry: PlatformCatalogEntry;
+  entry: PlatformEntry;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: (entry: PlatformCatalogEntry) => void;
+  onSaved: (entry: PlatformEntry) => void;
 }) {
   const dialog = useIntentModule(editFleetDialogLoader);
 

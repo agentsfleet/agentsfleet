@@ -8,15 +8,15 @@ import { RunnerChecksReport } from "./RunnerChecksReport";
 
 afterEach(() => cleanup());
 
-// The report's relative stamp is a tooltip trigger (the app's root provider
-// serves it in production); the wrapper stands in for that root here.
 const renderPanel = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
+const NO_ADDITIONAL_MOUNTS = "No additional mounts.";
 
 const ASSIGNED: AssignedPolicy = {
   sandbox_tier: "landlock_full",
   network_policy: "deny_all_egress",
   registry_allowlist: [],
   worker_count: 2,
+  extra_binds: [],
 };
 
 const PASSING: SelftestReport = {
@@ -67,21 +67,6 @@ describe("RunnerChecksReport — self-test half", () => {
     expect(screen.queryByText("all checks passed")).toBeNull();
   });
 
-  it("renders a row from a daemon older than these columns instead of throwing on it", () => {
-    // The JSON round-trip drops undefined keys — the wire shape a pre-selftest
-    // daemon sends. The panel reads it as never-tested, not as a crash.
-    const older = JSON.parse(
-      JSON.stringify({
-        ...detail(),
-        selftest: undefined,
-        selftest_completed_at: undefined,
-        selftest_requested_at: undefined,
-      }),
-    ) as RunnerDetail;
-    renderPanel(<RunnerChecksReport runner={older} />);
-    expect(within(panel()).getByText(/Never checked/)).toBeTruthy();
-    expect(within(panel()).queryByText(/Invalid Date/)).toBeNull();
-  });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
     renderPanel(<RunnerChecksReport runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
@@ -98,7 +83,8 @@ describe("RunnerChecksReport — self-test half", () => {
     );
     expect(within(panel()).getByText("all checks passed")).toBeTruthy();
     expect(within(panel()).getByText("resolver file resolves inside the sandbox")).toBeTruthy();
-    expect(within(panel()).getAllByText("no fault detected")).toHaveLength(2);
+    expect(within(panel()).queryByText("no fault detected")).toBeNull();
+    expect(within(panel()).queryByRole("heading", { name: "Checks" })).toBeNull();
   });
 
   it("counts the failures rather than reporting one aggregate verdict", () => {
@@ -116,18 +102,9 @@ describe("RunnerChecksReport — self-test half", () => {
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
   });
 
-  it("checks timestamp reveals the absolute time", () => {
-    renderPanel(
-      <RunnerChecksReport
-        runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
-      />,
-    );
-    const stamp = panel().querySelector("time");
-    expect(stamp).not.toBeNull();
-    // Wired as a tooltip trigger — Radix stamps its trigger with an open-state
-    // attribute — so the absolute instant is one hover away from the relative
-    // label. `tooltip={false}` here is the regression this pins against.
-    expect(stamp?.getAttribute("data-state")).not.toBeNull();
+  it("keeps the report free of relative timestamps", () => {
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })} />);
+    expect(panel().querySelector("time")).toBeNull();
   });
 
   // Dimension 1.3 — the result is history, and the page has to say so or an
@@ -152,14 +129,9 @@ describe("RunnerChecksReport — self-test half", () => {
 });
 
 describe("RunnerChecksReport — bind half", () => {
-  it("states the baseline-only case rather than rendering an empty list", () => {
+  it("states when no additional mounts are assigned", () => {
     renderPanel(<RunnerChecksReport runner={detail()} />);
-    expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
-  });
-
-  it("reads binds as baseline-only when the runner carries no assignment at all", () => {
-    renderPanel(<RunnerChecksReport runner={detail({ assigned_policy: null })} />);
-    expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
+    expect(within(panel()).getByText(NO_ADDITIONAL_MOUNTS)).toBeTruthy();
   });
 
   it("lists each assigned path with its mode and the operator's note", () => {
@@ -178,20 +150,21 @@ describe("RunnerChecksReport — bind half", () => {
     expect(within(panel()).getByText("gpu weights")).toBeTruthy();
   });
 
-  it("defaults an entry that names no mode to read-only", () => {
+  it("labels a read-only mount and shows no note when the note is blank", () => {
     renderPanel(
       <RunnerChecksReport
-        runner={detail({ assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/models" }] } })}
+        runner={detail({ assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/models", mode: "read_only", note: "" }] } })}
       />,
     );
     expect(within(panel()).getByText("read-only")).toBeTruthy();
+    expect(within(panel()).getByText("/srv/models").parentElement?.textContent).toBe("/srv/modelsread-only");
   });
 
   it("marks a writable mount — it widens the isolation boundary for every lease", () => {
     renderPanel(
       <RunnerChecksReport
         runner={detail({
-          assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/cache", mode: "read_write" }] },
+          assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/cache", mode: "read_write", note: "" }] },
         })}
       />,
     );

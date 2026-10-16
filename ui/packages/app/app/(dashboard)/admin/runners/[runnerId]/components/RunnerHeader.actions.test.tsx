@@ -14,20 +14,21 @@ vi.mock("next/navigation", () => ({
 // the dialog's own behaviour is covered in EditPolicyDialog.test.tsx.
 vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () => {
   const { Button } = await import("@agentsfleet/design-system");
+  const { EDIT_POLICY_LABEL } = await import("../../components/RunnerListCells");
   return {
     default: ({ onSaved }: { onSaved: () => void }) => (
-      <Button onClick={onSaved}>Edit policy</Button>
+      <Button onClick={onSaved}>{EDIT_POLICY_LABEL}</Button>
     ),
   };
 });
 
 const updateRunnerAdminStateActionMock = vi.fn();
-const updateRunnerPolicyActionMock = vi.fn();
+const updateRunnerActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
 const requestRunnerSelftestActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: (...args: unknown[]) => updateRunnerAdminStateActionMock(...args),
-  updateRunnerPolicyAction: (...args: unknown[]) => updateRunnerPolicyActionMock(...args),
+  updateRunnerAction: (...args: unknown[]) => updateRunnerActionMock(...args),
   deleteRunnerAction: (...args: unknown[]) => deleteRunnerActionMock(...args),
   requestRunnerSelftestAction: (...args: unknown[]) => requestRunnerSelftestActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
@@ -56,7 +57,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     labels: ["gpu", "prod"],
     last_seen_at: Date.now(),
     created_at: Date.now(),
-    assigned_policy: null,
+    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
     degraded_reason: null,
@@ -78,6 +79,15 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 // the length cap.
 
 describe("RunnerHeader — admin actions", () => {
+  it("retains the revoke dialog when its request throws and reconciles the server state", async () => {
+    updateRunnerAdminStateActionMock.mockRejectedValueOnce(new Error("private-transport-error"));
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: "Revoke"}));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Revoke"}));
+    await waitFor(() => expect(within(screen.getByRole("alertdialog")).getByRole("alert").textContent).toContain("Try again"));
+    expect(screen.getByRole("alertdialog").textContent).not.toContain("private-transport-error");
+    expect(refresh).toHaveBeenCalledOnce();
+  });
   it("should close the confirm and refresh when an admin action succeeds", async () => {
     // Revoke carries the case: it is the one confirm-backed action still
     // operable (cordon and drain render disabled until their verbs land).

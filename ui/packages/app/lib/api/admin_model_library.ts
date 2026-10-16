@@ -2,7 +2,7 @@
 // Distinct from model_library.ts (the tenant-facing catalogue reader): these
 // routes are platform-admin-gated and mutate core.model_library / core.platform_provider_defaults.
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
-// .../admin/platform_keys.rs.
+// .../admin/platform_keys/mod.rs.
 
 import { request } from "./client";
 

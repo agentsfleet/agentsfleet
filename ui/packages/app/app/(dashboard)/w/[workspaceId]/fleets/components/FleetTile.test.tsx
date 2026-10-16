@@ -39,8 +39,8 @@ function fleet(over: Partial<Fleet> = {}): Fleet {
     status: "active",
     created_at: 0,
     updated_at: 0,
-    budget_used_nanos: 1_200_000_000,
-    events_processed: 7,
+    budget_used_nanos: 1_200_000_000n,
+    events_processed: 7n,
     ...over,
   };
 }
@@ -85,7 +85,7 @@ describe("FleetTile kinds", () => {
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
     expect(container.querySelector('[data-fleet-sigil][data-live="true"]')).not.toBeNull();
     expect(getByText(FLEET_WAITING_COPY)).toBeTruthy();
-    expect(getByText(MANAGE_FLEET_LABEL, { exact: false })).toBeTruthy();
+    expect(getByText("Open →")).toBeTruthy();
     expect(
       getByRole("link", { name: /manage fleet: alpha — agent [a-z]+-[0-9a-f]{4} — active/i }),
     ).toBeTruthy();
@@ -267,17 +267,15 @@ describe("FleetTile kinds", () => {
     expect(getByText("events").textContent).toBe("9 events");
   });
 
-  it("a fleet the daemon sent no aggregates for renders dashes, not $0.00", () => {
+  it("a fresh exact REST count wins over a retained stream snapshot", () => {
     streamMock.mockReturnValue({
-      feed: undefined,
-      connectionStatus: CONNECTION_STATUS.LIVE,
-      helloReceived: true,
-      isLive: true,
-      catchingUp: false,
+      feed: undefined, connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true, isLive: true, catchingUp: false,
+      counters: { eventsProcessed: 9, spentNanos: 2_000_000_000 },
     });
-    const { getByText } = renderTile(fleet({ budget_used_nanos: undefined, events_processed: undefined }));
-    expect(getByText("spent").textContent).toBe("— spent");
-    expect(getByText("events").textContent).toBe("— events");
+    const { getByText } = renderTile(fleet({ budget_used_nanos: 9007199254740993n, events_processed: 9007199254740993n }));
+    expect(getByText("spent").textContent).toBe("$9007199.25 spent");
+    expect(getByText("events").textContent).toBe("9007199254740993 events");
   });
 
   it("a tile absent from the server hello set renders snapshot, not live", () => {
@@ -294,7 +292,7 @@ describe("FleetTile kinds", () => {
     expect(container.querySelector('[data-live="true"]')).toBeNull();
   });
 
-  it("leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer", () => {
+  it("leads with the fleet name and keeps the agent identity secondary", () => {
     streamMock.mockReturnValue({
       feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -307,7 +305,7 @@ describe("FleetTile kinds", () => {
     expect(agent?.textContent).toBe(agentDisplayName("flt_1"));
     expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Active");
     // The status sits on the agent's own line, and the activity is the next.
-    expect(agent?.parentElement?.contains(container.querySelector("[data-fleet-status]"))).toBe(true);
+    expect((container.querySelector("[data-fleet-name]")?.compareDocumentPosition(agent!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelector("[data-tile-activity]")?.textContent).toBe(FLEET_WAITING_COPY);
     expect(container.querySelector("[data-fleet-name]")?.textContent).toBe("alpha");
     expect(container.textContent).not.toContain("Runs in a loop");

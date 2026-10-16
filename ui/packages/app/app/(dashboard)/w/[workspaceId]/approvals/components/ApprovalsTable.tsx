@@ -178,7 +178,7 @@ function buildColumns({
 }): DataTableColumn<ApprovalGate>[] {
   return [
     {
-      key: "fleet",
+      key: "fleet", primary: true,
       header: FLEET_COLUMN_HEADER,
       sortValue: (g) => agentDisplayName(g.fleet_id),
       cell: (g) => <FleetCell gate={g} workspaceId={workspaceId} />,

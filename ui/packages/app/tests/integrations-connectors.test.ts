@@ -22,6 +22,7 @@ vi.mock("lucide-react", () => {
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
   return {
+    SearchIcon: make("SearchIcon"),
     BookOpenIcon: make("BookOpenIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
@@ -248,8 +249,8 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it.each([
-    [new Error("connect threw"), "connect threw"],
-    ["non-error connect failure", "Connection failed"],
+    [new Error("connect threw"), "Couldn't connect GitHub. Try again, or check Events for what blocked it."],
+    ["non-error connect failure", "Couldn't connect GitHub. Try again, or check Events for what blocked it."],
   ])("surfaces a thrown connect failure %#", async (cause, message) => {
     startConnectActionMock.mockRejectedValue(cause);
     renderConnectors([GITHUB]);
@@ -286,8 +287,8 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it.each([
-    [new Error("disconnect threw"), "disconnect threw"],
-    ["non-error disconnect failure", "Disconnect failed"],
+    [new Error("disconnect threw"), "Couldn't disconnect GitHub. Try again, or check Events for what blocked it."],
+    ["non-error disconnect failure", "Couldn't disconnect GitHub. Try again, or check Events for what blocked it."],
   ])("surfaces a thrown disconnect failure %#", async (cause, message) => {
     disconnectConnectorActionMock.mockRejectedValue(cause);
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
@@ -307,4 +308,25 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     const link = within(jira).getByRole("link", { name: /setup guide/i });
     expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
   });
+});
+
+it("searches integrations locally and clears an unmatched query", async () => {
+  renderConnectors([GITHUB, SLACK]);
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search integrations"}), {target: {value: "sLaCk"}});
+  await waitFor(() => expect(screen.queryByTestId("integration-github")).toBeNull());
+  expect(screen.getByRole("button", {name: "Connect Slack"}).textContent).toContain("Connect");
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search integrations"}), {target: {value: "No matching connector"}});
+  await screen.findByText("No matching integrations");
+  expect(screen.queryByRole("button", {name: "Connect Slack"})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
+  await screen.findByRole("button", {name: "Connect GitHub"});
+  expect(startConnectActionMock).not.toHaveBeenCalled();
+  expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+});
+
+it("offers a real retry after the connector catalogue fails", () => {
+  renderConnectors([]);
+  const before = routerRefresh.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+  expect(routerRefresh).toHaveBeenCalledTimes(before + 1);
 });

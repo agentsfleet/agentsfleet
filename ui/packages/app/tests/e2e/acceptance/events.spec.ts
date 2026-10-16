@@ -1,7 +1,7 @@
 /**
  * events.spec.ts — workspace events page renders for an authenticated user.
  *
- * Spec called for "trigger via POST /v1/webhooks/{fleet_id} → poll /events
+ * Spec called for "trigger via POST /v1/webhooks/{fleet_id}/{source} → poll /events
  * → row appears". The webhook handler requires:
  *   - a workspace credential keyed by `trigger.source` so HMAC verification
  *     can resolve a secret;

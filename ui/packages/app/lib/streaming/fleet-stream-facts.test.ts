@@ -57,7 +57,7 @@ describe("factsOf", () => {
   });
 
   it("every other frame carries no fleet fact", () => {
-    expect(factsOf({ kind: FRAME_KIND.CHUNK, event_id: "e", text: "hi" })).toEqual({});
+    expect(factsOf({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "e", text: "hi" })).toEqual({});
     expect(factsOf({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e", actor: "fleet" })).toEqual({});
     expect(factsOf({ kind: FRAME_KIND.HELLO, fleet_ids: [] })).toEqual({});
   });

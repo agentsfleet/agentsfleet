@@ -1,102 +1,14 @@
-"use client";
-
-import { useRef, useState } from "react";
-import {
-  PageHeader,
-  PageLayout,
-  PageTitle,
-  Section,
-  SectionHeader,
-  TooltipButton,
-} from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
-import type { PlatformCatalogEntry } from "@/lib/types";
-import {
-  default as AddFleetDialogDynamic,
-  preloadAddFleetDialog,
-} from "@/components/domain/island-dynamic/AddFleetDialogDynamic";
-import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
-import {
-  ADD_TOOLTIP,
-  CREATE_FLEET_LIBRARY,
-  FLEET_CATALOG_SECTION,
-  FLEET_LIBRARIES_DESCRIPTION,
-  FLEET_LIBRARY_TITLE,
-} from "../library-copy";
+import type { PlatformEntry } from "@/lib/api/platform-library-types";
+import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import { FLEET_CATALOG_SECTION, FLEET_LIBRARIES_DESCRIPTION, FLEET_LIBRARY_TITLE } from "../library-copy";
 import PlatformCatalogTable from "./PlatformCatalogTable";
 
-// The catalog IS the page. Every write revalidates it, so an operator never has to
-// guess whether the thing they just did took — which is what the previous
-// session-scoped result card could not tell them.
-export default function FleetLibrariesView({ entries }: { entries: PlatformCatalogEntry[] }) {
-  const [adding, setAdding] = useState(false);
-  const dialogOpenerRef = useRef<Element | null>(null);
-  // Set when the dialog was opened from a row's Fetch action, so the operator
-  // never retypes a repository the table is already showing them.
-  const [prefillRepo, setPrefillRepo] = useState<string | undefined>(undefined);
-  // The stored ref rides along so a PATCH-pinned branch/tag is what the refetch
-  // actually fetches — not silently the default branch.
-  const [prefillRef, setPrefillRef] = useState<string | undefined>(undefined);
-
-  function openAdd() {
-    dialogOpenerRef.current = document.activeElement;
-    setPrefillRepo(undefined);
-    setPrefillRef(undefined);
-    setAdding(true);
-  }
-
-  function openFetch(entry: PlatformCatalogEntry) {
-    dialogOpenerRef.current = document.activeElement;
-    setPrefillRepo(entry.source_repo);
-    setPrefillRef(entry.source_ref);
-    setAdding(true);
-  }
-
-  return (
-    <PageLayout fullHeight className="h-full overflow-hidden">
-      <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}>
-        <PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle>
-      </PageHeader>
-
-      <Section aria-label="Platform fleet catalog" className="flex min-h-0 flex-col gap-xl">
-        <SectionHeader
-          as="p"
-          actions={
-            <TooltipButton
-              type="button"
-              size="sm"
-              tooltip={ADD_TOOLTIP}
-              onFocus={preloadAddFleetDialog}
-              onPointerEnter={(event) => {
-                const mayPreload = maySpeculateOnHover();
-                event.currentTarget.dataset.intentHover = mayPreload
-                  ? "requested"
-                  : "suppressed";
-                if (mayPreload) preloadAddFleetDialog();
-              }}
-              onClick={openAdd}
-            >
-              <PlusIcon size={14} />
-              {CREATE_FLEET_LIBRARY}
-            </TooltipButton>
-          }
-        >
-          {FLEET_CATALOG_SECTION}
-        </SectionHeader>
-
-        <PlatformCatalogTable entries={entries} onFetch={openFetch} />
-
-        <AddFleetDialogDynamic
-          restoreFocus={() => {
-            const opener = dialogOpenerRef.current;
-            if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-          }}
-          open={adding}
-          onOpenChange={setAdding}
-          prefillRepo={prefillRepo}
-          prefillRef={prefillRef}
-        />
-      </Section>
-    </PageLayout>
-  );
+export default function FleetLibrariesView({entries}: {entries: PlatformEntry[]}) {
+  return <PageLayout fullHeight className="h-full overflow-hidden">
+    <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}><PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle></PageHeader>
+    <Section aria-label="Platform fleet catalog" className="flex min-h-0 flex-col gap-xl">
+      <SectionHeader as="p">{FLEET_CATALOG_SECTION}</SectionHeader>
+      <PlatformCatalogTable entries={entries} />
+    </Section>
+  </PageLayout>;
 }

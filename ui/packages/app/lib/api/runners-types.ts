@@ -80,6 +80,7 @@ export const RUNNER_LAST_SEEN_NEVER = 0;
 // single source — the bound lives in exactly one place.
 export const HOST_ID_MAX = 256;
 export const HOST_ID_REGEX = new RegExp(`^[A-Za-z0-9_.-]{1,${HOST_ID_MAX}}$`);
+export const LABELS_MAX = 32;
 export const LABEL_REGEX = /^[A-Za-z0-9_.-]{1,64}$/;
 
 // Settled server-side into one closed tag; the client never re-derives an
@@ -107,6 +108,7 @@ export function parseLabels(raw: string): { labels: string[]; error: string | nu
     }
     seen.add(p);
   }
+  if (seen.size > LABELS_MAX) return { labels: [], error: `At most ${LABELS_MAX} labels per runner` };
   return { labels: [...seen], error: null };
 }
 
@@ -193,8 +195,9 @@ export function parseRegistryAllowlist(raw: string): { hosts: string[]; error: s
 // page renders it differently from a plain row.
 export interface ExtraBind {
   path: string;
-  mode?: BindMode;
-  note?: string;
+  mode: BindMode;
+  // Required by the daemon on every bind; an empty string means no note.
+  note: string;
 }
 
 // The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
@@ -204,10 +207,9 @@ export interface AssignedPolicy {
   network_policy: NetworkPolicy;
   registry_allowlist: string[];
   worker_count: number;
-  // Paths bound IN ADDITION to the daemon-owned baseline. Optional on the wire:
-  // a runner enrolled before the column existed sends nothing, which reads as
-  // "baseline only" rather than as a missing assignment.
-  extra_binds?: ExtraBind[];
+  // Paths bound IN ADDITION to the daemon-owned baseline; empty means
+  // "baseline only".
+  extra_binds: ExtraBind[];
 }
 
 // The PATCH verbs the daemon serves — mirrors `protocol.RunnerAdminAction`.
@@ -248,17 +250,13 @@ export type RunnerStateAction = (typeof RUNNER_ADMIN_ACTIONS)[number];
  * to remove. A `RunnerDetail` satisfies it, so no call site changes shape.
  */
 export type SelftestPolicyView = {
-  selftest?: { sandbox_tier: string; network_policy: string } | null;
-  assigned_policy?: AssignedPolicy | null;
+  selftest: { sandbox_tier: string; network_policy: string } | null;
+  assigned_policy: AssignedPolicy;
 };
 
 export function isSelftestStale(runner: SelftestPolicyView): boolean {
-  // `?? null` rather than `=== null`: a daemon older than these columns omits
-  // the keys entirely, so the field arrives undefined and a strict null check
-  // would fall through and dereference it.
-  const report = runner.selftest ?? null;
+  const report = runner.selftest;
   if (report === null) return false;
-  const assigned = runner.assigned_policy ?? null;
-  if (assigned === null) return true;
+  const assigned = runner.assigned_policy;
   return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
 }

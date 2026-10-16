@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
@@ -64,12 +65,12 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     status: "processed",
     request_json: "{}",
     response_text: "hello world",
+    tool_calls: null,
     tokens: 1,
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,
     updated_at: now,
@@ -275,7 +276,7 @@ describe("EventsList — the standard workspace events table", () => {
     });
 
     for (const name of [
-      "Time",
+      "Created",
       "Status",
       "Fleet",
       "Actor",
@@ -402,7 +403,7 @@ describe("EventsList — the standard workspace events table", () => {
       .getAllByRole("columnheader")
       .map((header) => header.textContent);
     expect(headers).toEqual([
-      "Time",
+      "Created",
       "Tokens",
       "Duration",
       "Cost",
@@ -467,13 +468,8 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByText(/runner logs/i)).toBeNull();
     expect(screen.getByText("Pull request")).toBeTruthy();
     expect(screen.getByText("482")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Copy diagnostic" }),
-    ).toBeTruthy();
-    expect(screen.queryByText("Copy diagnostic")).toBeNull();
-    expect(screen.queryByText("Copy event details")).toBeNull();
-    expect(screen.getAllByText("Created")).toHaveLength(1);
+    expect(within(screen.getByRole("dialog")).queryByRole("button", {name: /copy/i})).toBeNull();
+    expect(within(screen.getByRole("dialog")).getAllByText("Created")).toHaveLength(1);
     expect(screen.queryByText("Updated")).toBeNull();
     expect(screen.queryByText(/Coordinated Universal Time/)).toBeNull();
 

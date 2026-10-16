@@ -15,7 +15,17 @@
  * swap the map values to lookup keys without changing the call sites.
  */
 
-import { RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
+import { ApiError, RETRY_CODE_TIMEOUT } from "@/lib/api/errors";
+
+export const UNCONFIRMED_REQUEST_MESSAGE = "We couldn’t confirm this request. Please try again.";
+
+/** Only typed API failures carry messages intended for the operator. */
+export function unexpectedErrorMessage(cause: unknown, action: string): string {
+  return presentErrorString({
+    action,
+    ...(cause instanceof ApiError ? { errorCode: cause.code, message: cause.message } : {}),
+  });
+}
 
 export interface ErrorInput {
   /** ActionResult.error from a server action, or the thrown Error.message. */
@@ -114,7 +124,7 @@ export const ERROR_CODE = {
 
 export function presentError(input: ErrorInput): ErrorPresentation {
   const { errorCode, message, action } = input;
-  if (errorCode && errorCode in CODE_MAP) {
+  if (errorCode && Object.hasOwn(CODE_MAP, errorCode)) {
     const entry = CODE_MAP[errorCode as keyof typeof CODE_MAP];
     return { title: entry.title, body: entry.body, code: errorCode };
   }
@@ -147,9 +157,3 @@ export function presentErrorString(input: ErrorInput): string {
   if (!p.body) return p.title;
   return `${p.title}. ${p.body}`;
 }
-
-// Shown when Fleet creation returns 409 — the name (derived from SKILL.md
-// frontmatter) collides with an existing teammate. Shared by both the paste
-// form and the gallery install flow so the two paths surface the same hint.
-export const FLEET_NAME_CONFLICT_MESSAGE =
-  "That teammate name already exists in this workspace.";

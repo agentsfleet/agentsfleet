@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  Button,
   CopyButton,
   IconAction,
 } from "@agentsfleet/design-system";
@@ -190,15 +191,16 @@ export function ActionsCell({
     if (isDefaultLive) return null;
     return (
       <div className="flex flex-col items-end gap-1">
-        <IconAction
+        <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
+          size="sm"
           disabled={pending || !platformDefaultAvailable}
           onClick={onSwitchDefault}
-          label="Use default"
+          aria-label="Use default"
         >
-          <ArrowLeftRightIcon size={14} />
-        </IconAction>
+          <ArrowLeftRightIcon size={14} aria-hidden="true" />Use default
+        </Button>
         {!platformDefaultAvailable ? <span className="text-xs text-muted-foreground">{PLATFORM_UNAVAILABLE_NOTE}</span> : null}
       </div>
     );
@@ -232,15 +234,16 @@ export function ActionsCell({
         <EyeIcon size={14} />
       </IconAction>
       {!entry.active ? (
-        <IconAction
+        <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
+          size="sm"
           disabled={pending}
           onClick={() => onSwitchEntry(entry)}
-          label={`Switch to ${entry.model_id}`}
+          aria-label={`Switch to ${entry.model_id}`}
         >
-          <ArrowLeftRightIcon size={14} />
-        </IconAction>
+          <ArrowLeftRightIcon size={14} aria-hidden="true" />Use model
+        </Button>
       ) : null}
       <IconAction
         type="button"

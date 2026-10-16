@@ -7,7 +7,7 @@ export default function BillingLoading() {
   return (
     <RouteLoading
       title="Billing"
-      description="Manage credits and usage. No seats or monthly minimum."
+      description="Your credit balance and a clear record of what your fleets use."
     />
   );
 }

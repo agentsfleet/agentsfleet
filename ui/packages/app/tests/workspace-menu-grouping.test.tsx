@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "reader" }), AuthSignOutButton: ({ children }: { children: React.ReactNode }) => children }));
 
 const { pathname, push } = vi.hoisted(() => ({ pathname: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({

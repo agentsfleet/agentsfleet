@@ -1,17 +1,18 @@
+import { executionInstructions } from "./fixtures/definition";
 /**
- * fleet-execution.spec.ts — one fleet, from a gallery card to a finished job,
+ * fleet-execution.spec.ts — one fleet, from a reviewed chat setup to a finished job,
  * against the Rust daemon serving this environment.
  *
- * Wire: install a fleet from the gallery through the dashboard, with a
- * SKILL.md that carries a real instruction → open the workspace wall in a
+ * Wire: save a fleet from the private chat's Review setup, with instructions
+ * that carry a real request → open the workspace wall in a
  * second tab and leave it watching → message the fleet from its own composer →
  * an online runner leases the delivery → the lease reaches the provider and
  * comes back → the thread shows the reply → the wall's tile for THIS fleet
  * carried the activity, over one workspace stream, and a control fleet's tile
  * did not.
  *
- * This is the inverse of `runner-detail.spec.ts`, which seeds an EMPTY skill
- * body so the lease fails closed before any model call. Here the body has
+ * This is the inverse of `runner-detail.spec.ts`, which seeds empty
+ * instructions so the lease fails closed before any model call. Here the body has
  * instructions, so the lease goes all the way: one real provider round trip per
  * run. Nothing model-free exists from the outside (the runner's only stub is a
  * compile-time flag), so the assertions are about the OUTCOME — a processed row
@@ -45,16 +46,10 @@ import {
   type JourneyLeg,
   type LeaseLocation,
 } from "./fixtures/execution";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import { expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import {
-  executionSkillMd,
-  getDefaultWorkspaceId,
-  readFleetName,
-  seedFleet,
-  waitForFleetActive,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, readFleetName, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 // One stable template for the fleet that executes — the server suffixes a
@@ -73,7 +68,7 @@ const LEASE_TIMEOUT_MS = 120_000;
 // model minute, not a stalled one: past this the lease itself is what expired.
 const EXECUTION_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 2_000;
-// Install (60s inside installViaUI) + the two budgets above + the wall and
+// Install (60s inside saveFleetViaUI) + the two budgets above + the wall and
 // thread renders, with headroom that is deliberately NOT another retry.
 const JOURNEY_TIMEOUT_MS = 420_000;
 
@@ -174,14 +169,14 @@ test.describe("fleet execution", () => {
     const controlName = `${CONTROL_PREFIX}${tag}`;
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
-    // ── 1.1 A gallery install reaches active without a confirm step ──
-    // installViaUI is the operator's own walk: the card's Install, the live
-    // install states, Open fleet. No name field, no confirm dialog.
+    // ── 1.1 A reviewed save reaches active ──
+    // saveFleetViaUI is the operator's own walk: Review setup, Edit setup,
+    // Update draft and review, Save fleet, Open fleet.
     await signInAs(page, FIXTURE_KEY.regular);
-    const fleetId = await installViaUI(page, EXECUTING_TEMPLATE, {
+    const fleetId = await saveFleetViaUI(page, EXECUTING_TEMPLATE, {
       handle: FIXTURE_KEY.regular,
       workspaceId,
-      skillMarkdown: executionSkillMd(EXECUTING_TEMPLATE),
+      instructions: executionInstructions(),
     });
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
     await observed(JOURNEY_LEG.install, () =>

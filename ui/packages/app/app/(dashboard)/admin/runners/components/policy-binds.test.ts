@@ -110,7 +110,7 @@ describe("bindNoteIssue", () => {
 describe("bindsFromForm", () => {
   it("drops a row the operator opened and left blank rather than refusing the save", () => {
     expect(bindsFromForm([{ ...BIND_ROW_DEFAULT }, { path: "/srv/models", mode: "read_only", note: "" }])).toEqual([
-      { path: "/srv/models", mode: "read_only" },
+      { path: "/srv/models", mode: "read_only", note: "" },
     ]);
   });
 
@@ -120,24 +120,13 @@ describe("bindsFromForm", () => {
     ]);
   });
 
-  it("omits an empty note so the stored assignment carries no empty keys", () => {
+  it("sends a blank note as an empty string, because the daemon requires the key", () => {
     const [bind] = bindsFromForm([{ path: "/srv/models", mode: "read_only", note: "   " }]);
-    expect(bind).toEqual({ path: "/srv/models", mode: "read_only" });
-    expect("note" in (bind ?? {})).toBe(false);
+    expect(bind).toEqual({ path: "/srv/models", mode: "read_only", note: "" });
   });
 });
 
 describe("formFromBinds", () => {
-  it("reads an absent bind list as no rows", () => {
-    expect(formFromBinds(undefined)).toEqual([]);
-  });
-
-  it("defaults an entry that names no mode to read-only — access never widens by omission", () => {
-    expect(formFromBinds([{ path: "/srv/models" }])).toEqual([
-      { path: "/srv/models", mode: "read_only", note: "" },
-    ]);
-  });
-
   it("carries an explicit mode and note through unchanged", () => {
     expect(formFromBinds([{ path: "/srv/cache", mode: "read_write", note: "build cache" }])).toEqual([
       { path: "/srv/cache", mode: "read_write", note: "build cache" },

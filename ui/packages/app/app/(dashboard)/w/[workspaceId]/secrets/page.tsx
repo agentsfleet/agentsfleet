@@ -43,19 +43,14 @@ export default async function SecretsPage({
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section asChild className="flex min-h-0 flex-1 flex-col gap-xl">
-        <section aria-label="Secrets">
-          <SectionHeader as="p" actions={<AddSecretDialog workspaceId={workspaceId} />}>
-            Manage secrets
-          </SectionHeader>
-
-          <SecretsList
+      <Section aria-label="Stored secrets" className="flex min-h-0 flex-1 flex-col gap-xl">
+        <SectionHeader as="p" actions={<AddSecretDialog workspaceId={workspaceId} />}>Stored secrets</SectionHeader>
+        <SecretsList
             workspaceId={workspaceId}
             secrets={secrets}
             protectedSecretName={protectedSecretName}
             connections={connections}
-          />
-        </section>
+        />
       </Section>
     </PageLayout>
   );

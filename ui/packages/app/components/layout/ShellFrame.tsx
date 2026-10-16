@@ -3,15 +3,14 @@ import type { WaitingInvite } from "@/lib/api/invites";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import type { TenantBilling } from "@/lib/types";
 import { BalanceLink } from "./BalanceLink";
-import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 import { InviteNotice } from "./InviteNotice";
 import {
   DesktopSidebarNavigation,
 } from "./SidebarNavigation";
 import { ShellControls } from "./ShellControls";
-import ThemeToggle from "./ThemeToggle";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
-import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { DraftSidebarProvider } from "./DraftSidebarHistory";
+import { RecentFleetsProvider } from "./RecentFleets";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
@@ -35,7 +34,7 @@ export function ShellFrame({
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
-      <div
+      <RecentFleetsProvider><DraftSidebarProvider><div
         className="app-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
         data-surface="dashboard"
       >
@@ -57,15 +56,12 @@ export function ShellFrame({
             {billing ? (
               <BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} />
             ) : null}
-            <WorkspaceSwitcher workspaces={workspaces} />
-            <ThemeToggle />
-            <div className="flex shrink-0 items-center"><ClientOnlyAuthUserButton /></div>
           </div>
         </DashboardShellHeader>
 
         <aside
           id={SIDEBAR_NAV_ID}
-          className="hidden min-h-0 flex-col overflow-y-auto border-r border-border bg-card py-4 md:flex"
+          className="app-sidebar hidden min-h-0 flex-col bg-card md:flex"
         >
           <DesktopSidebarNavigation
             workspaces={workspaces}
@@ -84,7 +80,7 @@ export function ShellFrame({
             </div>
           </div>
         </main>
-      </div>
+      </div></DraftSidebarProvider></RecentFleetsProvider>
     </WorkspaceCreationProvider>
   );
 }

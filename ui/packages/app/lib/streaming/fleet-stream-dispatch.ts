@@ -11,8 +11,7 @@ import {
   type ApplyEvents,
 } from "./fleet-stream-reply-registry";
 import { TERMINAL_STATUSES } from "./fleet-stream-row";
-import { patchSnapshot, patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
-import { advanceInstallStep, installStepFromKind } from "./install-steps";
+import { patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
 
 // Where a live frame goes: held while a send here awaits its 202
 // (`HeldTurns`), else onto the thread. The registry owns the entry and the
@@ -60,17 +59,6 @@ function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
   // a subscription lost and re-established — so read them back as a reconnect does.
   if (frame.kind === FRAME_KIND.CATCHING_UP) {
     recoverGap(entry, fleetId);
-    return;
-  }
-  // Install frames advance the install step, never the message list. Forking
-  // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
-  // two concerns — a long-lived chat timeline vs. a one-shot install beat —
-  // independent while sharing the single EventSource the spec mandates.
-  const installStep = installStepFromKind(frame.kind);
-  if (installStep !== null) {
-    patchSnapshot(entry, {
-      installStep: advanceInstallStep(entry.snapshot.installStep, installStep),
-    });
     return;
   }
   // Best-effort activity can arrive after the report's durable close. Keep

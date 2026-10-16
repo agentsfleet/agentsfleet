@@ -33,9 +33,9 @@ export type MemoryViewData = {
   memories: Promise<Awaited<ReturnType<typeof listAllMemories>> | null>;
 };
 
-/** Skill and trigger render from the fleet itself — nothing to start early. */
+/** Setup and trigger render from the fleet itself. */
 export type SourceViewData = {
-  view: typeof FLEET_VIEW.skill | typeof FLEET_VIEW.trigger;
+  view: typeof FLEET_VIEW.setup | typeof FLEET_VIEW.trigger;
 };
 
 /**
@@ -82,9 +82,9 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
           () => null,
         ),
       };
-    case FLEET_VIEW.skill:
+    case FLEET_VIEW.setup:
     case FLEET_VIEW.trigger:
-      // Skill renders from the fleet itself; trigger needs the fleet's declared
+      // Setup renders from the fleet itself; trigger needs the fleet's declared
       // triggers before it can fetch anything.
       return { view };
     default:

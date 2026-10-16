@@ -19,6 +19,8 @@ import { JWT_CACHE_PATH, type FixtureKey } from "./constants";
 import { refreshSessionToken } from "./clerk-admin";
 
 const UNAUTHORIZED = 401;
+const REQUEST_TIMEOUT_MS = 30_000;
+const RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 
 interface JwtEntry {
   email: string;
@@ -44,10 +46,10 @@ function apiBase(): string {
 }
 
 export interface ApiClient {
-  get<T>(p: string): Promise<T>;
-  post<T>(p: string, body: unknown): Promise<T>;
-  patch<T>(p: string, body: unknown): Promise<T>;
-  delete(p: string): Promise<void>;
+  get<T>(p: string, headers?: Readonly<Record<string, string>>): Promise<T>;
+  post<T>(p: string, body: unknown, headers?: Readonly<Record<string, string>>): Promise<T>;
+  patch<T>(p: string, body: unknown, headers?: Readonly<Record<string, string>>): Promise<T>;
+  delete(p: string, headers?: Readonly<Record<string, string>>): Promise<void>;
 }
 
 export type ClientHandle = FixtureKey | { sessionJwt: string; sessionId?: string };
@@ -69,39 +71,61 @@ export function clientFor(handle: ClientHandle): ApiClient {
   }
   const base = apiBase();
 
-  async function request(method: string, p: string, body?: unknown, reminted = false): Promise<Response> {
-    const auth = { Authorization: `Bearer ${sessionJwt}` };
+  async function request(method: string, p: string, body?: unknown,
+    headers?: Readonly<Record<string, string>>, reminted = false): Promise<unknown> {
+    const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const res = await fetch(`${base}${p}`, {
-      method,
-      headers: body !== undefined ? { ...auth, "Content-Type": "application/json" } : auth,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      method, signal, redirect: "error", cache: "no-store",
+      headers: { Authorization: `Bearer ${sessionJwt}`,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status === UNAUTHORIZED && sessionId && !reminted) {
+      await res.body?.cancel();
       sessionJwt = await refreshSessionToken(sessionId);
-      return request(method, p, body, true);
+      return request(method, p, body, headers, true);
     }
+    const value = res.status === 204 ? null : await readJson(res);
     if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(`${method} ${p} → ${res.status}: ${detail}`);
+      const record = typeof value === "object" && value !== null ? value : {};
+      const errorCode: unknown = Reflect.get(record, "error_code");
+      const requestId: unknown = Reflect.get(record, "request_id");
+      const problem = { error_code: typeof errorCode === "string" ? errorCode : undefined,
+        request_id: typeof requestId === "string" ? requestId : undefined };
+      throw new Error(`${method} ${p} → ${res.status}: ${JSON.stringify(problem)}`);
     }
-    return res;
+    return value;
   }
 
   return {
-    async get<T>(p: string): Promise<T> {
-      const res = await request("GET", p);
-      return (await res.json()) as T;
+    async get<T>(p: string, headers?: Readonly<Record<string, string>>): Promise<T> {
+      return await request("GET", p, undefined, headers) as T;
     },
-    async post<T>(p: string, body: unknown): Promise<T> {
-      const res = await request("POST", p, body);
-      return (await res.json()) as T;
+    async post<T>(p: string, body: unknown, headers?: Readonly<Record<string, string>>): Promise<T> {
+      return await request("POST", p, body, headers) as T;
     },
-    async patch<T>(p: string, body: unknown): Promise<T> {
-      const res = await request("PATCH", p, body);
-      return (await res.json()) as T;
+    async patch<T>(p: string, body: unknown, headers?: Readonly<Record<string, string>>): Promise<T> {
+      return await request("PATCH", p, body, headers) as T;
     },
-    async delete(p: string): Promise<void> {
-      await request("DELETE", p);
+    async delete(p: string, headers?: Readonly<Record<string, string>>): Promise<void> {
+      await request("DELETE", p, undefined, headers);
     },
   };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Fixture response is empty");
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > RESPONSE_MAX_BYTES) throw new Error("Fixture response exceeds its bound");
+      chunks.push(chunk.value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } finally { await reader.cancel(); reader.releaseLock(); }
 }

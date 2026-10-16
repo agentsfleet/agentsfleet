@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FLEET } from "./helpers/draft-fixtures";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // These actions are thin forwarders: each wraps withToken((t) => apiFn(args, t)).
@@ -12,12 +13,8 @@ const {
   listFleetsMock,
   setFleetStatusMock,
   deleteFleetMock,
-  getFleetMock,
-  saveFleetSourceMock,
   forgetMemoryMock,
   setMemoryAccessMock,
-  installFleetMock,
-  onboardWorkspaceFleetLibraryMock,
   getFleetEventMock,
 } =
   vi.hoisted(() => ({
@@ -26,12 +23,8 @@ const {
     listFleetsMock: vi.fn(),
     setFleetStatusMock: vi.fn(),
     deleteFleetMock: vi.fn(),
-    getFleetMock: vi.fn(),
-    saveFleetSourceMock: vi.fn(),
     forgetMemoryMock: vi.fn(),
     setMemoryAccessMock: vi.fn(),
-    installFleetMock: vi.fn(),
-    onboardWorkspaceFleetLibraryMock: vi.fn(),
   }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -39,16 +32,10 @@ vi.mock("@/lib/api/fleets", () => ({
   listFleets: listFleetsMock,
   setFleetStatus: setFleetStatusMock,
   deleteFleet: deleteFleetMock,
-  getFleet: getFleetMock,
-  saveFleetSource: saveFleetSourceMock,
-  installFleet: installFleetMock,
 }));
 vi.mock("@/lib/api/memory", () => ({
   forgetMemory: forgetMemoryMock,
   setMemoryAccess: setMemoryAccessMock,
-}));
-vi.mock("@/lib/api/fleet-library", () => ({
-  onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
 }));
 vi.mock("@/lib/api/events", () => ({
   getFleetEvent: getFleetEventMock,
@@ -58,12 +45,8 @@ import {
   listFleetsAction,
   setFleetStatusAction,
   deleteFleetAction,
-  getFleetDetailAction,
-  saveFleetSourceAction,
   forgetMemoryAction,
   setMemoryAccessAction,
-  installFleetAction,
-  onboardLibraryEntryAction,
   getFleetEventAction,
 } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 
@@ -110,33 +93,16 @@ describe("fleet server actions — thin token-forwarders", () => {
   it("setFleetStatusAction forwards ws, id, status with token last", async () => {
     const update = { fleet_id: "z1", status: "stopped", config_revision: 7 };
     setFleetStatusMock.mockResolvedValueOnce(update);
-    const r = await setFleetStatusAction("ws1", "z1", "stopped");
+    const r = await setFleetStatusAction("ws1", "z1", "stopped", '"observed"');
     expect(r).toEqual({ ok: true, data: update });
-    expect(setFleetStatusMock).toHaveBeenCalledWith("ws1", "z1", "stopped", "tok");
+    expect(setFleetStatusMock).toHaveBeenCalledWith("ws1", "z1", "stopped", '"observed"', "tok");
   });
 
-  it("deleteFleetAction forwards ws, id with token last", async () => {
+  it("deleteFleetAction preserves the observed version with token last", async () => {
     deleteFleetMock.mockResolvedValueOnce(undefined);
-    const r = await deleteFleetAction("ws1", "z1");
+    const r = await deleteFleetAction("ws1", "z1", FLEET.etag);
     expect(r).toEqual({ ok: true, data: undefined });
-    expect(deleteFleetMock).toHaveBeenCalledWith("ws1", "z1", "tok");
-  });
-
-  it("getFleetDetailAction forwards ws and id with token last", async () => {
-    const detail = { fleet: { id: "z1", name: "ops" }, etag: '"v1"' };
-    getFleetMock.mockResolvedValueOnce(detail);
-    const r = await getFleetDetailAction("ws1", "z1");
-    expect(r).toEqual({ ok: true, data: detail });
-    expect(getFleetMock).toHaveBeenCalledWith("ws1", "z1", "tok");
-  });
-
-  it("saveFleetSourceAction forwards the changed document and If-Match tag", async () => {
-    const update = { etag: '"v2"', config_revision: 3 };
-    saveFleetSourceMock.mockResolvedValueOnce(update);
-    const body = { source_markdown: "# SKILL\nship" };
-    const r = await saveFleetSourceAction("ws1", "z1", body, '"v1"');
-    expect(r).toEqual({ ok: true, data: update });
-    expect(saveFleetSourceMock).toHaveBeenCalledWith("ws1", "z1", body, '"v1"', "tok");
+    expect(deleteFleetMock).toHaveBeenCalledWith("ws1", "z1", FLEET.etag, "tok");
   });
 
   it("forgetMemoryAction forwards the memory key without exposing content", async () => {
@@ -151,40 +117,6 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await setMemoryAccessAction("ws1", "z1", { read: true });
     expect(r).toEqual({ ok: true, data: { read: true, publish: false } });
     expect(setMemoryAccessMock).toHaveBeenCalledWith("ws1", "z1", { read: true }, "tok");
-  });
-
-  it("installFleetAction forwards ws + platform-template body with token last", async () => {
-    const resp = { fleet_id: "z1", status: "installing" };
-    installFleetMock.mockResolvedValueOnce(resp);
-    const body = { platform_library_id: "github-pr-reviewer", name: "deploybot" };
-    const r = await installFleetAction("ws1", body);
-    expect(r).toEqual({ ok: true, data: resp });
-    expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
-  });
-
-  it("installFleetAction forwards a tenant-template body unchanged", async () => {
-    const resp = { fleet_id: "z2", status: "installing" };
-    installFleetMock.mockResolvedValueOnce(resp);
-    const body = { tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001" };
-    const r = await installFleetAction("ws1", body);
-    expect(r).toEqual({ ok: true, data: resp });
-    expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
-  });
-
-
-  it("test_onboard_action_maps_apierror_to_errorcode: forwards the template onboard body through withToken", async () => {
-    const onboarded = {
-      id: "tmpl_1",
-      name: "GitHub PR reviewer",
-      visibility: "tenant",
-      content_hash: "sha256:abc",
-      requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-    };
-    onboardWorkspaceFleetLibraryMock.mockResolvedValueOnce(onboarded);
-    const body = { source_kind: "github" as const, source_ref: "owner/repo" };
-    const r = await onboardLibraryEntryAction("ws1", body);
-    expect(r).toEqual({ ok: true, data: onboarded });
-    expect(onboardWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
 });

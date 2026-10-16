@@ -57,7 +57,7 @@ export default function DashboardError({
 
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader className="flex-col sm:flex-col">
         <PageTitle>Something went wrong</PageTitle>
       </PageHeader>
       <EmptyState

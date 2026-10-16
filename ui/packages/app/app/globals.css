@@ -26,31 +26,35 @@ body {
   overflow: hidden;
 }
 
-/* One rhythm for the dashboard's horizontal edges.
- *
- * The canvas states its gutter once, as a token, rather than a Tailwind scale
- * that every block on it would have to repeat.
- *
- * The header keeps an edge of its own. Its leading cluster is the sidebar
- * column: `px-3` plus the wordmark's `ml-2.5` puts the brand 22px in from
- * the left. The trailing cluster mirrors that on the right, so the avatar
- * sits as far from its edge as the brand sits from its own. It used to sit
- * on the canvas's content edge instead — the gutter plus whatever scrollbar
- * the platform reserved — which read 48px against the brand's 22 at 1920px
- * and needed a probe to measure that scrollbar. Below `md` there is no
- * column, and both clusters run the mobile row's 16px.
- *
- * `scrollbar-gutter: stable both-edges` is the other half, and it is on
- * BOTH edges for a reason. The canvas takes its scrollbar out of its own
- * content box, so with the gutter reserved on one edge only the content read
- * 48 left against 54 right on exactly the pages long enough to scroll.
- *
- * The gutter is NOT subtracted back out of the padding. Whether the browser
- * reserves it at all depends on the platform's scrollbar and on whether this
- * page overflows: measured here, most dashboard routes reserve nothing, and
- * subtracting left every one of them inset 42px against a 48px token. Adding
- * the scrollbar where it IS reserved costs symmetric width on both edges;
- * subtracting it where it is NOT costs the token itself. */
+/* Light frames the entry and input; conversation reading surfaces stay solid. */
+:root {
+  --chat-halo-radius: 3rem;
+  --chat-focus-radius: 1.5rem;
+  --chat-light: color-mix(in srgb, var(--pulse) 14%, transparent);
+  --chat-light-focus: color-mix(in srgb, var(--pulse) 22%, transparent);
+  --chat-settle-distance: 0.5rem;
+  --chat-settle-time: 480ms;
+}
+.chat-workspace { box-shadow: 0 0 var(--chat-halo-radius) var(--chat-light); }
+.chat-brand-halo { box-shadow: 0 0 var(--chat-halo-radius) var(--chat-light-focus); }
+.chat-composer {
+  transition: box-shadow var(--chat-settle-time) ease, border-color var(--chat-settle-time) ease;
+}
+.chat-composer:focus-within {
+  box-shadow: 0 0 var(--chat-focus-radius) var(--chat-light-focus);
+  border-color: var(--pulse);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chat-entrance { animation: chat-settle var(--chat-settle-time) ease-out both; }
+  @keyframes chat-settle {
+    from { opacity: 0; transform: translateY(var(--chat-settle-distance)); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-composer { transition: none; }
+}
+
 :root {
   --app-scrollbar: 6px;
   --app-canvas-gutter: 1rem;
@@ -61,10 +65,6 @@ body {
 @media (min-width: 48rem) { :root { --app-canvas-gutter: 2rem; --app-canvas-block: 2rem; --app-shell-edge: 1.375rem; } }
 @media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
 
-/* The block padding is a token too, because a page that pins something to
- * the canvas's foot has to give exactly this much back: a sticky element
- * stops at the canvas's content box, so the runner page's status line reads
- * the same variable rather than a second copy of the number. */
 .app-dashboard-canvas {
   background: var(--bg);
   padding-inline: var(--app-canvas-gutter);
@@ -120,25 +120,13 @@ code, pre, kbd { font-family: var(--ff-mono); }
   }
 }
 
-/*
- * The Clerk user-menu trigger's touch floor.
- *
- * Clerk ships it at 28x28, which made it the smallest interactive target in
- * the app shell — smaller than every Button-derived control, all of which
- * carry `pointer-coarse:min-h-11`, and present on every route.
- *
- * It is set here rather than through the `appearance` object because a nested
- * `@media` key in `elements` type-checks and then silently does not render:
- * measured in the built app, the trigger's `min-height` stayed `auto`. The
- * `.cl-*` classes are Clerk's documented styling surface, so this targets the
- * stable one, never a `cl-internal-*` hash.
- *
- * DESIGN_SYSTEM scopes the 44px floor to coarse pointers, so a fine pointer
- * keeps the compact avatar.
- */
-@media (pointer: coarse) {
-  .cl-userButtonTrigger {
-    min-height: 2.75rem;
-    min-width: 2.75rem;
-  }
+
+.app-dashboard-canvas:has([data-fleet-authoring]) {
+  padding-block: 1rem;
+  overflow: hidden;
+}
+.app-dashboard-canvas:has([data-fleet-authoring]) > div { height: 100%; min-height: 0; }
+.app-sidebar { overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .fleet-entrance { animation: chat-settle var(--chat-settle-time) ease-out both; }
 }

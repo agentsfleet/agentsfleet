@@ -1,82 +1,42 @@
-/**
- * template-onboarding.spec.ts — template onboarding → tenant gallery render.
- *
- * Drives the dashboard path M110 adds: an authenticated tenant owner opens the
- * template gallery and sees an onboarded tenant template beside platform
- * templates. The public GitHub dialog error path is covered against the live
- * API; the success path uses an upload fixture because the public agentsfleet
- * template repos do not currently expose root-level SKILL.md files.
- */
 import { expect, test } from "@playwright/test";
-import { SOURCE_KIND_UPLOAD } from "@/lib/types";
-import { clientFor } from "./fixtures/api-client";
+import { CreatedMessageSchema } from "@/lib/api/draft-types";
+import { CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { fixtureDefinition } from "./fixtures/definition";
+import { publishFixtureLibrary } from "./fixtures/native-setup";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const INVALID_GITHUB_SOURCE_REF = "agentsfleet/not-a-real-fleet-library";
-const STABLE_TEMPLATE_NAME = "tmpl-onboarding-probe";
-const FLOW_TIMEOUT_MS = 120_000;
+const INSTRUCTIONS = "Acknowledge the request.";
+const FIRST_MESSAGE = "Use this recipe as written.";
 
-function fixtureSkillMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    `description: End-to-End fixture template ${name}.`,
-    "version: 0.1.0",
-    "---",
-    "",
-    `# ${name}`,
-    "",
-    "Fixture body.",
-    "",
-  ].join("\n");
-}
-
-interface OnboardTemplateResp {
-  id: string;
-}
-
-test.describe("template onboarding", () => {
-  test.setTimeout(FLOW_TIMEOUT_MS);
-
-  test("test_onboarded_template_renders_in_gallery", async ({ page }) => {
-    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    // Stable across runs: the onboard converges on one library row, and the
-    // gallery renders that row whether this run created it or found it.
-    const templateName = STABLE_TEMPLATE_NAME;
-    const client = clientFor(FIXTURE_KEY.regular);
-    const resp = await client.post<OnboardTemplateResp>(
-      `/v1/workspaces/${workspaceId}/fleet-libraries`,
-      {
-        source_kind: SOURCE_KIND_UPLOAD,
-        skill_markdown: fixtureSkillMd(templateName),
-      },
-    );
-    expect(resp.id.length).toBeGreaterThan(0);
-
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(workspaceId, "fleets/new"));
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
-
-    const card = page.getByRole("article").filter({ hasText: templateName });
-    await expect(card).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
-    await expect(card.getByRole("button", { name: "Install" })).toBeVisible();
+test("a published recipe is inspected and pins the selected revision in a new private chat", async ({page}) => {
+  const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+  const name = `recipe-${crypto.randomUUID().slice(0, 8)}`;
+  const published = await publishFixtureLibrary(FIXTURE_KEY.regular, workspace, fixtureDefinition(name, INSTRUCTIONS));
+  await signInAs(page, FIXTURE_KEY.regular);
+  await page.goto(workspaceHref(workspace, "fleets/new"));
+  await expect(page.getByLabel("Private fleet setup conversation")).toBeVisible();
+  await page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Fleet library", exact: true}).click();
+  await expect(page).toHaveURL(workspaceUrlPattern("library"));
+  const inspected = page.waitForResponse((response) => response.url().includes(`revision_id=${published.revision_id}`));
+  await page.getByRole("listitem").filter({hasText: name}).getByRole("button", {name: "Inspect", exact: true}).click();
+  await expect(page.getByRole("heading", {name: `${name} · revision 1`})).toBeVisible();
+  expect((await inspected).ok()).toBe(true);
+  await expect(page.getByRole("main")).toContainText(INSTRUCTIONS);
+  await page.getByRole("button", {name: "Start chat from this revision"}).click();
+  await expect(page).toHaveURL(new RegExp(`/fleets/new\\?.*revision=${published.revision_id}`));
+  // Review setup appears only once the chat holds a candidate, so the first message is what binds the pin.
+  const created = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname.endsWith("/drafts"));
+  await page.getByLabel(CHAT_PLACEHOLDER).fill(FIRST_MESSAGE);
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  const response = await created;
+  expect(response.request().postDataJSON()).toMatchObject({
+    source: {kind: "library", library_id: published.library_id, revision_id: published.revision_id}, message: FIRST_MESSAGE,
   });
-
-  test("test_github_source_error_stays_in_dialog", async ({ page }) => {
-    await signInAs(page, FIXTURE_KEY.regular);
-    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets/new");
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
-
-    await page.getByRole("button", { name: "Create fleet library" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Create fleet library" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByLabel("Repository").fill(INVALID_GITHUB_SOURCE_REF);
-    await dialog.getByRole("button", { name: /^create$/i }).click();
-
-    await expect(dialog).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
-    await expect(dialog.getByRole("alert")).toContainText("Couldn't create the fleet library");
-  });
+  expect(response.ok()).toBe(true);
+  const draft = CreatedMessageSchema.parse(await response.json());
+  expect(draft.candidate?.definition.instructions_md).toBe(INSTRUCTIONS);
 });

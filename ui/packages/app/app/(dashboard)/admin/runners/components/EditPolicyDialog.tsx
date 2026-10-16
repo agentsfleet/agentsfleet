@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { PencilIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Button,
+  ActionForm,
+  Alert,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,13 +16,15 @@ import {
   DialogTitle,
   DialogTrigger,
   Form,
+  Input,
+  Label,
   Spinner,
 } from "@agentsfleet/design-system";
-import type { AssignedPolicy } from "@/lib/api/runners-types";
-import { presentErrorString } from "@/lib/errors";
-import { updateRunnerPolicyAction } from "../actions";
+import { parseLabels, type AssignedPolicy } from "@/lib/api/runners-types";
+import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
+import { updateRunnerAction } from "../actions";
+import { EDIT_POLICY_LABEL } from "./RunnerListCells";
 import {
-  POLICY_FORM_DEFAULTS,
   PolicyFields,
   formFromPolicy,
   policyFormSchema,
@@ -33,49 +37,68 @@ import {
 // The saved assignment reaches the host on its next heartbeat; no host visit,
 // no restart. Reuses the enrollment dialog's four-field section verbatim.
 
-export const EDIT_POLICY_LABEL = "Edit policy";
+const EDIT_POLICY_TITLE = "Edit runner";
 const EDIT_POLICY_DESCRIPTION =
   "Applied on the host's next heartbeat; growing workers past the daemon's start count needs a runner restart.";
 const SAVE_POLICY_LABEL = "Save";
-const EDIT_POLICY_ERROR_ACTION = "re-assign the policy";
+const EDIT_POLICY_ERROR_ACTION = "save the runner";
 
 export function EditPolicyDialog({
   runnerId,
   current,
+  currentLabels = [],
   onSaved,
 }: {
   runnerId: string;
-  /** The stored assignment, or null for a pre-policy row (form starts at the defaults). */
-  current: AssignedPolicy | null;
+  /** The stored assignment the form starts from. */
+  current: AssignedPolicy;
+  currentLabels?: string[];
   onSaved: () => void;
 }) {
+  const labelsId = useId();
+  const [labels, setLabels] = useState(currentLabels.join(", "));
+  const [originalLabels, setOriginalLabels] = useState(labels);
   const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const initial: PolicyFormValues = current ? formFromPolicy(current) : POLICY_FORM_DEFAULTS;
+  const initial: PolicyFormValues = formFromPolicy(current);
   const form = useForm<PolicyFormValues>({
     resolver: zodResolver(policyFormSchema),
     defaultValues: initial,
   });
+  const policyChanged = form.formState.isDirty;
 
   function handleOpenChange(next: boolean) {
+    if (pending) return;
     setOpen(next);
-    if (!next) {
-      setApiError(null);
-      form.reset(current ? formFromPolicy(current) : POLICY_FORM_DEFAULTS);
-    }
+    setApiError(null);
+    setLabels(currentLabels.join(", "));
+    setOriginalLabels(currentLabels.join(", "));
+    form.reset(formFromPolicy(current));
   }
 
   function onSubmit(values: PolicyFormValues) {
     setApiError(null);
+    // Stored labels can contain commas or spaces; only parse an intentional edit.
+    const parsedLabels = labels === originalLabels ? null : parseLabels(labels);
+    if (parsedLabels !== null && parsedLabels.error !== null) {
+      setApiError(parsedLabels.error);
+      return;
+    }
     const assignment = policyFromForm(values);
     if (assignment.error !== null || assignment.policy === null) {
       setApiError(assignment.error);
       return;
     }
     const assigned_policy = assignment.policy;
+    const edit = parsedLabels === null
+      ? { assigned_policy }
+      : policyChanged
+        ? { assigned_policy, labels: parsedLabels.labels }
+        : { labels: parsedLabels.labels };
     startTransition(async () => {
-      const r = await updateRunnerPolicyAction(runnerId, assigned_policy);
+      try {
+      const r = await updateRunnerAction(runnerId, edit);
       if (!r.ok) {
         setApiError(
           presentErrorString({ errorCode: r.errorCode, message: r.error, action: EDIT_POLICY_ERROR_ACTION }),
@@ -84,6 +107,9 @@ export function EditPolicyDialog({
       }
       setOpen(false);
       onSaved();
+      } catch (cause) {
+        setApiError(unexpectedErrorMessage(cause, EDIT_POLICY_ERROR_ACTION));
+      }
     });
   }
 
@@ -99,20 +125,25 @@ export function EditPolicyDialog({
           Without a bounded height and its own scroll the Save button falls below
           the fold with no way to reach it, and assigning a policy — the only
           thing that makes a runner useful — needs a maximised window. */}
-      <DialogContent className="max-h-svh overflow-y-auto">
+      <DialogContent closeDisabled={pending}>
         <DialogHeader>
-          <DialogTitle>{EDIT_POLICY_LABEL}</DialogTitle>
+          <DialogTitle>{EDIT_POLICY_TITLE}</DialogTitle>
           <DialogDescription>{EDIT_POLICY_DESCRIPTION}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form
+          <ActionForm
             onSubmit={(e) => {
               void form.handleSubmit(onSubmit)(e);
             }}
             className="space-y-4"
           >
             <PolicyFields control={form.control} />
-            {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+            <div className="space-y-2">
+              <Label htmlFor={labelsId}>Labels</Label>
+              <Input id={labelsId} value={labels} onChange={(event) => setLabels(event.target.value)} autoComplete="off" aria-describedby={`${labelsId}-help`} />
+              <p id={`${labelsId}-help`} className="text-sm text-muted-foreground">Comma-separated placement labels. Clearing removes every label. Changes apply on the next lease placement.</p>
+            </div>
+            {apiError ? <Alert variant="destructive">{apiError}</Alert> : null}
             <DialogFooter>
               <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
                 Cancel
@@ -122,7 +153,7 @@ export function EditPolicyDialog({
                 {SAVE_POLICY_LABEL}
               </Button>
             </DialogFooter>
-          </form>
+          </ActionForm>
         </Form>
       </DialogContent>
     </Dialog>

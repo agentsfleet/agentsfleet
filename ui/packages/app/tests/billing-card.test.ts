@@ -8,7 +8,6 @@ vi.mock("lucide-react", () => ({
 }));
 
 import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/BillingBalanceCard";
-import type { ChargeSummary } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
@@ -18,12 +17,10 @@ const HEALTHY: TenantBilling = {
   exhausted_at: null,
 };
 
-const SUMMARY: ChargeSummary = { spentNanos: 290_000_000, eventCount: 4, meterPct: 6 };
-
 // The wrapper stands in for a real ancestor: the root layout mounts the app's
 // one TooltipProvider, and this card's Buy-credits tooltip reads it from there.
-function renderCard(billing: TenantBilling, summary: ChargeSummary = SUMMARY) {
-  return render(React.createElement(BillingBalanceCard, { billing, summary }), {
+function renderCard(billing: TenantBilling) {
+  return render(React.createElement(BillingBalanceCard, { billing }), {
     wrapper: TooltipProvider,
   });
 }
@@ -37,29 +34,11 @@ describe("BillingBalanceCard", () => {
     expect(screen.getByText("USD")).toBeTruthy();
   });
 
-  // test_billing_balance_layout — amount + full-width meter + header CTA all
-  // present; the meter fills the row so the CTA is not stranded.
-  it("test_billing_balance_layout: amount, full-width meter, and header CTA all render", () => {
+  it("does not present a page of charges as a balance percentage", () => {
     renderCard(HEALTHY);
-    // amount
-    expect(screen.getByTestId("balance-headline").textContent).toMatch(/\$4\.71/);
-    // full-width meter, filled to the summary percentage
-    const meter = screen.getByTestId("balance-meter");
-    const fill = meter.querySelector("span") as HTMLSpanElement;
-    expect(fill.style.width).toBe("6%");
-    // header CTA present (in the head row, not a stranded control)
-    expect(screen.getByTestId("buy-credits-trigger")).toBeTruthy();
-  });
-
-  it("states no spend figure beside the meter, because it would be the loaded page's", () => {
-    // The caption read "spent $X · N events" as though it were a lifetime
-    // total; summarizeCharges sums only the rows the page loaded, so page two
-    // gave a different figure for the same account. The balance is the number
-    // an operator can act on, and it is the only one stated.
-    renderCard(HEALTHY);
-    expect(screen.queryByTestId("balance-usage")).toBeNull();
+    expect(screen.queryByTestId("balance-meter")).toBeNull();
     expect(screen.queryByText(/spent/i)).toBeNull();
-    expect(screen.queryByText(/\b\d+\s*events?\b/i)).toBeNull();
+    expect(screen.getByText("Available credits")).toBeTruthy();
   });
 
   it("renders Buy credits as a live mailto link, not a disabled button", () => {

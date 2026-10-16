@@ -1,6 +1,8 @@
+import { FLEET_ID } from "../helpers/draft-fixtures";
 import { detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { render, screen } from "@testing-library/react";
 import { fetchMock, authMock as auth } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail views", () => {
@@ -9,12 +11,12 @@ describe("fleets routes — detail views", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
-      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }) }),
     ).rejects.toThrow("redirect:/sign-in");
   });
 
   it.each([400, 404])("fleets detail uses notFound for a malformed or missing id (%i)", async (status) => {
-    mockFetchBilling(happyBilling, status);
+    mockFetchBilling(happyBilling, {missingStatus: status});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
@@ -24,7 +26,7 @@ describe("fleets routes — detail views", () => {
 
   it("fleets detail page rethrows a server failure instead of rendering notFound", async () => {
     fetchMock.mockImplementation(async (url: string) => {
-      if (url.match(/\/fleets\/zom_1$/)) {
+      if (url.endsWith(`/fleets/${FLEET_ID}`)) {
         return {
           ok: false,
           status: 500,
@@ -54,7 +56,7 @@ describe("fleets routes — detail views", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
-      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }) }),
     ).rejects.toThrow("Fleet read failed");
   });
 
@@ -64,17 +66,17 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         searchParams: Promise.resolve({ view: "events", ps: "50" }),
       }),
     );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
     expect(urls).toContainEqual(
-      expect.stringContaining("/fleets/zom_1/events?limit=50"),
+      expect.stringContaining(`/fleets/${FLEET_ID}/events?limit=50`),
     );
     expect(urls.some((url) => url.includes("since="))).toBe(false);
     expect(markup).toContain(
-      'href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"',
+      `href="/w/ws_1/fleets/${FLEET_ID}?view=events" aria-current="page"`,
     );
   });
 
@@ -84,7 +86,7 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         // The cursor rides the same URL as the open view; the server fetches
         // that page rather than resetting to the newest.
         searchParams: Promise.resolve({
@@ -109,7 +111,7 @@ describe("fleets routes — detail views", () => {
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(Page({
-      params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       searchParams: Promise.resolve({ view: "events" }),
     })).rejects.toThrow("history down");
   });
@@ -120,7 +122,7 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const emptyMarkup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         searchParams: Promise.resolve({ view: "memory" }),
       }),
     );
@@ -135,7 +137,7 @@ describe("fleets routes — detail views", () => {
     });
     const unavailableMarkup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
         searchParams: Promise.resolve({ view: "memory" }),
       }),
     );
@@ -160,7 +162,7 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
     expect(markup).toContain("Latest outcome");
@@ -179,7 +181,7 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
     expect(markup).toContain("platform-ops");
@@ -192,15 +194,15 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
     expect(markup).toContain('aria-label="Fleet sections"');
-    expect(markup).toContain('href="/w/ws_1/fleets/zom_1" aria-current="page"');
+    expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}" aria-current="page"`);
     expect(markup).toContain("Chat");
     expect(markup).toContain("Events");
     expect(markup).toContain("Memory");
-    expect(markup).toContain("Skill");
+    expect(markup).toContain("Setup");
     expect(markup).toContain("Trigger");
     expect(markup).not.toContain("Settings");
     // The panel paints in the same pass as the tabs. A skeleton between them
@@ -220,23 +222,26 @@ describe("fleets routes — detail views", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("fleet Skill view isolates the skill source editor", async () => {
+  it("fleet Setup view isolates reviewed instructions and links to private improvement", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    render(
       await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-        searchParams: Promise.resolve({ view: "skill" }),
+        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
+        searchParams: Promise.resolve({ view: "setup" }),
       }),
     );
-    expect(markup).toContain("Skill source");
-    expect(markup).not.toContain("Latest outcome");
+    expect(await screen.findByText("Investigate failures.")).not.toBeNull();
+    expect(screen.getByRole("heading", {name: "Fleet setup"})).not.toBeNull();
+    expect(screen.getByRole("link", {name: "Improve in private chat"}).getAttribute("href")).toBe(`/w/ws_1/fleets/new?fleet=${FLEET_ID}&setup_revision=1`);
+    expect(screen.queryByText("Skill source")).toBeNull();
+    expect(screen.queryByText("Latest outcome")).toBeNull();
   });
 });

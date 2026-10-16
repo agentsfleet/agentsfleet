@@ -107,17 +107,9 @@ test.describe("auth e2e wire", () => {
     const after = await listFleets(FIXTURE_KEY.regular, ws);
     expect(after.some((z) => z.id === seeded.id)).toBe(true);
 
-    // Teardown is tolerant of stale rows; we don't assert on the count
-    // returned. Proof point: the freshly-seeded row is gone OR has been
-    // marked killed. The "OR killed" branch accommodates an open agentsfleetd
-    // bug where DELETE returns UZ-INTERNAL-002 (ConnectionBusy) — out of
-    // scope here, tracked as a separate fix(fleet) PR. PATCH→killed is
-    // what the harness can guarantee against that bug; once a future
-    // fix(fleet) PR lands, this OR-clause can be removed.
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "fixture-roundtrip-");
-
+    const cleaned = await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "fixture-roundtrip-");
+    expect(cleaned.failed).toBe(0);
     const post = await listFleets(FIXTURE_KEY.regular, ws);
-    const lingering = post.find((z) => z.id === seeded.id);
-    expect(lingering === undefined || lingering.status === "killed").toBe(true);
+    expect(post.some((fleet) => fleet.id === seeded.id)).toBe(false);
   });
 });

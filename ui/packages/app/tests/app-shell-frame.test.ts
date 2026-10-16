@@ -11,33 +11,23 @@ vi.mock("@/lib/analytics/posthog", () => ({
   setAnalyticsContext: vi.fn(), captureProductEvent: vi.fn(),
 }));
 vi.mock("@clerk/nextjs", () => ({
+  SignIn: () => null, SignUp: () => null,
+  SignOutButton: ({ children }: { children: React.ReactNode }) => children, UserProfile: () => null,
   UserButton: () => React.createElement("div"), useUser: mocks.useUser,
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
 vi.mock("next/navigation", () => ({
-  usePathname: mocks.usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(), usePathname: mocks.usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
     React.createElement("a", props, children),
 }));
-vi.mock("lucide-react", () => {
-  const icon = (name: string) => (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": name });
-  return {
-    GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
-    LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
-    KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
-    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
-    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), UsersIcon: icon("UsersIcon"), MenuIcon: icon("MenuIcon"),
-    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"), FolderIcon: icon("FolderIcon"),
-  };
-});
-vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
-vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({ default: () => React.createElement("div") }));
 
 beforeEach(() => {
   mocks.useUser.mockReset();
+  mocks.useUser.mockReturnValue({ user: null, isLoaded: true, isSignedIn: false });
   mocks.usePathname.mockReset();
   mocks.trackNavigationClicked.mockReset();
   mocks.usePathname.mockReturnValue("/workspaces");

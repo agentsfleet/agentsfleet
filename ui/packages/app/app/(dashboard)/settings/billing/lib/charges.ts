@@ -102,31 +102,3 @@ export function describeCharge(row: ChargeRow): string {
   const split = `${row.token_count_input.toLocaleString()} ${TOKENS_IN}${TOKEN_SPLIT_SEPARATOR}${row.token_count_output.toLocaleString()} ${TOKENS_OUT}`;
   return `${RUN_LABEL} · ${total.toLocaleString()} ${TOKENS_LABEL} · ${split}`;
 }
-
-export type ChargeSummary = {
-  /** Sum of credit deducted across the loaded charge rows, in nanos. */
-  spentNanos: number;
-  /** Distinct billed events in the loaded window. */
-  eventCount: number;
-  /** Consumed fraction (spent / (balance + spent)) as a 0–100 percentage. */
-  meterPct: number;
-};
-
-/**
- * Derive the balance meter + caption figures from the current balance and the
- * loaded charge rows — this surface is presentation-only (no period-total endpoint), so
- * "spent" / "events" reflect the loaded window. The meter shows the consumed
- * fraction (a usage bar that fills as you spend), floored to a hairline when
- * any spend exists so a non-zero balance never reads as a fully-empty track.
- */
-export function summarizeCharges(rows: ChargeRow[], balanceNanos: number): ChargeSummary {
-  const spentNanos = rows.reduce((sum, r) => sum + r.credit_deducted_nanos, 0);
-  const eventCount = new Set(rows.map((r) => r.event_id)).size;
-  // Only divide when there is spend, so the denominator (balance + spend) is
-  // strictly positive — no zero-guard branch needed. No spend → empty track.
-  const meterPct =
-    spentNanos > 0
-      ? Math.min(100, Math.max(1, (spentNanos / (balanceNanos + spentNanos)) * 100))
-      : 0;
-  return { spentNanos, eventCount, meterPct };
-}

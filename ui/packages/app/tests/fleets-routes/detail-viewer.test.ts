@@ -1,3 +1,4 @@
+import { FLEET_ID } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -42,7 +43,7 @@ beforeEach(() => {
 async function renderChat(): Promise<ChatViewProps | undefined> {
   mockFetchBilling(happyBilling);
   const { default: Page } = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-  renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, id: "zom_1" }) }));
+  renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, id: FLEET_ID }) }));
   return chatViewProps.at(-1);
 }
 

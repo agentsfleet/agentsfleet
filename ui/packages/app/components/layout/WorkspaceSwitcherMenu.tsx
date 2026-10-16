@@ -1,7 +1,6 @@
 "use client";
 
-import { type RefObject, useEffect, useId, useRef, useState, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { FolderIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
@@ -14,180 +13,72 @@ import {
   Nav,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import { EVENTS } from "@/lib/analytics/events";
-import { captureProductEvent } from "@/lib/analytics/posthog";
-import {
-  DEFAULT_WORKSPACE_SUBPATH,
-  workspaceIdFromPath,
-  workspacePath,
-  workspaceSubpath,
-  workspaceSwitchSubpath,
-} from "@/lib/workspace-routes";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
-import { useWorkspaceCreation } from "./WorkspaceCreationProvider";
-import { type SwitcherSection, switcherSections, WORKSPACE_LABEL } from "./workspace-groups";
+import { useWorkspaceMenu } from "./workspace-menu-state";
+import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
+import { AccountMenuNavigation, MENU_VIEW, type MenuView } from "./AccountMenuNavigation";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 
 type WorkspaceSwitcherMenuProps = {
+  operatorScopes?: string[];
+  collapsed?: boolean;
   open: boolean;
   workspaces: TenantWorkspace[];
   onOpenChange: (open: boolean) => void;
 };
 
-export default function WorkspaceSwitcherMenu({
-  open,
-  workspaces,
-  onOpenChange,
-}: WorkspaceSwitcherMenuProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const activeId =
-    workspaceIdFromPath(pathname) ?? workspaces[0]?.id ?? null;
-  const [pending, startTransition] = useTransition();
-  const [createOpen, setCreateOpen] = useState(false);
+export default function WorkspaceSwitcherMenu({ open, operatorScopes = [], collapsed = false, workspaces, onOpenChange }: WorkspaceSwitcherMenuProps) {
+  const [view, setView] = useState<MenuView>(MENU_VIEW.home);
+  const menu = useWorkspaceMenu(workspaces);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
   const firstItemRef = useRef<HTMLDivElement>(null);
   const entryFocusedRef = useRef(false);
-
   useEffect(() => {
-    if (!open) entryFocusedRef.current = false;
-  }, [open]);
+    entryFocusedRef.current = false;
+    if (!open) setView(MENU_VIEW.home);
+    else if (view === MENU_VIEW.home) firstItemRef.current?.focus();
+  }, [open, view]);
+  return <>
+    <Nav ref={setPortalContainer} aria-label="Workspaces" className="flex w-full min-w-0 items-center">
+      <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <WorkspaceSwitcherTrigger ref={switcherTriggerRef} collapsed={collapsed} activeLabel={menu.activeLabel} busy={menu.pending}
+            aria-label="Workspace and account menu" data-testid="workspace-switcher" disabled={menu.pending} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent portalContainer={portalContainer} align="start" side="top"
+          className="w-72 max-w-[var(--radix-dropdown-menu-content-available-width)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-sm"
+          onFocusCapture={(event) => {
+            // Lazy mounting misses Radix's original opening keypress.
+            if (!open || event.target !== event.currentTarget || entryFocusedRef.current) return;
+            entryFocusedRef.current = true;
+            firstItemRef.current?.focus();
+          }}>
+          {view === MENU_VIEW.home ? <WorkspaceChoices menu={menu} firstItemRef={firstItemRef} /> : null}
+          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} operatorScopes={operatorScopes} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </Nav>
+    <CreateWorkspaceDialogDynamic open={menu.createOpen} pending={menu.creation.pending} error={menu.creation.error}
+      onOpenChange={menu.setCreateDialogOpen} onSubmit={menu.creation.create} restoreFocus={() => switcherTriggerRef.current?.focus()} />
+  </>;
+}
 
-  const creation = useWorkspaceCreation({
-    onSuccess: (workspace) => {
-      setCreateOpen(false);
-      startTransition(() => {
-        router.push(
-          workspacePath(workspace.workspace_id, DEFAULT_WORKSPACE_SUBPATH),
-        );
-      });
-    },
-  });
-  const visibleWorkspaces = [
-    ...workspaces,
-    ...creation.createdWorkspaces.filter(
-      (created) => !workspaces.some((workspace) => workspace.id === created.id),
-    ),
-  ];
-  const routedWorkspace =
-    activeId !== null &&
-    !visibleWorkspaces.some((workspace) => workspace.id === activeId)
-      ? { id: activeId, name: WORKSPACE_LABEL.current }
-      : null;
-  // Sections by account; one unlabelled section while the caller holds only
-  // their own.
-  const sections = switcherSections(
-    workspaces,
-    creation.createdWorkspaces,
-    routedWorkspace,
-  );
-  const menuWorkspaces = sections.flatMap((section) => section.workspaces);
-  const firstMenuId = menuWorkspaces[0]?.id ?? null;
-  const active =
-    activeId === null
-      ? visibleWorkspaces[0]
-      : menuWorkspaces.find((workspace) => workspace.id === activeId);
-  const activeLabel = active
-    ? (active.name ?? WORKSPACE_LABEL.unnamed)
-    : WORKSPACE_LABEL.none;
-
-  function workspaceLabel(id: string): string {
-    const workspace = visibleWorkspaces.find(
-      (candidate) => candidate.id === id,
-    );
-    return workspace?.name ?? WORKSPACE_LABEL.unnamed;
-  }
-
-  function setCreateDialogOpen(nextOpen: boolean) {
-    if (nextOpen) {
-      creation.reset();
-      setCreateOpen(true);
-      return;
-    }
-
-    setCreateOpen(false);
-    creation.dismiss();
-  }
-
-  function pick(id: string) {
-    if (id === workspaceIdFromPath(pathname)) return;
-    const label = workspaceLabel(id);
-    captureProductEvent(EVENTS.workspace_switched, { workspace_id: id });
-    startTransition(() => {
-      router.push(
-        workspacePath(id, workspaceSwitchSubpath(workspaceSubpath(pathname))),
-      );
-    });
-    creation.showNotice("success", `Workspace changed to ${label}.`);
-  }
-
-  return (
-    <>
-      <Nav ref={setPortalContainer} aria-label="Workspaces" className="inline-flex min-w-0 items-center gap-2">
-        <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
-          <DropdownMenuTrigger asChild>
-            <WorkspaceSwitcherTrigger
-              ref={switcherTriggerRef}
-              activeLabel={activeLabel}
-              busy={pending}
-              aria-label="Select workspace"
-              data-testid="workspace-switcher"
-              disabled={pending}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            portalContainer={portalContainer}
-            align="start"
-            className="max-w-trim overflow-hidden"
-            onFocusCapture={(event) => {
-              // The lazy menu mounts after the opening keypress, before Radix can observe it.
-              if (!open || event.target !== event.currentTarget || entryFocusedRef.current) return;
-              entryFocusedRef.current = true;
-              firstItemRef.current?.focus();
-            }}
-          >
-            <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <div
-              className="max-h-80 overflow-y-auto"
-              data-testid="workspace-list-scroll"
-            >
-              {sections.map((section) => (
-                <WorkspaceSection
-                  key={section.key}
-                  section={section}
-                  activeId={activeId}
-                  firstMenuId={firstMenuId}
-                  firstItemRef={firstItemRef}
-                  onPick={pick}
-                />
-              ))}
-            </div>
-            {menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
-              ref={menuWorkspaces.length === 0 ? firstItemRef : undefined}
-              onSelect={() => setCreateDialogOpen(true)}
-              disabled={creation.locked}
-              aria-disabled={creation.locked || undefined}
-              data-testid="workspace-new"
-            >
-              <PlusIcon size={14} aria-hidden="true" />
-              <span className="flex-1">Create workspace</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </Nav>
-      <CreateWorkspaceDialogDynamic
-        open={createOpen}
-        pending={creation.pending}
-        error={creation.error}
-        onOpenChange={setCreateDialogOpen}
-        onSubmit={creation.create}
-        restoreFocus={() => switcherTriggerRef.current?.focus()}
-      />
-    </>
-  );
+function WorkspaceChoices({ menu, firstItemRef }: { menu: ReturnType<typeof useWorkspaceMenu>; firstItemRef: RefObject<HTMLDivElement | null> }) {
+  return <>
+    <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
+    <DropdownMenuSeparator />
+    <div className="max-h-48 overflow-y-auto" data-testid="workspace-list-scroll">
+      {menu.sections.map((section) => <WorkspaceSection key={section.key} section={section} activeId={menu.activeId}
+        firstMenuId={menu.firstMenuId} firstItemRef={firstItemRef} onPick={menu.pick} />)}
+    </div>
+    {menu.menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
+    <DropdownMenuItem ref={menu.menuWorkspaces.length === 0 ? firstItemRef : undefined}
+      onSelect={() => menu.setCreateDialogOpen(true)} disabled={menu.creation.locked}
+      aria-disabled={menu.creation.locked || undefined} data-testid="workspace-new">
+      <PlusIcon size={14} aria-hidden="true" /><span className="flex-1">Create workspace</span>
+    </DropdownMenuItem>
+  </>;
 }
 
 type WorkspaceSectionProps = {

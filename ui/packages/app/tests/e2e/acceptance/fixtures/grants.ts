@@ -1,8 +1,8 @@
 /**
  * grants.ts — the wire side of the integration-grant walk.
  *
- * An install raises a pending grant card for every credential the bundle
- * declares that the workspace holds as a CONNECTOR handle. "Connector handle"
+ * An install grants access to credentials the fleet setup declares and the
+ * workspace holds as CONNECTOR handles. "Connector handle"
  * is the whole trick: the daemon classifies a stored secret as mintable only
  * when its body is an object carrying `integration: "<connector>"`
  * (`afd_credential/src/secrets/connector.rs::mintable`). A static token stored
@@ -11,18 +11,18 @@
  * has never produced one.
  *
  * So this module seeds a handle the classifier will accept, under a name no
- * other fixture claims, and hands the walk the trigger frontmatter that
- * declares it. Everything else here is a read: the card the install raised, the
+ * other fixture claims, and hands the walk the native setup that declares it.
+ * Everything else here is a read: any pending gate, the
  * grant row behind it, and the tenant's credit balance and ledger.
  *
  * The grant is never MINTED against. The walk's fleets call no tool, so the
  * handle is only ever classified — the credential a real connect would store is
- * not needed to prove that a card is raised, answered, and unparks a delivery.
+ * not needed to prove that a standing grant permits delivery.
  */
 import { clientFor, type ClientHandle } from "./api-client";
 import type { ApprovalGate, ApprovalsListResponse } from "@/lib/api/approvals";
 import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
-import type { TenantBilling, TenantBillingChargesResponse } from "@/lib/types";
+import { NANOS_PER_USD, type TenantBilling, type TenantBillingChargesResponse } from "@/lib/types";
 import { HTTP_REQUEST } from "./constants";
 
 /**
@@ -50,18 +50,13 @@ const FIELD_INTEGRATION = "integration";
 const EVIDENCE_SERVICE = "service";
 
 /**
- * The credential name the walk's bundles declare, and the vault name the
+ * The credential name the walk's setups declare, and the vault name the
  * handle is stored under.
  *
  * Deliberately NOT `github`. The CLI acceptance lane seeds a static `github`
  * secret into the SAME fixture tenant on api-dev (`platform-secrets.ts`), and
- * the two lanes run as separate CI jobs against one deployment — a shared name
+ * the two lanes run as separate Continuous Integration (CI) jobs against one deployment — a shared name
  * means whichever ran last decides whether any card is raised at all.
- *
- * Underscores, not hyphens: `CredentialName::parse` accepts ASCII alphanumerics
- * and `_` only, and a hyphen refuses the whole bundle as UZ-BUNDLE-001 — an
- * error whose message is about a missing SKILL.md and says nothing about the
- * name that actually broke it.
  */
 export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
 
@@ -77,17 +72,17 @@ const TENANT_CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const CHARGES_PAGE_LIMIT = 100;
 
 /**
- * Store the connector handle the walk's bundles declare, and leave it stored.
+ * Store the connector handle the walk's setups declare, and leave it stored.
  *
  * Claim-then-confirm rather than delete-then-create: the name is exclusively
  * this walk's, so every writer of it wants the identical body, and a refused
  * `POST` means somebody already wrote it. Deleting first would open a window in
- * which a parallel worker's install cannot resolve the credential it declared —
+ * which a parallel worker's Save cannot resolve the credential it declared —
  * and an unresolvable declaration FAILS the delivery instead of parking it,
  * which is the one outcome that would make this walk lie.
  *
  * The handle outlives the run on purpose. It is a classification marker with no
- * credential in it, and re-storing it per run would race the installs that read
+ * credential in it, and re-storing it per run would race the Saves that read
  * it.
  */
 export async function ensureConnectorHandle(
@@ -108,31 +103,11 @@ export async function ensureConnectorHandle(
 }
 
 /**
- * TRIGGER.md frontmatter declaring the connector credential.
- *
- * Same required key set as `seed.ts:triggerMd` — the daemon's importer refuses
- * a bundle missing name, triggers, tools or budget — plus the `credentials:`
- * block that is the whole point. The cron is the daily one every browser
- * fixture uses, so a leaked fleet wakes runners no more often than the rest.
+ * Native setup with one workspace credential requirement for the grant journey.
  */
-export function connectorTriggerMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "",
-    "x-agentsfleet:",
-    "  triggers:",
-    "    - type: cron",
-    '      schedule: "0 0 * * *"',
-    "  tools:",
-    `    - ${HTTP_REQUEST}`,
-    "  credentials:",
-    `    - ${GRANT_CREDENTIAL_NAME}`,
-    "  budget:",
-    "    daily_dollars: 1.0",
-    "---",
-    "",
-  ].join("\n");
+export function connectorConfig(name: string) {
+  return { name, "x-agentsfleet": { triggers: [], tools: [HTTP_REQUEST],
+    credentials: [GRANT_CREDENTIAL_NAME], budget: { daily_nanos: String(NANOS_PER_USD) } } };
 }
 
 /** Every gate the workspace holds for one fleet, newest first. */
@@ -185,7 +160,7 @@ export const GRANT_STATUS = {
  * The provenance an install-time grant carries. Cross-runtime pair of
  * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
  */
-export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet bundle at install";
+export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet's setup at install";
 
 /** One standing permission the daemon checks before it mints. */
 export interface IntegrationGrant {

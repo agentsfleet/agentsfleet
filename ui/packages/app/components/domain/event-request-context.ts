@@ -6,8 +6,6 @@
 // webhook body cannot ride megabytes into the DOM.
 export const REQUEST_CONTEXT_MAX_CHARS = 10_000;
 export const REQUEST_CONTEXT_MAX_ENTRIES = 100;
-export const COPIED_REQUEST_CONTEXT_OMITTED =
-  "Omitted from copied diagnostic because webhook data may contain private or secret values.";
 
 const REQUEST_CONTEXT_LABELS: Record<string, string> = {
   action: "Action",
@@ -63,12 +61,4 @@ export function previewRequestEntries(context: Record<string, unknown>): {
     entries: entries.slice(0, REQUEST_CONTEXT_MAX_ENTRIES),
     hasMore: entries.length > REQUEST_CONTEXT_MAX_ENTRIES,
   };
-}
-
-/** The redaction stand-in copied into the diagnostic in place of the raw
- * payload, or null when there was nothing to omit. */
-export function copiedRequestContext(raw: string): string | null {
-  return raw.slice(0, REQUEST_CONTEXT_MAX_CHARS + 1).trim()
-    ? COPIED_REQUEST_CONTEXT_OMITTED
-    : null;
 }

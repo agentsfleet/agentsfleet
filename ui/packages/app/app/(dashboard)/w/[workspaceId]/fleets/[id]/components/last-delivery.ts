@@ -1,6 +1,7 @@
 import { listFleetEvents } from "@/lib/api/events";
 import type { FleetTrigger } from "@/lib/types";
-import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
+import { AGENT_TRIGGER_TYPE } from "@/lib/types";
+import { triggerKey } from "./trigger-key";
 
 /**
  * Maps a declared trigger to the actor-glob the events API recognises.
@@ -12,19 +13,13 @@ import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
  * therefore renders the same "last delivery" timestamp on both cards
  * — whichever cron fired most recently. The right place to fix this
  * is the server's cron actor format, not the dashboard's glob.
- *
- * `api` triggers don't carry a stable actor namespace (every webhook
- * ingress shares the bare `/v1/webhooks/{id}` URL), so they opt out —
- * the caller surfaces `null` in the per-trigger map.
  */
-export function actorGlobFor(t: FleetTrigger): string | null {
+export function actorGlobFor(t: FleetTrigger): string {
   switch (t.type) {
     case AGENT_TRIGGER_TYPE.webhook:
       return `${AGENT_TRIGGER_TYPE.webhook}:${t.source}:*`;
     case AGENT_TRIGGER_TYPE.cron:
       return `${AGENT_TRIGGER_TYPE.cron}:*`;
-    case AGENT_TRIGGER_TYPE.api:
-      return null;
     case AGENT_TRIGGER_TYPE.mention:
       return `${t.source}:*`;
   }
@@ -35,8 +30,7 @@ export function actorGlobFor(t: FleetTrigger): string | null {
  * per declared trigger, in parallel; failures degrade to `null` so the
  * TriggerPanel renders the "never" badge. Webhook actors are namespaced
  * as `webhook:<source>:*`; cron as `cron:*`; a chat mention as
- * `<source>:<user>`, so `<source>:*`; api triggers always land as `null`
- * (no stable namespace).
+ * `<source>:<user>`, so `<source>:*`.
  */
 export async function resolveLastDeliveries(
   workspaceId: string,
@@ -49,13 +43,6 @@ export async function resolveLastDeliveries(
     triggers.map(async (t) => {
       const key = triggerKey(t);
       const actor = actorGlobFor(t);
-      if (!actor) {
-        // Leave the key absent — `undefined` reads as "parent did not
-        // look" in TriggerPanel's prop semantics, which suppresses both
-        // the "never" delivery badge and the auto-expand-on-mount path.
-        // Writing `null` would falsely fire both on every api trigger.
-        return;
-      }
       try {
         const page = await listFleetEvents(workspaceId, fleetId, token, {
           actor,

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
+import { EDIT_POLICY_LABEL } from "@/app/(dashboard)/admin/runners/components/RunnerListCells";
 
 for (const width of [1440, 390, 320]) {
   test.describe(`runner header at ${width}px`, () => {
@@ -12,7 +13,7 @@ for (const width of [1440, 390, 320]) {
       await signInAs(page, "operator");
       await page.goto("/admin/runners");
       await page.locator('a[href^="/admin/runners/"]').first().click();
-      const edit = page.getByRole("button", { name: "Edit policy", exact: true });
+      const edit = page.getByRole("button", { name: EDIT_POLICY_LABEL, exact: true });
       const refresh = page.getByRole("button", { name: "Refresh", exact: true });
       await expect(edit).toHaveCount(0);
       await expect(refresh).toBeVisible();

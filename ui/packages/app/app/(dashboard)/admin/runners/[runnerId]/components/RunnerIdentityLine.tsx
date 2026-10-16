@@ -1,23 +1,11 @@
 import { CircleHelpIcon } from "lucide-react";
 import { Badge } from "@agentsfleet/design-system";
 import { type CapabilityReport, type RunnerDetail } from "@/lib/api/runners";
-import { SANDBOX_TIER_LABELS, type RunnerAdminState } from "@/lib/api/runners-types";
+import { type RunnerAdminState } from "@/lib/api/runners-types";
 import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
-import { RunnerChecksBadge } from "./RunnerChecksBadge";
 import { RUNNER_STATES_DOC_URL, RUNNER_STATES_HELP_LABEL } from "./runner-copy";
 
-// The line under the header row: administrative state and liveness, the
-// isolation tier, labels, the checks verdict (the full report opens from it),
-// and — when a real verdict contradicts a real assignment — the mismatch,
-// side by side with what the host reported.
-//
-// The help for the state words rides the words: a "Learn more" link sat
-// between the status and the tier pills and split the row into text, link,
-// pills, pill. As a question mark on the status itself the row reads status,
-// then pills, and the help is attached to what it explains.
-// `adminState` arrives separately from the runner because the header paints an
-// action's target state before the server confirms it.
-
+// Administrative state, liveness, enrollment labels, and any unmet assignment.
 const HELP_ICON_SIZE = 14;
 const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
 const ACHIEVABLE_PREFIX = "host reports";
@@ -63,13 +51,11 @@ export function RunnerIdentityLine({
           </a>
         </span>
         <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
-          <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
           {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
           {runner.labels.map((label) => (
             <Badge key={label}>{label}</Badge>
           ))}
         </span>
-        <RunnerChecksBadge runner={runner} />
       </div>
       {/* The mismatch line renders ONLY when a real verdict contradicts a real
           assignment: the reason names the specific missing mechanism, and the

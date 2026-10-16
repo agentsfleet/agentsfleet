@@ -5,9 +5,9 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
@@ -114,14 +114,9 @@ async function deleteFleetWithApiKey(
   workspaceId: string,
   fleetId: string,
 ): Promise<void> {
-  const fleetUrl = `${apiUrl}/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
-  const headers = { Authorization: `Bearer ${rawApiKey}`, "Content-Type": "application/json" };
-  await fetch(fleetUrl, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({ status: "killed" }),
-  }).catch(() => undefined);
-  await fetch(fleetUrl, { method: "DELETE", headers }).catch(() => undefined);
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  if (!configured || new URL(apiUrl).origin !== new URL(configured).origin) throw new Error("Cleanup API origin differs from the acceptance target");
+  await purgeFixtureFleet({sessionJwt: rawApiKey}, workspaceId, fleetId);
 }
 
 // Resolve a created workspace's id by its (unique-per-run) name. The browser
@@ -143,7 +138,7 @@ test.describe("operator journey", () => {
 
   test.afterEach(async () => {
     // The fleet outlives more failure modes than the API key: it exists
-    // before the key is minted, and installViaUI can die after the server
+    // before the key is minted, and saveFleetViaUI can die after the server
     // created it but before the id is readable from the URL. Sweeping by
     // name-prefix with the admin fixture JWT across every workspace this
     // run created depends on neither, so a journey that fails anywhere
@@ -194,9 +189,9 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, secondaryWorkspaceName);
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
-    await page.getByRole("link", { name: /install a fleet/i }).first().click();
+    await page.getByRole("link", { name: /create a fleet/i }).first().click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
-    const fleetId = await installViaUI(page, JOURNEY_FLEET_PREFIX, {
+    const fleetId = await saveFleetViaUI(page, JOURNEY_FLEET_PREFIX, {
       handle: FIXTURE_KEY.admin,
       workspaceId: wsId,
     });

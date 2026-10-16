@@ -61,8 +61,9 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
 // stay incapable of mutating platform state by construction.
 export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write", "runner:read"] as const;
 
-// Only policy-dialog journeys use this identity; the release preflight stays read-only.
-export const POLICY_EDITOR_FIXTURE_SCOPES = ["runner:write"] as const;
+// Runner mutation journeys enroll isolated, never-started hosts and retire them
+// afterwards. The separate release-preflight operator stays read-only.
+export const POLICY_EDITOR_FIXTURE_SCOPES = ["runner:write", "runner:enroll"] as const;
 export const PLATFORM_FIXTURE_SCOPES: Partial<Record<FixtureKey, readonly string[]>> = {
   [FIXTURE_KEY.operator]: OPERATOR_FIXTURE_SCOPES,
   [FIXTURE_KEY.policyEditor]: POLICY_EDITOR_FIXTURE_SCOPES,

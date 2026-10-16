@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerLease } from "@/lib/api/runners";
-import { APPLY_LEASE_FILTER_LABEL, LEASE_FILTER_LABEL } from "./runner-copy";
+import { APPLY_LEASE_FILTER_LABEL, FLEET_LABEL, WORKSPACE_LABEL } from "./runner-copy";
 
 // The wrapper stands in for a real ancestor, not a missing one: the app mounts
 // exactly one TooltipProvider in `app/layout.tsx`, above every route group, and
@@ -241,7 +241,7 @@ describe("LeaseTable", () => {
         }}
         pageSize={25}
       />, { wrapper: TooltipProvider });
-    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.getByRole("columnheader", {name: WORKSPACE_LABEL})).toBeTruthy();
     const link = screen.getByRole("link", { name: "ws-01234…" });
     expect(link.getAttribute("href")).toBe("/w/ws-0123456789/fleets");
     expect(link.getAttribute("title")).toBe("ws-0123456789");
@@ -267,7 +267,7 @@ describe("LeaseTable", () => {
     expect(screen.queryByText("1,884")).toBeNull();
   });
 
-  it("applies both filter tokens and drops the cursor trail with the old result set", () => {
+  it("applies both filter fields and drops the cursor trail with the old result set", () => {
     mockSearch = "c=page-2-cursor&cps=25";
     render(
       <LeaseTable
@@ -278,9 +278,8 @@ describe("LeaseTable", () => {
         }}
         pageSize={25}
       />, { wrapper: TooltipProvider });
-    fireEvent.change(screen.getByLabelText(LEASE_FILTER_LABEL), {
-      target: { value: "workspace:ws-0123456789 fleet:pr-reviewer" },
-    });
+    fireEvent.change(screen.getByRole("textbox", {name: WORKSPACE_LABEL}), {target: {value: "ws-0123456789"}});
+    fireEvent.change(screen.getByRole("textbox", {name: FLEET_LABEL}), {target: {value: "pr-reviewer"}});
     fireEvent.click(screen.getByRole("button", { name: APPLY_LEASE_FILTER_LABEL }));
     expect(routerPush).toHaveBeenCalledTimes(1);
     const url = routerPush.mock.calls[0]?.[0] as string;
@@ -368,7 +367,7 @@ describe("LeaseTable", () => {
     expect(routerPush).toHaveBeenCalledWith(MOCK_PATHNAME, { scroll: true });
   });
 
-  it("should sort by Time through the standard header control", () => {
+  it("should sort by Created through the standard header control", () => {
     render(
       <LeaseTable
         initial={{
@@ -387,9 +386,9 @@ describe("LeaseTable", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => (row.textContent?.includes(agentDisplayName("fleet-older")) ? "older" : "newer"));
-    fireEvent.click(screen.getByRole("button", { name: /time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /created/i }));
     const firstSort = orderOf();
-    fireEvent.click(screen.getByRole("button", { name: /time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /created/i }));
     // Two clicks walk both directions of the same comparator: the order must
     // invert, proving the column sorts on the lease's real timestamp.
     expect(orderOf()).toEqual([...firstSort].reverse());

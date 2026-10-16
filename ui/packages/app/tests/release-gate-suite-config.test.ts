@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Release-gate suite configuration — the acceptance run's shape is itself
  * release-critical: the preflight group gates every journey, and recorded

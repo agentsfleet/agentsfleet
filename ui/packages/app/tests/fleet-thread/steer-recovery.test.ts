@@ -5,7 +5,6 @@ import {
 } from "./steer-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { PENDING_SEND_STATE, dismissPendingSend, getPendingSends } from "@/lib/streaming/pending-sends";
 
 // A send that did not come back: refused, unconfirmed, or refused after the
@@ -29,8 +28,6 @@ const UNSETTLED_ANSWERS = [
 
 describe("FleetThread — steer recovery", () => {
   it("test_failed_send_leaves_thread_and_restores_draft", async () => {
-    const refreshed = vi.fn();
-    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const reconcileOptimistic = vi.fn();
     const discardOptimistic = vi.fn();
     mockStream([], { appendOptimistic: vi.fn().mockReturnValue("temp_t"), reconcileOptimistic, discardOptimistic });
@@ -44,9 +41,7 @@ describe("FleetThread — steer recovery", () => {
     expect(screen.getByText(SEND_FAILED_TEXT)).toBeTruthy();
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
     expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(refreshed).not.toHaveBeenCalled();
     expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.REFUSED]);
-    unsubscribe();
   });
 
   it("test_unknown_delivery_notice", async () => {

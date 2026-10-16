@@ -2,8 +2,6 @@ import {
   PageHeader,
   PageLayout,
   PageTitle,
-  Section,
-  SectionHeader,
 } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import {
@@ -61,9 +59,6 @@ export default async function IntegrationsPage({
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section asChild>
-        <section aria-label="Integrations" data-testid="integrations-page">
-          <SectionHeader as="p">Connectors</SectionHeader>
           <IntegrationsConnectors
             workspaceId={workspaceId}
             catalog={catalog}
@@ -72,8 +67,6 @@ export default async function IntegrationsPage({
             slackStatus={slackConnector.status}
             slackTeam={slackConnector.team}
           />
-        </section>
-      </Section>
     </PageLayout>
   );
 }

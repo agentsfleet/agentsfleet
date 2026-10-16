@@ -22,7 +22,7 @@ function opening(eventId: string, actor = OWN): LiveFrame {
 }
 
 function tool(eventId: string): LiveFrame {
-  return { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true };
+  return { call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true };
 }
 
 describe("HeldTurns", () => {

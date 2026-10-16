@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { FleetMarkdown } from "@/components/domain/FleetMarkdown";
+import { FleetMarkdown, FleetReplyMarkdown } from "@/components/domain/FleetMarkdown";
 
 afterEach(cleanup);
 
@@ -91,4 +91,12 @@ describe("FleetMarkdown", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("hello");
   });
+});
+
+it("settles with the final text and resolves references across streamed blocks", () => {
+  const view = render(<FleetReplyMarkdown text={"First paragraph.\n\nRead [docs][guide].\n\nStill writing"} streaming />);
+  view.rerender(<FleetReplyMarkdown text={"First paragraph.\n\nRead [docs][guide].\n\nFinal answer.\n\n[guide]: https://example.com/guide"} streaming={false} />);
+  expect(screen.getByText("Final answer.")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe("https://example.com/guide");
+  expect(screen.queryByText("Still writing")).toBeNull();
 });

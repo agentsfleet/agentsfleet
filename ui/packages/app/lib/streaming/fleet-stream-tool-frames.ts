@@ -17,16 +17,6 @@ import { readToolArgs, readToolOutcome, type ToolArgs, type ToolOutcome } from "
 // second call of a tool that already finished — and a frame for a finished call
 // changes nothing.
 //
-// A frame from a runner that names no call is keyed by (event, name) and
-// matched to the open call of that name. A started frame opens a call and a
-// completion moves the open one. With no open call, a frame for a name this
-// event already finished is weighed by its timing: one that could restate the
-// finished call — its figure, no figure, or progress no further along than it
-// ended — changes nothing, since a fabricated second call is worse than a
-// missed update. One past that is a second call whose start this subscriber
-// missed after a reconnect, and it shows. A name never seen here means the
-// start was missed (a subscriber that joined mid-call), and the call opens.
-//
 // Only a call's opening, its completion, and a repeated start that adds
 // arguments change the timeline. The repeat merges its arguments into the open
 // call and keeps the first start's clock; progress on an open call returns it
@@ -39,7 +29,7 @@ type ToolFrame = Extract<
   { kind: typeof FRAME_KIND.TOOL_CALL_STARTED | typeof FRAME_KIND.TOOL_CALL_PROGRESS | typeof FRAME_KIND.TOOL_CALL_COMPLETED }
 >;
 
-type ToolStep = Omit<FleetToolCall, "startedAtMs"> & { opens: boolean };
+type ToolStep = Omit<FleetToolCall, "startedAtMs" | "callId"> & { callId: string; opens: boolean };
 
 // The fields a step adds to the call it lands on.
 type StepFields = Pick<ToolStep, "args"> & ToolOutcome;
@@ -51,17 +41,18 @@ export function applyToolFrame(prev: FleetEvent[], frame: ToolFrame, nowMs: numb
 }
 
 function readToolStep(frame: ToolFrame): ToolStep | null {
-  const { name, call_id } = frame as { name: unknown; call_id?: unknown };
-  if (typeof name !== "string" || name.length === 0) return null;
-  // A call id that is not a non-empty string names nothing; the frame pairs by timing.
-  const named = typeof call_id === "string" && call_id.length > 0 ? { name, callId: call_id } : { name };
+  const { name, call_id } = frame;
+  if (typeof name !== "string" || name.length === 0 || typeof call_id !== "string" || call_id.length === 0) return null;
+  const named = { name, callId: call_id };
   switch (frame.kind) {
     case FRAME_KIND.TOOL_CALL_STARTED:
       return { ...named, ms: null, done: false, opens: true, ...argsOf(readToolArgs(frame.args_redacted)) };
     case FRAME_KIND.TOOL_CALL_PROGRESS:
       return timed(named, frame.elapsed_ms, false, {});
-    default:
-      return timed(named, frame.ms, true, readToolOutcome(frame));
+    default: {
+      const outcome = readToolOutcome(frame);
+      return outcome === null ? null : timed(named, frame.ms, true, outcome);
+    }
   }
 }
 
@@ -69,11 +60,8 @@ function argsOf(args: ToolArgs | undefined): Pick<ToolStep, "args"> {
   return args === undefined ? {} : { args };
 }
 
-// A timing that is absent reads as none — a completion with no figure must not
-// erase an elapsed the call already holds. One that is present and not a
-// finite, non-negative number is a malformed frame.
+// Required timings must be finite and non-negative.
 function timed(named: Pick<ToolStep, "name" | "callId">, value: unknown, done: boolean, outcome: ToolOutcome): ToolStep | null {
-  if (value === undefined || value === null) return { ...named, ms: null, done, opens: false, ...outcome };
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
   return { ...named, ms: value, done, opens: false, ...outcome };
 }
@@ -94,7 +82,7 @@ function applyToolStep(
   if (event === undefined) return prev;
 
   const tools = event.tools ?? [];
-  const merged = step.callId === undefined ? byTiming(tools, step, nowMs) : byCallId(tools, step, nowMs);
+  const merged = byCallId(tools, step, nowMs);
   if (merged === tools) return prev;
 
   const updated = [...prev];
@@ -109,31 +97,8 @@ function byCallId(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetT
   return call.done && call.closedAtSettle !== true ? tools : moved(tools, at, call, step);
 }
 
-function byTiming(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetToolCall[] {
-  const open = tools.findIndex((t) => t.name === step.name && !t.done);
-  const call = tools[open] ?? closedByTurn(tools, step);
-  if (call !== undefined) return moved(tools, tools.indexOf(call), call, step);
-  if (!step.opens && restatesFinished(tools, step.name, step.ms, step.done)) return tools;
-  return [...tools, called(step, nowMs)];
-}
-
-// A call its turn closed unheard still takes its own frames, but a frame that
-// could restate a call of that name which did report is that call's repeat.
-function closedByTurn(tools: FleetToolCall[], step: ToolStep): FleetToolCall | undefined {
-  const call = tools.find((t) => t.name === step.name && t.closedAtSettle === true);
-  if (call === undefined || step.opens) return call;
-  const reported = tools.filter((t) => t.closedAtSettle !== true);
-  return restatesFinished(reported, step.name, step.ms, step.done) ? undefined : call;
-}
-
 function called({ opens: _opens, ...call }: ToolStep, nowMs: number): FleetToolCall {
   return { ...call, startedAtMs: nowMs };
-}
-
-// Whether a frame could have come from a finished call of this name. A call
-// that finished without a figure cannot be told from a new one, so it is.
-function restatesFinished(tools: FleetToolCall[], name: string, ms: number | null, done: boolean): boolean {
-  return tools.some((t) => t.name === name && (ms === null || t.ms === null || (done ? ms === t.ms : ms <= t.ms)));
 }
 
 // A completion moves an open call and lands its outcome; a repeated start lands
@@ -142,11 +107,11 @@ function moved(tools: FleetToolCall[], open: number, call: FleetToolCall, step: 
   if (step.opens) return withArgs(tools, open, call, step.args);
   if (!step.done) return tools;
   const { name: _name, callId: _callId, ms, done, opens: _opens, ...fields } = step;
-  return replaced(tools, open, { ...heard(call), ...(fields satisfies StepFields), ms: ms ?? call.ms, done });
+  return replaced(tools, open, { ...heard(call), ...(fields satisfies StepFields), ms, done });
 }
 
 // A completion that lands after its turn ended is the truth the turn guessed
-// at: the guessed status goes with the guess, even when the completion names none.
+// at: the recorded status replaces the interrupted guess.
 function heard(call: FleetToolCall): FleetToolCall {
   if (call.closedAtSettle !== true) return call;
   const { closedAtSettle: _guessed, status: _guessedStatus, ...rest } = call;

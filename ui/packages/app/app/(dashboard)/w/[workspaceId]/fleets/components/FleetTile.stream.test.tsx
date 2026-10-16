@@ -38,8 +38,8 @@ function fleetAt(index: number): Fleet {
     status: "active",
     created_at: 0,
     updated_at: 0,
-    budget_used_nanos: 0,
-    events_processed: 0,
+    budget_used_nanos: 0n,
+    events_processed: 0n,
   };
 }
 

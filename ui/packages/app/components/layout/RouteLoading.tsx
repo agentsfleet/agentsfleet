@@ -1,34 +1,27 @@
-import { PageHeader, PageLayout, PageTitle, Spinner } from "@agentsfleet/design-system";
-
-import { LoadingVerbLabel } from "./LoadingVerbLabel";
-import { loadingAccessibleName } from "./loading-verbs";
-
-// Shared route-level loading fallback (Next.js loading.tsx). Paints the page's
-// exact title + description instantly so the header never wobbles or flashes a
-// wrong title on navigation, with a spinner in the content area for one
-// consistent "loading" signal across every dashboard route.
-//
-// The spinner text carries a per-mount random verb ("Wrangling Fleets…") rather
-// than a static "Loading". aria-label pins the announced name to the plain
-// wording so the whimsy stays visual — assistive tech reads "Loading Fleets".
+import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
 export default function RouteLoading({
   title,
   description,
+  className,
 }: {
-  title: string;
+  title?: string;
   description?: string;
+  className?: string;
 }) {
   return (
-    <PageLayout>
-      <PageHeader description={description}>
+    <PageLayout className={className}>
+      {title ? <PageHeader className="flex-col sm:flex-col" description={description}>
         <PageTitle>{title}</PageTitle>
-      </PageHeader>
-      <Spinner
-        size="lg"
-        label={<LoadingVerbLabel title={title} />}
-        aria-label={loadingAccessibleName(title)}
-        className="py-16 text-sm"
-      />
+      </PageHeader> : <Skeleton className="h-8 w-48" aria-hidden="true" />}
+      <output aria-label={title ? `Loading ${title}` : "Loading page"} className="space-y-lg">
+        <span className="sr-only">{title ? `Loading ${title}` : "Loading page"}</span>
+        <div aria-hidden="true" className="space-y-lg">
+          <Skeleton className="h-10 w-full max-w-sm" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </div>
+      </output>
     </PageLayout>
   );
 }

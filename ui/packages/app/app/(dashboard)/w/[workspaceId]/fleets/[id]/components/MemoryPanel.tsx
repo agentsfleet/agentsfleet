@@ -51,10 +51,8 @@ export const MEMORY_SHARED_BY_OTHER = "from another fleet";
 const MEMORY_ACCESS_ACTION = "change shared memory access";
 const VISIBILITY_WORKSPACE = "workspace";
 
-// Whether `fleetId` wrote `entry`. An older daemon names no writer, and every
-// entry it sends is the fleet's own.
 function writtenBy(entry: MemoryEntry, fleetId: string): boolean {
-  return entry.writer_fleet_id === undefined || entry.writer_fleet_id === fleetId;
+  return entry.writer_fleet_id === fleetId;
 }
 
 type Props = {
@@ -116,7 +114,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
       ) : (
         <List variant="ordered" className="flex list-none flex-col gap-2 space-y-0 pl-0">
           {entries.map((entry) => (
-            <ListItem key={`${entry.writer_fleet_id ?? fleetId}:${entry.key}`}>
+            <ListItem key={`${entry.writer_fleet_id}:${entry.key}`}>
               <MemoryRow entry={entry} fleetId={fleetId} onForget={() => setPendingEntry(entry)} />
             </ListItem>
           ))}

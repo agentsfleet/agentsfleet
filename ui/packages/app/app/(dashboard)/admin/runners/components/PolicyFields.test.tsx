@@ -35,7 +35,7 @@ describe("policyFromForm / formFromPolicy", () => {
   });
 
   it("maps a runner with no binds to an empty list, never to a missing key", () => {
-    const bare: AssignedPolicy = { ...STORED, extra_binds: undefined };
+    const bare: AssignedPolicy = { ...STORED, extra_binds: [] };
     expect(policyFromForm(formFromPolicy(bare)).policy?.extra_binds).toEqual([]);
   });
 

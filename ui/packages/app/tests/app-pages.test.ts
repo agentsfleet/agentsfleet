@@ -15,7 +15,7 @@ const useUser = vi.fn(() => ({ isLoaded: false, user: null }));
 vi.mock("next/navigation", () => ({
   redirect,
   notFound,
-  usePathname,
+  useSearchParams: () => new URLSearchParams(), usePathname,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
@@ -30,39 +30,11 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   UserProfile: ({ path, routing, appearance }: { path: string; routing: string; appearance: unknown }) => React.createElement("div", { "data-user-profile": path, "data-routing": routing, "data-appearance": JSON.stringify(appearance) }),
+  SignOutButton: ({ children }: { children: React.ReactNode }) => children,
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
   SignIn: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-in": JSON.stringify(appearance) }),
   SignUp: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-up": JSON.stringify(appearance) }),
   useUser,
-}));
-
-vi.mock("lucide-react", () => ({
-  PlusIcon: () => React.createElement("svg", { "data-icon": "PlusIcon" }),
-  LayoutDashboardIcon: () => React.createElement("svg", { "data-icon": "LayoutDashboardIcon" }),
-  BotIcon: () => React.createElement("svg", { "data-icon": "BotIcon" }),
-  ActivityIcon: () => React.createElement("svg", { "data-icon": "ActivityIcon" }),
-  SettingsIcon: () => React.createElement("svg", { "data-icon": "SettingsIcon" }),
-  KeyIcon: () => React.createElement("svg", { "data-icon": "KeyIcon" }),
-  BookOpenIcon: () => React.createElement("svg", { "data-icon": "BookOpenIcon" }),
-  ZapIcon: () => React.createElement("svg", { "data-icon": "ZapIcon" }),
-  ShieldIcon: () => React.createElement("svg", { "data-icon": "ShieldIcon" }),
-  KeyRoundIcon: () => React.createElement("svg", { "data-icon": "KeyRoundIcon" }),
-  LibraryIcon: () => React.createElement("svg", { "data-icon": "LibraryIcon" }),
-  PlugIcon: () => React.createElement("svg", { "data-icon": "PlugIcon" }),
-  CheckCircle2Icon: () => React.createElement("svg", { "data-icon": "CheckCircle2Icon" }),
-  ServerIcon: () => React.createElement("svg", { "data-icon": "ServerIcon" }),
-  BrainCircuitIcon: () => React.createElement("svg", { "data-icon": "BrainCircuitIcon" }),
-  BoxesIcon: () => React.createElement("svg", { "data-icon": "BoxesIcon" }),
-  CreditCardIcon: () => React.createElement("svg", { "data-icon": "CreditCardIcon" }),
-  UsersIcon: () => React.createElement("svg", { "data-icon": "UsersIcon" }),
-  MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
-  PanelLeftCloseIcon: () => React.createElement("svg", { "data-icon": "PanelLeftCloseIcon" }),
-  PanelLeftOpenIcon: () => React.createElement("svg", { "data-icon": "PanelLeftOpenIcon" }),
-  SunIcon: () => React.createElement("svg", { "data-icon": "SunIcon" }),
-  MoonIcon: () => React.createElement("svg", { "data-icon": "MoonIcon" }),
-  ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
-  ChevronRightIcon: () => React.createElement("svg", { "data-icon": "ChevronRightIcon" }),
-  FolderIcon: () => React.createElement("svg", { "data-icon": "FolderIcon" }),
 }));
 
 // M118: `lib/workspace` is slimmed to a single survivor — the active workspace
@@ -78,10 +50,6 @@ vi.mock("@/lib/workspace", () => ({
     }),
 }));
 
-// RootLayout reads the theme cookie server-side (SSR data-theme stamp).
-vi.mock("next/headers", () => ({
-  cookies: vi.fn().mockResolvedValue({ get: () => undefined }),
-}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -97,7 +65,7 @@ describe("app layouts and pages", () => {
     const { default: AuthLayout } = await import("../app/(auth)/layout");
 
     const rootMarkup = renderToStaticMarkup(
-      await RootLayout({ children: React.createElement("div", null, "root child") }),
+      RootLayout({ children: React.createElement("div", null, "root child") }),
     );
     const dashboardMarkup = renderToStaticMarkup(
       await DashboardLayout({ children: React.createElement("div", null, "dash child") }),
@@ -107,25 +75,15 @@ describe("app layouts and pages", () => {
     expect(rootMarkup).toContain("root child");
     expect(dashboardMarkup).toContain("dash child");
     expect(authMarkup).toContain("agentsfleet");
-    // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
-    expect(authMarkup).toContain("data-live");
+    expect(authMarkup).toContain('data-brand-mark="signal"');
+    expect(authMarkup).not.toContain("data-live");
     // Configuration nav carries the consolidated Models destination
     // (the standalone Credentials vault was folded into it).
-    expect(dashboardMarkup).toContain(">Models<");
+    expect(dashboardMarkup).toContain("Your fleets");
     // M118: the Models destination is workspace-scoped — it carries the `/w/<id>`
     // segment (the switcher-seeded first workspace) rather than a bare root path.
-    expect(dashboardMarkup).toContain('href="/w/ws_1/settings/models"');
+    expect(dashboardMarkup).toContain('href="/w/ws_1/fleets"');
     expect(dashboardMarkup).not.toContain('href="/credentials"');
-  });
-
-  it("workspace root redirects to the wall and renders no UI of its own (6.1)", async () => {
-    // M132 single-route refactor: the dashboard is gone. `/w/{ws}/` is a bare
-    // permanent redirect to the Wall (`/w/{ws}/fleets`) — it renders nothing, so
-    // driving it must land in `redirect`, never in returned markup.
-    const { default: WorkspaceRootPage } = await import("../app/(dashboard)/w/[workspaceId]/page");
-    await expect(
-      WorkspaceRootPage({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
-    ).rejects.toThrow("redirect:/w/ws_1/fleets");
   });
 
   it("renders sign-in and sign-up pages with shared auth appearance", async () => {
@@ -145,7 +103,7 @@ describe("app layouts and pages", () => {
 it("renders account settings as a themed page with reloadable profile routes", async () => {
   const { default: AccountPage } = await import("../app/(dashboard)/settings/account/[[...account]]/page");
   const markup = renderToStaticMarkup(React.createElement(AccountPage));
-  expect(markup).toContain("Account settings");
+  expect(markup).toContain("Profile");
   expect(markup).toContain('data-user-profile="/settings/account"');
   expect(markup).toContain('data-routing="path"');
   expect(markup).toContain("colorPrimary");
