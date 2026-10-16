@@ -62,8 +62,6 @@ const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
 const DETAIL_UNHOSTED_PROVIDER: &str = "the selected model has no saved inference settings";
 const DETAIL_CONFIGURATION: &str =
     "the fleet execution configuration cannot be admitted by this runner";
-const DETAIL_BLOCKED_ENDPOINT: &str =
-    "the fleet names a model endpoint at a private or reserved address";
 const DETAIL_RENEWAL: &str = "the daemon ended the lease while it ran";
 const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on";
 const EVENT_ACQUIRED: &str = "lease_acquired";

@@ -6,7 +6,7 @@ use afd_vault::StoredEnvelope;
 use serde::Deserialize;
 use sqlx::{FromRow as _, PgConnection, Row as _};
 
-use super::{CONTEXT, RegisteredModel, metadata, read};
+use super::{CONTEXT, RegisteredModel, read};
 use crate::{
     error::{Result, provider_malformed, query, vault_open},
     provider::{Providers, credential},
@@ -35,12 +35,13 @@ impl Providers {
         owner: &Uuid7,
         pinned: &RegisteredModel,
     ) -> Result<Option<SecretString>> {
-        let Some(row) = read(connection, owner, &pinned.reference).await? else {
+        let Some(registration) = read(connection, owner, &pinned.reference).await? else {
             return Ok(None);
         };
-        if metadata(&row, &pinned.reference)? != *pinned {
+        if registration.model != *pinned {
             return Ok(None);
         }
+        let row = registration.row;
         let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
         let name: String = row.try_get(7).map_err(query(CONTEXT))?;
         let row = sqlx::query(sql::SELECT_SECRET)

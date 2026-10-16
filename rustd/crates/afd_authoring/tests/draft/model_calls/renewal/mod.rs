@@ -2,7 +2,9 @@
 
 mod authorization;
 mod expiry;
+mod invalid_usage;
 mod lock_wait;
+mod suppressed_write;
 
 use super::super::{attempt::Attempt, fixture::Fixture};
 use afd_db::statement::NOW_MS;

@@ -210,26 +210,6 @@ impl Error {
             | ErrorKind::Client { .. } => None,
         }
     }
-
-    /// The `custom:` endpoint a refused lease named at an address this runner
-    /// never dials, for its log line.
-    #[must_use]
-    pub fn blocked_endpoint(&self) -> Option<&str> {
-        match self.kind() {
-            ErrorKind::BlockedEndpoint { provider } => Some(provider),
-            ErrorKind::Unhosted { .. }
-            | ErrorKind::Refused { .. }
-            | ErrorKind::Lost { .. }
-            | ErrorKind::Ended { .. }
-            | ErrorKind::Oversize(_)
-            | ErrorKind::Unreadable { .. }
-            | ErrorKind::Configuration { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
-            | ErrorKind::Wire { .. }
-            | ErrorKind::Client { .. } => None,
-        }
-    }
 }
 
 /// A refusal's code in parentheses after its status, when the provider named

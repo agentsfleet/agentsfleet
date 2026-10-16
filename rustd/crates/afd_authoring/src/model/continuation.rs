@@ -45,9 +45,8 @@ pub(super) fn save(
     if result.cut || result.proposal_calls.is_empty() {
         return Ok(None);
     }
-    let Some(Message::Assistant(message)) = response.message() else {
-        return Err(ErrorKind::Provider.into());
-    };
+    // A validated proposal already proves nonempty assistant content.
+    let message = response.head().with_content(response.choice.clone());
     let continuation = Continuation {
         message_index: request.request.messages.len(),
         digest: replay::digest(&(

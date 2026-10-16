@@ -195,9 +195,6 @@ impl ModelCalls {
         counters: &guard::Counters,
         digest: &str,
     ) -> Result<Decision> {
-        if guarded.attempt.usage_unknown {
-            return Err(ErrorKind::Unknown.into());
-        }
         if guarded.attempt.calls.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {

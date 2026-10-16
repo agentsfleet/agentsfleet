@@ -155,13 +155,10 @@ const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 fn should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted() {
     let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
     let blocked = raise::blocked_endpoint(&endpoint);
-    let unhosted = raise::unhosted("bedrock");
 
     assert_eq!(blocked.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(blocked.failure_class(), None);
-    assert_eq!(blocked.blocked_endpoint(), Some(endpoint.as_str()));
     assert_eq!(blocked.unhosted_provider(), None);
-    assert_eq!(unhosted.blocked_endpoint(), None);
     assert!(blocked.detail().contains(&endpoint));
 }
 

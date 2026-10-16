@@ -45,3 +45,6 @@ impl Transport for Network {
         Ok(ProviderResponse { status, body })
     }
 }
+
+#[cfg(test)]
+mod tests;

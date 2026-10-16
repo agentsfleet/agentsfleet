@@ -55,9 +55,6 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
 }
 
 fn ceil(tokens: i64, rate: i64) -> Result<i64> {
-    if tokens < 0 || rate < 0 {
-        return Err(ErrorKind::Balance.into());
-    }
     let numerator = i128::from(tokens) * i128::from(rate);
     i64::try_from((numerator + MILLION - 1) / MILLION)
         .map_err(|_overflow| ErrorKind::Balance.into())

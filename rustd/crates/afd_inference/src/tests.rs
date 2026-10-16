@@ -28,6 +28,7 @@ fn rejects_unsafe_endpoints_without_exposing_them() {
     for endpoint in [
         "not a url",
         "http://example.com",
+        "file:///etc/passwd",
         "https://user:secret@example.com",
         "https://example.com?secret=value",
         "https://example.com#secret",
@@ -45,7 +46,11 @@ fn rejects_unsafe_endpoints_without_exposing_them() {
     for endpoint in ["https://8.8.8.8", "https://[2606:4700:4700::1111]"] {
         let mut value = settings(InferenceApi::Chat);
         value.base_url = endpoint.into();
-        Configured::new(&value, 100).unwrap();
+        let route = Configured::new(&value, 100).unwrap();
+        assert_eq!(
+            route.into_host().as_ref(),
+            endpoint.trim_start_matches("https://")
+        );
     }
 }
 

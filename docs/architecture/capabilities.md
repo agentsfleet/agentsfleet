@@ -159,7 +159,7 @@ The runtime ships with model-tier-aware defaults the user inherits without any c
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
 - `tool_window: auto` resolves per lease from the active model's context cap: **30** when the cap is at least one million tokens, **10** when it is at or below two hundred thousand, and **20** for every cap in between or an unknown cap (`rustd/crates/afd_gate/src/policy/context.rs`).
 
-Each lease reads the selected model's physical window from `core.model_library`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql.rs`, `rustd/crates/afd_gate/src/policy/build.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
+Each lease reads the selected model's physical window from `core.model_library`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql.rs`, `rustd/crates/afd_gate/src/policy/build/mod.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
 
 ### When a user does want to override (rare)
 
