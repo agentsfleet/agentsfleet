@@ -22,15 +22,15 @@ Every row is extracted from the sections below; the owner column names the secti
 | Signal paths | 3 | OTLP push through the daemon's collector · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `docs/metrics.census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
 | Runner telemetry | built: spans, eight runner families and export losses over OTLP when an endpoint is set · decided: a runner collector on the bare-metal host | logs stay on stderr and liveness rides `/v1/runners`; the collector will read logs from the host's log store and export all three itself, never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
-| Library read series | 128 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
-| Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so `agentsfleet_http_trace_suppressed_total` is declared and unproduced | §Traces |
+| Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
+| Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
 | OTLP loss | drop, never block; nothing retries | a full batch queue drops; OTLP carries no idempotency key, so a resent delta window would count twice | §"The Rust daemon's export path, as built" |
-| PostHog events | 10 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
+| PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
 | Log sink | stderr always; OTLP when configured | the log exporter counts its failures without warning, so a failing exporter cannot feed itself | §The shared logging module |
 | Performance gating | nothing gates on a percentile | the exported series are the evidence; a threshold that cannot fail reports success forever | §Library read stages are metrics, not spans |
-| The M61 naming trap | the live OpenTelemetry (OTel) export survived `OTEL_EXPORT_REMOVAL` | check the OTLP exporters + the `OTEL_EXPORTER_OTLP_*` knobs and their `GRAFANA_OTLP_*` aliases, never the milestone name | §The M61 naming trap |
+| The M61 naming trap | the live OpenTelemetry (OTel) export survived `OTEL_EXPORT_REMOVAL` | check the OTLP exporters + the `OTEL_EXPORTER_OTLP_*` knobs, never the milestone name | §The M61 naming trap |
 | Production wiring truth | per-surface state, each row with its code evidence | re-read the evidence column rather than trusting the row | §Signal routing |
 
 ## The three signal paths
@@ -39,7 +39,7 @@ The control plane's telemetry surfaces live in `afd_observability`.
 
 | Path | What | Consumer |
 |---|---|---|
-| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir, **through the collector** (`deploy/fly/otelcol-{dev,prod}`), which holds the vendor credentials and owns the fan-out. Gated on an OTLP endpoint: the deploy workflows set the `GRAFANA_OTLP_*` triple, an alias for `OTEL_EXPORTER_OTLP_*`, and its endpoint names the collector, not the vendor. The daemon's **only** metrics egress: there is no pull endpoint. See §The export path | <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud, operator dashboards |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir, **through the collector** (`deploy/fly/otelcol-{dev,prod}`), which holds the vendor credentials and owns the fan-out. Gated on an OTLP endpoint: the deploy workflows set `OTEL_EXPORTER_OTLP_ENDPOINT` to the collector, not the vendor, and `OTEL_EXPORTER_OTLP_HEADERS` to the collector's ingest credential. The daemon's **only** metrics egress: there is no pull endpoint. See §The export path | <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud, operator dashboards |
 | <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog | nullable client, product events only | product analytics |
 | Postgres | per-run execution telemetry + billing counters in `afd_billing` | the money system of record |
 
@@ -57,13 +57,13 @@ name, kind, number type, unit, temporality, label keys, histogram bounds and
 series ceiling once. Producer code names the family through a `Declared<Kind>`
 constant in `rustd/crates/afd_observability/src/metrics/declared/*.rs` and
 claims an OpenTelemetry instrument from `Instruments`
-(`metrics/instrument.rs`). A claim whose kind or number type disagrees with the
+(`metrics/instrument/mod.rs`). A claim whose kind or number type disagrees with the
 census is refused at boot, and every claim is recorded, so
 `Instruments::unclaimed` names any family nothing asked for. Label values come
 from closed enums in `metrics/label/*.rs`. Two labels are open: `runner_id`,
 bounded by the runner slot table, and the cost families' `gen_ai.request.model`,
 bounded by the model catalogue (§"Label registry — money stays in Postgres").
-A gauge's callback only loads a value from `metrics/observed.rs` and never
+A gauge's callback only loads a value from `metrics/observed/mod.rs` and never
 touches Dragonfly or a lock, because the callback runs under the OpenTelemetry
 software development kit (SDK)'s pipeline lock and a stall there silences every family at once. Adding a
 family is one census row, one `Declared` constant and one producer call.
@@ -85,8 +85,8 @@ that returned identifier for read-only log evidence.
 The milestone named `OTEL_EXPORT_REMOVAL` did **not** remove the live OTel
 export. It deleted a dead trio (`otel_export`/`otel_histogram`/`otel_json`) and
 kept `otel_logs` and `otel_traces` wired. Before touching anything OTel-shaped,
-check the OTLP exporters and the `OTEL_EXPORTER_OTLP_*` knobs (with their
-`GRAFANA_OTLP_*` aliases), not the milestone name.
+check the OTLP exporters and the `OTEL_EXPORTER_OTLP_*` knobs, not the
+milestone name.
 
 ## Metric family census — what to watch, and what it means
 
@@ -133,7 +133,7 @@ members and only five of them are ours: `startup_posture`, `runner_crash`, `tran
 platform delivered correctly.
 
 The daemon classifies them at the point of record: `fault_of` in
-`afd_observability/src/producers/fleet/runner.rs` maps the class to a two-member `Fault` set, and the
+`afd_observability/src/producers/fleet/runner/mod.rs` maps the class to a two-member `Fault` set, and the
 executions counter carries it as `fault` on the failing half only. A success has no `fault` label at
 all, which is what makes `{fault!="workload"}` read as "everything the platform was accountable for"
 — an absent label satisfies a not-equal matcher.
@@ -178,8 +178,9 @@ rate; they do not produce an objective.
 
 ### What has no indicator, and what would have to exist
 
-`rustd/crates/afd_observability/src/metrics/produced.rs` is the ledger of
-families this build declares and does not feed. Three consequences matter here.
+Every family the census declares has a producer
+(`every_census_family_has_a_producer`); a mechanism this daemon does not run
+has no census row. What follows is what no family measures yet.
 
 **End-to-end fleet availability now has both halves.** It was the headline gap
 here until M197_002 shipped `agentsfleet_fleet_runs_started_total{kind}`,
@@ -188,11 +189,6 @@ incremented at the one lease grant point;
 The trigger counter this section used to name as the missing denominator was
 retired rather than produced — declared for years and incremented nowhere, so
 it left the census instead of gaining a caller.
-
-**Repair latency has no histogram.** Both
-`agentsfleet_repair_production_to_queue_seconds` and
-`agentsfleet_repair_queue_to_completion_seconds` sit in the ledger behind the
-repair-result ingress, which has no Rust home yet.
 
 **API latency has no family at all.** The census declares seven histograms and
 none of them measures an HTTP request. Requests per second, the 500 rate and a
@@ -390,10 +386,10 @@ the allowlist proof.
 |---|---|---|
 | structured stderr | installed, called | `rustd/crates/agentsfleetd/src/logs.rs` installs the subscriber on stderr at boot; `AGENTSFLEET_LOG_LEVEL` sets the level |
 | server spans | emitted | `rustd/crates/afd_api/src/router/trace.rs` opens one `http.server.request` span per matched request, carrying the route template, the method and the status — never the raw path |
-| OTLP logs | installed, called when configured | `rustd/crates/afd_otlp/src/pipelines.rs` builds the log exporter `agentsfleetd`'s `telemetry.rs` asks for; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
+| OTLP logs | installed, called when configured | `rustd/crates/afd_otlp/src/pipelines/providers.rs` builds the log exporter `agentsfleetd`'s `telemetry/mod.rs` asks for; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
-| OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); families this build cannot feed are named in `metrics/produced.rs` and logged once at boot |
-| PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
+| OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
+| PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and every lease it serves runs inside a `runner.lease` span |
 | runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
 
@@ -429,8 +425,8 @@ protocol.
 
 **`fleet.delivery` is a custom control-plane span.** It is a root of its own,
 so it never claims to be half of a runner trace
-(`rustd/crates/afd_observability/src/delivery.rs`). `DELIVERY_SPAN_KEYS` in
-`rustd/crates/afd_observability/src/semconv.rs` declares its attributes. The
+(`rustd/crates/afd_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
+`rustd/crates/afd_observability/src/semconv/mod.rs` declares its attributes. The
 Generative Artificial Intelligence (GenAI) keys appear where the source fact
 matches: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id` (the fleet),
 `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`
@@ -444,11 +440,9 @@ label creates a series that outlives the process. Prompt and response content
 never becomes a span attribute.
 
 **Route policy.** None yet. The daemon traces every matched request: it has no
-head sampler and no per-class span budget, so
-`agentsfleet_http_trace_suppressed_total{reason}` is declared in the census and
-listed as unproduced in `rustd/crates/afd_observability/src/metrics/produced.rs`.
-The only bound is the shared batch queue, `SPAN_QUEUE` (2048 spans) in
-`rustd/crates/afd_otlp/src/pipelines.rs`, which drops past its cap without
+head sampler and no per-class span budget, so nothing is suppressed and no
+family counts suppression. The only bound is the shared batch queue, `SPAN_QUEUE` (2048 spans) in
+`rustd/crates/afd_otlp/src/pipelines/mod.rs`, which drops past its cap without
 counting.
 
 Why it matters: an idle runner sends one heartbeat every 10 s
@@ -471,7 +465,7 @@ read. The browser client sends a fresh `traceparent` root per request
 
 Label members live in the label registry below
 (`rustd/crates/afd_observability/src/metrics/label/library.rs`). Each family's
-series ceiling is its census `fixed:<n>` value, 128 in total, and
+series ceiling is its census `fixed:<n>` value, 124 in total, and
 `every_declared_ceiling_admits_its_label_product` fails when a new enum member
 makes a family's label product outgrow its ceiling.
 
@@ -480,7 +474,6 @@ makes a family's label product outgrow its ceiling.
 | `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | 40 |
 | `agentsfleet_library_stage_observations_total` | `surface`,`stage` | 40 |
 | `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | 36 |
-| `agentsfleet_library_pool_result_total` | `pool_result` | 4 (declared, unproduced: `metrics/produced.rs`) |
 | `agentsfleet_library_payload_bytes_total` | `surface` | 4 |
 | `agentsfleet_library_results_total` | `surface` | 4 |
 
@@ -516,17 +509,19 @@ not capture, so both were removed rather than left looking like a capability.
 ## PostHog is product analytics, not operations telemetry
 
 The client is optional: with no project key, `Analytics::silent` reports
-nothing (`rustd/crates/afd_observability/src/product.rs`). With one, the
+nothing (`rustd/crates/afd_observability/src/product/mod.rs`). With one, the
 pinned `posthog-rs` client runs on its defaults: a flush every 100 events or
 5 s, and a 10 000-event queue that drops new events with one warning when
 full. Failure drops analytics without failing a request. `capture` returns once
 the event is queued, never on delivery, so application wording says
 `submitted`, never `captured` or `delivered`.
 
-Ten events reach production code: `ServerStarted`, `WorkerStarted`,
+Eleven events reach production code: `ServerStarted`, `WorkerStarted`,
 `StartupFailed`, `WorkspaceCreated`, `FleetCompleted`, `ApiError`,
-`AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected`, and
-`InviteEmail`, reported under one of three names by its outcome. Two more —
+`AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected`, `InviteEmail`,
+reported under one of three names by its outcome, and `Authoring`, reported
+under one of five funnel names by its step
+([product_analytics.md](./product_analytics.md) §"Private chat to fleet funnel"). Two more —
 `FleetTriggered` and `SignupBootstrapped` — are declared and mapped but emitted
 by nothing: they appear in the telemetry enum, its property mapper and its own
 tests, and in no call site. A declared event nobody captures is a dashboard
@@ -562,7 +557,7 @@ Field rules: `.orly/docs/LOGGING_STANDARD.md`, committed in this repository.
 endpoint, addressed by the OpenTelemetry specification's own environment names.
 It does not know which backend its signal reaches, and that is the point.
 
-Posting direct to a vendor, gated on a `GRAFANA_OTLP_*` triple, spells vendor
+Posting direct to a vendor, gated on vendor-named variables, spells vendor
 identity into the daemon's own configuration. That works while there is one
 backend, and it makes moving to a second one a daemon change:
 new credentials, new configuration, a redeploy, and a window in which the old
@@ -602,8 +597,6 @@ environment. A pull endpoint would be a second export path exporting the same
 measurements by a different mechanism with a different failure mode.
 
 The vendor-named knobs are accepted as ALIASES, as the next section spells out.
-Where both a standard name and a vendor alias are set, the standard name wins.
-
 ### The Rust daemon's export path, as built
 
 `agentsfleetd` reads four knobs in preflight and nowhere else, spelled as the
@@ -611,17 +604,14 @@ OpenTelemetry specification spells them: `OTEL_EXPORTER_OTLP_ENDPOINT`,
 `OTEL_EXPORTER_OTLP_HEADERS` (comma-joined `key=value` pairs),
 `OTEL_EXPORTER_OTLP_PROTOCOL` (`http/protobuf` by default, `http/json`
 accepted) and `OTEL_EXPORTER_OTLP_TIMEOUT` (whole milliseconds, 10 000 by
-default). The vendor triple resolves as aliases. `GRAFANA_OTLP_ENDPOINT` is
-read only when the standard endpoint is unset, and the instance-id and key
-pair becomes one basic `Authorization` header that a standard header of the
-same name replaces. A protocol this build does not carry (`grpc` included), a
+default). A vendor's own variable names configure nothing. A protocol this build does not carry (`grpc` included), a
 zero or unreadable timeout, or a header pair with no `=` refuses boot at
 preflight, before anything opens: a daemon that silently exported nothing
 would present as a collector fault for as long as nobody checked.
 
 No endpoint is the ordinary case and not a fault. The daemon boots, serves,
 logs `startup_otel_disabled`, and supervises no export task. With one, boot
-(`rustd/crates/agentsfleetd/src/telemetry.rs`, through the builder both
+(`rustd/crates/agentsfleetd/src/telemetry/mod.rs`, through the builder both
 binaries share in `rustd/crates/afd_otlp/`) builds four pipelines on the
 published `opentelemetry-otlp` exporter over HTTP, each posting under its
 signal path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one
@@ -648,16 +638,15 @@ client awaited there would have no driver.
   report windows (delta) and the runtime families report running totals
   (cumulative); one provider would silently rewrite half of them. Each
   provider's periodic reader collects every 5 s (`COLLECT_INTERVAL` in
-  `rustd/crates/afd_otlp/src/pipelines.rs`). The reader posts through a counting wrapper whose number is collection CYCLES
+  `rustd/crates/afd_otlp/src/pipelines/mod.rs`). The reader posts through a counting wrapper whose number is collection CYCLES
   the exporter failed to send. Every census family is claimed from the
-  registry at boot under its declared kind and series ceiling. Families whose
-  mechanism this daemon does not run are named, with a reason each, in
-  `metrics/produced.rs` and logged once at boot rather than fed zeros; a
-  family in neither set fails the census test.
+  registry at boot under its declared kind and series ceiling, and a family
+  with no producer fails the census test: a mechanism this daemon does not
+  run has no census row, so nothing is fed zeros.
 
 Nothing retries: OTLP carries no idempotency key, and a resent delta window
 counts twice. A collector that is down costs dropped batches and a climbing
-counter, never latency on a request. That is the property `export.rs` states
+counter, never latency on a request. That is the property `export/mod.rs` states
 and `an_unreachable_collector_costs_spans_and_not_requests` grades on a real
 socket. The supervised `otlp_export` task does no exporting. It samples this
 process's resident set on the metric reader's own 5 s cadence and publishes it
@@ -688,7 +677,6 @@ Labels are bounded at the source:
 | `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
 | `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
-| `pool_result` (library) | `acquired`, `timeout`, `cancelled`, `error` | closed enum; no overflow value |
 
 **Workspace and tenant identity never reach a metric.** A per-process
 distinct-value guard cannot cap series across replicas and restarts. Exact
@@ -709,7 +697,7 @@ Postgres query against `billing.usage_ledger`. A provider with no
 well-known name **omits the attribute and keeps the measurement** on the
 `fleet.delivery` span, and the omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`
-(`rustd/crates/afd_observability/src/delivery.rs`). The `budget_exhausted` and
+(`rustd/crates/afd_observability/src/delivery/mod.rs`). The `budget_exhausted` and
 `value_too_long` reasons are declared and have no producer yet.
 
 All three OTLP signals share one resource (`service.name`,

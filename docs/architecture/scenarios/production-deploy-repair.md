@@ -2,13 +2,13 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §"§8.5 Example: Production deploy repair", [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
 
-**Outcome:** a failed production deployment becomes a diagnosis or one bounded draft Pull Request (PR). A human installs the write-bound repairer, reviews the exact diff, and merges. Only a terminal production result for the exact merged commit can wake post-deploy verification.
+**Outcome:** a failed production deployment becomes a diagnosis or one bounded draft Pull Request (PR). A human saves the write-bound repairer, reviews the exact diff, and merges. Only a terminal production result for the exact merged commit can wake post-deploy verification.
 
-**Crew shape:** three independently installed Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana and <img src="https://cdn.simpleicons.org/elasticsearch" width="14" alt="" /> Elasticsearch are evidence sources read by all three members.
+**Crew shape:** three independently saved Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana and <img src="https://cdn.simpleicons.org/elasticsearch" width="14" alt="" /> Elasticsearch are evidence sources read by all three members.
 
 **Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. It also adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof. The live GitHub App subscription and delivery are not yet proven together; the registration playbook requires that final operator check.
 
-> **Not ported to the Rust daemon.** The repair-evidence writer and `deployment_status` intake: the App ingress drops both as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs:22-29`), so no PR link, run history, merge pin or production result is recorded, and nothing reaches the verifier. §4–§8 describe the design the port follows.
+> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026; `schema/951_*`). §5–§9 describe a design with no code behind it.
 >
 > A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §"7. Four stages, four authorities".
 
@@ -23,10 +23,10 @@ timer ----------> Fleet 1   Fleet 2    Fleet 3 <----- exact production result
                  diagnosis      +----- failed workflow or human steer
                                 |
                                 v
-                     install grant -> draft PR -> human merge -> production
+                     setup grant -> draft PR -> human merge -> production
 ```
 
-Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later human steer. Each Fleet is installed, paused, updated, budgeted, and deleted independently.
+Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later human steer. Each Fleet is saved, paused, improved through review, budgeted, and deleted independently.
 
 ## 1. Start one incident
 
@@ -38,7 +38,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-There is no per-event approval card and no request ceiling. M202 retired both: the install-time `github` grant authorises a write, and the grant, the fleet's `budget.daily_dollars` and `agentsfleet grant delete` bound it (`rustd/crates/afd_gate/src/gate/first.rs:8-17`).
+There is no per-event approval card and no request ceiling. M202 retired both: the `github` grant a person approves while the fleet is set up authorises a write, and the grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/afd_gate/src/gate/first.rs:8-17`).
 
 The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
 
@@ -50,9 +50,9 @@ For a bounded forward fix, the repairer writes blobs, a tree, a commit, one daem
 
 The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the leased event identifier's bytes, so its length varies with the identifier (`branch_for` in `rustd/crates/afd_gate/src/policy/repair.rs:65`). The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
 
-The user-authored `TRIGGER.md` declares the exact repository and trusted Pull Request base. The daemon combines them with the event's repair branch and emits generic HTTP rules for host, method, path, and the top-level JSON fields each request may carry, locked or permitted; a rule that names fields refuses any other key and any query string. Those rules allow repository reads, blob and tree creation, a commit carrying only its message, tree and parents, the exact `refs/heads/<repair branch>` ref, and a draft Pull Request whose head and base equal the trusted values. The runner evaluates only those generic rules. It contains no GitHub repair type, procedure, or progress flag.
+The fleet's reviewed setup declares the exact repository and trusted Pull Request base. The daemon combines them with the event's repair branch and emits generic HTTP rules for host, method, path, and the top-level JSON fields each request may carry, locked or permitted; a rule that names fields refuses any other key and any query string. Those rules allow repository reads, blob and tree creation, a commit carrying only its message, tree and parents, the exact `refs/heads/<repair branch>` ref, and a draft Pull Request whose head and base equal the trusted values. The runner evaluates only those generic rules. It contains no GitHub repair type, procedure, or progress flag.
 
-The user-authored `SKILL.md` owns remote reconciliation. Before writing, the repairer searches all Pull Request states for the exact repository, head, and base, then reads the exact ref. An existing Pull Request ends with its URL. An existing validated ref with no Pull Request creates only the missing draft Pull Request. When neither exists, it creates Git objects, the exact ref, and the draft Pull Request. A timeout or ambiguous response causes another read before any repeated write. GitHub holds progress across runner restarts; the generic runner rules bind each request but do not claim process-local cardinality.
+The fleet's reviewed instructions own remote reconciliation. Before writing, the repairer searches all Pull Request states for the exact repository, head, and base, then reads the exact ref. An existing Pull Request ends with its URL. An existing validated ref with no Pull Request creates only the missing draft Pull Request. When neither exists, it creates Git objects, the exact ref, and the draft Pull Request. A timeout or ambiguous response causes another read before any repeated write. GitHub holds progress across runner restarts; the generic runner rules bind each request but do not claim process-local cardinality.
 
 **Linkage is not ported.** The retired daemon linked a PR opened on the repair branch back to its incident by decoding the gate reference the branch carried. The gate is retired and the Rust App ingress drops repair-branch traffic, so no incident-to-PR link is recorded (the box at the top).
 
@@ -103,7 +103,7 @@ Every normalized production result is stored before correlation. The same reconc
 
 A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
 
-Each selected verifier Fleet gets one intent row in `core.repair_verifications` (`schema/835_repair_verifications.sql`) with `verifier_event_id = NULL` and `verify_after` fifteen minutes after production completion. A dispatcher on every replica claims due intents in batches under a claim token that lapses after 30 seconds (`CLAIM_STALE`), and admits each as a `repair_production_result` event (`rustd/crates/afd_runner/src/sweep/repair.rs`). The admission ledger's (`core.fleet_admissions`) unique index on the intent makes a retry answer the first attempt's event identifier, and the completion, guarded on the claim token, fills `verifier_event_id` once. The once-key and its cleanup sweep are gone (`schema/912_repair_verifications_drop_once_cleanup.sql`). The dispatcher is ported; nothing writes an intent yet, because the production-result intake is not.
+Each selected verifier Fleet gets one intent row in `core.repair_verifications` (`schema/835_repair_verifications.sql`) with `verifier_event_id = NULL` and `verify_after` fifteen minutes after production completion. A dispatcher on every replica claims due intents in batches under a claim token that lapses after 30 seconds (`CLAIM_STALE`), and admits each as a `repair_production_result` event. The admission ledger's (`core.fleet_admissions`) unique index on the intent makes a retry answer the first attempt's event identifier, and the completion, guarded on the claim token, fills `verifier_event_id` once.
 
 The `verifier_event_id` is therefore the standard Fleet event identifier for Fleet 3's verification run. It is not another incident identifier and users do not copy it between Fleets. It lets event history, logs, and support trace the exact verification run back to the repair and production result.
 
@@ -144,9 +144,9 @@ The platform GitHub App subscribes to deployment-status events and holds Deploym
 
 ## 9. Proof status
 
-The three bundles, `incident-responder`, `incident-repairer` and
-`incident-verifier`, are test fixtures under `tests/fixtures/fleetbundle/`
-since `e621d7262`. The correlated-repair path landed in `M157_003` on the
+The three fleets, `incident-responder`, `incident-repairer` and
+`incident-verifier`, are native setup test fixtures
+(`tests/fixtures/fleets/<fleet>/definition.json`). The correlated-repair path landed in `M157_003` on the
 retired daemon. The Rust daemon ports the verification dispatcher and not the
 evidence writer or the production-result intake (the box at the top).
 
@@ -160,7 +160,7 @@ that the subscription exists.
 
 - One incident can record at most one repair PR per repair Fleet.
 - A write-bound repair lease carries provider-neutral HTTP rules for one exact repository, trusted base, and daemon-issued repair branch.
-- The repairer's user-authored skill reconciles the exact remote ref and Pull Request before writes; runner-local state never represents progress.
+- The repairer's reviewed instructions reconcile the exact remote ref and Pull Request before writes; runner-local state never represents progress.
 - The runner contains no GitHub repair module or provider-specific request sequence.
 - A repair branch carries the encoded event identifier and no fleet or workspace identity.
 - Repair-branch traffic never becomes a fresh incident.
@@ -177,11 +177,11 @@ that the subscription exists.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
 - Every matching verifier Fleet receives its own attempt; no name, role, or crew resolver chooses one.
 - The verifier has no repository write permission.
-- A human installs the write-bound repairer, reviews the diff, and merges.
+- A human saves the write-bound repairer, reviews the diff, and merges.
 - No repair automatically merges, deploys, reverts, or expands to a second repository.
 
 ## 11. Test fixture boundary
 
-`tests/fixtures/fleetbundle/platform-ops` remains test input. The API, dashboard, and Command Line Interface (CLI) do not load that directory in production.
+`tests/fixtures/fleets/platform-ops/definition.json` remains test input. The API, dashboard, and Command Line Interface (CLI) do not load that directory in production.
 
-The three incident bundles sit beside it as fixtures. Installation order does not create an ownership edge; event order supplies the workflow.
+The three incident setups sit beside it as fixtures. Save order does not create an ownership edge; event order supplies the workflow.

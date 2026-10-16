@@ -1,4 +1,10 @@
-<div align="center"><img src="branding/agentsfleet-mark-glow.png" width="180" alt="agentsfleet" />
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/agentsfleet-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="branding/agentsfleet-light.svg" />
+  <img src="branding/agentsfleet-light.svg" width="280" alt="agentsfleet" />
+</picture>
 
 # AI agents that wake when production breaks.
 
@@ -8,32 +14,39 @@
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
 [![cli coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=cli&label=cli&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=cli)
 [![Rust](https://img.shields.io/badge/Rust-1.99.0-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-0A7CFF?logo=gitbook&logoColor=white)](https://docs.agentsfleet.net)
+[![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-B8F0CE?labelColor=151716&logo=gitbook&logoColor=B8F0CE)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
 
-**[agentsfleet](https://agentsfleet.net)** is an open-source runtime for AI agents that wake on production events. An agent starts on an event — a pull request, an incident, a deploy — reads your code, telemetry, internal docs, and live control-plane state, finds the root cause, and opens a scenario-backed fix, on the platform's model or a key you bring. A human approves, then it ships the fix or drafts the customer reply. Every step is a replayable log.
+**[agentsfleet](https://agentsfleet.net)** is an open-source runtime for agents configured for recurring jobs. Each fleet has instructions, tools, triggers, access rules, and a budget. Events or messages wake the fleet; runners investigate with its permitted tools and save the results.
 
-- **Human approval, by design** — the agent investigates and proposes; a person approves before anything ships
-- **Replayable event logs** — audit every action and decision
-- **Bring your own provider keys** — no vendor lock-in on inference
-- **Runs locally or against production** — same agent, same evidence
+- **Controlled access** — tools and network rules determine which actions a fleet can perform.
+- **Durable results** — event history records requests, outcomes, and reports; live activity shows work in progress.
+- **Model choice** — use the platform model or an account model configured with your own provider key.
+- **Separate working instances** — each fleet keeps its own history and memory.
 
-Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. Open-source runtime, hosted control plane; bring your own model key or run on the platform's.
+The current runtime imports Markdown playbooks from the fleet library. Chat authoring and a typed saved definition are [proposed for review](docs/architecture/chat_authoring.md); they are not available yet.
 
 ---
 
 ## Quick start
 
-Need access? [Join the waitlist](https://accounts.agentsfleet.net/waitlist). The website's **Dashboard** links currently open the waitlist, and the shell installer command is hidden while unavailable.
+Already invited? [Sign in to the app](https://app.agentsfleet.net/sign-in). To request access, visit [Early access](https://agentsfleet.net/#pricing).
+
+The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4 or newer](https://bun.sh):
 
 ```bash
-npm install -g @agentsfleet/cli
-agentsfleet login
+git clone https://github.com/agentsfleet/agentsfleet.git
+cd agentsfleet/cli
+bun install
+bun run build
+bun ./dist/bin/agentsfleet.js login
 ```
 
-Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis and a proposed fix on your next pull request or incident. Full walkthrough at **[docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart)** — free to try, no card, under five minutes.
+Sign in in the browser, then enter the browser's verification code in the terminal. The CLI reports `login complete` after verification.
+
+See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers defining an agent in Markdown and connecting its tools and triggers.
 
 ---
 
@@ -46,7 +59,7 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
-| `public/openapi.json` | OpenAPI spec — committed and edited by hand |
+| `public/openapi.json` | OpenAPI reference generated from the daemon's route and schema definitions |
 | `schema/` | Postgres migrations |
 | `playbooks/` | First setup, deployment, verification, and operations |
 

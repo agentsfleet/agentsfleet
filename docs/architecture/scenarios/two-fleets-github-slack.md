@@ -13,7 +13,7 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 | Word | What it is |
 |---|---|
 | **Workspace** | Your team's space; every fleet, secret and connection lives in one. |
-| **Fleet** | One installed agent: its job description (`SKILL.md`), its rules (`TRIGGER.md`), the tools, secrets, network and budget it may use. A `core.fleets` row. |
+| **Fleet** | One saved agent: its reviewed setup, meaning its instructions and the triggers, tools, secrets, network and budget it may use. A `core.fleets` row that selects one immutable `core.fleet_definition_revisions` row. |
 | **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault and the HTTP API; never runs the model. |
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
 | **Admission** | "We accepted this job", a `core.fleet_admissions` row committed **before** the sender hears yes. |
@@ -30,8 +30,8 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
   ┌───────────────────────────────────────────────────────────────────────┐
   │                                                                       │
   │  FLEET A  "AGENT BOB 01"                FLEET B  "ci-dev-responder"   │
-  │  bundle: github-pr-reviewer             bundle: slack incident resp.  │
-  │  TRIGGER.md:                            TRIGGER.md:                   │
+  │  setup: github-pr-reviewer              setup: slack incident resp.   │
+  │  triggers:                              triggers:                     │
   │    type: webhook                          type: mention               │
   │    source: github                         source: slack               │
   │    repositories: [agentsfleet/            channels: [<#ci-dev id>]    │
@@ -51,42 +51,43 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 
 Slack is connected once per workspace through Open Authorization (OAuth); the GitHub App once per installation.
 
-## 1. Install: "start a fleet"
+## 1. Save: "start a fleet"
 
-Installing runs nothing. It writes the fleet down and builds its empty inbox; a fleet stays still until something sends it a job. Canonical: [`../data_flow.md`](../data_flow.md) §"A. INSTALL".
+Saving with start `none` runs nothing. It writes the fleet and its setup down, asks for its grants and builds its empty inbox; a fleet stays still until something sends it a job. Canonical: [`../data_flow.md`](../data_flow.md) §"A. SAVE" and C1 in [`../api_resources.md`](../api_resources.md).
 
 ```
-  you: agentsfleet install --library <github-pr-reviewer>      (and again for fleet B)
+  you: agentsfleet chat --library github-pr-reviewer --revision <id>
+       review the setup, then save it                 (and again for fleet B)
    │
-   │  POST /v1/workspaces/{ws}/fleets
+   │  POST /v1/workspaces/{ws}/fleets  {draft candidate, review_digest, start: none}
    ▼
   ┌──────────────────────────── agentsfleetd ────────────────────────────┐
   │                                                                      │
-  │  1. load SKILL.md + TRIGGER.md from the library entry                │
-  │  2. check the secrets it needs exist  (by NAME only, never values)   │
-  │  3. Postgres  INSERT core.fleets  status=installing                  │
+  │  1. refuse a stale review: the digest must match the setup now       │
+  │  2. Postgres  INSERT core.fleets  status=installing                  │
+  │               + setup revision 1 (description, instructions, config) │
   │               (tenant comes from the workspace row, never the caller)│
+  │  3. readiness: model, wallet, credentials by NAME only, connections, │
+  │     grants; a missing grant is requested:                            │
+  │     Postgres  INSERT core.integration_grants (fleet, "github")       │
+  │               pending  ← a person approves it on the setup check     │
   │  4. Dragonfly XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease   │
-  │               ← the inbox and its "lease" reader group               │
-  │               (retries ~1.4 s; failing, the Postgres row rolls back) │
-  │  5. Postgres  UPDATE core.fleets  installing → active                │
-  │               ← steps 3–5 succeed together or the row goes back      │
-  │  6. Postgres  INSERT core.integration_grants (fleet, "github")       │
-  │               approved   ← BEST-EFFORT: a failed write is logged and │
-  │               the install still succeeds; the grant card raised on   │
-  │               the first delivery closes the gap                      │
+  │               ← the inbox and its "lease" reader group, once every   │
+  │               check is ready (bounded at 5 s; failing, it waits)     │
+  │  5. Postgres  locked recheck: installing → active                    │
+  │               a pending check keeps it installing; the same Save,    │
+  │               or PATCH status active, retries the checks             │
   │                                                                      │
   └──────────────────────────────┬───────────────────────────────────────┘
                                  ▼
-                              201 Created
-```
-
+                    201 Created  (status active or installing)
 ```
   Postgres                                   Dragonfly
   ────────                                   ─────────
   core.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
-  core.integration_grants  ✔ usually         fleet:{B}:events  (empty) + group ✔
-                           (best-effort; missing ≠ a failed install)
+  core.fleet_definition_                     fleet:{B}:events  (empty) + group ✔
+    revisions (revision 1) ✔
+  core.integration_grants  ✔ approved before the fleet went active
   core.fleet_admissions    ✗  (no work yet)
   core.fleet_events        ✗                 fleet:{id}:activity  ✗ (exists from
   fleet.runner_leases      ✗                                       its first PUBLISH)
@@ -199,19 +200,19 @@ A steer is you typing to a fleet. It enters through the same door as every other
           202 { status, event_id, replayed }   ← the CLI filters frames by event_id
 ```
 
-Seven producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_fire, gate_continuation, repair_verification, slack_mention) write one envelope into one stream:
+Six producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_fire, gate_continuation, slack_mention) write one envelope into one stream:
 
 ```
   ┌──────────────────────── the envelope, every job ───────────────────────┐
   │ actor         steer:<user> | github-app | slack:<user> | cron:<id> |   │
-  │               continuation:<original> | system:repair-verifier         │
+  │               continuation:<original>                                  │
   │ type          chat | webhook | cron | continuation                     │
   │ workspace_id  <uuid>                                                   │
   │ request       <the message or the digest JSON>                         │
   │ created_at    <epoch ms>                                               │
   │ event_id      <created_at>-<seq>   ← minted by the ADMISSION ROW       │
   └────────────────────────────────────────────────────────────────────────┘
-       The agent never branches on actor; it is metadata for SKILL.md and history.
+       The agent never branches on actor; it is metadata for the instructions and history.
 ```
 
 ## 5. The waiting room: inboxes, shelves and doorbells
@@ -289,7 +290,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → c
                            ▼                             ▼
              R1 ◄── 200 { lease A }          R2 ◄── 200 { lease B }
                  lease_id, fencing_token, event{digest}, policy,
-                 instructions = SKILL.md body, bundle?
+                 instructions = the setup's instructions_md
 ```
 
 **One active lease per fleet.** The steer cannot run beside the PR job: the affinity slot is held. It waits in A's inbox until A's report frees the slot, and the next poll takes it.
@@ -302,7 +303,7 @@ Canonical: [`../runner_execution.md`](../runner_execution.md) §"One lease, end 
   ┌──────────────────────── agentsfleet-runner (R1, lease A) ────────────────────────┐
   │                                                                                  │
   │  SUPERVISOR (trusted, holds the model key)                                       │
-  │   prompt = "## Installed instructions" + SKILL.md                                │
+  │   prompt = "## Installed instructions" + the lease's instructions                │
   │            (+ "## Trusted repair context" for a write binding)                   │
   │   user turn = the 12-field PR digest  (a steer: your message, plus the           │
   │               thread's last eight finished turns)                                │

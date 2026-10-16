@@ -11,6 +11,12 @@ backend traffic through the `/backend` same-origin rewrite in the browser
 and `NEXT_PUBLIC_API_URL` on the server — which throws when unset
 (`lib/api/client.ts` `requireApiOrigin()`); no silent backend guessing.
 
+## Proposed chat workspace
+
+The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one authoring-and-runtime conversation.
+It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent. Save, Save and run now, and explicit Save to library follow the [single resource reference](api_resources.md).
+The [authoring API proposal](../reviews/workspace-setup/api.md) remains unimplemented; this page does not change its approval status.
+
 ## The five statements
 
 **1 · The server fetches. The client reacts.**
@@ -142,17 +148,13 @@ moves with no request behind it. `ChatView` itself has no effect left.
 `useActionState` and `Suspense` have not moved. All of it is the point of
 keeping the table.
 
-The two library routes are the worked example. `ModelCatalogueProvider` fetched the
+The Models route is the worked example. `ModelCatalogueProvider` fetched the
 entire global model catalogue in a mount effect, so every visit to Models
 paid for data most visits never opened a dialog to use; it now loads on
-intent — dialog open, focus, or an eligible hover. `InstallFleet` matched a
-`?library=<id>` deep link against the gallery in a second mount effect,
-which painted the gallery and replaced it a frame later; selection is now
-resolved on the server and passed down as the entry itself, so there is no
-frame in which the gallery is wrong.
+intent — dialog open, focus, or an eligible hover.
 
-Statement 3 covered both routes, which previously awaited every read before
-painting a pixel. Each now renders its header immediately and streams an
+Statement 3 covered the route too, which previously awaited every read before
+painting a pixel. It now renders its header immediately and streams an
 exported async data region under `Suspense`, matching `ApprovalsData`.
 
 One boundary worth recording, because it is easy to get backwards: those
@@ -196,3 +198,9 @@ It also does not close token secrecy. Even behind a Backend-for-Frontend, a
 compromised page can call `getToken()` and get a token. Closing that is a
 Content-Security-Policy and Subresource-Integrity concern, and its own piece of
 work.
+
+## Workspace setup and runtime subjects
+
+Opening New fleet allocates no resource. The first mutation creates a creator-private draft. Draft and fleet adapters key all messages, pending sends, streams and caches by account/workspace/subject. Recovery reads durable messages; streams carry authorized hints. Closing, logout, revocation, delete and subject switches clear private buffers; unsent text stays in memory, never browser local storage. No workspace-wide private broadcast is permitted.
+
+A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks; Save and run now exposes Pending until append and receipt complete. Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Improve starts a private draft against a pinned setup revision. Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).

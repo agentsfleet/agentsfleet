@@ -194,7 +194,7 @@ statements; it removes the whole row-collision class.
 
 **ISO-2 — ISO-1 does not reach a key the product spells globally.** The ready
 index, `fleet:ready`, is shared by the whole deployment: 16 partition hashes
-(`READY_PARTITIONS` in `rustd/crates/afd_dragonfly/src/ready/partition.rs`), and
+(`READY_PARTITIONS` in `rustd/crates/afd_dragonfly/src/ready/partition/mod.rs`), and
 a poll samples one with `HRANDFIELD`, so it hands a poller somebody's fleet at
 random. That is competing consumers, which is the design. Minted row ids do not
 touch it. Isolation here means a key family of the test's own:

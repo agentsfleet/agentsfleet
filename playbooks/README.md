@@ -91,6 +91,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/ci_rust_images` — build the one pinned Rust base image for Continuous Integration (CI): the musl toolchain for the static daemon build, and the components the lint and unit lanes need.
 - `operations/credential_rotation` — rotate an exposed development credential.
 - `operations/database_region_move` — move a PlanetScale database to another region, verified table by table.
+- `operations/failed_migration` — recover a release whose migration failed: fix the blocker and roll forward.
 - `operations/github_app_registration` — register the platform GitHub App.
 - `operations/installer_deploy` — deploy and verify `agentsfleet.dev`.
 - `operations/ip_allowlisting` — restrict datastore ingress to Fly.io egress.

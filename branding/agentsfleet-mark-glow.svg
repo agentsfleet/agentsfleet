@@ -1,23 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  agentsfleet brand-mark with the wake-pulse glow ring.
-
-  Same disc as agentsfleet-mark.svg with the pulse-glow halo rendered
-  as a soft radial gradient — a static representation of the live
-  wake-pulse animation that runs on the live website / app. Use this
-  variant when the mark is rendered larger than ~32px and a static
-  context (favicon, docs hero, social card) calls for the glow cue.
--->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="agentsfleet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
   <title>agentsfleet</title>
-  <defs>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.55" />
-      <stop offset="40%" stop-color="#5EEAD4" stop-opacity="0.18" />
-      <stop offset="100%" stop-color="#5EEAD4" stop-opacity="0" />
-    </radialGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="#0A0D0E" />
-  <circle cx="256" cy="256" r="220" fill="url(#glow)" />
-  <circle cx="256" cy="256" r="120" fill="#5EEAD4" />
+  <rect width="64" height="64" rx="12" fill="#151716"/>
+  <g transform="translate(8 8) scale(2)" fill="none" stroke="#b8f0ce" stroke-width="1.4" stroke-linecap="round">
+    <path d="M12 2v6m0 8v6M2 12h6m8 0h6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24"/>
+    <circle cx="12" cy="12" r="1.5" fill="#b8f0ce" stroke="none"/>
+  </g>
 </svg>
