@@ -34,8 +34,8 @@ function DismissIcon() {
 
 export const alertVariants = cva(
   [
-    "relative flex items-start gap-3 rounded-md border px-4 py-3 text-sm",
-    "animate-in fade-in-0 duration-200",
+    "relative flex items-start gap-lg rounded-lg border px-xl py-lg font-sans text-body-sm leading-body-sm",
+    "motion-safe:animate-in motion-safe:fade-in-0 duration-snap motion-reduce:animate-none",
   ].join(" "),
   {
     variants: {
@@ -123,7 +123,7 @@ export function AlertTitle({ className, ref, ...props }: ComponentProps<"div">) 
   return (
     <div
       ref={ref}
-      className={cn("font-semibold leading-tight tracking-tight", className)}
+      className={cn("font-semibold leading-body-sm", className)}
       {...props}
     />
   );
@@ -133,7 +133,7 @@ export function AlertDescription({ className, ref, ...props }: ComponentProps<"d
   return (
     <div
       ref={ref}
-      className={cn("mt-1 text-sm opacity-90", className)}
+      className={cn("mt-sm text-body-sm leading-body-sm", className)}
       {...props}
     />
   );

@@ -10,8 +10,8 @@ const jsonLd = {
   sameAs: ["https://agentsfleet.dev/openapi.json"],
 };
 
-const bootstrapScript = `# 1. Shell — one command installs the Command-Line Interface (CLI) + the skill bundle
-npm install -g @agentsfleet/cli && npx skills add agentsfleet/skills
+const bootstrapScript = `# 1. Shell — install the Command-Line Interface (CLI)
+npm install -g @agentsfleet/cli
 agentsfleet login
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), ask:
@@ -141,9 +141,8 @@ export default function Fleets() {
             Install agentsfleet
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
-            Install the command-line interface and the skill bundle, then
-            provision a Fleet from inside your coding agent. No dashboard
-            required.
+            Install the command-line interface, then describe your fleet’s job
+            in chat.
           </p>
           <Terminal label="Bootstrap commands" copyable className="max-w-wide">
             {bootstrapScript}

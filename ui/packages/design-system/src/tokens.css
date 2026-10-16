@@ -1,5 +1,5 @@
 /* agentsfleet visual tokens. Source: docs/DESIGN_SYSTEM.md.
- * Flat graphite and mint; sans UI, expressive display, mono technical data.
+ * Charcoal, warm white, and mint; sans UI, expressive display, mono technical data.
  * Gradient functions are forbidden by audits/design-tokens.sh. Fonts are
  * bundled locally. Theme utilities forward these values in theme.css. */
 @import "@fontsource/commit-mono/400.css";
@@ -12,38 +12,42 @@
 :root {
 
   --overlay: rgba(0, 0, 0, 0.6);
-  --surface-deep: #0e171b;
-  --bg: #131d21;
-  --surface-1: #202f35;
-  --surface-2: #2a3b42;
-  --surface-3: #31434c;
+  --elevation-floating: 0 8px 24px rgb(0 0 0 / 24%);
+  --elevation-dialog: 0 24px 64px rgb(0 0 0 / 36%);
+  --table-cell-inline: var(--sp-xl);
+  --table-cell-block: var(--sp-lg);
+  --surface-deep: #111312;
+  --bg: #151716;
+  --surface-1: #1c1f1d;
+  --surface-2: #252926;
+  --surface-3: #303631;
 
-  --border: #455c66;
-  --border-strong: #78929c;
+  --border: #3d4640;
+  --border-strong: #7c8980;
 
-  --text: #f1f5f5;
+  --text: #f2f0e9;
   /* The transcript's own ink, warmer than `--text` and used nowhere else.
      Light-on-dark blooms optically; a warm off-white settles where a cool one
      glares. Claude's transcript runs #F0EFEC for the same reason. Scoped on
      purpose — `--text` is the whole product, this is one surface. */
   --text-chat: #efece8;
-  --text-muted: #c6d2d5;
-  --text-subtle: #acbec4;
+  --text-muted: #c0c5bc;
+  --text-subtle: #a2aea4;
   /* Quieter than `--text-subtle`, for prose a reader is meant to skip: the
      model's own working-out beside its answer. `--text-subtle` steps down in
      lightness but holds its chroma, so against the transcript's warm ink it
      reads as another colour rather than a lower voice. This drops far enough
-     to skim past and still clears WCAG AA (5.4:1 on `--surface-1`) — the text
+     to skim past and still clears the shared text contrast gate — the text
      is optional to read, never optional to see. */
-  --text-dim: #7e9198;
+  --text-dim: #94a097;
   --avatar-saturation: 35%;
   --avatar-lightness: 28%;
 
-  --pulse: #5eead4;
-  --pulse-dim: #2dd4bf;
-  --pulse-glow: rgba(94, 234, 212, 0.35);
+  --pulse: #b8f0ce;
+  --pulse-dim: #9be4b7;
+  --pulse-glow: rgba(184, 240, 206, 0.15);
 
-  --on-pulse: #0a0d0e;
+  --on-pulse: #15221a;
 
   --cta: var(--pulse);
   --cta-hover: var(--pulse-dim);
@@ -154,11 +158,15 @@
 
 [data-theme="light"] {
 
-  --surface-deep: #e8efed;
-  --bg: #f7faf9;
+  --overlay: rgb(20 37 31 / 40%);
+  --elevation-floating: 0 8px 24px rgb(20 37 31 / 12%);
+  --elevation-dialog: 0 24px 64px rgb(20 37 31 / 20%);
+
+  --surface-deep: #e9ebe3;
+  --bg: #f8f6f0;
   --surface-1: #ffffff;
-  --surface-2: #edf3f1;
-  --surface-3: #dfe9e5;
+  --surface-2: #f0f0e9;
+  --surface-3: #e5e9e0;
   --border: #c5d3cd;
   --border-strong: #738a80;
   --text: #14251f;
@@ -188,6 +196,15 @@
   --cta-foreground: #ffffff;
 }
 
+:root, [data-theme] {
+  --table-header: var(--surface-1);
+  --table-row: var(--bg);
+  --table-row-alternate: color-mix(in srgb, var(--surface-1) 55%, var(--bg));
+  --table-row-hover: color-mix(in srgb, var(--pulse) 7%, var(--surface-1));
+  --table-divider: color-mix(in srgb, var(--border) 55%, var(--surface-1));
+  --table-row-indicator: inset 3px 0 0 var(--pulse);
+}
+
 @keyframes wake-pulse {
   0% {
     box-shadow: 0 0 0 0 var(--pulse-glow);
@@ -210,6 +227,22 @@
     box-shadow: 0 0 0 4px var(--pulse-glow);
     opacity: 1;
   }
+}
+
+/* Waiting uses the identity's rays; opacity changes never affect its geometry. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes signal-ripple {
+    0%, 100% { opacity: 0.25; }
+    40% { opacity: 1; }
+  }
+  [data-signal-spinner] path { animation: signal-ripple 1.6s ease-in-out infinite; }
+  [data-signal-spinner] path:nth-child(2) { animation-delay: -1.4s; }
+  [data-signal-spinner] path:nth-child(3) { animation-delay: -1.2s; }
+  [data-signal-spinner] path:nth-child(4) { animation-delay: -1s; }
+  [data-signal-spinner] path:nth-child(5) { animation-delay: -0.8s; }
+  [data-signal-spinner] path:nth-child(6) { animation-delay: -0.6s; }
+  [data-signal-spinner] path:nth-child(7) { animation-delay: -0.4s; }
+  [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
 }
 
 /* The braille spinner: ten frames in a one-line window, stepped every 80 ms by

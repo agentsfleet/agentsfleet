@@ -1,3 +1,5 @@
+import type { CaptureResult } from "posthog-js";
+
 /*
  * posthog-js is lazy-loaded to keep it off the landing first-load bundle.
  * initAnalytics() schedules the import on idle (so it doesn't compete
@@ -14,14 +16,15 @@ type Posthog = typeof import("posthog-js").default;
 
 // Signup *completion* belongs server-side to agentsfleetd
 // (`Telemetry::SignupBootstrapped`,
-// rustd/crates/afd_observability/src/product/telemetry.rs) — the funnel is
+// rustd/crates/afd_observability/src/product/telemetry/mod.rs) — the funnel is
 // redirect-based, so this origin can
 // never observe it. No completion or lead-capture events exist here by
 // design; see docs/architecture/product_analytics.md.
 export const EVENT_SIGNUP_STARTED = "signup_started";
 export const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
+export const EVENT_INTERACTION_CLICKED = "interaction_clicked";
 
-type AnalyticsEventName = typeof EVENT_SIGNUP_STARTED | typeof EVENT_NAVIGATION_CLICKED;
+type AnalyticsEventName = typeof EVENT_SIGNUP_STARTED | typeof EVENT_NAVIGATION_CLICKED | typeof EVENT_INTERACTION_CLICKED;
 
 type AnalyticsPrimitive = string | number | boolean;
 type AnalyticsProps = Record<string, AnalyticsPrimitive>;
@@ -44,9 +47,10 @@ const ALLOWED_PROPERTY_KEYS = new Set([
   "cta_id",
   "plan_interest",
   "status",
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
+]);
+const POSTHOG_INGEST_KEYS = new Set([
+  "token", "distinct_id", "$device_id", "$session_id", "$window_id",
+  "$is_identified", "$lib", "$lib_version", "$insert_id", "$time", "$process_person_profile",
 ]);
 
 let initialized = false;
@@ -80,6 +84,27 @@ function sanitizeProps(properties: AnalyticsProps): AnalyticsProps {
   return sanitized;
 }
 
+function captureSafely(client: Posthog, event: AnalyticsEventName, props: AnalyticsProps): void {
+  try {
+    client.capture(event, props);
+  } catch {
+    // A blocked analytics client must not interrupt the visitor's action.
+  }
+}
+
+function sanitizeOutgoingEvent(event: CaptureResult | null): CaptureResult | null {
+  if (event === null) return null;
+  // PostHog enriches events after capture(), so the final boundary must also filter.
+  event.properties = Object.fromEntries(Object.entries(event.properties).filter(
+    ([key]) => ALLOWED_PROPERTY_KEYS.has(key) || POSTHOG_INGEST_KEYS.has(key),
+  ));
+  event.properties.path = window.location.pathname;
+  delete event.$set;
+  delete event.$set_once;
+  delete event.$unset;
+  return event;
+}
+
 async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
   // No posthogModule re-entry guard: ensureLoader gates the single call via
   // `loadPromise`, so this runs exactly once per init cycle (module still
@@ -93,11 +118,10 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
   const client = mod.default;
   client.init(cfg.key, {
     api_host: cfg.host,
-    // Autocapture covers clicks/changes/submits with element metadata
-    // (text, href, css path, surrounding form). Pageviews fire on every
-    // SPA route change so the funnel is anchored. Bots are auto-tagged
-    // by posthog-js via $browser_type — filter them out in the PostHog
-    // UI rather than dropping them at the SDK so we keep the count.
+    // Autocapture and pageviews retain counts and pathname attribution.
+    // The final filter drops URL, referrer, campaign and element payloads.
+    // The client's default
+    // user-agent filter drops bot traffic, including headless browsers.
     //
     // `persistence: "localStorage"` (not "localStorage+cookie") so we
     // do NOT set a first-party tracking cookie on every page load. A
@@ -111,12 +135,15 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
     capture_pageview: "history_change",
     capture_pageleave: true,
     persistence: "localStorage",
+    // Flag requests bypass before_send and carry initial URL properties.
+    advanced_disable_flags: true,
+    before_send: sanitizeOutgoingEvent,
   });
   posthogModule = client;
   // Drain buffered events in arrival order; splice(0) empties the queue and
   // hands back every entry, so there is no partial-shift undefined to guard.
   for (const [event, props] of pendingEvents.splice(0)) {
-    posthogModule.capture(event, props);
+    captureSafely(posthogModule, event, props);
   }
 }
 
@@ -162,7 +189,7 @@ export function track(event: AnalyticsEventName, properties: AnalyticsProps): vo
 
   const sanitized = sanitizeProps(properties);
   if (posthogModule) {
-    posthogModule.capture(event, sanitized);
+    captureSafely(posthogModule, event, sanitized);
     return;
   }
   pendingEvents.push([event, sanitized]);
@@ -181,6 +208,10 @@ export function trackNavigationClicked(properties: Omit<AnalyticsProps, "path">)
     ...properties,
     path: window.location.pathname,
   });
+}
+
+export function trackInteractionClicked(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_INTERACTION_CLICKED, { ...properties, path: window.location.pathname });
 }
 
 /** Await-able test hook: resolves once the lazy posthog-js import has
