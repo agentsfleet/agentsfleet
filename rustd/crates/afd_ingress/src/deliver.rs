@@ -14,11 +14,13 @@
 //! runner leases the event, and a daemon that inserted one at ingress would
 //! be racing its own runner to describe the same event.
 //!
-//! # Why the key is `{fleet}:{provider event id}`
+//! # Why the key is `{fleet}:{source}:{provider event id}`
 //!
 //! Per fleet, because one App delivery fans out to every subscribed fleet and
 //! each of them must run: a key on the provider's id alone would let the
-//! first fleet's admission silence all the others. Per provider event id,
+//! first fleet's admission silence all the others. Per source, because the
+//! per-source routes identify a delivery by its body's hash, and two sources
+//! on one fleet may send identical bytes: each is its own event. Per provider event id,
 //! because that is the value a sender REPEATS when it retries — a random id
 //! minted here would make every retry a new event, which is the duplicate run
 //! the key exists to prevent.
@@ -103,7 +105,7 @@ impl Ingress {
     ) -> Result<Admitted> {
         let fleet = binding.fleet().as_str();
         let workspace = binding.workspace().as_str();
-        let key = format!("{fleet}:{}", delivery.event_id);
+        let key = format!("{fleet}:{}:{}", binding.source(), delivery.event_id);
         let admitted = self
             .admissions
             .admit(Admission {

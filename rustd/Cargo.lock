@@ -722,6 +722,7 @@ dependencies = [
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
+ "afd_fleet_runtime",
  "afd_identity",
  "afd_ingress",
  "afd_mail",

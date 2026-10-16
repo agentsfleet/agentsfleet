@@ -233,11 +233,44 @@ describe("private browser chat", () => {
   it("pins Apply to the setup tag whose revision matches the displayed Review", async () => {
     current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
     const instance = await ready(true); await instance.review();
-    override = ({path, method}) => path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST" ? response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"'}, 201) : undefined;
+    override = ({path, method}) => path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST" ? response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: []}, 201) : undefined;
     await instance.apply();
     expect(mutations()[0]?.headers.get("If-Match")).toBe(FLEET.setup_etag);
     expect(mutations()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest});
     expect(instance.getSnapshot().reviewed).toBeNull();
+    expect(instance.getSnapshot().notice).toBe("Fleet setup updated. New work uses this setup revision.");
+  });
+  it("never reports Apply as done while a returned schedule is unregistered, and retries it through :sync", async () => {
+    current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
+    const failed = {schedule_id: "sched-1", fleet_id: FLEET_ID, sync: "failed", last_error: "refused"};
+    const instance = await ready(true); await instance.review();
+    override = ({path, method}) => {
+      if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST") {
+        return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: [failed]}, 201);
+      }
+      if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && method === "POST") return response({...failed, sync: "synced", last_error: null});
+      return undefined;
+    };
+    await instance.apply();
+    expect(instance.getSnapshot().notice).toBe("Fleet setup updated, but a schedule is not registered yet.");
+    expect(instance.getSnapshot().schedules).toEqual([failed]);
+    await instance.syncSchedule(failed);
+    expect(mutations().at(-1)?.path).toMatch(/\/fleets\/[^/]+\/schedules\/sched-1\/sync$/);
+    expect(instance.getSnapshot().schedules[0]?.sync).toBe("synced");
+    expect(instance.getSnapshot().fleet).toBeNull();
+  });
+  it("updates the saved fleet's schedule after a retried registration", async () => {
+    const owed = {schedule_id: "sched-2", fleet_id: FLEET_ID, sync: "syncing", last_error: null};
+    const other = {schedule_id: "sched-3", fleet_id: FLEET_ID, sync: "synced", last_error: null};
+    const instance = await ready(true); await instance.review();
+    override = ({path, method}) => {
+      if (path.endsWith("/fleets") && method === "POST") return response({...FLEET, schedules: [owed, other]}, 201);
+      if (path.endsWith("/schedules/sched-2/sync") && method === "POST") return response({...owed, sync: "synced"});
+      return undefined;
+    };
+    await instance.save();
+    await instance.syncSchedule(owed);
+    expect(instance.getSnapshot().fleet?.schedules.map((row) => row.sync)).toEqual(["synced", "synced"]);
   });
   it("refuses Improve when its pinned fleet setup changed before Review", async () => {
     current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "2"}}};

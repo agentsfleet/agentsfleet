@@ -26,7 +26,7 @@
 - **Model choice** — use the platform model or an account model configured with your own provider key.
 - **Separate working instances** — each fleet keeps its own history and memory.
 
-The current runtime imports Markdown playbooks from the fleet library. Chat authoring and a typed saved definition are [proposed for review](docs/architecture/chat_authoring.md); they are not available yet.
+You write a fleet by describing the job in a private chat, in the app or with `agentsfleet chat`. The chat drafts a typed Definition you review, then Save creates the fleet and checks its access. See [fleet definitions](docs/architecture/fleet_definitions.md).
 
 ---
 
@@ -46,7 +46,7 @@ bun ./dist/bin/agentsfleet.js login
 
 Sign in in the browser, then enter the browser's verification code in the terminal. The CLI reports `login complete` after verification.
 
-See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers defining an agent in Markdown and connecting its tools and triggers.
+See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers writing a fleet in chat and connecting its tools and triggers.
 
 ---
 

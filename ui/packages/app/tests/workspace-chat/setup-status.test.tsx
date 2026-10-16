@@ -22,14 +22,35 @@ it("shows all readiness outcomes and refuses external or backslash recovery dest
 it("keeps Continue available until a requested first run is durably accepted", () => {
   const proceed = vi.fn();
   const fleet = {...FLEET, status: "active", start: {kind: "run_now" as const, state: "pending" as const}};
-  const view = render(<SetupProgress fleet={fleet} workspace={WORKSPACE} onContinue={proceed} busy />);
+  const view = render(<SetupProgress fleet={fleet} workspace={WORKSPACE} onContinue={proceed} onRetrySchedule={vi.fn()} busy />);
   expect(screen.getByRole("button", {name: "Continue setup"})).toHaveProperty("disabled", true);
-  view.rerender(<SetupProgress fleet={fleet} workspace={WORKSPACE} onContinue={proceed} busy={false} />);
+  view.rerender(<SetupProgress fleet={fleet} workspace={WORKSPACE} onContinue={proceed} onRetrySchedule={vi.fn()} busy={false} />);
   fireEvent.click(screen.getByRole("button", {name: "Continue setup"}));
   expect(proceed).toHaveBeenCalledOnce();
-  view.rerender(<SetupProgress fleet={{...fleet, start: {kind: "run_now", state: "accepted"}}} workspace={WORKSPACE} onContinue={proceed} busy={false} />);
+  view.rerender(<SetupProgress fleet={{...fleet, start: {kind: "run_now", state: "accepted"}}} workspace={WORKSPACE} onContinue={proceed} onRetrySchedule={vi.fn()} busy={false} />);
   expect(screen.queryByRole("button", {name: "Continue setup"})).toBeNull();
   expect(screen.getByText(/Accepted work can still be running/)).toBeTruthy();
+});
+
+it("calls an active fleet ready only when every schedule is registered, and retries the rest", () => {
+  const retry = vi.fn();
+  const synced = {schedule_id: "sched-ok", fleet_id: FLEET.id, sync: "synced"};
+  const failed = {schedule_id: "sched-bad", fleet_id: FLEET.id, sync: "failed", last_error: "scheduler refused"};
+  const unconfirmed = {schedule_id: "sched-wait", fleet_id: FLEET.id, sync: "syncing", last_error: null};
+  const active = {...FLEET, status: "active"};
+  const view = render(<SetupProgress fleet={{...active, schedules: [synced]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
+  expect(screen.getByText(`${FLEET.name} is ready`)).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Retry registration"})).toBeNull();
+  view.rerender(<SetupProgress fleet={{...active, schedules: [synced, failed, unconfirmed]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
+  expect(screen.getByText(`${FLEET.name} is active, but a schedule is not registered`)).toBeTruthy();
+  expect(screen.getByText("Schedule sched-bad is saved but not registered, so it will not fire (scheduler refused).")).toBeTruthy();
+  expect(screen.getByText(/Schedule sched-wait is saved but its registration was not confirmed/)).toBeTruthy();
+  const buttons = screen.getAllByRole("button", {name: "Retry registration"});
+  expect(buttons).toHaveLength(2);
+  fireEvent.click(buttons[0]!);
+  expect(retry).toHaveBeenCalledWith(failed);
+  view.rerender(<SetupProgress fleet={{...active, schedules: [{...failed, last_error: null}]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
+  expect(screen.getByText("Schedule sched-bad is saved but not registered, so it will not fire.")).toBeTruthy();
 });
 
 it("shows unresolved defaults and the exact source and fleet revisions under review", () => {
