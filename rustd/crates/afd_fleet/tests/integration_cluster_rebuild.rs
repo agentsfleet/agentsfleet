@@ -54,7 +54,6 @@ use afd_wire::event::EventType;
 
 use crate::queue;
 use crate::report_seed::DEEP_POOL;
-use crate::requests::enrolled_at;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -251,13 +250,14 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     let fixtures = Fixtures::create_with_queue().await;
     let leases = fixtures.leases();
     let streams = FleetStreams::new(fixtures.queue().clone());
-    let staged_at = UnixMillis::from_millis(enrolled_at());
 
     // ── Every state the ledger can express, each on its own fleet.
     let population = usize::try_from(STRANDED).expect("a hundred-odd fleets fit a usize");
     let mut stranded = Vec::with_capacity(population);
     for _ in 0..population {
-        stranded.push(dead_holder(&fixtures, &leases, staged_at).await);
+        // Each at the real instant: issue reads database time, and a claim
+        // stamped before a hundred-odd fleets were staged would have lapsed.
+        stranded.push(dead_holder(&fixtures, &leases, clock::now()).await);
     }
     let live = delivered_and_leased(&fixtures, &leases, clock::now()).await;
     let queued = queued_undelivered(&fixtures).await;
