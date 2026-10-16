@@ -44,7 +44,7 @@ async fn test_stop_releases_the_claim() {
         fixtures
             .affinity_column(&seeded.fleet, COLUMN_LEASED_UNTIL)
             .await,
-        Some(ENROLLED_AT.to_string()),
+        Some(enrolled_at().to_string()),
         "the refusal freed the claim at its own instant, not a claim's lifetime later"
     );
     assert_eq!(
@@ -61,7 +61,7 @@ async fn test_stop_releases_the_claim() {
     let leased = crate::seed::select_fleet_within_rotations(
         &fixtures.leases(),
         &seeded.runner,
-        UnixMillis::from_millis(ENROLLED_AT + 1),
+        UnixMillis::from_millis(enrolled_at() + 1),
         &seeded.fleet,
     )
     .await
@@ -95,7 +95,7 @@ async fn test_approval_resolution_leases_next_poll() {
         fixtures
             .affinity_column(&seeded.fleet, COLUMN_LEASED_UNTIL)
             .await,
-        Some(ENROLLED_AT.to_string()),
+        Some(enrolled_at().to_string()),
         "the park freed the claim"
     );
     assert!(
@@ -118,7 +118,7 @@ async fn test_approval_resolution_leases_next_poll() {
         REVIEWER,
         "",
         Some(&seeded.fleet),
-        UnixMillis::from_millis(ENROLLED_AT + 1),
+        UnixMillis::from_millis(enrolled_at() + 1),
     )
     .await
     .expect("the resolve must not fault");
@@ -131,7 +131,7 @@ async fn test_approval_resolution_leases_next_poll() {
     let leased = crate::seed::select_fleet_within_rotations(
         &fixtures.leases(),
         &seeded.runner,
-        UnixMillis::from_millis(ENROLLED_AT + 2),
+        UnixMillis::from_millis(enrolled_at() + 2),
         &seeded.fleet,
     )
     .await
@@ -154,7 +154,7 @@ async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &st
         ACTOR,
         event_type,
         REQUEST_JSON,
-        ENROLLED_AT,
+        enrolled_at(),
     )
     .await
 }

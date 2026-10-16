@@ -15,7 +15,7 @@ use afd_core::id::Uuid7;
 use afd_fleet::lease::Billed;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use crate::requests::{ENROLLED_AT, enrolment};
+use crate::requests::{enrolled_at, enrolment};
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -31,7 +31,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
+            UnixMillis::from_millis(enrolled_at()),
         )
         .await
         .expect("the runner enrols");
@@ -54,7 +54,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 1),
+            UnixMillis::from_millis(enrolled_at() + 1),
         )
         .await
         .expect("an active runner may be revoked");
@@ -94,7 +94,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT + 1);
+    let now = UnixMillis::from_millis(enrolled_at() + 1);
     // Select finds the work; issue writes the row. The retirement predicate
     // reads the row, so both steps are needed, as `integration_lease_issue`
     // does them.
@@ -128,7 +128,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
             &runner,
             RunnerAdminAction::Revoke,
             ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 2),
+            UnixMillis::from_millis(enrolled_at() + 2),
         )
         .await
         .expect("an active runner may be revoked");

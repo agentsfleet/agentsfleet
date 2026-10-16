@@ -14,11 +14,11 @@ use afd_gate::gate::GateRef;
 
 use super::{
     CACHED_INPUT_NANOS_PER_MTOK, CONTEXT_CAP_TOKENS, GATE_WINDOW_MS, INPUT_NANOS_PER_MTOK,
-    KIND_EVENT, KIND_REPOSITORY_WRITE, OUTPUT_NANOS_PER_MTOK, PROVIDER_KEY_BODY,
+    KIND_EVENT, KIND_REPOSITORY_WRITE, OUTPUT_NANOS_PER_MTOK, PROVIDER_KEY_BODY, PROVIDER_KEY_KIND,
     REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
 };
 use crate::report_seed::FIXTURE_KEK_HEX;
-use crate::requests::ENROLLED_AT;
+use crate::requests::enrolled_at;
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
 
@@ -58,7 +58,7 @@ pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -
             source_workspace_id: &workspace,
             model: MODEL,
             context_cap_tokens: CONTEXT_CAP_TOKENS,
-            created_at: ENROLLED_AT,
+            created_at: enrolled_at(),
         },
     )
     .await
@@ -85,7 +85,7 @@ async fn seed_model_rate(fixtures: &Fixtures) {
     .bind(INPUT_NANOS_PER_MTOK)
     .bind(CACHED_INPUT_NANOS_PER_MTOK)
     .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(ENROLLED_AT)
+    .bind(enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the catalogue seed must run");
@@ -110,8 +110,10 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
     sqlx::query(
         "INSERT INTO vault.secrets \
            (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, \
-            dek_tag, nonce, ciphertext, tag, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) \
+            dek_tag, nonce, ciphertext, tag, created_at, updated_at, \
+            meta_kind, meta_provider, meta_has_key) \
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, \
+                 $12, $3, TRUE) \
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
     .bind(fixture_id())
@@ -124,7 +126,8 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
     .bind(sealed.payload_nonce().as_slice())
     .bind(sealed.payload_ciphertext())
     .bind(sealed.payload_tag().as_slice())
-    .bind(ENROLLED_AT)
+    .bind(enrolled_at())
+    .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
     .expect("the provider key seed must run");
@@ -167,7 +170,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
     .bind(format!("event-lease-gates-spent-{}", ready.fleet))
     .bind(MODEL)
     .bind(nanos)
-    .bind(ENROLLED_AT)
+    .bind(enrolled_at())
     .bind(fixture_id())
     .execute(&mut *connection)
     .await
@@ -188,7 +191,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 ///
 /// # Two clocks
 ///
-/// The verb is driven at [`ENROLLED_AT`], a fixed instant in the past, but
+/// The verb is driven at [`enrolled_at()`], a fixed instant in the past, but
 /// `record` derives the key's time-to-live from the REAL clock. A deadline in
 /// fixture time would ask for a negative lifetime. So the deadline is real-now
 /// plus an hour, which is un-lapsed under both readings.
@@ -218,7 +221,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     .bind(KIND_EVENT)
     .bind(deadline)
     .bind(status)
-    .bind(ENROLLED_AT)
+    .bind(enrolled_at())
     .bind(&ready.event_id)
     .execute(&mut *connection)
     .await
@@ -247,7 +250,7 @@ fn fixture_id() -> String {
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host provides entropy");
-    Uuid7::encode(UnixMillis::from_millis(ENROLLED_AT), bytes)
+    Uuid7::encode(UnixMillis::from_millis(enrolled_at()), bytes)
         .expect("a v7 identifier encodes")
         .as_str()
         .to_owned()
@@ -304,7 +307,7 @@ pub(super) async fn seed_write_gate(
     .bind(KIND_REPOSITORY_WRITE)
     .bind(deadline)
     .bind(STATUS_APPROVED)
-    .bind(ENROLLED_AT)
+    .bind(enrolled_at())
     .bind(&ready.event_id)
     .bind(stated_binding)
     .bind(REPOSITORY_WRITE_SPEND_CEILING)

@@ -77,9 +77,7 @@ RETURNING attempt_count";
 /// for an answer already in flight.
 ///
 /// Rides `idx_fleet_obligations_unreceipted`, whose predicate is the same NULL
-/// tests. A row with no destination or already abandoned is never offered: the
-/// first was owed to a model provider before an obligation had to say where it
-/// goes, the second was refused for good.
+/// tests. A row already abandoned is never offered: it was refused for good.
 ///
 /// The three `::text` casts are load-bearing, not decoration: `id`, `fleet_id`
 /// and `workspace_id` are `UUID` columns and [`Owed`](crate::obligation::Owed)
@@ -92,7 +90,7 @@ pub(crate) const SELECT_UNRECEIPTED: &str = "\
 SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NULL AND created_at < $1::bigint
-   AND destination IS NOT NULL AND abandoned_at IS NULL
+   AND abandoned_at IS NULL
  ORDER BY created_at, seq
  LIMIT $2::bigint";
 
@@ -110,13 +108,13 @@ SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, even
 /// set when somebody actually got it.
 ///
 /// Rides `idx_fleet_obligations_undelivered`, leading on `fleet_id` because
-/// order is promised per destination, and skips the same two sets the scan
+/// order is promised per destination, and skips abandoned rows as the scan
 /// above does.
 pub(crate) const SELECT_UNDELIVERED: &str = "\
 SELECT id::text, fleet_id::text, workspace_id::text, provider, destination, event_id, answer
   FROM core.fleet_obligations
  WHERE receipt IS NOT NULL AND delivered_at IS NULL AND updated_at < $1::bigint
-   AND destination IS NOT NULL AND abandoned_at IS NULL
+   AND abandoned_at IS NULL
  ORDER BY fleet_id, created_at, seq
  LIMIT $2::bigint";
 

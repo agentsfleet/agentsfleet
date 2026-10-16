@@ -21,10 +21,14 @@
 //! sets and every decode branch in a unit test with no datastore anywhere
 //! near it.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 pub mod admin;
 pub mod bounds;
+pub mod capacity;
+pub mod edit;
 pub mod heartbeat;
 pub mod policy;
 pub mod reconcile;
@@ -37,7 +41,8 @@ pub mod sweep;
 pub mod validate;
 pub mod view;
 
-pub use self::admin::{PolicyAssigned, SelftestRequested};
+pub use self::admin::SelftestRequested;
+pub use self::edit::{RunnerEdit, RunnerEdited};
 pub use self::error::{
     DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,
     DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_LEASED,

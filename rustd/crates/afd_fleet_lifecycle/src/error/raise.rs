@@ -9,11 +9,6 @@ use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
-    afd_vault::Error => Vault,
-    afd_core::error::Error => Mint,
-    afd_crypto::error::Error => Entropy,
-    afd_fleet_runtime::Error => Config,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -33,15 +28,7 @@ pub(crate) fn row_malformed(column: &'static str, stored: &str) -> Error {
     .into()
 }
 
-/// Reports a `SKILL.md` this daemon will not store.
-///
-/// Not a `#[from]`: [`ErrorKind::Config`] already claims that source type, and
-/// which of the two documents failed is the whole difference between them.
-pub(crate) fn skill(source: afd_fleet_runtime::Error) -> Error {
-    ErrorKind::Skill { source }.into()
-}
-
-/// Refuses a conditional write against a version the row has moved past.
+/// Refuses a conditional purge against a version the row has moved past.
 pub(crate) fn source_stale(current: impl Into<Box<str>>) -> Error {
     ErrorKind::SourceStale {
         current: current.into(),

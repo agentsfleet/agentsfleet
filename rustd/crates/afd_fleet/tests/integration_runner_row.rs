@@ -1,6 +1,6 @@
 //! §1 against a live datastore — what enrolment writes, and what a beat moves.
 //!
-//! The other half of `afd_api/tests/runner_plane.rs`. That suite proves the
+//! The other half of `afd_api/tests/runner_plane/mod.rs`. That suite proves the
 //! GUARD — who is admitted and who is refused — through the production router
 //! with no datastore behind it. This one proves the ROWS, which is the half
 //! that needs real Postgres and the half Invariant 5 is about.
@@ -22,7 +22,7 @@ use afd_runner::Verdict;
 use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use self::requests::{ENROLLED_AT, enrolment};
+use self::requests::{enrolled_at, enrolment};
 use self::support::Fixtures;
 
 /// Dimension 1.3 (second half) — enrolment stores the DIGEST and never the token.
@@ -38,7 +38,7 @@ async fn test_enrolment_stores_only_the_digest() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(enrolled_at()))
         .await
         .expect("a well-formed enrolment against a reachable datastore");
 
@@ -87,7 +87,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(enrolled_at()))
         .await
         .expect("an out-of-range worker count is clamped, never refused");
 
@@ -134,7 +134,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(enrolled_at()))
         .await
         .expect("enrolment must succeed");
 
@@ -175,7 +175,7 @@ async fn test_the_self_read_never_bumps_liveness() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 2);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .register(&request, UnixMillis::from_millis(enrolled_at()))
         .await
         .expect("enrolment must succeed");
 

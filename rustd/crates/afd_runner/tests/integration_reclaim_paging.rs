@@ -37,16 +37,17 @@ WITH tenant AS (
     INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
     SELECT $2::uuid, id, $2, 'test', 1 FROM tenant RETURNING id, tenant_id
 ), fleets AS (
-    INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown,
+    INSERT INTO core.fleets (id, workspace_id, tenant_id, name,
       config_json, status, created_at, updated_at)
-    SELECT uuidv7(), w.id, w.tenant_id, 'paging-' || n, '# fixture', '{}'::jsonb,
+    SELECT uuidv7(), w.id, w.tenant_id, 'paging-' || n, '{}'::jsonb,
       'active', 1, 1
       FROM workspace w, generate_series(1, $4) n
     RETURNING id, workspace_id
 ), runners AS (
     INSERT INTO fleet.runners (id, host_id, token_hash, sandbox_tier, admin_state,
-      labels, last_seen_at, created_at, updated_at, tenant_id)
-    SELECT f.id, f.id::text, f.id::text, 'dev_none', 'active', '[]', $3, $3, $3, $1::uuid
+      labels, network_policy, registry_allowlist, last_seen_at, created_at, updated_at)
+    SELECT f.id, f.id::text, f.id::text, 'dev_none', 'active', '[]', 'deny_all_egress', '[]',
+      $3, $3, $3
       FROM fleets f
     RETURNING id
 ), events AS (

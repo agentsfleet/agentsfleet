@@ -56,52 +56,27 @@ const CONTEXT_COMMIT: &str = "commit fleet purge";
 const HINT_STREAM_ORPHANED: &str = "pg_row_purged_stream_orphaned_until_ttl";
 
 impl Fleets {
-    /// Purges one killed fleet and everything keyed to it.
+    /// Purges one killed fleet and everything keyed to it, under the same
+    /// current resource version native reads return.
     ///
     /// # Errors
-    /// Refuses an id naming no fleet this workspace holds, and one that has not
-    /// been killed. Reports a datastore that would not answer.
-    pub async fn purge(&self, workspace: &Uuid7, fleet: &Uuid7) -> Result<()> {
+    /// Refuses stale tags, foreign fleets, live fleets and datastore failures.
+    pub async fn purge_tagged(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        expected: &str,
+    ) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_BEGIN))?;
-
-        // The append-only trigger on `core.fleet_approval_gates` refuses every
-        // DELETE unless this setting says the purge means it (schema/810's
-        // `fleet_approval_gates_append_only`), and the cascade from the fleet
-        // row fires the same trigger. `SET LOCAL` scopes the opt-in to this
-        // transaction, so it lasts exactly as long as the purge that needs it.
-        //
-        // Load-bearing since M194: before install requested grants, a fleet that
-        // never parked a delivery held no gate rows at all and purged clean, so
-        // the missing opt-in was unreachable. Install now raises a card for every
-        // fleet declaring a mintable credential, which is the whole class of
-        // fleets this would otherwise refuse to delete.
         sqlx::query(sql::purge::ALLOW_GATE_PURGE)
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_ALLOW_PURGE))?;
-
-        // Classified before any DELETE, so a refusal never leaves half a purge
-        // behind. The guarded delete below closes the window this opens.
-        let stored: Option<(String,)> = sqlx::query_as(sql::SELECT_FLEET_STATUS)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(error::query(CONTEXT_PROBE))?;
-        let (status,) = stored.ok_or_else(|| crate::Error::from(ErrorKind::NotFound))?;
-        if FleetStatus::parse(&status) != Some(FleetStatus::Killed) {
-            return Err(ErrorKind::MustKillFirst.into());
-        }
-
+        guard(&mut transaction, workspace, fleet, expected).await?;
         purge_children(&mut transaction, fleet.as_str()).await?;
-
-        // Guarded on `killed` again, and that is not belt-and-braces: between
-        // the probe above and this statement a concurrent PATCH can resurrect
-        // the fleet. The guard makes that a zero-row result the transaction
-        // rolls back, rather than a purge of a fleet somebody just resumed.
         let purged = sqlx::query(sql::DELETE_FLEET_IN_STATUS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
@@ -110,14 +85,12 @@ impl Fleets {
             .await
             .map_err(error::query(CONTEXT_PARENT))?;
         if purged.is_none() {
-            // Dropped without a commit, so the child deletes go back too.
             return Err(ErrorKind::MustKillFirst.into());
         }
         transaction
             .commit()
             .await
             .map_err(error::query(CONTEXT_COMMIT))?;
-
         self.live_sets.invalidate(workspace.as_str()).await;
         self.forget_state(fleet.as_str()).await;
         Ok(())
@@ -144,11 +117,41 @@ impl Fleets {
     }
 }
 
+/// The row lock covers the tag, status, retained receipts and child deletion.
+async fn guard(
+    connection: &mut sqlx::PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+    expected: &str,
+) -> Result<()> {
+    let row: Option<(String, i64)> = sqlx::query_as(sql::purge::LOCK)
+        .bind(fleet.as_str())
+        .bind(workspace.as_str())
+        .fetch_optional(connection)
+        .await
+        .map_err(error::query(CONTEXT_PROBE))?;
+    let (status, version) = row.ok_or(ErrorKind::NotFound)?;
+    let current = afd_core::etag::versioned(fleet, version);
+    if expected != current {
+        return Err(error::source_stale(current));
+    }
+    if FleetStatus::parse(&status) != Some(FleetStatus::Killed) {
+        return Err(ErrorKind::MustKillFirst.into());
+    }
+    Ok(())
+}
+
 /// Deletes the child rows no foreign key cascades.
 ///
 /// Every statement shares [`CONTEXT_CHILDREN`], so a refusal names the purge
 /// step, which is the level an operator reads at.
 async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Result<()> {
+    sqlx::query(sql::purge::TOMBSTONE_SETUP)
+        .bind(fleet)
+        .bind(afd_wire::authoring::REPLAY_TOMBSTONE_MS)
+        .execute(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_CHILDREN))?;
     for &statement in sql::purge::PURGE_CHILDREN {
         sqlx::query(statement)
             .bind(fleet)

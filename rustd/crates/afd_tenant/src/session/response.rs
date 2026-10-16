@@ -61,12 +61,3 @@ impl Redeemed {
         }
     }
 }
-
-/// Whether a cancel transitioned the session or found it already terminal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cancelled {
-    /// This call performed the abort — the caller writes the audit record.
-    Now,
-    /// It was already aborted, so nothing changed and nothing is recorded.
-    Already,
-}

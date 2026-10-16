@@ -58,38 +58,6 @@ pub(crate) fn sequence_corrupt() -> Error {
     Error::new(ErrorKind::SequenceCorrupt)
 }
 
-/// Reports a content hash with no snapshot stored under it.
-///
-/// The ordinary answer for a skill-only bundle, not a fault — see
-/// [`crate::bundle::Bundles::fetch`].
-pub(crate) fn bundle_missing() -> Error {
-    Error::new(ErrorKind::BundleMissing)
-}
-
-/// Reports a deployment that never configured snapshot storage.
-pub(crate) fn bundle_unconfigured() -> Error {
-    Error::new(ErrorKind::BundleUnconfigured)
-}
-
-/// Reports an object store that was reached and would not serve.
-///
-/// The store's own error rides through as `#[source]` rather than being
-/// stringified into a message: a refused signature, an unresolvable endpoint
-/// and a missing bucket are three different operator problems, and the chain is
-/// the only place that distinction survives (`RUST_ERROR_STANDARD` rule 3).
-pub(crate) fn bundle_storage(source: object_store::Error) -> Error {
-    Error::new(ErrorKind::BundleStorage { source })
-}
-
-/// Reports a stored object too large for this daemon to buffer.
-///
-/// Its own kind rather than a storage failure, because it is not one: the store
-/// answered correctly and what it holds is the problem. The size is carried so
-/// the operator's log line names it — nothing puts it on the wire.
-pub(crate) fn bundle_oversized(size: u64) -> Error {
-    Error::new(ErrorKind::BundleOversized { size })
-}
-
 /// Reports a statement that reached Postgres and was refused.
 ///
 /// `map_err` that ADDS context the call site alone knows — which statement was

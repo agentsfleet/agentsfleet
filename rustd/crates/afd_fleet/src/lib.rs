@@ -27,8 +27,8 @@
 // the library's own code.
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
-pub mod bundle;
 pub mod error;
 pub mod lease;
 

@@ -63,11 +63,13 @@ FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
 /// `$5` the status guarded on, `$6` now, `$7`–`$9` cumulative tokens,
 /// `$10`–`$13` the four rates, `$14` charge type, `$15` milliseconds per
 /// second, `$16` tokens per mtok, `$17` ledger row id.
-pub const RENEW_AND_METER: &str = "\
+pub const RENEW_AND_METER: &str = const_format::concatcp!(
+    "\
 WITH probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
            l.created_at, l.event_created_at,
            l.fencing_token, l.posture, l.model, a.fencing_seq,
+           l.lease_expires_at, a.leased_until,
            LEAST($3::bigint, l.created_at + $4::bigint) AS capped,
            GREATEST(0, $6::bigint - a.last_metered_at)         AS d_ms,
            GREATEST(0, $7::bigint - a.metered_input_tokens)    AS d_in,
@@ -90,11 +92,18 @@ WITH probe AS (
              + (d_out * $13::bigint) / $16::bigint  AS token_cost
     FROM probe p
     LEFT JOIN bal b ON b.tenant_id = p.tenant_id
+), checked AS MATERIALIZED (
+    SELECT calc.*,
+           ",
+    afd_db::statement::NOW_MS,
+    " AS checked_at
+    FROM calc
 ), guard AS (
     SELECT *, run_fee + token_cost AS slice,
            LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged
-    FROM calc
-    WHERE fencing_token >= fencing_seq AND capped > $6::bigint
+    FROM checked
+    WHERE fencing_token = fencing_seq AND capped > checked_at
+      AND lease_expires_at > checked_at AND leased_until > checked_at
 ), ext_lease AS (
     UPDATE fleet.runner_leases l
     SET lease_expires_at = g.capped, updated_at = $6,
@@ -157,7 +166,8 @@ SELECT
     (SELECT capped FROM ext_lease)              AS new_until,
     (SELECT created_at + $4::bigint FROM probe) AS hard_cap,
     (SELECT count(*) FROM ext_aff)::bigint      AS aff_updated,
-    (SELECT charged FROM ext_lease)             AS charged_nanos";
+    (SELECT charged FROM ext_lease)             AS charged_nanos",
+);
 
 /// Everything [`RENEW_AND_METER`] needs, by name.
 ///

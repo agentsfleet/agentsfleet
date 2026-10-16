@@ -28,6 +28,8 @@ mod report_seed;
 mod requests;
 #[path = "support/fleet_lease_seed.rs"]
 mod seed;
+#[path = "support/fleet_setup.rs"]
+mod setup;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
 

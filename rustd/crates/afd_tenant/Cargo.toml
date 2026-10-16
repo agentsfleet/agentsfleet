@@ -88,6 +88,8 @@ tracing-subscriber.workspace = true
 # The crossing audit's proof reads its event back (`afd_core::test_util::trace`).
 # A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
+# The fleet row the preference suite seeds (`afd_db::test_util::FleetSeed`).
+afd_db = { workspace = true, features = ["test-util"] }
 # Reads a stored session envelope back, so the suite asserts on what Redis holds
 # rather than on what this crate says it wrote.
 serde_json.workspace = true

@@ -34,12 +34,17 @@ test-util = [
   # cursor a lost consumer group is restored at. Taken from that crate's own
   # sample for the reason the billing line gives.
   "afd_admission/test-util",
+  # The pointed admission a mixed-kind lease suite places its own queued turn
+  # with, beside a runtime lease on the same host.
+  "afd_authoring/test-util",
 ]
 
 # Each dependency is added by the module that uses it, for the reason
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The shared poll admits private setup through its production-domain owner.
+afd_authoring.workspace = true
 # The thread a chat lease reads its turns from is a trait object, so a read
 # that fails is tested with a failing implementation.
 async-trait.workspace = true
@@ -116,14 +121,6 @@ afd_memory.workspace = true
 sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
-# The Fleet Bundle snapshot store. R2 is S3-compatible and this is the client
-# the workspace manifest chose for it; `bundle` names both the store trait and
-# the error a failed GET carries, so the dependency is this crate's rather than
-# the binary's.
-object_store.workspace = true
-# The buffer `object_store` answers a GET with, named by `bundle::Snapshot` so a
-# fetched snapshot reaches the HTTP layer without being copied.
-bytes.workspace = true
 # The `Deserialize` bound the stored-column decoders take, and the value
 # deserializer that turns a stored enum spelling back into its wire variant —
 # through `afd_wire`'s own serde renames, so a column and the wire cannot drift.

@@ -22,7 +22,6 @@ fn row(event_id: &str, created_at: i64, state: &str) -> EventDetailRow {
             wall_ms: None,
             failure_label: None,
             failure_detail: None,
-            checkpoint_id: None,
             resumes_event_id: None,
             created_at,
             updated_at: created_at,

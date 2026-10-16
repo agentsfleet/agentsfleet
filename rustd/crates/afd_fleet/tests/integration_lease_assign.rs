@@ -26,7 +26,7 @@ use crate::support;
 use afd_core::clock::UnixMillis;
 use afd_fleet::lease::Kind;
 
-use self::requests::ENROLLED_AT;
+use self::requests::enrolled_at;
 use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded, seeded_parts};
 use self::support::Fixtures;
 
@@ -45,7 +45,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
 
     let acquired =
         crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
@@ -63,7 +63,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
     assert_eq!(acquired.request_json, REQUEST_JSON);
     assert_eq!(
         acquired.event_created_at,
-        UnixMillis::from_millis(ENROLLED_AT)
+        UnixMillis::from_millis(enrolled_at())
     );
     assert!(
         acquired.reused.is_none(),
@@ -95,7 +95,7 @@ async fn test_an_unmarked_fleet_is_not_discovered() {
         ..
     } = seeded::<1>(&fixtures).await;
     queue::clear_ready(fixtures.queue(), &fleet).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
 
     // A full rotation, because one poll proves nothing: since §4 it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
@@ -141,7 +141,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
 
     let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await
@@ -205,7 +205,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
 async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
 
     let poison = queue::enqueue_cutover_era(
         fixtures.queue(),
@@ -223,7 +223,7 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
         ACTOR,
         EVENT_TYPE,
         REQUEST_JSON,
-        ENROLLED_AT,
+        enrolled_at(),
     )
     .await;
     assert_ne!(poison, good, "the fixture must append two distinct entries");
@@ -240,7 +240,7 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     // `leased_until = now` and the claim admits `leased_until < now`, so a
     // second poll at the same instant could never re-claim the slot however
     // correct the drop was.
-    let later = UnixMillis::from_millis(ENROLLED_AT + 1);
+    let later = UnixMillis::from_millis(enrolled_at() + 1);
     // Narrowed to THIS fleet, unlike the poll above: the assertion that follows
     // names this fleet's own entry, and the readiness cursor is process-global,
     // so an unnarrowed poll can answer a sibling suite's work and fail here for
@@ -281,7 +281,7 @@ async fn test_a_fault_after_the_claim_frees_the_claim() {
         .expect("the lane's Dragonfly takes a plain write");
     queue::mark_ready(fixtures.queue(), &fleet).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
 
     let mut faulted = false;
     for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
@@ -296,7 +296,7 @@ async fn test_a_fault_after_the_claim_frees_the_claim() {
     );
 
     let fleet_id = afd_core::id::Uuid7::parse(&fleet).expect("a seeded fleet id parses");
-    let later = UnixMillis::from_millis(ENROLLED_AT + 1);
+    let later = UnixMillis::from_millis(enrolled_at() + 1);
     let regained = leases
         .claim(&fleet_id, &second, later, afd_core::timing::LEASE_TTL_MS)
         .await

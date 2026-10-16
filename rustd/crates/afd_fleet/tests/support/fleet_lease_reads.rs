@@ -14,9 +14,14 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use afd_db::test_util::FleetSeed;
 use sqlx::{AssertSqlSafe, Row as _};
 
 use crate::support::Fixtures;
+
+/// The native setup a seeded fleet is saved with: no trigger, no tool, a
+/// dollar a day. Suites that need another install their own over it.
+const SEEDED_NATIVE_CONFIG: &str = r#"{"name":"seeded","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// The `fleet.runner_affinity` column a claim's expiry lives in.
 pub(crate) const COLUMN_LEASED_UNTIL: &str = "leased_until";
@@ -26,6 +31,9 @@ pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
 
 /// The `fleet.runner_affinity` metering column a fresh lease resets.
 pub(crate) const COLUMN_METERED_INPUT: &str = "metered_input_tokens";
+
+/// The `fleet.runner_affinity` column the runtime meter's last advance lives in.
+pub(crate) const COLUMN_LAST_METERED: &str = "last_metered_at";
 
 impl Fixtures {
     /// One column of a `fleet.runner_leases` row, as text.
@@ -139,31 +147,29 @@ impl Fixtures {
         .await
         .expect("the workspace row must insert");
 
-        sqlx::query(
-            "INSERT INTO core.fleets
-               (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                status, created_at, updated_at, required_tags)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, $8, $8, $9)
-             ON CONFLICT (id) DO NOTHING",
+        FleetSeed::new(
+            fleet,
+            workspace,
+            tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
         )
-        .bind(fleet)
-        .bind(workspace)
-        .bind(tenant)
         // The fleet's own id as its NAME. `uq_fleets_workspace_id_name` is
-        // unique per workspace, and the `ON CONFLICT (id)` arm cannot see a
-        // name collision — so a constant name let one workspace hold exactly
-        // one fixture fleet. The fairness suite seeds twenty in one workspace
-        // and failed on the second, reporting a constraint no test mentions
-        // (ISO-1: mint every identifier a test writes).
-        .bind(fleet)
-        .bind("# fixture")
-        .bind("{}")
-        .bind("active")
-        .bind(now)
-        .bind(vec![tag.to_owned()])
-        .execute(&mut *connection)
+        // unique per workspace — so a constant name let one workspace hold
+        // exactly one fixture fleet. The fairness suite seeds twenty in one
+        // workspace and failed on the second, reporting a constraint no test
+        // mentions (ISO-1: mint every identifier a test writes).
+        .name(fleet)
+        .tags(&[tag])
+        .at(now)
+        .insert(&mut *connection)
         .await
         .expect("the fleet row must insert");
+        drop(connection);
+        // Every saved fleet carries the setup revision Save selected, and
+        // admission refuses a fleet whose revision was written under other
+        // policy semantics -- or that has none. A fixture fleet without one
+        // is a fleet production cannot hold, so it gets the revision too.
+        self.native_config(fleet, SEEDED_NATIVE_CONFIG).await;
     }
 
     /// One column of a `fleet.runner_affinity` row, as text; `None` for no row
@@ -266,5 +272,69 @@ impl Fixtures {
             .expect("the admitted row must exist")
             .try_get(0)
             .expect("the column must be readable as text")
+    }
+}
+
+/// Reads the database clock, the one issue, renewal and the host census read.
+const DATABASE_NOW: &str = const_format::concatcp!("SELECT ", afd_db::statement::NOW_MS);
+
+/// Moves a slot's deadline to just behind the database clock.
+const LAPSE_SLOT: &str = const_format::concatcp!(
+    "UPDATE fleet.runner_affinity SET leased_until = ",
+    afd_db::statement::NOW_MS,
+    " - 1 WHERE fleet_id = $1::uuid"
+);
+
+/// Moves a lease's deadline to just behind the database clock.
+const LAPSE_LEASE: &str = const_format::concatcp!(
+    "UPDATE fleet.runner_leases SET lease_expires_at = ",
+    afd_db::statement::NOW_MS,
+    " - 1 WHERE id = $1::uuid"
+);
+
+impl Fixtures {
+    /// The database's clock now.
+    ///
+    /// Issue, renewal and the host census read this clock rather than the
+    /// caller's, so an expectation about the deadlines and stamps they write is
+    /// stated against it.
+    pub(crate) async fn database_now(&self) -> i64 {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query_scalar(DATABASE_NOW)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the database clock reads")
+    }
+
+    /// The instant `fleet`'s runtime meter last advanced to, which issue and
+    /// renewal stamp from the database clock. A slice a test reports is
+    /// measured from here, as the report's own charge is.
+    pub(crate) async fn metered_since(&self, fleet: &str) -> afd_core::clock::UnixMillis {
+        let stamp = self
+            .affinity_column(fleet, COLUMN_LAST_METERED)
+            .await
+            .expect("the slot carries a meter stamp");
+        afd_core::clock::UnixMillis::from_millis(stamp.parse().expect("an integer stamp"))
+    }
+
+    /// Lapses `fleet`'s slot by the database clock: its claim has passed its
+    /// deadline, which is what a holder that stopped renewing leaves.
+    pub(crate) async fn lapse_slot(&self, fleet: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(LAPSE_SLOT)
+            .bind(fleet)
+            .execute(&mut *connection)
+            .await
+            .expect("the slot write must run");
+    }
+
+    /// Lapses one lease by the database clock, its status unchanged.
+    pub(crate) async fn lapse_lease(&self, lease: &str) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(LAPSE_LEASE)
+            .bind(lease)
+            .execute(&mut *connection)
+            .await
+            .expect("the lease write must run");
     }
 }

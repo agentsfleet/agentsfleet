@@ -33,22 +33,8 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-    leases
-        .record_received(&claimed, now)
-        .await
-        .expect("the row opens");
-    let label = afd_core::event::label::EVENT_TYPE_UNSUPPORTED;
-    leases
-        .block(
-            &claimed.fleet_id,
-            &claimed.event_id,
-            Refusal::labelled(label),
-            now,
-        )
-        .await
-        .expect("the row ends");
+    let now = UnixMillis::from_millis(enrolled_at());
+    end_the_event(&fixtures, &claimed, now).await;
 
     let log = Capture::install();
     let answer = fixtures
@@ -74,14 +60,39 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
         suppressed.get("agentsfleet_event_id"),
         Some(&seeded.event_id)
     );
+    assert_still_owed(&fixtures, &seeded, &claimed).await;
+
+    fixtures.cleanup().await;
+}
+
+/// Opens `claimed`'s event row and ends it, as a run that already finished
+/// would have left it.
+async fn end_the_event(fixtures: &Fixtures, claimed: &Acquired, now: UnixMillis) {
+    let leases = fixtures.leases();
+    leases
+        .record_received(claimed, now)
+        .await
+        .expect("the row opens");
+    let label = afd_core::event::label::EVENT_TYPE_UNSUPPORTED;
+    leases
+        .block(
+            &claimed.fleet_id,
+            &claimed.event_id,
+            Refusal::labelled(label),
+            now,
+        )
+        .await
+        .expect("the row ends");
+}
+
+/// Asserts the stream still owes `claimed`'s entry: nobody acknowledged it.
+async fn assert_still_owed(fixtures: &Fixtures, seeded: &Ready, claimed: &Acquired) {
     let owed = FleetStreams::new(fixtures.queue().clone())
         .take_over_oldest(&seeded.fleet, INSPECTOR)
         .await
         .expect("the stream answers")
         .expect("the unacknowledged entry is still owed");
     assert_eq!(owed.receipt, claimed.receipt);
-
-    fixtures.cleanup().await;
 }
 
 #[tokio::test]
@@ -94,12 +105,9 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let plane = Plane {
-        accounts: Accounts::new(afd_db::test_util::unreachable_db(), Entropy::new()),
-        ..fixtures.plane()
-    };
+    let plane = plane_with_unreadable_payer(&fixtures);
 
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
     let log = Capture::install();
     let answer = plane
         .lease_claimed(claimed.clone(), &seeded.runner, now)
@@ -131,15 +139,27 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
         Some((STATUS_RECEIVED_ROW.to_owned(), String::new())),
         "a retry ends nothing"
     );
-    assert_eq!(
-        fixtures
-            .affinity_column(&seeded.fleet, COLUMN_LEASED_UNTIL)
-            .await,
-        Some(ENROLLED_AT.to_string()),
-        "the retry freed the claim"
-    );
+    assert_claim_freed(&fixtures, &seeded.fleet).await;
 
     fixtures.cleanup().await;
+}
+
+/// The fixture plane with a payer ledger whose database never answers.
+fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
+    Plane {
+        accounts: Accounts::new(afd_db::test_util::unreachable_db(), Entropy::new()),
+        ..fixtures.plane()
+    }
+}
+
+/// Asserts the fleet's claim was handed back: its lease runs out at the
+/// instant it was claimed, so the next poll may take it.
+async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
+    assert_eq!(
+        fixtures.affinity_column(fleet, COLUMN_LEASED_UNTIL).await,
+        Some(enrolled_at().to_string()),
+        "the retry freed the claim"
+    );
 }
 
 #[tokio::test]
@@ -149,7 +169,9 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
     // and must neither reopen it nor answer anything but no work.
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, UNREADABLE_CONFIG).await;
+    fixtures
+        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .await;
     let claimed = claim(&fixtures, &seeded).await;
 
     let first = drive(&fixtures, &seeded, claimed.clone()).await;
@@ -180,24 +202,11 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     // fault is another fleet's, and the entry stays owed for a later poll.
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    set_config(&fixtures, &fleet, UNREADABLE_CONFIG).await;
+    fixtures
+        .corrupt_native_config(&fleet, UNREADABLE_CONFIG)
+        .await;
     let nowhere = crate::seed::unique_ids().1;
-    let event_id = crate::queue::enqueue(
-        fixtures.queue(),
-        &fleet,
-        &nowhere,
-        ACTOR,
-        EVENT_TYPE_CHAT,
-        REQUEST_JSON,
-        ENROLLED_AT,
-    )
-    .await;
-    let seeded = Ready {
-        runner,
-        fleet,
-        event_id,
-        tenant,
-    };
+    let seeded = ready_in(&fixtures, &nowhere, runner, fleet, tenant).await;
     let claimed = claim(&fixtures, &seeded).await;
 
     let log = Capture::install();
@@ -228,22 +237,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     // pass answers no work rather than a lease two runners would execute.
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, tenant, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
-    let event_id = crate::queue::enqueue(
-        fixtures.queue(),
-        &fleet,
-        &workspace,
-        ACTOR,
-        EVENT_TYPE_CHAT,
-        REQUEST_JSON,
-        ENROLLED_AT,
-    )
-    .await;
-    let seeded = Ready {
-        runner,
-        fleet,
-        event_id,
-        tenant,
-    };
+    let seeded = ready_in(&fixtures, &workspace, runner, fleet, tenant).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
@@ -276,4 +270,31 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     assert_eq!(lost.get("agentsfleet_event_id"), Some(&seeded.event_id));
 
     fixtures.cleanup().await;
+}
+
+/// A [`Ready`] whose `chat` event is enqueued under `workspace`, which the
+/// caller picks: the fleet's own, or one no row carries.
+async fn ready_in(
+    fixtures: &Fixtures,
+    workspace: &str,
+    runner: Uuid7,
+    fleet: String,
+    tenant: String,
+) -> Ready {
+    let event_id = crate::queue::enqueue(
+        fixtures.queue(),
+        &fleet,
+        workspace,
+        ACTOR,
+        EVENT_TYPE_CHAT,
+        REQUEST_JSON,
+        enrolled_at(),
+    )
+    .await;
+    Ready {
+        runner,
+        fleet,
+        event_id,
+        tenant,
+    }
 }

@@ -25,7 +25,7 @@ use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL_MS, MAX_RUNTIME_MS};
 use afd_fleet::lease::{Billed, Delivery, Renewed};
 
-use self::requests::ENROLLED_AT;
+use self::requests::enrolled_at;
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
 
@@ -73,8 +73,10 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         ..
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let now = UnixMillis::from_millis(enrolled_at());
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
@@ -101,15 +103,18 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
 
-    // An ordinary renewal, well inside the ceiling: the TTL arm wins.
+    // An ordinary renewal, well inside the ceiling: the TTL arm wins. Renewal
+    // reads the database clock and stamps that instant as the meter's next
+    // start, so the deadline is stated against the stamp it wrote.
     let early = leases
         .extend(lease, &runner, free_meter(), now)
         .await
         .expect("the extend must reach the datastore");
+    let renewed_at = fixtures.metered_since(&fleet).await;
     assert_eq!(
         early,
         Renewed::Extended {
-            expires_at: now.saturating_add_millis(LEASE_TTL_MS),
+            expires_at: renewed_at.saturating_add_millis(LEASE_TTL_MS),
             charged: afd_billing::Nanos::ZERO,
         },
         "with hours of budget left, a renewal takes the full lease TTL"
@@ -117,7 +122,8 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     assert_eq!(
         fixtures.affinity_column(&fleet, "leased_until").await,
         Some(
-            now.saturating_add_millis(LEASE_TTL_MS)
+            renewed_at
+                .saturating_add_millis(LEASE_TTL_MS)
                 .as_millis()
                 .to_string()
         ),
@@ -126,8 +132,8 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     );
 
     // The run has been going almost its whole budget: the ceiling now falls
-    // inside the TTL window, so the ceiling arm wins.
-    let nearly_spent = ENROLLED_AT - MAX_RUNTIME_MS + (LEASE_TTL_MS / 2);
+    // inside the TTL window of the database clock, so the ceiling arm wins.
+    let nearly_spent = fixtures.database_now().await - MAX_RUNTIME_MS + (LEASE_TTL_MS / 2);
     fixtures.backdate_lease(lease, nearly_spent).await;
     let ceiling = UnixMillis::from_millis(nearly_spent + MAX_RUNTIME_MS);
 
@@ -149,11 +155,13 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         "the clamped instant is what the row carries, so the runner's kill deadline is the real one"
     );
 
-    // Past the ceiling, the guard's `capped > now` fails and nothing moves.
-    let expired = ceiling.saturating_add_millis(1);
+    // Past the ceiling by the database clock, the guard's `capped > now`
+    // fails and nothing moves.
+    let spent = fixtures.database_now().await - MAX_RUNTIME_MS - 1;
+    fixtures.backdate_lease(lease, spent).await;
     assert_eq!(
         leases
-            .extend(lease, &runner, free_meter(), expired)
+            .extend(lease, &runner, free_meter(), now)
             .await
             .expect("a capped renewal is an answer, not a fault"),
         Renewed::MaxRuntime,
@@ -187,8 +195,10 @@ async fn test_renew_after_reclaim_is_lost() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let now = UnixMillis::from_millis(enrolled_at());
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await
@@ -262,16 +272,20 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
         ..
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
+    let now = UnixMillis::from_millis(enrolled_at());
     // Funded at issue: the lease must be grantable, or this test would be
     // proving the ISSUE gate and not the renewal one.
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .await;
     // Priced, so the run has a floor to fail to cover. The catalogue ships
     // EMPTY and `MODEL` is a fixture spelling no admin would curate, so without
     // this the estimate is `Unpriceable`, its floor is zero, a zero balance
     // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
     // refuse and this test asserting the wrong code for the right outcome.
-    fixtures.seed_model_rate(PROVIDER, MODEL, ENROLLED_AT).await;
+    fixtures
+        .seed_model_rate(PROVIDER, MODEL, enrolled_at())
+        .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
@@ -301,7 +315,7 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
 
     // The pool runs dry mid-run. Nothing about the lease changes; the gate is
     // read LIVE, which is the property this asserts.
-    fixtures.seed_wallet(&tenant, 0, ENROLLED_AT).await;
+    fixtures.seed_wallet(&tenant, 0, enrolled_at()).await;
 
     let refusal = plane
         .renew(

@@ -1,5 +1,7 @@
 //! Live runner sweep regression suite.
 
+mod capacity;
+
 #[path = "integration_census.rs"]
 mod integration_census;
 #[path = "integration_hold_plans.rs"]
@@ -10,11 +12,6 @@ mod integration_reclaim;
 mod integration_reclaim_faults;
 #[path = "integration_reclaim_paging.rs"]
 mod integration_reclaim_paging;
-#[path = "integration_repair_dispatch.rs"]
-mod integration_repair_dispatch;
-#[path = "integration_repair_faults.rs"]
-mod integration_repair_faults;
-#[path = "integration_sweeps.rs"]
 mod integration_sweeps;
 mod support;
 

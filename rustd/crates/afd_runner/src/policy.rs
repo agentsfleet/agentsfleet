@@ -13,24 +13,30 @@
 //! statement is read, and the decoder is a method on it. There is no argument
 //! order to get wrong because there are no arguments.
 //!
-//! # Fail closed, with one deliberate exception
+//! # Every row carries an assignment, with one deliberate exception
 //!
-//! Any missing or unparseable policy column resolves the WHOLE assignment to
-//! `None`. The host then refuses to lease and the reconciliation names the gap,
-//! which is the safe direction: a partial assignment is never silently
-//! completed with defaults.
+//! Enrolment writes the whole assignment and an operator edit replaces it
+//! whole, so a row always holds one. A tier, posture or registry list this
+//! build cannot read is a datastore fault and fails the read: a partial
+//! assignment is never silently completed with defaults.
 //!
-//! `extra_binds` is the exception. An absent list is the
-//! NORMAL state — every runner enrolled before the column existed reads NULL —
-//! so it resolves to empty rather than voiding the assignment. A garbled value
-//! reads the same, and neither can widen the sandbox: the operator's additions
-//! are dropped, never invented.
+//! `extra_binds` is the exception. An absent list is the NORMAL state —
+//! enrolment never writes the column, so it reads NULL until an operator adds
+//! a bind — so it resolves to empty. A garbled value reads the same, and
+//! neither can widen the sandbox: the operator's additions are dropped, never
+//! invented.
 
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
 
 use afd_core::limits::WorkerCount;
 
+use crate::error::{Result, assignment_malformed, stored_json};
 use crate::reconcile::Verdict;
+
+const TABLE_RUNNERS: &str = "fleet.runners";
+const COLUMN_SANDBOX_TIER: &str = "sandbox_tier";
+const COLUMN_NETWORK_POLICY: &str = "network_policy";
+const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 
 /// The five columns an assignment is stored in, owned.
 ///
@@ -42,10 +48,10 @@ use crate::reconcile::Verdict;
 pub struct AssignmentColumns {
     /// `fleet.runners.sandbox_tier`, as its wire spelling.
     pub sandbox_tier: String,
-    /// `fleet.runners.network_policy`. `None` on a row predating the column.
-    pub network_policy: Option<String>,
+    /// `fleet.runners.network_policy`, as its wire spelling.
+    pub network_policy: String,
     /// `fleet.runners.registry_allowlist`, as stored JSON.
-    pub registry_allowlist_json: Option<String>,
+    pub registry_allowlist_json: String,
     /// `fleet.runners.worker_count`, unclamped as stored.
     pub worker_count: i32,
     /// `fleet.runners.extra_binds`, as stored JSON.
@@ -53,19 +59,24 @@ pub struct AssignmentColumns {
 }
 
 impl AssignmentColumns {
-    /// The assignment these columns spell, or `None` when any of them cannot be
-    /// read.
+    /// The assignment these columns spell.
     ///
     /// Borrows `self`: the registry hosts and bind paths point into the stored
     /// JSON rather than being copied out of it, which is what keeps the
     /// heartbeat reply allocation-light on the path every host takes every ten
     /// seconds.
-    #[must_use]
-    pub fn decode(&self) -> Option<AssignedPolicy<'_>> {
-        Some(AssignedPolicy {
-            sandbox_tier: parse_wire(&self.sandbox_tier)?,
-            network_policy: parse_wire(self.network_policy.as_deref()?)?,
-            registry_allowlist: parse_json(self.registry_allowlist_json.as_deref()?)?,
+    ///
+    /// # Errors
+    /// Refuses a tier or posture outside its wire enum, and a registry list
+    /// that is not a JSON array of hosts.
+    pub fn decode(&self) -> Result<AssignedPolicy<'_>> {
+        Ok(AssignedPolicy {
+            sandbox_tier: parse_wire(&self.sandbox_tier)
+                .ok_or_else(|| assignment_malformed(COLUMN_SANDBOX_TIER))?,
+            network_policy: parse_wire(&self.network_policy)
+                .ok_or_else(|| assignment_malformed(COLUMN_NETWORK_POLICY))?,
+            registry_allowlist: serde_json::from_str(&self.registry_allowlist_json)
+                .map_err(stored_json(TABLE_RUNNERS, COLUMN_REGISTRY_ALLOWLIST))?,
             // Clamped on the way OUT as well as on the way in: a row edited
             // out-of-band can never size a host's worker pool outside the
             // shared bounds, which is `WorkerCount::clamping`'s reason for existing.
@@ -76,7 +87,8 @@ impl AssignmentColumns {
 
     /// The operator's additional binds, or an empty list.
     ///
-    /// The exception to the fail-closed rule — see the module documentation.
+    /// The exception to the whole-assignment rule — see the module
+    /// documentation.
     fn extra_binds(&self) -> Vec<ExtraBind<'_>> {
         self.extra_binds_json
             .as_deref()
@@ -135,7 +147,7 @@ pub(crate) use afd_core::spelling::from_spelling as parse_wire;
 /// A stored JSON column, deserialised borrowing from it.
 ///
 /// `None` on anything that does not parse. The caller decides what that means:
-/// the assignment voids, the capability reads as absent, the bind list empties.
+/// the capability reads as absent, the bind list empties.
 fn parse_json<'a, T: serde::Deserialize<'a>>(raw: &'a str) -> Option<T> {
     serde_json::from_str(raw).ok()
 }
@@ -156,8 +168,8 @@ mod tests {
     fn test_decode_resolves_a_fully_assigned_row() {
         let columns = AssignmentColumns {
             sandbox_tier: "landlock_full".to_owned(),
-            network_policy: Some("allow_all".to_owned()),
-            registry_allowlist_json: Some(r#"["registry.npmjs.org","pypi.org"]"#.to_owned()),
+            network_policy: "allow_all".to_owned(),
+            registry_allowlist_json: r#"["registry.npmjs.org","pypi.org"]"#.to_owned(),
             worker_count: 4,
             extra_binds_json: None,
         };
@@ -177,49 +189,50 @@ mod tests {
         assert!(decoded.extra_binds.is_empty(), "{:?}", decoded.extra_binds);
     }
 
-    /// Any missing or unreadable policy column voids the whole assignment.
+    /// An unreadable policy column fails the read, naming the column, rather
+    /// than completing the assignment with a guess.
     #[test]
-    fn test_decode_fails_closed_on_every_unreadable_column() {
+    fn test_decode_refuses_every_unreadable_column() {
         let sound = AssignmentColumns {
             sandbox_tier: "landlock_full".to_owned(),
-            network_policy: Some("allow_all".to_owned()),
-            registry_allowlist_json: Some("[]".to_owned()),
+            network_policy: "allow_all".to_owned(),
+            registry_allowlist_json: "[]".to_owned(),
             worker_count: 1,
             extra_binds_json: None,
         };
-        assert!(sound.decode().is_some(), "the control row must decode");
+        assert!(sound.decode().is_ok(), "the control row must decode");
 
         let broken = [
-            // A row from before the policy columns existed.
-            AssignmentColumns {
-                network_policy: None,
-                ..sound.clone()
-            },
-            // A posture this daemon does not understand.
-            AssignmentColumns {
-                network_policy: Some("open_sesame".to_owned()),
-                ..sound.clone()
-            },
-            // A tier this daemon does not understand.
-            AssignmentColumns {
-                sandbox_tier: "quantum_cage".to_owned(),
-                ..sound.clone()
-            },
-            // A registry list that is not JSON.
-            AssignmentColumns {
-                registry_allowlist_json: Some("not-json".to_owned()),
-                ..sound.clone()
-            },
-            // A registry baseline that was never assigned.
-            AssignmentColumns {
-                registry_allowlist_json: None,
-                ..sound.clone()
-            },
+            (
+                AssignmentColumns {
+                    network_policy: "open_sesame".to_owned(),
+                    ..sound.clone()
+                },
+                COLUMN_NETWORK_POLICY,
+            ),
+            (
+                AssignmentColumns {
+                    sandbox_tier: "quantum_cage".to_owned(),
+                    ..sound.clone()
+                },
+                COLUMN_SANDBOX_TIER,
+            ),
+            (
+                AssignmentColumns {
+                    registry_allowlist_json: "not-json".to_owned(),
+                    ..sound.clone()
+                },
+                COLUMN_REGISTRY_ALLOWLIST,
+            ),
         ];
-        for columns in broken {
+        for (columns, column) in broken {
+            let refused = columns
+                .decode()
+                .expect_err("an unreadable column must fail the read");
+            assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
             assert!(
-                columns.decode().is_none(),
-                "an unreadable column must void the assignment, not complete it: {columns:?}"
+                refused.to_string().contains(column),
+                "the refusal names `{column}`: {refused}"
             );
         }
     }
@@ -229,8 +242,8 @@ mod tests {
     fn test_decode_clamps_a_row_edited_out_of_band() {
         let out_of_range = |workers: i32| AssignmentColumns {
             sandbox_tier: "dev_none".to_owned(),
-            network_policy: Some("allow_all".to_owned()),
-            registry_allowlist_json: Some("[]".to_owned()),
+            network_policy: "allow_all".to_owned(),
+            registry_allowlist_json: "[]".to_owned(),
             worker_count: workers,
             extra_binds_json: None,
         };
@@ -249,8 +262,8 @@ mod tests {
     fn test_extra_binds_degrade_to_the_baseline() {
         let columns = AssignmentColumns {
             sandbox_tier: "dev_none".to_owned(),
-            network_policy: Some("allow_all".to_owned()),
-            registry_allowlist_json: Some("[]".to_owned()),
+            network_policy: "allow_all".to_owned(),
+            registry_allowlist_json: "[]".to_owned(),
             worker_count: 1,
             extra_binds_json: Some("{{not-json".to_owned()),
         };

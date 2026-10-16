@@ -128,31 +128,12 @@ pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; 
 ///
 /// Distinct from [`DETAIL_BUDGET_EXHAUSTED`] beside it, and the two sentences
 /// are the only thing that tells an operator which pool to look at: this one is
-/// topped up, that one is edited in `TRIGGER.md`.
+/// topped up, that one is revised in the fleet's reviewed setup.
 pub const DETAIL_RENEWAL_NO_CREDITS: &str =
     "Tenant balance can no longer fund this run; not renewed";
 
 /// The renewal refusal when the FLEET's own ceiling is reached.
 pub const DETAIL_BUDGET_EXHAUSTED: &str = "Fleet budget exhausted for this window; not renewed";
-
-/// The bundle answer when nothing is stored under a content hash.
-///
-/// Reads as a statement of fact rather than as a fault, because it is one: a
-/// bundle with no support files stores no snapshot, so a runner meeting this
-/// proceeds with none.
-pub const DETAIL_BUNDLE_NOT_FOUND: &str = "no snapshot stored for this content hash";
-
-/// The bundle answer when snapshot storage is not configured at all.
-pub const DETAIL_BUNDLE_STORAGE_UNAVAILABLE: &str = "Fleet Bundle snapshot storage is unavailable";
-
-/// The bundle answer when the store was reached and would not serve.
-///
-/// Distinct from [`DETAIL_BUNDLE_STORAGE_UNAVAILABLE`] beside it, under one
-/// code: an operator reading the first goes and
-/// sets four knobs, and reading the second goes and looks at the bucket. The
-/// runner cannot act on the difference and is not asked to — both are 503s it
-/// re-polls past.
-pub const DETAIL_BUNDLE_FETCH_FAILED: &str = "Fleet Bundle snapshot fetch failed";
 
 /// The mint refusal when the workspace has no connected integration under
 /// the handle.

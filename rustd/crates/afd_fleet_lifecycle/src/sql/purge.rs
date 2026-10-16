@@ -15,6 +15,19 @@
 /// is a literal the trigger compares against, and it is the only literal here.
 pub(crate) const ALLOW_GATE_PURGE: &str = "SET LOCAL fleet.allow_gate_purge = 'on'";
 
+/// Locks the current mutable resource before its conditional purge.
+pub(crate) const LOCK: &str = "SELECT status,resource_version FROM core.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid FOR UPDATE";
+
+/// Save and Apply keys must not create new work after their fleet is purged.
+pub(crate) const TOMBSTONE_SETUP: &str = const_format::concatcp!(
+    "WITH stamp AS MATERIALIZED (SELECT ",
+    afd_db::statement::NOW_MS,
+    " AS now)
+UPDATE core.authoring_replay_receipts SET purged_at=stamp.now,expires_at=stamp.now+$2
+FROM stamp WHERE purged_at IS NULL AND (resource_id=$1::uuid OR resource_id IN (
+ SELECT id FROM core.fleet_definition_revisions WHERE fleet_id=$1::uuid))"
+);
+
 /// The child rows no foreign key cascades, deleted before the parent.
 ///
 /// `core.fleet_events`, `core.integration_grants` and `memory.memory_entries`

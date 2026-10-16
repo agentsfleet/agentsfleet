@@ -12,7 +12,7 @@
 //! The plan is asked of a database of this test's own, migrated from
 //! `schema/`, seeded with mostly unheld slots in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
-//! the shape `afd_events`' `integration_list_plans.rs` set. That suite asks
+//! the shape `afd_events`' `integration_list_plans/mod.rs` set. That suite asks
 //! `EXPLAIN (GENERIC_PLAN)`, which cannot type `$3 - $4`; here the text is
 //! prepared with the types sqlx binds and explained with generic plans forced.
 //! No planner switch is touched, so the index wins on cost or not at all.
@@ -56,18 +56,18 @@ WITH workspace AS (
 ), runners AS (
     INSERT INTO fleet.runners
       (id, host_id, token_hash, sandbox_tier, admin_state, labels,
-       last_seen_at, created_at, updated_at)
+       network_policy, registry_allowlist, last_seen_at, created_at, updated_at)
     SELECT uuidv7(), 'hold-plan-' || r, 'hold-plan-' || r, 'dev_none', 'active',
-           '[]'::jsonb, $2, $2, $2
+           '[]'::jsonb, 'deny_all_egress', '[]'::jsonb, $2, $2, $2
       FROM generate_series(1, $3) r
     RETURNING id
 ), ranked AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS rank FROM runners
 ), fleets AS (
     INSERT INTO core.fleets
-      (id, workspace_id, tenant_id, name, source_markdown, config_json, status,
+      (id, workspace_id, tenant_id, name, config_json, status,
        created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1::uuid, 'hold-plan-' || f, '# probe',
+    SELECT uuidv7(), workspace.id, $1::uuid, 'hold-plan-' || f,
            '{}'::jsonb, 'active', $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id

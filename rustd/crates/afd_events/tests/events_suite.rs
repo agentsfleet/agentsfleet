@@ -24,7 +24,6 @@ mod integration_backfill;
 mod integration_budgets;
 #[path = "integration_continuation_lineage.rs"]
 mod integration_continuation_lineage;
-#[path = "integration_list_plans.rs"]
 mod integration_list_plans;
 #[path = "integration_steer.rs"]
 mod integration_steer;
@@ -36,8 +35,7 @@ mod integration_steer_races;
 mod integration_steer_replay;
 #[path = "integration_steer_retry.rs"]
 mod integration_steer_retry;
-#[path = "integration_thread_queued.rs"]
-mod integration_thread_queued;
+mod queued;
 
 #[path = "error_surface.rs"]
 mod error_surface;

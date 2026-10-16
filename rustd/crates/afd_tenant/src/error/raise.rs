@@ -73,10 +73,6 @@ pub(crate) fn session_code_rejected() -> Error {
     Error::new(ErrorKind::SessionCodeRejected)
 }
 
-/// Reports a caller acting on a session that is not theirs.
-pub(crate) fn session_not_owner() -> Error {
-    Error::new(ErrorKind::SessionNotOwner)
-}
 
 /// Refuses an api-key field this daemon will not store.
 pub(crate) fn apikey_field(field: ApiKeyField) -> Error {

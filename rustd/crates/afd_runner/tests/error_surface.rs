@@ -7,7 +7,7 @@
 //!
 //! # What this crate has that the others do not
 //!
-//! Eight codes across ten kinds, because a caller here DOES discriminate — a
+//! Seven codes across the sampled kinds, because a caller here DOES discriminate — a
 //! runner that vanished, one that is still leased and one refused for its host id
 //! are three different things to answer with.
 //!
@@ -25,7 +25,7 @@ use afd_runner::error::one_of_each_kind;
 /// How many carry a `source()` — the chain an operator follows to the cause.
 const WITH_SOURCE: usize = 3;
 /// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 8;
+const DISTINCT_CODES: usize = 7;
 
 #[test]
 fn every_kind_renders_leading_with_its_code() {
@@ -125,13 +125,12 @@ fn every_kind_hands_the_caller_a_sentence() {
     }
 }
 
-/// The caller-facing vocabulary is exactly these 8 sentences.
+/// The caller-facing vocabulary is exactly these 7 sentences.
 ///
 /// Pinned as a SET, not as a function of the code: kinds sharing a code may
 /// still say different things here, and in this crate some do. What must not
 /// drift is the vocabulary itself — a new sentence means a caller reading for
-/// the old one stops matching, and two daemons answering one incident with
-/// different prose read as two different bugs to whoever is holding the page.
+/// the old one stops matching.
 #[test]
 fn the_caller_facing_vocabulary_does_not_drift() {
     let sentences: BTreeSet<&str> = one_of_each_kind()
@@ -140,7 +139,7 @@ fn the_caller_facing_vocabulary_does_not_drift() {
         .collect();
     assert_eq!(
         sentences.len(),
-        8,
+        7,
         "the sentences handed to callers are now {sentences:?}"
     );
 }

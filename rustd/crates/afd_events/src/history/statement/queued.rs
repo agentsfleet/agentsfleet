@@ -10,7 +10,7 @@ macro_rules! queued_scope {
 SELECT fleet_id::text, workspace_id::text, actor, event_type, request_json, created_at, seq \
 FROM core.fleet_admissions \
 WHERE fleet_id = $2::uuid AND workspace_id = $1::uuid AND producer = $3 \
-  AND receipt IS NOT NULL AND delivered_at IS NULL "
+  AND delivered_at IS NULL "
     };
 }
 
