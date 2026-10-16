@@ -28,7 +28,6 @@ use crate::report_commit::{
     RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE,
 };
 use crate::report_seed::SLICE_MS;
-use crate::requests::enrolled_at;
 use crate::seed::PROVIDER;
 
 mod stage;
@@ -156,7 +155,7 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
     let (lease_id, lease) = stage.lease_next(now).await;
 
     let refused = stage
@@ -247,7 +246,7 @@ async fn an_event_the_ledger_never_minted_owes_nothing() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
     let (lease_id, mut lease) = stage.lease_next(now).await;
     lease.event_id = PRE_LEDGER_EVENT.to_owned();
 
@@ -277,7 +276,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
     let (lease_id, lease) = stage.lease_next(now).await;
 
     let request = ReportRequest {

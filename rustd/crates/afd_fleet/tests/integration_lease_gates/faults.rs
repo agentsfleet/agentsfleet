@@ -33,7 +33,7 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     end_the_event(&fixtures, &claimed, now).await;
 
     let log = Capture::install();
@@ -107,7 +107,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     let claimed = claim(&fixtures, &seeded).await;
     let plane = plane_with_unreadable_payer(&fixtures);
 
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let log = Capture::install();
     let answer = plane
         .lease_claimed(claimed.clone(), &seeded.runner, now)
@@ -157,7 +157,7 @@ fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
 async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
     assert_eq!(
         fixtures.affinity_column(fleet, COLUMN_LEASED_UNTIL).await,
-        Some(enrolled_at().to_string()),
+        Some(fixtures.enrolled_at().to_string()),
         "the retry freed the claim"
     );
 }
@@ -288,7 +288,7 @@ async fn ready_in(
         ACTOR,
         EVENT_TYPE_CHAT,
         REQUEST_JSON,
-        enrolled_at(),
+        fixtures.enrolled_at(),
     )
     .await;
     Ready {

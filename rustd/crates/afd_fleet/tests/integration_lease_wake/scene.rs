@@ -11,7 +11,6 @@ use afd_fleet::lease::assign::measured::PollMeasurement;
 use afd_fleet::lease::{Acquired, Leases};
 
 use crate::queue;
-use crate::requests::enrolled_at;
 use crate::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
 
@@ -173,7 +172,7 @@ impl Scene {
             ACTOR,
             EVENT_TYPE,
             REQUEST_JSON,
-            enrolled_at(),
+            self.fixtures.enrolled_at(),
         )
         .await;
         queue::clear_ready(self.fixtures.queue(), &fleet.id).await;
@@ -204,7 +203,11 @@ impl Scene {
     pub(super) async fn poll(&self, runner: &Uuid7) -> (Option<Acquired>, PollMeasurement) {
         let (polled, cost) = self
             .leases
-            .select_measured(runner, &[], UnixMillis::from_millis(enrolled_at()))
+            .select_measured(
+                runner,
+                &[],
+                UnixMillis::from_millis(self.fixtures.enrolled_at()),
+            )
             .await;
         (polled.expect("the poll must not fault"), cost)
     }

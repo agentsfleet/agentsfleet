@@ -16,7 +16,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::requests;
 use crate::seed;
 use crate::support;
 use afd_core::clock::UnixMillis;
@@ -25,7 +24,6 @@ use afd_fleet::lease::admit::Refusal;
 use afd_fleet::lease::{Delivery, Ended};
 use sqlx::Row as _;
 
-use self::requests::enrolled_at;
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
@@ -69,7 +67,7 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
         fleet,
         ..
     } = seeded::<1>(fixtures).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let leases = fixtures.leases();
     let held = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
@@ -91,7 +89,7 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
 async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let ended = fixtures
         .leases()
@@ -139,7 +137,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     // and the event that a human denied would carry a billing refusal instead.
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let leases = fixtures.leases();
 
     let first = leases
@@ -177,7 +175,7 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
     // "there was nothing to tell".
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     fixtures
         .leases()

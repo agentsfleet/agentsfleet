@@ -19,7 +19,7 @@ use afd_wire::runner::{
 };
 use tokio::sync::Barrier;
 
-use self::requests::{enrolled_at, enrolment};
+use self::requests::enrolment;
 use self::support::Fixtures;
 
 const ACTOR: &str = "fixture:platform-operator";
@@ -30,7 +30,7 @@ async fn enrol(fixtures: &Fixtures) -> Uuid7 {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("the runner enrols")
@@ -51,7 +51,7 @@ async fn transition(
             runner,
             action,
             ACTOR,
-            UnixMillis::from_millis(enrolled_at() + offset),
+            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
         )
         .await
 }
@@ -104,6 +104,7 @@ async fn concurrent_identical_transitions_append_one_event() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
     let gate = Arc::new(Barrier::new(3));
+    let cordoned_at = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
     let mut tasks = Vec::new();
     for actor in ["fixture:operator-a", "fixture:operator-b"] {
         let runners = fixtures.runners().clone();
@@ -112,12 +113,7 @@ async fn concurrent_identical_transitions_append_one_event() {
         tasks.push(tokio::spawn(async move {
             ready.wait().await;
             runners
-                .transition(
-                    &runner,
-                    RunnerAdminAction::Cordon,
-                    actor,
-                    UnixMillis::from_millis(enrolled_at() + 1),
-                )
+                .transition(&runner, RunnerAdminAction::Cordon, actor, cordoned_at)
                 .await
         }));
     }
@@ -214,7 +210,7 @@ async fn assign(
         .edit(
             runner,
             edit,
-            UnixMillis::from_millis(enrolled_at() + offset),
+            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
         )
         .await
         .map(|stored| stored.assigned_policy.map(|policy| policy.worker_count))

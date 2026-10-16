@@ -12,7 +12,7 @@ use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::RunnerEventFilter;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use crate::requests::{enrolled_at, enrolment};
+use crate::requests::enrolment;
 use crate::support::Fixtures;
 
 #[tokio::test]
@@ -25,14 +25,17 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
         )
         .await
         .expect("the runner enrols");
     overwrite_admin_state(&fixtures, &enrolled.runner_id).await;
     let malformed = fixtures
         .runners()
-        .runner_detail(&enrolled.runner_id, UnixMillis::from_millis(enrolled_at()))
+        .runner_detail(
+            &enrolled.runner_id,
+            UnixMillis::from_millis(fixtures.enrolled_at()),
+        )
         .await
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
@@ -83,7 +86,7 @@ async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
     .bind(runner.as_str())
     .bind("unknown_event")
     .bind("{}")
-    .bind(enrolled_at() + 4)
+    .bind(fixtures.enrolled_at() + 4)
     .execute(&mut *connection)
     .await
     .expect("the malformed fixture event is stored");
@@ -94,7 +97,7 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect("the missing identifier is canonical");
     let detail_error = fixtures
         .runners()
-        .runner_detail(&missing, UnixMillis::from_millis(enrolled_at()))
+        .runner_detail(&missing, UnixMillis::from_millis(fixtures.enrolled_at()))
         .await
         .expect_err("a missing runner has no detail");
     let event_error = fixtures

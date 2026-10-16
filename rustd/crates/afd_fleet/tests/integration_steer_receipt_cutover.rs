@@ -35,7 +35,6 @@ use crate::integration_admission_recovery::{
     EVERY_ROW, NO_GRACE, RECOVERY_LANE, deferring, ledger,
 };
 use crate::queue;
-use crate::requests::enrolled_at;
 use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -190,7 +189,7 @@ async fn one_message_across_resend_sweep_and_lease(failure: Failure) {
 /// through the same verb: each is the open event again, never a second one.
 async fn lease_every_copy(fixtures: &Fixtures, fleet: &str, runner: &Uuid7, event_id: &str) {
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(enrolled_at());
+    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
     let acquired = select_fleet_within_rotations(&leases, runner, polled_at, fleet)
         .await
         .expect("the fleet holding the message is leasable");

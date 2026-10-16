@@ -16,14 +16,12 @@
 )]
 
 use crate::queue;
-use crate::requests;
 use crate::seed;
 use crate::support;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Delivery, Kind};
 
-use self::requests::enrolled_at;
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
 
@@ -44,7 +42,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await
@@ -147,7 +145,7 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let billed = Billed {
         tenant_id: &tenant_id,
@@ -219,7 +217,7 @@ async fn test_a_stale_claim_writes_no_lease_and_resets_no_meter() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let billed = Billed {
         tenant_id: &tenant_id,

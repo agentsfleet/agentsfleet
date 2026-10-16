@@ -10,28 +10,10 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::borrow::Cow;
-use std::sync::LazyLock;
-
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, NetworkPolicy, RegisterRequest, SandboxTier,
 };
-
-/// The instant this test binary's runners enrol at: the wall clock the first
-/// time a suite asks, then fixed, so a row's stamps are asserted rather than
-/// observed.
-///
-/// The wall clock rather than a constant, because issuing and renewing a lease
-/// and counting a host's live leases read the DATABASE's clock. A lease stamped
-/// from another instant has either lapsed before it was written or outlives
-/// every sweep, and the meter would charge the distance between the two
-/// clocks. A suite that needs a lease to lapse ages its row, not its clock.
-static ENROLLED: LazyLock<i64> = LazyLock::new(|| afd_core::clock::now().as_millis());
-
-/// [`ENROLLED`]'s value.
-pub(crate) fn enrolled_at() -> i64 {
-    *ENROLLED
-}
+use std::borrow::Cow;
 
 /// How far this suite advances between beats.
 ///

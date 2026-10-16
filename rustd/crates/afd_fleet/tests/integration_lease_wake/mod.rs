@@ -21,7 +21,6 @@ use afd_core::test_util::trace::Capture as Trace;
 use afd_observability::metrics::label::fleet::ReadyWake;
 use afd_observability::test_util::Capture;
 
-use crate::requests::enrolled_at;
 use crate::seed::select_within_one_rotation;
 
 mod behind;
@@ -143,7 +142,7 @@ async fn test_a_lost_ring_falls_back_to_rotation() {
     let leased = select_within_one_rotation(
         &scene.leases,
         &fleet.runners[0],
-        UnixMillis::from_millis(enrolled_at()),
+        UnixMillis::from_millis(scene.fixtures.enrolled_at()),
     )
     .await;
 
@@ -303,7 +302,7 @@ async fn test_held_fleet_reads_join_the_dragonfly_tally() {
         .select_measured(
             &fleet.runners[0],
             &[held.clone(), held],
-            UnixMillis::from_millis(enrolled_at()),
+            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
         )
         .await;
 

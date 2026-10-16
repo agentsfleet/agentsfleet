@@ -24,7 +24,6 @@
 )]
 
 use crate::queue;
-use crate::requests;
 use crate::seed;
 use crate::support;
 use afd_core::clock::UnixMillis;
@@ -32,7 +31,6 @@ use afd_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Kind};
 use afd_observability::test_util::Capture;
 
-use self::requests::enrolled_at;
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
 
@@ -59,7 +57,7 @@ async fn test_fresh_grant_counts_one_run() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let before = capture.sum(RUNS_STARTED, &[(KIND, FRESH)]);
 
     let acquired = seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
@@ -93,7 +91,7 @@ async fn test_reclaim_counts_as_reclaimed() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let held = seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
         .await

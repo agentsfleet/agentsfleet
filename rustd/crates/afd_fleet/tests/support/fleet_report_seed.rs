@@ -30,7 +30,6 @@ use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
 use afd_memory::Memories;
 
-use crate::requests::enrolled_at;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -120,9 +119,9 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(enrolled_at());
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     fixtures
-        .seed_wallet(&tenant, DEEP_POOL, enrolled_at())
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
         .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)

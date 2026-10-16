@@ -17,7 +17,7 @@ use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
-use self::requests::{enrolled_at, enrolment};
+use self::requests::enrolment;
 use self::support::Fixtures;
 use self::view_heartbeat::view_heartbeat;
 
@@ -68,7 +68,7 @@ async fn enroll_view_runners(fixtures: &Fixtures) -> Vec<Uuid7> {
         request.host_id = Cow::Borrowed(host);
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(enrolled_at()))
+            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
             .await
             .expect("the runner enrols");
         runners.push(enrolled.runner_id);
@@ -84,7 +84,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
             live_runner,
             &heartbeat,
             None,
-            UnixMillis::from_millis(enrolled_at() + 1),
+            UnixMillis::from_millis(fixtures.enrolled_at() + 1),
         )
         .await
         .expect("the heartbeat lands");
@@ -94,7 +94,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
             live_runner,
             RunnerAdminAction::Cordon,
             ACTOR,
-            UnixMillis::from_millis(enrolled_at() + 2),
+            UnixMillis::from_millis(fixtures.enrolled_at() + 2),
         )
         .await
         .expect("the runner is cordoned");
@@ -103,7 +103,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .rotate_token(
             live_runner,
             ACTOR,
-            UnixMillis::from_millis(enrolled_at() + 3),
+            UnixMillis::from_millis(fixtures.enrolled_at() + 3),
         )
         .await
         .expect("the token rotates");
@@ -114,7 +114,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
 /// across pages, and would make this test depend on its neighbours' scheduling.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     let limit = 2;
-    let now = UnixMillis::from_millis(enrolled_at() + 4);
+    let now = UnixMillis::from_millis(fixtures.enrolled_at() + 4);
 
     let mut cursor: Option<KeysetCursor> = None;
     let mut walked = Vec::new();
@@ -184,7 +184,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     let detail = fixtures
         .runners()
-        .runner_detail(runner, UnixMillis::from_millis(enrolled_at() + 4))
+        .runner_detail(runner, UnixMillis::from_millis(fixtures.enrolled_at() + 4))
         .await
         .expect("the detail loads");
     assert_eq!(
@@ -251,8 +251,8 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
             RunnerEventType::RunnerOnline,
             RunnerEventType::RunnerCordoned,
         ],
-        Some(enrolled_at() + 1),
-        Some(enrolled_at() + 2),
+        Some(fixtures.enrolled_at() + 1),
+        Some(fixtures.enrolled_at() + 2),
     )
     .expect("the inclusive window is ordered");
     let page = fixtures
