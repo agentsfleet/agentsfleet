@@ -5,7 +5,7 @@
  * header once the workspace stream is connected. This spec seeds fleets one
  * at a time and asserts the counter follows their active status.
  *
- * Uses API-side `seedFleet` instead of `installViaUI` — install through
+ * Uses API-side `seedFleet` instead of `saveFleetViaUI` — install through
  * the form is already covered end-to-end by login-install-lifecycle and
  * signup-lifecycle. The signal here is the *counter*, not the install
  * action; API seeds keep the spec under 30s.

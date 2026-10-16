@@ -10,6 +10,7 @@
 
 use std::borrow::Cow;
 
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_runtime::FleetConfig;
 use afd_wire::event::EventType;
 use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
@@ -30,7 +31,7 @@ const FLEET_NAME: &str = "fixture";
 fn document() -> String {
     serde_json::json!({
         "name": FLEET_NAME,
-        "x-agentsfleet": {"triggers": [{"type": "api"}], "tools": [], "budget": {"daily_dollars": 1}},
+        "x-agentsfleet": {"triggers": [], "tools": [], "budget": {"daily_nanos": NANOS_PER_USD.to_string()}},
     })
     .to_string()
 }
@@ -43,7 +44,7 @@ fn installed() -> Installed {
         config: FleetConfig::authored(&document()).expect("the fixture document is authorable"),
         instructions: String::new(),
         context_json: FRESH_CONTEXT.to_owned(),
-        bundle_content_hash: None,
+        runtime_model_ref: "platform-default".to_owned(),
     }
 }
 

@@ -11,6 +11,8 @@
 //! walk. Crates whose suites take `TestDatabase::shared` — `afd_runner` and
 //! `afd_tenant` — are deliberately NOT aggregated for that reason.
 
+mod claim_selection;
+
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
 #[path = "policy_shapes.rs"]

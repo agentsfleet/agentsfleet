@@ -559,10 +559,6 @@ jobs:
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_PROD }}/grafana-prod/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_PROD }}/grafana-prod/api-key
           OIDC_ISSUER: op://${{ vars.VAULT_PROD }}/clerk-prod/issuer
-          R2_ACCOUNT_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/account-id
-          R2_ACCESS_KEY_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/access-key-id
-          R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_PROD }}/cloudflare-r2/secret-access-key
-          R2_BUCKET: op://${{ vars.VAULT_PROD }}/cloudflare-r2/bucket
       - uses: 1password/install-cli-action@v4
 
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
@@ -621,6 +617,11 @@ jobs:
 
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
+          # The collector's ingest credential, as the standard header the daemon
+          # reads. Masked before use: GitHub masks the vault pair, not this
+          # encoding of it.
+          otlp_ingest="$(printf '%s:%s' "$GRAFANA_OTLP_INSTANCE_ID" "$GRAFANA_OTLP_API_KEY" | base64 | tr -d '\n')"
+          echo "::add-mask::$otlp_ingest"
           flyctl secrets set \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
@@ -635,13 +636,8 @@ jobs:
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api.agentsfleet.net" \
-            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
-            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
-            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
-            R2_ACCOUNT_ID="$R2_ACCOUNT_ID" \
-            R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
-            R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
-            R2_BUCKET="$R2_BUCKET" \
+            OTEL_EXPORTER_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
+            OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $otlp_ingest" \
             --stage \
             --app "$FLY_APP_PROD"
         env:

@@ -255,7 +255,7 @@ Caller tests start with a lease carrying a steer and instructions, then drive th
 They verify workspace edits and local Git commits inside bubblewrap.
 They also verify memory, schedules, thread messages and guarded HTTPS reads through the supervisor.
 
-These cases receive an admitted lease; they do not test the steer API or `SKILL.md` loading.
+These cases receive an admitted lease; they do not test the steer API or how a lease loads a fleet's saved instructions.
 
 The model, daemon and upstream endpoints are fakes shared with existing tests.
 The service integration lane checks daemon storage and Slack delivery.

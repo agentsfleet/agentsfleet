@@ -285,7 +285,7 @@ describe("secret create already-exists human mode", () => {
       const routes: MockRoutes = {
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(409, {
-            error: { code: "UZ-VAULT-005", message: "Secret name already taken" },
+            error_code: "UZ-VAULT-005", detail: "Secret name already taken",
           }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {

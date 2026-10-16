@@ -149,7 +149,7 @@ obs_write_json() {
 
 obs_runner_offline_seconds() {
   # Read from `afd_core::timing` because that is the constant the daemon
-  # judges by: `afd_runner/src/sweep/liveness.rs` marks a runner offline once
+  # judges by: `afd_runner/src/sweep/liveness/mod.rs` marks a runner offline once
   # `RUNNER_OFFLINE_AFTER_MS` passes without a heartbeat. Deriving the alert
   # threshold from the same line keeps the alert and the sweep from disagreeing
   # about when a runner is gone.

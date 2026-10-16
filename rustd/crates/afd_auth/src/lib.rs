@@ -55,6 +55,7 @@
 // dev-dependencies into this same target, where a test-only crate legitimately
 // goes unused by the library's own code.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod authenticate;
 pub mod capability;

@@ -33,6 +33,8 @@ afd_db.workspace = true
 # A fleet's declared credentials and provider selection, as its config spells
 # them.
 afd_fleet_runtime.workspace = true
+# Reuse the ingress parser for raw Svix signing secrets during setup review.
+afd_webhook.workspace = true
 # The minted-credential shape the runner is answered with.
 afd_wire.workspace = true
 # The GitHub App flow: a signed assertion, its digest, and the client that

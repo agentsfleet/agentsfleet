@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
-import { WAITLIST_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
+import { APP_SIGN_IN_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 import { HERO_HEADLINE, LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { trackNavigationClicked } from "../analytics/posthog";
@@ -53,36 +53,40 @@ function FooterColumns() {
       <div>
         <h2 className={COL_LABEL}>product</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>use cases</a></ListItem>
-          <ListItem><a href={WAITLIST_URL} className={COL_LINK}>dashboard</a></ListItem>
+          <ListItem><Link to={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK} onClick={() => trackFooter("use_cases", "example")}>use cases</Link></ListItem>
+          <ListItem><a href={APP_SIGN_IN_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("sign_in", "sign_in")}>sign in</a></ListItem>
         </List>
       </div>
 
       <div>
         <h2 className={COL_LABEL}>resources</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><a href={DOCS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK}>docs</a></ListItem>
-          <ListItem><Link to="/agents" className={COL_LINK}>agents</Link></ListItem>
+          <ListItem><a href={DOCS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("docs", "docs")}>docs</a></ListItem>
+          <ListItem><Link to="/agents" className={COL_LINK} onClick={() => trackFooter("agents", "agents")}>agents</Link></ListItem>
         </List>
       </div>
 
       <div>
         <h2 className={COL_LABEL}>community</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK}>github</a></ListItem>
-          <ListItem><a href={DISCORD_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK}>discord</a></ListItem>
+          <ListItem><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("github", "github")}>github</a></ListItem>
+          <ListItem><a href={DISCORD_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("discord", "discord")}>discord</a></ListItem>
         </List>
       </div>
 
       <div>
         <h2 className={COL_LABEL}>legal</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><Link to="/privacy" className={COL_LINK}>privacy</Link></ListItem>
-          <ListItem><Link to="/terms" className={COL_LINK}>terms</Link></ListItem>
+          <ListItem><Link to="/privacy" className={COL_LINK} onClick={() => trackFooter("privacy", "privacy")}>privacy</Link></ListItem>
+          <ListItem><Link to="/terms" className={COL_LINK} onClick={() => trackFooter("terms", "terms")}>terms</Link></ListItem>
         </List>
       </div>
     </>
   );
+}
+
+function trackFooter(source: string, target: string) {
+  trackNavigationClicked({ source: `footer_${source}`, surface: FOOTER_SURFACE, target });
 }
 
 function FooterMeta() {

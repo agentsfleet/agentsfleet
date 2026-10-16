@@ -23,7 +23,6 @@ fn data_only_kinds() -> Vec<(&'static str, Error)> {
             super::session_already_approved(),
         ),
         ("session code rejected", super::session_code_rejected()),
-        ("session not owner", super::session_not_owner()),
         ("api-key not found", super::apikey_not_found()),
         ("api-key name taken", super::apikey_name_taken()),
         ("api-key already revoked", super::apikey_already_revoked()),
@@ -135,7 +134,7 @@ fn an_invite_conflict_says_which_one() {
 #[test]
 fn every_data_only_failure_has_a_registered_public_contract() {
     let kinds = data_only_kinds();
-    assert_eq!(kinds.len(), 35, "the table must grow with the enum");
+    assert_eq!(kinds.len(), 34, "the table must grow with the enum");
 
     for (label, failure) in kinds {
         assert!(!failure.code().as_str().is_empty(), "{label}: code");

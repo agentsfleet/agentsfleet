@@ -50,23 +50,38 @@ async fn test_tool_calls_column_upgrade_keeps_rows_null() {
         .iter()
         .position(|migration| migration.version() == TOOL_CALLS_SLOT)
         .expect("slot 924 is registered");
+    apply_up_to_slot(&db, boundary).await;
+    seed_settled_events(&db).await;
+    apply_through_slot(&db, boundary).await;
+
+    assert_column_shape(&db).await;
+    assert_events_survived(&db).await;
+
+    database.cleanup().await;
+}
+
+/// Migrates a fresh database to the slot before 924, so what follows is an
+/// upgrade.
+async fn apply_up_to_slot(db: &afd_db::Db, boundary: usize) {
     let head = MIGRATIONS
         .get(..boundary)
         .expect("the slot's own index is within its own list");
     Migrator::new()
         .with_migrations(head)
-        .run(&db)
+        .run(db)
         .await
         .expect("the list up to slot 924 applies to a fresh database");
+}
 
-    seed_settled_events(&db).await;
-
+/// Applies slot 924 to the populated database, and asserts it applied nothing
+/// else.
+async fn apply_through_slot(db: &afd_db::Db, boundary: usize) {
     let through = MIGRATIONS
         .get(..=boundary)
         .expect("the slot's own index is within its own list");
     let upgrade = Migrator::new()
         .with_migrations(through)
-        .run(&db)
+        .run(db)
         .await
         .expect("slot 924 applies to a populated database");
     assert_eq!(
@@ -74,9 +89,10 @@ async fn test_tool_calls_column_upgrade_keeps_rows_null() {
         vec![TOOL_CALLS_SLOT],
         "the upgrade must apply slot 924 and nothing else"
     );
+}
 
-    assert_column_shape(&db).await;
-
+/// Asserts every seeded event kept its answer and reads not-recorded.
+async fn assert_events_survived(db: &afd_db::Db) {
     let mut connection = db.acquire().await.expect("a pooled connection");
     let rows = sqlx::query(
         "SELECT event_id, response_text, tool_calls::text AS tool_calls
@@ -107,8 +123,6 @@ async fn test_tool_calls_column_upgrade_keeps_rows_null() {
         );
     }
     drop(connection);
-
-    database.cleanup().await;
 }
 
 /// The column the slot asked for: JSONB, nullable, no default.
@@ -143,6 +157,28 @@ async fn assert_column_shape(db: &afd_db::Db) {
 /// A tenant, a workspace, a fleet, and two events it settled.
 async fn seed_settled_events(db: &afd_db::Db) {
     let mut connection = db.acquire().await.expect("a pooled connection");
+    seed_owner(&mut connection).await;
+    for event in EVENTS {
+        sqlx::query(
+            "INSERT INTO core.fleet_events
+               (fleet_id, workspace_id, event_id, actor, event_type, status,
+                request_json, response_text, tokens, wall_ms, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3, 'steer:fixture', 'chat', 'processed',
+                     '{\"message\":\"hello\"}', $4, 7, 12, $5, $5)",
+        )
+        .bind(FLEET)
+        .bind(WORKSPACE)
+        .bind(event)
+        .bind(ANSWER)
+        .bind(AT)
+        .execute(&mut *connection)
+        .await
+        .expect("seeding a settled event");
+    }
+}
+
+/// The tenant, workspace and fleet the seeded events belong to.
+async fn seed_owner(connection: &mut sqlx::PgConnection) {
     sqlx::query(
         "INSERT INTO core.tenants (id, name, created_at, updated_at)
          VALUES ($1::uuid, 'fixture', $2, $2)",
@@ -163,6 +199,7 @@ async fn seed_settled_events(db: &afd_db::Db) {
     .await
     .expect("seeding a workspace");
     sqlx::query(
+        // Slot-era shape: `source_markdown` is NOT NULL until slot 950 drops it.
         "INSERT INTO core.fleets
            (id, workspace_id, tenant_id, name, source_markdown, config_json,
             status, created_at, updated_at)
@@ -176,21 +213,4 @@ async fn seed_settled_events(db: &afd_db::Db) {
     .execute(&mut *connection)
     .await
     .expect("seeding a fleet");
-    for event in EVENTS {
-        sqlx::query(
-            "INSERT INTO core.fleet_events
-               (fleet_id, workspace_id, event_id, actor, event_type, status,
-                request_json, response_text, tokens, wall_ms, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3, 'steer:fixture', 'chat', 'processed',
-                     '{\"message\":\"hello\"}', $4, 7, 12, $5, $5)",
-        )
-        .bind(FLEET)
-        .bind(WORKSPACE)
-        .bind(event)
-        .bind(ANSWER)
-        .bind(AT)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a settled event");
-    }
 }

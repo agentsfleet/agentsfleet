@@ -17,6 +17,7 @@ import {
   DASHBOARD_URL_DEV,
   DASHBOARD_URL_PROD,
 } from "./fixtures/constants.ts";
+import { resolve } from "node:path";
 import { ensureFixtureTenantReady } from "./fixtures/clerk-admin.ts";
 import { composeEnv } from "./fixtures/cli.js";
 import { API_KEY_ENV } from "../../src/constants/env.ts";
@@ -154,6 +155,11 @@ export async function runLiveAcceptancePreflight(
 ): Promise<void> {
   assertHermeticSpawnEnv();
   const config = resolveLiveAcceptancePreflight(env);
+  const binding = Bun.spawn(["bun", resolve(import.meta.dir,
+    "../../../ui/packages/app/tests/e2e/acceptance/fixtures/build-binding.ts"), config.apiUrl, config.dashboardUrl], {
+    env, stdin: "ignore", stdout: "inherit", stderr: "inherit", signal: AbortSignal.timeout(180_000),
+  });
+  if (await binding.exited !== 0) throw new Error("CLI acceptance build binding failed before fixture creation");
   await verifyChromiumInstalled();
   await ensureFixtureTenantReady(config.clerkSecret, {
     email: config.regularEmail,

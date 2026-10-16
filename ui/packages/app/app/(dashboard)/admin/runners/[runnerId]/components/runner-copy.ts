@@ -6,15 +6,8 @@
 import { LEASE_OUTCOME, type LeaseOutcome } from "@/lib/api/runners-types";
 
 export const RUNNERS_CRUMB_LABEL = "Runners";
-export const RUNNER_BREADCRUMB_LABEL = "Breadcrumb";
 export const RUNNER_ACTIONS_LABEL = "Runner admin actions";
-export const COPY_RUNNER_ID_LABEL = "Copy runner ID";
 export const OPEN_GRAFANA_LABEL = "Grafana";
-// A re-read is usually faster than the eye. Without an acknowledgement the
-// press is indistinguishable from a dead control, which is how this button read
-// before: no spinner, no message, nothing moved.
-export const REFRESHING_RUNNER_LABEL = "Refreshing…";
-export const REFRESHED_RUNNER_LABEL = "Refreshed";
 export const REFRESH_RUNNER_LABEL = "Refresh";
 
 // The states chip's learn-more target: the published section defining the
@@ -63,20 +56,13 @@ export const FLEET_LABEL = "Fleet";
 export const CLEAR_WORKSPACE_FILTER_LABEL = "Clear workspace filter";
 export const CLEAR_FLEET_FILTER_LABEL = "Clear fleet filter";
 
-// The filter bar reads as one query the operator types, in the shape GitHub's
-// issue search uses: `workspace:<id> fleet:<name-or-id>`. Tokens the parser does
-// not recognise are dropped rather than guessed at, so a typo narrows nothing
-// instead of silently filtering to the wrong set.
-export const LEASE_FILTER_LABEL = "Filter";
-export const LEASE_FILTER_PLACEHOLDER = "workspace:<id> fleet:<name or id>";
-export const LEASE_FILTER_HINT =
-  "Filter by workspace:<id> and fleet:<name or id>. A fleet name matches exactly, ignoring case.";
+export const LEASE_FILTER_HINT = "Fleet names match exactly, ignoring case. Leave a field empty to include all.";
 export const APPLY_LEASE_FILTER_LABEL = "Apply";
 export const CLEAR_LEASE_FILTER_LABEL = "Clear all filters";
 
 export const IDLE_SENTENCE = "Idle. No active leases.";
 export const NEVER_CONNECTED_SENTENCE = "Never connected.";
-export const INSPECT_RUNNER_LABEL = "Inspect runner";
+export const OPEN_RUNNER_LABEL = "Open";
 
 // The word "reclaimed" was rejected in review: the row says what happened in
 // operator terms — this runner stopped renewing, the work went elsewhere.
@@ -108,7 +94,7 @@ export const CHECKS_BADGE_STALE = "checks stale";
 export const CHECKS_BADGE_PENDING = "checks pending";
 export const CHECKS_BADGE_NEVER = "checks never run";
 export const CHECKS_DIALOG_DESCRIPTION =
-  "What this runner's sandbox is, and whether the host has proven it.";
+  "Sandbox verification and mounted paths.";
 
 export const REVIEW_LEASE_TITLE = "Review lease";
 export const REVIEW_OUTCOME_LABEL = "Outcome";

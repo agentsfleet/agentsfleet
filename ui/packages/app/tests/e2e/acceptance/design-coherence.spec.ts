@@ -28,11 +28,11 @@ async function checkCreatedColumn(page: Page, name: string) {
     await expect(table.getByRole("columnheader")).toHaveText(["Name", "Actions"]);
     await expect(row.getByRole("cell").first().locator("time").first()).toBeVisible();
   } else {
-    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Time", "Actions"]);
+    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Created", "Actions"]);
     const created = row.getByRole("cell").nth(1).locator("time").first();
-    const heading = table.getByRole("columnheader", { name: "Time" });
+    const heading = table.getByRole("columnheader", { name: "Created" });
     await created.scrollIntoViewIfNeeded();
-    const left = await textStart(heading, "Time");
+    const left = await textStart(heading, "Created");
     const timestamp = await created.boundingBox();
     expect(Math.abs(left - timestamp!.x)).toBeLessThan(1);
     const direction = await heading.getAttribute("aria-sort");

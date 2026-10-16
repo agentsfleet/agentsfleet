@@ -2,18 +2,18 @@
 
 **Owners:** 🤠 Indy changes Slack, GitHub, Grafana and 1Password settings; 🦉
 Orly audits the repository and records the drill evidence.
-**Updated:** Sep 24, 2026
+**Updated:** Oct 15, 2026
 **Prerequisite:** the mention, delivery and evidence workstreams are deployed
 to `api-dev.agentsfleet.net`. Keep production setup behind a passing
 development drill.
 
 The setup binds one read fleet and one addressed repair fleet to each channel.
-The daemon owns Slack replies. Neither bundle receives a Slack credential.
+The daemon owns Slack replies. Neither fleet holds a Slack credential.
 Use this page for development, then repeat the same checks for production.
 
 ## 1. Orly and Indy: audit the repair branch secret gate
 
-Do this before installing a write fleet. Orly reads every workflow trigger,
+Do this before saving a write fleet. Orly reads every workflow trigger,
 called workflow and secret scope in `agentsfleet/linkwarden` at the revision
 being drilled. A push or pull request from `agentsfleet-repair/*` must have no
 path to a deploy secret. Indy owns any workflow or environment change. Orly
@@ -90,8 +90,8 @@ environment. Orly then runs `agentsfleet --api <API_BASE> whoami` and
 with `agentsfleet --api <API_BASE> workspace use <WORKSPACE_ID>`, and confirms
 it with `agentsfleet --api <API_BASE> workspace show`. Record the API base,
 account and workspace ID, never the session credential. Stop if any of these
-point at the wrong environment. The other placeholders come from the library
-listing, install result and Slack channel details.
+point at the wrong environment. The other placeholders come from the chat
+output, the fleet list and Slack channel details.
 
 1. Indy creates a Grafana service account with the Viewer role for the
    Linkwarden development stack. Indy stores its host and token in the matching
@@ -116,17 +116,61 @@ listing, install result and Slack channel details.
    runs `agentsfleet --api <API_BASE> secret show grafana` and records only
    its exists result. The responder reads the secret as
    `${secrets.grafana.host}` and `${secrets.grafana.token}`.
-3. Orly copies only `SKILL.md` and `TRIGGER.md` from each bundle directory
-   under `tests/fixtures/fleetbundle/` into separate temporary directories.
-   Replace the responder's `grafana.example.net` allow entry with that stack's
-   public hostname. Do not change the repository or base binding. Orly
-   publishes each copy with `agentsfleet --api <API_BASE> library create --from <BUNDLE_PATH>`
-   and removes the temporary copies after the install checks. The `ci-responder` and
-   `ci-repairer` identifiers shown by `agentsfleet --api <API_BASE> library`
-   are the values to install. Orly installs each with `agentsfleet --api <API_BASE> install --library <LIBRARY_ID>
-   --name <FLEET_NAME> --slack-channel <CHANNEL_ID>`; use `ci-dev-responder` and
-   `ci-dev-repairer` as names and the identifier copied in step 2.1.
-4. Orly runs `agentsfleet --api <API_BASE> fleet show <FLEET_ID>` for both installations.
+3. Orly writes each fleet's native Definition to a temporary file. The
+   sources are `tests/fixtures/fleets/ci-responder/definition.json` and
+   `tests/fixtures/fleets/ci-repairer/definition.json`. The `jq` edits
+   replace the responder's `grafana.example.net` allow entry with
+   `<GRAFANA_HOST>`, the stack's bare public hostname from step 3.1, and add
+   a `mention` trigger for `<CHANNEL_ID>`, the identifier copied in step 2.1.
+   The channel binding lives in the Definition. Do not change the repository
+   or base binding. Run from the repository root:
+
+   ```sh
+   set -o pipefail
+   responder_json="$(mktemp)"
+   repairer_json="$(mktemp)"
+   jq --arg host '<GRAFANA_HOST>' --arg channel '<CHANNEL_ID>' '
+     (.config["x-agentsfleet"].network.allow | index("grafana.example.net")) as $at
+     | if $at == null then error("no grafana.example.net allow entry") else . end
+     | .config["x-agentsfleet"].network.allow[$at] = $host
+     | .config["x-agentsfleet"].triggers += [{type: "mention", source: "slack", channels: [$channel]}]
+   ' tests/fixtures/fleets/ci-responder/definition.json > "$responder_json"
+   jq --arg channel '<CHANNEL_ID>' '
+     .config["x-agentsfleet"].triggers += [{type: "mention", source: "slack", channels: [$channel]}]
+   ' tests/fixtures/fleets/ci-repairer/definition.json > "$repairer_json"
+   ```
+
+   Orly opens a private draft from each file and reviews it under its fleet
+   name. `<MODEL_REF>` is an authoring model the workspace owner has enabled;
+   a Definition draft starts without a message, so no authoring call runs:
+
+   ```sh
+   agentsfleet --api <API_BASE> chat --definition "$responder_json" --model <MODEL_REF> \
+     --no-input --review --name ci-dev-responder
+   agentsfleet --api <API_BASE> chat --definition "$repairer_json" --model <MODEL_REF> \
+     --no-input --review --name ci-dev-repairer
+   ```
+
+   Each command prints `Draft <DRAFT_ID> created` first, then the full setup,
+   its required access and readiness checks, and `Review digest: <DIGEST>`
+   last. Before saving, check that the responder allows `<GRAFANA_HOST>`, that
+   each Definition carries the one `mention` trigger for `<CHANNEL_ID>`, and
+   that the repository bindings match the fixtures. Orly then saves each draft
+   with the digest from its own review and the same name:
+
+   ```sh
+   agentsfleet --api <API_BASE> chat <DRAFT_ID> --no-input --save \
+     --name ci-dev-responder --review-digest <DIGEST>
+   ```
+
+   Repeat with the repairer's `<DRAFT_ID>`, `--name ci-dev-repairer` and its
+   digest. Save prints `Fleet <FLEET_NAME>: <STATUS>` and any setup check still
+   waiting. A refused digest means the setup or its access changed after the
+   review; review the draft again and save with the new digest.
+   `agentsfleet --api <API_BASE> list` shows each saved fleet's `<FLEET_ID>`.
+   Orly removes the temporary files with
+   `rm -f -- "$responder_json" "$repairer_json"` once both fleets are saved.
+4. Orly runs `agentsfleet --api <API_BASE> fleet show <FLEET_ID>` for both saved fleets.
    Check the one-channel `mention` trigger, the responder's read binding and
    read-only network, and the repairer's write binding to
    `agentsfleet/linkwarden` with base `dev`. The repairer must be addressed

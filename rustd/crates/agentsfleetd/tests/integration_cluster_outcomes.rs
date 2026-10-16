@@ -158,7 +158,7 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
         http,
         run,
         &format!("/v1/runners/me/leases/{lease_id}/activity"),
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT}}]}),
+        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
     )
     .await;
     assert_eq!(

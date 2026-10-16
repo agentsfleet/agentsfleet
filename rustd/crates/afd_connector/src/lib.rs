@@ -52,6 +52,7 @@
 // no offsetting benefit. Gated on `not(test)` because the test build links
 // dev-dependencies into this same target.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 mod complete;
 mod endpoint;
@@ -76,7 +77,7 @@ pub mod test_util;
 pub mod zoho;
 
 pub use self::app::PlatformApp;
-pub use self::callback::{Dashboard, Handoff};
+pub use self::callback::Dashboard;
 pub use self::complete::{Finishing, Landed};
 pub use self::connect::{Connectors, Spent, Started, Starting};
 pub use self::connection::Catalogued;

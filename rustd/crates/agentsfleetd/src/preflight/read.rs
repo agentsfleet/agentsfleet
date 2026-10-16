@@ -3,9 +3,7 @@
 //! The helpers `preflight` composes: each takes the environment and the fault
 //! list, answers `Option`, and pushes a fault when a knob was SET and unusable.
 //! That split — absent is a decision, present-and-broken is a fault — is the
-//! whole reason these are functions rather than a chain of `?`: a daemon must
-//! be able to boot without a snapshot store and must not be able to boot with
-//! half of one.
+//! whole reason these are functions rather than a chain of `?`: an optional knob may be absent, while a partial identity provider refuses boot.
 
 use std::fmt;
 
@@ -19,11 +17,11 @@ use url::Host;
 use super::knobs::{
     APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
     OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
-    PROVIDER_SECRET_KNOB, R2_KNOBS, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT,
-    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER,
-    WHY_KEK, WHY_PLATFORM_ADMIN, WHY_R2, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+    PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB,
+    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
+    WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
-use super::{BundleStoreConfig, Fault, IdentityConfig};
+use super::{Fault, IdentityConfig};
 
 /// The one host name a plain-http Slack base may name: every other loopback
 /// host is an address the parser has already classified.
@@ -34,42 +32,6 @@ const LOOPBACK_NAME: &str = "localhost";
 pub(super) fn dashboard(raw: &str, faults: &mut Vec<Fault>) -> Option<Dashboard> {
     let parsed = Dashboard::parse(raw).ok_or(WHY_APP_URL);
     classify(faults, true, APP_URL_KNOB, WHY_APP_URL, parsed)
-}
-
-/// Resolves the snapshot store, which a boot may legitimately not have.
-///
-/// Three outcomes, not two. All four knobs set is a store; none set is a
-/// deployment that serves no snapshots, which is not a fault and pushes none.
-/// SOME set is a fault per missing knob, and that is the case this function
-/// exists for: a half-configured store boots fine and then fails at the first
-/// bundle fetch, which is the furthest possible point from the mistake — the
-/// same rule `identity` below applies to a half-configured identity provider.
-pub(super) fn bundle_store<E: EnvSource + ?Sized>(
-    env: &E,
-    faults: &mut Vec<Fault>,
-) -> Option<BundleStoreConfig> {
-    if R2_KNOBS.iter().all(|knob| !is_set(env, knob)) {
-        return None;
-    }
-    let values: Vec<Option<String>> = R2_KNOBS
-        .iter()
-        .map(|knob| required(env, faults, knob, WHY_R2))
-        .collect();
-    let [
-        Some(account_id),
-        Some(access_key_id),
-        Some(secret_access_key),
-        Some(bucket),
-    ] = values.as_slice()
-    else {
-        return None;
-    };
-    Some(BundleStoreConfig {
-        account_id: account_id.as_str().into(),
-        access_key_id: access_key_id.as_str().into(),
-        secret_access_key: secret_access_key.as_str().into(),
-        bucket: bucket.as_str().into(),
-    })
 }
 
 /// Resolves the identity provider, which every boot must have.

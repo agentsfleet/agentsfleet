@@ -52,6 +52,7 @@
 //! workspace, in SQL, because that one it can enforce rather than trust.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 // Named for the lint's benefit: the integration lane's runtime is a
 // dev-dependency, and `unused_crate_dependencies` counts one against the LIB
 // target unless the crate root says it knows about it.

@@ -38,21 +38,3 @@ pub(super) struct Create {
     /// What the fleet is asked to do when it fires.
     pub(super) message: String,
 }
-
-/// What a caller sends to change one.
-///
-/// Every field optional, and an absent one is left alone — see
-/// [`afd_cron::Change`] on why a partial edit is not a whole replacement.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "openapi", schema(as = SchedulePatch))]
-#[derive(Debug, Deserialize)]
-pub(super) struct Patch {
-    /// A new expression.
-    pub(super) cron: Option<String>,
-    /// A new zone.
-    pub(super) timezone: Option<String>,
-    /// A new message.
-    pub(super) message: Option<String>,
-    /// Whether it should be firing.
-    pub(super) paused: Option<bool>,
-}

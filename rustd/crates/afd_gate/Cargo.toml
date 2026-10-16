@@ -61,3 +61,4 @@ test-util = [
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+afd_db = { workspace = true, features = ["test-util"] }

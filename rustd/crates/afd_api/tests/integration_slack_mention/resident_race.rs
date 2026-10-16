@@ -6,10 +6,11 @@
 
 #![cfg(feature = "test-util")]
 
+use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_ingress::slack::KIND_RESIDENT;
 
-use super::resident_bound::{resident_document, resident_name};
+use super::resident_bound::resident_document;
 use super::*;
 
 /// A bind that waited on a concurrent first mention's uncommitted binding
@@ -25,9 +26,8 @@ use super::*;
 async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let name = resident_name(&fixture);
     let winner = fixture
-        .fleet(&resident_document(&name), FleetStatus::Active.as_str())
+        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
     let loser = fixture
         .fleet(
@@ -40,37 +40,9 @@ async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
     let mut open = sqlx::Acquire::begin(&mut *holder)
         .await
         .expect("the concurrent first mention's transaction opens");
-    sqlx::query(
-        "INSERT INTO core.connector_channels \
-           (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, 1)",
-    )
-    .bind(mint_id())
-    .bind(PROVIDER.id())
-    .bind(&fixture.team)
-    .bind(CHANNEL)
-    .bind(winner.as_str())
-    .bind(KIND_RESIDENT)
-    .execute(&mut *open)
-    .await
-    .expect("the concurrent binding is written, not yet committed");
+    write_uncommitted_binding(&mut open, &fixture, &winner).await;
 
-    let ingress = fixture.ingress();
-    let workspace = fixture.workspace().clone();
-    let team = fixture.team.clone();
-    let channel: afd_ingress::slack::ChannelId = CHANNEL.parse().expect("a channel id");
-    let bind = tokio::spawn(async move {
-        ingress
-            .bind_resident(
-                &workspace,
-                PROVIDER.id(),
-                &team,
-                &channel,
-                &loser,
-                afd_core::clock::UnixMillis::from_millis(1),
-            )
-            .await
-    });
+    let bind = spawn_latecomer_bind(&fixture, loser);
     assert!(
         waiting_on_a_lock(&fixture).await,
         "the bind never waited on the concurrent binding"
@@ -92,6 +64,53 @@ async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
     );
 
     fixture.cleanup().await;
+}
+
+/// The concurrent first mention's binding of [`CHANNEL`] to `winner`, written
+/// inside a transaction the caller holds open.
+async fn write_uncommitted_binding(
+    connection: &mut sqlx::PgConnection,
+    fixture: &Fixture,
+    winner: &Uuid7,
+) {
+    sqlx::query(
+        "INSERT INTO core.connector_channels \
+           (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at) \
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, 1)",
+    )
+    .bind(mint_id())
+    .bind(PROVIDER.id())
+    .bind(&fixture.team)
+    .bind(CHANNEL)
+    .bind(winner.as_str())
+    .bind(KIND_RESIDENT)
+    .execute(&mut *connection)
+    .await
+    .expect("the concurrent binding is written, not yet committed");
+}
+
+/// The latecomer's bind of [`CHANNEL`] to `loser`, on its own task so the test
+/// can watch it wait on the open transaction.
+fn spawn_latecomer_bind(
+    fixture: &Fixture,
+    loser: Uuid7,
+) -> tokio::task::JoinHandle<afd_ingress::Result<Uuid7>> {
+    let ingress = fixture.ingress();
+    let workspace = fixture.workspace().clone();
+    let team = fixture.team.clone();
+    let channel: afd_ingress::slack::ChannelId = CHANNEL.parse().expect("a channel id");
+    tokio::spawn(async move {
+        ingress
+            .bind_resident(
+                &workspace,
+                PROVIDER.id(),
+                &team,
+                &channel,
+                &loser,
+                afd_core::clock::UnixMillis::from_millis(1),
+            )
+            .await
+    })
 }
 
 /// A second channel, so the latecomer's own document names somewhere else.

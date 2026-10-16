@@ -28,7 +28,9 @@
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
+    afd_authoring::Error => Authoring,
     afd_db::Error => Datastore,
+    afd_runner::Error => Runner,
     afd_dragonfly::Error => Queue,
     afd_admission::Error => Admission,
     afd_gate::Error => Gate,

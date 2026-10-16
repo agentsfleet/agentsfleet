@@ -7,7 +7,10 @@ import {
 } from "@agentsfleet/design-system";
 import { SidebarNavigation } from "./SidebarNavigation";
 
+import type { TenantWorkspace } from "@/lib/api/workspaces";
+
 type MobileNavigationDialogProps = {
+  workspaces: TenantWorkspace[];
   open: boolean;
   pathname: string;
   workspaceId: string | null;
@@ -17,6 +20,7 @@ type MobileNavigationDialogProps = {
 };
 
 export default function MobileNavigationDialog({
+  workspaces,
   open,
   pathname,
   workspaceId,
@@ -27,7 +31,7 @@ export default function MobileNavigationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-xs"
+        className="h-dvh max-h-dvh rounded-none sm:max-w-xs"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           restoreFocus();
@@ -35,11 +39,11 @@ export default function MobileNavigationDialog({
       >
         <DialogTitle className="sr-only">Navigation</DialogTitle>
         <SidebarNavigation
+          workspaces={workspaces}
           pathname={pathname}
           workspaceId={workspaceId}
           operatorScopes={operatorScopes}
           collapsed={false}
-          gettingStartedPolling="mounted"
           onNavigate={() => onOpenChange(false)}
         />
       </DialogContent>

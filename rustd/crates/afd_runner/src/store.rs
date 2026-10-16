@@ -93,7 +93,8 @@ impl Runners {
         ))
     }
 
-    /// Enrols a runner, storing only the digest of the token it returns.
+    /// Enrols a runner, storing only the digest of the token it returns, and
+    /// each of its labels once.
     ///
     /// The row and its enrolment event land in ONE statement, so an observer
     /// can never see a registered runner with no audit row explaining where it
@@ -117,7 +118,7 @@ impl Runners {
     ) -> Result<Enrolled> {
         let stored = registration(request)?;
         let host_id: &str = &request.host_id;
-        let worker_count = stored.worker_count.get();
+        let worker_count = stored.assignment.worker_count.get();
 
         // Reconciled against the assignment AS STORED, so the verdict describes
         // the row rather than the request — they differ whenever the clamp bit.
@@ -125,12 +126,12 @@ impl Runners {
             worker_count,
             ..request.assigned_policy.clone()
         };
-        let verdict = reconcile(Some(&assigned), None);
+        let verdict = reconcile(&assigned, None);
 
         // Rendered before the connection is taken: serialisation cannot fail
         // for these shapes, but holding a pooled connection across work that
         // does not need it is how a pool's occupancy stops matching its load.
-        let labels_json = render_list(&request.labels);
+        let labels_json = render_list(&stored.labels);
         let registry_json = render_list(&assigned.registry_allowlist);
 
         let (runner_id, event_id, token) = self.mint(now)?;

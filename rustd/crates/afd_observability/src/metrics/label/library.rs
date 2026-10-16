@@ -1,25 +1,12 @@
 //! What an authenticated catalogue read labels its stages and outcomes with.
 //!
-//! Five closed sets behind seven families, and every one of them is closed on
+//! Three closed sets behind five families, and every one of them is closed on
 //! purpose: `docs/architecture/observability.md` fixes the library read's whole
 //! series count at build time, so a fourth surface or an eleventh stage is a
 //! code change that must move the census with it rather than a label that
 //! quietly grows the export.
 
 use crate::metrics::label::closed_set;
-
-/// The caller went away before the work finished.
-///
-/// One spelling for one fact, shared by the two sets that can observe it: a
-/// read can be cancelled and so can the acquire it was waiting on. Named
-/// rather than written twice so the two cannot be renamed apart while still
-/// meaning the same thing.
-const CANCELLED: &str = "cancelled";
-
-/// A budget ran out before the work finished.
-///
-/// Shared for [`CANCELLED`]'s reason.
-const TIMED_OUT: &str = "timeout";
 
 closed_set! {
     /// Which catalogue a read was against.
@@ -90,37 +77,12 @@ closed_set! {
         /// Nothing to read under that name.
         NotFound => "not_found",
         /// A dependency did not answer in time.
-        Timeout => TIMED_OUT,
+        Timeout => "timeout",
         /// The caller went away.
-        Cancelled => CANCELLED,
+        Cancelled => "cancelled",
         /// A dependency refused.
         DependencyError => "dependency_error",
         /// Anything this daemon did wrong, including the unclassified.
         InternalError => "internal_error",
-    }
-}
-
-closed_set! {
-    /// How one pool acquisition ended.
-    ///
-    /// Nothing in this daemon writes it: the acquire happens inside the store,
-    /// where the read path cannot see how it ended, and the family is excused
-    /// by name in [`crate::metrics::produced`]. The set stays because it is the
-    /// WIRE vocabulary both binaries share through the cutover and the census
-    /// ceiling is derived from it — deleting it would understate the budget for
-    /// values the other daemon still emits.
-    ///
-    /// Carries no surface, deliberately: a starving pool is a process-wide
-    /// fact, and attributing it per surface would invite a reader to conclude
-    /// that one catalogue exhausted the pool.
-    PoolResult {
-        /// A connection was available.
-        Acquired => "acquired",
-        /// The acquire budget ran out first.
-        Timeout => TIMED_OUT,
-        /// The caller went away while waiting.
-        Cancelled => CANCELLED,
-        /// The pool answered with a failure.
-        Error => "error",
     }
 }

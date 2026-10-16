@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { CircleStopIcon, PlayIcon, PowerOffIcon } from "lucide-react";
 import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import type { Fleet, FleetStatusSettable } from "@/lib/api/fleets";
+import type { FleetStatusSettable } from "@/lib/api/fleets";
 import { setFleetStatusAction } from "../../actions";
 import { presentErrorString } from "@/lib/errors";
 
 interface KillSwitchProps {
   workspaceId: string;
-  fleet: Fleet;
+  fleet: {id: string; status: string; etag: string};
 }
 
 interface ActionConfig {
@@ -60,14 +60,14 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
       startTransition(async () => {
         setOptimisticStatus(action.target);
         try {
-          const result = await setFleetStatusAction(workspaceId, fleet.id, action.target);
+          const result = await setFleetStatusAction(workspaceId, fleet.id, action.target, fleet.etag);
           if (result.ok) {
             setPendingAction(null);
             router.refresh();
             return;
           }
           setOptimisticStatus(previous);
-          if (result.status === 409) {
+          if (result.status === 409 || result.status === 412) {
             // Status changed under us. Refresh picks up the new state.
             setPendingAction(null);
             router.refresh();

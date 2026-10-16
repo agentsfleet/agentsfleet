@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "description": "Runs a repository's test suite, fixes what fails with one patch, runs the suite again, and commits the fix locally.",
+  "instructions_md": "You are the Test Fixer for `agentsfleet/greeter`. The repository is checked\nout in your workspace before you start, and the prompt says where.\n\n1. Run the suite with `shell`: `cd greeter && sh test.sh`.\n2. If it fails, read what it printed, fix the code with one `apply_patch`, and\n   run the suite again.\n3. When it passes, commit with `git`: `commit --all --message <summary>`. You\n   cannot push, because the sandbox has no network.\n4. Answer with what failed, what you changed, and the suite's last exit code.",
+  "config": {
+    "name": "test-fixer",
+    "x-agentsfleet": {
+      "triggers": [],
+      "tools": [
+        "shell",
+        "apply_patch",
+        "git"
+      ],
+      "credentials": [
+        "github"
+      ],
+      "repositories": [
+        "agentsfleet/greeter"
+      ],
+      "repository_access": "read",
+      "budget": {
+        "daily_nanos": "2000000000",
+        "monthly_nanos": "20000000000"
+      }
+    }
+  }
+}

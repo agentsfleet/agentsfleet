@@ -1,82 +1,39 @@
-import { AgentIllustration } from "./AgentIllustration";
-import { Button, DisplayXL, Section } from "@agentsfleet/design-system";
-import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import { GITHUB_URL, WAITLIST_URL } from "../config";
-import { HERO_HEADLINE, HERO_LEDE_PARTS, HERO_PRIMARY_LABEL, HERO_SECONDARY_LABEL, HOW_IT_WORKS_ANCHOR_ID } from "../lib/marketing-copy";
+import type { ReactNode } from "react";
+import { BrandMark, DisplayXL, Section } from "@agentsfleet/design-system";
+import { HERO_HEADLINE, PRICING_COPY } from "../lib/marketing-copy";
+import type { ExampleJob } from "../lib/example-jobs";
+import { JobComposer } from "./JobComposer";
+import { SignalField } from "./SignalField";
+import { CliQuickstart } from "./CliQuickstart";
 
-export default function Hero() {
+type HeroProps = {
+  request: string;
+  onRequest: (request: string) => void;
+  job: ExampleJob;
+  onJob: (job: ExampleJob) => void;
+  children?: ReactNode;
+};
+
+export default function Hero({ children, ...props }: HeroProps) {
   return (
     <Section asChild>
-      <section className="site-section" aria-label="Hero" data-testid="hero">
-        <div className="wrap hero-layout">
-          <div className="hero-copy flex min-w-0 flex-col gap-6">
-            <HeroHeading />
-            <HeroActions />
+      <section className="entrance-hero" aria-label="Your engineering job" data-testid="hero" data-example={Boolean(children)}>
+        <SignalField />
+        <div className="wrap entrance-content">
+          <div className="job-entrance">
+            <div className="hero-heading">
+              <BrandMark className="entrance-mark" />
+              <DisplayXL data-testid="hero-headline">{HERO_HEADLINE}</DisplayXL>
+              <p className="hero-description">Describe a job. Build an agent to handle it.</p>
+              <p className="hero-credit ph-no-capture">{PRICING_COPY.status}</p>
+            </div>
+            {children}
+            {!children && <JobComposer {...props} />}
+            <CliQuickstart />
           </div>
-          <HeroExample />
+          <p className="entrance-note">Your fleet is an agent with a job, the tools it needs, and the access you choose.</p>
         </div>
       </section>
     </Section>
-  );
-}
-
-function HeroHeading() {
-  return (
-    <>
-      {/*
-       * FINDING-M05. A kicker read "AI incident response for engineering
-       * teams" directly above a headline that said the same thing in other
-       * words, making it the second of two pre-headline elements. The hero
-       * budget is brand, one headline, one supporting sentence, one CTA group,
-       * one image; the promo pill stays
-       * because it says something the headline does not (early access, and an
-       * invitation), while the kicker only said it again. Its decorative pulse
-       * dot went with it.
-       */}
-      <a href="/#pricing"
-        onClick={() => trackNavigationClicked({ source: "hero_promo_pill", surface: "hero", target: "pricing" })}
-        className="inline-flex min-h-11 w-fit items-center gap-2 rounded-md bg-card border border-border px-3 py-1 text-body-sm font-sans text-text transition-colors hover:border-border-strong"
-        data-testid="hero-promo-pill"
-      >
-        <span className="text-pulse">Early access</span>
-        Help shape agentsfleet<span aria-hidden="true">→</span>
-      </a>
-      <DisplayXL data-testid="hero-headline" className="max-w-tagline">{HERO_HEADLINE}</DisplayXL>
-      <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
-        {HERO_LEDE_PARTS.intro} <strong className="font-medium text-text">{HERO_LEDE_PARTS.trigger}</strong>{" "}
-        {HERO_LEDE_PARTS.middle} <strong className="font-medium text-text">{HERO_LEDE_PARTS.sources}</strong>{" "}
-        {HERO_LEDE_PARTS.outro}
-      </p>
-    </>
-  );
-}
-
-function HeroActions() {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button wrap asChild className="min-h-11" data-testid="hero-cta-early-access">
-        <a href={WAITLIST_URL} target="_blank" rel="noopener noreferrer"
-          onClick={() => trackSignupStarted({ source: "hero_early_access", surface: "hero", mode: "humans" })}
-        >→ {HERO_PRIMARY_LABEL}</a>
-      </Button>
-      <Button wrap asChild variant="ghost" className="min-h-11" data-testid="hero-cta-secondary">
-        <a href={`/#${HOW_IT_WORKS_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
-      </Button>
-    </div>
-  );
-}
-
-function HeroExample() {
-  return (
-    <figure className="m-0 flex min-w-0 flex-col items-center gap-4 text-center">
-      <AgentIllustration className="w-48 max-w-full" />
-      <figcaption className="max-w-trim font-sans text-body text-text-muted">
-        Your logs, metrics, and code.<br />A diagnosis you can review.
-      </figcaption>
-      <p className="m-0 max-w-trim font-sans text-body-sm text-text-muted">
-        <a href={GITHUB_URL} className="inline-flex min-h-11 items-center text-pulse underline" target="_blank" rel="noopener noreferrer">Open-source runtime</a>.
-        Hosted today. Self-hosting is planned.
-      </p>
-    </figure>
   );
 }

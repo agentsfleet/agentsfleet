@@ -227,21 +227,21 @@ pub(super) fn mark_reused(reused: bool) {
 }
 
 #[cfg(test)]
-#[path = "hold_tests.rs"]
+#[path = "tests/holds/reuse.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "revive_tests.rs"]
+#[path = "tests/holds/revive.rs"]
 mod revive_tests;
 
 #[cfg(test)]
-#[path = "unheld_tests.rs"]
+#[path = "tests/holds/release.rs"]
 mod unheld_tests;
 
 #[cfg(test)]
-#[path = "reassign_tests.rs"]
+#[path = "tests/holds/reassignment.rs"]
 mod reassign_tests;
 
 #[cfg(test)]
-#[path = "refill_tests.rs"]
+#[path = "tests/holds/refill.rs"]
 mod refill_tests;

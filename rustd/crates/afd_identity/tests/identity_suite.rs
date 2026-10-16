@@ -24,7 +24,6 @@ mod claim_shapes;
 mod http_key_set;
 #[path = "jwks_lifetime.rs"]
 mod jwks_lifetime;
-#[path = "jwks_verify_negative_paths.rs"]
 mod jwks_verify_negative_paths;
 #[path = "key_policy.rs"]
 mod key_policy;

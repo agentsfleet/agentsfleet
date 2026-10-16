@@ -52,7 +52,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installSteerProbeFleet } from "./fixtures/seed.ts";
+import { saveSteerProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { trailingJsonText } from "./fixtures/steer-envelope.ts";
 
@@ -77,7 +77,6 @@ const WHITESPACE_MESSAGE = "   " as const;
 // the decimal as `p` (`kimi-k2p6`), and the dotted spelling sat in this suite's
 // own fixtures for months.
 const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
-const STATUS_FLEET_ERROR = "fleet_error" as const;
 const NO_COLOR = "1" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a
@@ -113,20 +112,6 @@ function assertSteerProcessed(result: RunResult, diagnostics = ""): void {
     `live steer must carry status=${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
 }
 
-function assertMissingModelFailure(stdout: string, eventId: unknown): void {
-  assert.ok(typeof eventId === "string" && eventId.length > 0, "terminal event id is missing");
-  const events: unknown = JSON.parse(stdout);
-  assert.ok(events !== null && typeof events === "object" && "items" in events);
-  assert.ok(Array.isArray(events.items), "events must carry an items array");
-  const event = (events.items as unknown[]).find((item) =>
-    item !== null && typeof item === "object" && "event_id" in item && item.event_id === eventId);
-  assert.ok(event !== null && typeof event === "object" && "failure_detail" in event,
-    "the terminal event must carry its failure detail");
-  assert.ok(typeof event.failure_detail === "string", "failure detail must be a sentence");
-  // Pin test: require the provider's HTTP 404 and named refusal on this event.
-  assert.match(event.failure_detail, /status 404 \(NOT_FOUND\)/i,
-    "the failure must identify the missing model, not just ApiError");
-}
 
 if (!isLive) {
   describe("steer-live.spec.ts", () => {
@@ -162,7 +147,7 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      const installed = await installSteerProbeFleet({ env, seedFixtureSecrets: false });
+      const installed = await saveSteerProbeFleet({ env, seedFixtureSecrets: false });
       const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
       fleetId = id;
@@ -194,47 +179,8 @@ if (!isLive) {
         `expected "message is required" stem; got stdout=${result.stdout} stderr=${result.stderr}`);
     });
 
-    it("a fleet pinned to a model no provider serves fails terminally, not silently", async () => {
-      // The failure this suite could not see until the runner's spawn was
-      // fixed: every live steer used to die BEFORE the provider was dialed, so
-      // a fixture pinned to a non-existent model looked identical to a broken
-      // sandbox. Now the dial happens, and this is what a mistyped model does.
-      //
-      // What it must NOT do is look like success: `steer` exits non-zero and
-      // the event reaches a TERMINAL error status rather than hanging or
-      // reporting `processed` with an empty reply.
-      const bad = await installSteerProbeFleet({
-        env,
-        seedFixtureSecrets: false,
-        model: NONEXISTENT_MODEL,
-      });
-      const badId = bad.id ?? bad.fleet_id;
-      assert.ok(badId, `install missing id: ${JSON.stringify(bad)}`);
-
-      const result = await runWithEnv([STEER_COMMAND, badId, ONE_SHOT_MESSAGE, JSON_FLAG]);
-      assert.notEqual(result.code, 0,
-        `a fleet on a non-existent model must not exit 0; stdout=${result.stdout} stderr=${result.stderr}`);
-      const envelope = parseSteerEnvelope(result.stdout);
-      assert.equal(envelope[ENVELOPE_KIND_KEY], KIND_COMPLETE,
-        `expected a terminal envelope, not a hang; got ${JSON.stringify(envelope)}`);
-      assert.notEqual(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
-        `a model that does not exist must never report ${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
-      assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_FLEET_ERROR,
-        `expected ${STATUS_FLEET_ERROR}; got ${JSON.stringify(envelope)}`);
-
-      // The cause line must be DIAGNOSABLE, which is the half that cost days:
-      // `ApiError` alone is indistinguishable from a rejected credential,
-      // because the retired runner's error classifier collapsed both into one bucket.
-      // The runner carries the provider's status and error code onto the event,
-      // keeping diagnostic names while excluding its potentially private message.
-      //
-      // Runner-version-dependent by nature: this asserts the behaviour of the
-      // runner deployed to the target, so it goes green once the worker deploy
-      // in this pipeline lands. A bare `ApiError` here means the target is
-      // still running a pre-fix runner.
-      const events = await runWithEnv(["events", badId, JSON_FLAG]);
-      assert.equal(events.code, 0, `events read failed: ${events.stderr}`);
-      assertMissingModelFailure(events.stdout, envelope[ENVELOPE_EVENT_ID_KEY]);
+    it("a missing runtime model blocks setup before any execution", async () => {
+      await assert.rejects(saveSteerProbeFleet({env, seedFixtureSecrets: false, model: NONEXISTENT_MODEL}));
     }, STEER_TIMEOUT_MS);
 
     it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {

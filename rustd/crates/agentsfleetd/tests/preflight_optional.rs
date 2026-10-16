@@ -11,8 +11,7 @@ use afd_core::error_code;
 use agentsfleetd::BootFailure;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,
-    PROVIDER_API_BASE_KNOB, R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB,
-    R2_SECRET_ACCESS_KEY_KNOB, SLACK_API_URL_KNOB, preflight,
+    PROVIDER_API_BASE_KNOB, SLACK_API_URL_KNOB, preflight,
 };
 
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
@@ -45,7 +44,6 @@ fn unset_optional_settings_resolve_to_documented_defaults() {
     assert_eq!(config.api_url(), "https://api.agentsfleet.net");
     assert_eq!(config.sse_max_streams(), 256);
     assert!(config.posthog().is_none());
-    assert!(config.bundles().is_none());
     assert!(config.platform_admin_workspace().is_none());
     assert!(config.identity().jwks_url.is_none());
     assert_eq!(
@@ -145,10 +143,6 @@ fn complete_optional_settings_survive_preflight() {
         ("POSTHOG_API_KEY", "ph_fixture"),
         ("POSTHOG_HOST", "https://events.example.test"),
         (PLATFORM_ADMIN_WORKSPACE_KNOB, PLATFORM_WORKSPACE),
-        (R2_ACCOUNT_ID_KNOB, "account"),
-        (R2_ACCESS_KEY_ID_KNOB, "access"),
-        (R2_SECRET_ACCESS_KEY_KNOB, "secret"),
-        (R2_BUCKET_KNOB, "snapshots"),
         ("OIDC_JWKS_URL", "https://identity.example.test/jwks"),
     ]))
     .expect("complete optional groups are accepted");
@@ -166,15 +160,6 @@ fn complete_optional_settings_survive_preflight() {
         config.platform_admin_workspace().map(ToString::to_string),
         Some(PLATFORM_WORKSPACE.to_owned())
     );
-    let bundles = config
-        .bundles()
-        .expect("all four R2 knobs build one config");
-    assert_eq!(
-        bundles.endpoint(),
-        "https://account.r2.cloudflarestorage.com"
-    );
-    assert_eq!(bundles.bucket.as_ref(), "snapshots");
-    assert_eq!(agentsfleetd::preflight::BundleStoreConfig::region(), "auto");
     assert_eq!(
         config.identity().jwks_url.as_deref(),
         Some("https://identity.example.test/jwks")
@@ -186,19 +171,11 @@ fn invalid_optionals_are_reported_together() {
     let refusal = preflight(&with_optional([
         ("SSE_MAX_STREAMS", "0"),
         (PLATFORM_ADMIN_WORKSPACE_KNOB, "not-a-workspace"),
-        (R2_ACCOUNT_ID_KNOB, "account"),
     ]))
     .expect_err("invalid optional settings still refuse boot");
 
     assert!(refusal.knobs().contains(&"SSE_MAX_STREAMS"));
     assert!(refusal.knobs().contains(&PLATFORM_ADMIN_WORKSPACE_KNOB));
-    for missing in [
-        R2_ACCESS_KEY_ID_KNOB,
-        R2_SECRET_ACCESS_KEY_KNOB,
-        R2_BUCKET_KNOB,
-    ] {
-        assert!(refusal.knobs().contains(&missing));
-    }
     assert!(refusal.faults().iter().any(|fault| matches!(
         fault,
         Fault::Invalid {

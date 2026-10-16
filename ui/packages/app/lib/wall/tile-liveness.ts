@@ -88,18 +88,24 @@ export const TILE_CATCHING_UP_EYEBROW = "catching up";
 export const TILE_SPEND_SUFFIX = "spent";
 export const TILE_EVENTS_SUFFIX = "events";
 
-// Server-truth spend, formatted for the tile footer. Reads the summed
-// `credit_deducted_nanos` the row already carries — never token×rate math on
-// the client (Invariant 2). A fleet an older daemon served without the field
-// renders a dash, not a misleading `$0.00`.
-export function formatTileSpend(budgetUsedNanos: number | undefined): string {
-  if (budgetUsedNanos == null) return "—";
-  return `$${(budgetUsedNanos / NANOS_PER_USD).toFixed(2)}`;
+const CENTS_PER_USD = 100n;
+const NANOS_PER_CENT = BigInt(NANOS_PER_USD) / CENTS_PER_USD;
+const CENT_DIGITS = 2;
+const HALF = 2n;
+
+// Round in integer nanos so even large balances keep their exact cents.
+export function formatTileSpend(budgetUsedNanos: bigint): string {
+  const cents = (budgetUsedNanos + NANOS_PER_CENT / HALF) / NANOS_PER_CENT;
+  return `$${cents / CENTS_PER_USD}.${String(cents % CENTS_PER_USD).padStart(CENT_DIGITS, "0")}`;
 }
 
-// Lifetime event count for the tile footer. Undefined (older daemon) renders a
-// dash so a real zero and a missing field never look the same.
-export function formatTileEvents(eventsProcessed: number | undefined): string {
-  if (eventsProcessed == null) return "—";
+export function formatTileEvents(eventsProcessed: bigint): string {
   return String(eventsProcessed);
+}
+
+// Lifetime counters only increase; a retained stream snapshot cannot replace
+// a newer REST read. Stream values have already passed the safe-integer guard.
+export function latestTileCounter(snapshot: bigint, live: number | undefined): bigint {
+  const current = live === undefined ? snapshot : BigInt(live);
+  return current > snapshot ? current : snapshot;
 }

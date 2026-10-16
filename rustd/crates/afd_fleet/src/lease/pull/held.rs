@@ -14,6 +14,7 @@ use afd_core::id::Uuid7;
 use afd_dragonfly::ReadyToken;
 
 use super::Plane;
+use super::Polled;
 use super::step::{Leased, Step};
 use crate::error::Result;
 use crate::lease::affinity::Fence;
@@ -41,7 +42,7 @@ impl Plane {
         runner_id: &Uuid7,
         now: UnixMillis,
         began: Instant,
-    ) -> Result<String> {
+    ) -> Result<Polled> {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
@@ -57,15 +58,15 @@ impl Plane {
             Err(fault) => Err(fault),
         };
         match pass {
-            Ok(Step::Go(Leased(answer))) => Ok(answer),
+            Ok(Step::Go(Leased(answer))) => Ok(Polled::Lease(answer)),
             Ok(Step::Stop(answer)) => {
                 self.let_go(&held, now).await;
-                Ok(answer)
+                Ok(Polled::Empty(answer))
             }
             Ok(Step::Park(answer)) => {
                 self.let_go(&held, now).await;
                 self.leases.clear_mark(&held.fleet_id, &held.ready).await;
-                Ok(answer)
+                Ok(Polled::Empty(answer))
             }
             Err(fault) => {
                 self.let_go(&held, now).await;

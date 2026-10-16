@@ -6,7 +6,7 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0011";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
-import { listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunnerPolicy, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
+import { listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
 import { parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
 
 beforeEach(() => {
@@ -139,6 +139,7 @@ describe("createRunner", () => {
         network_policy: "allow_all" as const,
         registry_allowlist: ["registry.npmjs.org"],
         worker_count: 2,
+        extra_binds: [],
       },
       labels: ["gpu"],
     };
@@ -159,19 +160,20 @@ describe("updateRunnerAdminState", () => {
   });
 });
 
-describe("updateRunnerPolicy", () => {
-  it("PATCHes the assigned_policy envelope the server's one-of contract expects", async () => {
+describe("updateRunner", () => {
+  it("PATCHes policy and labels together through the existing runner resource", async () => {
     const assigned_policy = {
       sandbox_tier: "container_nested" as const,
       network_policy: "deny_all_egress" as const,
       registry_allowlist: ["pypi.org"],
       worker_count: 2,
+      extra_binds: [],
     };
     requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "active", assigned_policy });
-    await updateRunnerPolicy("tok", "runner-1", assigned_policy);
+    await updateRunner("tok", "runner-1", { assigned_policy, labels: ["gpu", "us-east"] });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
-      { method: "PATCH", body: JSON.stringify({ assigned_policy }) },
+      { method: "PATCH", body: JSON.stringify({ assigned_policy, labels: ["gpu", "us-east"] }) },
       "tok",
     );
   });
@@ -279,8 +281,8 @@ describe("parseLabels", () => {
 });
 
 // The daemon's enums: `RunnerLiveness` and `SandboxTier` in
-// rustd/crates/afd_wire/src/runner.rs; `AdminState`, `RunnerAdminAction` and
-// `RunnerEventType` in rustd/crates/afd_api_wire/src/admin.rs.
+// rustd/crates/afd_wire/src/runner/mod.rs; `AdminState`, `RunnerAdminAction` and
+// `RunnerEventType` in rustd/crates/afd_api_wire/src/admin/mod.rs.
 describe("wire constants mirror the daemon's enums", () => {
   it("test_sandbox_tier_vocabulary_excludes_seatbelt: carries the runner value sets verbatim", () => {
     // §6 — only tiers with real enforcement are assignable; the Seatbelt tier

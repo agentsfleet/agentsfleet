@@ -57,7 +57,7 @@ jsonwebtoken.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 # A schedule's fields are bounded on `validate::Fields` before the parser and
@@ -76,6 +76,9 @@ philiprehberger-cron-parser = "0.3.0"
 # `afd_admission`, so this is a test-side dependency and not a second door.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
+# The lane fixture and the fleet seed its rows go in through. A dev-dependency
+# feature only.
+afd_db = { workspace = true, features = ["test-util"] }
 # The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
 # string could only ever assert one shape, and every negative case here is a
 # token that differs from a good one in exactly one claim.

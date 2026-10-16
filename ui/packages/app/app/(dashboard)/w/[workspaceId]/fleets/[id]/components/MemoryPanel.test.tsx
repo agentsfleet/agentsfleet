@@ -27,6 +27,8 @@ const ENTRY: MemoryEntry = {
   key: "convention",
   content: "Prefer tabs over spaces in generated configs",
   category: "style",
+  visibility: "fleet",
+  writer_fleet_id: "agt_1",
   updated_at: 1_700_000_000_000,
 };
 

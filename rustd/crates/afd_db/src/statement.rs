@@ -11,6 +11,16 @@ use sqlx::query::Query;
 /// sibling crate to borrow the spelling.
 pub type Bound<'q> = Query<'q, sqlx::Postgres, PgArguments>;
 
+/// The database's own clock as Unix milliseconds, for a statement to splice in.
+///
+/// An expiry compared inside a statement reads the clock when the statement
+/// evaluates it, not when the daemon bound a `now` before waiting on a lock: a
+/// bound value can be seconds stale by then. `clock_timestamp()` rather than
+/// `now()`, because `now()` is fixed at transaction start and carries the same
+/// staleness. Floored, so it counts the truncated milliseconds
+/// [`afd_core::clock::UnixMillis`] does.
+pub const NOW_MS: &str = "floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint";
+
 /// The escape character a `LIKE` pattern built by [`like_escape`] relies on,
 /// which is Postgres's default and what a statement's `ESCAPE` clause names.
 pub const LIKE_ESCAPE: char = '\\';

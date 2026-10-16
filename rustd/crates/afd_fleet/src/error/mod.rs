@@ -31,8 +31,7 @@ mod lift_tests;
 mod tests;
 
 pub use self::detail::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
-    DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
     DETAIL_GATE_BINDING_UNWRITABLE, DETAIL_GATE_REFERENCE_UNWRITABLE, DETAIL_HOST_ID_BOUNDS,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT,
@@ -58,8 +57,8 @@ pub(crate) use self::refuse::{
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
 pub(crate) use self::report::{
-    bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, envelope_field,
-    envelope_malformed, query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
+    envelope_field, envelope_malformed, query, rejected, row_malformed, sequence_corrupt,
+    vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.
@@ -85,10 +84,21 @@ afd_core::error_shell!(
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("private authoring admission could not complete")]
+    Authoring {
+        #[source]
+        source: afd_authoring::Error,
+    },
     #[error("the datastore backing the runner plane would not answer")]
     Datastore {
         #[source]
         source: afd_db::Error,
+    },
+
+    #[error("the runner host could not establish lease capacity")]
+    Runner {
+        #[source]
+        source: afd_runner::Error,
     },
 
     #[error("the gate plane could not answer for the runner plane")]
@@ -184,6 +194,9 @@ pub(crate) enum ErrorKind {
         source: afd_fleet_runtime::Error,
     },
 
+    #[error("the fleet needs a reviewed native setup before it can run")]
+    SetupUnavailable,
+
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
     VaultDataInvalid,
 
@@ -219,21 +232,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afr_secrets::Error,
     },
-
-    #[error("no Fleet Bundle snapshot is stored under that content hash")]
-    BundleMissing,
-
-    #[error("this deployment has no Fleet Bundle snapshot storage configured")]
-    BundleUnconfigured,
-
-    #[error("the Fleet Bundle snapshot store would not answer")]
-    BundleStorage {
-        #[source]
-        source: object_store::Error,
-    },
-
-    #[error("a stored Fleet Bundle snapshot is larger than this daemon buffers: {size} bytes")]
-    BundleOversized { size: u64 },
 
     #[error("this workspace has connected no integration under that name")]
     IntegrationNotConnected,

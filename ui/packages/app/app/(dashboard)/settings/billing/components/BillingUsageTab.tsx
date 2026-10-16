@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { ActivityIcon } from "lucide-react";
 import {
   DataTable,
@@ -36,7 +37,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     // Which fleet spent it leads the ledger. Fleet and model shared one column
     // and one header; they are two different questions and now two columns.
-    key: "fleet",
+    key: "fleet", primary: true,
     header: "Fleet",
     sortValue: (c) => chargeAgentLabel(c),
     cell: (c) => (
@@ -65,7 +66,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   },
   {
     key: "created",
-    header: "Created",
+    header: TIME_LABEL.created,
     sortValue: (c) => c.recorded_at,
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.

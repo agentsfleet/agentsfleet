@@ -25,9 +25,9 @@ fn data_only_runner_failures_have_distinct_remedies() {
             super::DETAIL_DATABASE_ERROR,
         ),
         (
-            super::vault_data_invalid(),
-            error_code::VAULT_DATA_INVALID,
-            super::DETAIL_OPERATION_FAILED,
+            super::assignment_malformed("sandbox_tier"),
+            error_code::INTERNAL_DB_QUERY,
+            super::DETAIL_DATABASE_ERROR,
         ),
     ];
     for (error, code, detail) in &cases {

@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { LayoutListIcon } from "lucide-react";
@@ -64,7 +65,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
   const columns = useMemo<DataTableColumn<RunnerLease>[]>(
     () => [
       {
-        key: "fleet",
+        key: "fleet", primary: true,
         header: "Fleet",
         // The agent by callsign, as every other agent column names one — and
         // the same whether or not the fleet still exists, because the callsign
@@ -95,7 +96,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       },
       {
         key: "time",
-        header: "Time",
+        header: TIME_LABEL.created,
         sortValue: (lease) => lease.created_at,
         cell: (lease) => (
           <Time

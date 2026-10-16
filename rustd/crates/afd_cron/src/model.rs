@@ -233,6 +233,8 @@ pub struct Schedule {
     /// Its expression has no year, so a sync after this instant would
     /// register a match a year out; the reconciler retires it instead.
     pub fire_at: Option<i64>,
+    /// Pinned base and explicit instance overlay, absent for independent schedules.
+    pub recipe: Option<crate::Inherited>,
 }
 
 impl Schedule {
@@ -252,9 +254,30 @@ impl Schedule {
             once: self.once,
             status: Cow::Borrowed(self.desired_status.as_str()),
             sync: Cow::Borrowed(self.sync_status.as_str()),
+            etag: self.etag(),
+            overrides: self
+                .recipe
+                .as_ref()
+                .and_then(|recipe| recipe.overrides.clone()),
             last_error: self.last_error.as_deref().map(Cow::Borrowed),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
+    }
+
+    /// Strong version spanning recipe, fleet setup and instance override revisions.
+    #[must_use]
+    pub fn etag(&self) -> String {
+        let versions = self.recipe.as_ref().map(|recipe| {
+            format!(
+                "{}:{}:{}",
+                recipe.recipe_revision, recipe.setup_revision, recipe.override_revision
+            )
+        });
+        afd_core::etag::compute(&[
+            Some(self.schedule_id.as_str().as_bytes()),
+            Some(&self.generation.to_be_bytes()),
+            versions.as_deref().map(str::as_bytes),
+        ])
     }
 }

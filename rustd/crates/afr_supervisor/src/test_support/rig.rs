@@ -14,7 +14,6 @@ use super::{
     Answer, FakeAgent, FakeEngine, FakeResolver, GRANTED_UNTIL, INTERVAL_MS, clock, drain, json,
     plane,
 };
-use crate::bundles::BundleCache;
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
 use crate::halt::Halt;
@@ -97,7 +96,7 @@ impl Rig {
             resolver: Box::new(resolver),
             agent: Box::new(agent),
             spool: ReportSpool::new(&home),
-            bundles: BundleCache::new(&home),
+            authoring_spool: crate::report_spool::authoring::Spool::open(&home, clock()).unwrap(),
             mirrors: Mirrors::new(
                 home.mirrors(),
                 format!("file://{}/", root.path().join(ORIGINS).display()),

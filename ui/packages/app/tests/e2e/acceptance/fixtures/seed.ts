@@ -10,11 +10,10 @@
  */
 import type { ClientHandle } from "./api-client";
 import type { FixtureKey, FleetStatus } from "./constants";
-import { SOURCE_KIND_UPLOAD } from "@/lib/types";
+import { fixtureDefinition } from "./definition";
+import { saveFixtureFleet } from "./native-setup";
 import { clientFor } from "./api-client";
-import { HTTP_REQUEST } from "./constants";
 
-const FIXTURE_LIBRARY_NAME = "acceptance-seed";
 
 export interface Workspace {
   id: string;
@@ -51,143 +50,13 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
   return res.items[0]!.id;
 }
 
-// The ONE trigger fixture for the whole acceptance tree. The daemon's importer
-// requires name, triggers, tools, and budget in TRIGGER.md frontmatter
-// (`FleetConfig` in rustd/crates/afd_fleet_runtime/src/config/mod.rs) — a
-// spec-local copy that drifts from that
-// set fails every install with UZ-BUNDLE-001, which is why no spec defines its
-// own (pinned by seed.test.ts).
-export function triggerMd(name: string, tool: string = HTTP_REQUEST): string {
-  // Use cron here so seeded fleets keep a concrete wake rule.
-  return [
-    "---",
-    `name: ${name}`,
-    "",
-    "x-agentsfleet:",
-    "  triggers:",
-    "    - type: cron",
-    '      schedule: "0 0 * * *"',
-    "  tools:",
-    `    - ${tool}`,
-    "  budget:",
-    "    daily_dollars: 1.0",
-    "---",
-    "",
-  ].join("\n");
-}
-
-// A TRIGGER.md woken by a signed GitHub delivery rather than a cron: the
-// per-fleet webhook route measures a delivery against the events listed here
-// and verifies it with the workspace secret `credentialName` names. Same
-// required keys as `triggerMd` (name, triggers, tools, budget), so the
-// importer accepts it for the same reason.
-export const WEBHOOK_SOURCE_GITHUB = "github";
-export const WEBHOOK_EVENT_WORKFLOW_RUN = "workflow_run";
-
-export function webhookTriggerMd(name: string, credentialName: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "",
-    "x-agentsfleet:",
-    "  triggers:",
-    "    - type: webhook",
-    `      source: ${WEBHOOK_SOURCE_GITHUB}`,
-    "      events:",
-    `        - ${WEBHOOK_EVENT_WORKFLOW_RUN}`,
-    `      credential_name: ${credentialName}`,
-    "  tools:",
-    `    - ${HTTP_REQUEST}`,
-    "  budget:",
-    "    daily_dollars: 1.0",
-    "---",
-    "",
-  ].join("\n");
-}
-
-export function skillMd(name: string): string {
-  // SKILL.md frontmatter requires name (kebab), description, version (semver).
-  // Mirrors tests/fixtures/fleetbundle/skill/name_mismatch/SKILL.md.
-  return [
-    "---",
-    `name: ${name}`,
-    "description: Fixture skill body for e2e tests; echoes inputs, no side effects.",
-    "version: 0.1.0",
-    "---",
-    "",
-    `# ${name}`,
-    "",
-    "Body for fixture fleet used by e2e harness.",
-    "",
-  ].join("\n");
-}
-
-// Same frontmatter again, body a REAL instruction: the one bundle in this tree
-// whose delivery is meant to reach the provider and come back with an answer.
-// Deterministic in shape (one line, no tools) so the journey can assert that a
-// reply exists without asserting what a model chose to say.
-export const EXECUTION_REPLY_PREFIX = "ACK";
-
-export function executionSkillMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "description: Acceptance probe; answers every message with one acknowledging line.",
-    "version: 0.1.0",
-    "---",
-    "",
-    `# ${name}`,
-    "",
-    "You are an acceptance probe. When you receive a message, reply with exactly",
-    `one line: the word ${EXECUTION_REPLY_PREFIX}, a space, then the message text verbatim.`,
-    "Do not call any tool. Do not add anything before or after that line.",
-    "",
-  ].join("\n");
-}
-
 export interface SeedFleetOpts {
   name: string;
 }
 
-interface CreateFleetResp {
-  fleet_id: string;
-  name: string;
-  status: string;
-}
-
-interface OnboardTemplateResp {
-  id: string;
-}
-
-async function onboardFixtureLibrary(
-  client: ReturnType<typeof clientFor>,
-  workspaceId: string,
-): Promise<string> {
-  const resp = await client.post<OnboardTemplateResp>(
-    `/v1/workspaces/${workspaceId}/fleet-libraries`,
-    {
-      source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: skillMd(FIXTURE_LIBRARY_NAME),
-      trigger_markdown: triggerMd(FIXTURE_LIBRARY_NAME),
-    },
-  );
-  return resp.id;
-}
-
-export async function seedFleet(
-  key: FixtureKey,
-  workspaceId: string,
-  opts: SeedFleetOpts,
-): Promise<Fleet> {
-  const c = clientFor(key);
-  const tenantLibraryId = await onboardFixtureLibrary(c, workspaceId);
-  // create_fleet returns `fleet_id`; list_fleets items have `id`. Normalize
-  // to the listing shape so callers can compare against listFleets output.
-  const resp = await c.post<CreateFleetResp>(`/v1/workspaces/${workspaceId}/fleets`, {
-    tenant_library_id: tenantLibraryId,
-    name: opts.name,
-  });
-  return { id: resp.fleet_id, name: resp.name };
+export async function seedFleet(key: FixtureKey, workspaceId: string, opts: SeedFleetOpts): Promise<Fleet> {
+  const fleet = await saveFixtureFleet(key, workspaceId, fixtureDefinition(opts.name), opts.name);
+  return { id: fleet.id, name: fleet.name };
 }
 
 /**
@@ -241,8 +110,8 @@ export async function readFleetName(
  * The wall tile renders these two, spend rounded to cents — so a walk grading
  * the tile reads them here, in nanos, and lets the tile do its own rounding. */
 export interface FleetCounters {
-  budget_used_nanos: number;
-  events_processed: number;
+  budget_used_nanos: string;
+  events_processed: string;
 }
 
 export async function readFleetCounters(

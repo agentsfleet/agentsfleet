@@ -20,7 +20,7 @@
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
-import { installViaUI } from "./fixtures/install-ui";
+import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
@@ -87,18 +87,18 @@ test.describe("signup → install → lifecycle", () => {
     const workspaceId = signup.workspaceId;
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId };
 
-    // Dashboard /w/<id>/fleets renders the auto-provisioned workspace and first-run state.
+    // Dashboard /w/<id>/fleets renders the auto-provisioned workspace's fleet wall.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
-    // Install via the dashboard template gallery. The fresh tenant has exactly
+    // Save through the private chat's Review setup. The fresh tenant has exactly
     // one auto-provisioned workspace (signup.workspaceId) — the one active in
-    // the browser — so the onboard targets it and its card renders here. The
-    // onboard reuses the signup session's own JWT (no persistent fixture).
-    const fleetId = await installViaUI(page, LIFECYCLE_TEMPLATE, {
+    // the browser — so its chat opens here. The seeded draft reuses the signup
+    // session's own JWT (no persistent fixture), so it is this person's chat.
+    const fleetId = await saveFleetViaUI(page, LIFECYCLE_TEMPLATE, {
       handle: { sessionJwt: signup.sessionJwt },
       workspaceId,
     });

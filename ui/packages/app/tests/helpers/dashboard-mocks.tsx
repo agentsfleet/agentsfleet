@@ -51,6 +51,8 @@ export function clerkMock() {
     useAuth: () => ({ getToken: getTokenFn }),
     useUser: () => ({ isLoaded: true, isSignedIn: true, user: null }),
     ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    SignOutButton: ({ children }: { children: React.ReactNode }) => children,
+    UserProfile: () => null,
     UserButton: () => React.createElement("div", { "data-user-button": "1" }),
     SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
     SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
@@ -74,11 +76,12 @@ export function workspaceMock() {
 // Union of every lucide icon the dashboard test files reference. Each renders a
 // stub <svg data-icon="…"> so name-based queries keep working.
 const LUCIDE_ICONS = [
+  "UsersIcon", "UserRoundIcon", "UserIcon", "ChevronsUpDownIcon", "ArrowLeftIcon", "ArrowUpRightIcon", "LayersIcon", "LogOutIcon", "SearchIcon",
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "ArrowRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
-  "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
+  "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleCheckIcon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon", "LayoutDashboardIcon",
   // The gallery card's tier marks: which catalogue an entry came from.

@@ -19,7 +19,6 @@ use afd_observability::test_util::Capture;
 
 use super::{at, hold, id, live};
 use crate::queue;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
@@ -36,7 +35,9 @@ const OTHER_AFTER_LAPSE: &str = "other_after_lapse";
 const CLAIMS_IN_A_ROW: u64 = 16;
 
 /// When a hold made here lapses: after every claim one test makes in a row.
-const UNTIL: i64 = ENROLLED_AT + SANDBOX_HOLD_IDLE_MS;
+fn until(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS
+}
 
 /// The series `outcome` names, read now.
 fn claims(capture: &Capture, outcome: &str) -> u64 {
@@ -57,7 +58,14 @@ async fn held(fixtures: &Fixtures) -> Seeded<1> {
     let seeded = seeded::<1>(fixtures).await;
     let [holder] = &seeded.runners;
     live(fixtures, holder).await;
-    hold(&fixtures.leases(), fixtures, &seeded.fleet, holder, UNTIL).await;
+    hold(
+        &fixtures.leases(),
+        fixtures,
+        &seeded.fleet,
+        holder,
+        until(fixtures),
+    )
+    .await;
     seeded
 }
 
@@ -99,7 +107,7 @@ async fn test_the_holders_claim_counts_as_the_holders() {
     let seeded = held(&fixtures).await;
     let before = claims(&capture, HOLDER);
 
-    let fresh = leases_at(&fixtures.leases(), &seeded, at(ENROLLED_AT + 1)).await;
+    let fresh = leases_at(&fixtures.leases(), &seeded, at(fixtures.enrolled_at() + 1)).await;
 
     let after = claims(&capture, HOLDER);
     assert!(fresh.resume_hold, "the fresh event resumes the hold");
@@ -119,7 +127,7 @@ async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = held(&fixtures).await;
     let leases = fixtures.leases();
-    let mut lease = leases_at(&leases, &seeded, at(ENROLLED_AT + 1)).await;
+    let mut lease = leases_at(&leases, &seeded, at(fixtures.enrolled_at() + 1)).await;
     let before = claims(&capture, HOLDER);
 
     for _reclaim in 0..CLAIMS_IN_A_ROW {
@@ -148,14 +156,14 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let before = claims(&capture, OTHER_AFTER_LAPSE);
 
     wins(
         &leases,
         &fleet,
         &other,
-        ENROLLED_AT + RUNNER_OFFLINE_AFTER_MS + 1,
+        fixtures.enrolled_at() + RUNNER_OFFLINE_AFTER_MS + 1,
     )
     .await;
 
@@ -180,7 +188,10 @@ async fn test_claims_on_an_unheld_fleet_count_nothing() {
     );
 
     let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
-    for (now, runner) in (ENROLLED_AT..).zip(runners.iter().cycle()).take(rounds) {
+    for (now, runner) in (fixtures.enrolled_at()..)
+        .zip(runners.iter().cycle())
+        .take(rounds)
+    {
         let claimed = leases
             .claim(&id(&fleet), runner, at(now), LEASE_TTL_MS)
             .await

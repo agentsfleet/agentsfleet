@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Playwright's output folders and the CI HTML reports are uploaded as CI
  * artifacts. The fixture JWT cache holds live session tokens, so it must sit

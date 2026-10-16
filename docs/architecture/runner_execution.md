@@ -20,6 +20,31 @@
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
 | Repository writes | Target: local commits inside the sandbox; the supervisor pushes under rules `agentsfleetd` compiles; draft Pull Request only. Not built: `propose_change` exists only as the `git` tool's refusal text (`afr_tools/src/sandbox/git/mod.rs`) |
 
+## Lease execution kinds
+
+A common tagged claim returns fleet runtime or bounded authoring work. Fleet runtime retains its sandbox/tools. Authoring executes only the fixed proposal tool and daemon-scoped model calls; no runtime credentials, repository checkout or tenant tools. The [runner protocol](runner_fleet.md#authoring-leases) owns capacity and fences; [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
+
+## Private content and report retention
+
+DELETE draft returns 204 after the daemon transaction fences every attempt, removes private text/candidates, writes a content-free deletion generation/tombstone, and makes further private reads404. It does not delete the shared fleet or billing records. Remove the private transcript from server-rendered/browser caches and close its stream. The target stores no unsent text in browser local storage; in-memory text is scoped to account/workspace/subject and cleared on logout/revocation/delete.
+
+| Copy | Owner / removal | Disclosed residual bound |
+|---|---|---|
+| Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
+| Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
+| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner abort/zeroes local buffers | Online runner notices at next10-second renewal; disconnected runner lease expires within 30 seconds. Upstream completion may outlive local abort. |
+| Typed report spool, temporary files, rejected/quarantined copies | Supervisor owns encrypted authoring content plus a separate content-free settlement envelope | Logical expiry is 24 hours from first write, unchanged by retry/rename. Online cleanup runs at the deadline; stopped machines clean before content is opened at next startup. Physical files may remain while powered off. |
+| Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
+| Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
+| Published revision / applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not unpublish or delete shared setup; disclose this before Save/publication. |
+| Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
+
+The 24-hour rule is logical expiry enforced by the supervisor, not guaranteed cryptographic unreadability or physical removal while stopped. Encryption at rest uses a separate local content key; someone retaining that key and ciphertext may decrypt offline. Cleanup deletes the content/key and all temporary/quarantined copies, though storage snapshots follow their own retention. No timer can run on a powered-off host.
+
+Write only encrypted private bytes, including temporary files. Put authenticated attempt/generation/first-write/deadline metadata outside the encrypted payload; keep the `kind:"accounting"` reports variant separately without text, content digests or capabilities. Its immutable replay identity survives private-content removal; an acknowledged terminal submission and an original never received both settle once against daemon receipts, including after draft deletion. Altered usage conflicts. Startup scans every spool category before reading/decrypting/uploading content. Expired, corrupt, orphaned, or clock-uncertain content is removed; content-free settlement remains. During uptime use a monotonic deadline; across restart use UTC plus a saved high-water clock, and fail closed on rollback. Retry, quarantine, and rename never extend expiry. If cleanup fails, stop private draining and report only a bounded cleanup error. Apply these rules to supervisor spool paths, not only the authoring loop.
+
+These are implementation requirements, not fresh retention proofs. With an offline runner, DELETE still204s at the server text boundary with the actual retention disclosure. A tombstone rejects stale generation before accepting text. A content-free settlement may acknowledge known usage without recreating messages. Closed private history expires30 days after close, only when no active work exists.
+
 ## The job it is built for
 
 The design centre is a fleet repairing a production outage, not a chat assistant:
@@ -75,10 +100,9 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
    │
    ├─ admit       the policy's tools and provider; an unhosted one refuses the lease here
    ├─ turn        one run per fleet on this runner; a second lease for it waits
-   ├─ bundle      fetched by content hash and verified, or none for a skill-only fleet
    ├─ hydrate     the fleet's memory window, through agentsfleetd
    ├─ sandbox     only when a tool runs in one: the fleet's held sandbox, or a fresh one
-   │              on the assigned network; bound repositories checked out, bundle files landed
+   │              on the assigned network; bound repositories checked out
    ├─ run         the agent loop in the supervisor; tool calls cross the executor socket
    ├─ keep        a processed lease's sandbox is frozen and held; any other is destroyed
    ├─ settle      full tool records, the fenced memory push, the report spooled, then posted
@@ -88,7 +112,7 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 **One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy, so a worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet (`afr_supervisor/src/turns/mod.rs`). The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane").
 
-**A refusal ends the lease with a report.** An unhosted tool or provider, a bundle that will not verify, unreadable memory, a size past the wire's bounds and a sandbox that cannot be built each end the lease as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Nothing runs unsandboxed in a sandbox's place.
+**A refusal ends the lease with a report.** An unhosted tool or provider, unreadable memory, a size past the wire's bounds and a sandbox that cannot be built each end the lease as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Nothing runs unsandboxed in a sandbox's place.
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
@@ -113,7 +137,7 @@ rustd/crates/
   afr_memory            one run's memory behind `MemoryBackend`; `Hydrated` holds the
                         window agentsfleetd hydrated and the run's writes, pushed back fenced
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
-                        bundles, storage home, capability report, control-plane client
+                        storage home, capability report, control-plane client
   afr_telemetry         the runner's spans and metrics, exported over OpenTelemetry
                         Protocol (OTLP) to the runner collector, through afd_otlp
   agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
@@ -126,7 +150,7 @@ A lease's `provider` picks the wire and base URL through the runner's provider r
 
 ## Tool catalog
 
-The runner is the harness, in Codex's shape: the catalog holds every tool the published tools page names, each with the runtime it executes in; the lease's `ExecutionPolicy.tools` selects which of them the model is offered; the model picks by function calling; the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the lease loudly, because a bundle running with a quietly different tool set is not the bundle its author wrote. A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `core.fleet_schedules` through the daemon; nothing in the runner sleeps or ticks. They and `message` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane, adding the lease's id and fencing token to each call, one attempt each: a tool never holds the token, and the model, not a retry loop, decides whether to try again.
+The runner is the harness, in Codex's shape: the catalog holds every tool the published tools page names, each with the runtime it executes in; the lease's `ExecutionPolicy.tools` selects which of them the model is offered; the model picks by function calling; the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the lease loudly, because a fleet running with a quietly different tool set is not the setup its author wrote. A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `core.fleet_schedules` through the daemon; nothing in the runner sleeps or ticks. They and `message` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane, adding the lease's id and fencing token to each call, one attempt each: a tool never holds the token, and the model, not a retry loop, decides whether to try again.
 
 | Tool | Runtime | Needs |
 |---|---|---|
@@ -250,15 +274,15 @@ Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/hold.r
 | Workspace disk, with `/tmp` | `<state>/<lease_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the lease's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one lease, or until its hold ends | `afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/engine/mod.rs` |
 | `/run`, `/dev/shm` | tmpfs in RAM, charged to the lease's memory cgroup | the cgroup's 2 GiB | one lease | `afr_sandbox/src/bubblewrap/mod.rs` |
 | Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup/mod.rs`, `afr_executor/src/server/process/mod.rs`, `afr_agent/src/loop/finish.rs` |
-| Report spool, bundle cache, lease sandboxes | the storage home's `spool/`, `bundles/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config/mod.rs:21-24`, `afr_supervisor/src/storage_home/mod.rs` |
+| Report spool, repository mirrors, lease sandboxes | the storage home's `spool/`, `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config/mod.rs:21-24`, `afr_supervisor/src/storage_home/mod.rs` |
 
 **What bounds a runner host.** The image does not: its blocks sit in shared page cache, which memory pressure evicts. Memory is bounded by the lease limits: 2 GiB per sandbox by default and up to 64 GiB for a lease that names its size, summed over the host's workers. The worker count defaults to 1 and caps at 64 (`afd_core/src/limits.rs:14-20`), so 128 GiB of default limits at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
 
 **Where the code and this page differ today.**
 
-- Every lease gets the runner's defaults in practice: 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk (`afr_sandbox/src/engine/mod.rs`, set in `afr_supervisor/src/lib.rs`). The runner builds the size a lease names (`afr_supervisor/src/lease_loop/workspace.rs`), but no fleet carries a size yet, so the daemon sends `limits: null` (`afd_fleet/src/lease/answer.rs`).
+- Every lease gets the runner's defaults in practice: 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk (`afr_sandbox/src/engine/mod.rs`, set in `afr_supervisor/src/lib.rs`). The runner builds the size a lease names (`afr_supervisor/src/lease_loop/workspace.rs`), but no fleet carries a size yet, so the daemon sends `limits: null` (`afd_fleet/src/lease/answer/mod.rs`).
 - A held sandbox keeps its disk's bytes, and nothing reserves host disk for it: holds are bounded only by the runner's worker count.
-- No workspace restore exists yet, so the first model call waits for the sandbox and the bundle's files.
+- No workspace restore exists yet, so the first model call waits for the sandbox and its repository checkout.
 - The operator's extra binds on the assigned policy are stored, validated and shown, and no runner binds them: the sandbox's host paths are the fixed set above (`afr_sandbox/src/bubblewrap/mod.rs`).
 
 The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config/mod.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`).
@@ -277,7 +301,7 @@ The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr
 
 The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
 
-- **Bytes in R2, the record in Postgres.** *Target, not built.* Snapshots live in the bucket bundles already use, under their own prefix, named by content hash; a Postgres row points at the latest. This mirrors bundles, where Postgres holds the manifest and R2 the bytes ([Fleet Bundles](./fleet_bundles.md)). Any S3-compatible store works through the same `object_store` client with a different endpoint.
+- **Bytes in R2, the record in Postgres.** *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash; a Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.
 - **Only the supervisor moves bytes.** *Target, not built.* `agentsfleetd` mints short-lived presigned URLs per lease, fenced the way the memory push is; the `object_store` crate already implements presigning for S3. The sandbox never sees a URL.
 - **Small snapshots.** *Target, not built.* A snapshot holds local commits as a git bundle, uncommitted edits, untracked files, artifacts and the lease transcript. Objects re-fetchable from the origin stay out.
 - **Never saved.** No credential enters a sandbox. *Target, not built:* every snapshot is leak-scanned before upload.

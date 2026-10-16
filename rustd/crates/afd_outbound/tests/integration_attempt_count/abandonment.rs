@@ -182,28 +182,6 @@ async fn exhausted_cycles_abandon_the_obligation() {
     );
 }
 
-/// Dimension 4.3 — rows written before an obligation had to name a
-/// destination are offered by neither scan, receipted or not, at any cutoff.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn legacy_rows_are_never_reoffered() {
-    let _capture = capture();
-    let _lane = OUTBOUND_LANE.lock().await;
-    let harness = ready().await;
-    let unqueued = "1700000004-2";
-    let queued = "1700000004-3";
-    seed_legacy(&harness, 22, unqueued, None).await;
-    seed_legacy(&harness, 23, queued, Some("1700000000000-9")).await;
-
-    let offered = offered(&harness).await;
-    for event in [unqueued, queued] {
-        assert!(
-            !offered.contains(&event.to_owned()),
-            "{event} names no destination and must never be offered: {offered:?}"
-        );
-    }
-}
-
 /// Sets the row's spent delivery cycles, as that many re-offers would leave it.
 pub(super) async fn set_attempts(harness: &OutboundHarness, event: &str, cycles: i64) {
     let mut connection = harness
@@ -222,21 +200,3 @@ pub(super) async fn set_attempts(harness: &OutboundHarness, event: &str, cycles:
     .await
     .expect("seeding the spent cycles");
 }
-
-/// Writes a row the way the report path did before it read a destination:
-/// owed to the model provider, naming nowhere.
-async fn seed_legacy(harness: &OutboundHarness, nth: u8, event: &str, receipt: Option<&str>) {
-    let row = OwedRow {
-        nth,
-        event,
-        provider: LEGACY_PROVIDER,
-        destination: None,
-        receipt,
-        answer: ANSWER,
-    };
-    seed_owed_row(&harness.database, row).await;
-}
-
-/// What the report path wrote into `provider` before it read a destination:
-/// the lease's model provider.
-const LEGACY_PROVIDER: &str = "anthropic";

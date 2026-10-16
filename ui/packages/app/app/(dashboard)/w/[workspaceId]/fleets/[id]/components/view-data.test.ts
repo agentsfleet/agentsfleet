@@ -88,10 +88,10 @@ describe("startViewData", () => {
     expect(listAllMemoriesMock).toHaveBeenCalledWith(ARGS.workspaceId, ARGS.fleetId, ARGS.token);
   });
 
-  it("skill and trigger views fetch nothing ahead of the fleet", () => {
+  it("setup and trigger views fetch nothing ahead of the fleet", () => {
     resetMocks();
-    expect(startViewData(FLEET_VIEW.skill, ARGS)).toEqual({
-      view: FLEET_VIEW.skill,
+    expect(startViewData(FLEET_VIEW.setup, ARGS)).toEqual({
+      view: FLEET_VIEW.setup,
     });
     expect(startViewData(FLEET_VIEW.trigger, ARGS)).toEqual({
       view: FLEET_VIEW.trigger,

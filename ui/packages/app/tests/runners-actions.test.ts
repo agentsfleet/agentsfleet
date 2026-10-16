@@ -16,7 +16,7 @@ const {
   listRunnersMock,
   createRunnerMock,
   updateRunnerAdminStateMock,
-  updateRunnerPolicyMock,
+  updateRunnerMock,
   deleteRunnerMock,
   listRunnerLeasesMock,
   requestRunnerSelftestMock,
@@ -26,7 +26,7 @@ const {
   listRunnersMock: vi.fn(),
   createRunnerMock: vi.fn(),
   updateRunnerAdminStateMock: vi.fn(),
-  updateRunnerPolicyMock: vi.fn(),
+  updateRunnerMock: vi.fn(),
   deleteRunnerMock: vi.fn(),
   listRunnerLeasesMock: vi.fn(),
   requestRunnerSelftestMock: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock("@/lib/api/runners", () => ({
   listRunners: listRunnersMock,
   createRunner: createRunnerMock,
   updateRunnerAdminState: updateRunnerAdminStateMock,
-  updateRunnerPolicy: updateRunnerPolicyMock,
+  updateRunner: updateRunnerMock,
   deleteRunner: deleteRunnerMock,
   listRunnerLeases: listRunnerLeasesMock,
   requestRunnerSelftest: requestRunnerSelftestMock,
@@ -48,7 +48,7 @@ import {
   listRunnersAction,
   createRunnerAction,
   updateRunnerAdminStateAction,
-  updateRunnerPolicyAction,
+  updateRunnerAction,
   deleteRunnerAction,
   listRunnerLeasesAction,
   requestRunnerSelftestAction,
@@ -59,6 +59,7 @@ const POLICY_TO_ASSIGN = {
   network_policy: "deny_all_egress" as const,
   registry_allowlist: ["pypi.org"],
   worker_count: 2,
+  extra_binds: [],
 };
 
 beforeEach(() => {
@@ -96,6 +97,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
         network_policy: "allow_all" as const,
         registry_allowlist: [],
         worker_count: 1,
+        extra_binds: [],
       },
       labels: ["gpu"],
     };
@@ -125,9 +127,9 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     expect(updateRunnerAdminStateMock).not.toHaveBeenCalled();
   });
 
-  it("updateRunnerPolicyAction gates on runner:write and fails closed 403 UZ-AUTH-022 without it", async () => {
+  it("updateRunnerAction gates on runner:write and fails closed 403 UZ-AUTH-022 without it", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
-    const r = await updateRunnerPolicyAction("runner-1", POLICY_TO_ASSIGN);
+    const r = await updateRunnerAction("runner-1", {assigned_policy: POLICY_TO_ASSIGN, labels: ["gpu"]});
     expect(r).toEqual({
       ok: false,
       error: "Operator scope required: runner:write",
@@ -136,22 +138,22 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     });
     expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
     expect(withTokenMock).not.toHaveBeenCalled();
-    expect(updateRunnerPolicyMock).not.toHaveBeenCalled();
+    expect(updateRunnerMock).not.toHaveBeenCalled();
   });
 
-  it("updateRunnerPolicyAction forwards the assignment verbatim through withToken when scoped", async () => {
+  it("updateRunnerAction forwards the assignment verbatim through withToken when scoped", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    updateRunnerPolicyMock.mockResolvedValueOnce({
+    updateRunnerMock.mockResolvedValueOnce({
       id: "runner-1",
       admin_state: "active",
       assigned_policy: POLICY_TO_ASSIGN,
     });
-    const r = await updateRunnerPolicyAction("runner-1", POLICY_TO_ASSIGN);
+    const r = await updateRunnerAction("runner-1", {assigned_policy: POLICY_TO_ASSIGN, labels: ["gpu"]});
     expect(r).toEqual({
       ok: true,
       data: { id: "runner-1", admin_state: "active", assigned_policy: POLICY_TO_ASSIGN },
     });
-    expect(updateRunnerPolicyMock).toHaveBeenCalledWith("tok", "runner-1", POLICY_TO_ASSIGN);
+    expect(updateRunnerMock).toHaveBeenCalledWith("tok", "runner-1", {assigned_policy: POLICY_TO_ASSIGN, labels: ["gpu"]});
   });
 
   it("deleteRunnerAction gates on runner:write — the same scope as revoke, deliberately — and fails closed without it", async () => {
@@ -209,6 +211,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
       network_policy: "deny_all_egress" as const,
       registry_allowlist: ["pypi.org"],
       worker_count: 3,
+      extra_binds: [],
     };
     const body = { host_id: "web-prod-1", assigned_policy, labels: [] };
     const r = await createRunnerAction(body);

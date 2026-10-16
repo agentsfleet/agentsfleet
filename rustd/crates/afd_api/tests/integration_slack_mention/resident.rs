@@ -16,7 +16,6 @@ use afd_ingress::slack::KIND_RESIDENT;
 use afd_memory::Memories;
 use afd_wire::memory::MemoryDelta;
 
-use super::fixture::Admitted;
 use super::resident_bound::{resident_document, resident_name};
 use super::*;
 
@@ -72,6 +71,30 @@ async fn admitted(fixture: &Fixture, event_id: &str) -> Admitted {
         .expect("the mention was admitted")
 }
 
+/// The resident runs: it is active and selects an immutable native revision
+/// under the current policy and a resolved runtime model, which is everything
+/// the lease reads.
+async fn assert_native_setup(fixture: &Fixture, fleet: &str) {
+    let mut connection = fixture.database().acquire().await.expect("a connection");
+    let (status, policy, model): (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT f.status, r.policy_semantics, r.runtime_model_ref FROM core.fleets f \
+         LEFT JOIN core.fleet_definition_revisions r \
+           ON r.id = f.current_definition_revision_id AND r.fleet_id = f.id \
+         WHERE f.id = $1::uuid",
+    )
+    .bind(fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the resident's setup reads");
+    assert_eq!(status, "active");
+    assert_eq!(
+        policy.as_deref(),
+        Some(afd_fleet_runtime::definition::POLICY_SEMANTICS),
+        "the resident selects a native revision"
+    );
+    assert!(model.is_some(), "the resident runs on a resolved model");
+}
+
 /// Dimension 5.1 — two first mentions in one channel, delivered at once,
 /// leave one resident fleet and one binding, and both are admitted on it.
 #[tokio::test(flavor = "multi_thread")]
@@ -101,6 +124,7 @@ async fn concurrent_first_mentions_make_one_resident() {
         first.fleet, second.fleet,
         "both answered by the one resident"
     );
+    assert_native_setup(&fixture, &first.fleet).await;
     let request: Value = serde_json::from_str(&first.request_json).expect("the body is JSON");
     assert_eq!(
         request.pointer("/route/verdict").and_then(Value::as_str),
@@ -124,7 +148,7 @@ async fn a_first_mention_that_loses_the_name_converges_on_the_winner() {
     fixture.seed().await;
     let name = resident_name(&fixture);
     let winner = fixture
-        .fleet(&resident_document(&name), FleetStatus::Active.as_str())
+        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
     let router = fixture.resident_router().await;
 
@@ -162,9 +186,21 @@ async fn resident_memory_is_the_channel() {
     assert_eq!(first_thread, second_thread, "one channel, one resident");
     assert_ne!(first_thread, other_channel, "one resident per channel");
 
-    let memories = Memories::new(fixture.database(), Entropy::new());
     let channel = Uuid7::parse(&first_thread).expect("a fleet id");
     let elsewhere = Uuid7::parse(&other_channel).expect("a fleet id");
+    a_fact_captured_in_one_channel_stays_there(&fixture, &channel, &elsewhere).await;
+
+    fixture.cleanup().await;
+}
+
+/// A fact the `channel` resident captures is in its hydrated memory, and the
+/// `elsewhere` resident's memory stays empty.
+async fn a_fact_captured_in_one_channel_stays_there(
+    fixture: &Fixture,
+    channel: &Uuid7,
+    elsewhere: &Uuid7,
+) {
+    let memories = Memories::new(fixture.database(), Entropy::new());
     let fact = MemoryDelta {
         key: Cow::Borrowed("deploy-owner"),
         content: Cow::Borrowed("The platform team owns deploys."),
@@ -172,16 +208,12 @@ async fn resident_memory_is_the_channel() {
         visibility: afd_wire::memory::Visibility::Fleet,
     };
     memories
-        .capture(
-            &channel,
-            &[fact],
-            UnixMillis::from_millis(1_700_000_000_000),
-        )
+        .capture(channel, &[fact], UnixMillis::from_millis(1_700_000_000_000))
         .await
         .expect("the resident captures a fact");
 
     let recalled = memories
-        .hydrate(&channel)
+        .hydrate(channel)
         .await
         .expect("the channel's memory reads");
     assert!(
@@ -193,15 +225,13 @@ async fn resident_memory_is_the_channel() {
     );
     assert!(
         memories
-            .hydrate(&elsewhere)
+            .hydrate(elsewhere)
             .await
             .expect("the other channel's memory reads")
             .memory
             .is_empty(),
         "another channel's resident does not"
     );
-
-    fixture.cleanup().await;
 }
 
 /// A resident whose install fails for any reason but a taken name refuses the
@@ -247,10 +277,7 @@ async fn a_name_gone_after_the_race_refuses_for_a_retry() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture
-        .fleet(
-            &resident_document(&resident_name(&fixture)),
-            FleetStatus::Active.as_str(),
-        )
+        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
     let ingress =
         std::sync::Arc::new(harness::Scripted::new().installed_in(fixture.workspace().clone()));

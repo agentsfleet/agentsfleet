@@ -19,34 +19,23 @@ vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: mocks.captureProductEvent,
 }));
 vi.mock("@clerk/nextjs", () => ({
+  SignOutButton: ({ children }: { children: React.ReactNode }) => children, UserProfile: () => null,
   UserButton: () => React.createElement("div"), useUser: mocks.useUser,
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   SignIn: () => React.createElement("div"), SignUp: () => React.createElement("div"),
   useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
 vi.mock("next/navigation", () => ({
-  usePathname: mocks.usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(), usePathname: mocks.usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
     React.createElement("a", props, children),
 }));
-vi.mock("lucide-react", () => {
-  const icon = (name: string) => (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": name });
-  return {
-    GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
-    LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
-    KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
-    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
-    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), UsersIcon: icon("UsersIcon"), MenuIcon: icon("MenuIcon"),
-    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"), FolderIcon: icon("FolderIcon"),
-  };
-});
-vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
-vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({ default: () => React.createElement("div") }));
 
 beforeEach(() => {
   mocks.useUser.mockReset();
+  mocks.useUser.mockReturnValue({ user: null, isLoaded: true, isSignedIn: false });
   mocks.usePathname.mockReset();
   mocks.trackAppEvent.mockReset();
   mocks.trackNavigationClicked.mockReset();
@@ -77,13 +66,13 @@ describe("app components", () => {
     );
 
     // Clicking a sidebar nav link emits a navigation-analytics event.
-    await user.click(screen.getByText("Fleets"));
+    await user.click(screen.getByText("Your fleets"));
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
 
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:
     // no decorative badges, no marketing chrome.
     expect(container.innerHTML).toContain("agentsfleet");
-    expect(container.innerHTML).toContain("data-live");
+    expect(container.innerHTML).toContain("data-brand-mark");
     cleanup();
   });
 
@@ -247,7 +236,7 @@ describe("app components", () => {
   });
 
 
-  it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
+  it("renders Shell with the shared signal mark and sidebar nav", async () => {
     const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     // M118: a workspace is in the route, so workspace-scoped nav hrefs carry the
     // `/w/<id>` segment; tenant/platform items (API Keys, Billing) stay at root.
@@ -255,86 +244,12 @@ describe("app components", () => {
     const markup = renderToStaticMarkup(
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
-    expect(markup).toContain("data-live");
+    expect(markup).toContain('data-brand-mark="signal"');
     expect(markup).toContain("agentsfleet");
-    // Sidebar nav rendered across the Automations / Configuration / Organization
-    // groups, plus the Docs footer link. The Wall (Fleets) leads — there is no
-    // dashboard entry (single-route refactor).
-    expect(markup).toContain("Automations");
-    expect(markup).toContain("Configuration");
-    expect(markup).toContain("Organization");
-    expect(markup).not.toContain("Dashboard");
-    expect(markup).toContain("Fleets");
-    // Models, Integrations, and Secrets are the three Configuration
-    // entries — Secrets is standalone again, not folded into Models.
-    expect(markup).toContain(">Models<");
-    expect(markup).toContain(">Integrations<");
-    expect(markup).toContain(">Secrets<");
-    expect(markup).toContain('href="/w/ws_1/settings/models"');
-    // Integrations is its own connectors destination.
-    expect(markup).toContain('href="/w/ws_1/integrations"');
-    // Secrets is its own standalone destination.
-    expect(markup).toContain('href="/w/ws_1/secrets"');
-    expect(markup).toContain("Approvals");
-    expect(markup).toContain("Events");
-    expect(markup).toContain("API Keys");
-    expect(markup).toContain("Billing");
-  });
-
-  it("test_nav_config_destinations: nav renders Models→/w/<id>/settings/models, Integrations→/w/<id>/integrations, Secrets→/w/<id>/secrets", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    // M118: the workspace in the route prefixes every Configuration destination.
-    mocks.usePathname.mockReturnValue("/w/ws_1");
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, null, React.createElement("div", null, "content")),
-    );
-    // Three distinct Configuration destinations, each at its own workspace route.
-    expect(markup).toMatch(/href="\/w\/ws_1\/settings\/models"[\s\S]*?data-icon="BrainCircuitIcon"[^>]*><\/svg>Models</);
-    expect(markup).toMatch(/href="\/w\/ws_1\/integrations"[\s\S]*?data-icon="PlugIcon"[^>]*><\/svg>Integrations</);
-    expect(markup).toMatch(/href="\/w\/ws_1\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets</);
-  });
-
-  it("Shell active-link resolves the longest-matching prefix (nested /settings/* routes)", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    // Render at a pathname and report how many items are active + the active
-    // item's icon — exactly one item must light, and it must be the most
-    // specific match.
-    // M118: seed one owned workspace so the Shell resolves workspace-scoped nav
-    // hrefs (its `linkWorkspaceId` falls back to `workspaces[0]` on tenant pages);
-    // workspace routes now carry the `/w/<id>` prefix, tenant/platform stay root.
-    const activeFor = (pathname: string, operatorScopes: string[] = []) => {
-      mocks.usePathname.mockReturnValue(pathname);
-      const markup = renderToStaticMarkup(
-        // createElement's props-plus-rest-children overload can't see that the
-        // third arg below satisfies Shell's required `children` prop (a known
-        // @types/react gap when children is non-optional) — asserting the
-        // props object's shape is safe since Shell reads children from React's
-        // normal children slot regardless of how it arrived.
-        React.createElement(
-          Shell,
-          { operatorScopes, workspaces: [{ id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT }] } as React.ComponentProps<typeof Shell>,
-          React.createElement("div"),
-        ),
-      );
-      const count = (markup.match(/data-active="true"/g) ?? []).length;
-      const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
-      return { count, icon };
-    };
-    expect(activeFor("/w/ws_1/settings/models")).toEqual({ count: 1, icon: "BrainCircuitIcon" });
-    expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
-    // API Keys now owns its own distinct href — nested children (mint/reveal
-    // detail routes, if any) still resolve to it via prefix match; a nested
-    // child under Models must not spuriously light up API Keys instead.
-    expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "KeyIcon" });
-    // /settings on its own has no nav entry (it's a redirect-only route, the
-    // Workspace tab folded into API Keys) — nothing lights up.
-    expect(activeFor("/settings")).toEqual({ count: 0, icon: null });
-    // The workspace home (`/w/<id>`) is a redirect-only route with no nav entry
-    // — nothing lights up there. The Wall (`/w/<id>/fleets`) lights Fleets; other
-    // groups resolve to their own item; root admin-gated paths too.
-    expect(activeFor("/w/ws_1")).toEqual({ count: 0, icon: null });
-    expect(activeFor("/w/ws_1/fleets")).toEqual({ count: 1, icon: "BotIcon" });
-    expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
+    expect(markup).toContain("New fleet");
+    expect(markup).toContain("Your fleets");
+    expect(markup).toContain("Workspace and account menu");
+    expect(markup).not.toContain('href="/w/ws_1/settings/models"');
   });
 
 });

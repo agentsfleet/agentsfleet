@@ -140,7 +140,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     await withStubbedRun(
       {
         [MEMORIES_ROUTE]: () =>
-          jsonResponse(404, { error: { code: "UZ-MEM-002", message: "fleet not found" }, request_id: "req_mem_404" }),
+          jsonResponse(404, { error_code: "UZ-MEM-002", detail: "fleet not found", request_id: "req_mem_404" }),
       },
       async (run) => {
         const result = await run(["memory", "list", "--fleet", FLEET_ID]);

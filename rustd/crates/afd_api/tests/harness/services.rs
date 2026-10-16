@@ -20,10 +20,8 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use afd_events::{History, Steer};
-use afd_fleet::bundle::Bundles;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::{Libraries, LibraryImports};
 use afd_memory::Memories;
 use afd_observability::Analytics;
 use afd_runner::Runners;
@@ -45,6 +43,18 @@ use super::{
 };
 
 impl Services for Fleet {
+    fn authoring(&self) -> &afd_authoring::Drafts {
+        &self.authoring
+    }
+    fn authoring_setup(&self) -> &afd_authoring::Setup {
+        &self.authoring_setup
+    }
+    fn creations(&self) -> &afd_authoring::Creations {
+        &self.creations
+    }
+    fn authoring_models(&self) -> &afd_authoring::ModelCalls {
+        &self.authoring_models
+    }
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
     type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;
@@ -76,10 +86,6 @@ impl Services for Fleet {
 
     fn leases(&self) -> &NoWork {
         &self.leases
-    }
-
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
     }
 
     fn sessions(&self) -> &Logins {
@@ -200,14 +206,6 @@ impl Services for Fleet {
 
     fn platform_keys(&self) -> &PlatformKeys {
         &self.platform_keys
-    }
-
-    fn libraries(&self) -> &Libraries {
-        &self.libraries
-    }
-
-    fn library_imports(&self) -> &LibraryImports {
-        &self.library_imports
     }
 
     /// A fixed deployment, which is what a real one is too.

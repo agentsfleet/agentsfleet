@@ -3,6 +3,8 @@
 //! Enrollment, heartbeat, lease, credential, memory, activity, and report
 //! handlers live here so host protocol changes compile independently.
 
+#![deny(clippy::self_named_module_files)]
+
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
 
 pub(crate) mod handler;
@@ -26,11 +28,16 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::Report => post(handler::runner::report::handle::<D>),
         RunnerRoute::Renew => post(handler::runner::renew::handle::<D>),
         RunnerRoute::Activity => post(handler::runner::activity::handle::<D>),
+        RunnerRoute::AuthoringActivity => post(handler::runner::authoring::activity::handle::<D>),
+        RunnerRoute::AuthoringModelCalls => {
+            post(handler::runner::authoring::model_call::handle::<D>)
+        }
+        RunnerRoute::AuthoringRenew => post(handler::runner::authoring::renew::handle::<D>),
+        RunnerRoute::AuthoringReports => post(handler::runner::authoring::report::handle::<D>),
         RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
         RunnerRoute::ToolCalls => post(handler::runner::tool_call::handle::<D>),
-        RunnerRoute::Bundle => get(handler::runner::bundle::handle::<D>),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),
         RunnerRoute::Schedules => {
             get(handler::runner::schedule::list::<D>).post(handler::runner::schedule::create::<D>)

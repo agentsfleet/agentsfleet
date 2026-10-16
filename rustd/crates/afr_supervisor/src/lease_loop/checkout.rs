@@ -96,5 +96,5 @@ impl LeaseRun<'_> {
 }
 
 #[cfg(test)]
-#[path = "checkout_tests.rs"]
+#[path = "tests/checkout.rs"]
 mod tests;

@@ -14,18 +14,6 @@ use tokio::sync::mpsc;
 
 use crate::egress::Bound;
 
-/// How a fake executor answers a file write.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum Writes {
-    /// Takes it.
-    #[default]
-    Accept,
-    /// Refuses it, as a read-only workspace would.
-    Refuse,
-    /// Never answers, as a stopped executor would.
-    Stall,
-}
-
 /// What a fake sandbox does when it is frozen and when it is thawed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum Freezer {
@@ -62,8 +50,6 @@ pub(crate) struct FakeEngine {
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// How those executors answer a file write.
-    pub(crate) writes: Writes,
     /// The host directory each sandbox offers as its workspace, owned by
     /// whoever owns it; none keeps the workspace out of the host's reach.
     pub(crate) workspace: Option<PathBuf>,
@@ -113,7 +99,6 @@ impl Engine for FakeEngine {
             freezer: self.freezer,
             executor: FakeExecutor {
                 written: self.written.clone(),
-                writes: self.writes,
                 freezer: self.freezer,
                 thawed: AtomicBool::default(),
             },
@@ -191,8 +176,6 @@ impl Sandbox for FakeSandbox {
     }
 }
 
-/// What a refused write or delete says.
-const READ_ONLY: &str = "read-only workspace";
 /// What a refused freeze or thaw says.
 pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
 /// What a refused swap of a held sandbox's addresses says.
@@ -205,7 +188,6 @@ pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
 #[derive(Debug, Default)]
 struct FakeExecutor {
     written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    writes: Writes,
     /// What its sandbox does when thawed.
     freezer: Freezer,
     /// Whether its sandbox was thawed.
@@ -234,11 +216,6 @@ impl Executor for FakeExecutor {
     }
 
     async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
-        match self.writes {
-            Writes::Accept => {}
-            Writes::Refuse => return Err(std::io::Error::other(READ_ONLY).into()),
-            Writes::Stall => std::future::pending::<()>().await,
-        }
         if let Some(written) = &self.written {
             let _reader_gone = written.send((path.to_owned(), data));
         }
@@ -247,7 +224,7 @@ impl Executor for FakeExecutor {
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         let thawed = self.thawed.load(Ordering::SeqCst);
-        if self.writes == Writes::Stall || (thawed && self.freezer == Freezer::ThawsSilent) {
+        if thawed && self.freezer == Freezer::ThawsSilent {
             std::future::pending::<()>().await;
         }
         if thawed && self.freezer == Freezer::ThawsBroken {

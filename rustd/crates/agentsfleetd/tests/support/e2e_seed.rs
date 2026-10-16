@@ -40,11 +40,12 @@
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use agentsfleetd::serve::Booted;
 
 use crate::e2e::{MODEL, PROVIDER};
-use afd_db::test_util::{DefaultSeed, PlatformDefault};
+use afd_db::test_util::{DefaultSeed, FleetSeed, PlatformDefault};
 
 /// A pool deep enough that no gate under test clamps against it.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
@@ -81,10 +82,28 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 /// a budget. The budget is a dollar because the run below charges under a
 /// thousandth of one — large enough that the ceiling never decides this test,
 /// small enough that a runaway charge would still trip it.
-pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
+pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
+
+/// The placement tag a scenario's fleet requires and only its own runner
+/// carries.
+///
+/// A runner holds as many leases as its worker count and no more, so one
+/// stray lease on another scenario's leftover fleet takes the only slot a
+/// scenario's runner has. Tagged, a scenario's fleet is placed on its own
+/// runner alone.
+pub(crate) fn scenario_tag(fleet: &str) -> String {
+    format!("e2e-{fleet}")
+}
+
+/// [`enrolment`], labelled to take `fleet`'s work.
+pub(crate) fn scenario_enrolment(fleet: &str) -> RegisterRequest<'static> {
+    let mut request = enrolment();
+    request.labels.push(Cow::Owned(scenario_tag(fleet)));
+    request
+}
 
 /// The enrolment body a seeded runner presents.
 pub(crate) fn enrolment() -> RegisterRequest<'static> {
@@ -107,8 +126,11 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
 /// the same workspace passes a name of its own.
 pub(crate) const FLEET_NAME: &str = "e2e-fleet";
 
+/// The instructions every directly seeded fleet runs.
+pub(crate) const FIXTURE_INSTRUCTIONS: &str = "# fixture";
+
 /// The tenant, workspace and fleet rows a lease joins against, the fleet
-/// named `name`.
+/// named `name` and selecting the native setup `config` describes.
 ///
 /// Written directly because no store verb in this workspace creates a fleet —
 /// that is the tenant plane's (M178) — and inventing one to serve a test would
@@ -153,24 +175,18 @@ pub(crate) async fn seed_fleet(
     .await
     .expect("the workspace row must insert");
 
-    sqlx::query(
-        "INSERT INTO core.fleets
-           (id, workspace_id, tenant_id, name, source_markdown, config_json,
-            status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, $8, $8)
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(fleet)
-    .bind(workspace)
-    .bind(tenant)
-    .bind(name)
-    .bind("# fixture")
-    .bind(config)
-    .bind("active")
-    .bind(at)
-    .execute(&mut *connection)
-    .await
-    .expect("the fleet row must insert");
+    let tag = scenario_tag(fleet);
+    let tags = [tag.as_str()];
+    FleetSeed::new(fleet, workspace, tenant, FLEET_STATUS_ACTIVE)
+        .name(name)
+        .config(config)
+        .tags(&tags)
+        .at(at)
+        .insert(&mut *connection)
+        .await
+        .expect("the fleet row must insert");
+    let definition = crate::e2e_native::definition(config, FIXTURE_INSTRUCTIONS);
+    crate::e2e_native::select(&mut connection, fleet, &definition, at).await;
 }
 
 /// Gives a tenant a credit pool of `nanos`.

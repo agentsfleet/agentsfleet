@@ -23,7 +23,7 @@ export function readText(message: MessageState): string {
  * Text, or any non-text part — an image-only append carries no `text` part and
  * is still a turn somebody sent. What this excludes is the turn whose body the
  * read never CARRIED: the events list selects no `request_json`
- * (`afd_events` history/statement.rs), and a completion frame for a run the
+ * (`afd_events` history/statement/mod.rs), and a completion frame for a run the
  * timeline never opened is rebuilt from exactly that shape, so rendering it as
  * an operator bubble would show an empty pill and claim somebody sent nothing.
  */

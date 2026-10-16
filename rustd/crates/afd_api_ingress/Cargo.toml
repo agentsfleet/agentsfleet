@@ -22,6 +22,8 @@ test-util = [
 openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi"]
 
 [dependencies]
+# The daemon-written resident is installed through the native setup writer.
+afd_authoring.workspace = true
 afd_db.workspace = true
 afd_fleet_lifecycle.workspace = true
 octocrab.workspace = true

@@ -51,16 +51,26 @@ impl Admissions {
             }
         };
 
-        let mut connection = self.database.acquire().await?;
-        let recorded = sqlx::query(sql::RECORD_RECEIPT)
-            .bind(row_id.as_str())
-            .bind(receipt.as_str())
-            .bind(now.as_millis())
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECEIPT))?;
+        let recorded = match self.record_receipt(row_id, receipt.as_str(), now).await {
+            Ok(recorded) => recorded,
+            Err(error) => {
+                let Logged { error_code, reason } = error.logged();
+                tracing::warn!(
+                    error_code,
+                    reason,
+                    producer,
+                    event_id,
+                    fleet_id = admission.fleet,
+                    event = "admission_receipt_deferred",
+                    "accepted work awaits receipt recovery"
+                );
+                metrics::admitted(AdmissionOutcome::Deferred);
+                self.mark_ready(admission.fleet).await;
+                return Ok(fresh(stored));
+            }
+        };
         let receipt_field = receipt.as_str();
-        if recorded.rows_affected() == 0 {
+        if recorded == 0 {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 error_code = code,
@@ -82,6 +92,18 @@ impl Admissions {
         );
         self.mark_ready(admission.fleet).await;
         Ok(fresh(stored))
+    }
+
+    async fn record_receipt(&self, row: &Uuid7, receipt: &str, now: UnixMillis) -> Result<u64> {
+        let mut connection = self.database.acquire().await?;
+        sqlx::query(sql::RECORD_RECEIPT)
+            .bind(row.as_str())
+            .bind(receipt)
+            .bind(now.as_millis())
+            .execute(&mut *connection)
+            .await
+            .map(|written| written.rows_affected())
+            .map_err(query(CONTEXT_RECEIPT))
     }
 
     /// Marks the fleet leasable, best-effort.

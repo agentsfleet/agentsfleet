@@ -1,0 +1,31 @@
+//! Interrupted work stays visible without inventing provider usage or freeing debt.
+
+mod attempts;
+mod privacy;
+
+use crate::{Drafts, Result};
+
+/// Bounded counts from one daemon maintenance pass.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Maintenance {
+    /// Expired live attempts moved to accounting recovery.
+    pub interrupted: u64,
+    /// Expired private drafts removed, including transcript and candidates.
+    pub purged_drafts: u64,
+    /// Provider receipts whose private result was removed.
+    pub expired_results: u64,
+}
+
+impl Drafts {
+    /// Runs the bounded cleanup used by the supervised daemon worker.
+    ///
+    /// # Errors
+    /// Propagates store failures; no guessed usage or automatic model resend occurs.
+    pub async fn maintain(&self) -> Result<Maintenance> {
+        Ok(Maintenance {
+            interrupted: attempts::expire(self).await?,
+            purged_drafts: privacy::drafts(self).await?,
+            expired_results: privacy::results(self).await?,
+        })
+    }
+}

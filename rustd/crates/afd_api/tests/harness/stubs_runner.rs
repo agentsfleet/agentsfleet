@@ -27,6 +27,7 @@ use afd_fleet::lease::report::Reconciled;
 pub(crate) struct NoWork {
     polled: Arc<Mutex<Vec<Vec<String>>>>,
     refusal: Option<fn() -> afd_fleet::Error>,
+    minted: Option<(&'static str, i64)>,
 }
 
 impl NoWork {
@@ -34,6 +35,15 @@ impl NoWork {
     pub(crate) fn refusing(refusal: fn() -> afd_fleet::Error) -> Self {
         Self {
             refusal: Some(refusal),
+            ..Self::default()
+        }
+    }
+
+    /// A plane whose mint hands back `token`, expiring at `expires_at_ms`,
+    /// for the one case that proves how the route renders a success.
+    pub(crate) fn minting(token: &'static str, expires_at_ms: i64) -> Self {
+        Self {
+            minted: Some((token, expires_at_ms)),
             ..Self::default()
         }
     }
@@ -53,8 +63,10 @@ impl NoWork {
 impl Leasing for NoWork {
     fn lease(
         &self,
+        _drafts: &afd_authoring::Drafts,
         _runner_id: &Uuid7,
         held: &[Uuid7],
+        _accepted: afd_wire::lease::AcceptedKinds,
         _degraded: bool,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
@@ -130,6 +142,13 @@ impl Leasing for NoWork {
         _request: &afd_wire::credentials::MintCredentialRequest<'_>,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<afd_credential::credential::Minted>> + Send {
+        if let Some((token, expires_at_ms)) = self.minted {
+            return std::future::ready(Ok(afd_credential::credential::Minted {
+                token: token.to_owned().into(),
+                expires_at_ms,
+                rotated_refresh_token: None,
+            }));
+        }
         let refusal = self.refusal.unwrap_or(afd_fleet::Error::mint_unconfigured);
         std::future::ready(Err(refusal()))
     }

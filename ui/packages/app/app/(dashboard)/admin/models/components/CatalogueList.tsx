@@ -127,7 +127,7 @@ function buildColumns({
       cell: (m) => <ProviderBadge provider={m.provider} />,
     },
     {
-      key: "model",
+      key: "model", primary: true,
       header: "Model",
       sortValue: (m) => m.model_id,
       compare: (a, b) => compareModelIds(a.model_id, b.model_id),

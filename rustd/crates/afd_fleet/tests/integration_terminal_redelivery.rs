@@ -37,8 +37,12 @@ use crate::support::Fixtures;
 /// path parses the config where a fresh poll does not -- so without this the
 /// redelivery fails as `RuntimeBlockRequired` before it can be suppressed.
 /// Same shape `integration_lease_installed.rs` installs.
-const STORED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],
-   "tools":[],"budget":{"daily_dollars":1.0}}}"#;
+const STORED_CONFIG: &str = const_format::concatcp!(
+    r#"{"name":"probe","x-agentsfleet":{"triggers":[],
+   "tools":[],"budget":{"daily_nanos":""#,
+    afd_core::money::NANOS_PER_USD,
+    r#""}}}"#
+);
 
 /// Far enough past the lease's expiry that the reclaim treats it as lapsed.
 ///
@@ -188,17 +192,7 @@ async fn poll_until_acknowledged(
 
 /// Gives the seeded fleet a config the runtime parser can read.
 async fn install_config(fixtures: &Fixtures, fleet: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET config_json = $2::jsonb WHERE id = $1::uuid")
-        .bind(fleet)
-        .bind(STORED_CONFIG)
-        .execute(&mut *connection)
-        .await
-        .expect("the config install must run");
+    fixtures.native_config(fleet, STORED_CONFIG).await;
 }
 
 /// Writes the lease's expiry into the past.

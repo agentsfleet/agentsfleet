@@ -319,7 +319,6 @@ mod tests {
             wall_ms: None,
             failure_label: None,
             failure_detail: None,
-            checkpoint_id: None,
             resumes_event_id: None,
             created_at,
             updated_at: created_at,

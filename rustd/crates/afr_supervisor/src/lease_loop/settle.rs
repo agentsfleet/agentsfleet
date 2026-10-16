@@ -185,5 +185,5 @@ impl LeaseRun<'_> {
 }
 
 #[cfg(test)]
-#[path = "settle_tests.rs"]
+#[path = "tests/settlement.rs"]
 mod tests;

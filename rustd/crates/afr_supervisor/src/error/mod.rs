@@ -21,7 +21,7 @@
 //! log line says which failure it was. A refusal carries the daemon's own code
 //! through, so the log names exactly what the daemon said.
 
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code::ErrorCode;
 use reqwest::StatusCode;
 
 use crate::client::Verb;
@@ -32,13 +32,11 @@ mod raise;
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
     client, config, egress, egress_blocked, egress_no_ipv4, egress_unresolved, encode, git,
-    malformed, refused_with_body, tampered, token_refused, transport, unavailable,
+    malformed, refused_with_body, token_refused, transport, unavailable,
 };
 
 /// The daemon refused the runner's token.
 pub(crate) const UNAUTHORIZED: u16 = StatusCode::UNAUTHORIZED.as_u16();
-/// The daemon has nothing under the name asked for.
-pub(crate) const NOT_FOUND: u16 = StatusCode::NOT_FOUND.as_u16();
 
 afd_core::error_shell!(
     /// A supervisor failure, with the backtrace of where it was raised.
@@ -54,6 +52,13 @@ pub(crate) enum ErrorKind {
         /// The operating system's reason.
         #[source]
         source: std::io::Error,
+    },
+
+    /// Private spool encryption or authentication failed.
+    #[error("private report protection failed")]
+    Crypto {
+        #[source]
+        source: afd_crypto::error::Error,
     },
 
     /// A finished temporary file could not be moved into place.
@@ -139,13 +144,6 @@ pub(crate) enum ErrorKind {
         source: serde_json::Error,
     },
 
-    /// A fetched bundle's bytes do not hash to the name it was fetched by.
-    #[error("bundle {content_hash} does not hash to its own name")]
-    BundleTampered {
-        /// The hash the lease named.
-        content_hash: String,
-    },
-
     /// A task the supervisor ran did not finish: it panicked or was cancelled.
     #[error("a task did not finish")]
     Task {
@@ -225,116 +223,7 @@ pub(crate) enum ErrorKind {
 /// The one alias every signature in this crate spells.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl Error {
-    /// Whether retrying the same call could succeed.
-    #[must_use]
-    pub const fn is_retryable(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::Transport { .. } | ErrorKind::Unavailable { .. }
-        )
-    }
-
-    /// The registry code the daemon refused with, when this is a refusal that
-    /// named one.
-    #[must_use]
-    pub const fn refusal_code(&self) -> Option<ErrorCode> {
-        match self.kind() {
-            ErrorKind::Refused { code, .. } => *code,
-            _other => None,
-        }
-    }
-
-    /// The status the daemon refused with, when this is a refusal.
-    #[must_use]
-    pub const fn refusal_status(&self) -> Option<u16> {
-        match self.kind() {
-            ErrorKind::Refused { status, .. } => Some(*status),
-            _other => None,
-        }
-    }
-
-    /// Whether the daemon refused this runner's token.
-    #[must_use]
-    pub const fn is_unauthorized(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::Refused {
-                status: UNAUTHORIZED,
-                ..
-            } | ErrorKind::TokenRefused
-        )
-    }
-
-    /// Why a memory push that ended in this failure did not land, as the
-    /// push-failure family labels it.
-    #[must_use]
-    pub const fn push_failure(&self) -> afr_telemetry::labels::PushFailure {
-        use afr_telemetry::labels::PushFailure;
-        match self.kind() {
-            ErrorKind::Unavailable { .. } => PushFailure::Upstream,
-            ErrorKind::Refused { .. } | ErrorKind::TokenRefused => PushFailure::Refused,
-            ErrorKind::Transport { .. } => PushFailure::Transport,
-            _local => PushFailure::Internal,
-        }
-    }
-
-    /// Whether a host the fleet allowed resolved to an address no fleet may
-    /// reach, which the fleet's owner fixes rather than the runner's.
-    #[must_use]
-    pub const fn is_egress_blocked(&self) -> bool {
-        matches!(self.kind(), ErrorKind::EgressBlocked { .. })
-    }
-
-    /// Whether the daemon has nothing under the name asked for.
-    #[must_use]
-    pub const fn is_not_found(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::Refused {
-                status: NOT_FOUND,
-                ..
-            }
-        )
-    }
-
-    /// The registry code this failure is logged under.
-    #[must_use]
-    pub fn code(&self) -> ErrorCode {
-        match self.kind() {
-            ErrorKind::Refused {
-                code: Some(code), ..
-            } => *code,
-            ErrorKind::Refused {
-                status: UNAUTHORIZED,
-                ..
-            }
-            | ErrorKind::TokenRefused => error_code::RUN_INVALID_RUNNER_TOKEN,
-            ErrorKind::Refused {
-                verb: Verb::Renew, ..
-            } => error_code::RUN_LEASE_LOST,
-            ErrorKind::BundleTampered { .. } => error_code::FLEET_BUNDLE_INVALID,
-            ErrorKind::Transport { verb, .. }
-            | ErrorKind::Unavailable { verb, .. }
-            | ErrorKind::Refused { verb, .. }
-            | ErrorKind::Malformed { verb, .. } => verb.code(),
-            ErrorKind::Egress { source } => source.code(),
-            ErrorKind::Io { .. }
-            | ErrorKind::Persist { .. }
-            | ErrorKind::Config { .. }
-            | ErrorKind::Address { .. }
-            | ErrorKind::Client { .. }
-            | ErrorKind::Encode { .. }
-            | ErrorKind::Task { .. }
-            | ErrorKind::Git { .. }
-            | ErrorKind::LeaseSize { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::EgressUnresolved { .. }
-            | ErrorKind::EgressNoIpv4 { .. }
-            | ErrorKind::EgressBlocked { .. } => error_code::INTERNAL_OPERATION_FAILED,
-        }
-    }
-}
+mod classify;
 
 #[cfg(test)]
 mod tests;

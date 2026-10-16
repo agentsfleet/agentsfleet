@@ -19,7 +19,6 @@ import {
   type FleetEvent,
   type FleetEventStatus,
 } from "@/lib/streaming/fleet-stream-row";
-import type { InstallStepId } from "@/lib/streaming/install-steps";
 import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
 import { readEventDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
 
@@ -39,11 +38,6 @@ export {
 export type UseFleetEventStreamResult = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
-  // The latest install step advanced by an `install:*` frame on the shared
-  // stream, or null for a non-installing fleet. The InstallStates surface reads
-  // this to advance its rendered step with no polling and to detect the
-  // installing→active flip.
-  installStep: InstallStepId | null;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean) => boolean;
   discardOptimistic: (tempId: string) => void;
@@ -114,7 +108,7 @@ export function useFleetEventStream(
   return {
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
-    installStep: snapshot.installStep,
+
     appendOptimistic,
     reconcileOptimistic,
     discardOptimistic,

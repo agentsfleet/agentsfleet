@@ -161,13 +161,13 @@ describe("SecretsList — optimistic delete", () => {
     // The row is gone from view, but "No secrets" is the server's claim to
     // make: the status region is not announced ahead of the answer.
     await waitFor(() => expect(screen.queryByText("openai")).toBeNull());
-    expect(screen.queryByText("No secrets")).toBeNull();
+    expect(screen.queryByText("Keep your credentials in one place")).toBeNull();
 
     // Settled before the test ends: an async transition left pending would
     // hold React's action scope open for every test that follows.
     settle({ ok: false, error: "vault unavailable", status: 503 });
     await waitFor(() => expect(screen.getByText("openai")).toBeTruthy());
-    expect(screen.queryByText("No secrets")).toBeNull();
+    expect(screen.queryByText("Keep your credentials in one place")).toBeNull();
   });
 });
 
@@ -250,4 +250,15 @@ describe("SecretsList — deleting a connection's secret", () => {
     const dialog = await openDelete("constructor");
     expect(within(dialog).getByText(DELETE_SECRET_DESCRIPTION)).toBeTruthy();
   });
+});
+
+it("filters secrets by name without revealing values or making requests", async () => {
+  renderList(twoSecrets());
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search secrets"}), {target: {value: "ANTHROPIC"}});
+  await waitFor(() => expect(screen.queryByRole("button", {name: "Edit secret openai"})).toBeNull());
+  expect(screen.getByRole("button", {name: "Edit secret anthropic"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
+  await screen.findByRole("button", {name: "Edit secret openai"});
+  expect(refreshMock).not.toHaveBeenCalled();
+  expect(deleteSecretActionMock).not.toHaveBeenCalled();
 });

@@ -1,6 +1,6 @@
 # `ui/agentsfleet.dev/`
 
-The one-URL installer for `agentsfleet` + the platform-ops skill, served at `https://agentsfleet.dev`.
+The one-URL installer for the `agentsfleet` command-line interface (CLI), served at `https://agentsfleet.dev`.
 
 ```
 curl -fsSL https://agentsfleet.dev | bash
@@ -22,29 +22,26 @@ The Windows PowerShell installer (`install.ps1`) is a separate follow-up — not
 ## What `dist/install.sh` does
 
 1. Requires Node.js (`node` + `npm`) — `agentsfleet` is an npm-distributed Node CLI (`bin: ./dist/bin/agentsfleet.js`), so there is no standalone binary to fall back to. Missing Node exits `5` with an install link.
-2. Detects the agent host on `$PATH` (`claude` / `amp` / `codex` / `opencode`); ambiguous (more than one) exits `4` unless `AGENTSFLEET_HOST` is set.
-3. `npm install -g --prefix "$AGENTSFLEET_INSTALL" @agentsfleet/cli[@version]` (default prefix `~/.agentsfleet`), then adds `<prefix>/bin` to PATH.
-4. `npx --yes skills add agentsfleet/skills --host=<detected>`.
-5. Prints the next command: `/agentsfleet-install-platform-ops`.
+2. `npm install -g --prefix "$AGENTSFLEET_INSTALL" @agentsfleet/cli[@version]` (default prefix `~/.agentsfleet`), then adds `<prefix>/bin` to PATH.
+3. Prints the next command: `agentsfleet login`.
 
 ### Environment / flags
 
 | Knob | Effect |
 |------|--------|
 | `AGENTSFLEET_INSTALL` | Install prefix (default `~/.agentsfleet`). Rejected if it contains quotes/backticks/`$`/newline. |
-| `AGENTSFLEET_HOST` | Force the agent host, skip detection. |
 | `bash -s v0.37.0` | Pin a CLI version (`@agentsfleet/cli@0.37.0`). |
 | `bash -s -- --force` | Reinstall without the upgrade prompt. |
 
 ### Exit codes
 
-`0` ok · `1` network/DNS · `2` npm install failed · `3` prefix not writable · `4` host ambiguous · `5` Node missing.
+`0` ok · `1` network/DNS · `2` npm install failed · `3` prefix not writable · `5` Node missing.
 
 ## Testing locally
 
 ```
 shellcheck -s bash dist/install.sh install_test.sh   # zero warnings
-bash install_test.sh                                  # hermetic — fakes npm/npx/node, no real install
+bash install_test.sh                                  # hermetic — fakes npm/node, no real install
 ```
 
 `install_test.sh` builds a sandbox PATH of real coreutils plus per-scenario fakes; no real npm or

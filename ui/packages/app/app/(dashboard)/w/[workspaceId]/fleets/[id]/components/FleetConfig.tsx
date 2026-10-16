@@ -13,29 +13,29 @@ type Props = {
   workspaceId: string;
   fleetId: string;
   fleetName: string;
+  etag: string;
 };
 
-export default function FleetConfig({
-  workspaceId,
-  fleetId,
-  fleetName,
-}: Props) {
+const DELETE_ACTION = "delete this fleet";
+
+async function deleteObservedFleet({workspaceId, fleetId, etag}: Props) {
+  const result = await deleteFleetAction(workspaceId, fleetId, etag);
+  if (!result.ok) {
+    throw new Error(presentErrorString({
+      errorCode: result.errorCode, message: result.error, action: DELETE_ACTION,
+    }));
+  }
+}
+
+export default function FleetConfig(props: Props) {
+  const {workspaceId, fleetName} = props;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onConfirm() {
     setError(null);
-    const result = await deleteFleetAction(workspaceId, fleetId);
-    if (!result.ok) {
-      throw new Error(
-        presentErrorString({
-          errorCode: result.errorCode,
-          message: result.error,
-          action: "delete this fleet",
-        }),
-      );
-    }
+    await deleteObservedFleet(props);
     // No router.refresh() — calling refresh immediately after push races
     // the URL commit (the same surface the install flow hits); the fleets list
     // is `force-dynamic` so it re-fetches on its own.

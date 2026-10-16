@@ -27,12 +27,13 @@ pub(super) fn resident_name(fixture: &Fixture) -> String {
     )
 }
 
-/// A resident's document, as the daemon writes one.
-pub(super) fn resident_document(name: &str) -> String {
-    format!(
-        "---\nname: {name}\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools: []\n  \
-         budget:\n    daily_dollars: 1.0\n---\n"
-    )
+/// [`CHANNEL`]'s resident configuration in `fixture`'s team, exactly as the
+/// daemon writes one.
+pub(super) fn resident_document(fixture: &Fixture) -> String {
+    let channel = CHANNEL.parse().expect("a well-formed channel identifier");
+    afd_ingress::slack::Resident::for_channel(&fixture.team, &channel)
+        .expect("a Slack team identifier forms a resident name")
+        .config_json
 }
 
 /// An unaddressed question to the bot, which only the resident can take.
@@ -83,9 +84,8 @@ async fn bound(fixture: &Fixture) -> (String, String) {
 async fn a_moved_team_never_runs_the_workspace_it_left() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let name = resident_name(&fixture);
     let left_behind = fixture
-        .fleet_elsewhere(&resident_document(&name), FleetStatus::Active.as_str())
+        .fleet_elsewhere(&resident_document(&fixture), FleetStatus::Active.as_str())
         .await;
     bind(&fixture, &left_behind).await;
     let router = fixture.resident_router().await;
@@ -118,7 +118,7 @@ async fn a_stopped_resident_answers_with_the_paused_notice() {
     fixture.seed().await;
     let name = resident_name(&fixture);
     let stopped = fixture
-        .fleet(&resident_document(&name), FleetStatus::Stopped.as_str())
+        .fleet(&resident_document(&fixture), FleetStatus::Stopped.as_str())
         .await;
     bind(&fixture, &stopped).await;
     let router = fixture.resident_router().await;
@@ -154,10 +154,7 @@ async fn a_killed_resident_drops_the_mention() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let killed = fixture
-        .fleet(
-            &resident_document(&resident_name(&fixture)),
-            FleetStatus::Killed.as_str(),
-        )
+        .fleet(&resident_document(&fixture), FleetStatus::Killed.as_str())
         .await;
     bind(&fixture, &killed).await;
     let router = fixture.resident_router().await;
@@ -196,10 +193,7 @@ async fn a_killed_resident_owes_no_notice() {
             .await;
     }
     let killed = fixture
-        .fleet(
-            &resident_document(&resident_name(&fixture)),
-            FleetStatus::Killed.as_str(),
-        )
+        .fleet(&resident_document(&fixture), FleetStatus::Killed.as_str())
         .await;
     bind(&fixture, &killed).await;
     let router = fixture.resident_router().await;
@@ -274,7 +268,7 @@ async fn a_resident_still_installing_takes_the_mention() {
     fixture.seed().await;
     let installing = fixture
         .fleet(
-            &resident_document(&resident_name(&fixture)),
+            &resident_document(&fixture),
             FleetStatus::Installing.as_str(),
         )
         .await;

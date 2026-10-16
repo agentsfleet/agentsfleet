@@ -18,6 +18,8 @@
 //! [`garde::Result`], `Limit` answers a two-variant [`LimitBreak`] each route
 //! maps to its own sentence, and `Sentences` cannot fail.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod rules;
 
 mod limit;

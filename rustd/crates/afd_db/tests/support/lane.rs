@@ -72,13 +72,11 @@ pub(crate) fn lane_database() -> String {
 /// A configuration pointed at `addr` instead of the real datastore.
 ///
 /// `database` is a parameter and not the lane's own, because one test below
-/// runs a MIGRATOR through the proxy. `Migrator::run` reaps every ledger row
-/// below its migration list's floor, and [`TRIVIAL`] sits at 9101 — so pointed
-/// at the shared lane database it deletes all forty-seven rows the lane's
-/// `_migrate-test-db` just wrote. The schema objects survive that, the ledger
-/// does not, and the next `agentsfleetd migrate` replays 810 onto a trigger
-/// that already exists. The failure surfaces in `agentsfleetd`, three crates
-/// away from the test that caused it.
+/// runs a MIGRATOR through the proxy, and its list ([`TRIVIAL`], at 9101) does
+/// not match the shared lane database's ledger: pointed there it would refuse
+/// every run over the versions the lane's `_migrate-test-db` wrote, and a
+/// trivial migration that did apply would leave a row the next
+/// `agentsfleetd migrate` refuses over.
 pub(crate) fn config_through(addr: SocketAddr, role: DbRole, database: &str) -> PoolConfig {
     let url = format!("postgres://agentsfleet:agentsfleet@{addr}/{database}?sslmode=disable");
     let env = MapEnv::from_pairs([

@@ -8,14 +8,12 @@
 //! `dispatch/write_rust.md`'s "parse, don't validate" is the rule, and
 //! uniqueness is the language's own: two variants cannot share a name.
 //!
-//! # The ids are a stored-data contract, not a spelling
+//! # The ids are stored data, not a spelling
 //!
 //! Each id is the `{provider}` route segment, the `provider` column value in
 //! `core.connector_installs`, and the stem of two vault keys — `<id>-app` for
-//! the platform app credentials and `<id>` for the workspace's own grant. A
-//! deployment mid-cutover has both daemons reading the same rows, so these
-//! strings are byte-identical to `common`'s `PROVIDER_*` constants and are not
-//! this crate's to improve.
+//! the platform app credentials and `<id>` for the workspace's own grant.
+//! Renaming one strands every row and vault key already written under it.
 
 use std::fmt;
 
@@ -101,8 +99,8 @@ impl Provider {
     ///
     /// Exact and lower-case: `SLACK` resolves to nothing, because the segment
     /// is also a column value and a vault-key stem, and a case-insensitive
-    /// parse here would let one workspace store a grant the other daemon
-    /// cannot find.
+    /// parse here would store a grant under a spelling the exact-match
+    /// readers never find.
     #[must_use]
     pub fn parse(segment: &str) -> Option<Self> {
         Self::ALL

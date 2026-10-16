@@ -43,11 +43,13 @@ export class ShellSidebarState {
  * Both spellings are literal because Tailwind scans source text: a computed
  * `md:${...}` would never reach the generated stylesheet.
  */
+const EXPANDED_ASIDE_CLASS = "w-60";
+const EXPANDED_HEADER_CLASS = "md:w-60";
 export const SIDEBAR_COLUMN = {
   /** The column itself, inside an `<aside>` that is already `md:`-gated. */
-  aside: { expanded: "w-60", collapsed: "w-16" },
+  aside: { expanded: EXPANDED_ASIDE_CLASS, collapsed: "w-16" },
   /** The header's leading cluster, which is a column only from `md` up. */
-  header: { expanded: "md:w-60", collapsed: "md:w-16" },
+  header: { expanded: EXPANDED_HEADER_CLASS, collapsed: "md:w-16" },
 } as const;
 
 export const shellSidebarState = new ShellSidebarState();

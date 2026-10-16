@@ -9,7 +9,6 @@
 // Surveyed codes used here:
 //   UZ-AUTH-003       (401, token expired)              error_code/auth.rs:34
 //   UZ-AUTH-004       (503, auth service unavailable)   error_code/auth.rs:129
-//   UZ-AGT-006        (409, fleet name conflict)        error_code/fleet.rs:128
 //   UZ-RUN-011        (runner lost its lease)           error_code/fleet.rs:59
 //   UZ-INTERNAL-001   (503, database unavailable)       error_code/request.rs:191
 //   UZ-WORKSPACE-002  (402, workspace paused)           not declared by the
@@ -34,8 +33,8 @@ function errorEnvelope(
   code: string,
   message: string,
   requestId = "req_fail_test",
-): { error: { code: string; message: string }; request_id: string } {
-  return { error: { code, message }, request_id: requestId };
+): { error_code: string; detail: string; request_id: string } {
+  return { error_code: code, detail: message, request_id: requestId };
 }
 
 describe("failure modes — login surface", () => {
@@ -89,57 +88,13 @@ describe("failure modes — workspace surface", () => {
   });
 });
 
-describe("failure modes — install surface (server)", () => {
-  test("install hitting UZ-AGT-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
-    await authedScope(async () => {
-      const templateId = "github-pr-reviewer";
-      const routes: MockRoutes = {
-        // The gallery resolves so the create POST is reached; the create
-        // then returns the 409 name conflict.
-        [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () => jsonResponse(200, {
-          items: [{ id: templateId, name: "test-fleet", visibility: "platform",
-            requirements: { trigger_present: true } }],
-        }),
-        [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(409,
-          errorEnvelope("UZ-AGT-006", "Fleet name 'test-fleet' already exists in this workspace")),
-      };
-      await withMockApi(routes, async (apiUrl) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["install", "--library", templateId],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
-        // The pre-Effect path collapsed every API failure to exit 1.
-        expect(code).toBe(3);
-        const text = err.read();
-        expect(text).toContain("UZ-AGT-006");
-        expect(text).toContain("already exists");
-      });
-    });
-  });
-});
-
 describe("failure modes — runtime / observability surface", () => {
-  test("install succeeds, but logs subsequently surface a runner failure event with UZ-RUN-011 (the runner lost its lease)", async () => {
+  test("a running fleet whose runner lost its lease surfaces UZ-RUN-011 through logs", async () => {
     await authedScope(async () => {
-      const templateId = "runner-test";
       const routes: MockRoutes = {
-        // The gallery resolves so the create POST is reached.
-        [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () => jsonResponse(200, {
-          items: [{ id: templateId, name: "runner-test", visibility: "platform",
-            requirements: { trigger_present: true } }],
-        }),
-        // Step 1: install returns 201 — the server side is happy.
-        [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(201, {
-          fleet_id: FLEET_ID,
-          name: "runner-test",
-          status: "running",
-        }),
-        // Step 2: events show the worker died after the fact. The user
-        // discovers the failure only by tailing logs — the install
-        // command itself returned success.
+        // The fleet was saved and started without complaint; the runner died
+        // afterwards, so the only place the operator can see it is the event
+        // stream.
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
@@ -155,17 +110,6 @@ describe("failure modes — runtime / observability surface", () => {
           }),
       };
       await withMockApi(routes, async (apiUrl) => {
-        // Step 1: install succeeds.
-        const installOut = bufferStream();
-        const installErr = bufferStream();
-        const installCode = await runCli(
-          ["install", "--library", templateId],
-          { stdout: installOut.stream, stderr: installErr.stream,
-            env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(installCode).toBe(0);
-
-        // Step 2: logs surface the worker's post-install failure.
         const logsOut = bufferStream();
         const logsErr = bufferStream();
         const logsCode = await runCli(
@@ -174,17 +118,10 @@ describe("failure modes — runtime / observability surface", () => {
             env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(logsCode).toBe(0);
+        // `logs` prefers response_text over the bare `fleet_error` status
+        // (src/commands/fleet_logs.ts), so the runner's own sentence is the
+        // visible signal. Without it the failure would read as silence.
         const logsText = logsOut.read();
-        // A runner that dies mid-run: install returned 201,
-        // but the runner died after the fact and the failure surfaces only
-        // via events. The user MUST see the failure message in `logs`
-        // output — otherwise the silent-success illusion is the bug.
-        //
-        // Note on rendering: fleet.js commandLogs prefers response_text
-        // over status when both are present, so the visible signal is
-        // the runner's failure message, not the bare `fleet_error` tag.
-        // Surfacing the status itself when response_text is set is a
-        // separate UX concern; this test pins what the user sees today.
         expect(logsText).toContain("Runner fleet run failed");
         expect(logsText).toContain("lost its lease");
       });

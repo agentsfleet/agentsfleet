@@ -17,7 +17,7 @@
 #[path = "../../afd_dragonfly/tests/support/subscriber.rs"]
 mod subscriber;
 
-#[path = "../../afd_dragonfly/tests/support/fake_redis.rs"]
+#[path = "../../afd_dragonfly/tests/support/fake_redis/mod.rs"]
 #[allow(
     unused_imports,
     clippy::expect_used,
@@ -31,7 +31,7 @@ mod fake_redis;
 use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_db::{Db, DbRole};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
@@ -41,6 +41,9 @@ use self::fake_redis::{FakeRedis, Reply, install_subscriber};
 
 /// The instant the seeded rows carry.
 const SEED_MS: i64 = 1_760_000_000_000;
+
+/// The status that keeps every lease path off the fixture fleet.
+const FLEET_STOPPED: &str = "stopped";
 
 /// The entry id the fake's `XADD` hands back.
 const FAKE_RECEIPT: &str = "1790000000000-0";
@@ -91,17 +94,16 @@ impl Seeded {
         ] {
             seeded.execute(statement, binds).await;
         }
-        sqlx::query(
-            "INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, \
-             config_json, status, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'replay-fixture-fleet', '# fixture', \
-                     '{}'::jsonb, 'stopped', $4, $4)",
+        FleetSeed::new(
+            &seeded.fleet,
+            &seeded.workspace,
+            &seeded.tenant,
+            FLEET_STOPPED,
         )
-        .bind(&seeded.fleet)
-        .bind(&seeded.workspace)
-        .bind(&seeded.tenant)
-        .bind(SEED_MS)
-        .execute(
+        .name("replay-fixture-fleet")
+        .at(SEED_MS)
+        .native_setup()
+        .insert(
             &mut *seeded
                 .database
                 .acquire()

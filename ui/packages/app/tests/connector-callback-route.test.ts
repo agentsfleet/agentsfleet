@@ -12,8 +12,8 @@ vi.mock("@/lib/api/client", () => ({ requireApiOrigin: requireApiOriginMock }));
 const APP_ORIGIN = "https://app-dev.agentsfleet.net";
 const API_ORIGIN = "https://api-dev.agentsfleet.net";
 const TOKEN = "callback-test-token";
-const CALLBACK_PATH = "/api/connectors/github/callback?code=provider-code&state=signed-state&callback_source=legacy_api";
-const COMPLETE_PATH = "/v1/connectors/github/callback?code=provider-code&state=signed-state&callback_source=legacy_api";
+const CALLBACK_PATH = "/api/connectors/github/callback?code=provider-code&state=signed-state";
+const COMPLETE_PATH = "/v1/connectors/github/callback?code=provider-code&state=signed-state";
 const REDIRECT_PATH = "/w/ws_1/integrations";
 
 function callbackRequest(): Request {

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ReactTable } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
 import { Button } from "./Button";
@@ -26,10 +26,11 @@ type TableHeader<T extends DataTableRowData> = ReturnType<ReactTable<DataTableFe
 // One nominal size across all three states, so the header does not resize as
 // sorting changes.
 const SORT_ICON_SIZE = 14;
+const INTERACTIVE_CELL_SELECTOR = "a, button, input, select, textarea, [role='button'], [role='link'], [role='checkbox'], [role='combobox'], [contenteditable='true']";
 
 // The unsorted state is a chevron pair, not a double-headed arrow: lucide draws
 // ArrowUpDown with two full shafts spanning 16 of its 24 units against the
-// single arrow's 14, so beside a small uppercase column label it read as the
+// single arrow's 14, so beside a compact column label it read as the
 // heaviest glyph in the header while meaning "no sort applied".
 function sortIndicator(direction: false | "asc" | "desc") {
   if (direction === "asc") return <ArrowUp size={SORT_ICON_SIZE} aria-hidden="true" />;
@@ -43,20 +44,23 @@ function DataTableHead<T extends DataTableRowData>({
   sticky,
   isLoading,
   onSortChange,
+  interactive,
 }: {
   table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
   sticky: boolean;
   isLoading?: boolean;
   onSortChange?: (key: string) => void;
+  interactive: boolean;
 }) {
   return (
-    <thead className={cn("bg-muted", sticky && "sticky top-0 z-10")}>
+    <thead className={cn("bg-table-header", sticky && "sticky top-0 z-10")}>
       {table.getHeaderGroups().map((group) => (
         <tr key={group.id}>
           {group.headers.map((header) => (
             <DataTableHeading key={header.id} header={header} definition={columnsByKey.get(header.column.id)} isLoading={isLoading} onSortChange={onSortChange} />
           ))}
+          {interactive ? <th scope="col" className="w-10 border-b border-border"><span className="sr-only">Open</span></th> : null}
         </tr>
       ))}
     </thead>
@@ -78,8 +82,9 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                 scope="col"
                 aria-sort={canSort ? ariaSort : undefined}
                 className={cn(
-                  "text-left font-sans text-label font-medium uppercase tracking-label text-muted-foreground",
-                  canSort ? "p-0" : "px-3 py-2",
+                  "h-11 border-b border-border text-left font-sans text-label font-medium text-muted-foreground",
+                  canSort ? "p-0" : "px-table-inline py-table-block",
+                  direction && "text-foreground",
                   definition?.numeric && "text-right",
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
@@ -93,7 +98,8 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                       ? () => onSortChange(header.column.id)
                       : header.column.getToggleSortingHandler()}
                     className={cn(
-                      "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none [&_svg]:size-3.5",
+                      "h-11 w-full justify-start gap-1.5 rounded-none border-0 px-table-inline text-label hover:bg-table-row-hover focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none [&_svg]:size-3.5",
+                      direction && "text-pulse",
                       definition?.numeric && "justify-end",
                     )}
                   >
@@ -114,19 +120,21 @@ function DataTableBody<T extends DataTableRowData>({
   columnsByKey: ColumnMap<T>;
   onRowClick?: (row: T) => void;
 }) {
-  const state = table.state;
-  const renderKey = `${state.sorting.map((sort) => `${sort.id}:${sort.desc}`).join("|")}:${state.pagination.pageIndex}:${state.pagination.pageSize}`;
   return (
-    <tbody key={renderKey} className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-snap">
+    <tbody>
       {table.getRowModel().rows.map((row) => (
         <tr
           key={row.id}
           className={cn(
-            "border-t border-border transition-colors duration-snap ease-snap motion-reduce:transition-none",
-            onRowClick && "cursor-pointer hover:bg-muted focus-within:bg-muted",
+            "group/row border-b border-table-divider bg-table-row even:bg-table-row-alternate last:border-b-0 transition-colors duration-snap ease-snap hover:bg-table-row-hover focus-within:bg-table-row-hover motion-reduce:transition-none",
+            onRowClick && "cursor-pointer hover:shadow-table-indicator focus-within:shadow-table-indicator focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           )}
-          onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+          onClick={onRowClick ? (event) => {
+            if (event.defaultPrevented || (event.target instanceof Element && event.target.closest(INTERACTIVE_CELL_SELECTOR))) return;
+            onRowClick(row.original);
+          } : undefined}
           onKeyDown={onRowClick ? (event) => {
+            if (event.defaultPrevented || event.target !== event.currentTarget) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               onRowClick(row.original);
@@ -140,7 +148,8 @@ function DataTableBody<T extends DataTableRowData>({
               <td
                 key={cell.id}
                 className={cn(
-                  "px-3 py-2 align-middle text-foreground",
+                  "h-12 px-table-inline py-table-block align-middle text-foreground",
+                  definition?.primary && "font-medium",
                   definition?.numeric && "text-right tabular-nums",
                   // The heading's trailing sort icon takes 14px plus a 6px
                   // gap; reserve the same space so values end beneath labels.
@@ -155,6 +164,7 @@ function DataTableBody<T extends DataTableRowData>({
               </td>
             );
           })}
+          {onRowClick ? <td className="w-10 pr-table-inline text-muted-foreground group-hover/row:text-pulse group-focus-within/row:text-pulse"><ChevronRight size={16} aria-hidden="true" /></td> : null}
         </tr>
       ))}
     </tbody>
@@ -165,10 +175,12 @@ export function DataTableFooter<T extends DataTableRowData>({
   table,
   pagination,
   totalRows,
+  isLoading,
 }: {
   table: ReactTable<DataTableFeatures, T>;
   pagination: DataTablePagination | undefined;
   totalRows: number;
+  isLoading?: boolean;
 }) {
   if (pagination === false) return null;
   if (isClientPagination(pagination)) {
@@ -180,13 +192,14 @@ export function DataTableFooter<T extends DataTableRowData>({
         page={table.state.pagination.pageIndex + 1}
         pageSize={pageSize}
         total={totalRows}
+        isLoading={isLoading}
         onPageChange={(page) => table.setPageIndex(page - 1)}
         pageSizeOptions={pagination?.pageSizeOptions ?? DEFAULT_PAGE_SIZE_OPTIONS}
         onPageSizeChange={(nextPageSize) => {
           table.setPageSize(nextPageSize);
           table.setPageIndex(0);
         }}
-        className="border-t border-border px-3"
+        className="border-t border-border bg-table-header px-table-inline"
       />
     );
   }
@@ -194,7 +207,8 @@ export function DataTableFooter<T extends DataTableRowData>({
   return (
     <Pagination
       {...pagination}
-      className={cn("border-t border-border px-3", pagination.className)}
+      isLoading={isLoading || pagination.isLoading}
+      className={cn("border-t border-border bg-table-header px-table-inline", pagination.className)}
     />
   );
 }
@@ -237,8 +251,7 @@ function useTableViewport<T extends DataTableRowData>({ table, pagination }: Pic
     // (cf. website/src/components/HowItWorks.tsx).
     /* v8 ignore next */
     if (!viewport) return;
-    if (typeof viewport.scrollTo === "function") viewport.scrollTo({ top: 0 });
-    else viewport.scrollTop = 0;
+    viewport.scrollTo({ top: 0 });
   }, [numericPage, pageSize, sortingSignature]);
   return viewportRef;
 }
@@ -261,7 +274,7 @@ export function DataTableView<T extends DataTableRowData>({
       // A column that can shrink, so the viewport below it has something to
       // bound against once a page constrains the height.
       className={cn(
-        "flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card",
+        "flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-table-row",
         className,
       )}
     >
@@ -291,7 +304,7 @@ export function DataTableView<T extends DataTableRowData>({
         role="region"
         aria-label={caption ? `${caption}, scrollable` : "Scrollable table"}
       >
-        <table className="w-full min-w-full border-collapse font-sans text-mono" aria-busy={isLoading ? "true" : "false"}>
+        <table className="w-full min-w-full border-collapse font-sans text-body-sm" aria-busy={isLoading ? "true" : "false"}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <DataTableHead
             table={table}
@@ -299,11 +312,12 @@ export function DataTableView<T extends DataTableRowData>({
             sticky={stickyHeader}
             isLoading={isLoading}
             onSortChange={handleSortChange}
+            interactive={Boolean(onRowClick)}
           />
           <DataTableBody table={table} columnsByKey={columnsByKey} onRowClick={onRowClick} />
         </table>
       </div>
-      <DataTableFooter table={table} pagination={pagination} totalRows={totalRows} />
+      <DataTableFooter table={table} pagination={pagination} totalRows={totalRows} isLoading={isLoading} />
     </div>
   );
 }

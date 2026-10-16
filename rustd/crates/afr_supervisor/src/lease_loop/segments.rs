@@ -1,12 +1,12 @@
 //! Where a lease's time went, logged on the line that ends it.
 //!
 //! ```text
-//!   bundle ─► memory ─► sandbox ─► model + tools ─► report
+//!   memory ─► sandbox ─► model + tools ─► report
 //!   └── each once, absent when it never started; wall_ms is the whole lease ──┘
 //! ```
 //!
-//! Six segments tile the lease: the bundle fetch, the memory hydrate, the
-//! sandbox from its sizing to its landing, the model's turns, the tools those
+//! Five segments tile the lease: the memory hydrate, the sandbox from sizing
+//! through repository checkout, the model's turns, the tools those
 //! turns called, and the settle from hold-or-destroy to the posted report.
 //! What they leave of the wall time is the admission, the turn claim and the
 //! drain wait. The first token is inside the model's time and is logged beside
@@ -28,7 +28,6 @@ use crate::report::Ending;
 /// run's frames instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Segment {
-    Bundle,
     Memory,
     Sandbox,
     Report,
@@ -37,7 +36,6 @@ pub(super) enum Segment {
 /// How long each segment took, for those that ran.
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct Segments {
-    bundle: Option<Duration>,
     memory: Option<Duration>,
     sandbox: Option<Duration>,
     model: Option<Duration>,
@@ -73,7 +71,6 @@ impl Timeline {
     fn set(&self, segment: Segment, elapsed: Duration) {
         let mut segments = self.lock();
         let slot = match segment {
-            Segment::Bundle => &mut segments.bundle,
             Segment::Memory => &mut segments.memory,
             Segment::Sandbox => &mut segments.sandbox,
             Segment::Report => &mut segments.report,
@@ -112,20 +109,11 @@ impl Drop for Stopwatch<'_> {
 }
 
 impl LeaseRun<'_> {
-    /// Runs `work` as `segment`, whichever way it ends.
-    pub(super) async fn timed<T>(&self, segment: Segment, work: impl Future<Output = T>) -> T {
-        let watch = self.timeline.start(segment);
-        let out = work.await;
-        watch.stop();
-        out
-    }
-
     /// Logs how the lease ended and where its time went.
     pub(super) fn conclude(&self, ending: &Ending) {
         let lease_id = self.ids.lease.as_str();
         let wall_ms = saturating_millis(self.started.elapsed());
         let segments = *self.timeline.lock();
-        let bundle_ms = segments.bundle.map(saturating_millis);
         let memory_ms = segments.memory.map(saturating_millis);
         let sandbox_ms = segments.sandbox.map(saturating_millis);
         let model_ms = segments.model.map(saturating_millis);
@@ -145,7 +133,6 @@ impl LeaseRun<'_> {
             class,
             detail,
             wall_ms,
-            bundle_ms,
             memory_ms,
             sandbox_ms,
             model_ms,
@@ -158,5 +145,5 @@ impl LeaseRun<'_> {
 }
 
 #[cfg(test)]
-#[path = "segments_tests.rs"]
+#[path = "tests/timing.rs"]
 mod tests;

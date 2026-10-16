@@ -1,34 +1,4 @@
-/**
- * Fleet update + delete + illegal-state-transition acceptance scenario
- * (live, seeded-credentials session).
- *
- * Mirrors lifecycle-with-token.spec.ts's identity + hydration setup
- * (Clerk session JWT minted via the admin path, workspaces.json hydrated
- * directly from the API), then exercises the mutate-and-remove surface
- * the lifecycle walk does not cover:
- *
- *   1. happy path — install → `fleet update <id>` (re-PATCH SKILL.md +
- *      TRIGGER.md from a name-matched bundle) → status still reflects a
- *      live state → kill (delete requires a killed fleet) → `delete <id>`
- *      → list excludes the id.
- *
- *   2. illegal transitions —
- *      a. install → kill → `resume <killed-id>` MUST exit non-zero and
- *         surface UZ-AGT-010 (ALREADY_TERMINAL); status stays terminal.
- *      b. install → stop → `stop` the already-stopped fleet is handled
- *         gracefully (exit 0 OR non-zero with a transition stem); status
- *         stays stopped/paused either way.
- *
- * Every spawn runs through `runWithEnv`, which asserts the minted JWT
- * never lands in stdout/stderr (WS-E #C1 regression).
- *
- * Live-only: the whole suite registers only when
- * `AGENTSFLEET_ACCEPTANCE_TARGET` is an https URL; otherwise it skips
- * cleanly (CI runs it live, local runs skip — same invariant as the
- * sibling specs). Every mutation is prefix-scoped via
- * ACCEPTANCE_RUN_PREFIX and torn down in afterAll; no global emptiness
- * is ever asserted — only "none of MY run's fleets remain".
- */
+// Reviewed setup revision, lifecycle and purge behavior through the terminal.
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
@@ -47,7 +17,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   expectStatus,
@@ -56,14 +26,10 @@ import {
   TOMBSTONE_REFUSAL,
   TRANSITION_REFUSAL,
 } from "./fixtures/lifecycle.ts";
-import { resolveFleetName, updateFleetBundle } from "./fixtures/update-delete-ops.ts";
+import { resolveFleetName, applyReviewedImprovement } from "./fixtures/improvement-ops.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
-
-// Envelope status the update handler emits on a successful PATCH
-// (fleet_install.ts#updateEffectFromArgs → printJson status:"updated").
-const UPDATE_OK_STATUS = "updated";
 
 // State buckets the server may settle into for each lifecycle checkpoint.
 const LIVE_STATES: ReadonlyArray<string> = [
@@ -134,17 +100,17 @@ if (!isLive) {
       let fleetId: string = "";
       let fleetName: string = "";
 
-      it("install platform-ops bundle", async () => {
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+      it("Save reviewed native setup", async () => {
+        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         fleetName = await resolveFleetName(env, fleetId);
         assert.ok(fleetName.startsWith(ACCEPTANCE_RUN_PREFIX), `name not run-scoped: ${fleetName}`);
       }, SETUP_TIMEOUT_MS);
 
-      it("fleet update re-PATCHes the bundle and acks the fleet_id", async () => {
-        const updated = await updateFleetBundle(env, fleetId, fleetName);
+      it("Apply advances one reviewed setup revision and identifies its fleet", async () => {
+        const updated = await applyReviewedImprovement(env, fleetId);
         assertNoSecretLeak(updated, sessionJwt);
-        assert.equal(updated.envelope.status, UPDATE_OK_STATUS, `unexpected update envelope: ${updated.stdout}`);
+        assert.equal(BigInt(updated.envelope.setup_revision), BigInt(updated.previousRevision) + 1n);
         assert.equal(updated.envelope.fleet_id, fleetId, `update echoed wrong id: ${updated.stdout}`);
       }, 120_000);
 
@@ -192,7 +158,7 @@ if (!isLive) {
       let fleetId: string = "";
 
       beforeAll(async () => {
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         await killFleet(env, fleetId);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
@@ -217,7 +183,7 @@ if (!isLive) {
       let fleetId: string = "";
 
       beforeAll(async () => {
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         await stopFleet(env, fleetId);
         await expectStatus(env, fleetId, STOPPED_STATES);

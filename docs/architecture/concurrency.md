@@ -80,7 +80,7 @@ how that state is protected, and how it is stopped and joined.
 ### `agentsfleetd` (control plane)
 
 Nothing runs outside the supervisor. `Supervisor::spawn`
-(`rustd/crates/agentsfleetd/src/supervisor.rs`) is the only caller of
+(`rustd/crates/agentsfleetd/src/supervisor/mod.rs`) is the only caller of
 `tokio::spawn` in the daemon apart from the accept loop's per-connection arm and
 the tasks `afd_dragonfly` starts for the hub (its control task, its dispatch task
 and the sixteen doorbell listeners), which all end when the supervised
@@ -101,14 +101,13 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
 | owed-answer producer (`connector:outbound-producer`) | `agentsfleetd::outbound::spawn`, beside the worker | `core.fleet_obligations` through its own pool handle; re-appends owed answers on the shared Dragonfly handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| SSE hub control task (`hub/pump.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
+| SSE hub control task (`hub/pump/mod.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
 | SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
-| readiness doorbell listeners (sixteen, `ready/doorbell.rs`) | `Doorbell::listen`, from `ServingPlane::new` when the hub opened | one hub `Subscription` each, and the `Arc<AtomicU16>` every lease poll takes from | the atomic alone: `fetch_or` rings, `fetch_and` takes, no lock | the hub's shutdown closes each subscription, its `recv` errs, and the loop returns |
+| readiness doorbell listeners (sixteen, `ready/doorbell/mod.rs`) | `Doorbell::listen`, from `ServingPlane::new` when the hub opened | one hub `Subscription` each, and the `Arc<AtomicU16>` every lease poll takes from | the atomic alone: `fetch_or` rings, `fetch_and` takes, no lock | the hub's shutdown closes each subscription, its `recv` errs, and the loop returns |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Dragonfly, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Dragonfly, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
 | lost-receipt reconciler (`sweeper:admission-reconcile`) | `sweepers::spawn` | `core.fleet_admissions` + Dragonfly: finds admitted rows the stream took and then lost, and hands them back to replay | `Mutex<Duration>` pacing and `Mutex<Progress>` rotation place (each a leaf) | as above |
 | admission-replay dispatcher (`sweeper:admission-replay`) | `sweepers::spawn`, last | `core.fleet_admissions` + Dragonfly: re-appends admitted rows the stream never receipted | `Mutex<Duration>` (leaf) | as above |
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured — a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
@@ -183,7 +182,6 @@ constraint. Each is documented at its declaration (C4).
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | reclaim cursors | `afd_runner`'s reclaim sweeper | two locks: `cursor`, the keyset cursor one pass resumes from, and `stranded_after`, where the ledger question's last page ended | each a leaf — held alone, and only by the single sweeper task |
-| repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
 | replay pacing | `afd_runner`'s `Replay` | when the next pass comes back | leaf — held alone |
 | reconcile pacing and progress | `afd_runner`'s `Reconcile` | when the next pass comes back, and where it resumes its rotation | each a leaf — held alone |
 | metric instruments | `afd_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
@@ -305,3 +303,7 @@ individual files a change touches.
 **A mechanical half is a real piece of work, not a line of data.** It means a
 checker that reads `rustd/`, a make target that invokes it, and a Continuous
 Integration (CI) job that runs the target.
+
+## Runner capacity and authoring lock order
+
+All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard; an original expired lease/affinity cannot revive. Authoring admission/dispatch/renewal acquires wallet → draft → attempt after the host guard where required. Runtime renewal uses runner → lease/affinity → wallet. Runtime reports use lease → wallet and do not acquire the runner or authoring rows. Stop/delete uses wallet → draft → attempt and never later takes the runner guard. Commit dispatch intent before network I/O; release every database lock before provider calls. Unknown provider usage retains its outstanding admission bound. Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.

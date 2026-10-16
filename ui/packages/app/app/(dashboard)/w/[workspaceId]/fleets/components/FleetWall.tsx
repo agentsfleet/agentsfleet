@@ -1,21 +1,17 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
-import { PlusIcon } from "lucide-react";
 import {
   Alert,
   Button,
   SectionHeader,
-  TooltipButton,
 } from "@agentsfleet/design-system";
 import { type Fleet } from "@/lib/api/fleets";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
 import { listFleetsAction } from "../actions";
-import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
-import { INSTALL_FLEET_TOOLTIP } from "../new/library-docs";
+import { useRememberFleets } from "@/components/layout/RecentFleets";
 import FleetTile from "./FleetTile";
 import WallLiveBadge from "./WallLiveBadge";
 import { tileShouldStream } from "@/lib/wall/tile-liveness";
@@ -36,6 +32,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  useRememberFleets(workspaceId, fleets);
   const liveTotal = useMemo(
     () => fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length,
     [fleets],
@@ -69,21 +66,14 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
       <div className="grid gap-xl">
       <SectionHeader as="p"
         actions={
-          <div className="flex items-center gap-3">
-            <WallLiveBadge liveTotal={liveTotal} />
-            <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
-              <Link href={workspacePath(workspaceId, "fleets/new")}>
-                <PlusIcon size={14} /> Install fleet
-              </Link>
-            </TooltipButton>
-          </div>
+          <WallLiveBadge liveTotal={liveTotal} />
         }
       >
-        Manage fleets
+        Your fleets
       </SectionHeader>
 
       <div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-3">
           {fleets.map((z) => (
             <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
           ))}

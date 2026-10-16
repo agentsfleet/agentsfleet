@@ -8,6 +8,8 @@
 
 export const EVENTS = {
   fleet_created: "fleet_created",
+  // Browser intent only; acceptance and completion belong to the daemon.
+  draft_review_opened: "draft_review_opened",
   workspace_switched: "workspace_switched",
   runner_token_minted: "runner_token_minted",
   api_key_minted: "api_key_minted",
@@ -26,18 +28,15 @@ export const EVENTS = {
   // mirroring fleet_viewed). Props carry the runner id and the coarse states
   // — never the host identifier, a token, or label values.
   runner_viewed: "runner_viewed",
-  // An operator saved an edited SKILL.md / TRIGGER.md from the console left rail
-  // (M131 §4). Props carry the fleet id, which half was saved, and the coarse
-  // outcome — never the source contents.
+  // An operator saved a reviewed fleet setup from private chat. Props carry the
+  // fleet id, which part of the setup changed, and the coarse outcome — never
+  // the instructions or runtime config.
   fleet_source_saved: "fleet_source_saved",
-  // An operator forgot a memory entry from the console right rail (M131 §5).
+  // An operator forgot a memory entry from the console right rail.
   // Props carry the fleet id and outcome — never the memory key or content.
   fleet_memory_forgotten: "fleet_memory_forgotten",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
-  onboarding_viewed: "onboarding_viewed",
-  onboarding_cli_ticked: "onboarding_cli_ticked",
-  onboarding_dismissed: "onboarding_dismissed",
   // The dashboard error boundary rendered. Until this existed the boundary
   // received the Error and dropped it, so every dashboard failure was invisible
   // — and the page now tells the user a support agent is working on it, which
@@ -49,6 +48,7 @@ export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 export type EventProps = {
   [EVENTS.fleet_created]: { fleet_id: string };
+  [EVENTS.draft_review_opened]: { workspace_id: string; draft_id?: string };
   [EVENTS.workspace_switched]: { workspace_id: string };
   [EVENTS.runner_token_minted]: { runner_id: string; sandbox_tier: string };
   [EVENTS.api_key_minted]: { api_key_id: string };
@@ -66,7 +66,7 @@ export type EventProps = {
   };
   // Platform-tier onboarding. No workspace_id — the platform catalog has no
   // workspace segment. `entry_id` is the catalog slug the importer derived from
-  // the bundle (e.g. "platform-ops"), present only when the onboard succeeded;
+  // the saved setup, present only when the entry was saved;
   // the repository the operator typed is never sent as free text.
   [EVENTS.platform_library_onboarded]: {
     source_kind: string;
@@ -83,7 +83,7 @@ export type EventProps = {
   };
   // Repointing a catalog entry's source is the one operator edit that silently
   // withdraws a fleet from every workspace gallery (the server discards the
-  // bundle and drafts the row). `field` names which half moved (repo|ref);
+  // saved setup and drafts the row). `field` names which half moved (repo|ref);
   // `was_published` says whether a live fleet was withdrawn by it.
   [EVENTS.platform_library_source_changed]: {
     entry_id: string;
@@ -93,21 +93,15 @@ export type EventProps = {
   };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
-  // Saving the source is the one console edit that changes what the fleet does
-  // on its next wake. `field` names which half moved (skill|trigger); `outcome`
-  // is the coarse success/failure. No source markdown, no credential material.
+  // Saving a reviewed setup is the one edit that changes what the fleet does on
+  // its next wake. `field` names which part moved (instructions|config);
+  // `outcome` is the coarse success/failure. No setup text, no credential material.
   [EVENTS.fleet_source_saved]: { fleet_id: string; field: string; outcome: string };
   // Forgetting a memory is the operator's correction path. `outcome` is the
   // coarse success/failure. No memory `content`, no key text.
   [EVENTS.fleet_memory_forgotten]: { fleet_id: string; outcome: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
-  // The onboarding funnel. `completed_steps` is the required-step count (0-5);
-  // no email/token/secret material rides any of these — workspace id + counts
-  // only, the same discipline as every other event here.
-  [EVENTS.onboarding_viewed]: { workspace_id: string; completed_steps: number };
-  [EVENTS.onboarding_cli_ticked]: { workspace_id: string };
-  [EVENTS.onboarding_dismissed]: { workspace_id: string; completed_steps: number };
   // `error_name` is the error's CLASS ("TypeError"), never its message: a
   // message is free text and routinely carries a URL, id, or payload fragment
   // from wherever it was thrown. `digest` is Next's server-error hash — in
@@ -126,6 +120,7 @@ export type EventProps = {
 // alone is erased at runtime).
 export const EVENT_PROP_KEYS = {
   [EVENTS.fleet_created]: ["fleet_id"],
+  [EVENTS.draft_review_opened]: ["workspace_id", "draft_id"],
   [EVENTS.workspace_switched]: ["workspace_id"],
   [EVENTS.runner_token_minted]: ["runner_id", "sandbox_tier"],
   [EVENTS.api_key_minted]: ["api_key_id"],
@@ -145,8 +140,5 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.fleet_memory_forgotten]: ["fleet_id", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],
-  [EVENTS.onboarding_viewed]: ["workspace_id", "completed_steps"],
-  [EVENTS.onboarding_cli_ticked]: ["workspace_id"],
-  [EVENTS.onboarding_dismissed]: ["workspace_id", "completed_steps"],
   [EVENTS.dashboard_error_shown]: ["error_name", "digest", "attempt"],
 } as const satisfies { [E in EventName]: readonly (keyof EventProps[E])[] };

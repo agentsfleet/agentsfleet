@@ -14,7 +14,6 @@ use afd_fleet::lease::sql::ADMIN_STATE_DRAINED;
 
 use super::{at, hold, live, slot};
 use crate::queue;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{self, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -64,13 +63,18 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<i64>, Option<String>), Strin
         &fixtures,
         &fleet,
         &holder,
-        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
     unfit.apply(&fixtures, &holder).await;
 
-    let found =
-        seed::select_fleet_within_rotations(&leases, &other, at(ENROLLED_AT + 1), &fleet).await;
+    let found = seed::select_fleet_within_rotations(
+        &leases,
+        &other,
+        at(fixtures.enrolled_at() + 1),
+        &fleet,
+    )
+    .await;
     let after = slot(&fixtures, &fleet).await;
 
     queue::clear_ready(fixtures.queue(), &fleet).await;

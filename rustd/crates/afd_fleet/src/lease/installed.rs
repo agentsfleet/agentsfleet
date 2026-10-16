@@ -5,7 +5,7 @@
 //! The claim read is one statement, run once per claim. [`super::assign`] has
 //! already decided WHICH fleet; this reads the installed shape that fleet's
 //! lease is built from — the config the gates judge against, the prose the run
-//! is given, the bundle it materialises, and the session it continues.
+//! is given, and the session it continues.
 //!
 //! # Why the config is re-read per lease and never cached
 //!
@@ -17,7 +17,7 @@
 //! that already makes several.
 
 use afd_core::id::Uuid7;
-use afd_fleet_runtime::FleetConfig;
+use afd_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
 use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
@@ -53,8 +53,8 @@ pub struct Installed {
     pub instructions: String,
     /// The session context this run continues, or [`FRESH_CONTEXT`].
     pub context_json: String,
-    /// The bundle to materialise, when the fleet was created from one.
-    pub bundle_content_hash: Option<String>,
+    /// Exact owner model reference accepted with this immutable setup.
+    pub runtime_model_ref: String,
 }
 
 impl Installed {
@@ -102,27 +102,33 @@ impl Leases {
             return Ok(None);
         };
 
-        let status: String = row.try_get(3).map_err(query(CONTEXT_INSTALLED))?;
+        let status: String = row.try_get(2).map_err(query(CONTEXT_INSTALLED))?;
         if status != sql::FLEET_STATUS_ACTIVE {
             return Ok(None);
         }
 
         let workspace: String = row.try_get(0).map_err(query(CONTEXT_INSTALLED))?;
-        let document: String = row.try_get(1).map_err(query(CONTEXT_INSTALLED))?;
-        let source_markdown: String = row.try_get(2).map_err(query(CONTEXT_INSTALLED))?;
-        let bundle_content_hash: Option<String> =
-            row.try_get(4).map_err(query(CONTEXT_INSTALLED))?;
-        let name: String = row.try_get(5).map_err(query(CONTEXT_INSTALLED))?;
-        let context_json: Option<String> = row.try_get(6).map_err(query(CONTEXT_INSTALLED))?;
+        let document: Option<String> = row.try_get(1).map_err(query(CONTEXT_INSTALLED))?;
+        let runtime_model_ref: Option<String> = row.try_get(3).map_err(query(CONTEXT_INSTALLED))?;
+        let name: String = row.try_get(4).map_err(query(CONTEXT_INSTALLED))?;
+        let context_json: Option<String> = row.try_get(5).map_err(query(CONTEXT_INSTALLED))?;
+        let policy: Option<String> = row.try_get(6).map_err(query(CONTEXT_INSTALLED))?;
+        if policy.as_deref() != Some(POLICY_SEMANTICS) {
+            return Err(crate::error::ErrorKind::SetupUnavailable.into());
+        }
+        let definition =
+            Definition::parse(&document.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
+        definition.validate_for_save()?;
 
         Ok(Some(Installed {
             workspace_id: Uuid7::parse(&workspace)
                 .map_err(row_malformed(TABLE_FLEETS, "workspace_id"))?,
             name,
-            config: FleetConfig::stored(&document)?,
-            instructions: afd_fleet_runtime::instructions(&source_markdown).to_owned(),
+            config: definition.runtime().clone(),
+            instructions: definition.instructions_md().to_owned(),
             context_json: context_json.unwrap_or_else(|| FRESH_CONTEXT.to_owned()),
-            bundle_content_hash,
+            runtime_model_ref: runtime_model_ref
+                .ok_or(crate::error::ErrorKind::SetupUnavailable)?,
         }))
     }
 
@@ -146,7 +152,11 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_STORED_CONFIG))?;
         document
-            .map(|document| FleetConfig::stored(&document).map_err(Into::into))
+            .map(|document| {
+                Definition::parse(&document)
+                    .map(|definition| definition.runtime().clone())
+                    .map_err(Into::into)
+            })
             .transpose()
     }
 }

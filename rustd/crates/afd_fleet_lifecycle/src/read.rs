@@ -1,4 +1,4 @@
-//! What a workspace's fleets look like when read: the page walk, and one fleet.
+//! What a workspace's fleets look like when read: the page walk and the ingress status.
 //!
 //! # The page decides `more` by over-fetching, not by being full
 //!
@@ -12,14 +12,11 @@
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
-use crate::error::{self, ErrorKind, Result};
+use crate::error::{self, Result};
 use crate::{FleetStatus, Fleets, sql};
 
 /// The context a failed page walk reports under.
 const CONTEXT_PAGE: &str = "list workspace fleets";
-
-/// The context a failed detail read reports under.
-const CONTEXT_DETAIL: &str = "read one fleet";
 
 /// What the ingress check was doing, for the operator's log line.
 const CONTEXT_INGRESS: &str = "read a fleet's ingress status";
@@ -94,59 +91,6 @@ pub struct After {
     pub id: Uuid7,
 }
 
-/// One fleet, whole — what the source editor opens.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FleetDetail {
-    /// The page row's fields, unchanged.
-    pub row: FleetRow,
-    /// The authored `SKILL.md`, stored verbatim.
-    pub source_markdown: String,
-    /// The authored `TRIGGER.md`, where the bundle carried one.
-    pub trigger_markdown: Option<String>,
-    /// The bundle a runner materialises support files from.
-    pub bundle_content_hash: Option<String>,
-    /// How many approval gates a human still owes this fleet an answer on.
-    ///
-    /// On the detail and not the page row: a wall of fifty fleets does not
-    /// render the count, and the console that does opens on one fleet.
-    pub pending_approvals: i64,
-    /// Whether the fleet reads and publishes the workspace's shared memory.
-    pub memory_access: afd_api_wire::fleet::MemoryAccess,
-}
-
-impl FleetDetail {
-    /// The strong `ETag` over this fleet's editable surface.
-    ///
-    /// Only the markdown pair, deliberately. A lifecycle PATCH — stop, resume,
-    /// kill — leaves the source untouched, so an editor holding an open buffer
-    /// is not 412'd by somebody else stopping the fleet. Computed here and by
-    /// the conditional write in [`crate::edit`] through the same
-    /// [`surface`] call, so the two are identical by construction rather than
-    /// by two authors agreeing.
-    #[must_use]
-    pub fn etag(&self) -> String {
-        afd_core::etag::compute(&surface(
-            &self.source_markdown,
-            self.trigger_markdown.as_deref(),
-        ))
-    }
-}
-
-/// The ordered field list a fleet's `ETag` hashes.
-///
-/// One function, two callers, and that is the point: the detail read attaches
-/// the tag and the conditional write compares one, and a surface spelled twice
-/// would let a fleet answer a tag its own writer would not accept.
-pub(crate) fn surface<'a>(
-    source_markdown: &'a str,
-    trigger_markdown: Option<&'a str>,
-) -> [Option<&'a [u8]>; 2] {
-    [
-        Some(source_markdown.as_bytes()),
-        trigger_markdown.map(str::as_bytes),
-    ]
-}
-
 impl Fleets {
     /// One page of `workspace`'s fleets, newest first.
     ///
@@ -199,11 +143,9 @@ impl Fleets {
     /// the caller renders as 404, and a datastore that would not say is a
     /// failure. Collapsing them would make an outage look like a deleted fleet.
     ///
-    /// Narrow on purpose. [`Self::detail`] answers the same question and also
-    /// loads two authored documents that may each run to 64 KiB — a cost worth
-    /// paying to render a fleet and not worth paying to decide whether a
-    /// message may be posted to it. The statement is the one the purge's
-    /// pre-flight already runs.
+    /// Narrow on purpose: deciding whether a message may be posted needs the
+    /// status and nothing the setup holds. The statement is the one the
+    /// purge's pre-flight already runs.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a status this build
@@ -221,45 +163,6 @@ impl Fleets {
             .await
             .map_err(error::query(CONTEXT_INGRESS))?;
         found.as_ref().map(|row| status_at(row, 0)).transpose()
-    }
-
-    /// # Errors
-    /// Refuses an id naming no fleet THIS workspace holds — the statement is
-    /// workspace-scoped, so a fleet somebody else owns is indistinguishable from
-    /// one that never existed, and neither is disclosed. Reports a datastore
-    /// that would not answer.
-    pub async fn detail(&self, workspace: &Uuid7, fleet: &Uuid7) -> Result<FleetDetail> {
-        let mut connection = self.database.acquire().await?;
-        let found = sqlx::query(sql::SELECT_FLEET_DETAIL)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
-            .bind(afd_api_wire::approval::status::PENDING)
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_DETAIL))?;
-        let row = found.ok_or_else(|| crate::Error::from(ErrorKind::NotFound))?;
-
-        let unreadable = error::query(CONTEXT_ROW);
-        Ok(FleetDetail {
-            row: FleetRow {
-                id: row.try_get(0).map_err(&unreadable)?,
-                name: row.try_get(1).map_err(&unreadable)?,
-                status: status_at(&row, 2)?,
-                created_at_ms: row.try_get(9).map_err(&unreadable)?,
-                updated_at_ms: row.try_get(10).map_err(&unreadable)?,
-                triggers: triggers_at(&row, 6)?,
-                events_processed: row.try_get(7).map_err(&unreadable)?,
-                budget_used_nanos: row.try_get(8).map_err(&unreadable)?,
-            },
-            source_markdown: row.try_get(3).map_err(&unreadable)?,
-            trigger_markdown: row.try_get(4).map_err(&unreadable)?,
-            bundle_content_hash: row.try_get(5).map_err(&unreadable)?,
-            pending_approvals: row.try_get(11).map_err(&unreadable)?,
-            memory_access: afd_api_wire::fleet::MemoryAccess {
-                read: row.try_get(12).map_err(&unreadable)?,
-                publish: row.try_get(13).map_err(&unreadable)?,
-            },
-        })
     }
 }
 
@@ -291,30 +194,4 @@ fn status_at(row: &sqlx::postgres::PgRow, at: usize) -> Result<FleetStatus> {
 fn triggers_at(row: &sqlx::postgres::PgRow, at: usize) -> Result<Option<Triggers>> {
     let raw: Option<String> = row.try_get(at).map_err(error::query(CONTEXT_ROW))?;
     Ok(raw.map(|text| Triggers(text.into_boxed_str())))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::surface;
-
-    #[test]
-    fn the_hashed_surface_tells_an_absent_trigger_from_an_empty_one() {
-        // A bundle with no `TRIGGER.md` and one with an empty file are
-        // different resource states. A tag that collided would let a
-        // conditional write overwrite an edit it never saw.
-        let absent = afd_core::etag::compute(&surface("skill", None));
-        let empty = afd_core::etag::compute(&surface("skill", Some("")));
-
-        assert_ne!(absent, empty);
-    }
-
-    #[test]
-    fn a_lifecycle_change_leaves_the_tag_alone() {
-        // Only the markdown pair is hashed, so stopping a fleet does not 412
-        // the editor somebody has open on its source.
-        let before = afd_core::etag::compute(&surface("skill", Some("trigger")));
-        let after = afd_core::etag::compute(&surface("skill", Some("trigger")));
-
-        assert_eq!(before, after);
-    }
 }

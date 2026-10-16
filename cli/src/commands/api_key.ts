@@ -47,7 +47,6 @@ interface ApiKeyRow {
   readonly key_name?: string;
   readonly active?: boolean;
   readonly created_at?: number | string | null;
-  readonly last_used_at?: number | string | null;
   readonly revoked_at?: number | string | null;
 }
 
@@ -67,7 +66,7 @@ const KEY_NAME = API_KEY_KEY_NAME;
 const CREATED_AT = API_KEY_CREATED_AT;
 const DEFAULT_SORT = API_KEY_SORT_CREATED_AT_DESC;
 const API_KEY_ID = "api_key_id" as const;
-// Mirrors the daemon's QUERY_STARTING_AFTER (rustd/crates/afd_core/src/paging.rs).
+// Mirrors the daemon's QUERY_STARTING_AFTER (rustd/crates/afd_core/src/paging/mod.rs).
 const QUERY_STARTING_AFTER = "starting_after" as const;
 const QUERY_SORT = "sort" as const;
 // The list has no paging controls; the client follows next_cursor until the
@@ -77,7 +76,6 @@ const QUERY_SORT = "sort" as const;
 const MAX_LIST_WALK_REQUESTS = 40;
 const STATUS_ACTIVE = "active" as const;
 const STATUS_REVOKED = "revoked" as const;
-const TIME_NEVER = "never" as const;
 const TIME_MISSING = "-" as const;
 const SORTS: ReadonlySet<string> = new Set(API_KEY_SORTS);
 
@@ -104,21 +102,16 @@ const queryForList = (sort: string, startingAfter: string | undefined): string =
   return `${TENANT_API_KEYS_PATH}?${query.toString()}`;
 };
 
-// Last use and age answer different questions, so LAST_USED stays its own
-// column while CREATED becomes the age every table carries.
+// CREATED becomes the age every table carries.
 const LIST_TABLE_SPEC = {
   name: { key: KEY_NAME, label: "NAME" },
   id: { key: API_KEY_ID, label: "API_KEY_ID" },
-  domain: [
-    { key: "status", label: "STATUS" },
-    { key: "last_used_at", label: "LAST_USED" },
-  ],
+  domain: [{ key: "status", label: "STATUS" }],
 } as const;
 
 const listTableRow = (key: ApiKeyRow) => ({
   key_name: key.key_name ?? "",
   status: key.active === false ? STATUS_REVOKED : STATUS_ACTIVE,
-  last_used_at: formatTime(key.last_used_at, TIME_NEVER),
   [CREATED_AT]: key.created_at,
   api_key_id: key.id ?? "",
 });

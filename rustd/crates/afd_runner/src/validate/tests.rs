@@ -5,8 +5,6 @@
     reason = "validated boundary values are test fixture preconditions"
 )]
 
-use std::borrow::Cow;
-
 use afd_core::limits::MAX_WORKERS;
 use afd_wire::runner::{
     BindMode, ExtraBind, HOST_ID_MAX_BYTES, NetworkPolicy, REGISTRY_ENTRIES_MAX, SandboxTier,
@@ -145,6 +143,7 @@ fn worker_counts_are_clamped_at_the_boundary() {
     assert_eq!(
         registration(&request("h".to_owned(), policy(Vec::new(), u32::MAX)))
             .expect("an excessive worker count is clamped")
+            .assignment
             .worker_count
             .get(),
         MAX_WORKERS

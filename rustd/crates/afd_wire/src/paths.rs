@@ -26,6 +26,18 @@ pub const RUNNER_HEARTBEATS: &str = concatcp!(RUNNER_SELF, "/heartbeats");
 /// `POST /v1/runners/me/leases` — long-poll for the next event.
 pub const RUNNER_LEASES: &str = concatcp!(RUNNER_SELF, "/leases");
 
+/// An authoring lease has no runtime tools, credentials or event capabilities.
+pub const AUTHORING_LEASE: &str = concatcp!(RUNNER_SELF, "/authoring-leases/{lease_id}/");
+
+/// `POST` — a bounded progress hint or version-bound proposal.
+pub const AUTHORING_ACTIVITY: &str = concatcp!(AUTHORING_LEASE, LEASE_ACTIVITY_SUFFIX);
+/// The daemon's fixed, lease-scoped model invocation boundary.
+pub const AUTHORING_MODEL_CALLS: &str = concatcp!(AUTHORING_LEASE, "model-calls");
+/// Renew an unexpired private authoring lease.
+pub const AUTHORING_RENEW: &str = concatcp!(AUTHORING_LEASE, "renew");
+/// Settle private authoring or recover content-free accounting.
+pub const AUTHORING_REPORTS: &str = concatcp!(AUTHORING_LEASE, "reports");
+
 /// `POST /v1/runners/me/reports` — the terminal result for a lease.
 pub const RUNNER_REPORTS: &str = concatcp!(RUNNER_SELF, "/reports");
 
@@ -38,11 +50,6 @@ pub const RUNNER_MEMORY: &str = concatcp!(RUNNER_SELF, "/memory");
 /// search past the hydration window. Bare for the reason
 /// [`LEASE_ACTIVITY_SUFFIX`] gives.
 pub const RUNNER_MEMORY_RECALL_SUFFIX: &str = "recall";
-
-/// `GET /v1/runners/me/bundles/{content_hash}` — Fleet Bundle snapshot download.
-///
-/// Collection prefix; the caller appends the `{content_hash}` segment.
-pub const RUNNER_BUNDLES: &str = concatcp!(RUNNER_SELF, "/bundles");
 
 /// `POST /v1/runners/me/credentials/mint` — on-demand credential mint.
 pub const RUNNER_CREDENTIALS_MINT: &str = concatcp!(RUNNER_SELF, "/credentials/mint");
@@ -84,9 +91,6 @@ pub const RUNNER_MEMORY_FLEET: &str = concatcp!(RUNNER_MEMORY, "/{fleet_id}");
 /// `POST` — a search of one fleet's memory past the hydration window.
 pub const RUNNER_MEMORY_RECALL: &str =
     concatcp!(RUNNER_MEMORY_FLEET, "/", RUNNER_MEMORY_RECALL_SUFFIX);
-
-/// `GET` — one Fleet Bundle snapshot by content hash.
-pub const RUNNER_BUNDLE: &str = concatcp!(RUNNER_BUNDLES, "/{content_hash}");
 
 /// `POST` — live-tail frames for a held lease.
 pub const LEASE_ACTIVITY: &str = concatcp!(LEASE, LEASE_ACTIVITY_SUFFIX);

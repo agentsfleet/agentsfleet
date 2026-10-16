@@ -82,7 +82,7 @@ test("apiRequestWithRetry: returns body on first 200 with no retry events", asyn
 test("apiRequestWithRetry: 503 then 200 fires one retry event + one terminal", async () => {
   const events: Event[] = [];
   const { fetchImpl, count } = makeFetch([
-    makeResponse({ status: 503, body: { error: { code: "HTTP_503", message: "blip" } } }),
+    makeResponse({ status: 503, body: { error_code: "HTTP_503", detail: "blip" } }),
     makeResponse({ body: { ok: true } }),
   ]);
 
@@ -110,7 +110,7 @@ test("apiRequestWithRetry: 503 then 200 fires one retry event + one terminal", a
 
 test("apiRequestWithRetry: three 503s exhausted → ApiError attempt=3 retry_count=2", async () => {
   const events: Event[] = [];
-  const r503 = makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } });
+  const r503 = makeResponse({ status: 503, body: { error_code: "HTTP_503" } });
   const { fetchImpl, count } = makeFetch([r503, r503, r503]);
 
   await assert.rejects(
@@ -140,7 +140,7 @@ test("apiRequestWithRetry: three 503s exhausted → ApiError attempt=3 retry_cou
 test("apiRequestWithRetry: 400 fatal → no retry, one fetch", async () => {
   const events: Event[] = [];
   const { fetchImpl, count } = makeFetch([
-    makeResponse({ status: 400, body: { error: { code: "UZ-VALIDATION-001", message: "bad" } } }),
+    makeResponse({ status: 400, body: { error_code: "UZ-VALIDATION-001", detail: "bad" } }),
   ]);
 
   await assert.rejects(() =>
@@ -185,7 +185,7 @@ test("apiRequestWithRetry: TypeError(fetch failed) classified as network and ret
 
 test("apiRequestWithRetry: env escape hatch collapses to single attempt on 503", async () => {
   const events: Event[] = [];
-  const r503 = makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } });
+  const r503 = makeResponse({ status: 503, body: { error_code: "HTTP_503" } });
   const { fetchImpl, count } = makeFetch([r503, r503, r503]);
 
   await assert.rejects(() =>
@@ -255,7 +255,7 @@ test("apiRequestWithRetry: 429 with Retry-After: 5 floors backoff at 5000ms with
   // randomFn returns 1 → max jitter (+20%) → 5000 + 1000 = 6000
   const r429 = makeResponse({
     status: 429,
-    body: { error: { code: "RATE_LIMITED" } },
+    body: { error_code: "RATE_LIMITED" },
     headers: { "retry-after": "5" },
   });
   const { fetchImpl } = makeFetch([r429, makeResponse({ body: { ok: true } })]);
@@ -298,7 +298,7 @@ test("apiRequestWithRetry: backoff caps at capDelayMs even after exponential gro
 
 test("apiRequestWithRetry: POST 503 is NOT retried (duplicate-mutation hazard)", async () => {
   const events: Event[] = [];
-  const r503 = makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } });
+  const r503 = makeResponse({ status: 503, body: { error_code: "HTTP_503" } });
   const { fetchImpl, count } = makeFetch([r503, r503, r503]);
 
   await assert.rejects(
@@ -322,7 +322,7 @@ test("apiRequestWithRetry: POST 503 is NOT retried (duplicate-mutation hazard)",
 
 test("apiRequestWithRetry: PUT 503 IS retried (idempotent method)", async () => {
   const { fetchImpl, count } = makeFetch([
-    makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } }),
+    makeResponse({ status: 503, body: { error_code: "HTTP_503" } }),
     makeResponse({ body: { ok: true } }),
   ]);
 
@@ -341,7 +341,7 @@ test("apiRequestWithRetry: PUT 503 IS retried (idempotent method)", async () => 
 test("apiRequestWithRetry: POST 429 and 408 ARE retried (request not processed server-side)", async () => {
   for (const status of [429, 408]) {
     const { fetchImpl, count } = makeFetch([
-      makeResponse({ status, body: { error: { code: "X" } } }),
+      makeResponse({ status, body: { error_code: "X" } }),
       makeResponse({ body: { ok: true } }),
     ]);
 

@@ -1,19 +1,7 @@
 import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "../utils";
 
-/*
- * PageHeader — standard dashboard page top bar. Two shapes, one primitive:
- *
- *   • bare (back-compat) — children laid out as a flex row (title left, an
- *     optional action passed as a child on the right). Unchanged for existing
- *     call sites.
- *   • structured — pass `description` (rendered directly below the title via
- *     <PageDescription>) and/or `actions` (pinned top-right). The title
- *     (children) + description form a left column; the action aligns to its top.
- *
- * RSC-safe. Pairs with <PageTitle>. PageLayout owns space after the header,
- * so every dashboard page gets the same vertical rhythm.
- */
+/** Page title and optional description, with actions aligned alongside on wider screens. */
 export type PageHeaderProps = ComponentProps<"div"> & {
   /** Secondary line rendered directly below the title (muted, body-sm). */
   description?: ReactNode;
@@ -29,17 +17,9 @@ export function PageHeader({
   ref,
   ...props
 }: PageHeaderProps) {
-  // Back-compat: no description and no actions → the original bare flex row.
-  if (description == null && actions == null) {
-    return (
-      <div ref={ref} className={cn("flex flex-wrap items-center justify-between gap-4", className)} {...props}>
-        {children}
-      </div>
-    );
-  }
   return (
     <div ref={ref} className={cn("flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6", className)} {...props}>
-      <div className="min-w-0">
+      <div className="min-w-0 max-w-full">
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}
       </div>

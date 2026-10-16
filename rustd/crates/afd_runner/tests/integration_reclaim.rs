@@ -6,10 +6,11 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::{FleetStreams, ReadyIndex};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 
 use crate::support::{RING_QUIET_FOR, connect_redis, heard_ring, listen_for_rings};
 
@@ -21,18 +22,7 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
     fixture.seed().await;
     let queue = connect_redis().await;
     let streams = FleetStreams::new(queue.clone());
-    streams
-        .ensure_group(&fixture.deliverable)
-        .await
-        .expect("the deliverable group exists");
-    streams
-        .append(&fixture.deliverable, &[("type", "reclaim-test")])
-        .await
-        .expect("the undelivered entry appends");
-    streams
-        .ensure_group(&fixture.empty)
-        .await
-        .expect("the empty group exists");
+    fixture.open_streams(&streams).await;
 
     let (_hub, mut rings) = listen_for_rings(&fixture.deliverable).await;
     let reclaim = Reclaim::new(fixture.database.clone(), queue.clone(), "sweep-test");
@@ -67,18 +57,7 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
         "an empty stream does not create a false readiness hint"
     );
 
-    ReadyIndex::new(queue.clone())
-        .force_clear(&fixture.deliverable)
-        .await
-        .expect("the readiness fixture cleans up");
-    streams
-        .forget(&fixture.deliverable)
-        .await
-        .expect("the deliverable stream cleans up");
-    streams
-        .forget(&fixture.empty)
-        .await
-        .expect("the empty stream cleans up");
+    fixture.forget_streams(&queue, &streams).await;
     fixture.cleanup().await;
 }
 
@@ -111,27 +90,56 @@ impl Fixture {
                INSERT INTO core.tenants (id, name, created_at, updated_at) \
                VALUES ($1::uuid, 'Reclaim sweep', 1, 1) \
                RETURNING id \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               SELECT $2::uuid, id, 'reclaim', 'test', 1 FROM tenant \
-               RETURNING id, tenant_id \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             SELECT $3::uuid, id, tenant_id, 'deliverable', '# fixture', '{}'::jsonb, \
-                    'active', 1, 1 FROM workspace \
-             UNION ALL \
-             SELECT $4::uuid, id, tenant_id, 'empty', '# fixture', '{}'::jsonb, \
-                    'active', 1, 1 FROM workspace",
+             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+             SELECT $2::uuid, id, 'reclaim', 'test', 1 FROM tenant",
         )
         .bind(&self.tenant)
         .bind(&self.workspace)
-        .bind(&self.deliverable)
-        .bind(&self.empty)
         .execute(&mut *connection)
         .await
         .expect("the active fleet rows seed");
+        for (fleet, name) in [(&self.deliverable, "deliverable"), (&self.empty, "empty")] {
+            FleetSeed::new(fleet, &self.workspace, &self.tenant, FLEET_STATUS_ACTIVE)
+                .name(name)
+                .at(1)
+                .insert(&mut *connection)
+                .await
+                .expect("the active fleet rows seed");
+        }
+    }
+
+    /// Gives the deliverable fleet a stream holding one undelivered entry, and
+    /// the empty fleet a stream holding none.
+    async fn open_streams(&self, streams: &FleetStreams) {
+        streams
+            .ensure_group(&self.deliverable)
+            .await
+            .expect("the deliverable group exists");
+        streams
+            .append(&self.deliverable, &[("type", "reclaim-test")])
+            .await
+            .expect("the undelivered entry appends");
+        streams
+            .ensure_group(&self.empty)
+            .await
+            .expect("the empty group exists");
+    }
+
+    /// Clears the readiness mark the sweep wrote and both fixture streams.
+    async fn forget_streams(&self, queue: &Dragonfly, streams: &FleetStreams) {
+        ReadyIndex::new(queue.clone())
+            .force_clear(&self.deliverable)
+            .await
+            .expect("the readiness fixture cleans up");
+        streams
+            .forget(&self.deliverable)
+            .await
+            .expect("the deliverable stream cleans up");
+        streams
+            .forget(&self.empty)
+            .await
+            .expect("the empty stream cleans up");
     }
 
     async fn cleanup(self) {

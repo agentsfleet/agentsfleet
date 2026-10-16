@@ -35,7 +35,7 @@ export function DropdownMenuContent({
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-xl",
+          "z-50 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-floating",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -56,8 +56,8 @@ export function DropdownMenuItem({ className, inset, ref, ...props }: DropdownMe
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none transition-colors",
-        "text-muted-foreground hover:bg-accent hover:text-foreground",
+        "relative flex min-h-9 cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-2 text-body-sm leading-body-sm outline-none transition-colors pointer-coarse:min-h-11",
+        "text-foreground hover:bg-accent",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         "focus:bg-accent focus:text-foreground",
         inset && "pl-8",

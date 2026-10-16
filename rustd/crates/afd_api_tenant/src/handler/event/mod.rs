@@ -296,7 +296,6 @@ pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
         wall_ms: row.wall_ms,
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),
         failure_detail: row.failure_detail.as_deref().map(Cow::Borrowed),
-        checkpoint_id: row.checkpoint_id.as_deref().map(Cow::Borrowed),
         resumes_event_id: row.resumes_event_id.as_deref().map(Cow::Borrowed),
         created_at: row.created_at,
         updated_at: row.updated_at,

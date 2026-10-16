@@ -3,14 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Secret } from "@/lib/api/secrets";
-import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { SECRETS_LOAD, type SecretsLoad } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load";
 
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 const replaceSecretActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
-let unsubscribeRefresh: (() => void) | null = null;
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
@@ -97,8 +95,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  unsubscribeRefresh?.();
-  unsubscribeRefresh = null;
   cleanup();
 });
 
@@ -308,8 +304,6 @@ describe("AddModelEntryDialog — known provider, new key", () => {
   });
 
   it("surfaces a register error without activating, when the entry create fails", async () => {
-    const onboardingRefresh = vi.fn();
-    unsubscribeRefresh = subscribeOnboardingRefresh("ws_1", onboardingRefresh);
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
@@ -319,7 +313,6 @@ describe("AddModelEntryDialog — known provider, new key", () => {
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
-    expect(onboardingRefresh).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -328,8 +321,6 @@ describe("AddModelEntryDialog — known provider, new key", () => {
   ])("surfaces an activation error after registration with secrets=$secretChanged", async ({
     secrets, name, key, secretChanged,
   }) => {
-    const onboardingRefresh = vi.fn();
-    unsubscribeRefresh = subscribeOnboardingRefresh("ws_1", onboardingRefresh);
     setProviderSelfManagedActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-PROVIDER-003" });
     const { onCreated, onSecretsChanged, user } = await renderDialog(secrets);
     const dialog = screen.getByRole("dialog");
@@ -344,7 +335,6 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     // regardless of outcome" convention).
     expect(onCreated).toHaveBeenCalled();
     expect(onSecretsChanged).toHaveBeenCalledTimes(secretChanged ? 1 : 0);
-    expect(onboardingRefresh).toHaveBeenCalledTimes(secretChanged ? 1 : 0);
     // Dialog stays open — the user can see the error, not silently closed.
     expect(screen.getByRole("dialog")).toBeTruthy();
   });

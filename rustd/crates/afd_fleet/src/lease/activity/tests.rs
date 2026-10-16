@@ -40,8 +40,8 @@ fn target() -> Target {
 }
 
 /// One frame of every kind, each tool frame naming `call_id`.
-fn every_frame(call_id: Option<&'static str>) -> [ActivityFrame<'static>; 4] {
-    let call_id = call_id.map(Cow::Borrowed);
+fn every_frame(call_id: &'static str) -> [ActivityFrame<'static>; 4] {
+    let call_id = Cow::Borrowed(call_id);
     [
         ActivityFrame::ToolCallStarted(ToolCallStarted {
             name: Cow::Borrowed(TOOL),
@@ -57,7 +57,7 @@ fn every_frame(call_id: Option<&'static str>) -> [ActivityFrame<'static>; 4] {
             name: Cow::Borrowed(TOOL),
             ms: 2,
             call_id,
-            status: None,
+            status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
             output_head: None,
             output_tail: None,
             output_line_count: None,
@@ -65,7 +65,7 @@ fn every_frame(call_id: Option<&'static str>) -> [ActivityFrame<'static>; 4] {
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: None,
+            text_kind: afd_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: None,
             stream_start: false,
             stream_contiguous: false,
@@ -81,15 +81,12 @@ fn published(frame: &ActivityFrame<'_>) -> serde_json::Value {
 }
 
 #[test]
-fn tool_frames_republish_their_call_id_and_never_invent_one() {
+fn tool_frames_republish_their_call_id_and_a_chunk_names_none() {
     let fenced = serde_json::Value::from(format!("{FENCE}:{RUNNER_CALL}"));
-    for frame in every_frame(Some(RUNNER_CALL)) {
+    for frame in every_frame(RUNNER_CALL) {
         let value = published(&frame);
         let expected = frame.call_id().map(|_named| fenced.clone());
         assert_eq!(value.get("call_id").cloned(), expected, "{value}");
-    }
-    for frame in every_frame(None) {
-        assert!(published(&frame).get("call_id").is_none());
     }
 }
 
@@ -101,7 +98,7 @@ fn one_runner_call_id_under_two_fences_publishes_two_ids() {
         fence: FENCE + 1,
         ..target()
     };
-    let [started, ..] = every_frame(Some(RUNNER_CALL));
+    let [started, ..] = every_frame(RUNNER_CALL);
     let first = published(&started);
     let second = serde_json::to_value(
         Published::of(&reclaimed, &started).expect("every fixture frame renders"),
@@ -119,7 +116,7 @@ fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
     let chunk = |stream_start, stream_contiguous, stream_seq| {
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: Some(afd_wire::activity::StreamTextKind::Answer),
+            text_kind: afd_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: Some(42),
             stream_start,
             stream_contiguous,
@@ -129,18 +126,9 @@ fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
     let dropped_first = chunk(false, false, 1);
     let repeated_start = chunk(true, true, 1);
     let valid = chunk(true, true, 0);
-    let old_runner = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
-        text: Cow::Borrowed("old"),
-        text_kind: None,
-        first_chunk_after_ms: Some(42),
-        stream_start: true,
-        stream_contiguous: true,
-        stream_seq: 0,
-    });
     assert_eq!(first_visible_candidate_ms(&[dropped_first]), None);
     assert_eq!(first_visible_candidate_ms(&[repeated_start]), None);
     assert_eq!(first_visible_candidate_ms(&[valid]), Some(42));
-    assert_eq!(first_visible_candidate_ms(&[old_runner]), None);
 }
 
 #[test]
@@ -153,7 +141,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     ] {
         let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: Some(afd_wire::activity::StreamTextKind::Answer),
+            text_kind: afd_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms,
             stream_start,
             stream_contiguous,
@@ -174,7 +162,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     };
     let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed("stale"),
-        text_kind: None,
+        text_kind: afd_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: Some(42),
         stream_start: true,
         stream_contiguous: true,
@@ -184,7 +172,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     let value = serde_json::to_value(published).expect("published chunk serializes");
     assert_eq!(value["stream_start"], false);
     assert_eq!(value["stream_contiguous"], false);
-    assert!(value.get("text_kind").is_none());
+    assert_eq!(value["text_kind"], "answer");
 }
 
 #[test]
@@ -193,8 +181,8 @@ fn test_published_completed_carries_outcome() {
     let frame = ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(TOOL),
         ms: 2,
-        call_id: Some(Cow::Borrowed(RUNNER_CALL)),
-        status: Some(ToolCallStatus::Failed),
+        call_id: Cow::Borrowed(RUNNER_CALL),
+        status: ToolCallStatus::Failed,
         output_head: Some(Cow::Borrowed("error: denied")),
         output_tail: Some(Cow::Borrowed("exit")),
         output_line_count: Some(40),
@@ -208,10 +196,10 @@ fn test_published_completed_carries_outcome() {
     assert_eq!(value["output_line_count"], 40);
     assert_eq!(value["exit_code"], 2);
 
-    let [.., completed, _chunk] = every_frame(None);
+    let [.., completed, _chunk] = every_frame(RUNNER_CALL);
     let bare = published(&completed);
+    assert_eq!(bare["status"], "succeeded");
     for absent in [
-        "status",
         "output_head",
         "output_tail",
         "output_line_count",
@@ -232,7 +220,7 @@ async fn a_dropped_activity_batch_reason_carries_no_code_prefix() {
     let log = afd_core::test_util::trace::Capture::install();
 
     crate::lease::test_dead::leases()
-        .publish_activity(&target(), &every_frame(None))
+        .publish_activity(&target(), &every_frame(RUNNER_CALL))
         .await;
 
     let line = log.only(super::EVENT_DROPPED);

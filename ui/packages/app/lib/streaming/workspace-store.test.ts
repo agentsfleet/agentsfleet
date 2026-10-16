@@ -146,7 +146,7 @@ describe("the tile counters are a snapshot the store assigns", () => {
 
   it("a runner's mid-run frame says nothing about where the fleet stands", () => {
     push(FLEET_A, received(FLEET_A, "e1", STANDING));
-    push(FLEET_A, { kind: FRAME_KIND.CHUNK, fleet_id: FLEET_A, event_id: "e1", text: "…" });
+    push(FLEET_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: FLEET_A, event_id: "e1", text: "…" });
     expect(store.snapshot(FLEET_A).counters).toEqual({
       eventsProcessed: STANDING.events_processed,
       spentNanos: STANDING.budget_used_nanos,

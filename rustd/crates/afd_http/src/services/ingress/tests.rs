@@ -5,13 +5,19 @@
 
 use std::sync::Arc;
 
+use afd_connector::Provider;
+use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
+use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, Resident};
 use afd_ingress::{Binding, Delivery, Ingress, Surface};
 use afd_vault::Vault;
+
+use super::WebhookIngress;
 
 /// A Postgres nobody is listening on. Port 1 is reserved and unbound, so an
 /// acquire fails on connection REFUSAL rather than waiting out a timeout.
@@ -26,6 +32,9 @@ const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 /// Long enough that a refused connect is classified as UNAVAILABLE rather
 /// than as pool capacity, short enough that seven of them cost nothing.
 const ACQUIRE_TIMEOUT_MS: &str = "50";
+
+/// The empty JSON object the fixtures send where a body or address is unused.
+const EMPTY_OBJECT: &str = "{}";
 
 /// The production ingress, over three handles that answer nothing.
 fn refusing() -> Ingress {
@@ -60,20 +69,29 @@ const fn refused<T, E>(answer: &Result<T, E>) -> bool {
     answer.is_err()
 }
 
+/// The fleet every reader is asked about.
+fn fleet() -> Uuid7 {
+    Uuid7::parse("019329c5-0000-7000-8000-0000000000c1").expect("the fixture fleet is canonical")
+}
+
+/// The workspace that fleet lives in.
+fn workspace() -> Uuid7 {
+    Uuid7::parse("019329c5-0000-7000-8000-0000000000c2")
+        .expect("the fixture workspace is canonical")
+}
+
 /// A binding to hand the readers that take one.
 fn binding() -> Binding {
     Binding::stored(
-        afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c1")
-            .expect("the fixture fleet is canonical"),
-        afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c2")
-            .expect("the fixture workspace is canonical"),
+        fleet(),
+        workspace(),
         "active",
         &serde_json::json!({
             "name": "adapter",
             "x-agentsfleet": {
                 "triggers": [{"type": "webhook", "source": "github"}],
                 "tools": ["bash"],
-                "budget": {"daily_dollars": 1.0},
+                "budget": {"daily_nanos": afd_core::money::NANOS_PER_USD.to_string()},
             },
         })
         .to_string(),
@@ -98,8 +116,7 @@ fn binding() -> Binding {
 #[tokio::test]
 async fn every_reader_on_the_seam_reaches_a_store() {
     let ingress = refusing();
-    let fleet = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c1")
-        .expect("the fixture fleet is canonical");
+    let fleet = fleet();
     let held = binding();
 
     assert!(refused(
@@ -134,11 +151,37 @@ async fn every_reader_on_the_seam_reaches_a_store() {
             &Delivery {
                 event_id: "adapter",
                 actor: "webhook:github",
-                request_json: "{}",
+                request_json: EMPTY_OBJECT,
             },
         )
         .await
     ));
+}
+
+/// One Slack mention of `fleet`, as the admission reader takes it.
+fn mention<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> MentionAdmission<'a> {
+    MentionAdmission {
+        fleet,
+        workspace,
+        team_id: "TSEAM",
+        event_id: "EvSeam",
+        user: "U0SEAM",
+        request_json: EMPTY_OBJECT,
+        connector: "slack",
+        address: EMPTY_OBJECT,
+    }
+}
+
+/// The notice that mention owes, posted by `fleet` as the resident.
+fn notice<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> NoticeOwed<'a> {
+    NoticeOwed {
+        resident: fleet,
+        workspace,
+        provider: Provider::Slack,
+        key: "TSEAM:EvSeam:notice",
+        address: EMPTY_OBJECT,
+        text: "notice",
+    }
 }
 
 /// The chat-mention half of the seam reaches its store too.
@@ -149,10 +192,7 @@ async fn every_reader_on_the_seam_reaches_a_store() {
 #[tokio::test]
 async fn every_mention_reader_on_the_seam_reaches_a_store() {
     let ingress = refusing();
-    let fleet = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c1")
-        .expect("the fixture fleet is canonical");
-    let workspace = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000c2")
-        .expect("the fixture workspace is canonical");
+    let (fleet, workspace) = (fleet(), workspace());
     let channel: ChannelId = "C0123456789".parse().expect("the channel is well formed");
     let resident = Resident::for_channel("TSEAM", &channel).expect("the resident is named");
     let now = UnixMillis::from_millis(1);
@@ -161,20 +201,7 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
         &WebhookIngress::mention_subscribers(&ingress, &workspace, "slack", &channel).await
     ));
     assert!(refused(
-        &WebhookIngress::admit_mention(
-            &ingress,
-            MentionAdmission {
-                fleet: &fleet,
-                workspace: &workspace,
-                team_id: "TSEAM",
-                event_id: "EvSeam",
-                user: "U0SEAM",
-                request_json: "{}",
-                connector: "slack",
-                address: "{}",
-            },
-        )
-        .await
+        &WebhookIngress::admit_mention(&ingress, mention(&fleet, &workspace)).await
     ));
     assert!(refused(
         &WebhookIngress::resident(&ingress, &workspace, "slack", "TSEAM", &channel).await
@@ -189,24 +216,6 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
         &WebhookIngress::resident_named(&ingress, &workspace, &resident).await
     ));
     assert!(refused(
-        &WebhookIngress::owe_notice(
-            &ingress,
-            NoticeOwed {
-                resident: &fleet,
-                workspace: &workspace,
-                provider: Provider::Slack,
-                key: "TSEAM:EvSeam:notice",
-                address: "{}",
-                text: "notice",
-            },
-            now,
-        )
-        .await
+        &WebhookIngress::owe_notice(&ingress, notice(&fleet, &workspace), now).await
     ));
 }
-
-use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
-use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, Resident};
-
-use super::WebhookIngress;

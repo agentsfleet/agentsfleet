@@ -4,8 +4,9 @@
 Each rule pairs a value the code declares with the page that tells a reader
 about it: a byte bound with the OpenAPI description that promises it, a scope
 or role spelling with the contributor auth page, a connector's OAuth scopes
-with the registration playbook an operator follows. The code is right by
-definition; a finding means the prose went stale.
+with the registration playbook an operator follows, the architecture page's
+route tables with the routes the published document serves. The code is right
+by definition; a finding means the prose went stale.
 
     python3 scripts/check_documentation_parity.py [--root <dir>]
 
@@ -22,6 +23,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import check_source_lib as lib
+import route_tables
 
 OPENAPI = "public/openapi.json"
 AUTH_PAGE = "docs/AUTH.md"
@@ -29,7 +31,7 @@ WIRE_SRC = "rustd/crates/afd_wire/src"
 SCOPE_SRC = "rustd/crates/afd_auth/src/scope.rs"
 ROLE_SRC = "rustd/crates/afd_tenant/src/workspace/access.rs"
 ERROR_CODE_SRC = "rustd/crates/afd_core/src/error_code"
-REGISTRY_SRC = "rustd/crates/afd_connector/src/registry.rs"
+REGISTRY_SRC = "rustd/crates/afd_connector/src/registry/mod.rs"
 
 RUST_CONST = re.compile(r"\bconst (?P<name>[A-Z][A-Z0-9_]*): usize = (?P<value>[0-9_ *+]+);")
 RUST_STR_CONST = re.compile(r'\bconst (?P<name>[A-Z][A-Z0-9_]*): &str = "(?P<value>[^"]*)";')
@@ -177,7 +179,20 @@ def check_registration_scopes(sources: Sources) -> list[lib.Finding]:
     return findings
 
 
-RULES = (check_openapi_bounds, check_auth_page, check_registration_scopes)
+def check_route_tables(sources: Sources) -> list[lib.Finding]:
+    page = sources.text(route_tables.PAGE)
+    text = sources.text(OPENAPI)
+    if not page:
+        return [lib.Finding(route_tables.PAGE, 1, route_tables.RULE_COUNT, "the architecture page is missing")]
+    if not text:
+        return []  # check_openapi_bounds already reports the missing document.
+    return [
+        lib.Finding(route_tables.PAGE, 1, rule, message)
+        for rule, message in route_tables.findings(page, json.loads(text))
+    ]
+
+
+RULES = (check_openapi_bounds, check_auth_page, check_registration_scopes, check_route_tables)
 
 
 def lint(root: Path) -> list[lib.Finding]:

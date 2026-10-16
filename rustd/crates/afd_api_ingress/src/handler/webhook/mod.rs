@@ -23,7 +23,7 @@ pub(crate) mod github;
 pub(crate) mod github_route;
 pub(crate) mod identity_route;
 pub(crate) mod qstash_route;
-pub(crate) mod receive_route;
+pub(crate) mod source_route;
 pub(crate) mod svix_route;
 
 mod delivery;

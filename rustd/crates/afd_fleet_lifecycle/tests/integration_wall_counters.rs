@@ -15,10 +15,7 @@ use afd_api_wire::tail::FleetCounters;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 
-use afd_fleet_lifecycle::{Install, LibrarySource};
-
-use crate::integration_patch_visibility::installed;
-use crate::support::{LIBRARY_ID, Lane, mint};
+use crate::support::{Lane, mint};
 
 /// The page size the reads below ask for; larger than any lane seeds.
 const PAGE: u32 = 50;
@@ -52,9 +49,9 @@ pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCou
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_fleet_with_no_counter_row_still_lists() {
     let lane = Lane::create().await;
-    let ran = installed(&lane).await;
-    let idle = installed(&lane).await;
-    seed_counters(&lane, &ran.id, RAN).await;
+    let ran = lane.fleet().await;
+    let idle = lane.fleet().await;
+    seed_counters(&lane, &ran, RAN).await;
 
     let page = lane
         .fleets
@@ -67,13 +64,13 @@ async fn a_fleet_with_no_counter_row_still_lists() {
             .find(|row| row.id == fleet.as_str())
             .expect("an installed fleet lists whether or not it has run")
     };
-    let idle_row = row(&idle.id);
+    let idle_row = row(&idle);
     assert_eq!(
         idle_row.events_processed, 0,
         "a fleet that never ran lists with zeros"
     );
     assert_eq!(idle_row.budget_used_nanos, 0);
-    let ran_row = row(&ran.id);
+    let ran_row = row(&ran);
     assert_eq!(ran_row.events_processed, RAN.events_processed);
     assert_eq!(ran_row.budget_used_nanos, RAN.budget_used_nanos);
 
@@ -87,14 +84,14 @@ async fn a_fleet_with_no_counter_row_still_lists() {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_wall_counters_answer_every_fleet_in_the_set() {
     let lane = Lane::create().await;
-    let ran = installed(&lane).await;
-    let idle = installed(&lane).await;
-    seed_counters(&lane, &ran.id, RAN).await;
+    let ran = lane.fleet().await;
+    let idle = lane.fleet().await;
+    seed_counters(&lane, &ran, RAN).await;
     let stranger = mint();
 
     let set = [
-        ran.id.as_str().to_owned(),
-        idle.id.as_str().to_owned(),
+        ran.as_str().to_owned(),
+        idle.as_str().to_owned(),
         stranger.as_str().to_owned(),
     ];
     let counters = lane
@@ -103,9 +100,9 @@ async fn the_wall_counters_answer_every_fleet_in_the_set() {
         .await
         .expect("the set reads");
 
-    assert_eq!(counters.get(ran.id.as_str()), Some(&RAN));
+    assert_eq!(counters.get(ran.as_str()), Some(&RAN));
     assert_eq!(
-        counters.get(idle.id.as_str()),
+        counters.get(idle.as_str()),
         Some(&FleetCounters {
             events_processed: 0,
             budget_used_nanos: 0,
@@ -151,34 +148,22 @@ async fn a_refused_counters_read_is_reported_as_the_datastores() {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn a_neighbours_fleet_is_not_answered_for() {
     let lane = Lane::create().await;
-    let own = installed(&lane).await;
+    let own = lane.fleet().await;
     let neighbour = lane.another_workspace().await;
-    let theirs = lane
-        .fleets
-        .install(
-            &neighbour,
-            &Install {
-                source: LibrarySource::Platform(LIBRARY_ID),
-                name: None,
-                mention: None,
-            },
-            Lane::now(),
-        )
-        .await
-        .expect("the neighbour's fleet installs");
-    seed_counters(&lane, &theirs.id, RAN).await;
+    let theirs = lane.fleet_at(&neighbour, Lane::now()).await;
+    seed_counters(&lane, &theirs, RAN).await;
 
     let counters = lane
         .fleets
         .counters(
             &lane.workspace,
-            &[own.id.as_str().to_owned(), theirs.id.as_str().to_owned()],
+            &[own.as_str().to_owned(), theirs.as_str().to_owned()],
         )
         .await
         .expect("the set reads");
-    assert!(counters.contains_key(own.id.as_str()));
+    assert!(counters.contains_key(own.as_str()));
     assert_eq!(
-        counters.get(theirs.id.as_str()),
+        counters.get(theirs.as_str()),
         None,
         "another workspace's fleet is absent, not zeroed and not disclosed"
     );

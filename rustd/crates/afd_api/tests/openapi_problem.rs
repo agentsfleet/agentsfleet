@@ -80,52 +80,24 @@ async fn wire_keys(problem: ProblemResponse) -> BTreeSet<String> {
 fn test_every_refusal_names_the_problem_body() {
     let document = document();
     let expected = format!("{SCHEMA_PREFIX}{}", ProblemBody::name());
-    let mut wrong = Vec::new();
-    let mut graded = 0_usize;
+    // The production predicate, not a second spelling of it: a test that
+    // decided "refusal" its own way would pass while the two disagreed about
+    // `default` and the range keys.
+    let refusals: Vec<_> = declared_responses(&document)
+        .into_iter()
+        .filter(|(_, _, code, _)| afd_api::openapi::is_a_refusal(code))
+        .collect();
+    let wrong: Vec<String> = refusals
+        .iter()
+        .filter_map(|&(method, path, code, response)| {
+            refusal_body_fault(method, path, code, response, &expected)
+        })
+        .collect();
 
-    let paths = document.get("paths").and_then(serde_json::Value::as_object);
-    for (path, item) in paths.into_iter().flatten() {
-        for method in METHODS {
-            let Some(operation) = item.get(method) else {
-                continue;
-            };
-            let responses = operation
-                .get("responses")
-                .and_then(serde_json::Value::as_object);
-            for (code, response) in responses.into_iter().flatten() {
-                // The production predicate, not a second spelling of it: a
-                // test that decided "refusal" its own way would pass while the
-                // two disagreed about `default` and the range keys.
-                if !afd_api::openapi::is_a_refusal(code) {
-                    continue;
-                }
-                graded += 1;
-                let excused = SELF_DESCRIBED.iter().any(|(verb, template, status, _)| {
-                    *verb == method && template == path && status == code
-                });
-                if excused {
-                    if response.get("content").is_none() {
-                        wrong.push(format!(
-                            "{} {path} {code}: held out and yet silent",
-                            method.to_uppercase()
-                        ));
-                    }
-                    continue;
-                }
-                let target = response
-                    .get("content")
-                    .and_then(|content| content.get(CONTENT_TYPE_PROBLEM_JSON))
-                    .and_then(|media| media.get("schema"))
-                    .and_then(|schema| schema.get("$ref"))
-                    .and_then(serde_json::Value::as_str);
-                if target != Some(expected.as_str()) {
-                    wrong.push(format!("{} {path} {code}", method.to_uppercase()));
-                }
-            }
-        }
-    }
-
-    assert!(graded > 0, "the document declares no refusals at all");
+    assert!(
+        !refusals.is_empty(),
+        "the document declares no refusals at all"
+    );
     assert!(
         successes_carrying_a_problem_body(&document).is_empty(),
         "a success carries a refusal body, so the pass has widened past the \
@@ -141,37 +113,77 @@ fn test_every_refusal_names_the_problem_body() {
     );
 }
 
+/// What is wrong with one refusal's declared body, or `None` when it names the
+/// problem body.
+///
+/// A refusal held out in [`SELF_DESCRIBED`] still has to declare SOME body: a
+/// held-out refusal that is silent is the same blind spot the hold-out exists
+/// to avoid.
+fn refusal_body_fault(
+    method: &str,
+    path: &str,
+    code: &str,
+    response: &serde_json::Value,
+    expected: &str,
+) -> Option<String> {
+    let excused = SELF_DESCRIBED
+        .iter()
+        .any(|(verb, template, status, _)| *verb == method && *template == path && *status == code);
+    if excused {
+        return response.get("content").is_none().then(|| {
+            format!(
+                "{} {path} {code}: held out and yet silent",
+                method.to_uppercase()
+            )
+        });
+    }
+    let target = response
+        .get("content")
+        .and_then(|content| content.get(CONTENT_TYPE_PROBLEM_JSON))
+        .and_then(|media| media.get("schema"))
+        .and_then(|schema| schema.get("$ref"))
+        .and_then(serde_json::Value::as_str);
+    (target != Some(expected)).then(|| format!("{} {path} {code}", method.to_uppercase()))
+}
+
+/// Every response the document declares, with the verb, path and status key
+/// it answers under.
+fn declared_responses(
+    document: &serde_json::Value,
+) -> Vec<(&'static str, &str, &str, &serde_json::Value)> {
+    let mut declared = Vec::new();
+    let paths = document.get("paths").and_then(serde_json::Value::as_object);
+    for (path, item) in paths.into_iter().flatten() {
+        for method in METHODS {
+            let responses = item
+                .get(method)
+                .and_then(|operation| operation.get("responses"))
+                .and_then(serde_json::Value::as_object);
+            for (code, response) in responses.into_iter().flatten() {
+                declared.push((method, path.as_str(), code.as_str(), response));
+            }
+        }
+    }
+    declared
+}
+
 /// Every success or redirect that wrongly carries a refusal body.
 ///
 /// The negative half of the gate above. Without it a pass widened to every
 /// parseable status would stamp `application/problem+json` onto all thirteen
 /// of the document's 204s and the positive assertion would still be green.
 fn successes_carrying_a_problem_body(document: &serde_json::Value) -> Vec<String> {
-    let mut wrong = Vec::new();
-    let paths = document.get("paths").and_then(serde_json::Value::as_object);
-    for (path, item) in paths.into_iter().flatten() {
-        for method in METHODS {
-            let Some(operation) = item.get(method) else {
-                continue;
-            };
-            let responses = operation
-                .get("responses")
-                .and_then(serde_json::Value::as_object);
-            for (code, response) in responses.into_iter().flatten() {
-                if afd_api::openapi::is_a_refusal(code) {
-                    continue;
-                }
-                if response
+    declared_responses(document)
+        .into_iter()
+        .filter(|(_, _, code, response)| {
+            !afd_api::openapi::is_a_refusal(code)
+                && response
                     .get("content")
                     .and_then(|content| content.get(CONTENT_TYPE_PROBLEM_JSON))
                     .is_some()
-                {
-                    wrong.push(format!("{} {path} {code}", method.to_uppercase()));
-                }
-            }
-        }
-    }
-    wrong
+        })
+        .map(|(method, path, code, _)| format!("{} {path} {code}", method.to_uppercase()))
+        .collect()
 }
 
 /// The schema the document publishes is the envelope the daemon writes.
@@ -182,27 +194,7 @@ fn successes_carrying_a_problem_body(document: &serde_json::Value) -> Vec<String
 /// null the client did not expect.
 #[tokio::test]
 async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
-    let document = document();
-    let schema = document
-        .get("components")
-        .and_then(|components| components.get("schemas"))
-        .and_then(|schemas| schemas.get(ProblemBody::name().as_ref()))
-        .expect("the document carries the problem body");
-    let promised: BTreeSet<String> = schema
-        .get("properties")
-        .and_then(serde_json::Value::as_object)
-        .expect("the problem body has properties")
-        .keys()
-        .cloned()
-        .collect();
-    let required: BTreeSet<String> = schema
-        .get("required")
-        .and_then(serde_json::Value::as_array)
-        .expect("the problem body names its required fields")
-        .iter()
-        .filter_map(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .collect();
+    let (promised, required) = schema_fields(&document());
 
     let base = wire_keys(ProblemResponse::new(
         error_code::AUTH_UNAUTHORIZED,
@@ -224,33 +216,10 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
         "W/\"v7\"",
     ))
     .await;
-    let mut sent: BTreeSet<String> = BTreeSet::new();
-    for problem in afd_core::problem::entries() {
-        sent.extend(wire_keys(ProblemResponse::new(problem.code(), "d", "r")).await);
-    }
-    let standing = wire_keys(ProblemResponse::already_resolved(
-        error_code::AUTH_UNAUTHORIZED,
-        "d",
-        "r",
-        Resolution {
-            gate_id: "g".to_owned(),
-            action_id: "a".to_owned(),
-            outcome: "approved".to_owned(),
-            resolved_at: 1,
-            resolved_by: "someone".to_owned(),
-        },
-    ))
-    .await;
-    let short_a_credential = wire_keys(ProblemResponse::missing_secrets(
-        error_code::AUTH_UNAUTHORIZED,
-        "d",
-        "r",
-        vec!["github".to_owned()],
-    ))
-    .await;
+    let mut sent = registered_keys().await;
+    let standing = standing_keys().await;
     sent.extend(conflict.iter().cloned());
     sent.extend(precondition.iter().cloned());
-    sent.extend(short_a_credential.iter().cloned());
     sent.extend(standing.iter().cloned());
 
     assert_eq!(required, base, "required is what every refusal carries");
@@ -259,7 +228,6 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
         "the schema promises the fields the writer sends, and no others"
     );
     assert!(conflict.contains("current_state") && precondition.contains("etag"));
-    assert!(short_a_credential.contains("missing_secrets"));
     for member in [
         "gate_id",
         "action_id",
@@ -272,4 +240,56 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
             "{member} is what the dashboard renders off an answered gate"
         );
     }
+}
+
+/// The fields the published problem schema promises, and the subset it
+/// requires.
+fn schema_fields(document: &serde_json::Value) -> (BTreeSet<String>, BTreeSet<String>) {
+    let schema = document
+        .get("components")
+        .and_then(|components| components.get("schemas"))
+        .and_then(|schemas| schemas.get(ProblemBody::name().as_ref()))
+        .expect("the document carries the problem body");
+    let promised: BTreeSet<String> = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("the problem body has properties")
+        .keys()
+        .cloned()
+        .collect();
+    let required: BTreeSet<String> = schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .expect("the problem body names its required fields")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    (promised, required)
+}
+
+/// The keys a plain refusal puts on the wire, across every registered code.
+async fn registered_keys() -> BTreeSet<String> {
+    let mut sent = BTreeSet::new();
+    for problem in afd_core::problem::entries() {
+        sent.extend(wire_keys(ProblemResponse::new(problem.code(), "d", "r")).await);
+    }
+    sent
+}
+
+/// The keys an answer to an already-resolved gate puts on the wire.
+async fn standing_keys() -> BTreeSet<String> {
+    wire_keys(ProblemResponse::already_resolved(
+        error_code::AUTH_UNAUTHORIZED,
+        "d",
+        "r",
+        Resolution {
+            gate_id: "g".to_owned(),
+            action_id: "a".to_owned(),
+            outcome: "approved".to_owned(),
+            resolved_at: 1,
+            resolved_by: "someone".to_owned(),
+        },
+    ))
+    .await
 }

@@ -24,7 +24,7 @@ use afd_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSA
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
-use crate::bundle_install::seal;
+use crate::definition_install::seal;
 use crate::speaking::Speaking;
 use crate::verbs::{CHANNEL, THREAD, posts};
 use crate::wire::post;
@@ -39,7 +39,7 @@ const TOKEN: &str = "glsa_fixture_interim_secret";
 const OVER_BY: usize = 1024;
 
 /// A fleet that declares [`CREDENTIAL`].
-const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"credentials":["grafana"],"budget":{"daily_dollars":1.0}}}"#;
+const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// Dimension 2.1. A line reaches the event's Slack thread while the run is
 /// still leased, under its own marker part.

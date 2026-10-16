@@ -96,10 +96,6 @@ impl<'a> Heartbeat<'a> {
     }
 
     /// Beats once, carrying a self-test when one was asked for.
-    ///
-    /// A null policy is a row the daemon could not read, and the runner fails
-    /// closed on it: no workers, no egress, and no label for a self-test to
-    /// run under.
     pub(crate) async fn beat(&mut self) -> Result<Assignment> {
         let selftest = self
             .label
@@ -124,15 +120,15 @@ impl<'a> Heartbeat<'a> {
                 Err(failure) => unreadable_release(inactive, failure),
             }
         }
-        let policy = reply.assigned_policy.as_ref();
+        let policy = &reply.assigned_policy;
         self.selftest_due = reply.selftest_requested;
-        self.label = policy.map(|policy| (policy.sandbox_tier, policy.network_policy));
+        self.label = Some((policy.sandbox_tier, policy.network_policy));
         self.last = Assignment {
             status: reply.status,
-            workers: policy.map_or(0, |policy| WorkerCount::clamping(policy.worker_count).get()),
+            workers: WorkerCount::clamping(policy.worker_count).get(),
             interval: Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
                 .max(MIN_HEARTBEAT_INTERVAL),
-            egress: policy.map_or_else(Egress::closed, Egress::assigned),
+            egress: Egress::assigned(policy),
         };
         Ok(self.last.clone())
     }

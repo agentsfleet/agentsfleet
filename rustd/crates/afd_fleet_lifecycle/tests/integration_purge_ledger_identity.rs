@@ -28,9 +28,6 @@
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
-use afd_fleet_lifecycle::{Patch, Requested};
-
-use crate::integration_patch_visibility::installed;
 use crate::support::{Lane, mint};
 
 /// The name the fleet carries when the charge is written.
@@ -152,25 +149,7 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     .await
     .expect("seeding a memory entry");
 
-    for action in ["deploy", "rollback"] {
-        sqlx::query(
-            "INSERT INTO core.fleet_approval_gates
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-                resolved_by, status, detail, created_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'shell', $4,
-                     'confirm', $4, '{}'::jsonb, 'workspace', $5,
-                     '', 'pending', '', $5)",
-        )
-        .bind(mint().as_str())
-        .bind(fleet.as_str())
-        .bind(lane.workspace.as_str())
-        .bind(action)
-        .bind(at)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding an approval gate");
-    }
+    seed_approval_gates(&mut connection, lane, fleet, at).await;
 
     sqlx::query(
         "INSERT INTO core.integration_grants
@@ -196,24 +175,33 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     .expect("seeding a session");
 }
 
-/// Takes the fleet to `killed`, which is the only status a purge accepts.
-///
-/// `Fleets::purge` probes the status first and answers `MustKillFirst` for
-/// anything else — deleting a fleet is two deliberate steps, not one, so an
-/// operator cannot erase a running fleet with a single call.
-pub(crate) async fn kill(lane: &Lane, fleet: &Uuid7) {
-    lane.fleets
-        .patch(
-            &lane.workspace,
-            fleet,
-            &Patch {
-                status: Some(Requested::Killed),
-                ..Patch::default()
-            },
-            Lane::now(),
+/// Two pending approval gates on the fleet — see
+/// [`seed_everything_the_purge_destroys`] for why two.
+async fn seed_approval_gates(
+    connection: &mut sqlx::PgConnection,
+    lane: &Lane,
+    fleet: &Uuid7,
+    at: i64,
+) {
+    for action in ["deploy", "rollback"] {
+        sqlx::query(
+            "INSERT INTO core.fleet_approval_gates
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+                resolved_by, status, detail, created_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'shell', $4,
+                     'confirm', $4, '{}'::jsonb, 'workspace', $5,
+                     '', 'pending', '', $5)",
         )
+        .bind(mint().as_str())
+        .bind(fleet.as_str())
+        .bind(lane.workspace.as_str())
+        .bind(action)
+        .bind(at)
+        .execute(&mut *connection)
         .await
-        .expect("active to killed is legal");
+        .expect("seeding an approval gate");
+    }
 }
 
 /// Dimension 1.1. The charge still names its fleet after the fleet is gone.
@@ -226,18 +214,18 @@ pub(crate) async fn kill(lane: &Lane, fleet: &Uuid7) {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn test_m201_ledger_retains_fleet_id_across_purge() {
     let lane = Lane::create().await;
-    let fleet = installed(&lane).await;
-    rename(&lane, &fleet.id, CHARGED_AS).await;
-    let row = charge(&lane, &fleet.id).await;
+    let fleet = lane.fleet().await;
+    rename(&lane, &fleet, CHARGED_AS).await;
+    let row = charge(&lane, &fleet).await;
 
-    kill(&lane, &fleet.id).await;
+    let tag = lane.kill(&fleet).await;
     lane.fleets
-        .purge(&lane.workspace, &fleet.id)
+        .purge_tagged(&lane.workspace, &fleet, &tag)
         .await
         .expect("a killed fleet purges");
 
     assert!(
-        lane.fleet_column(&fleet.id, "name").await.is_none(),
+        lane.fleet_column(&fleet, "name").await.is_none(),
         "the fleet row must be gone — otherwise this proves nothing about what \
          survives a purge"
     );
@@ -247,7 +235,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
         .expect("the charge must outlive the fleet it charged");
     assert_eq!(
         identifier.as_deref(),
-        Some(fleet.id.as_str()),
+        Some(fleet.as_str()),
         "the purge nulled fleet_id — the foreign key's ON DELETE SET NULL is \
          still armed, so slot 915 did not find the constraint it drops"
     );
@@ -276,28 +264,28 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn test_m201_purge_destroys_no_less_than_before() {
     let lane = Lane::create().await;
-    let fleet = installed(&lane).await;
-    seed_everything_the_purge_destroys(&lane, &fleet.id).await;
-    let row = charge(&lane, &fleet.id).await;
+    let fleet = lane.fleet().await;
+    seed_everything_the_purge_destroys(&lane, &fleet).await;
+    let row = charge(&lane, &fleet).await;
 
     for (table, expected) in SEEDED {
         assert_eq!(
-            rows_for(&lane, table, &fleet.id).await,
+            rows_for(&lane, table, &fleet).await,
             expected,
             "{table} must hold the seeded rows before the purge, or the count \
              after it proves nothing"
         );
     }
 
-    kill(&lane, &fleet.id).await;
+    let tag = lane.kill(&fleet).await;
     lane.fleets
-        .purge(&lane.workspace, &fleet.id)
+        .purge_tagged(&lane.workspace, &fleet, &tag)
         .await
         .expect("a killed fleet holding every child purges");
 
     for (table, _seeded) in SEEDED {
         assert_eq!(
-            rows_for(&lane, table, &fleet.id).await,
+            rows_for(&lane, table, &fleet).await,
             0,
             "the purge left rows in {table} — retaining the ledger's identifier \
              must not have cost any other erasure"

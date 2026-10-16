@@ -1,10 +1,10 @@
-//! A model behind the provider seam, for the bundle suite.
+//! A model behind the provider seam, for the corpus suite.
 //!
 //! The real loop (`afr_agent::Loop`) drives it exactly as it drives a hosted
 //! provider. Each turn is decided by a script that reads the request — the
 //! system prompt the daemon rendered and every tool output fed back so far —
 //! so a script takes its repair branch from the trusted repair context and
-//! branches on what an upstream answered, as a model following the SKILL.md
+//! branches on what an upstream answered, as a model following its fleet's instructions
 //! would. Every request is recorded besides, so a suite asserts what the model
 //! was offered and what each call returned, a refusal's
 //! `[ToolErrorCode] detail` included.

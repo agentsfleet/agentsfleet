@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use afd_core::clock::{now, saturating_millis_signed};
+use afd_wire::lease::LeaseKind;
 use afd_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 pub(crate) use afr_supervisor::test_util::{FENCING, LEASE_ID};
@@ -127,10 +128,11 @@ fn answer(method: &Method, path: &str, body: &[u8], state: State<'_>) -> Value {
     healthy.reply(method.as_str(), path)
 }
 
-/// The fixture lease, for this suite's fleet, granted from now, naming a
-/// model that never resolves.
+/// The fixture lease, tagged as fleet work for this suite's fleet, granted from
+/// now, naming a model that never resolves.
 fn lease() -> Value {
     let mut lease: Value = serde_json::from_str(LEASE_JSON).expect("the fixture lease parses");
+    lease["kind"] = LeaseKind::Fleet.as_str().into();
     lease["lease_id"] = LEASE_ID.into();
     lease["lease_expires_at"] = granted_until().into();
     lease["event"]["fleet_id"] = FLEET_ID.into();

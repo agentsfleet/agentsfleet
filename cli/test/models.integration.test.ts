@@ -83,7 +83,7 @@ describe("agentsfleet models", () => {
       // At two decimals it prints "$0.00", which this table uses for "no rate"
       // — so a priced model would render identically to an unpriced one.
       const CHEAP = {
-        id: "deepseek-v4-flash",
+        id: "deepseek-flash",
         provider: "deepseek",
         // pin test: literal is the contract
         context_cap_tokens: 1000000,

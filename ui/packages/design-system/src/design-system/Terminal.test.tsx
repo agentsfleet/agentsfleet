@@ -88,6 +88,15 @@ describe("Terminal", () => {
       });
     });
 
+    it("notifies the caller once per click without changing the clipboard payload", async () => {
+      const onCopyClick = vi.fn();
+      render(<Terminal copyable onCopyClick={onCopyClick}>install command</Terminal>);
+      fireEvent.click(screen.getByRole("button", { name: "Copy command" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument());
+      expect(onCopyClick).toHaveBeenCalledTimes(1);
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("install command");
+    });
+
     it("writes command to clipboard and flips to Copied state on click", async () => {
       render(<Terminal copyable>install command</Terminal>);
       const btn = screen.getByTestId("copy-btn");
@@ -160,7 +169,8 @@ describe("Terminal", () => {
 
     it("swallows a rejected clipboard write and leaves the button at rest", async () => {
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      render(<Terminal copyable>blocked cmd</Terminal>);
+      const onCopyClick = vi.fn();
+      render(<Terminal copyable onCopyClick={onCopyClick}>blocked cmd</Terminal>);
       const btn = screen.getByTestId("copy-btn");
       fireEvent.click(btn);
       await waitFor(() =>
@@ -172,6 +182,7 @@ describe("Terminal", () => {
         expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument(),
       );
       expect(errSpy).not.toHaveBeenCalled();
+      expect(onCopyClick).toHaveBeenCalledTimes(1);
       errSpy.mockRestore();
     });
   });

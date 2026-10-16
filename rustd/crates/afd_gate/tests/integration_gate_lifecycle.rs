@@ -12,9 +12,6 @@ use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
 /// The rule a gate rules fleet is parked by, and the only one this suite parks on.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
-/// The kind no daemon path raises any longer.
-const RETIRED_WRITE_KIND: &str = "repository_write";
-
 /// Dimensions 2.1 and 2.2 — a write fleet runs every event, and every
 /// continuation of one, without a card.
 ///
@@ -98,15 +95,14 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
     fixture.cleanup().await;
 }
 
-/// Dimension 2.4 — an event parked before this shipped is not stranded.
+/// Dimension 2.4 — a recorded gate decides an in-flight event after the
+/// fleet's config stops asking for one.
 ///
-/// The row is real and so is the reference that finds it: the rules path wrote
-/// both. Only `gate_kind` is restated, to the kind an earlier build raised and
-/// this one never will. A recorded gate outranks policy, so the answer a person
-/// gives still lands and the run still continues.
+/// A recorded gate outranks policy, so the run stays parked until its answer
+/// arrives and continues once a person gives it.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_m202_001_parked_event_still_resolves() {
+async fn recorded_gate_decides_after_the_config_stops_asking() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(
@@ -121,14 +117,9 @@ async fn test_m202_001_parked_event_still_resolves() {
             .await,
         Verdict::Await(Waiting::Parked)
     );
-    fixture
-        .restate_kind("event-in-flight", RETIRED_WRITE_KIND)
-        .await;
 
-    // The fleet's config no longer asks for a gate at all — a write binding and
-    // no rules, which after this milestone is the ordinary shape. The recorded
-    // gate decides anyway, which is the property that keeps the in-flight run
-    // from being released before its answer arrives.
+    // A write binding with no rules asks for no gate at all. The recorded gate
+    // decides anyway, so the in-flight run is not released before its answer.
     let writing = config(true);
     assert_eq!(
         gates

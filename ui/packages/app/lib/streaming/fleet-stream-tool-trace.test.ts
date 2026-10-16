@@ -64,10 +64,10 @@ describe("readSavedTrace", () => {
 
   it("should keep a saved call whose own fields are malformed, without them", () => {
     const call = {
-      call_id: CALL_ONE, name: READ, arguments: ["path"], status: "ok", output_head: 7, output_line_count: -2, duration_ms: READ_MS,
+      call_id: CALL_ONE, name: READ, arguments: ["path"], status: TOOL_CALL_STATUS.SUCCEEDED, output_head: 7, output_line_count: -2, duration_ms: READ_MS,
     };
     const trace = readSavedTrace({ calls: [call], omitted_call_count: -1 }, MS_PER_SECOND);
-    expect(trace).toEqual({ calls: [{ name: READ, callId: CALL_ONE, startedAtMs: MS_PER_SECOND, ms: READ_MS, done: true }], omitted: 0 });
+    expect(trace).toEqual({ calls: [{ name: READ, callId: CALL_ONE, startedAtMs: MS_PER_SECOND, ms: READ_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED }], omitted: 0 });
   });
 });
 
@@ -84,7 +84,7 @@ describe("readToolArgs", () => {
 describe("readToolOutcome", () => {
   it("should read anything but an object as no outcome", () => {
     for (const value of [[{ status: TOOL_CALL_STATUS.SUCCEEDED }], "succeeded", 0, null, undefined]) {
-      expect(readToolOutcome(value)).toEqual({});
+      expect(readToolOutcome(value)).toBeNull();
     }
   });
 });

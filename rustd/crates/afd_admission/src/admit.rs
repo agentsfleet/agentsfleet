@@ -6,19 +6,10 @@ use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
-use sqlx::Row as _;
+use sqlx::Acquire as _;
 
-use crate::error::{Error, ErrorKind, Result, query};
-use crate::{
-    Admission, Admissions, Admitted, BudgetScope, Key, Repeated, Reply, logical_id, logical_parts,
-    sql,
-};
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_ADMIT: &str = "admit an event";
-
-/// A row's `replay_count` on the day it is admitted.
-const NO_REPLAYS: i64 = 0;
+use crate::error::{Error, Result};
+use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply, logical_parts};
 
 /// A [`Reply`] as the four parameters `INSERT_ADMISSION` takes it in.
 ///
@@ -55,13 +46,13 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
 }
 
 /// What the ledger answered for one admission.
-struct Ledger {
+pub(crate) struct Ledger {
     /// The row the key holds, this statement's or an earlier one's.
-    stored: Repeated,
+    pub(crate) stored: Repeated,
     /// Whether THIS statement created the row.
-    inserted: bool,
+    pub(crate) inserted: bool,
     /// The receipt already recorded, if any.
-    receipt: Option<String>,
+    pub(crate) receipt: Option<String>,
 }
 
 impl Admissions {
@@ -174,56 +165,30 @@ impl Admissions {
         now: UnixMillis,
     ) -> Result<Ledger> {
         let estimate = self.deployment_estimate(now).await?;
-        let reply = ReplyBinds::from(admission.reply);
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::INSERT_ADMISSION)
-            .bind(row_id.as_str())
-            .bind(admission.fleet)
-            .bind(admission.workspace)
-            .bind(admission.producer.as_str())
-            .bind(key)
-            .bind(digest)
-            .bind(admission.actor)
-            .bind(admission.event_type.as_str())
-            .bind(admission.request_json)
-            .bind(now.as_millis())
-            .bind(NO_REPLAYS)
-            .bind(i64::try_from(self.budgets.replay_backlog).unwrap_or(i64::MAX))
-            .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
-            .bind(reply.connector)
-            .bind(reply.address)
-            .bind(reply.inherit_created_at)
-            .bind(reply.inherit_seq)
-            .fetch_optional(&mut *connection)
+        let mut transaction = connection
+            .begin()
             .await
-            .map_err(query(CONTEXT_ADMIT))?
-            .ok_or_else(|| {
-                Error::from(ErrorKind::OverBudget {
-                    scope: BudgetScope::Deployment,
-                    limit: self.budgets.replay_backlog,
-                })
-            })?;
-        let inserted: bool = row.try_get(0).map_err(query(CONTEXT_ADMIT))?;
-        if inserted {
-            // Only a fresh row joins the set the ceiling counts; the conflict
-            // arm updated a row that was already in it, or already receipted.
+            .map_err(crate::error::query("begin admission"))?;
+        let ledger = self
+            .insert_on(
+                &mut transaction,
+                row_id,
+                admission,
+                key,
+                digest,
+                now,
+                estimate,
+            )
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::error::query("commit admission"))?;
+        if ledger.inserted {
             self.ceiling.admitted();
         }
-        let created_at: i64 = row.try_get(1).map_err(query(CONTEXT_ADMIT))?;
-        let seq: i64 = row.try_get(2).map_err(query(CONTEXT_ADMIT))?;
-        let receipt: Option<String> = row.try_get(3).map_err(query(CONTEXT_ADMIT))?;
-        let digest: String = row.try_get(4).map_err(query(CONTEXT_ADMIT))?;
-        let fleet: String = row.try_get(5).map_err(query(CONTEXT_ADMIT))?;
-        Ok(Ledger {
-            stored: Repeated {
-                id: logical_id(created_at, seq),
-                digest,
-                fleet,
-                created_at,
-            },
-            inserted,
-            receipt,
-        })
+        Ok(ledger)
     }
 }
 

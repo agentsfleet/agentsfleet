@@ -1,11 +1,10 @@
 // The sentence an operator reads when the daemon refuses.
 //
 // The daemon sends two strings: `detail`, shaped for a log, and `user_message`,
-// written for a person. The CLI rendered `detail`, so "Fleet Bundle is invalid"
-// reached the terminal while "That Fleet Bundle isn't valid. It's missing
-// `SKILL.md`, or has an unsafe or oversized file" was discarded. These cases
-// pin which one is chosen, and that the choice degrades safely when the daemon
-// sends only one of them — which older deployments do.
+// written for a person. The CLI once rendered `detail`, so the log line reached
+// the terminal while the sentence written for the operator was discarded. These
+// cases pin which one is chosen, and that the choice degrades safely when the
+// daemon sends only one of them.
 
 import { describe, test, expect } from "bun:test";
 
@@ -14,15 +13,16 @@ import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
-const DETAIL = "Fleet Bundle is invalid";
+const DETAIL = "Library entry is not owned by this workspace";
 const USER_MESSAGE =
-  "That Fleet Bundle isn't valid. It's missing `SKILL.md`, or has an unsafe or oversized file.";
-const TITLE = "Invalid Fleet Bundle";
+  "That Library entry belongs to another workspace, so this workspace cannot remove it.";
+const TITLE = "Library entry not owned";
+const REFUSAL_CODE = "UZ-LIBRARY-004";
 
 describe("readProblemDetails — the two refusal strings", () => {
   test("carries both when the daemon sends both", () => {
     const parsed = readProblemDetails({
-      error_code: "UZ-BUNDLE-001",
+      error_code: REFUSAL_CODE,
       detail: DETAIL,
       title: TITLE,
       user_message: USER_MESSAGE,
@@ -30,12 +30,12 @@ describe("readProblemDetails — the two refusal strings", () => {
     });
     expect(parsed.message).toBe(DETAIL);
     expect(parsed.userMessage).toBe(USER_MESSAGE);
-    expect(parsed.code).toBe("UZ-BUNDLE-001");
+    expect(parsed.code).toBe(REFUSAL_CODE);
     expect(parsed.requestId).toBe("req_1");
   });
 
   test("leaves userMessage undefined when the daemon sends none", () => {
-    // Older deployments answer without `user_message`. The renderer falls back
+    // `user_message` is optional on ProblemBody (public/openapi.json). The renderer falls back
     // to `message`, so this must be absent rather than an empty string, which
     // would render a blank failure line.
     const parsed = readProblemDetails({ detail: DETAIL, error_code: "UZ-X-001" });
@@ -61,21 +61,22 @@ describe("readProblemDetails — the two refusal strings", () => {
 
 describe("rendered failure — which string reaches the terminal", () => {
   const WS_ID = "01900000-0000-7000-8000-00000067e210";
-  const LIBRARIES = `/v1/workspaces/${WS_ID}/fleet-libraries`;
+  const LIBRARY_ID = "01900000-0000-7000-8000-00000011b111";
+  const LIBRARY = `/v1/workspaces/${WS_ID}/fleet-libraries/${LIBRARY_ID}`;
 
   const scope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
     withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_err" }, fn);
 
   const refuseWith = (status: number, body: Record<string, unknown>): MockRoutes => ({
-    [`POST ${LIBRARIES}`]: () => jsonResponse(status, body),
+    [`DELETE ${LIBRARY}`]: () => jsonResponse(status, body),
   });
 
-  const addAndReadStderr = async (routes: MockRoutes): Promise<{ code: number; text: string }> => {
+  const removeAndReadStderr = async (routes: MockRoutes): Promise<{ code: number; text: string }> => {
     let captured = { code: 0, text: "" };
     await withMockApi(routes, async (apiUrl) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["library", "create", "--github", "owner/repo"], {
+      const code = await runCli(["library", "delete", LIBRARY_ID], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -87,8 +88,8 @@ describe("rendered failure — which string reaches the terminal", () => {
 
   test("prefers the daemon's human sentence over its log detail", async () => {
     await scope(async () => {
-      const { code, text } = await addAndReadStderr(
-        refuseWith(400, { error_code: "UZ-BUNDLE-001", detail: DETAIL, user_message: USER_MESSAGE }),
+      const { code, text } = await removeAndReadStderr(
+        refuseWith(400, { error_code: REFUSAL_CODE, detail: DETAIL, user_message: USER_MESSAGE }),
       );
       expect(code).toBe(3);
       expect(text).toContain(USER_MESSAGE);
@@ -98,8 +99,8 @@ describe("rendered failure — which string reaches the terminal", () => {
 
   test("falls back to the log detail when no human sentence was sent", async () => {
     await scope(async () => {
-      const { code, text } = await addAndReadStderr(
-        refuseWith(400, { error_code: "UZ-BUNDLE-001", detail: DETAIL }),
+      const { code, text } = await removeAndReadStderr(
+        refuseWith(400, { error_code: REFUSAL_CODE, detail: DETAIL }),
       );
       expect(code).toBe(3);
       expect(text).toContain(DETAIL);
@@ -110,7 +111,7 @@ describe("rendered failure — which string reaches the terminal", () => {
     await scope(async () => {
       // The server-fault arm builds its own suggestion, so it is a separate
       // construction site from the 4xx arm and picks the detail separately.
-      const { code, text } = await addAndReadStderr(
+      const { code, text } = await removeAndReadStderr(
         refuseWith(503, {
           error_code: "UZ-UNAVAILABLE-001",
           detail: "upstream unavailable",

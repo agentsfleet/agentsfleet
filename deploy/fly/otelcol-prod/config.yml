@@ -13,7 +13,7 @@ receivers:
   otlp:
     protocols:
       # HTTP only. The daemon posts to {endpoint}/v1/{logs,traces,metrics}
-      # (rustd/crates/agentsfleetd/src/telemetry.rs), which is what the OTLP
+      # (rustd/crates/agentsfleetd/src/telemetry/mod.rs), which is what the OTLP
       # HTTP receiver serves. No gRPC listener, because nothing dials one.
       http:
         endpoint: 0.0.0.0:4318
@@ -43,10 +43,9 @@ extensions:
   # collector's own logs and on the dashboard, not as a failed Fly check.
   health_check:
     endpoint: 0.0.0.0:13133
-  # The server half, and it costs no daemon change: the daemon ALREADY sends
-  # this pair as a Basic header on every export, built unconditionally from its
-  # own GRAFANA_OTLP_* triple. Requiring it here turns a header that was
-  # previously transmitted and discarded into the actual boundary.
+  # The server half: the daemon sends this pair as a Basic header on every
+  # export, staged by the deploy as its OTEL_EXPORTER_OTLP_HEADERS. Requiring it
+  # here is the boundary.
   #
   # Deliberately its own env pair rather than reading the GRAFANA_OTLP_* names
   # directly. Today the deploy stages these FROM the vendor pair, so they match

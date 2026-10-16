@@ -35,6 +35,7 @@ pub(crate) struct Fixtures {
     pub(crate) database: Db,
     queue: Option<Dragonfly>,
     runners: Runners,
+    enrolled: i64,
 }
 
 impl Fixtures {
@@ -68,7 +69,26 @@ impl Fixtures {
             database,
             queue: None,
             lane,
+            enrolled: afd_core::clock::now().as_millis(),
         }
+    }
+
+    /// The instant this test's runners enrol at: the wall clock when the
+    /// fixture opened, then fixed, so a row's stamps are asserted rather than
+    /// observed.
+    ///
+    /// The wall clock rather than a constant, because issuing and renewing a
+    /// lease and counting a host's live leases read the DATABASE's clock. A
+    /// lease stamped from another instant has either lapsed before it was
+    /// written or outlives every sweep, and the meter would charge the distance
+    /// between the two clocks. A suite that needs a lease to lapse ages its row,
+    /// not its clock.
+    ///
+    /// Per fixture, never per binary: a lease lives `LEASE_TTL_MS` (30 s) past
+    /// this instant, so one shared instant expired every lease a test took
+    /// after the suite's first 30 s.
+    pub(crate) const fn enrolled_at(&self) -> i64 {
+        self.enrolled
     }
 
     /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.
@@ -241,6 +261,7 @@ impl Fixtures {
             database,
             queue,
             runners,
+            ..
         } = self;
         // Our own handles go first, so nothing is still borrowing a connection
         // when the lane handle is released.

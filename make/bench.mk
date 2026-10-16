@@ -69,7 +69,7 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 # datastore gives out first. Distinct from the loadgen above in the one way
 # that matters: `hey` measures a URL, and only the steer path IS one — these
 # drive the production types directly, which is the only way to attribute a
-# cost between Redis and Postgres.
+# cost between Dragonfly and Postgres.
 #
 # PROFILE decides scale, target and blast radius (rig | dev | prod), and the
 # lane refuses a parameter above its ceiling before it opens a connection.

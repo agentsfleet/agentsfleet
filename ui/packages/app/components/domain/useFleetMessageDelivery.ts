@@ -10,7 +10,6 @@ import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
 import { overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
 import { ACTOR } from "@/lib/events/event-summary";
-import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
@@ -205,15 +204,14 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
 
 // The daemon's 202. Settled before the cosmetic reconcile: the daemon holds
 // it, whatever the painting does next.
-function useAcknowledgement({ workspaceId, reconcileOptimistic, writers }: DeliveryCtx) {
+function useAcknowledgement({ reconcileOptimistic, writers }: DeliveryCtx) {
   return useCallback(
     (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
       writers.settle(operationId);
       reconcileOptimistic(tempId, accepted.event_id, accepted.replayed);
-      requestOnboardingRefresh(workspaceId);
       return true;
     },
-    [workspaceId, reconcileOptimistic, writers],
+    [reconcileOptimistic, writers],
   );
 }
 

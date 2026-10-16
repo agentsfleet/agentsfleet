@@ -18,7 +18,6 @@ export interface ApiKeyRow {
   /** Epoch milliseconds. */
   created_at: number;
   /** Epoch milliseconds, or null when the key has never authenticated a call. */
-  last_used_at: number | null;
   /** Epoch milliseconds, or null while the key is still active. */
   revoked_at: number | null;
 }

@@ -199,11 +199,9 @@ impl Error {
             ErrorKind::SessionNotApproved => error_code::SESSION_NOT_APPROVED,
             ErrorKind::SessionAlreadyApproved => error_code::SESSION_ALREADY_APPROVED,
             ErrorKind::SessionCodeRejected => error_code::VERIFICATION_FAILED,
-            // One code for two refusals from different families, and the
-            // SENTENCES are what separate them: a caller who does not own a
-            // login session and a subject with no user row are both told they
-            // may not proceed, and neither can fix it by re-authenticating.
-            ErrorKind::SessionNotOwner | ErrorKind::UnknownSubject => error_code::AUTH_FORBIDDEN,
+            // A subject with no user row may not proceed, and cannot fix it by
+            // re-authenticating.
+            ErrorKind::UnknownSubject => error_code::AUTH_FORBIDDEN,
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
             | ErrorKind::WorkspaceNameInvalid
@@ -267,7 +265,6 @@ impl Error {
             ErrorKind::SessionNotApproved => DETAIL_SESSION_NOT_APPROVED,
             ErrorKind::SessionAlreadyApproved => DETAIL_SESSION_ALREADY_APPROVED,
             ErrorKind::SessionCodeRejected => DETAIL_SESSION_CODE_REJECTED,
-            ErrorKind::SessionNotOwner => DETAIL_SESSION_NOT_OWNER,
             ErrorKind::ApiKeyFieldInvalid { field } => match field {
                 ApiKeyField::Name => DETAIL_APIKEY_NAME,
                 ApiKeyField::Description => DETAIL_APIKEY_DESCRIPTION,

@@ -5,8 +5,7 @@ use std::error::Error as _;
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
-    DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_DATABASE_ERROR, DETAIL_EVENT_MALFORMED,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_DATABASE_ERROR, DETAIL_EVENT_MALFORMED,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
@@ -63,8 +62,16 @@ fn lease_and_memory_refusals_have_stable_wire_classification() {
 }
 
 #[test]
-fn credential_and_bundle_refusals_have_stable_wire_classification() {
-    let errors = [
+fn credential_refusals_have_stable_wire_classification() {
+    for expected in mint_refusals().iter().chain(&message_refusals()) {
+        assert_error(expected);
+    }
+}
+
+/// The seven mint and grant refusals, each with the code and sentence a runner
+/// matches on.
+fn mint_refusals() -> [Expected; 7] {
+    [
         expected(
             super::integration_not_connected(),
             error_code::CRED_INTEGRATION_NOT_CONNECTED,
@@ -100,6 +107,13 @@ fn credential_and_bundle_refusals_have_stable_wire_classification() {
             error_code::GRANT_NOT_FOUND,
             DETAIL_GRANT_REQUIRED,
         ),
+    ]
+}
+
+/// The two message refusals, and the corrupt sequence that answers as a row
+/// fault.
+fn message_refusals() -> [Expected; 3] {
+    [
         expected(
             super::message_no_channel(),
             error_code::MESSAGE_NO_CHANNEL,
@@ -115,21 +129,7 @@ fn credential_and_bundle_refusals_have_stable_wire_classification() {
             error_code::INTERNAL_DB_QUERY,
             DETAIL_DATABASE_ERROR,
         ),
-        expected(
-            super::bundle_missing(),
-            error_code::FLEET_BUNDLE_NOT_FOUND,
-            DETAIL_BUNDLE_NOT_FOUND,
-        ),
-        expected(
-            super::bundle_unconfigured(),
-            error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-            DETAIL_BUNDLE_STORAGE_UNAVAILABLE,
-        ),
-    ];
-
-    for expected in &errors {
-        assert_error(expected);
-    }
+    ]
 }
 
 #[test]
@@ -159,16 +159,6 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
     );
     malformed.has_source = true;
 
-    let mut storage = expected(
-        super::bundle_storage(object_store::Error::Generic {
-            store: "fixture",
-            source: Box::new(std::io::Error::other("fixture storage")),
-        }),
-        error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-        DETAIL_BUNDLE_FETCH_FAILED,
-    );
-    storage.has_source = true;
-
     for expected in &[
         expected(
             super::envelope_field("event_id"),
@@ -186,12 +176,6 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
         rejected,
         query,
         malformed,
-        storage,
-        expected(
-            super::bundle_oversized(8_388_609),
-            error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-            DETAIL_BUNDLE_FETCH_FAILED,
-        ),
     ] {
         assert_error(expected);
     }

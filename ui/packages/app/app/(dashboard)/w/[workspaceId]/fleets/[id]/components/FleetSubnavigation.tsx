@@ -15,7 +15,7 @@ export const FLEET_VIEW = {
   chat: "chat",
   events: "events",
   memory: "memory",
-  skill: "skill",
+  setup: "setup",
   trigger: "trigger",
 } as const;
 
@@ -25,7 +25,7 @@ const FLEET_NAV_ITEMS: { view: FleetView; label: string }[] = [
   { view: FLEET_VIEW.chat, label: "Chat" },
   { view: FLEET_VIEW.events, label: "Events" },
   { view: FLEET_VIEW.memory, label: "Memory" },
-  { view: FLEET_VIEW.skill, label: "Skill" },
+  { view: FLEET_VIEW.setup, label: "Setup" },
   { view: FLEET_VIEW.trigger, label: "Trigger" },
 ];
 
@@ -38,7 +38,7 @@ export function resolveFleetView(value: string | undefined): FleetView | null {
       return FLEET_VIEW.chat;
     case FLEET_VIEW.events:
     case FLEET_VIEW.memory:
-    case FLEET_VIEW.skill:
+    case FLEET_VIEW.setup:
     case FLEET_VIEW.trigger:
       return value;
     default:

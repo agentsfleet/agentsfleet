@@ -22,6 +22,8 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The Postgres pool the ledger lives on.
 afd_db.workspace = true
+# The semantics marker accepted by the same validator that runtime leases use.
+afd_fleet_runtime.workspace = true
 # The stream an admitted entry is appended to, and the readiness mark that
 # makes it promptly leasable.
 afd_dragonfly.workspace = true

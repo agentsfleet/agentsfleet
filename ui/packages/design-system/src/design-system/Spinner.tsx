@@ -1,29 +1,21 @@
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "../utils";
-import { WakePulse } from "./WakePulse";
+import { SignalSpinner } from "./BrandMark";
 
 export type SpinnerSize = "sm" | "md" | "lg";
 
-const DOT_SIZE: Record<SpinnerSize, string> = {
-  sm: "h-1.5 w-1.5",
-  md: "h-2 w-2",
-  lg: "h-2.5 w-2.5",
-};
-
-const ORBIT_SIZE: Record<SpinnerSize, string> = {
-  sm: "h-3 w-3",
-  md: "h-3.5 w-3.5",
-  lg: "h-5 w-5",
+const MARK_SIZE: Record<SpinnerSize, string> = {
+  sm: "size-3",
+  md: "size-4",
+  lg: "size-6",
 };
 
 export interface SpinnerProps extends Omit<ComponentProps<"span">, "children"> {
-  /** Pulse-dot diameter. `sm` for in-button, `lg` for page-level loaders. */
+  /** Mark diameter. `sm` for in-button, `lg` for standalone waits. */
   size?: SpinnerSize;
   /**
-   * Visible text beside the dot — use for standalone loaders. Accepts a node so
-   * callers can supply a client-rendered label (see the app's LoadingVerbLabel)
-   * without this component becoming client-only itself.
+   * Visible text beside the mark — use for standalone loaders.
    */
   label?: ReactNode;
   /** Screen-reader text when there is no visible `label`. */
@@ -33,8 +25,7 @@ export interface SpinnerProps extends Omit<ComponentProps<"span">, "children"> {
 /*
  * The system's indeterminate loading affordance. Use Spinner for short
  * working waits and install state chips; use Skeleton when the page shape is
- * still resolving. The outer arc is intentionally tiny and monochrome so the
- * WakePulse remains the brand signal.
+ * still resolving. Motion lives in CSS; the mark needs no client runtime.
  */
 export function Spinner({
   size = "md",
@@ -50,22 +41,12 @@ export function Spinner({
       className={cn(
         "inline-flex items-center gap-2 text-muted-foreground",
         label &&
-          "rounded-md border border-primary/40 bg-primary/10 px-sm py-xs font-sans text-label font-medium leading-label text-primary",
+          "font-sans text-label leading-label",
         className,
       )}
       {...rest}
     >
-      <span
-        aria-hidden="true"
-        data-spinner-orbit
-        className={cn("relative inline-grid shrink-0 place-items-center", ORBIT_SIZE[size])}
-      >
-        <span className="absolute inset-0 rounded-full border border-primary/30 border-t-primary motion-safe:animate-spin" />
-        <WakePulse
-          live
-          className={cn("inline-block rounded-full bg-pulse", DOT_SIZE[size])}
-        />
-      </span>
+      <SignalSpinner className={MARK_SIZE[size]} />
       {label ? <span>{label}</span> : <span className="sr-only">{srLabel}</span>}
     </span>
   );

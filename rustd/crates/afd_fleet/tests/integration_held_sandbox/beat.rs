@@ -11,23 +11,28 @@ use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
 
 use super::{beat, beats_at, hold, live, slot};
-use crate::requests::ENROLLED_AT;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
 /// When every hold made here lapses.
-const UNTIL: i64 = ENROLLED_AT + SANDBOX_HOLD_IDLE_MS;
+fn until(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS
+}
 
 /// The first beat that may clear a hold reported at enrolment: one full
 /// interval later.
-const SETTLED: i64 = ENROLLED_AT + HEARTBEAT_INTERVAL_MS;
+fn settled(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + HEARTBEAT_INTERVAL_MS
+}
 
 /// A beat inside the interval of a hold reported at enrolment.
-const RACED: i64 = ENROLLED_AT + 1;
+fn raced(fixtures: &Fixtures) -> i64 {
+    fixtures.enrolled_at() + 1
+}
 
 /// `runner` beats `request` once every hold made here has settled.
 async fn beats(fixtures: &Fixtures, runner: &Uuid7, request: &HeartbeatRequest<'_>) -> Beat {
-    beats_at(fixtures, runner, request, SETTLED).await
+    beats_at(fixtures, runner, request, settled(fixtures)).await
 }
 
 /// Another runner's beat listing nothing clears that runner's own hold and
@@ -40,15 +45,15 @@ async fn test_a_beat_clears_only_its_own_runners_holds() {
     let (others_fleet, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
-    hold(&leases, &fixtures, &others_fleet, &other, UNTIL).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
+    hold(&leases, &fixtures, &others_fleet, &other, until(&fixtures)).await;
 
     beats(&fixtures, &other, &beat(&[])).await;
 
     assert_eq!(slot(&fixtures, &others_fleet).await.0, None, "its own");
     assert_eq!(
         slot(&fixtures, &fleet).await,
-        (Some(UNTIL), Some(holder.as_str().to_owned())),
+        (Some(until(&fixtures)), Some(holder.as_str().to_owned())),
         "the holder's hold is not the other runner's to clear"
     );
     fixtures.cleanup().await;
@@ -65,14 +70,14 @@ async fn test_a_hold_that_is_no_identifier_is_dropped_alone() {
     let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &kept, &holder, UNTIL).await;
-    hold(&leases, &fixtures, &dropped, &holder, UNTIL).await;
+    hold(&leases, &fixtures, &kept, &holder, until(&fixtures)).await;
+    hold(&leases, &fixtures, &dropped, &holder, until(&fixtures)).await;
     let not_an_id = "x".repeat(FLEET_ID_TEXT_BYTES);
 
     let answered = beats(&fixtures, &holder, &beat(&[&kept, &not_an_id])).await;
 
     assert!(answered.release_holds.is_empty(), "{answered:?}");
-    assert_eq!(slot(&fixtures, &kept).await.0, Some(UNTIL));
+    assert_eq!(slot(&fixtures, &kept).await.0, Some(until(&fixtures)));
     assert_eq!(slot(&fixtures, &dropped).await.0, None);
     fixtures.cleanup().await;
 }
@@ -98,7 +103,7 @@ async fn test_an_out_of_bounds_holds_list_holds_nothing() {
     for (shape, request) in &shapes {
         let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
         live(&fixtures, &holder).await;
-        hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+        hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
 
         let answered = beats(&fixtures, &holder, request).await;
 
@@ -119,13 +124,17 @@ async fn test_a_hold_reported_inside_the_beat_interval_survives_that_beat() {
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
 
-    beats_at(&fixtures, &holder, &beat(&[]), RACED).await;
+    beats_at(&fixtures, &holder, &beat(&[]), raced(&fixtures)).await;
     let raced = slot(&fixtures, &fleet).await.0;
     beats(&fixtures, &holder, &beat(&[])).await;
 
-    assert_eq!(raced, Some(UNTIL), "the beat that raced the report");
+    assert_eq!(
+        raced,
+        Some(until(&fixtures)),
+        "the beat that raced the report"
+    );
     assert_eq!(
         slot(&fixtures, &fleet).await.0,
         None,
@@ -145,13 +154,13 @@ async fn test_a_closing_beat_clears_a_hold_reported_inside_the_interval() {
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let closing = HeartbeatRequest {
         closing: true,
         ..beat(&[])
     };
 
-    beats_at(&fixtures, &holder, &closing, RACED).await;
+    beats_at(&fixtures, &holder, &closing, raced(&fixtures)).await;
 
     assert_eq!(slot(&fixtures, &fleet).await.0, None);
     fixtures.cleanup().await;

@@ -45,6 +45,7 @@ export interface PagePaginationProps {
   pageSizeOptions?: readonly number[];
   onPageSizeChange?: (pageSize: number) => void;
   isLoading?: boolean;
+  "aria-label"?: string;
   className?: string;
 }
 
@@ -64,6 +65,7 @@ function PagePagination({
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   onPageSizeChange,
   isLoading,
+  "aria-label": ariaLabel = "Pagination",
   className,
 }: PagePaginationProps) {
   const totalPages = total != null ? Math.max(1, Math.ceil(total / pageSize)) : null;
@@ -75,10 +77,10 @@ function PagePagination({
       data-slot="pagination-page"
       data-testid="pagination-page"
       role="navigation"
-      aria-label="Pagination"
+      aria-label={ariaLabel}
       aria-busy={isLoading ? "true" : "false"}
       className={cn(
-        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 font-sans",
+        "flex shrink-0 flex-wrap items-center justify-between gap-x-xl gap-y-md py-lg font-sans",
         className,
       )}
     >
@@ -93,7 +95,7 @@ function PageSizeControl({ pageSize, pageSizeOptions, onPageSizeChange, isLoadin
     ? pageSizeOptions
     : [pageSize, ...pageSizeOptions];
   return (
-    <div className="flex items-center gap-2 text-label font-medium uppercase tracking-label text-muted-foreground">
+    <div className="flex items-center gap-md text-label text-muted-foreground">
       <span>Rows per page</span>
       {onPageSizeChange ? (
         <Select
@@ -103,13 +105,13 @@ function PageSizeControl({ pageSize, pageSizeOptions, onPageSizeChange, isLoadin
         >
           <SelectTrigger
             aria-label="Rows per page"
-            className="h-8 w-20 bg-card px-2 py-1 font-sans text-xs tabular-nums"
+            className="h-8 w-20 bg-card px-md py-sm tabular-nums"
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">
             {selectablePageSizes.map((size) => (
-              <SelectItem key={size} value={String(size)} className="font-sans tabular-nums">
+              <SelectItem key={size} value={String(size)} className="tabular-nums">
                 {size}
               </SelectItem>
             ))}
@@ -126,13 +128,8 @@ function PageSizeControl({ pageSize, pageSizeOptions, onPageSizeChange, isLoadin
 
 function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPageChange, isLoading }: Pick<PagePaginationProps, "page" | "total" | "totalLabel" | "onPageChange" | "isLoading"> & { totalPages: number | null; canAdvance: boolean }) {
   return (
-    // -mr-3 is optical alignment, not layout: Prev and Next are ghost buttons,
-    // so their 12px padding paints nothing, and inside the footer's own px-3
-    // the "›" glyph ended 26px from the edge while the row actions above it
-    // and "Rows per page" beside it sit at 13. Pulling the cluster back by the
-    // button's padding puts the glyph on the same column as the rest.
-    <div className="-mr-3 flex items-center gap-1">
-      <div className="mr-2 flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+    <div className="flex flex-wrap items-center gap-md">
+      <div className="mr-md flex items-center gap-md text-label text-muted-foreground tabular-nums">
         <span aria-live="polite" aria-atomic="true">
           {totalPages != null
             ? `Page ${page} of ${totalPages} · ${total} ${totalLabel}`
@@ -151,7 +148,7 @@ function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPag
         aria-label="Previous page"
       >
         <span aria-hidden="true">‹</span>
-        Prev
+        Previous
       </Button>
       <Button
         type="button"

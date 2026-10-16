@@ -29,9 +29,9 @@ describe("applyLiveFrame", () => {
   });
 
   it("CHUNK creates an assistant event when none exists, accumulating into the reply", () => {
-    const created = applyLiveFrame([], { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "Hel" });
+    const created = applyLiveFrame([], { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "e9", text: "Hel" });
     expect(created[0]).toMatchObject({ role: "assistant", actor: "fleet", text: "", reply: "Hel" });
-    const appended = applyLiveFrame(created, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "lo" });
+    const appended = applyLiveFrame(created, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "e9", text: "lo" });
     // The chunk stream is the fleet's reply — it never becomes the trigger text.
     expect(appended[0]?.reply).toBe("Hello");
     expect(appended[0]?.text).toBe("");
@@ -39,7 +39,7 @@ describe("applyLiveFrame", () => {
 
   it("CHUNK on an operator turn appends to the reply, never the operator's own text", () => {
     const seed = [evt({ id: "e9", role: "user", actor: "steer:x", text: "Hi ", reply: "" })];
-    const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "there" });
+    const out = applyLiveFrame(seed, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "e9", text: "there" });
     expect(out[0]).toMatchObject({ role: "user", text: "Hi ", reply: "there" });
   });
 
@@ -96,7 +96,7 @@ describe("applyLiveFrame", () => {
     const bystander = evt({ id: "bystander", reply: "untouched" });
     const target = evt({ id: "target", reply: "start" });
     const seed = [bystander, target];
-    const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "target", text: " more" });
+    const out = applyLiveFrame(seed, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "target", text: " more" });
     // The target event must have its reply extended.
     expect(out.find((e) => e.id === "target")?.reply).toBe("start more");
     // The bystander element must be the exact same object reference — not a copy.
@@ -128,7 +128,7 @@ describe("applyLiveFrame", () => {
   // proof: a second pass would rebuild every element, not just the target.
   it("a chunk rebuilds only its own event and leaves every sibling reference intact", () => {
     const seed = [evt({ id: "a" }), evt({ id: "b", reply: "hi" }), evt({ id: "c" })];
-    const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "b", text: " there" });
+    const out = applyLiveFrame(seed, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "b", text: " there" });
 
     expect(out).not.toBe(seed);
     expect(out[1]?.reply).toBe("hi there");
@@ -165,20 +165,20 @@ describe("applyLiveFrame", () => {
     expect(out[0]?.failureLabel).toBeNull();
   });
 
-  it("a completion carrying no timing does not erase the elapsed a progress frame reported", () => {
+  it("a malformed completion without timing leaves the pending call unchanged", () => {
     const progressAt = 1_000;
-    let out = applyLiveFrame([evt({ id: "e1" })], {
+    let out = applyLiveFrame([evt({ id: "e1" })], { call_id: "slow",
       kind: FRAME_KIND.TOOL_CALL_PROGRESS,
       event_id: "e1",
       name: "slow",
       elapsed_ms: 5_000,
     }, progressAt);
-    out = applyLiveFrame(out, {
+    out = applyLiveFrame(out, { call_id: "slow", status: "succeeded",
       kind: FRAME_KIND.TOOL_CALL_COMPLETED,
       event_id: "e1",
       name: "slow",
       ms: null as unknown as number,
     }, progressAt + 5_000);
-    expect(out[0]?.tools).toEqual([{ name: "slow", startedAtMs: progressAt, ms: 5_000, done: true }]);
+    expect(out[0]?.tools).toEqual([{ name: "slow", startedAtMs: progressAt, callId: "slow", ms: 5_000, done: false }]);
   });
 });

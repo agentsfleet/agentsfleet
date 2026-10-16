@@ -36,7 +36,7 @@ Documented honestly, not aspirationally. Pre-M62 baseline (the fix-pass converge
 
 - The named module `log` (source: `src/lib/logging/mod.zig`) exposes `scoped(.tag)` returning a logger struct with `.err` / `.warn` / `.info` / `.debug` methods. M62 removed the older free-function helpers (`logErr` / `logErrWithHint` / `logWarnErr`) — there is no compat shim.
 - TypeScript (`cli/src/**`) calls `console.log`/`console.error` directly. No structure. No scope. No severity beyond err vs out.
-- Error-code embedding (`UZ-XXX-NNN`) appears on some `err` lines but not others. The registry (`rustd/crates/afd_core/src/error_code.rs`) is the source of truth, but enforcement is voluntary.
+- Error-code embedding (`UZ-XXX-NNN`) appears on some `err` lines but not others. The registry (`rustd/crates/afd_core/src/error_code/mod.rs`) is the source of truth, but enforcement is voluntary.
 - No collector-friendly format. Logs are a mix of free-form English and ad-hoc `key={value}` fragments.
 
 The proposed standard below is what every new emit must conform to and what the fix-pass converges existing emits toward.

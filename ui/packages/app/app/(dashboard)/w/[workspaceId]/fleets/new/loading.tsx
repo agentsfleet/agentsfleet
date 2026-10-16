@@ -1,16 +1,15 @@
-import RouteLoading from "@/components/layout/RouteLoading";
-import { INSTALL_PAGE_DESCRIPTION, INSTALL_PAGE_TITLE } from "./library-docs";
+import { PageLayout, Skeleton } from "@agentsfleet/design-system";
 
-// Without this, /fleets/new borrowed the parent fleets loader, which painted
-// the wrong "Fleets" title while navigating to the install screen. Match the
-// real install header exactly while the gallery and vault reads resolve.
-//
-// Distinct from the in-page streaming fallback in `page.tsx`: this covers the
-// NAVIGATION into the route, that one covers the gallery region once the shell
-// is already on screen. (Worded to avoid a false hit in the web_app.md
-// scoreboard grep, which counts files that USE the primitive.)
-export default function InstallFleetLoading() {
-  return (
-    <RouteLoading title={INSTALL_PAGE_TITLE} description={INSTALL_PAGE_DESCRIPTION} />
-  );
+export default function NewFleetLoading() {
+  return <PageLayout fullHeight>
+    <output aria-label="Loading conversation" className="mx-auto flex w-full max-w-measure flex-1 flex-col items-center justify-center gap-xl">
+      <span className="sr-only">Loading conversation</span>
+      <Skeleton aria-hidden="true" className="size-10 rounded-full" />
+      <Skeleton aria-hidden="true" className="h-8 w-72 max-w-full" />
+      <Skeleton aria-hidden="true" className="h-40 w-full rounded-xl" />
+      <div aria-hidden="true" className="grid w-full grid-cols-3 gap-md">
+        <Skeleton className="h-28 rounded-lg" /><Skeleton className="h-28 rounded-lg" /><Skeleton className="h-28 rounded-lg" />
+      </div>
+    </output>
+  </PageLayout>;
 }

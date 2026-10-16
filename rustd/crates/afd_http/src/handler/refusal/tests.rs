@@ -28,6 +28,21 @@ impl Refusable for DomainRefusal {
     }
 }
 
+/// A gate somebody else already answered, carrying who and when.
+fn already_resolved() -> Refusal {
+    Refusal::already_resolved(
+        error_code::APPROVAL_ALREADY_RESOLVED,
+        "already answered",
+        crate::envelope::Resolution {
+            gate_id: "g".to_owned(),
+            action_id: "a".to_owned(),
+            outcome: "approved".to_owned(),
+            resolved_at: 1,
+            resolved_by: "someone".to_owned(),
+        },
+    )
+}
+
 #[test]
 fn constructors_preserve_each_refusal_status_and_header() {
     let cases = [
@@ -60,28 +75,7 @@ fn constructors_preserve_each_refusal_status_and_header() {
             ),
             StatusCode::CONFLICT,
         ),
-        (
-            Refusal::missing_secrets(
-                error_code::FLEET_BUNDLE_SECRETS_MISSING,
-                "short a credential",
-                vec!["github".to_owned()],
-            ),
-            StatusCode::FAILED_DEPENDENCY,
-        ),
-        (
-            Refusal::already_resolved(
-                error_code::APPROVAL_ALREADY_RESOLVED,
-                "already answered",
-                crate::envelope::Resolution {
-                    gate_id: "g".to_owned(),
-                    action_id: "a".to_owned(),
-                    outcome: "approved".to_owned(),
-                    resolved_at: 1,
-                    resolved_by: "someone".to_owned(),
-                },
-            ),
-            StatusCode::CONFLICT,
-        ),
+        (already_resolved(), StatusCode::CONFLICT),
     ];
 
     for (refusal, expected) in cases {

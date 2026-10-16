@@ -7,14 +7,14 @@ import { PageHeader, PageLayout, PageTitle, Section, Skeleton } from "@agentsfle
 export default function ApiKeysLoading() {
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader description="Let your scripts and tools work with agentsfleet. Create a key for each connection."
+        actions={<Skeleton className="h-8 w-32 rounded-md" />}>
         <PageTitle>API Keys</PageTitle>
       </PageHeader>
       <Section asChild>
         <section aria-label="API keys">
           <div className="mb-3 flex items-center justify-between">
-            <Skeleton className="h-3 w-32" />
-            <Skeleton className="h-8 w-28 rounded-md" />
+            <Skeleton className="h-9 w-full max-w-xs rounded-md" />
           </div>
           <div className="space-y-1">
             {Array.from({ length: 3 }, (_, i) => (

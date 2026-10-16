@@ -14,20 +14,21 @@ vi.mock("next/navigation", () => ({
 // the dialog's own behaviour is covered in EditPolicyDialog.test.tsx.
 vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () => {
   const { Button } = await import("@agentsfleet/design-system");
+  const { EDIT_POLICY_LABEL } = await import("../../components/RunnerListCells");
   return {
     default: ({ onSaved }: { onSaved: () => void }) => (
-      <Button onClick={onSaved}>Edit policy</Button>
+      <Button onClick={onSaved}>{EDIT_POLICY_LABEL}</Button>
     ),
   };
 });
 
 const updateRunnerAdminStateActionMock = vi.fn();
-const updateRunnerPolicyActionMock = vi.fn();
+const updateRunnerActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
 const requestRunnerSelftestActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: (...args: unknown[]) => updateRunnerAdminStateActionMock(...args),
-  updateRunnerPolicyAction: (...args: unknown[]) => updateRunnerPolicyActionMock(...args),
+  updateRunnerAction: (...args: unknown[]) => updateRunnerActionMock(...args),
   deleteRunnerAction: (...args: unknown[]) => deleteRunnerActionMock(...args),
   requestRunnerSelftestAction: (...args: unknown[]) => requestRunnerSelftestActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("../../actions", () => ({
 }));
 
 import { RunnerHeader } from "./RunnerHeader";
+import { EDIT_POLICY_LABEL } from "../../components/RunnerListCells";
 import { RUNNER_STATES_DOC_URL, RUNNER_STATES_HELP_LABEL } from "./runner-copy";
 
 afterEach(() => cleanup());
@@ -57,7 +59,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     labels: ["gpu", "prod"],
     last_seen_at: Date.now(),
     created_at: Date.now(),
-    assigned_policy: null,
+    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
     degraded_reason: null,
@@ -75,27 +77,22 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 }
 
 describe("RunnerHeader", () => {
-  it("test_runner_header_has_no_visible_second_title", () => {
+  it("names the runner once in its page heading", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    // The host name appears once as visible text, inside the breadcrumb; the
-    // page's own heading is present but screen-reader-only.
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading.className).toContain("sr-only");
-    const visible = screen.getAllByText("runner-prod-ams-01.internal");
-    const rendered = visible.filter((el) => !el.className.includes("sr-only"));
-    expect(rendered).toHaveLength(1);
-    expect(rendered[0]?.closest("nav")).not.toBeNull();
+    expect(heading.textContent).toBe("runner-prod-ams-01.internal");
+    expect(screen.getAllByText("runner-prod-ams-01.internal")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Runners" }).getAttribute("href")).toBe("/admin/runners");
   });
 
   it("test_runner_header_identity_line", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    expect(screen.getByText("Landlock")).toBeTruthy();
+    expect(screen.queryByText("Landlock")).toBeNull();
     expect(screen.getByText("gpu")).toBeTruthy();
     expect(screen.getByText("prod")).toBeTruthy();
-    // The raw runner id never renders as visible text; it is reachable only
-    // through the copy control.
     expect(screen.queryByText("01J2WQ8F3K7VZ9XB4N6MTYD5AR")).toBeNull();
-    expect(screen.getByRole("button", { name: /copy runner id/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /copy runner id/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /checks never run.*open report/i })).toBeTruthy();
   });
 
   it("test_degraded_runner_row_states_the_reason (header face)", () => {
@@ -130,10 +127,10 @@ describe("RunnerHeader", () => {
   it("a degraded runner with no report yet names the reason without a host-reports line", () => {
     render(
       <RunnerHeader
-        runner={detail({ degraded: true, degraded_reason: "no assigned policy", achievable: null })}
+        runner={detail({ degraded: true, degraded_reason: "no capability report", achievable: null })}
         grafanaHref={null} canWrite />,
     );
-    expect(screen.getByText(/assignment unmet: no assigned policy/)).toBeTruthy();
+    expect(screen.getByText(/assignment unmet: no capability report/)).toBeTruthy();
     expect(screen.queryByText(/host reports/)).toBeNull();
   });
 
@@ -162,7 +159,7 @@ describe("RunnerHeader", () => {
   it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     // The island stub fires onSaved directly — the wiring under test.
-    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
@@ -179,21 +176,6 @@ describe("RunnerHeader", () => {
     expect(grafana?.getAttribute("href")).toContain("var-runner_id=");
   });
 
-  it("test_runner_header_copy_failure_is_reported", async () => {
-    const writeText = vi.fn().mockRejectedValueOnce(new Error("denied"));
-    // jsdom's navigator.clipboard is getter-only; defineProperty replaces it
-    // (the design system's own CopyButton tests use this setup).
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
-    });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    fireEvent.click(screen.getByRole("button", { name: /copy runner id/i }));
-    // The copy control announces the failure in its own accessible name and
-    // never shows a success state (the design system's documented behaviour).
-    expect(await screen.findByRole("button", { name: /copy failed/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /copied/i })).toBeNull();
-  });
 
   it("refresh button requests a router refresh", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);

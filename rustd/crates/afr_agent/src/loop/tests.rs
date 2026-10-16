@@ -56,10 +56,9 @@ pub(crate) fn completions(frames: &[ActivityFrame<'_>]) -> Vec<(String, ToolCall
     frames
         .iter()
         .filter_map(|frame| match frame {
-            ActivityFrame::ToolCallCompleted(done) => Some((
-                done.call_id.clone().unwrap().into_owned(),
-                done.status.unwrap(),
-            )),
+            ActivityFrame::ToolCallCompleted(done) => {
+                Some((done.call_id.clone().into_owned(), done.status))
+            }
             _other => None,
         })
         .collect()
@@ -70,9 +69,7 @@ fn starts(frames: &[ActivityFrame<'_>]) -> Vec<String> {
     frames
         .iter()
         .filter_map(|frame| match frame {
-            ActivityFrame::ToolCallStarted(started) => {
-                Some(started.call_id.clone().unwrap().into_owned())
-            }
+            ActivityFrame::ToolCallStarted(started) => Some(started.call_id.clone().into_owned()),
             _other => None,
         })
         .collect()

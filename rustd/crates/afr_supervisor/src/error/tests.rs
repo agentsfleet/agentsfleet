@@ -9,7 +9,7 @@
 
 use afd_core::error_code;
 
-use super::{Error, ErrorKind, raise};
+use super::{Error, raise};
 use crate::client::{Method, Verb};
 
 #[test]
@@ -17,14 +17,13 @@ fn every_verb_logs_under_its_own_family() {
     for verb in [Verb::Hydrate, Verb::Capture, Verb::Recall] {
         assert_eq!(verb.code(), error_code::MEM_UNAVAILABLE, "{verb:?}");
     }
-    assert_eq!(Verb::Bundle.code(), error_code::FLEET_BUNDLE_FETCH_FAILED);
     let internal = Verb::ALL
         .iter()
         .filter(|verb| verb.code() == error_code::INTERNAL_OPERATION_FAILED)
         .count();
     assert_eq!(
         internal,
-        Verb::ALL.len() - 4,
+        Verb::ALL.len() - 3,
         "every other verb is internal"
     );
     assert_eq!(Verb::Renew.to_string(), "renew");
@@ -39,11 +38,7 @@ fn every_verb_logs_under_its_own_family() {
             "{verb:?} logs in lower snake case"
         );
     }
-    assert!(
-        Verb::Bundle.method() == Method::Get
-            && Verb::Hydrate.method() == Method::Get
-            && Verb::Report.method() == Method::Post
-    );
+    assert!(Verb::Hydrate.method() == Method::Get && Verb::Report.method() == Method::Post);
 }
 
 #[test]
@@ -57,7 +52,7 @@ fn a_refusal_carries_the_daemons_code_and_status_through() {
     );
     assert_eq!(refusal.refusal_status(), Some(402));
     assert_eq!(refusal.code(), error_code::RUN_BUDGET_EXCEEDED);
-    assert!(!refusal.is_retryable() && !refusal.is_not_found());
+    assert!(!refusal.is_retryable());
     assert!(
         refusal.to_string().contains("refused the renew call (402)"),
         "{refusal}"
@@ -69,14 +64,14 @@ fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
     let unknown = raise::refused_with_body(Verb::Renew, 409, br#"{"error_code":"UZ-NOPE-999"}"#);
     let unreadable = raise::refused_with_body(Verb::Report, 400, b"<html>");
     let unauthorized = raise::refused(Verb::Lease, 401, None);
-    let absent = raise::refused(Verb::Bundle, 404, None);
+    let absent = raise::refused(Verb::Hydrate, 404, None);
 
     assert_eq!(unknown.code(), error_code::RUN_LEASE_LOST);
     assert_eq!(unreadable.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(unreadable.refusal_code(), None);
     assert!(unauthorized.is_unauthorized());
     assert_eq!(unauthorized.code(), error_code::RUN_INVALID_RUNNER_TOKEN);
-    assert!(absent.is_not_found() && !absent.is_unauthorized());
+    assert!(absent.refusal_status() == Some(404) && !absent.is_unauthorized());
 }
 
 #[test]
@@ -105,10 +100,10 @@ async fn a_transport_failure_is_retryable() {
         .send()
         .await
         .unwrap_err();
-    let failure = raise::transport(Verb::Bundle)(unreachable);
+    let failure = raise::transport(Verb::Hydrate)(unreachable);
 
     assert!(failure.is_retryable());
-    assert_eq!(failure.code(), error_code::FLEET_BUNDLE_FETCH_FAILED);
+    assert_eq!(failure.code(), error_code::MEM_UNAVAILABLE);
     assert!(std::error::Error::source(&failure).is_some());
 }
 
@@ -144,14 +139,6 @@ fn local_failures_log_as_internal() {
         );
         assert!(!failure.is_retryable());
     }
-    assert_eq!(
-        raise::tampered("abc").code(),
-        error_code::FLEET_BUNDLE_INVALID
-    );
-    assert!(matches!(
-        raise::tampered("abc").kind(),
-        ErrorKind::BundleTampered { .. }
-    ));
 }
 
 #[test]

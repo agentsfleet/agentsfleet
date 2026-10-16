@@ -1,6 +1,6 @@
 import { credential } from "@/lib/auth/credential";
 import { ApiError } from "@/lib/api/errors";
-import { ERROR_CODE } from "@/lib/errors";
+import { ERROR_CODE, UNCONFIRMED_REQUEST_MESSAGE } from "@/lib/errors";
 
 // Discriminated union every server action returns. Server Actions can't
 // throw across the RSC boundary with custom fields intact (`.status`,
@@ -30,6 +30,7 @@ export async function withToken<T>(
     if (e instanceof ApiError) {
       return { ok: false, error: e.message, status: e.status, errorCode: e.code };
     }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    // Unknown exceptions may contain schema internals or private response data.
+    return { ok: false, error: UNCONFIRMED_REQUEST_MESSAGE };
   }
 }

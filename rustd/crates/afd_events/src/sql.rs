@@ -66,7 +66,7 @@ RETURNING (xmax = 0) AS inserted",
 /// nothing, which looks like pure churn worth a `WHERE` guard. It is not: a
 /// filtered `DO UPDATE` that matches no row updates nothing, `RETURNING` then
 /// yields nothing, and both callers read this statement with `fetch_one`
-/// (`lease/event.rs`, `inbox/resolve.rs`). Adding that guard turns every
+/// (`lease/event.rs`, `inbox/resolve/mod.rs`). Adding that guard turns every
 /// redelivery into `RowNotFound` — on the receive path, which decides whether
 /// a fleet has already paid. The wasted tuple version is the price of the
 /// caller getting an answer on both arms.
@@ -185,7 +185,7 @@ macro_rules! returning_row {
     () => {
         "
   RETURNING fleet_id, event_id, workspace_id, actor, event_type, status,
-            tokens, wall_ms, failure_label, failure_detail, checkpoint_id,
+            tokens, wall_ms, failure_label, failure_detail,
             resumes_event_id, created_at, updated_at
 )"
     };

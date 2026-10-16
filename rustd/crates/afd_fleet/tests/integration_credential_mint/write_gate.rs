@@ -26,7 +26,7 @@ use afd_core::error_code::ErrorCode;
 
 /// A stored document declaring a write reach over [`super::STATED_BINDING`]'s
 /// repository, which is what puts a binding on the lease's mint scope.
-const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0},"repositories":["acme/payments"],"repository_access":"write","repository_base":"main"}}"#;
+const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["acme/payments"],"repository_access":"write","repository_base":"main"}}"#;
 
 /// A reach the fixture fleet does not declare, for the drift case.
 const DRIFTED_BINDING: &str = r#"{"repositories":["acme/ledger"],"access":"write","base":"main"}"#;

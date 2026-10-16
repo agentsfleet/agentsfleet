@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import {
   Badge,
   CopyButton,
@@ -69,7 +70,7 @@ export function TeamTable({ members, invites, pending, onRemove, onRevoke, onRes
       rows={rows}
       rowKey={(row) => row.key}
       caption={TEAM_CAPTION}
-      pagination={false}
+      isLoading={pending}
     />
   );
 }
@@ -78,7 +79,7 @@ function PersonCell({ row }: { row: TeamRow }) {
   return (
     <div className="min-w-0">
       {row.invite ? <div className="truncate text-sm">{row.invite.email}</div> : <MemberName member={row.member} />}
-      {/* The Time column leaves the row on a phone, so its dates and an
+      {/* The timestamp column leaves the row on a phone, so its dates and an
           invite's email status read here instead, as the API Keys table does. */}
       <div className="mt-xs flex flex-col items-start gap-xs sm:hidden">
         <TimeCell row={row} />
@@ -135,7 +136,7 @@ function RoleCell({ row }: { row: TeamRow }) {
 // needs either way, and revoke: icons only, right-aligned with the destructive
 // one last, as every other table's row actions are. With no mail relay there is
 // nothing to send again (it could only answer 503); the copied link is the way
-// in. The email status reads in the Time column.
+// in. The email status reads in the timestamp column.
 function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers & { invite: InviteSummary }) {
   return (
     <div className="flex justify-end gap-1">
@@ -170,9 +171,9 @@ function columns(
   invites: InviteHandlers,
 ): DataTableColumn<TeamRow>[] {
   return [
-    { key: "person", header: "Person", cell: (row) => <PersonCell row={row} /> },
+    { key: "person", primary: true, header: "Person", cell: (row) => <PersonCell row={row} /> },
     { key: "role", header: "Role", cell: (row) => <RoleCell row={row} /> },
-    { key: "time", header: "Time", hideOnMobile: true, cell: (row) => <TimeCell row={row} /> },
+    { key: "time", header: TIME_LABEL.joinedOrInvited, hideOnMobile: true, cell: (row) => <TimeCell row={row} /> },
     {
       key: "actions",
       header: "Actions",

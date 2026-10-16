@@ -1,90 +1,42 @@
-// `agentsfleet library` — the Fleet library gallery for the active workspace.
-//
-// It reads the workspace gallery (platform ∪ this workspace's tenant entries),
-// which is the same list `install --library` resolves against. It used to read
-// the platform-only catalogue, so a library onboarded into the workspace was
-// installable by identifier and invisible here — and the identifier could then
-// only come from the dashboard. One endpoint for both commands is what keeps
-// "what I can see" and "what I can install" the same set.
+// Published reusable setup; the revision column pins a new private conversation.
 
 import { Effect } from "effect";
-import { CliConfig } from "../services/config.ts";
-import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
-import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
-import { wsFleetLibrariesPath } from "../lib/api-paths.ts";
-import { collectPages } from "../lib/paged.ts";
-import { ui, AGE_KEY, EMPTY_CELL } from "../output/index.ts";
-import { LIBRARY_ID_PLACEHOLDER } from "../constants/cli-flags.ts";
-import type { CliError } from "../errors/index.ts";
-import type { FleetLibraryGalleryEntry } from "./fleet_install_source.ts";
+import { wsFleetLibrariesPath, wsOwnedFleetLibrariesPath } from "../lib/api-paths.ts";
+import { readLibraryPage, type LibraryPageOptions } from "./fleet-library-read.ts";
+import { ui, AGE_KEY } from "../output/index.ts";
 
-const FIELD_ID = "id" as const;
-const FIELD_NAME = "name" as const;
-const FIELD_TIER = "tier" as const;
-const FIELD_CREDENTIALS = "credentials" as const;
+const FIELD = { id: "id", name: "name", visibility: "visibility", revision: "revision" } as const;
+const CHAT_HINT = "Start from a revision: agentsfleet chat --library <library_id> --revision <revision_id>";
+const PUBLISH_HINT = "Publish a reviewed chat with /publish <label>, or chat --publish <label> --review-digest <digest>.";
 
-
-const EMPTY_GALLERY =
-  "No Fleet libraries in this workspace." as const;
-const EMPTY_HINT =
-  "Add one with: agentsfleet library create --github <owner/repo>" as const;
-const LIBRARIES_LISTED = "Fleet libraries" as const;
-const INSTALL_HINT =
-  `Install one with: agentsfleet install --library ${LIBRARY_ID_PLACEHOLDER}` as const;
-
-const joinNames = (names: ReadonlyArray<string> | undefined): string =>
-  names && names.length > 0 ? names.join(", ") : EMPTY_CELL;
-
-export const libraryEffect: Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> = Effect.gen(function* () {
+export const libraryEffectFromOptions = Effect.fn("library.browse")(function* (
+  options: LibraryPageOptions,
+  owned = false,
+) {
   const output = yield* Output;
   const http = yield* HttpClient;
-
-  const workspaceId = yield* requireWorkspaceId;
+  const workspace = yield* requireWorkspaceId;
   const token = yield* resolveAuthToken;
-
-  const items = yield* collectPages<FleetLibraryGalleryEntry>(
-    http,
-    wsFleetLibrariesPath(workspaceId),
-    token,
-  );
-
+  const path = owned ? wsOwnedFleetLibrariesPath(workspace) : wsFleetLibrariesPath(workspace);
+  const result = yield* readLibraryPage(http, path, token, options);
   if (output.format !== OUTPUT_FORMAT.text) {
-    yield* output.success(LIBRARIES_LISTED, { items });
+    yield* output.success(owned ? "Owned Fleet libraries" : "Fleet libraries", { ...result });
     return;
   }
-
-  if (items.length === 0) {
-    yield* output.info(EMPTY_GALLERY);
-    yield* output.info(ui.dim(EMPTY_HINT));
-    return;
-  }
-
-  yield* output.printEntityTable(
-    {
-      name: { key: FIELD_NAME, label: "NAME" },
-      id: { key: FIELD_ID, label: "LIBRARY" },
-      domain: [
-        { key: FIELD_TIER, label: "TIER" },
-        { key: FIELD_CREDENTIALS, label: "SECRETS" },
-      ],
-    },
-    items.map((entry) => ({
-      id: String(entry.id ?? ""),
-      name: String(entry.name ?? ""),
-      // Two entries can share a name across tiers — the platform catalogue and
-      // a workspace's own copy of the same bundle — so the tier is what tells
-      // the two rows apart.
-      tier: String(entry.visibility ?? EMPTY_CELL),
-      credentials: joinNames(entry.requirements?.credentials),
-      [AGE_KEY]: entry.created_at,
-    })),
-  );
-  yield* output.info(ui.dim(INSTALL_HINT));
+  if (result.items.length === 0) yield* output.info("No published Fleet libraries in this page.");
+  else yield* output.printEntityTable({
+    name: { key: FIELD.name, label: "NAME" },
+    id: { key: FIELD.id, label: "LIBRARY" },
+    domain: [{ key: FIELD.visibility, label: "TIER" }, { key: FIELD.revision, label: "REVISION" }],
+  }, result.items.map((entry) => ({
+    id: entry.id, name: entry.name, visibility: entry.visibility,
+    revision: entry.head_revision_id, [AGE_KEY]: entry.created_at,
+  })));
+  yield* output.info(ui.dim(result.items.length === 0 ? PUBLISH_HINT : CHAT_HINT));
+  if (result.next_cursor !== null) yield* output.info(ui.dim(
+    `More available: agentsfleet library${owned ? " list" : ""} --starting-after ${result.next_cursor}`,
+  ));
 });

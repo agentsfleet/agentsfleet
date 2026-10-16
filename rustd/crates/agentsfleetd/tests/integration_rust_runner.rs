@@ -190,7 +190,14 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
         run.booted.database.clone(),
         afd_crypto::entropy::Entropy::new(),
     )
-    .assign_policy(&run.runner_id, &policy, afd_core::clock::now())
+    .edit(
+        &run.runner_id,
+        afd_runner::RunnerEdit {
+            assigned_policy: Some(&policy),
+            labels: None,
+        },
+        afd_core::clock::now(),
+    )
     .await
     .expect("an operator may relax a runner's egress");
 }

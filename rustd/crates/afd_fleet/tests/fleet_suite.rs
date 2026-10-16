@@ -7,7 +7,13 @@
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
 
-#[path = "../../afd_dragonfly/tests/support/fake_redis.rs"]
+mod installed;
+mod lease_renewal;
+
+#[path = "support/fleet_setup.rs"]
+mod setup;
+
+#[path = "../../afd_dragonfly/tests/support/fake_redis/mod.rs"]
 #[allow(
     unused_imports,
     clippy::expect_used,
@@ -42,15 +48,12 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
-#[path = "integration_admission_recovery.rs"]
 mod integration_admission_recovery;
-#[path = "integration_credential_mint.rs"]
 mod integration_credential_mint;
 #[path = "integration_delivery_lookup.rs"]
 mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
-#[path = "integration_held_sandbox.rs"]
 mod integration_held_sandbox;
 #[path = "integration_lease_affinity.rs"]
 mod integration_lease_affinity;
@@ -60,12 +63,9 @@ mod integration_lease_assign;
 mod integration_lease_block;
 #[path = "integration_lease_fairness.rs"]
 mod integration_lease_fairness;
-#[path = "integration_lease_gates.rs"]
 mod integration_lease_gates;
 #[path = "integration_lease_history.rs"]
 mod integration_lease_history;
-#[path = "integration_lease_installed.rs"]
-mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
 #[path = "integration_lease_plan.rs"]
@@ -74,7 +74,6 @@ mod integration_lease_plan;
 mod integration_lease_ready;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
-#[path = "integration_lease_wake.rs"]
 mod integration_lease_wake;
 #[path = "integration_ledger_fleet_name.rs"]
 mod integration_ledger_fleet_name;
@@ -82,7 +81,6 @@ mod integration_ledger_fleet_name;
 mod integration_ledger_orphan_charge;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
-#[path = "integration_ledger_scope.rs"]
 mod integration_ledger_scope;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
@@ -116,13 +114,11 @@ mod integration_reply_destination;
 mod integration_report_commit;
 #[path = "integration_report_fence.rs"]
 mod integration_report_fence;
-#[path = "integration_report_owes_destination.rs"]
 mod integration_report_owes_destination;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
-#[path = "integration_runner_beat.rs"]
 mod integration_runner_beat;
 #[path = "integration_runner_maintenance.rs"]
 mod integration_runner_maintenance;
@@ -136,6 +132,8 @@ mod integration_runner_views;
 mod integration_runner_views_malformed;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
+#[path = "integration_steer_receipt_cutover.rs"]
+mod integration_steer_receipt_cutover;
 mod integration_terminal_redelivery;
 #[path = "integration_wall_counters.rs"]
 mod integration_wall_counters;

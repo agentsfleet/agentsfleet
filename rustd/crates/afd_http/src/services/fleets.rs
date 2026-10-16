@@ -1,22 +1,18 @@
 //! The HTTP seam the workspace fleets surface acts through.
 //!
-//! One trait over the whole lifecycle — list, install, read, edit, purge —
-//! because they are one store and a suite that stubbed them separately would be
-//! stubbing an implementation detail. Every method takes ALREADY-PARSED values:
-//! a [`FleetName`] cannot hold a space, a [`Requested`] cannot mean `paused`,
-//! and a [`ConfigSource`] cannot be both a document and a configuration. So
-//! there is no validation arm in any implementation, and none a stub could get
-//! differently right from the real one.
+//! One trait over what the shared fleet store still answers — list, live set,
+//! counters, ingress status and purge — because they are one store and a suite
+//! that stubbed them separately would be stubbing an implementation detail.
+//! Setup writes (Save, Apply, rename, status) belong to the native setup
+//! authority, `afd_authoring::Creations`, never to this seam. Every method
+//! takes ALREADY-PARSED values, so no implementation carries a validation arm.
 
-use afd_core::clock::UnixMillis;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
-use afd_fleet_lifecycle::{
-    After, FleetDetail, FleetPage, FleetStatus, Install, Patch, Patched, Result as FleetResult,
-};
+use afd_fleet_lifecycle::{After, FleetPage, FleetStatus, Result as FleetResult};
 
 /// Everything the workspace fleets routes act through.
 ///
@@ -39,19 +35,6 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         after: Option<&After>,
         limit: u32,
     ) -> impl Future<Output = FleetResult<FleetPage>> + Send;
-
-    /// One fleet of the workspace, whole.
-    ///
-    /// # Errors
-    /// Refuses an id naming no fleet THIS workspace holds — the statement is
-    /// workspace-scoped, so a fleet somebody else owns and one that never
-    /// existed are indistinguishable, and neither is disclosed. Reports a
-    /// datastore that would not answer.
-    fn detail(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-    ) -> impl Future<Output = FleetResult<FleetDetail>> + Send;
 
     /// Whether this fleet will take new work, without reading what it is.
     ///
@@ -99,46 +82,16 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send;
 
-    /// Installs one fleet, its event stream and consumer group included.
-    ///
-    /// # Errors
-    /// Refuses a library id naming nothing installable here, either authored
-    /// document being unusable, the two naming different fleets, and a CHOSEN
-    /// name the workspace already holds. Reports an install whose stream could
-    /// not be created — with the row removed — and a datastore that would not
-    /// answer.
-    fn install(
-        &self,
-        workspace: &Uuid7,
-        request: &Install<'_>,
-        now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<afd_fleet_lifecycle::Installed>> + Send;
-
-    /// Applies one PATCH inside a single row lock.
-    ///
-    /// # Errors
-    /// Refuses an id naming no fleet this workspace holds and one already
-    /// killed, a transition the machine does not allow from where the row
-    /// stands, and an `If-Match` naming a version the source has moved past.
-    /// Reports a lock this request could not take, and a datastore that would
-    /// not answer.
-    fn patch(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        request: &Patch,
-        now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<Patched>> + Send;
-
     /// Purges one killed fleet and everything keyed to it.
     ///
     /// # Errors
     /// Refuses an id naming no fleet this workspace holds, and one nobody
     /// killed first. Reports a datastore that would not answer.
-    fn purge(
+    fn purge_tagged(
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
+        expected: &str,
     ) -> impl Future<Output = FleetResult<()>> + Send;
 }
 
@@ -151,14 +104,6 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         limit: u32,
     ) -> impl Future<Output = FleetResult<FleetPage>> + Send {
         Self::page(self, workspace, after, limit)
-    }
-
-    fn detail(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-    ) -> impl Future<Output = FleetResult<FleetDetail>> + Send {
-        Self::detail(self, workspace, fleet)
     }
 
     fn ingress_status(
@@ -184,30 +129,12 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         Self::counters(self, workspace, fleets)
     }
 
-    fn install(
-        &self,
-        workspace: &Uuid7,
-        request: &Install<'_>,
-        now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<afd_fleet_lifecycle::Installed>> + Send {
-        Self::install(self, workspace, request, now)
-    }
-
-    fn patch(
+    fn purge_tagged(
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        request: &Patch,
-        now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<Patched>> + Send {
-        Self::patch(self, workspace, fleet, request, now)
-    }
-
-    fn purge(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
+        expected: &str,
     ) -> impl Future<Output = FleetResult<()>> + Send {
-        Self::purge(self, workspace, fleet)
+        Self::purge_tagged(self, workspace, fleet, expected)
     }
 }

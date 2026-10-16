@@ -8,7 +8,7 @@
 --
 -- Idempotent on replay through UNIQUE (fleet_id, event_id) plus
 -- ON CONFLICT DO NOTHING. That constraint is also what the reclaim
--- (`RECLAIM_PRIOR_ACTIVE` in `rustd/crates/afd_fleet/src/lease/sql/lease.rs`)
+-- (`RECLAIM_PRIOR_ACTIVE` in `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs`)
 -- joins on to read an expired lease's event body, which the lease does not copy
 -- — both tables cascade from the same fleet, so the join cannot dangle.
 --

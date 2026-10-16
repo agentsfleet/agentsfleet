@@ -19,29 +19,24 @@ import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   CLEAR_WORKSPACE_FILTER_LABEL,
   LEASES_EMPTY_TITLE,
+  OPEN_RUNNER_LABEL,
   REVIEW_LEASE_TITLE,
   WORKSPACE_FILTER_PARAM,
   WORKSPACE_LABEL,
 } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
 import { failureSentenceFor } from "@/lib/events/event-summary";
-import { SOURCE_KIND_UPLOAD } from "@/lib/types";
+import { fixtureDefinition, fixtureConfig } from "./fixtures/definition";
+import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { agentCellFor, expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
-import {
-  skillMd,
-  getDefaultWorkspaceId,
-  triggerMd,
-  waitForFleetActive,
-} from "./fixtures/seed";
+import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLEET_NAME_PREFIX = "runner-detail-";
-// The refusal bundle is onboarded ONCE per workspace under this name and
-// every fleet below installs from it by explicit name: identical bytes
-// converge on one library row, where a per-fleet bundle left one row per run.
+// One shared setup per workspace keeps these fleets on the same library row.
 const REFUSED_LIBRARY_NAME = "runner-detail-unhosted-tool";
 const UNHOSTED_FIXTURE_TOOL = "acceptance_unhosted_tool";
 const RENDER_TIMEOUT_MS = 15_000;
@@ -126,24 +121,13 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
   const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   const tag = Math.random().toString(36).slice(2, 8);
   const name = `${FLEET_NAME_PREFIX}${tag}`;
-  const tenant = clientFor(FIXTURE_KEY.regular);
-  const library = await tenant.post<OnboardTemplateResp>(
-    `/v1/workspaces/${ws}/fleet-libraries`,
-    {
-      source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: skillMd(REFUSED_LIBRARY_NAME),
-      trigger_markdown: triggerMd(REFUSED_LIBRARY_NAME, UNHOSTED_FIXTURE_TOOL),
-    },
-  );
-  const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {
-    tenant_library_id: library.id,
-    name,
-  });
-  await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.fleet_id);
+  const fleet = await saveFixtureFleet(FIXTURE_KEY.regular, ws,
+    fixtureDefinition(REFUSED_LIBRARY_NAME, "Acknowledge requests.", fixtureConfig(REFUSED_LIBRARY_NAME, UNHOSTED_FIXTURE_TOOL)), name);
+  await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
 
   await signInAs(page, FIXTURE_KEY.regular);
-  await page.goto(workspaceHref(ws, `fleets/${fleet.fleet_id}`));
-  await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.fleet_id}`));
+  await page.goto(workspaceHref(ws, `fleets/${fleet.id}`));
+  await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
   const composer = page.getByLabel("Chat composer");
   await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -156,13 +140,13 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
   await expect
     .poll(
       async () => {
-        location = await findFailedLease(fleet.fleet_id);
+        location = await findFailedLease(fleet.id);
         return location !== null;
       },
       { timeout: LEASE_SETTLE_TIMEOUT_MS, intervals: [LEASE_POLL_INTERVAL_MS] },
     )
     .toBe(true);
-  return { ...location!, workspaceId: ws, fleetId: fleet.fleet_id };
+  return { ...location!, workspaceId: ws, fleetId: fleet.id };
 }
 
 test.describe("runner detail", () => {
@@ -175,7 +159,7 @@ test.describe("runner detail", () => {
     await signInAs(page, FIXTURE_KEY.operator);
     await page.goto("/admin/runners");
     const card = page.getByRole("link", {
-      name: new RegExp(`^Inspect runner: ${hostId}`),
+      name: new RegExp(`^${OPEN_RUNNER_LABEL}: ${hostId}`),
     });
     await expect(card).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await card.click();

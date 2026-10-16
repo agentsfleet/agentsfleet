@@ -19,8 +19,8 @@ Objectives.
 
 For each environment:
 
-1. Confirm the `agentsfleetd` OTLP export credentials (`GRAFANA_OTLP_*`) are
-   set for the environment — runtime metric families arrive via the daemon's
+1. Confirm the `agentsfleetd` OTLP export settings (`OTEL_EXPORTER_OTLP_ENDPOINT`
+   and `OTEL_EXPORTER_OTLP_HEADERS`) are set for the environment — runtime metric families arrive via the daemon's
    own exporter push; nothing scrapes the daemon. The gate's check arm probes
    the datasource for live series and names any family that is absent.
 2. Create a Grafana service account that can read the selected datasource and
@@ -80,11 +80,10 @@ only `grafana`.
   runner success, work picked up inside the replay floor, and worst runner
   heartbeat age.
 - Both error-budget burn panels carry their unproven marker.
-- The producer-gap list and the shared-tenant warning are NOT on the dashboard.
-  They were a text panel until Sep 18, 2026; the census and
-  `rustd/crates/afd_observability/src/metrics/produced.rs` are the source of
-  truth for what has no producer, and the warning above this list is where an
-  operator reads it. A dashboard panel was a second copy of both.
+- The shared-tenant warning is NOT on the dashboard. It was a text panel until
+  Sep 18, 2026; the warning above this list is where an operator reads it. A
+  dashboard panel was a second copy. Every census family has a producer, so
+  there is no producer-gap list to show.
 - `runner-silent` is quiet while runners heartbeat. The family reports a Unix
   epoch, so the rule subtracts it from evaluation time and takes the freshest
   reading per runner; a rule missing either half alerts on a healthy fleet.

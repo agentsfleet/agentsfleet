@@ -52,7 +52,7 @@ export function DataTable<T extends DataTableRowData>({
       return (
         <>
           {emptyState}
-          <DataTableFooter table={table} pagination={pagination} totalRows={0} />
+          <DataTableFooter table={table} pagination={pagination} totalRows={0} isLoading={loading} />
         </>
       );
     }

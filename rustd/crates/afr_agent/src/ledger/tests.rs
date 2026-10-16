@@ -153,10 +153,10 @@ fn opened_and_ended(frames: &[ActivityFrame<'_>]) -> (Vec<String>, Vec<(String, 
     for frame in frames {
         match frame {
             ActivityFrame::ToolCallStarted(started) => {
-                opened.extend(started.call_id.as_deref().map(str::to_owned));
+                opened.push(started.call_id.to_string());
             }
             ActivityFrame::ToolCallCompleted(done) => {
-                ended.extend(done.call_id.as_deref().map(str::to_owned).zip(done.status));
+                ended.push((done.call_id.to_string(), done.status));
             }
             _ => {}
         }

@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::requests;
 use crate::seed;
 use crate::support;
 use afd_core::id::Uuid7;
@@ -53,7 +52,7 @@ async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status
     .bind(service)
     .bind(status)
     .bind("a fixture asked")
-    .bind(requests::ENROLLED_AT)
+    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");

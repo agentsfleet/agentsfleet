@@ -10,7 +10,6 @@ import { ERROR_CODE } from "@/lib/errors";
 const postSteer = vi.hoisted(() => vi.fn());
 const mint = vi.hoisted(() => ({ unavailable: false }));
 vi.mock("@/lib/api/fleet-steer", () => ({ postSteer }));
-vi.mock("@/lib/onboarding-refresh", () => ({ requestOnboardingRefresh: vi.fn() }));
 vi.mock("@/lib/streaming/operation-id", async (importActual) => {
   const actual = await importActual<typeof import("@/lib/streaming/operation-id")>();
   return {

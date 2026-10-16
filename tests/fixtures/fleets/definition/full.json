@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "description": "Every optional configuration block populated.",
+  "instructions_md": "You are a full-fields agent. The configuration carries every optional\nblock: a signed webhook trigger, credentials, a network allowlist and a\nmonthly ceiling.",
+  "config": {
+    "name": "full-setup",
+    "x-agentsfleet": {
+      "triggers": [
+        {
+          "type": "webhook",
+          "source": "github",
+          "signature": {
+            "secret_ref": "github_secret"
+          }
+        }
+      ],
+      "tools": [
+        "agentmail",
+        "slack",
+        "github"
+      ],
+      "credentials": [
+        "github_token",
+        "slack_bot_token"
+      ],
+      "network": {
+        "allow": [
+          "api.github.com",
+          "slack.com"
+        ]
+      },
+      "budget": {
+        "daily_nanos": "1000000000",
+        "monthly_nanos": "8000000000"
+      }
+    }
+  }
+}

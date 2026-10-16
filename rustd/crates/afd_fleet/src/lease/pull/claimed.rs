@@ -40,5 +40,6 @@ impl Plane {
     ) -> Result<String> {
         self.run_claimed(acquired, runner_id, now, std::time::Instant::now())
             .await
+            .map(super::Polled::into_body)
     }
 }

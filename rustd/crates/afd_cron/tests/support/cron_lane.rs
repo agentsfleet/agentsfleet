@@ -36,12 +36,15 @@ use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The instant the seeded rows are stamped with.
 const SEED_MS: i64 = 1_760_000_000_000;
+
+/// The status the fixture fleet is seeded live under.
+const FLEET_ACTIVE: &str = "active";
 
 /// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -268,21 +271,13 @@ impl CronLane {
         .await
         .expect("seeding a workspace");
 
-        sqlx::query(
-            "INSERT INTO core.fleets
-               (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                status, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'cron-fixture-fleet',
-                     '# fixture', '{}'::jsonb, 'active', $4, $4)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(SEED_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a fleet");
+        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
+            .name("cron-fixture-fleet")
+            .at(SEED_MS)
+            .native_setup()
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a fleet");
 
         let _ = &self.lane;
     }

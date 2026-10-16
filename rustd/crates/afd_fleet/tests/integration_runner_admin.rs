@@ -10,71 +10,70 @@ use crate::support;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_api_wire::admin::RunnerAdminAction;
+use afd_api_wire::admin::{AdminState, RunnerAdminAction};
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_runner::RunnerEdit;
 use afd_wire::runner::{
     AssignedPolicy, BindMode, CapabilityReport, ExtraBind, NetworkPolicy, SandboxTier,
 };
 use tokio::sync::Barrier;
 
-use self::requests::{ENROLLED_AT, enrolment};
+use self::requests::enrolment;
 use self::support::Fixtures;
 
 const ACTOR: &str = "fixture:platform-operator";
+
+/// Enrols one development runner at the fixture instant and returns its id.
+async fn enrol(fixtures: &Fixtures) -> Uuid7 {
+    fixtures
+        .runners()
+        .register(
+            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            UnixMillis::from_millis(fixtures.enrolled_at()),
+        )
+        .await
+        .expect("the runner enrols")
+        .runner_id
+}
+
+/// Applies `action` to `runner` as [`ACTOR`], `offset` milliseconds after
+/// enrolment.
+async fn transition(
+    fixtures: &Fixtures,
+    runner: &Uuid7,
+    action: RunnerAdminAction,
+    offset: i64,
+) -> afd_runner::Result<AdminState> {
+    fixtures
+        .runners()
+        .transition(
+            runner,
+            action,
+            ACTOR,
+            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
+        )
+        .await
+}
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_runner_admin_transitions() {
     let fixtures = Fixtures::create().await;
-    let enrolled = fixtures
-        .runners()
-        .register(
-            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
-        )
-        .await
-        .expect("the runner enrols");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let enrolled = enrol(&fixtures).await;
+    let runner = enrolled.as_str().to_owned();
 
-    fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Cordon,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 1),
-        )
+    transition(&fixtures, &enrolled, RunnerAdminAction::Cordon, 1)
         .await
         .expect("an active runner may be cordoned");
-    fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Cordon,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 2),
-        )
+    transition(&fixtures, &enrolled, RunnerAdminAction::Cordon, 2)
         .await
         .expect("repeating a transition is idempotent");
-    fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Revoke,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 3),
-        )
+    transition(&fixtures, &enrolled, RunnerAdminAction::Revoke, 3)
         .await
         .expect("a cordoned runner may be revoked");
 
-    let refused = fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Drain,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 4),
-        )
+    let refused = transition(&fixtures, &enrolled, RunnerAdminAction::Drain, 4)
         .await
         .expect_err("revocation is terminal");
     assert!(refused.is_rejected());
@@ -103,29 +102,18 @@ async fn test_runner_admin_transitions() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn concurrent_identical_transitions_append_one_event() {
     let fixtures = Fixtures::create().await;
-    let enrolled = fixtures
-        .runners()
-        .register(
-            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
-        )
-        .await
-        .expect("the runner enrols");
+    let enrolled = enrol(&fixtures).await;
     let gate = Arc::new(Barrier::new(3));
+    let cordoned_at = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
     let mut tasks = Vec::new();
     for actor in ["fixture:operator-a", "fixture:operator-b"] {
         let runners = fixtures.runners().clone();
-        let runner = enrolled.runner_id.clone();
+        let runner = enrolled.clone();
         let ready = Arc::clone(&gate);
         tasks.push(tokio::spawn(async move {
             ready.wait().await;
             runners
-                .transition(
-                    &runner,
-                    RunnerAdminAction::Cordon,
-                    actor,
-                    UnixMillis::from_millis(ENROLLED_AT + 1),
-                )
+                .transition(&runner, RunnerAdminAction::Cordon, actor, cordoned_at)
                 .await
         }));
     }
@@ -135,11 +123,11 @@ async fn concurrent_identical_transitions_append_one_event() {
             task.await
                 .expect("the transition task completes")
                 .expect("identical transitions are idempotent"),
-            afd_api_wire::admin::AdminState::Cordoned
+            AdminState::Cordoned
         );
     }
     assert_eq!(
-        fixtures.events(enrolled.runner_id.as_str()).await,
+        fixtures.events(enrolled.as_str()).await,
         vec!["runner_registered".to_owned(), "runner_cordoned".to_owned(),],
         "the row lock lets only one contender append the state-change event"
     );
@@ -165,26 +153,17 @@ fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
     let fixtures = Fixtures::create().await;
-    let enrolled = fixtures
-        .runners()
-        .register(
-            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
-        )
-        .await
-        .expect("the runner enrols");
-    let runner = enrolled.runner_id.as_str();
+    let enrolled = enrol(&fixtures).await;
+    let runner = enrolled.as_str();
 
-    let first = fixtures
-        .runners()
-        .assign_policy(
-            &enrolled.runner_id,
-            &reassignment(u32::MAX),
-            UnixMillis::from_millis(ENROLLED_AT + 1),
-        )
+    let first = assign(&fixtures, &enrolled, &reassignment(u32::MAX), 1)
         .await
         .expect("a live runner accepts a safe assignment");
-    assert_eq!(first.worker_count(), 64);
+    assert_eq!(
+        first,
+        Some(64),
+        "the reply carries the clamped worker count"
+    );
     assert_eq!(
         fixtures
             .runner_column(runner, "worker_count")
@@ -192,25 +171,9 @@ async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
             .as_deref(),
         Some("64")
     );
-    assert_eq!(
-        fixtures.runner_column(runner, "degraded").await.as_deref(),
-        Some("true")
-    );
-    assert_eq!(
-        fixtures
-            .runner_column(runner, "degraded_reason")
-            .await
-            .as_deref(),
-        Some("no capability report")
-    );
+    assert_degraded(&fixtures, runner, "true", Some("no capability report")).await;
 
-    fixtures
-        .runners()
-        .assign_policy(
-            &enrolled.runner_id,
-            &reassignment(64),
-            UnixMillis::from_millis(ENROLLED_AT + 2),
-        )
+    assign(&fixtures, &enrolled, &reassignment(64), 2)
         .await
         .expect("repeating stored values is a successful no-op");
     assert_eq!(
@@ -218,7 +181,61 @@ async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
         vec!["runner_registered", "runner_policy_assigned"]
     );
 
+    store_full_capability(&fixtures, runner).await;
+
+    let mut changed = reassignment(2);
+    changed.registry_allowlist.push(Cow::Borrowed("pypi.org"));
+    assign(&fixtures, &enrolled, &changed, 3)
+        .await
+        .expect("the updated assignment reconciles with stored capability");
+    assert_degraded(&fixtures, runner, "false", None).await;
+
+    fixtures.cleanup().await;
+}
+
+/// Assigns `policy` to `runner`, `offset` milliseconds after enrolment,
+/// answering the worker count as stored.
+async fn assign(
+    fixtures: &Fixtures,
+    runner: &Uuid7,
+    policy: &AssignedPolicy<'_>,
+    offset: i64,
+) -> afd_runner::Result<Option<u32>> {
+    let edit = RunnerEdit {
+        assigned_policy: Some(policy),
+        labels: None,
+    };
+    fixtures
+        .runners()
+        .edit(
+            runner,
+            edit,
+            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
+        )
+        .await
+        .map(|stored| stored.assigned_policy.map(|policy| policy.worker_count))
+}
+
+/// Asserts the runner row's degraded flag and the reason it records.
+async fn assert_degraded(fixtures: &Fixtures, runner: &str, degraded: &str, reason: Option<&str>) {
+    assert_eq!(
+        fixtures.runner_column(runner, "degraded").await.as_deref(),
+        Some(degraded)
+    );
+    assert_eq!(
+        fixtures
+            .runner_column(runner, "degraded_reason")
+            .await
+            .as_deref(),
+        reason
+    );
+}
+
+/// Stores a capability report that can enforce every assigned posture, as a
+/// heartbeat from a fully capable host would.
+async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
     let capability = serde_json::to_string(&CapabilityReport {
+        build_id: None,
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec![
@@ -242,60 +259,18 @@ async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
         .await
         .expect("the capability fixture lands");
     drop(connection);
-
-    let mut changed = reassignment(2);
-    changed.registry_allowlist.push(Cow::Borrowed("pypi.org"));
-    fixtures
-        .runners()
-        .assign_policy(
-            &enrolled.runner_id,
-            &changed,
-            UnixMillis::from_millis(ENROLLED_AT + 3),
-        )
-        .await
-        .expect("the updated assignment reconciles with stored capability");
-    assert_eq!(
-        fixtures.runner_column(runner, "degraded").await.as_deref(),
-        Some("false")
-    );
-    assert_eq!(
-        fixtures.runner_column(runner, "degraded_reason").await,
-        None
-    );
-
-    fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_runner_policy_assignment_refuses_revocation() {
     let fixtures = Fixtures::create().await;
-    let enrolled = fixtures
-        .runners()
-        .register(
-            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(ENROLLED_AT),
-        )
-        .await
-        .expect("the runner enrols");
-    fixtures
-        .runners()
-        .transition(
-            &enrolled.runner_id,
-            RunnerAdminAction::Revoke,
-            ACTOR,
-            UnixMillis::from_millis(ENROLLED_AT + 1),
-        )
+    let enrolled = enrol(&fixtures).await;
+    transition(&fixtures, &enrolled, RunnerAdminAction::Revoke, 1)
         .await
         .expect("the runner is revoked");
 
-    let refused = fixtures
-        .runners()
-        .assign_policy(
-            &enrolled.runner_id,
-            &reassignment(3),
-            UnixMillis::from_millis(ENROLLED_AT + 2),
-        )
+    let refused = assign(&fixtures, &enrolled, &reassignment(3), 2)
         .await
         .expect_err("revocation is terminal for policy assignment");
     assert!(refused.is_rejected());

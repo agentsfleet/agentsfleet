@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import {
   usePathname,
   useRouter,
@@ -11,8 +11,6 @@ import { FilterIcon, XIcon } from "lucide-react";
 import { Badge, Button, IconAction, Input, Label } from "@agentsfleet/design-system";
 import { CURSOR_PAGE_SIZE_PARAM, CURSOR_TRAIL_PARAM } from "@/lib/pagination/cursor-trail";
 import {
-  formatLeaseFilterQuery,
-  parseLeaseFilterQuery,
   shortWorkspaceId,
   type LeaseFilters,
 } from "./lease-filter-query";
@@ -24,8 +22,6 @@ import {
   FLEET_FILTER_PARAM,
   FLEET_LABEL,
   LEASE_FILTER_HINT,
-  LEASE_FILTER_LABEL,
-  LEASE_FILTER_PLACEHOLDER,
   WORKSPACE_FILTER_PARAM,
   WORKSPACE_LABEL,
 } from "./runner-copy";
@@ -36,7 +32,9 @@ import {
 // trail walked through the old one is dropped in the same navigation — its
 // cursors cannot page the new feed.
 
-const FILTER_INPUT_ID = "lease-filter-query";
+const FLEET_INPUT_ID = "lease-fleet-filter";
+const WORKSPACE_INPUT_ID = "lease-workspace-filter";
+const FILTER_HINT_ID = "lease-filter-hint";
 
 export type LeaseFilterState = LeaseFilters & {
   apply: (filters: LeaseFilters) => void;
@@ -83,42 +81,38 @@ export function useLeaseFilters(): LeaseFilterState {
   return { workspace, fleet, apply, clearWorkspace, clearFleet, clearAll };
 }
 
-// The toolbar: one input carrying the whole query, plus a chip per active filter
-// so the operator can drop one without re-typing the other.
+// Separate fields preserve literal fleet names, including spaces and colons.
 export function LeaseFilterBar({ filters }: { filters: LeaseFilterState }) {
-  const applied = formatLeaseFilterQuery(filters);
-  const [draft, setDraft] = useState(applied);
+  const [fleet, setFleet] = useState(filters.fleet ?? "");
+  const [workspace, setWorkspace] = useState(filters.workspace ?? "");
+  useEffect(() => {
+    setFleet(filters.fleet ?? "");
+    setWorkspace(filters.workspace ?? "");
+  }, [filters.fleet, filters.workspace]);
 
-  // The URL is the source of truth: a back/forward navigation, or a chip's
-  // clear, changes the applied query without touching this input, so the draft
-  // follows it rather than stranding the operator's view out of sync.
-  useEffect(() => setDraft(applied), [applied]);
-
-  const submit = useCallback(() => filters.apply(parseLeaseFilterQuery(draft)), [draft, filters]);
+  const submit = () => filters.apply({ fleet: fleet.trim() || null, workspace: workspace.trim() || null });
+  const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    submit();
+  };
 
   const hasActiveFilter = filters.workspace !== null || filters.fleet !== null;
 
   return (
     <div className="mb-lg flex flex-col gap-md">
-      <Label htmlFor={FILTER_INPUT_ID}>{LEASE_FILTER_LABEL}</Label>
-      <div className="flex flex-wrap items-center gap-md">
-        <Input
-          id={FILTER_INPUT_ID}
-          // Full width, shrinkable: `min-w-measure` is 720px, which a phone
-          // cannot hold, and the fixed shell clipped the overflow.
-          className="w-full min-w-0 flex-1 sm:w-auto"
-          value={draft}
-          placeholder={LEASE_FILTER_PLACEHOLDER}
-          aria-describedby={`${FILTER_INPUT_ID}-hint`}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
-        <Button type="button" onClick={submit}>
+      <div className="flex flex-wrap items-end gap-lg">
+        <div className="flex w-full min-w-0 flex-col gap-sm sm:w-auto sm:flex-1">
+          <Label htmlFor={FLEET_INPUT_ID}>{FLEET_LABEL}</Label>
+          <Input id={FLEET_INPUT_ID} value={fleet} placeholder="Name or ID"
+            aria-describedby={FILTER_HINT_ID} onChange={(event) => setFleet(event.target.value)} onKeyDown={submitOnEnter} />
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-sm sm:w-auto sm:flex-1">
+          <Label htmlFor={WORKSPACE_INPUT_ID}>{WORKSPACE_LABEL}</Label>
+          <Input id={WORKSPACE_INPUT_ID} value={workspace} placeholder="Workspace ID"
+            aria-describedby={FILTER_HINT_ID} onChange={(event) => setWorkspace(event.target.value)} onKeyDown={submitOnEnter} />
+        </div>
+        <Button type="button" variant="outline" onClick={submit}>
           <FilterIcon aria-hidden="true" /> {APPLY_LEASE_FILTER_LABEL}
         </Button>
         {hasActiveFilter ? (
@@ -127,7 +121,7 @@ export function LeaseFilterBar({ filters }: { filters: LeaseFilterState }) {
           </Button>
         ) : null}
       </div>
-      <p id={`${FILTER_INPUT_ID}-hint`} className="text-label text-text-subtle">
+      <p id={FILTER_HINT_ID} className="text-label text-text-subtle">
         {LEASE_FILTER_HINT}
       </p>
       {hasActiveFilter ? (

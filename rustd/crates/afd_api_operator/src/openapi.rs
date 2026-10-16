@@ -27,7 +27,7 @@ use utoipa::OpenApi as _;
     crate::handler::admin::libraries::delete,
     crate::handler::admin::libraries::list,
     crate::handler::admin::libraries::patch,
-    crate::handler::admin::library_import::create,
+    crate::handler::admin::library_stage::create,
     crate::handler::admin::models::create,
     crate::handler::admin::models::delete,
     crate::handler::admin::models::list,

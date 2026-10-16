@@ -14,7 +14,7 @@ export function applyReplyDelta(
 ): FleetEvent[] {
   const index = prev.findIndex((event) => event.id === eventId);
   if (index < 0) {
-    const opened = applyLiveFrame(prev, { kind: FRAME_KIND.CHUNK, event_id: eventId, text: delta.answer }, nowMs);
+    const opened = applyLiveFrame(prev, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: eventId, text: delta.answer }, nowMs);
     return opened.map((event) => event.id === eventId
       ? stampReasoningSpan({ ...event, reasoning: delta.reasoning, thinking: delta.thinking }, delta, nowMs)
       : event);

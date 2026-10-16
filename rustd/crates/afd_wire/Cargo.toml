@@ -36,11 +36,14 @@ serde_json.workspace = true
 # so a build with this feature on emits the same bytes as one without it — the
 # round-trip suite re-proves that rather than asserting it.
 utoipa = { workspace = true, optional = true }
+# The Definition's published shape, read only by the document build: the
+# runner never turns `openapi` on, so its graph stays serde and serde_json.
+afd_fleet_runtime = { workspace = true, optional = true }
 
 [features]
 # Generates the OpenAPI schemas for these wire types. NOT default: the shipped
 # daemon resolves a dependency graph carrying serde and serde_json alone.
-openapi = ["dep:utoipa"]
+openapi = ["dep:utoipa", "dep:afd_fleet_runtime", "afd_fleet_runtime/openapi"]
 
 [dev-dependencies]
 # Pins every route template in one reviewed snapshot.

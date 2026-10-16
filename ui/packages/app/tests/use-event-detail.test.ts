@@ -23,7 +23,6 @@ function row(overrides: Partial<EventRow> = {}): EventRow {
     wall_ms: 340,
     failure_label: null,
     failure_detail: null,
-    checkpoint_id: null,
     cost_nanos: null,
     created_at: 1_777_507_200_000,
     updated_at: 1_777_507_200_100,

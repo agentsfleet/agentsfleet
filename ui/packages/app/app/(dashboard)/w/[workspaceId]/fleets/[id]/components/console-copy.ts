@@ -11,53 +11,7 @@
 export const BREADCRUMB_LABEL = "Breadcrumb";
 export const FLEETS_CRUMB_LABEL = "Fleets";
 
-// ── Left rail: the source editor (§4) ──
-
-export const SOURCE_PANEL_TITLE = "Source";
-export const SKILL_SOURCE_PANEL_TITLE = "Skill source";
-export const TRIGGER_SOURCE_PANEL_TITLE = "Trigger source";
-export const SKILL_DOC_LABEL = "SKILL.md";
-export const TRIGGER_DOC_LABEL = "TRIGGER.md";
-export const TRIGGER_DOC_EMPTY = "No TRIGGER.md — this fleet has no declared triggers.";
-
-export const EDIT_SOURCE_LABEL = "Edit";
-export const CANCEL_EDIT_LABEL = "Cancel";
-// The source card is collapsed by default — the steer thread is the point of
-// the page, so the heavy document viewer appears only on request. Editing pins
-// the card open (no collapse control while a draft exists).
-export const VIEW_SOURCE_LABEL = "View source";
-export const HIDE_SOURCE_LABEL = "Hide source";
-export const SAVE_SOURCE_LABEL = "Save changes";
-export const SAVE_CONFIRM_LABEL = "Save";
-
-// The save dialog's next-wake notice, pinned by its behavior test.
-export const SAVE_NEXT_WAKE_NOTICE =
-  "Changes apply the next time this fleet handles something. Work already running keeps using the previous version. Its memory stays available.";
-export const SAVE_DIALOG_TITLE = "Save source changes?";
-
-// Shown after a 412: another operator saved while this editor was open, so the
-// current source was reloaded while the operator's pending edit was kept.
-// Shown ONCE, and only when this document really moved on the server — not
-// when its sibling did. The next save wins: the person pressing it is the one
-// deciding, and a mandatory side-by-side of two identical texts was the bug
-// this replaced.
-//
-// It describes the DRAFT, because the draft is what stays on screen: the pane
-// renders `editing ? draft : base`, and editing is still true here. An earlier
-// wording said the text above was now the server's, which was the opposite of
-// what a person was looking at.
-export const SAVE_OVERWRITE_NOTICE =
-  "This changed on the server since you started editing. Saving replaces the server's copy with what you see here."
-
-// Which document a save touched — the `field` value on fleet_source_saved.
-export const SOURCE_FIELD = {
-  skill: "skill",
-  trigger: "trigger",
-} as const;
-export type SourceField = (typeof SOURCE_FIELD)[keyof typeof SOURCE_FIELD];
-
-// Coarse analytics outcome shared by fleet_source_saved and
-// fleet_memory_forgotten (no content, no key — just success/failure).
+// Coarse memory mutation outcome; private content never enters analytics.
 export const OUTCOME = {
   success: "success",
   failure: "failure",
@@ -108,4 +62,4 @@ export const METRICS_APPROVALS_LABEL = "approvals waiting";
 // The sentence the delete confirm gains so the operator learns delete destroys
 // memory but editing keeps it. Pinned by test_delete_confirm_states_memory_trap.
 export const DELETE_MEMORY_TRAP_NOTICE =
-  "Its memory goes with it — editing the source keeps what it learned. Are you sure?";
+  "Its memory goes with it — improving the setup keeps what it learned. Are you sure?";

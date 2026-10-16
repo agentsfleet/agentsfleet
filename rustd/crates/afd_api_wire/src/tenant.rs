@@ -107,8 +107,6 @@ pub struct ApiKeySummary<'a> {
     pub active: bool,
     /// When it was minted.
     pub created_at: i64,
-    /// When it last authenticated, if it ever has.
-    pub last_used_at: Option<i64>,
     /// When it stopped working, if it has.
     ///
     /// Emitted as `null` rather than omitted — here and on every optional in
@@ -154,24 +152,15 @@ pub struct ChargeSummary<'a> {
     /// The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES
     /// that fleet's deletion, and it is never absent.
     ///
-    /// The two stopped sharing a rule at slot 915. A workspace is still nulled
-    /// on deletion. A fleet is not. The dashboard derives the fleet's callsign
-    /// from this value, and nulling it left a real charge unable to say what it
-    /// paid for.
-    ///
-    /// Not optional since slot 916, which made the column `NOT NULL` as part
-    /// of the accumulate arbiter. The nullable spelling outlived its meaning
-    /// by one slot: it documented a charge written before 915. No database
-    /// holds one, because nothing is deployed and the schema rebuilds from
-    /// empty. A reader who branched on the absent case would be writing for a
-    /// row that cannot exist.
+    /// The dashboard derives the fleet's callsign from this value, so a charge
+    /// can always say what it paid for.
     pub fleet_id: Cow<'a, str>,
     /// That fleet's name as it stood when the charge was written.
     ///
     /// A snapshot rather than a live lookup. Renaming a fleet does not reach
     /// charges already written, because a ledger records what was true when the
-    /// money moved. `null` for a charge written before slot 915, or one whose
-    /// fleet row could not be read at the time.
+    /// money moved. `null` when the fleet's row could not be read as the
+    /// charge was written; the charge is recorded regardless.
     pub fleet_name: Option<Cow<'a, str>>,
     /// The event that triggered the work.
     pub event_id: Cow<'a, str>,

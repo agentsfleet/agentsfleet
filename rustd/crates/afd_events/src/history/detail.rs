@@ -5,7 +5,7 @@
 //! An expanded event is a listing row plus a trigger payload plus an answer.
 //! Spelling all fifteen shared columns again here would be fifteen chances for
 //! the two decoders to disagree — and two of them, `failure_label` and
-//! `checkpoint_id`, are the same Rust type, so a column order that moved would
+//! `failure_detail`, are the same Rust type, so a column order that moved would
 //! swap them with nothing failing. Holding the [`EventRow`] instead means there
 //! is exactly one decoder for those columns, and it is the one every listing
 //! already exercises.
@@ -131,7 +131,6 @@ impl EventDetailRow {
                 wall_ms: None,
                 failure_label: None,
                 failure_detail: None,
-                checkpoint_id: None,
                 resumes_event_id: None,
                 created_at,
                 updated_at: created_at,

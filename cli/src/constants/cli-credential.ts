@@ -8,12 +8,6 @@
 // The durable per-user credential `agentsfleet login` mints and persists.
 export const CLI_CREDENTIAL_PREFIX = "afc_" as const;
 
-// Mirrors TENANT_API_KEY_PREFIX in rustd/crates/afd_auth/src/credential.rs.
-// A tenant key is a different credential class, not a session token: it is
-// accepted on load (`--token` persists one) and refused later, by any route
-// that requires a user principal.
-export const TENANT_KEY_PREFIX = "agt_t" as const;
-
 // Mirrors BODY_HEX_LEN in rustd/crates/afd_auth/src/authenticate.rs — 32
 // random bytes rendered as lower-case hex.
 export const CLI_CREDENTIAL_BODY_LEN = 64;

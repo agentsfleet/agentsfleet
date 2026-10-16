@@ -8,6 +8,8 @@ const { pathnameMock, createdWorkspacesMock } = vi.hoisted(() => ({
   createdWorkspacesMock: vi.fn<() => readonly CreatedWorkspace[]>(() => []),
 }));
 
+vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "reader", displayName: "Kishore Kumar" }) }));
+
 vi.mock("next/navigation", () => ({ usePathname: () => pathnameMock() }));
 vi.mock("./WorkspaceCreationProvider", () => ({
   useCreatedWorkspaces: () => createdWorkspacesMock(),
@@ -49,6 +51,8 @@ describe("WorkspaceSwitcher label resolution", () => {
     createdWorkspacesMock.mockReturnValue([{ id: CREATED_ID, name: "fresh-workspace" }]);
     renderAt(CREATED_ID);
     expect(screen.getByTestId("workspace-switcher").textContent).toContain("fresh-workspace");
+    expect(screen.getByText("KK")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("resolves a routed workspace from the server-provided list", () => {

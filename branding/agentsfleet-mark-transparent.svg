@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <title>agentsfleet</title>
+  <g transform="translate(8 8) scale(2)" fill="none" stroke="#b8f0ce" stroke-width="1.4" stroke-linecap="round">
+    <path d="M12 2v6m0 8v6M2 12h6m8 0h6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24"/>
+    <circle cx="12" cy="12" r="1.5" fill="#b8f0ce" stroke="none"/>
+  </g>
+</svg>

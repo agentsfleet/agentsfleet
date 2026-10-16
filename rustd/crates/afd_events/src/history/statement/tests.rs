@@ -2,7 +2,7 @@
 //! picks between.
 //!
 //! What each text returns and how Postgres plans it are graded live, in
-//! `tests/integration_list_plans.rs`; this keeps that suite's list complete.
+//! `tests/integration_list_plans/mod.rs`; this keeps that suite's list complete.
 #![cfg(feature = "test-util")]
 
 use std::collections::BTreeSet;

@@ -15,7 +15,6 @@ import {
 import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
 import type { ReplyStreamDecoder } from "./reply-stream-decoder";
-import type { InstallStepId } from "./install-steps";
 import { StreamRecoveryWindow } from "./stream-recovery-window";
 import { HeldTurns } from "./fleet-stream-held";
 
@@ -34,11 +33,6 @@ export type ConnectionStatus =
 export type FleetStreamSnapshot = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
-  // The latest install step advanced by an `install:*` frame, or null when no
-  // install frame has arrived (a non-installing fleet, or pre-first-frame). The
-  // InstallStates surface reads this to advance its rendered step and to detect
-  // the installing→active flip; the chat path ignores it.
-  installStep: InstallStepId | null;
   // What the server render and the live tail last said about the fleet
   // itself: its lifecycle status and how many approvals wait on it. The
   // console's summary strip reads these beside `latest`; both keep their
@@ -109,7 +103,7 @@ export type Entry = {
 export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
   connectionStatus: CONNECTION_STATUS.CONNECTING,
-  installStep: null,
+
   fleet: NO_FACTS,
   factsSeq: 0,
   latest: null,
@@ -122,7 +116,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     snapshot: {
       events,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
-      installStep: null,
+
       fleet: NO_FACTS,
       factsSeq: 0,
       latest: latestFigures(events),

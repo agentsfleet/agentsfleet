@@ -1,12 +1,12 @@
 "use client";
 
-import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CopyButton } from "@agentsfleet/design-system";
 import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
 import { truncate } from "@/lib/utils";
 import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
-import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
+import { FleetReplyMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetExplored } from "./FleetExplored";
 import { FleetReplyFigures, OmittedCalls, Waiting } from "./FleetReplyFigures";
@@ -20,7 +20,6 @@ import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
 
-const STREAM_CURSOR = "▍";
 const COPY_REPLY_LABEL = "Copy reply";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
 const DEFAULT_SENDER = "Fleet";
@@ -92,7 +91,7 @@ export function FleetReply({
     >
       <MessagePrimitive.GroupedParts groupBy={REPLY_GROUP_BY}>
         {(info) => renderReplyPart(info, {
-          errored, running, queued, eventId, reasoning: reasoningText(message), span, answered: answer.length > 0,
+          errored, running, queued, eventId, reasoning: reasoningText(message), span,
           content: message.content, startedAtMs: message.createdAt.getTime(),
         })}
       </MessagePrimitive.GroupedParts>
@@ -114,8 +113,6 @@ export type ReplyContext = {
   eventId: string;
   reasoning: string;
   span: ReturnType<typeof readReasoningSpan>;
-  /** The answer has started, so a thought that resumes stays folded. */
-  answered: boolean;
   /** The message's parts, which a group reads by index. */
   content: MessageState["content"];
   /** When the turn began, for the waiting clock. */
@@ -132,7 +129,6 @@ export function renderReplyPart(
       return (
         <FleetThought
           live={part.status.type === STATUS_RUNNING}
-          answered={reply.answered}
           reasoning={reply.reasoning}
           startedAtMs={reply.span.startedAtMs}
           endedAtMs={reply.span.endedAtMs}
@@ -162,7 +158,7 @@ export function renderReplyPart(
     case "text":
       return <ReplyText text={part.text} errored={reply.errored} streaming={reply.running} />;
     case "indicator":
-      return <Waiting queued={reply.queued} eventId={reply.eventId} startedAtMs={reply.startedAtMs} />;
+      return <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
       // A leaf that returns null gets the library's fallback UI; an empty
       // fragment keeps parts this reply never carries invisible.
@@ -186,20 +182,11 @@ function reasoningText(message: MessageState): string {
  * parse reads the final answer rather than the flush before it.
  */
 function ReplyText({ text, errored, streaming }: { text: string; errored: boolean; streaming: boolean }) {
-  const deferred = useDeferredValue(text);
-  const deferredStreaming = useDeferredValue(streaming);
-  const markdown = deferredStreaming ? (
-    <FleetStreamingMarkdown text={deferred} />
-  ) : (
-    <FleetMarkdown>{deferred}</FleetMarkdown>
-  );
   return (
     <>
-      {errored ? <FleetFailedOutcome>{deferred}</FleetFailedOutcome> : markdown}
+      {errored ? <FleetFailedOutcome>{text}</FleetFailedOutcome> : <FleetReplyMarkdown text={text} streaming={streaming} />}
       {streaming ? (
-        <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
-          {STREAM_CURSOR}
-        </span>
+        <span className="sr-only" aria-label="streaming">Receiving reply</span>
       ) : null}
     </>
   );

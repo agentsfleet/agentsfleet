@@ -3,6 +3,7 @@
 // Type-only — erased at compile time, so this does not create a runtime
 // cycle with secrets.ts's own `import { SECRET_FIELD } from "@/lib/types"`.
 import type { SecretKind } from "./api/secrets-types";
+import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
 
 export type CommandClass = "safe" | "sensitive" | "critical";
 
@@ -14,62 +15,21 @@ export type ApiError = {
 
 // ── Fleets ──
 
-// Server projects `config_json->'x-agentsfleet'->'triggers'` into the list-row
-// response (`page_columns!` in rustd/crates/afd_fleet_lifecycle/src/sql.rs,
-// served as `FleetSummary` in rustd/crates/afd_api_wire/src/fleet.rs). One entry
-// per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
+// The server projects each trigger in the native definition into fleet list
+// rows, served as `FleetSummary` in rustd/crates/afd_api_wire/src/fleet/collection.rs.
+// Tagged union by `type` — webhook
 // carries source + events; cron carries the raw schedule expression; mention
 // carries the chat provider and the one channel it answers in.
+export const AGENT_TRIGGER_TYPE = {webhook: "webhook", cron: "cron", mention: "mention"} as const;
+
 export type FleetTrigger =
   | { type: "webhook"; source: string; events?: string[] }
   | { type: "cron"; schedule: string }
-  | { type: "api" }
   | { type: "mention"; source: string; channels: string[] };
 
-// `status` is typed as the loose `string` because the wire format may carry
-// values the front-end doesn't recognise yet. Consumers should narrow with
-// `AGENTSFLEET_STATUS` from `lib/api/fleets` before branching.
-export type Fleet = {
-  id: string;
-  name: string;
-  status: string;
-  created_at: number;
-  updated_at: number;
-  triggers?: FleetTrigger[];
-  // Lifetime server-truth aggregates, served per row (`FleetSummary` in
-  // rustd/crates/afd_api_wire/src/fleet.rs). `budget_used_nanos`
-  // is the summed `credit_deducted_nanos` — cost is never token×rate math on the
-  // client (Inv.2). The wall's tile footer reads both; a response that omits
-  // them leaves them undefined, which the tile renders as a dash, not a zero.
-  budget_used_nanos?: number;
-  events_processed?: number;
-};
+export type Fleet = NativeFleetSummary;
 
-// The single-fleet detail read (`GET …/fleets/{id}`, M131 §1) — the list row
-// plus the editable source and the bundle pin. `trigger_markdown` /
-// `bundle_content_hash` are nullable columns that serialize as JSON null.
-// `budget_used_nanos` / `events_processed` are server-truth lifetime counters
-// read from `core.fleet_activity_counters`; the console never derives cost from
-// tokens.
-export type FleetDetail = {
-  id: string;
-  name: string;
-  status: string;
-  source_markdown: string;
-  trigger_markdown: string | null;
-  bundle_content_hash: string | null;
-  triggers: FleetTrigger[] | null;
-  events_processed: number;
-  budget_used_nanos: number;
-  /** Approval gates a human still owes this fleet an answer on, counted on the
-   * read so the console opens on the fleet and its thread alone. */
-  pending_approvals: number;
-  created_at: number;
-  updated_at: number;
-  /** Whether the fleet reads and publishes the workspace's shared memory. An
-   * older daemon sends none, which the memory panel renders without toggles. */
-  memory_access?: MemoryAccess;
-};
+export type FleetDetail = NativeFleetDetail;
 
 // A fleet's two shared-memory grants (`PATCH …/fleets/{id}/memory-access`).
 export type MemoryAccess = {
@@ -89,216 +49,15 @@ export type MemoryEntry = {
   category: string;
   /** epoch milliseconds */
   updated_at: number;
-  /** Absent from an older daemon, which shares nothing. */
-  visibility?: MemoryVisibility;
+  visibility: MemoryVisibility;
   /** The fleet that wrote it; another fleet's id marks an entry this fleet
    * reads and cannot forget. */
-  writer_fleet_id?: string;
-};
-
-// Install a fleet from exactly one onboarded library tier: a platform entry
-// (slug id) or this workspace's tenant entry. The `?: never` arms make the two
-// mutually exclusive at compile time; raw-`SKILL.md` paste, per-workspace
-// `bundle_id`, and github-import-at-create are not accepted. An optional `name`
-// overrides the SKILL.md-derived fleet name so one library entry can back
-// multiple fleets in a workspace.
-export type InstallFleetRequest =
-  | { platform_library_id: string; name?: string; tenant_library_id?: never }
-  | { tenant_library_id: string; name?: string; platform_library_id?: never };
-
-export type InstallFleetResponse = {
-  fleet_id: string;
-  /** The persisted name — the server's, not the template's: a defaulted name
-   * that collided comes back auto-suffixed (`{template}-NNN`). */
-  name: string;
-  status: string;
-};
-
-// ── Fleet library catalog (two-tier) ──
-// The platform catalog and per-workspace tenant entries, unioned by the
-// workspace gallery. Object storage holds the canonical tar; these rows are
-// metadata only, never support-file bytes or an object-store key. Mirrors
-// agentsfleetd's `GalleryCard` in rustd/crates/afd_api_wire/src/workspace_library.rs.
-
-// The catalog tier of a library entry. The install flow keys the create body off it:
-// platform → `platform_library_id`, tenant → `tenant_library_id`.
-export type FleetLibraryVisibility = "platform" | "tenant";
-
-// No support-file summary type. The server stores a {path, size_bytes, sha256}
-// manifest for every imported bundle as a record of what it held, but no
-// endpoint returns it and nothing here ever rendered one. Support-file BYTES are
-// unaffected — they live in object storage and the runner untars them from the
-// canonical tar, whose own entries are the authoritative file list.
-
-// A library entry's declared requirements — drives the install gate's
-// credential preview and the skill-only fallback when no TRIGGER.md shipped.
-export type FleetLibraryRequirements = {
-  credentials: string[];
-  tools: string[];
-  network_hosts: string[];
-  trigger_present: boolean;
-};
-
-// One gallery row from GET /v1/workspaces/{ws}/fleet-libraries — a platform or
-// tenant library entry. Metadata only; `visibility` is the tier the install
-// flow keys the create body off.
-export type FleetLibraryGalleryEntry = {
-  id: string;
-  name: string;
-  description: string;
-  visibility: FleetLibraryVisibility;
-  source_ref: string;
-  requirements: FleetLibraryRequirements;
-  // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
-  // { github: "review your pull requests" }). Platform rows carry curated copy;
-  // tenant rows are an empty object (the importer derives no per-credential
-  // reason), so the gate falls back to its generic connect prompt. Optional on
-  // the client: the server always sends it (OpenAPI-required), but the gallery
-  // response is only cast here, so a stale cache or an old backend may omit it —
-  // callers default to {} so the gate degrades to generic copy, never crashes.
-  required_credentials_reasons?: Record<string, string>;
-  // No `support_files`. The gallery card never rendered the manifest, and it was
-  // the single largest thing on a row (32 files x 160-char paths), so the server
-  // stopped projecting it. No endpoint returns it now — the admin catalog was
-  // the last one that did, and its screen dropped the field on the floor. The
-  // manifest is still stored as a record of what a bundle held; nothing reads it
-  // back. The runner never did either: it materializes real support-file bytes
-  // from object storage via the lease's bundle hash.
-};
-
-export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
-
-export const SOURCE_KIND_GITHUB = "github" as const;
-export const SOURCE_KIND_UPLOAD = "upload" as const;
-
-export type OnboardLibraryEntryRequest =
-  | {
-      source_kind: typeof SOURCE_KIND_GITHUB;
-      source_ref: string;
-      // Branch or tag to fetch at; absent fetches the default branch. The
-      // catalog's Fetch-update sends the row's stored ref, so a PATCH-pinned
-      // ref is honored by the next fetch rather than silently reset (M130).
-      ref?: string;
-      // Platform tier only: overwrite a catalog id already owned by a DIFFERENT
-      // repository. Absent means a collision is a 409 the operator must confirm.
-      replace?: boolean;
-    }
-  | {
-      source_kind: typeof SOURCE_KIND_UPLOAD;
-      skill_markdown: string;
-      trigger_markdown?: string;
-      // Same platform-tier overwrite as above. An upload stores no repository,
-      // so a second upload of the same name updates in place — but a name a
-      // GitHub-sourced row already owns still collides, and the operator needs
-      // the same confirm-and-retry to take it over.
-      replace?: boolean;
-    };
-
-// The onboard response — identical on both tiers except which catalogue the
-// entry landed in. The two endpoints (workspace-scoped vs `/v1/admin/…`) differ
-// only in the scope they demand, so the tier is carried as the discriminant
-// rather than duplicated as two independent shapes.
-type OnboardedLibraryEntryBase = {
-  id: string;
-  name: string;
-  content_hash: string;
-  requirements: FleetLibraryRequirements;
-};
-
-export type OnboardedLibraryEntry = OnboardedLibraryEntryBase & { visibility: "tenant" };
-
-// Onboarded by a `platform-library:write` operator. Stored `visibility='draft'`
-// server-side (M128): adding a fleet never publishes it, so it reaches no tenant
-// until an operator says so. The tier is still reported as "platform".
-export type OnboardedPlatformLibraryEntry = OnboardedLibraryEntryBase & { visibility: "platform" };
-
-// ── The platform catalog (M128) — GET /v1/admin/fleet-libraries ──────────────
-//
-// The publish lifecycle as the server stores it. Spelled verbatim as
-// VISIBILITY_DRAFT / VISIBILITY_PUBLIC in
-// rustd/crates/afd_library/src/catalogue/mod.rs and in
-// schema/023_fleet_library.sql; SQL cannot import a Rust constant and
-// TypeScript cannot import either, so the three must agree by hand. A drift
-// silently hides or exposes fleets, which is why an integration test pins it.
-export const CATALOG_DRAFT = "draft" as const;
-export const CATALOG_PUBLIC = "public" as const;
-export type CatalogVisibility = typeof CATALOG_DRAFT | typeof CATALOG_PUBLIC;
-
-// One row of the platform catalog, as the operator sees it. Unlike a gallery
-// entry this hides nothing — a draft, and a row whose bundle was never fetched,
-// are exactly what the operator needs to see.
-export type PlatformCatalogEntry = {
-  id: string;
-  name: string;
-  description: string;
-  source_repo: string;
-  source_ref: string;
-  visibility: CatalogVisibility;
-  // null ⇒ no bundle has ever been fetched. Such a row can never be published.
-  content_hash: string | null;
-  requirements: FleetLibraryRequirements;
-  required_credentials_reasons?: Record<string, string>;
-  etag: string;
-  updated_at: number;
-};
-
-export type PlatformCatalogResponse = { entries: PlatformCatalogEntry[] };
-
-// The four states a row can be in, derived — never a wire field. Two sources for
-// one fact is how a table starts lying.
-export const CATALOG_STATUS_NO_BUNDLE = "no_bundle" as const;
-export const CATALOG_STATUS_DRAFT = "draft" as const;
-export const CATALOG_STATUS_PUBLISHED = "published" as const;
-/// Public, but holding no bundle. The gallery and install queries both require
-/// `content_hash IS NOT NULL`, so such a row is invisible and uninstallable —
-/// calling it "published" asserts the opposite of what the system does.
-export const CATALOG_STATUS_BROKEN = "broken" as const;
-export type CatalogStatus =
-  | typeof CATALOG_STATUS_NO_BUNDLE
-  | typeof CATALOG_STATUS_DRAFT
-  | typeof CATALOG_STATUS_PUBLISHED
-  | typeof CATALOG_STATUS_BROKEN;
-
-/// Total over both axes — visibility AND the bundle, never visibility alone.
-/// The API refuses to create the public-without-bundle row (publishing checks
-/// the hash in SQL), but a hand-inserted one exists in the wild, and a surface
-/// that assumes it away lies about it.
-///
-/// "Has a bundle" means exactly what the server means: `content_hash IS NOT
-/// NULL`. An empty-string hash counts as a bundle here BECAUSE it counts as one
-/// in every server guard — diverging (treating "" as bundle-less) would hide a
-/// Publish the API accepts, which is the exact class of lie this function exists
-/// to end.
-export function catalogStatus(entry: PlatformCatalogEntry): CatalogStatus {
-  const hasBundle = entry.content_hash !== null;
-  if (entry.visibility === CATALOG_PUBLIC) {
-    return hasBundle ? CATALOG_STATUS_PUBLISHED : CATALOG_STATUS_BROKEN;
-  }
-  return hasBundle ? CATALOG_STATUS_DRAFT : CATALOG_STATUS_NO_BUNDLE;
-}
-
-// A partial update. An absent field is left untouched, so editing the description
-// never blanks the credential copy.
-//
-// `id` is deliberately absent and stays absent: it is the primary key, and a
-// workspace install references it as `platform_library_id`. Moving it would
-// orphan every install.
-//
-// Changing `source_repo` or `source_ref` invalidates the stored bundle — it was
-// built from the OLD repository — so the server nulls `content_hash` and stages
-// the row back to draft. Re-sending an unchanged value does neither.
-export type PlatformCatalogPatch = {
-  name?: string;
-  description?: string;
-  source_repo?: string;
-  source_ref?: string;
-  required_credentials_reasons?: Record<string, string>;
-  published?: boolean;
+  writer_fleet_id: string;
 };
 
 export type FleetListResponse = {
   items: Fleet[];
-  total: number;
+  total: null;
   next_cursor: string | null;
 };
 
@@ -377,7 +136,7 @@ export type TenantProvider = {
 
 // ── Tenant model registry ──
 // One row per configured `(model_id, secret_ref)` pair — see
-// rustd/crates/afd_api_tenant/src/handler/tenant/model_entry.rs for the wire
+// rustd/crates/afd_api_tenant/src/handler/tenant/model_entry/mod.rs for the wire
 // shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.

@@ -8,16 +8,15 @@ afterEach(() => cleanup());
 const triggers: FleetTrigger[] = [
   { type: "webhook", source: "github", events: ["pull_request"] },
   { type: "cron", schedule: "*/15 * * * *" },
-  { type: "api" },
   { type: "mention", source: "slack", channels: ["C0123456789"] },
 ];
 const RECENT_DELIVERY_AGE_MS = 1_000;
 
 describe("TriggerPanel", () => {
-  it("renders an empty state without a webhook URL", () => {
-    render(<TriggerPanel />);
-    expect(screen.getByText("No triggers declared")).toBeTruthy();
-    expect(screen.getByText(/saved changes take effect on the next wake/i)).toBeTruthy();
+  it.each([{triggers: undefined}, {triggers: []}])("explains chat and steer access with no external triggers (%j)", ({triggers: empty}) => {
+    render(<TriggerPanel triggers={empty} />);
+    expect(screen.getByText("Chat and steer messages only")).toBeTruthy();
+    expect(screen.getByText(/Review and Apply affect new work/i)).toBeTruthy();
     expect(screen.queryByText(/reinstall/i)).toBeNull();
     expect(screen.queryByText(/webhook url/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /copy/i })).toBeNull();
@@ -27,7 +26,6 @@ describe("TriggerPanel", () => {
     render(<TriggerPanel triggers={triggers} />);
     expect(screen.getByText("github · pull_request")).toBeTruthy();
     expect(screen.getByText("*/15 * * * *")).toBeTruthy();
-    expect(screen.getByText("Accepts events through the fleet API.")).toBeTruthy();
     expect(screen.getByText("Chat mention")).toBeTruthy();
     expect(screen.getByText("slack · C0123456789")).toBeTruthy();
     expect(screen.queryByText(/https?:\/\//i)).toBeNull();
@@ -44,14 +42,14 @@ describe("TriggerPanel", () => {
   });
 
   it("handles a webhook without event filters and shows a durable delivery time", () => {
-    const trigger: FleetTrigger = { type: "webhook", source: "zoho_desk" };
+    const trigger: FleetTrigger = { type: "webhook", source: "linear" };
     render(
       <TriggerPanel
         triggers={[trigger]}
         lastDeliveryByKey={{ [triggerKey(trigger)]: Date.now() - RECENT_DELIVERY_AGE_MS }}
       />,
     );
-    expect(screen.getByText("zoho_desk")).toBeTruthy();
+    expect(screen.getByText("linear")).toBeTruthy();
     expect(screen.getByText(/Last delivery/)).toBeTruthy();
   });
 
@@ -59,7 +57,6 @@ describe("TriggerPanel", () => {
     expect(triggers.map(triggerKey)).toEqual([
       "webhook:github",
       "cron:*/15 * * * *",
-      "api",
       "mention:slack:C0123456789",
     ]);
   });

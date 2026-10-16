@@ -12,9 +12,17 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { withToken } from "./with-token";
+import { z } from "zod";
+import { UNCONFIRMED_REQUEST_MESSAGE } from "@/lib/errors";
 import { ApiError } from "@/lib/api/errors";
 
 describe("withToken", () => {
+  it("never serializes schema issues or private payloads into an action failure", async () => {
+    getTokenMock.mockResolvedValueOnce("session");
+    const result = await withToken(async () => z.object({private_response: z.string()}).parse({private_response: {secret: "private-marker"}}));
+    expect(result).toEqual({ok: false, error: UNCONFIRMED_REQUEST_MESSAGE});
+    expect(JSON.stringify(result)).not.toMatch(/private_response|private-marker|invalid_type/);
+  });
   beforeEach(() => {
     getTokenMock.mockReset();
   });
@@ -49,20 +57,20 @@ describe("withToken", () => {
     });
   });
 
-  it("maps a plain Error to ok:false with message and no status", async () => {
+  it("hides internal exceptions without inventing a refusal status", async () => {
     getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       throw new Error("unexpected boom");
     });
-    expect(result).toEqual({ ok: false, error: "unexpected boom" });
+    expect(result).toEqual({ ok: false, error: UNCONFIRMED_REQUEST_MESSAGE });
   });
 
-  it("maps a non-Error throw (string) to ok:false with String(e) (covers else branch)", async () => {
+  it("hides non-Error thrown payloads", async () => {
     getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw "raw-string-failure";
     });
-    expect(result).toEqual({ ok: false, error: "raw-string-failure" });
+    expect(result).toEqual({ ok: false, error: UNCONFIRMED_REQUEST_MESSAGE });
   });
 });

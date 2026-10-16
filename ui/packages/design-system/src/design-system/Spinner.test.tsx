@@ -10,13 +10,12 @@ describe("Spinner", () => {
     expect(el.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("renders the preview-style arc with the brand wake-pulse dot", () => {
-    const { getByRole } = render(<Spinner />);
-    const orbit = getByRole("status").querySelector("[data-spinner-orbit]") as HTMLElement;
-    const dot = orbit.querySelector("[data-live]") as HTMLElement;
-    expect(orbit.className).toContain("place-items-center");
-    expect(dot.hasAttribute("data-live")).toBe(true);
-    expect(dot.className).toContain("bg-pulse");
+  it("uses a decorative brand signal without nesting another live status", () => {
+    const { getByRole, queryAllByRole } = render(<Spinner />);
+    const mark = getByRole("status").querySelector("[data-signal-spinner]");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(mark?.querySelectorAll("path")).toHaveLength(8);
+    expect(queryAllByRole("status")).toHaveLength(1);
   });
 
   it("shows a visible label for standalone loaders", () => {
@@ -30,9 +29,9 @@ describe("Spinner", () => {
     expect(getByText("Installing").className).toContain("sr-only");
   });
 
-  it("scales the dot by size", () => {
+  it("scales the mark by size", () => {
     const { getByRole } = render(<Spinner size="lg" />);
-    const orbit = getByRole("status").querySelector("[data-spinner-orbit]") as HTMLElement;
-    expect(orbit.className).toContain("h-5");
+    const orbit = getByRole("status").querySelector("[data-signal-spinner]") as SVGElement;
+    expect(orbit.getAttribute("class")).toContain("size-6");
   });
 });

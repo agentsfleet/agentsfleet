@@ -26,9 +26,7 @@
 //!
 //! # Per route identity, not per path
 //!
-//! Two identities can share a template and differ by method — `PollSession` and
-//! `DeleteSession` are one path, as are the connector `Callback` and `Complete`
-//! pair. Because the mount is addressable per identity, each is graded against
+//! Two identities can share a template and differ by method. Because the mount is addressable per identity, each is graded against
 //! its own declaration rather than against the union the path serves, which is
 //! the stricter of the two claims.
 #![cfg(feature = "test-util")]

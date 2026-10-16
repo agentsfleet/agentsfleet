@@ -30,14 +30,14 @@ use afd_api::{Guard, Route, RouteClass};
 /// The route count the surface is pinned to. Stated as a number so the surface
 /// cannot quietly shed part of itself: a family that lost a route would
 /// otherwise pass every other test here.
-const PINNED_ROUTE_COUNT: usize = 81;
+const PINNED_ROUTE_COUNT: usize = 76;
 
 /// Routes the pinned count includes that this daemon deliberately does not table.
 ///
-/// One: `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
+/// One. `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
 /// see `afd_api::route::runner_ops` for the reasoning and M179's Dimension 4.4
 /// for the record. Counted rather than subtracted inline so the divergence has
-/// to be justified to change: a SECOND route going missing still fails this
+/// to be justified to change: another route going missing still fails this
 /// test, which is the whole reason the count is pinned.
 const DECLARED_DIVERGENCES: usize = 1;
 
@@ -50,8 +50,7 @@ const VERB_SPLITS: usize = 1;
 
 /// Routes this daemon serves beyond the pinned count.
 ///
-/// Nineteen: `GET /v1/users/me`, plus the owned library collection and its
-/// removal, plus the eight team-account routes: an account's invites, one
+/// Seventeen: `GET /v1/users/me`, plus the eight team-account routes: an account's invites, one
 /// invite, sending its email again, its members, one member, the invites
 /// waiting for the caller, accepting one, and a workspace's member names —
 /// plus the two tool-call record routes: the runner's post of each call in
@@ -64,11 +63,24 @@ const VERB_SPLITS: usize = 1;
 /// A term of its own rather than a larger [`PINNED_ROUTE_COUNT`]: an addition
 /// hidden inside the pin would make the next one indistinguishable from a
 /// dropped route.
-const POST_PORT_ADDITIONS: usize = 19;
+const POST_PORT_ADDITIONS: usize = 17;
+
+/// Routes authoring a fleet in chat added, counted apart for the reason
+/// [`POST_PORT_ADDITIONS`] is.
+///
+/// Fifteen: a creator's drafts, one draft, its messages, its Stop watermark and
+/// its setup-progress stream, and the models a draft may run on; the
+/// workspace's Library entries it owns, one entry, an entry's revisions and one
+/// pinned revision; applying a reviewed improvement to a fleet; and the four
+/// runner routes an authoring lease works through: its activity, its model
+/// calls, its renewal and its report.
+const CHAT_AUTHORING_ADDITIONS: usize = 15;
 
 /// What this daemon's union must carry.
-const RUST_ROUTE_COUNT: usize =
-    PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS + POST_PORT_ADDITIONS;
+const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
+    + VERB_SPLITS
+    + POST_PORT_ADDITIONS
+    + CHAT_AUTHORING_ADDITIONS;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -139,8 +151,9 @@ fn test_every_template_is_a_low_cardinality_literal() {
     }
 }
 
-/// Only the two Server-Sent Events tails are exempt from the request ceiling,
-/// and only the two probes are exempt from shedding.
+/// Only the three Server-Sent Events tails are exempt from the request ceiling,
+/// and only the two probes are exempt from shedding. The third is a creator's
+/// draft progress, which the setup reference specifies as `text/event-stream`.
 ///
 /// Every route states its class, so the default is not a fallthrough and no
 /// hand-maintained name list is needed. What is left to prove is the POLICY:
@@ -164,6 +177,7 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
     assert_eq!(
         streams,
         vec![
+            Route::Workspace(WorkspaceRoute::DraftStream),
             Route::Workspace(WorkspaceRoute::EventsStream),
             Route::Fleet(FleetRoute::EventsStream),
         ],

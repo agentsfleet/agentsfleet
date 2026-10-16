@@ -102,7 +102,7 @@ const invitePath = (inviteId: string): string =>
   `${OWNER_INVITES_PATH}/${encodeURIComponent(inviteId)}`;
 
 /** Create and send-again wait for the invite email, which the daemon bounds at
- * 10 s (`MAIL_SEND_DEADLINE`, `rustd/crates/afd_mail/src/mailer.rs`) after its
+ * 10 s (`MAIL_SEND_DEADLINE`, `rustd/crates/afd_mail/src/mailer/mod.rs`) after its
  * own reads. The client's default per-attempt timeout is also 10 s and would
  * give up first, reporting a timeout for an invite that was saved. */
 export const INVITE_EMAIL_REQUEST_TIMEOUT_MS = 15_000;

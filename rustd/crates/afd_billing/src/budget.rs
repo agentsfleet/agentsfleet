@@ -88,15 +88,15 @@ impl Verdict {
 /// lives on [`Accounts::spend`], which only supplies the operands.
 ///
 /// The day ceiling is checked first because it is the one that always exists:
-/// `monthly_dollars` is optional, and an absent monthly ceiling means no
+/// `monthly_nanos` is optional, and an absent monthly ceiling means no
 /// monthly ceiling — not an implicit one derived from the daily.
 #[must_use]
 pub fn covers(budget: Budget, spend: Spend) -> Verdict {
-    if spend.day.has_reached(Nanos::from_dollars(budget.daily())) {
+    if spend.day.has_reached(Nanos::from_ceiling(budget.daily())) {
         return Verdict::DayExceeded;
     }
     match budget.monthly() {
-        Some(monthly) if spend.month.has_reached(Nanos::from_dollars(monthly)) => {
+        Some(monthly) if spend.month.has_reached(Nanos::from_ceiling(monthly)) => {
             Verdict::MonthExceeded
         }
         _ => Verdict::Admit,
@@ -156,10 +156,10 @@ mod tests {
     /// come through validation could be negative, infinite, or above the cap,
     /// and every rule in this file assumes it is none of those. So even a unit
     /// test goes the long way round, which is the type doing its job.
-    fn ceiling(daily: f64, monthly: Option<f64>) -> Budget {
-        let monthly = monthly.map_or(String::new(), |m| format!(r#","monthly_dollars":{m}"#));
+    fn ceiling(daily: i64, monthly: Option<i64>) -> Budget {
+        let monthly = monthly.map_or(String::new(), |m| format!(r#","monthly_nanos":"{m}""#));
         let document = format!(
-            r#"{{"name":"b","x-agentsfleet":{{"triggers":[{{"type":"api"}}],"tools":[],"budget":{{"daily_dollars":{daily}{monthly}}}}}}}"#
+            r#"{{"name":"b","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"{daily}"{monthly}}}}}}}"#
         );
         afd_fleet_runtime::FleetConfig::stored(&document)
             .expect("the fixture document is well-formed")
@@ -176,7 +176,10 @@ mod tests {
             day: Nanos::from_i64(NANOS_PER_USD),
             month: Nanos::from_i64(2 * NANOS_PER_USD),
         };
-        assert_eq!(covers(ceiling(5.0, Some(10.0)), spend), Verdict::Admit);
+        assert_eq!(
+            covers(ceiling(5_000_000_000, Some(10_000_000_000)), spend),
+            Verdict::Admit
+        );
     }
 
     #[test]
@@ -189,7 +192,10 @@ mod tests {
             day: Nanos::from_i64(5_000_000_000),
             month: Nanos::ZERO,
         };
-        assert_eq!(covers(ceiling(5.0, None), spend), Verdict::DayExceeded);
+        assert_eq!(
+            covers(ceiling(5_000_000_000, None), spend),
+            Verdict::DayExceeded
+        );
     }
 
     #[test]
@@ -201,7 +207,7 @@ mod tests {
             day: Nanos::ZERO,
             month: Nanos::from_i64(900_000_000_000),
         };
-        assert_eq!(covers(ceiling(5.0, None), spend), Verdict::Admit);
+        assert_eq!(covers(ceiling(5_000_000_000, None), spend), Verdict::Admit);
     }
 
     #[test]
@@ -213,7 +219,7 @@ mod tests {
             month: Nanos::from_i64(10_000_000_000),
         };
         assert_eq!(
-            covers(ceiling(5.0, Some(10.0)), spend),
+            covers(ceiling(5_000_000_000, Some(10_000_000_000)), spend),
             Verdict::MonthExceeded
         );
     }

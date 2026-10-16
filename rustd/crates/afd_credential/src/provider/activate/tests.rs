@@ -8,11 +8,11 @@ use super::effective_model;
 /// What a client sends when it is changing model as well as credential.
 const OVERRIDE: &str = "claude-opus-5";
 
-/// What an older credential still carries in its body.
+/// The model a credential carries in its body, the default when a request names none.
 const FROM_CREDENTIAL: &str = "claude-sonnet-5";
 
 #[test]
-fn the_override_wins_and_the_credential_is_the_fallback() {
+fn the_override_wins_and_the_credential_is_the_default() {
     assert_eq!(
         effective_model(Some(OVERRIDE), Some(FROM_CREDENTIAL)),
         Some(OVERRIDE)

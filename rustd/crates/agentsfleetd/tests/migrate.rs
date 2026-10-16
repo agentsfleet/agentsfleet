@@ -1,6 +1,6 @@
 //! `migrate` refuses without its own role, and says which knob.
 //!
-//! The live half — actually applying 47 migrations — is `integration_migrate.rs`
+//! The live half — actually applying 47 migrations — is `integration_migrate/mod.rs`
 //! in `afd_db`, which owns the migrator and its parity oracle. What is asserted
 //! here is the SUBCOMMAND's contract: which knob it reads, which it does not,
 //! and what it renders.
@@ -96,7 +96,6 @@ fn test_the_summary_names_versions_not_counts() {
     let fresh = Applied {
         applied: vec![100, 110, 200],
         skipped: Vec::new(),
-        reaped: 0,
     };
     let rendered = summarise(&fresh);
     assert!(rendered.contains("100"), "{rendered}");
@@ -105,20 +104,9 @@ fn test_the_summary_names_versions_not_counts() {
     let current = Applied {
         applied: Vec::new(),
         skipped: vec![100, 110],
-        reaped: 0,
     };
     assert!(
         summarise(&current).contains("already current"),
         "a no-op run says so plainly"
-    );
-
-    let reaped = Applied {
-        applied: Vec::new(),
-        skipped: vec![100],
-        reaped: 2,
-    };
-    assert!(
-        summarise(&reaped).contains("reaped 2"),
-        "a run that only reaped is not 'already current'"
     );
 }

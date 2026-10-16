@@ -73,13 +73,13 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 # needs a pool and a client handle — both of which these crates can build
 # lazily, without opening a socket.
 afd_admission = { workspace = true, features = ["test-util"] }
-afd_db.workspace = true
+afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly.workspace = true
 # The raw `XCLAIM`/`XPENDING` `integration_reclaim_faults.rs` ages and reads an
 # entry through.
 redis.workspace = true
-# The thread-scoped recorder `integration_repair_faults.rs` reads a dispatch
-# failure's log line back through.
+# The thread-scoped recorder `tests/support.rs` reads a sweep's log line back
+# through.
 tracing-subscriber.workspace = true
 
 [[test]]

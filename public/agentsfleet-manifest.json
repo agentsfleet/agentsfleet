@@ -10,8 +10,7 @@
   "machineReadable": {
     "manifest": "/agentsfleet-manifest.json",
     "openapi": "/openapi.json",
-    "llms": "/llms.txt",
-    "skill": "/skill.md"
+    "llms": "/llms.txt"
   },
   "operations": [
     {
@@ -25,7 +24,7 @@
       "operationId": "patch_fleet",
       "method": "PATCH",
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-      "description": "Partial update of a Fleet. Body fields are optional and presence-based: config_json (replace config) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
+      "description": "Partial update of a Fleet. Body fields are optional and presence-based: name (rename the instance) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). Setup changes go through apply_fleet_revision. The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
       "actionClass": "sensitive"
     },
     {
@@ -85,17 +84,17 @@
       "actionClass": "safe"
     },
     {
-      "operationId": "list_workspace_fleet_library",
+      "operationId": "list_workspace_libraries",
       "method": "GET",
       "path": "/v1/workspaces/{workspace_id}/fleet-libraries",
       "description": "One bounded keyset page of the workspace Fleet library gallery — the union of the platform catalog and this workspace's own entries, and nothing from another workspace. Support-file manifests are not served on the workspace plane.",
       "actionClass": "safe"
     },
     {
-      "operationId": "ingest_fleet_webhook",
+      "operationId": "receive_source_webhook",
       "method": "POST",
-      "path": "/v1/webhooks/{fleet_id}",
-      "description": "Deliver an inbound event to a Fleet. Body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching the Fleet's trigger.source (e.g. vault row fleet:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
+      "path": "/v1/webhooks/{fleet_id}/{source}",
+      "description": "Deliver an inbound event to the Fleet's webhook trigger whose source the URL names; this is the URL Save returns for each webhook trigger. The body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching that trigger's source (e.g. vault row fleet:github, field webhook_secret); the provider-specific signature header is verified before the body is read. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     }
   ],
@@ -116,13 +115,13 @@
       "get_tenant_billing_charges",
       "get_model_library",
       "list_tenant_model_entries",
-      "list_workspace_fleet_library"
+      "list_workspace_libraries"
     ],
     "sensitive": [
       "create_fleet",
       "patch_fleet",
       "post_fleet_message",
-      "ingest_fleet_webhook"
+      "receive_source_webhook"
     ],
     "critical": [
       "delete_fleet"

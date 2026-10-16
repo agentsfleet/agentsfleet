@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { RunnerListItem } from "@/lib/api/runners";
 
 const listRunnerLeasesActionMock = vi.fn();
@@ -24,7 +24,7 @@ function runner(overrides: Partial<RunnerListItem> = {}): RunnerListItem {
     labels: ["gpu"],
     last_seen_at: Date.now(),
     created_at: Date.now(),
-    assigned_policy: null,
+    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
     degraded_reason: null,
@@ -59,6 +59,30 @@ function lease(fleetName: string) {
 }
 
 describe("RunnerTile", () => {
+  it("refreshes busy activity when a new server snapshot arrives, without repeating local rerenders", async () => {
+    listRunnerLeasesActionMock.mockResolvedValueOnce({ok: true, data: {items: [lease("Build fleet")], next_cursor: null}})
+      .mockResolvedValueOnce({ok: true, data: {items: [lease("Deploy fleet")], next_cursor: null}});
+    const row = runner({liveness: "busy"});
+    const view = render(<RunnerTile runner={row} />);
+    await screen.findByText("1 lease · Build fleet");
+    view.rerender(<RunnerTile runner={row} />);
+    expect(listRunnerLeasesActionMock).toHaveBeenCalledOnce();
+    view.rerender(<RunnerTile runner={{...row}} />);
+    expect(await screen.findByText("1 lease · Deploy fleet")).toBeTruthy();
+    expect(listRunnerLeasesActionMock).toHaveBeenCalledTimes(2);
+  });
+  it("contains a rejected activity read and keeps the runner inspectable", async () => {
+    listRunnerLeasesActionMock.mockRejectedValueOnce(new Error("private-lease-error"))
+      .mockResolvedValueOnce({ok: true, data: {items: [lease("Recovered fleet")], next_cursor: null}});
+    const row = runner({liveness: "busy"});
+    const view = render(<RunnerTile runner={row} />);
+    await screen.findByText("Activity unavailable. Open runner to retry.");
+    expect(screen.getByRole("link").getAttribute("href")).toBe("/admin/runners/r-tile-1");
+    expect(screen.queryByText("private-lease-error")).toBeNull();
+    view.rerender(<RunnerTile runner={{...row}} />);
+    expect(await screen.findByText("1 lease · Recovered fleet")).toBeTruthy();
+  });
+
   it("test_runner_wall_card_links_to_detail", () => {
     render(<RunnerTile runner={runner()} />);
     const link = screen.getByRole("link");
@@ -113,7 +137,7 @@ describe("RunnerTile", () => {
     render(<RunnerTile runner={runner({ liveness: "busy" })} />);
     // Failed activity reads must not contradict the known busy status.
     await waitFor(() => {
-      expect(screen.getByText("Activity unavailable. Inspect runner to retry.")).toBeTruthy();
+      expect(screen.getByText("Activity unavailable. Open runner to retry.")).toBeTruthy();
       expect(screen.queryByText("Idle. No active leases.")).toBeNull();
     });
   });
@@ -188,4 +212,17 @@ describe("RunnerTile", () => {
     });
     expect(screen.queryByText(/Stale Fleet/)).toBeNull();
   });
+});
+
+
+it("keeps refreshed activity when the old request rejects afterwards", async () => {
+  const older = Promise.withResolvers<unknown>();
+  listRunnerLeasesActionMock.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ok: true,
+    data: {items: [lease("Current Fleet")], total: 1, next_cursor: null}});
+  const view = render(<RunnerTile runner={runner({liveness: "busy"})} />);
+  view.rerender(<RunnerTile runner={runner({liveness: "busy", last_seen_at: Date.now() + 1})} />);
+  await screen.findByText("1 lease · Current Fleet");
+  await act(async () => {older.reject(new Error("old request failed"));});
+  expect(screen.getByText("1 lease · Current Fleet")).toBeTruthy();
+  expect(screen.queryByText(/Activity unavailable/)).toBeNull();
 });

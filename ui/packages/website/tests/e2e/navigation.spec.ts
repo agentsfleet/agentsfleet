@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-/** Footer links and old URLs reach the pages they name. */
+/** Footer links reach current pages; removed routes show the recovery page. */
 
 test.describe("Footer navigation", () => {
-  test("footer fleets link navigates to /fleets", async ({ page }) => {
+  test("footer agents link navigates to /agents", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("contentinfo").getByRole("link", { name: /^Agents$/i }).click();
     await expect(page).toHaveURL(/\/agents/);
@@ -12,20 +12,21 @@ test.describe("Footer navigation", () => {
     );
   });
 
-  test("footer Dashboard matches the header waitlist destination", async ({ page }) => {
+  test("footer sign-in matches the app destination", async ({ page }) => {
     await page.goto("/agents");
     const header = page.getByTestId("header-install-cta");
-    await expect(header).toHaveText("dashboard");
+    await expect(header).toHaveText("Sign in ↗");
     const href = await header.getAttribute("href");
-    expect(href).toMatch(/\/waitlist$/);
-    await expect(page.getByRole("contentinfo").getByRole("link", { name: "dashboard", exact: true })).toHaveAttribute("href", href!);
+    expect(href).toMatch(/\/sign-in$/);
+    await expect(page.getByRole("contentinfo").getByRole("link", { name: "sign in", exact: true })).toHaveAttribute("href", href!);
   });
 
-  test("footer fleet link navigates to the prebuilt-fleets anchor", async ({ page }) => {
+  test("footer use cases link opens the example conversation", async ({ page }) => {
     await page.goto("/agents");
     await page.getByRole("contentinfo").getByRole("link", { name: /^Use cases$/i }).click();
-    await expect(page).toHaveURL(/\/#operational-loop$/);
-    await expect(page.getByTestId("prebuilt-fleets")).toBeVisible();
+    await expect(page).toHaveURL(/\/#how-it-works$/);
+    await expect(page.getByRole("figure")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "What should your fleet handle?" })).toHaveCount(0);
   });
 
   test("footer privacy link navigates to /privacy", async ({ page }) => {
@@ -50,11 +51,13 @@ test.describe("Footer navigation", () => {
   });
 });
 
-test("old page URLs lead to their current destinations", async ({ page }) => {
-  await page.goto("/fleets");
-  await expect(page).toHaveURL(/\/agents$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page is for agents.");
-  await page.goto("/pricing");
-  await expect(page).toHaveURL(/\/#pricing$/);
-  await expect(page.getByTestId("pricing-block")).toBeVisible();
+test("removed page URLs show not-found with working recovery links", async ({ page }) => {
+  for (const path of ["/fleets", "/pricing"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(path);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page isn’t here.");
+    await page.getByRole("link", { name: "Explore agents", exact: true }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page is for agents.");
+  }
 });

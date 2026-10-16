@@ -11,7 +11,6 @@ use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS, SANDBOX_HOLD_IDLE_
 
 use super::{at, hold, id, live, slot};
 use crate::queue;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
@@ -31,14 +30,18 @@ async fn test_holder_claims_its_held_fleet() {
         &fixtures,
         &fleet,
         &holder,
-        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
 
-    let acquired =
-        seed::select_fleet_within_rotations(&leases, &holder, at(ENROLLED_AT + 1), &fleet)
-            .await
-            .expect("the holder leases its held fleet");
+    let acquired = seed::select_fleet_within_rotations(
+        &leases,
+        &holder,
+        at(fixtures.enrolled_at() + 1),
+        &fleet,
+    )
+    .await
+    .expect("the holder leases its held fleet");
 
     assert_eq!(acquired.fleet_id.as_str(), fleet);
     queue::clear_ready(fixtures.queue(), &fleet).await;
@@ -61,10 +64,10 @@ async fn test_other_runner_skips_held_fleet() {
         &fixtures,
         &fleet,
         &holder,
-        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
-    let now = at(ENROLLED_AT + 1);
+    let now = at(fixtures.enrolled_at() + 1);
 
     let skipped = seed::select_fleet_within_rotations(&leases, &other, now, &fleet).await;
     let refused = leases
@@ -90,8 +93,8 @@ async fn test_lapsed_hold_is_claimable() {
     let (expired, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let (silent, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let short = ENROLLED_AT + 10;
-    let far = ENROLLED_AT + 10 * RUNNER_OFFLINE_AFTER_MS;
+    let short = fixtures.enrolled_at() + 10;
+    let far = fixtures.enrolled_at() + 10 * RUNNER_OFFLINE_AFTER_MS;
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &expired, &holder, short).await;
     hold(&leases, &fixtures, &silent, &holder, far).await;
@@ -104,7 +107,7 @@ async fn test_lapsed_hold_is_claimable() {
         .claim(
             &id(&silent),
             &other,
-            at(ENROLLED_AT + RUNNER_OFFLINE_AFTER_MS + 1),
+            at(fixtures.enrolled_at() + RUNNER_OFFLINE_AFTER_MS + 1),
             LEASE_TTL_MS,
         )
         .await
@@ -139,12 +142,12 @@ async fn test_holder_polls_its_holds_first() {
         &fixtures,
         &fleet,
         &holder,
-        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
     )
     .await;
 
     let first_poll = leases
-        .select(&holder, &[id(&fleet)], at(ENROLLED_AT + 1))
+        .select(&holder, &[id(&fleet)], at(fixtures.enrolled_at() + 1))
         .await
         .expect("a poll answers")
         .expect("one poll finds the held fleet, whichever partition it is in");
@@ -160,10 +163,10 @@ async fn test_drained_claim_keeps_held_hint() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
-    let until = ENROLLED_AT + SANDBOX_HOLD_IDLE_MS;
+    let until = fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS;
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until).await;
-    let now = at(ENROLLED_AT + 1);
+    let now = at(fixtures.enrolled_at() + 1);
 
     let claimed = leases
         .claim(&id(&fleet), &holder, now, LEASE_TTL_MS)
@@ -188,7 +191,7 @@ async fn test_unheld_fleet_claims_as_before() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = at(ENROLLED_AT);
+    let now = at(fixtures.enrolled_at());
 
     let claimed = leases
         .claim(&id(&fleet), &first, now, LEASE_TTL_MS)
@@ -205,7 +208,12 @@ async fn test_unheld_fleet_claims_as_before() {
         .expect("lets go");
     let after = slot(&fixtures, &fleet).await;
     let reclaimed = leases
-        .claim(&id(&fleet), &second, at(ENROLLED_AT + 1), LEASE_TTL_MS)
+        .claim(
+            &id(&fleet),
+            &second,
+            at(fixtures.enrolled_at() + 1),
+            LEASE_TTL_MS,
+        )
         .await
         .expect("answers");
 

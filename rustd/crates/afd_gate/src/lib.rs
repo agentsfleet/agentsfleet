@@ -20,6 +20,8 @@
 //! share one column's vocabulary, in [`afd_api_wire::approval::status`], and
 //! nothing else.
 
+#![deny(clippy::self_named_module_files)]
+
 mod error;
 
 pub mod gate;

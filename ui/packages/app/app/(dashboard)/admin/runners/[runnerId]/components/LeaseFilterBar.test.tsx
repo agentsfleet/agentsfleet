@@ -7,7 +7,8 @@ import {
   CLEAR_FLEET_FILTER_LABEL,
   CLEAR_LEASE_FILTER_LABEL,
   CLEAR_WORKSPACE_FILTER_LABEL,
-  LEASE_FILTER_LABEL,
+  FLEET_LABEL,
+  WORKSPACE_LABEL,
 } from "./runner-copy";
 
 // `LeaseFilterBar` takes its state as a prop rather than calling
@@ -42,7 +43,7 @@ function renderBar(filters: LeaseFilterState) {
       <LeaseFilterBar filters={filters} />
     </TooltipProvider>,
   );
-  return screen.getByLabelText(LEASE_FILTER_LABEL);
+  return screen.getByRole("textbox", {name: FLEET_LABEL});
 }
 
 describe("LeaseFilterBar keyboard submit", () => {
@@ -50,23 +51,40 @@ describe("LeaseFilterBar keyboard submit", () => {
     const filters = filterState();
     const input = renderBar(filters);
 
-    fireEvent.change(input, { target: { value: `fleet:${FLEET_NAME}` } });
+    fireEvent.change(input, { target: { value: FLEET_NAME } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(filters.apply).toHaveBeenCalledTimes(1);
     expect(filters.apply).toHaveBeenCalledWith({ workspace: null, fleet: FLEET_NAME });
   });
 
-  it("submits both tokens together, so Enter never drops the half the operator did not retype", () => {
+  it("submits both fields together, so Enter never drops the half the operator did not retype", () => {
     const filters = filterState();
     const input = renderBar(filters);
 
     fireEvent.change(input, {
-      target: { value: `workspace:${WORKSPACE_ID} fleet:${FLEET_NAME}` },
+      target: { value: FLEET_NAME },
     });
+    fireEvent.change(screen.getByRole("textbox", {name: WORKSPACE_LABEL}), {target: {value: WORKSPACE_ID}});
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(filters.apply).toHaveBeenCalledWith({ workspace: WORKSPACE_ID, fleet: FLEET_NAME });
+  });
+
+  it("preserves a literal fleet name with spaces and punctuation", () => {
+    const filters = filterState();
+    const input = renderBar(filters);
+    fireEvent.change(input, {target: {value: "Support: Europe team"}});
+    fireEvent.keyDown(input, {key: "Enter"});
+    expect(filters.apply).toHaveBeenCalledWith({workspace: null, fleet: "Support: Europe team"});
+  });
+
+  it("restores both fields when back navigation changes the applied filters", () => {
+    const view = render(<TooltipProvider><LeaseFilterBar filters={filterState({fleet: FLEET_NAME})} /></TooltipProvider>);
+    fireEvent.change(screen.getByRole("textbox", {name: FLEET_LABEL}), {target: {value: "Unsaved"}});
+    view.rerender(<TooltipProvider><LeaseFilterBar filters={filterState({workspace: WORKSPACE_ID})} /></TooltipProvider>);
+    expect(screen.getByRole("textbox", {name: FLEET_LABEL})).toHaveProperty("value", "");
+    expect(screen.getByRole("textbox", {name: WORKSPACE_LABEL})).toHaveProperty("value", WORKSPACE_ID);
   });
 
   it("does not navigate on any other key — typing is not submitting", () => {
@@ -76,7 +94,7 @@ describe("LeaseFilterBar keyboard submit", () => {
     const filters = filterState();
     const input = renderBar(filters);
 
-    fireEvent.change(input, { target: { value: `fleet:${FLEET_NAME}` } });
+    fireEvent.change(input, { target: { value: FLEET_NAME } });
     fireEvent.keyDown(input, { key: "a" });
     fireEvent.keyDown(input, { key: "Escape" });
     fireEvent.keyDown(input, { key: "Tab" });
@@ -90,8 +108,8 @@ describe("LeaseFilterBar keyboard submit", () => {
     const filters = filterState();
     const input = renderBar(filters);
 
-    fireEvent.change(input, { target: { value: "fleet:first-guess" } });
-    fireEvent.change(input, { target: { value: `fleet:${FLEET_NAME}` } });
+    fireEvent.change(input, { target: { value: "first-guess" } });
+    fireEvent.change(input, { target: { value: FLEET_NAME } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(filters.apply).toHaveBeenCalledTimes(1);
@@ -99,12 +117,13 @@ describe("LeaseFilterBar keyboard submit", () => {
   });
 
   it("clears both filters through Enter on an emptied box, rather than leaving the old pair applied", () => {
-    // Clearing the text and pressing Enter parses to two nulls — the same shape
+    // Clearing both fields and pressing Enter submits two nulls — the same shape
     // the Clear-all button produces, reached by keyboard.
     const filters = filterState({ workspace: WORKSPACE_ID, fleet: FLEET_NAME });
     const input = renderBar(filters);
 
     fireEvent.change(input, { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", {name: WORKSPACE_LABEL}), {target: {value: ""}});
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(filters.apply).toHaveBeenCalledWith({ workspace: null, fleet: null });
@@ -114,7 +133,7 @@ describe("LeaseFilterBar keyboard submit", () => {
     const filters = filterState();
     const input = renderBar(filters);
 
-    fireEvent.change(input, { target: { value: `fleet:${FLEET_NAME}` } });
+    fireEvent.change(input, { target: { value: FLEET_NAME } });
     fireEvent.click(screen.getByRole("button", { name: APPLY_LEASE_FILTER_LABEL }));
 
     expect(filters.apply).toHaveBeenCalledWith({ workspace: null, fleet: FLEET_NAME });

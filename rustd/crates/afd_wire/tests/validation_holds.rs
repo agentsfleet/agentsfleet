@@ -1,6 +1,6 @@
-//! A runner's held sandboxes on the wire: every field that names one decodes
-//! as nothing held when absent, so a runner or daemon from before them still
-//! reads and writes as it did, and the list a runner sends is bounded.
+//! A runner's held sandboxes on the wire: a beat names its holds every time,
+//! the daemon's answer names its releases every time, a report or poll that
+//! names none decodes as nothing held, and the list a runner sends is bounded.
 #![expect(
     clippy::unwrap_used,
     reason = "test target: a body that will not decode is an unmet precondition"
@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::lease::LeaseRequest;
+use afd_wire::lease::{AcceptedKinds, LeaseRequest};
 use afd_wire::report::ReportRequest;
 use afd_wire::runner::{
     FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest, HeartbeatResponse, HeldFleets,
@@ -17,33 +17,70 @@ use garde::Validate as _;
 
 /// A fleet identifier as a runner sends it.
 const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-/// A report from a runner that holds nothing, or predates holding.
+/// A report from a runner that holds nothing.
 const REPORT: &str = r#"{"lease_id":"lease","event_id":"1-0","fencing_token":7,
     "outcome":"processed","failure_reason":null,"failure_detail":"",
     "response_text":"done","tokens":3,"input_tokens":1,"cached_input_tokens":0,
     "output_tokens":2,"telemetry":{"time_to_first_token_ms":4,"wall_ms":5},
     "checkpoint":{"last_event_id":"1-0","last_response":""}}"#;
-/// A heartbeat answer from a daemon that predates holding.
+/// A heartbeat answer releasing nothing.
 // pin test: literal is the contract
-const BEAT_ANSWER: &str = r#"{"heartbeat_interval_ms":10000,"status":"ok","assigned_policy":null,
-    "degraded":false,"degraded_reason":null,"selftest_requested":false}"#;
+const BEAT_ANSWER: &str = r#"{"heartbeat_interval_ms":10000,"status":"ok",
+    "assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all",
+    "registry_allowlist":[],"worker_count":1,"extra_binds":[]},
+    "degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[]}"#;
 
 fn held(count: usize, fleet: &str) -> HeldFleets<'_> {
     HeldFleets(vec![Cow::Borrowed(fleet); count])
 }
 
 #[test]
-fn test_hold_fields_are_optional_on_the_wire() {
+fn test_a_beat_names_its_holds_and_whether_it_is_closing() {
+    for partial in ["{}", r#"{"holds":[]}"#, r#"{"closing":false}"#] {
+        assert!(
+            serde_json::from_str::<HeartbeatRequest<'_>>(partial).is_err(),
+            "{partial}"
+        );
+    }
+    let beat: HeartbeatRequest<'_> =
+        serde_json::from_str(r#"{"holds":[],"closing":false}"#).unwrap();
+    assert_eq!(beat.holds, HeldFleets::default());
+    assert!(!beat.closing);
+}
+
+#[test]
+fn test_a_report_or_poll_naming_no_hold_holds_nothing() {
     let report: ReportRequest<'_> = serde_json::from_str(REPORT).unwrap();
-    let beat: HeartbeatRequest<'_> = serde_json::from_str("{}").unwrap();
-    let answer: HeartbeatResponse<'_> = serde_json::from_str(BEAT_ANSWER).unwrap();
-    let poll: LeaseRequest<'_> = serde_json::from_str("{}").unwrap();
+    let poll: LeaseRequest<'_> = serde_json::from_str(r#"{"accepted_kinds":["fleet"]}"#).unwrap();
 
     assert_eq!(report.held_until_ms, None);
-    assert_eq!(beat.holds, HeldFleets::default());
-    assert!(!beat.closing, "a runner from before closing never closes");
+    assert_eq!(poll.holds, HeldFleets::default());
+    assert_eq!(poll.accepted_kinds, AcceptedKinds::FLEET);
+}
+
+/// The daemon's answer names its releases and the assignment on every beat:
+/// an answer missing either is refused rather than read as nothing released
+/// or nothing assigned.
+#[test]
+fn test_a_beat_answer_names_its_releases_and_its_assignment() {
+    let answer: HeartbeatResponse<'_> = serde_json::from_str(BEAT_ANSWER).unwrap();
     assert_eq!(answer.release_holds, [] as [Cow<'_, str>; 0]);
-    assert_eq!(poll, LeaseRequest::default());
+
+    let whole: serde_json::Value = serde_json::from_str(BEAT_ANSWER).unwrap();
+    for field in ["release_holds", "assigned_policy"] {
+        let mut absent = whole.clone();
+        absent.as_object_mut().unwrap().remove(field);
+        let mut null = whole.clone();
+        null.as_object_mut()
+            .unwrap()
+            .insert(field.to_owned(), serde_json::Value::Null);
+        for broken in [absent.to_string(), null.to_string()] {
+            assert!(
+                serde_json::from_str::<HeartbeatResponse<'_>>(&broken).is_err(),
+                "{broken}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -84,7 +121,7 @@ fn test_every_held_fleet_is_an_identifiers_length() {
 
 #[test]
 fn test_a_poll_naming_its_holds_reads_them_and_refuses_a_stranger() {
-    let body = format!(r#"{{"holds":["{FLEET}"]}}"#);
+    let body = format!(r#"{{"holds":["{FLEET}"],"accepted_kinds":["fleet"]}}"#);
 
     let poll: LeaseRequest<'_> = serde_json::from_str(&body).unwrap();
 

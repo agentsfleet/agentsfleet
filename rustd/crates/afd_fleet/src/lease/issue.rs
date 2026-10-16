@@ -19,6 +19,9 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
+use afd_runner::capacity::choice;
+use afd_wire::lease::LeaseKind;
+use sqlx::Connection as _;
 
 use crate::error::{Result, query};
 use crate::lease::envelope::{Acquired, Kind};
@@ -80,8 +83,20 @@ impl Leases {
         billed: Billed<'_>,
         now: UnixMillis,
     ) -> Result<Option<Issued>> {
-        let (lease_id, event_row_id) = self.mint(now)?;
         let mut connection = self.pool().acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
+        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
+            return Ok(None);
+        };
+        if !capacity.can_claim()
+            || acquired.leased_until <= capacity.now()
+            || self
+                .ticket()
+                .is_some_and(|ticket| !ticket.permits(capacity, LeaseKind::Fleet))
+        {
+            return Ok(None);
+        }
+        let (lease_id, event_row_id) = self.mint(now)?;
         let written = sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
@@ -99,13 +114,13 @@ impl Leases {
             fencing_token: acquired.fence.as_i64(),
             leased_until: acquired.leased_until.as_millis(),
             status: sql::LEASE_STATUS_ACTIVE,
-            now,
+            now: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
             reset_meters: acquired.kind == Kind::Fresh,
         }
         .bind()
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_ISSUE))?;
         // The tally arm is the statement's own row count, and it writes
@@ -113,46 +128,50 @@ impl Leases {
         if written.rows_affected() == 0 {
             return Ok(None);
         }
-
-        let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
-        if let Ok(millis) = u64::try_from(elapsed) {
-            producers::fleet::delivery_stage(
-                DeliveryStage::EventToLease,
-                core::time::Duration::from_millis(millis),
-            );
+        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
+            return Ok(None);
         }
+        transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
-        // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
-        // scores the dead copy.
-        let lease = lease_id.as_str();
-        let fleet = acquired.fleet_id.as_str();
-        let runner = runner_id.as_str();
-        let event_id = acquired.event_id.as_str();
-        let fence = acquired.fence.as_i64();
-        let kind = acquired.kind.as_str();
-        tracing::debug!(
-            event = EVENT_LEASE_ISSUED,
-            lease_id = lease,
-            fleet_id = fleet,
-            runner_id = runner,
-            agentsfleet_event_id = event_id,
-            fencing_token = fence,
-            kind,
-            "a runner now owns this fleet's work"
-        );
+        record_issued(&lease_id, runner_id, acquired);
         Ok(Some(Issued { lease_id }))
     }
 
-    /// Draws the two identifiers a lease row needs.
-    ///
-    /// Split out because it is the only part that touches entropy, and because
-    /// two consecutive fallible draws inside the write would push
-    /// [`Leases::issue`] past the function-length line for no gain.
+    /// Draw the independent lease and audit identities.
     fn mint(&self, now: UnixMillis) -> Result<(Uuid7, Uuid7)> {
         let lease_id = self.entropy().uuid7(now)?;
         let event_row_id = self.entropy().uuid7(now)?;
         Ok((lease_id, event_row_id))
     }
+}
+
+fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
+    let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
+    if let Ok(millis) = u64::try_from(elapsed) {
+        producers::fleet::delivery_stage(
+            DeliveryStage::EventToLease,
+            core::time::Duration::from_millis(millis),
+        );
+    }
+
+    // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+    // scores the dead copy.
+    let lease = lease_id.as_str();
+    let fleet = acquired.fleet_id.as_str();
+    let runner = runner_id.as_str();
+    let event_id = acquired.event_id.as_str();
+    let fence = acquired.fence.as_i64();
+    let kind = acquired.kind.as_str();
+    tracing::debug!(
+        event = EVENT_LEASE_ISSUED,
+        lease_id = lease,
+        fleet_id = fleet,
+        runner_id = runner,
+        agentsfleet_event_id = event_id,
+        fencing_token = fence,
+        kind,
+        "a runner now owns this fleet's work"
+    );
 }
 
 /// A lease was written and handed to a runner.

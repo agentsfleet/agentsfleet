@@ -80,14 +80,22 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
     // §7 — onboarding, preferences, fleet-library reads.
     "/v1/workspaces/{workspace_id}/onboarding",
-    "/v1/workspaces/{workspace_id}/preferences",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
     "/v1/workspaces/{workspace_id}/fleet-libraries",
-    // M204 — the entries a workspace onboarded, and removing one. A second
-    // collection rather than a filter on the gallery above: that one answers
-    // what is installable here, this one what this workspace owns.
-    "/v1/workspaces/{workspace_id}/library-entries",
-    "/v1/workspaces/{workspace_id}/library-entries/{entry_id}",
+    // M227 N1–N17 (`docs/architecture/api_resources.md`) — eligible models,
+    // creator-private drafts, reviewed setup revisions and explicit Library
+    // publication. Removed R1/R2 `library-entries` have no row here.
+    "/v1/workspaces/{workspace_id}/models",
+    "/v1/workspaces/{workspace_id}/drafts",
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations",
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
+    "/v1/workspaces/{workspace_id}/fleet-libraries/owned",
+    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}",
+    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions",
+    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions/{revision_id}",
 ];
 
 /// The paths the table carries that belong to a LATER milestone.
@@ -108,8 +116,8 @@ const DEFERRED_TO_M180: &[&str] = &[
     "/v1/workspaces/{workspace_id}/connectors",
     "/v1/workspaces/{workspace_id}/connectors/{provider}",
     "/v1/workspaces/{workspace_id}/connectors/{provider}/connect",
-    // The provider's redirect back, which carries no workspace in its path —
-    // the provider only knows the state parameter it was handed.
+    // The dashboard's completion of a connect, which carries no workspace in
+    // its path — the workspace is inside the signed state.
     "/v1/connectors/{provider}/callback",
     // A connector's signed event delivery — ingress, so M180's rather than
     // this milestone's, even though the table files it under the connector
@@ -117,7 +125,6 @@ const DEFERRED_TO_M180: &[&str] = &[
     // Slack is the only connector that delivers today, and the template that
     // serves it serves the next one without a route change.
     "/v1/connectors/{provider}/events",
-    "/v1/fleets/bundles",
     // Team accounts: an owner's invites and members under the caller's own
     // account, the invitee's side under `/v1/users/me`, and the names a workspace's
     // thread shows beside each sender.

@@ -15,18 +15,21 @@
 // Same reason as `afd_wire`: an unused-but-linked dependency is a cost with no
 // benefit. Gated on `not(test)` because the test build links dev-dependencies.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 pub mod admin;
 mod admin_catalogue;
-mod admin_library;
+pub mod admin_library_native;
 pub mod approval;
 pub mod auth;
+pub mod authoring;
 pub mod connector;
 pub mod fleet;
 pub mod grant;
 pub mod health;
 pub mod identity;
 pub mod ingress;
+pub mod library;
 pub mod models;
 pub mod operator;
 pub mod preference;
@@ -40,4 +43,3 @@ pub mod tenant;
 pub mod tenant_model_entry;
 pub mod tenant_provider;
 pub mod workspace;
-pub mod workspace_library;

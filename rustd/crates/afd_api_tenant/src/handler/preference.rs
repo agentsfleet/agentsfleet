@@ -40,7 +40,6 @@ use crate::handler::Refusal;
 use crate::services::{Services, WorkspacePreferences as _};
 
 /// The scoped events each verb's failures are logged under.
-const EVENT_READ: &str = "preferences_read_failed";
 const EVENT_WRITE: &str = "preference_write_failed";
 const EVENT_ONBOARDING: &str = "onboarding_read_failed";
 
@@ -70,49 +69,6 @@ const DETAIL_BODY_REQUIRED: &str = "Request body required";
 pub(crate) struct PreferencePath {
     /// The preference key named in the path, still text.
     pub pref_key: String,
-}
-
-/// `GET /v1/workspaces/{workspace_id}/preferences` — this person's whole bag.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    get,
-    path = "/v1/workspaces/{workspace_id}/preferences",
-    tag = afd_http::openapi::tag::WORKSPACES,
-    operation_id = "get_workspace_preferences",
-    summary = "Read the caller's dashboard preferences for a workspace",
-    description = concat!(
-        "Returns every dashboard preference the calling user has set in this ",
-        "workspace, as an object keyed by preference key. A user who has set ",
-        "nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no ",
-        "preferences\" from \"preferences unavailable\" without branching. ",
-        "Preferences are per user AND per workspace: a second workspace ",
-        "starts its onboarding checklist fresh. ",
-    ),
-    params(
-        afd_http::openapi::path::Workspace,
-    ),
-    responses(
-        (status = 200, description = afd_http::openapi::OK, body = PreferencesResponse),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
-    ),
-))]
-pub(crate) async fn read<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    person: PersonIdentity,
-) -> Result<Response, Refusal> {
-    let user = resolve_user(&services, person.subject(), EVENT_READ).await?;
-    let bag = services
-        .preferences()
-        .bag(&user, &owned.workspace)
-        .await
-        .map_err(Refusal::at(EVENT_READ))?;
-
-    Ok(respond_with_bag(&bag))
 }
 
 /// `PUT /v1/workspaces/{workspace_id}/preferences/{pref_key}` — write one key.

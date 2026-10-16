@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { useMemo } from "react";
 import { ActivityIcon } from "lucide-react";
 import {
@@ -81,15 +82,15 @@ function tierLabelFor(tier: string): string {
 
 // The detail column: a state change renders its from- and to-state from the
 // event's own metadata; registration renders the host identity and isolation
-// tier it recorded, with the real date in the Time column.
+// tier it recorded, with the real date in the timestamp column.
 //
 // Online and offline records carry `last_seen_at` — the last contact BEFORE the
 // transition — and it is the only honest answer to "when did this actually
 // happen?". An offline record's `occurred_at` is when the sweeper NOTICED, one
 // RUNNER_OFFLINE_AFTER_MS (three lease TTLs) after the runner really went dark,
-// so the Time column reads late by construction. An online record's is the gap
+// so the timestamp column reads late by construction. An online record's is the gap
 // the runner was away. Rendering it absolute rather than relative keeps it from
-// reading as a second, contradictory version of the Time column.
+// reading as a second, contradictory version of the timestamp column.
 function detailFor(item: RunnerEventItem): string {
   const from = metaString(item.metadata, META_FROM_ADMIN_STATE);
   const to = metaString(item.metadata, META_TO_ADMIN_STATE);
@@ -130,7 +131,7 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
     () => [
       {
         key: "time",
-        header: "Time",
+        header: TIME_LABEL.occurred,
         sortValue: (item) => item.occurred_at,
         cell: (item) => (
           <Time
@@ -141,7 +142,7 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
         ),
       },
       {
-        key: "what",
+        key: "what", primary: true,
         header: "What",
         cell: (item) => <span className="font-sans text-sm">{EVENT_HEADLINES[item.event_type]}</span>,
       },

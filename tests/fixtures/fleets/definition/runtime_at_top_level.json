@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "description": "A refusal fixture.",
+  "instructions_md": "Runtime keys belong under x-agentsfleet.",
+  "config": {
+    "name": "misplaced-runtime",
+    "trigger": {
+      "type": "cron",
+      "schedule": "0 9 * * *"
+    },
+    "tools": [
+      "agentmail"
+    ],
+    "budget": {
+      "daily_nanos": "1000000000"
+    }
+  }
+}

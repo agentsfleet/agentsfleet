@@ -72,6 +72,7 @@ pub(super) async fn open_runtime(
     let hub = live.hub().cloned();
     let observed = live.clone();
     let plane = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
+        authoring_transport: clients.authoring,
         database: database.clone(),
         queue: queue.clone(),
         // Cloned rather than moved: the outbound worker below opens its own
@@ -81,7 +82,6 @@ pub(super) async fn open_runtime(
         capabilities,
         signup_writeback,
         sessions,
-        stores: crate::bundles::resolve(config.bundles()),
         platform_admin_workspace: config.platform_admin_workspace().cloned(),
         identity_webhook_secret: identity_webhook_secret(config),
         broker,
@@ -204,12 +204,8 @@ pub(super) async fn spawn_background(
             hub.shutdown();
         });
     }
-    // The sweepers read through pools that are open by now. Starting them
-    // after the socket would leave a window where the plane serves while
-    // nothing is noticing dead runners.
-    crate::sweepers::spawn(supervisor, database, queue);
-    // The connector answer-delivery worker, beside them and for the same
-    // reason. Its own Dragonfly connection, because it blocks on the stream — see
+    // The connector answer-delivery worker, beside the sweepers `serve`
+    // spawned just before this, and for the same reason. Its own Dragonfly connection, because it blocks on the stream — see
     // `crate::outbound`. It opens its own grant store over the SAME key the
     // plane seals with, which is why the KEK arrives shared rather than
     // rebuilt here.

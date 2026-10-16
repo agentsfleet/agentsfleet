@@ -19,7 +19,7 @@ export default async function SettingsSecurityPage({
 
   return (
     <PageLayout>
-      <PageHeader>
+      <PageHeader className="flex-col sm:flex-col">
         <PageTitle>Security</PageTitle>
       </PageHeader>
       <EmptyState

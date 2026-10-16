@@ -17,7 +17,8 @@ use crate::error::{self, Result};
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";
 /// The runner's `agt_r` token, minted once by a platform admin.
 pub const ENV_RUNNER_TOKEN: &str = "AGENTSFLEET_RUNNER_TOKEN";
-/// The host-local root for the spool, the bundle cache and lease sandboxes.
+/// The host-local root for the report spool, git mirrors, the toolbox and
+/// lease sandboxes.
 pub const ENV_STORAGE_HOME: &str = "RUNNER_STORAGE_HOME";
 /// Where the storage home lives when none is set: a directory that survives a
 /// reboot, because the report spool exists to outlive one.

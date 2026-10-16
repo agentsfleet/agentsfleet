@@ -1,5 +1,6 @@
 "use client";
 
+import { TIME_LABEL } from "@/lib/time-labels";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -80,7 +81,6 @@ export function InvitesView({ waiting, linkedId }: Props) {
           rows={waiting}
           rowKey={(invite) => invite.id}
           caption="Invites waiting for you"
-          pagination={false}
           empty={
             <EmptyState
               icon={<MailOpenIcon size={28} />}
@@ -97,17 +97,17 @@ export function InvitesView({ waiting, linkedId }: Props) {
 function columns(pending: boolean, accept: (inviteId: string) => void): DataTableColumn<WaitingInvite>[] {
   return [
     {
-      key: "account",
+      key: "account", primary: true,
       header: "Account",
       cell: (invite) => <span className="truncate text-sm">{accountLabel(invite.account.owner_name)}</span>,
     },
     {
       key: "time",
-      header: "Time",
+      header: TIME_LABEL.expires,
       hideOnMobile: true,
       cell: (invite) => (
         <span className="text-label leading-label text-muted-foreground">
-          expires <Time value={new Date(invite.expires_at)} format="relative" className="tabular-nums" />
+          <Time value={new Date(invite.expires_at)} format="relative" className="tabular-nums" />
         </span>
       ),
     },

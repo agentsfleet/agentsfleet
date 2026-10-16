@@ -16,6 +16,7 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_admission::Error => Admission,
     afd_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
+    serde_json::Error => Json,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -110,11 +111,19 @@ pub(crate) fn destination_not_plain_origin() -> Error {
 /// happens to read the wrong value first.
 #[cfg(feature = "test-util")]
 #[must_use]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let mut kinds = wrapping_kinds();
+    kinds.extend(raised_kinds());
+    kinds
+}
+
+/// Every kind that wraps another crate's error, each around a real one.
+#[cfg(feature = "test-util")]
 #[expect(
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+fn wrapping_kinds() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     // By label, not by position — see `admission_sample`. Taking `.next()`
     // here would tie this sample set to the order a different crate lists its
@@ -124,17 +133,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let admission_gone = admission_sample("datastore");
     let identifier =
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
-    // A URL the builder rejects, so a `reqwest::Error` exists without a request
-    // ever leaving the process — this suite reaches no network.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the client only refuses an unparseable URL and sends nothing"
-    )]
-    let unreachable = reqwest::Client::new()
-        .get("http://[")
-        .build()
-        .expect_err("an unparseable URL is refused before it is sent");
-
     vec![
         (
             "datastore",
@@ -162,10 +160,35 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "upstream unreachable",
             ErrorKind::UpstreamUnreachable {
-                source: unreachable,
+                source: unsendable_request(),
             }
             .into(),
         ),
+    ]
+}
+
+/// A `reqwest::Error` built without a request ever leaving the process: the
+/// builder rejects the URL, and this suite reaches no network.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client only refuses an unparseable URL and sends nothing"
+)]
+fn unsendable_request() -> reqwest::Error {
+    reqwest::Client::new()
+        .get("http://[")
+        .build()
+        .expect_err("an unparseable URL is refused before it is sent")
+}
+
+/// Every kind this crate raises from its own judgement, carrying no source.
+#[cfg(feature = "test-util")]
+fn raised_kinds() -> Vec<(&'static str, Error)> {
+    vec![
         ("upstream refused", upstream_refused(429)),
         ("upstream unreadable", upstream_unreadable()),
         (

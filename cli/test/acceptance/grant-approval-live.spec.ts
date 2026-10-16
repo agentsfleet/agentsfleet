@@ -55,9 +55,9 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installConnectorProbeFleet } from "./fixtures/seed.ts";
+import { saveConnectorProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { readAuthContext, type AuthContext } from "./fixtures/template-ops.ts";
+import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
 import {
   CONNECTOR_SERVICE_GITHUB,
   ensureConnectorHandle,
@@ -148,7 +148,7 @@ if (!isLive) {
 
       balanceBeforeNanos = await readBalanceNanos();
       await ensureConnectorHandle(env);
-      const installed = await installConnectorProbeFleet({ env }, GRANT_CREDENTIAL_NAME);
+      const installed = await saveConnectorProbeFleet({ env }, GRANT_CREDENTIAL_NAME);
       const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
       fleetId = id;

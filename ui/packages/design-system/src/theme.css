@@ -23,7 +23,7 @@
 
 @custom-variant light (&:is([data-theme="light"] *));
 
-:root {
+:root, [data-theme] {
   /* Surfaces */
   --background: var(--bg);
   --foreground: var(--text);
@@ -64,6 +64,12 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-table-header: var(--table-header);
+  --color-table-row: var(--table-row);
+  --color-table-row-alternate: var(--table-row-alternate);
+  --color-table-row-hover: var(--table-row-hover);
+  --color-table-divider: var(--table-divider);
+  --shadow-table-indicator: var(--table-row-indicator);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -208,6 +214,10 @@
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
+  --shadow-floating: var(--elevation-floating);
+  --shadow-dialog: var(--elevation-dialog);
+  --spacing-table-inline: var(--table-cell-inline);
+  --spacing-table-block: var(--table-cell-block);
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);

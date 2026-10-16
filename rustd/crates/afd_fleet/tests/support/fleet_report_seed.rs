@@ -30,7 +30,6 @@ use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
 use afd_memory::Memories;
 
-use crate::requests::ENROLLED_AT;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -101,6 +100,7 @@ pub(crate) struct Held {
     pub(crate) fleet: String,
     pub(crate) tenant: String,
     pub(crate) event_id: String,
+    /// When the lease was issued, by the database clock.
     pub(crate) now: UnixMillis,
 }
 
@@ -119,8 +119,10 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(ENROLLED_AT);
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
+        .await;
 
     let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
         .await
@@ -176,6 +178,9 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         .expect("the lease row must be written")
         .expect("the claim is still held");
     let event_id = acquired.event_id.clone();
+    // The issue instant, which issue stamps from the database clock; a slice
+    // the suites report is measured from it, as the report's charge is.
+    let now = fixtures.metered_since(&fleet).await;
 
     Held {
         fixtures,

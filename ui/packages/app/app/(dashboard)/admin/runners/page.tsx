@@ -16,6 +16,7 @@ export default async function RunnersPage() {
   // this is the UI guard.
   if (!(await hasScope(SCOPE.RUNNER_READ))) redirect(NOT_ADMIN);
 
+  const canEnroll = await hasScope(SCOPE.RUNNER_ENROLL);
   const token = await requireCredential();
 
   let data;
@@ -27,5 +28,5 @@ export default async function RunnersPage() {
     throw e;
   }
 
-  return <RunnersView initial={data} />;
+  return <RunnersView initial={data} canEnroll={canEnroll} />;
 }

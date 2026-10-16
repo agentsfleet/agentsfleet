@@ -212,7 +212,7 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 0}},
-        "instructions": "Read the run.", "bundle": null
+        "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());

@@ -20,12 +20,28 @@ const LIBRARY_WRITE: &[Scope] = &[Scope::LibraryWrite];
 /// A route addressed by workspace only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkspaceRoute {
+    /// Supported model choices from the workspace's billing owner.
+    Models,
+    /// The authenticated creator's private draft collection.
+    Drafts,
+    /// One creator-private draft and current candidate.
+    Draft,
+    /// Private user requests and assistant answers.
+    DraftMessages,
+    /// Monotone private authoring Stop watermark.
+    DraftCancellations,
+    /// Creator-private, currently authorized setup progress.
+    DraftStream,
     /// The workspace's fleet-library catalogue.
     FleetLibrary,
-    /// The entries this workspace onboarded, which it administers.
-    LibraryEntries,
-    /// One of those entries, by identifier.
-    LibraryEntry,
+    /// Owned reusable entries, excluding the platform catalogue.
+    FleetLibraryOwned,
+    /// One reusable native entry.
+    FleetLibraryItem,
+    /// Immutable revisions of an entry.
+    FleetLibraryRevisions,
+    /// One pinned immutable revision.
+    FleetLibraryRevision,
     /// The workspace's fleets.
     Fleets,
     /// The workspace's secrets.
@@ -38,8 +54,6 @@ pub enum WorkspaceRoute {
     EventsStream,
     /// Onboarding state.
     Onboarding,
-    /// The workspace's preferences.
-    Preferences,
     /// One preference.
     Preference,
     /// The approval inbox.
@@ -55,16 +69,23 @@ pub enum WorkspaceRoute {
 impl WorkspaceRoute {
     /// Every workspace route.
     pub const ALL: &'static [Self] = &[
+        Self::Models,
+        Self::Drafts,
+        Self::Draft,
+        Self::DraftMessages,
+        Self::DraftCancellations,
+        Self::DraftStream,
         Self::FleetLibrary,
-        Self::LibraryEntries,
-        Self::LibraryEntry,
+        Self::FleetLibraryOwned,
+        Self::FleetLibraryItem,
+        Self::FleetLibraryRevisions,
+        Self::FleetLibraryRevision,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
         Self::Events,
         Self::EventsStream,
         Self::Onboarding,
-        Self::Preferences,
         Self::Preference,
         Self::Approvals,
         Self::Approval,
@@ -82,19 +103,97 @@ impl WorkspaceRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::Events
+            Self::Models
+            | Self::Events
             | Self::EventsStream
+            | Self::DraftStream
             | Self::Onboarding
-            | Self::Preferences
             | Self::Approvals
             | Self::Approval
-            | Self::LibraryEntries
+            | Self::FleetLibraryOwned
+            | Self::FleetLibraryRevision
             | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
-            Self::ApprovalResolve => &[Verb::Post],
-            Self::FleetLibrary | Self::Fleets | Self::Secrets => &[Verb::Get, Verb::Post],
+            Self::ApprovalResolve | Self::DraftCancellations => &[Verb::Post],
+            Self::Drafts | Self::DraftMessages => &[Verb::Get, Verb::Post],
+            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
+            Self::FleetLibrary | Self::FleetLibraryRevisions | Self::Fleets | Self::Secrets => {
+                &[Verb::Get, Verb::Post]
+            }
             Self::Secret => &[Verb::Put, Verb::Delete],
-            Self::LibraryEntry => &[Verb::Delete],
+            Self::FleetLibraryItem => &[Verb::Get, Verb::Delete],
+        }
+    }
+
+    /// The route's guard, class, template and scope rungs, as one table row.
+    #[must_use]
+    pub const fn meta(self) -> RouteMeta {
+        RouteMeta::new(Guard::Bearer, self.class(), self.template(), self.scopes())
+    }
+
+    /// The two live tails stream; everything else answers once. Exhaustive
+    /// rather than a wildcard, so a new route has to say which it is.
+    const fn class(self) -> RouteClass {
+        match self {
+            Self::DraftStream | Self::EventsStream => RouteClass::Stream,
+            Self::Models
+            | Self::Drafts
+            | Self::Draft
+            | Self::DraftMessages
+            | Self::DraftCancellations
+            | Self::FleetLibrary
+            | Self::FleetLibraryOwned
+            | Self::FleetLibraryItem
+            | Self::FleetLibraryRevisions
+            | Self::FleetLibraryRevision
+            | Self::Fleets
+            | Self::Secrets
+            | Self::Secret
+            | Self::Events
+            | Self::Onboarding
+            | Self::Preference
+            | Self::Approvals
+            | Self::Approval
+            | Self::ApprovalResolve
+            | Self::Members => RouteClass::Api,
+        }
+    }
+
+    /// Where the route is mounted, under the workspace.
+    const fn template(self) -> &'static str {
+        match self {
+            Self::Models => workspace_path!("/models"),
+            Self::Drafts => workspace_path!("/drafts"),
+            Self::Draft => workspace_path!("/drafts/{draft_id}"),
+            Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
+            Self::DraftCancellations => workspace_path!("/drafts/{draft_id}/cancellations"),
+            Self::DraftStream => workspace_path!("/drafts/{draft_id}/events/stream"),
+            Self::FleetLibrary => workspace_path!("/fleet-libraries"),
+            Self::FleetLibraryOwned => workspace_path!("/fleet-libraries/owned"),
+            Self::FleetLibraryItem => workspace_path!("/fleet-libraries/{library_id}"),
+            Self::FleetLibraryRevisions => {
+                workspace_path!("/fleet-libraries/{library_id}/revisions")
+            }
+            Self::FleetLibraryRevision => {
+                workspace_path!("/fleet-libraries/{library_id}/revisions/{revision_id}")
+            }
+            Self::Fleets => workspace_path!("/fleets"),
+            Self::Secrets => workspace_path!("/secrets"),
+            Self::Secret => workspace_path!("/secrets/{name}"),
+            Self::Events => workspace_path!("/events"),
+            Self::EventsStream => workspace_path!("/events/stream"),
+            Self::Onboarding => workspace_path!("/onboarding"),
+            Self::Preference => workspace_path!("/preferences/{pref_key}"),
+            Self::Approvals => workspace_path!("/approvals"),
+            Self::Approval => workspace_path!("/approvals/{gate_id}"),
+            // Two segments rather than one (`{gate_id}:approve`). A router
+            // binds one parameter per segment, so the colon form could not be
+            // told apart from the detail read above — and the two carry
+            // different capabilities, which a single mounted path could not
+            // express. The decision takes its own segment rather than the scope
+            // model giving way.
+            Self::ApprovalResolve => workspace_path!("/approvals/{gate_id}/{decision}"),
+            Self::Members => workspace_path!("/members"),
         }
     }
 
@@ -103,85 +202,28 @@ impl WorkspaceRoute {
     ///
     /// Onboarding and preferences carry none — their object is the caller's
     /// own workspace state, and ownership is the check that matters.
-    #[must_use]
-    pub const fn meta(self) -> RouteMeta {
-        let api = RouteClass::Api;
-        let (class, template, scopes) = match self {
-            Self::FleetLibrary => (
-                api,
-                workspace_path!("/fleet-libraries"),
-                Scopes::rw(FLEET_READ, LIBRARY_WRITE),
-            ),
-            // A second collection rather than a tier filter on the gallery
-            // above. The gallery answers what this workspace can INSTALL —
-            // the published platform catalogue unioned with its own rows —
-            // and this answers what it OWNS. The models domain settled the
-            // same split first: `/v1/models` is the catalogue, and
-            // `/v1/tenants/me/models` is the registry a tenant administers.
-            Self::LibraryEntries => (
-                api,
-                workspace_path!("/library-entries"),
-                Scopes::rw(FLEET_READ, LIBRARY_WRITE),
-            ),
-            // No read half, as `ModelEntry` carries none: the only verb here
-            // is a removal, and a scope pair would grant a read this row does
-            // not serve.
-            Self::LibraryEntry => (
-                api,
-                workspace_path!("/library-entries/{entry_id}"),
-                Scopes::Always(LIBRARY_WRITE),
-            ),
-            Self::Fleets => (
-                api,
-                workspace_path!("/fleets"),
-                Scopes::rw(FLEET_READ, FLEET_WRITE),
-            ),
-            Self::Secrets => (
-                api,
-                workspace_path!("/secrets"),
-                Scopes::rw(SECRET_READ, SECRET_WRITE),
-            ),
-            Self::Secret => (
-                api,
-                workspace_path!("/secrets/{name}"),
-                Scopes::Always(SECRET_WRITE),
-            ),
-            Self::Events => (api, workspace_path!("/events"), Scopes::Always(FLEET_READ)),
-            Self::EventsStream => (
-                RouteClass::Stream,
-                workspace_path!("/events/stream"),
-                Scopes::Always(FLEET_READ),
-            ),
-            Self::Onboarding => (api, workspace_path!("/onboarding"), Scopes::Always(NONE)),
-            Self::Preferences => (api, workspace_path!("/preferences"), Scopes::Always(NONE)),
-            Self::Preference => (
-                api,
-                workspace_path!("/preferences/{pref_key}"),
-                Scopes::Always(NONE),
-            ),
-            Self::Approvals => (
-                api,
-                workspace_path!("/approvals"),
-                Scopes::Always(APPROVAL_READ),
-            ),
-            Self::Approval => (
-                api,
-                workspace_path!("/approvals/{gate_id}"),
-                Scopes::Always(APPROVAL_READ),
-            ),
-            // Two segments rather than one (`{gate_id}:approve`). A router
-            // binds one parameter per segment, so the colon form could not be
-            // told apart from the detail read above — and the two carry
-            // different capabilities, which a single mounted path could not
-            // express. The decision takes its own segment rather than the scope
-            // model giving way.
-            Self::ApprovalResolve => (
-                api,
-                workspace_path!("/approvals/{gate_id}/{decision}"),
-                Scopes::Always(APPROVAL_RESOLVE),
-            ),
-            Self::Members => (api, workspace_path!("/members"), Scopes::Always(FLEET_READ)),
-        };
-        RouteMeta::new(Guard::Bearer, class, template, scopes)
+    const fn scopes(self) -> Scopes {
+        match self {
+            Self::Models
+            | Self::FleetLibraryOwned
+            | Self::FleetLibraryRevision
+            | Self::Events
+            | Self::EventsStream
+            | Self::Members => Scopes::Always(FLEET_READ),
+            Self::Drafts
+            | Self::Draft
+            | Self::DraftMessages
+            | Self::DraftCancellations
+            | Self::DraftStream => Scopes::Always(FLEET_WRITE),
+            Self::FleetLibrary | Self::FleetLibraryItem | Self::FleetLibraryRevisions => {
+                Scopes::rw(FLEET_READ, LIBRARY_WRITE)
+            }
+            Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
+            Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),
+            Self::Secret => Scopes::Always(SECRET_WRITE),
+            Self::Onboarding | Self::Preference => Scopes::Always(NONE),
+            Self::Approvals | Self::Approval => Scopes::Always(APPROVAL_READ),
+            Self::ApprovalResolve => Scopes::Always(APPROVAL_RESOLVE),
+        }
     }
 }

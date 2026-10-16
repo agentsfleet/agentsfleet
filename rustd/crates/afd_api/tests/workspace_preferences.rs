@@ -62,7 +62,7 @@ const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 /// A set with something in it, to prove the rung is not silently demanding one.
 const SOME_SCOPE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
 
-/// The preference collection, under the workspace the fixture owns.
+/// The preference collection path, which serves no method.
 fn collection() -> String {
     format!("/v1/workspaces/{OWNED_WORKSPACE}/preferences")
 }
@@ -117,9 +117,8 @@ async fn code_of(response: axum::response::Response) -> String {
 }
 
 /// Every verb on this surface, with a body that would be accepted.
-fn every_verb() -> [(Method, String, &'static str); 3] {
+fn every_verb() -> [(Method, String, &'static str); 2] {
     [
-        (Method::GET, collection(), ""),
         (Method::PUT, item(KNOWN_KEY), "true"),
         (Method::GET, onboarding(), ""),
     ]
@@ -150,11 +149,10 @@ async fn no_verb_on_this_surface_is_anonymous() {
 #[tokio::test]
 async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
     let paths = [
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/preferences"),
         format!("/v1/workspaces/{FOREIGN_WORKSPACE}/preferences/{KNOWN_KEY}"),
         format!("/v1/workspaces/{FOREIGN_WORKSPACE}/onboarding"),
     ];
-    let methods = [Method::GET, Method::PUT, Method::GET];
+    let methods = [Method::PUT, Method::GET];
 
     for (path, method) in paths.iter().zip(methods) {
         let response = send(NO_SCOPES, method, path, Some(TENANT_KEY), "true").await;
@@ -178,8 +176,8 @@ async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
 /// demanding something the route table says it does not.
 #[tokio::test]
 async fn an_unrelated_scope_neither_admits_nor_refuses() {
-    let with_none = send(NO_SCOPES, Method::GET, &collection(), Some(TENANT_KEY), "").await;
-    let with_some = send(SOME_SCOPE, Method::GET, &collection(), Some(TENANT_KEY), "").await;
+    let with_none = send(NO_SCOPES, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
+    let with_some = send(SOME_SCOPE, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
     assert_eq!(
         with_none.status(),
         with_some.status(),
@@ -276,19 +274,21 @@ async fn a_write_with_no_body_is_refused() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// The collection answers no PUT and the item answers no GET.
+/// The collection serves nothing and the item answers no GET.
 ///
-/// The shape is deliberate: the bag is written one key at a time and read whole,
-/// so a PUT at the collection would be a second way to write and a GET at the
-/// item a second way to read — two shapes for each job, and two places to drift.
+/// Preferences are written one key at a time and read through the onboarding
+/// checklist, so a read or write of the whole bag would be a second shape for a
+/// job that already has one.
 #[tokio::test]
 async fn the_templates_carry_only_the_methods_they_document() {
-    let collection_put = authorised(Method::PUT, &collection(), "true").await;
-    assert_eq!(
-        collection_put.status(),
-        StatusCode::METHOD_NOT_ALLOWED,
-        "the bag is not written whole"
-    );
+    for method in [Method::GET, Method::PUT] {
+        let response = authorised(method.clone(), &collection(), "true").await;
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "{method}: the bag is neither read nor written whole"
+        );
+    }
 
     let item_get = authorised(Method::GET, &item(KNOWN_KEY), "").await;
     assert_eq!(

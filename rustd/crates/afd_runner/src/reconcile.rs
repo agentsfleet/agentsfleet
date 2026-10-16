@@ -41,8 +41,6 @@
 
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 
-/// No assignment has been written to the row yet.
-pub const REASON_NO_ASSIGNED_POLICY: &str = "no assigned policy";
 /// The host has never reported what it can enforce.
 pub const REASON_NO_CAPABILITY_REPORT: &str = "no capability report";
 /// Filesystem isolation is unavailable on the host.
@@ -243,17 +241,13 @@ fn demanded(policy: &AssignedPolicy<'_>) -> impl Iterator<Item = Guarantee> {
 
 /// Resolves the assignment against what the host reported it can deliver.
 ///
-/// Missing policy or missing report degrade on their own; otherwise the first
-/// unmet guarantee, in a fixed order, names the reason.
+/// A missing report degrades on its own; otherwise the first unmet guarantee,
+/// in a fixed order, names the reason.
 #[must_use]
 pub fn reconcile(
-    assigned: Option<&AssignedPolicy<'_>>,
+    policy: &AssignedPolicy<'_>,
     achievable: Option<&CapabilityReport<'_>>,
 ) -> Verdict {
-    let Some(policy) = assigned else {
-        return Verdict::degraded(REASON_NO_ASSIGNED_POLICY);
-    };
-
     // A posture other than `allow_all` is enforced BY the cage (network
     // namespace unshare, veth), so a cage-less tier structurally cannot deliver
     // it however the host is built. Degrade rather than render "no egress" over

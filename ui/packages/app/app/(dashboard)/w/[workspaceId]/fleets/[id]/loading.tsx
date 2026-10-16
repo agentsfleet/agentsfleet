@@ -5,7 +5,7 @@ export default function FleetDetailLoading() {
     <PageLayout>
       <div className="space-y-sm">
         <Skeleton className="h-4 w-56" />
-        <PageHeader>
+        <PageHeader className="flex-col sm:flex-col">
           <div className="flex items-center gap-md">
             <PageTitle>
               <Skeleton className="h-6 w-48" />

@@ -17,9 +17,8 @@
 use super::{Plane, Ungranted, answers, written};
 use afd_approval::Requested;
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::Mode;
-use afd_fleet_runtime::provider::StaticRegistry;
 use afd_gate::policy::repair;
 use serde_json::json;
 
@@ -174,9 +173,9 @@ fn fleet() -> Uuid7 {
 /// a serializer is what this crate uses everywhere else.
 fn config(access: Option<&str>) -> FleetConfig {
     let mut agentsfleet = json!({
-        "triggers": [{ "type": "api" }],
+        "triggers": [],
         "tools": [],
-        "budget": { "daily_dollars": 1.0 },
+        "budget": { "daily_nanos": NANOS_PER_USD.to_string() },
     });
     if let Some(level) = access {
         let declared = agentsfleet
@@ -191,8 +190,7 @@ fn config(access: Option<&str>) -> FleetConfig {
         }
     }
     let document = json!({ "name": "probe", "x-agentsfleet": agentsfleet }).to_string();
-    FleetConfig::parse(&document, Mode::Stored, &StaticRegistry::default())
-        .expect("a stored document resolves")
+    FleetConfig::stored(&document).expect("a stored document resolves")
 }
 
 /// An event identifier in the spelling the admission ledger mints: the

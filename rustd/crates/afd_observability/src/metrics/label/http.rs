@@ -4,27 +4,6 @@ use crate::metrics::label::closed_set;
 use crate::semconv;
 
 closed_set! {
-    /// Why a request that would have opened a span did not.
-    ///
-    /// The set is kept whole: the budget exists so a storm of
-    /// idle heartbeats cannot evict the server-error spans, and an operator
-    /// reading suppression needs to know WHICH budget shed — a total would say
-    /// only that something did.
-    TraceSuppression {
-        /// A route excluded from tracing outright.
-        NoisyRoute => "noisy_route",
-        /// The budget for matched runner 4xx responses was spent.
-        RunnerRejectionBudget => "runner_rejection_budget",
-        /// The budget for responses at or above 500 was spent.
-        ServerErrorBudget => "server_error_budget",
-        /// The budget for sampled successes was spent.
-        SampledSuccessBudget => "sampled_success_budget",
-        /// Head sampling declined this one, with budget still available.
-        SampleMiss => "sample_miss",
-    }
-}
-
-closed_set! {
     /// Which of the three OTLP signals a measurement is about.
     Signal {
         /// Log records.

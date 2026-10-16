@@ -45,7 +45,7 @@ async fn test_heartbeat_reply_names_the_holds_to_release() {
         Method::POST,
         afd_wire::paths::RUNNER_HEARTBEATS,
         Some(&token),
-        &format!(r#"{{"holds":["{never_held}"]}}"#),
+        &format!(r#"{{"holds":["{never_held}"],"closing":false}}"#),
     )
     .await;
 

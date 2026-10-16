@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerDetail, SelftestReport } from "@/lib/api/runners";
@@ -8,8 +8,6 @@ import { RunnerChecksBadge } from "./RunnerChecksBadge";
 
 afterEach(() => cleanup());
 
-// The report's relative stamp is a tooltip trigger (the app's root provider
-// serves it in production); the wrapper stands in for that root here.
 const renderBadge = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
 
 const ASSIGNED: AssignedPolicy = {
@@ -17,6 +15,7 @@ const ASSIGNED: AssignedPolicy = {
   network_policy: "deny_all_egress",
   registry_allowlist: [],
   worker_count: 2,
+  extra_binds: [],
 };
 
 const PASSING: SelftestReport = {
@@ -67,48 +66,56 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 }
 
 const trigger = () => screen.getByRole("button", { name: /checks/i });
-// The pill inside the trigger carries the verdict's colour; the button is
-// only the hit area.
-const pill = () => trigger().querySelector("span") as HTMLElement;
+const DAY_MS = 86_400_000;
 
 describe("RunnerChecksBadge", () => {
-  it("compresses a passing verdict to one green word with its age", () => {
+  it("names the passing verdict on a green icon without a timestamp", () => {
     renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: Date.now() - 5 * 3_600_000 })} />);
-    expect(trigger().textContent).toMatch(/checks passed/i);
-    expect(pill().className).toContain("text-success");
-    expect(trigger().querySelector("time")?.textContent).toMatch(/hours ago/);
+    expect(trigger().getAttribute("aria-label")).toMatch(/checks passed/i);
+    expect(trigger().className).toContain("text-success");
+    expect(trigger().parentElement?.querySelector("time")).toBeNull();
+    expect(trigger().textContent).toBe("");
   });
 
   it("paints a failure red and counts it, so it is seen without a click", () => {
     renderBadge(<RunnerChecksBadge runner={detail({ selftest: FAILING, selftest_completed_at: 1 })} />);
-    expect(trigger().textContent).toMatch(/2 checks failed/i);
-    expect(pill().className).toContain("text-destructive");
+    expect(trigger().getAttribute("aria-label")).toMatch(/2 checks failed/i);
+    expect(trigger().className).toContain("text-destructive");
+  });
+
+  it("makes the last-check age and exact date available on keyboard focus", async () => {
+    const completedAt = Date.now() - 6 * DAY_MS;
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: completedAt })} />);
+    fireEvent.focus(trigger());
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain("Last checked 6 days ago");
+    const times = tooltip.querySelectorAll("time");
+    expect(times).toHaveLength(2);
+    expect(times[1]?.getAttribute("datetime")).toBe(new Date(completedAt).toISOString());
+    expect(times[1]?.textContent).not.toContain("ago");
+  });
+
+  it("does not invent a last-check time before any check completes", async () => {
+    renderBadge(<RunnerChecksBadge runner={detail()} />);
+    fireEvent.focus(trigger());
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain("checks never run");
+    expect(tooltip.textContent).not.toContain("Last checked");
+    expect(tooltip.querySelector("time")).toBeNull();
   });
 
   it("says never rather than showing an empty verdict", () => {
     renderBadge(<RunnerChecksBadge runner={detail()} />);
-    expect(trigger().textContent).toMatch(/checks never run/i);
-    expect(pill().className).toContain("text-muted-foreground");
-    expect(trigger().querySelector("time")).toBeNull();
+    expect(trigger().getAttribute("aria-label")).toMatch(/checks never run/i);
+    expect(trigger().className).toContain("text-muted-foreground");
+    expect(trigger().parentElement?.querySelector("time")).toBeNull();
   });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
     renderBadge(<RunnerChecksBadge runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
-    expect(trigger().textContent).toMatch(/checks pending/i);
+    expect(trigger().getAttribute("aria-label")).toMatch(/checks pending/i);
   });
 
-  it("reads a row from a daemon older than these columns as never run, not as a crash", () => {
-    const older = JSON.parse(
-      JSON.stringify({
-        ...detail(),
-        selftest: undefined,
-        selftest_completed_at: undefined,
-        selftest_requested_at: undefined,
-      }),
-    ) as RunnerDetail;
-    renderBadge(<RunnerChecksBadge runner={older} />);
-    expect(trigger().textContent).toMatch(/checks never run/i);
-  });
 
   it("marks a verdict recorded against an assignment the runner no longer carries", () => {
     renderBadge(
@@ -119,8 +126,8 @@ describe("RunnerChecksBadge", () => {
         })}
       />,
     );
-    expect(trigger().textContent).toMatch(/checks stale/i);
-    expect(pill().className).toContain("text-warning");
+    expect(trigger().getAttribute("aria-label")).toMatch(/checks stale/i);
+    expect(trigger().className).toContain("text-warning");
   });
 
   it("opens the full report — every check by name and the mounts — on click", () => {
@@ -129,12 +136,12 @@ describe("RunnerChecksBadge", () => {
     const button = trigger();
     expect(button.getAttribute("aria-haspopup")).toBe("dialog");
     fireEvent.click(button);
-    // Titled after the host: the report's own first heading is "Checks".
     const dialog = screen.getByRole("dialog", { name: "runner-prod-ams-01.internal" });
     expect(dialog.querySelectorAll("h2, h3")[0]?.textContent).toBe("runner-prod-ams-01.internal");
     expect(dialog.textContent).toContain("resolver file resolves inside the sandbox");
     expect(dialog.textContent).toContain("all checks passed");
-    expect(dialog.textContent).toContain("Baseline only");
+    expect(within(dialog).getByText("No additional mounts.")).toBeTruthy();
+    expect(dialog.querySelector("time")).toBeNull();
     // The modal hides the page behind it from assistive tech, the trigger
     // included; the element itself still reports the open state.
     expect(button.getAttribute("aria-expanded")).toBe("true");

@@ -86,10 +86,10 @@ pub const SELECT_TENANT_KEY_PAGE_FIRST: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid \
 ) \
-SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total \
+SELECT p.id, p.key_name, p.active, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at \
+    SELECT id::text AS id, key_name, active, created_at, revoked_at \
     FROM core.api_keys \
     WHERE tenant_id = $1::uuid \
     ORDER BY {order} \
@@ -105,10 +105,10 @@ pub const SELECT_TENANT_KEY_PAGE_AFTER_CREATED: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid \
 ) \
-SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total \
+SELECT p.id, p.key_name, p.active, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at \
+    SELECT id::text AS id, key_name, active, created_at, revoked_at \
     FROM core.api_keys \
     WHERE tenant_id = $1::uuid \
       AND (created_at, id) {comparator} ($2::bigint, $3::uuid) \
@@ -122,10 +122,10 @@ pub const SELECT_TENANT_KEY_PAGE_AFTER_NAME: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid \
 ) \
-SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total \
+SELECT p.id, p.key_name, p.active, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at \
+    SELECT id::text AS id, key_name, active, created_at, revoked_at \
     FROM core.api_keys \
     WHERE tenant_id = $1::uuid \
       AND (key_name, id) {comparator} ($2::text, $3::uuid) \

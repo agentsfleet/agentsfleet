@@ -22,7 +22,6 @@ use afd_fleet::lease::{Billed, Delivery, Leases};
 use afd_wire::event::EventType;
 
 use crate::report_seed::DEEP_POOL;
-use crate::requests::ENROLLED_AT;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -66,9 +65,11 @@ pub(crate) fn ledger(fixtures: &Fixtures) -> Admissions {
 /// gone, the reclaim sweeper's stream probe can vouch for nothing, so a mark
 /// can only come from the question it asks Postgres.
 pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -> Abandoned {
-    let staged_at = UnixMillis::from_millis(ENROLLED_AT);
+    let staged_at = UnixMillis::from_millis(fixtures.enrolled_at());
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(fixtures).await;
-    fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    fixtures
+        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
+        .await;
     let key = format!("{fleet}:abandoned");
     let admitted = ledger(fixtures)
         .admit(admission(&fleet, &workspace, &key))
@@ -108,6 +109,10 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
         .await
         .expect("the lease row is written")
         .expect("the claim is still held");
+    // The holder dies: its lease and its claim pass their deadlines by the
+    // database clock the reclaim and the next claim read.
+    fixtures.lapse_lease(issued.lease_id.as_str()).await;
+    fixtures.lapse_slot(&fleet).await;
 
     FleetStreams::new(fixtures.queue().clone())
         .forget(&fleet)

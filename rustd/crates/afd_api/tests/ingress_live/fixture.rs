@@ -13,9 +13,10 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::money::NANOS_PER_USD;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_vault::{SecretBody, SecretName};
 
@@ -140,27 +141,32 @@ impl Fixture {
              ), workspace AS ( \
                INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
                VALUES ($2::uuid, $1::uuid, 'ingress-live', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'ingress-live@example.test', 1, 1) \
              ) \
-             INSERT INTO core.fleets \
-               (id, workspace_id, tenant_id, name, source_markdown, config_json, \
-                status, created_at, updated_at) \
-             VALUES ($5::uuid, $2::uuid, $1::uuid, 'ingress-live-fleet', '# fixture', \
-                     $6::jsonb, $7, 1, 1)",
+             INSERT INTO core.users \
+               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, $3, 'ingress-live@example.test', 1, 1)",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
         .bind(&self.subject)
         .bind(&self.user)
-        .bind(self.fleet.as_str())
-        .bind(document())
-        .bind(runnable.stored())
         .execute(&mut *connection)
         .await
-        .expect("the tenant, workspace, person and fleet seed");
+        .expect("the tenant, workspace and person seed");
+        let config = document();
+        FleetSeed::new(
+            self.fleet.as_str(),
+            self.workspace.as_str(),
+            &self.tenant,
+            runnable.stored(),
+        )
+        .name("ingress-live-fleet")
+        .config(&config)
+        .at(1)
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("the fleet seeds");
     }
 
     /// Seals `body` into this workspace under `key`, through the real vault.
@@ -203,17 +209,21 @@ impl Fixture {
     }
 }
 
-/// The stored document, declaring one webhook trigger.
+/// The second verifiable source the stored document declares.
+pub(super) const SECOND_SOURCE: &str = "linear";
+
+/// The stored document, declaring two webhook triggers on one credential.
 fn document() -> String {
     format!(
         r#"{{
           "name": "ingress-live-fleet",
           "x-agentsfleet": {{
             "triggers": [
-              {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}}
+              {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}},
+              {{"type":"webhook","source":"{SECOND_SOURCE}","credential_name":"{CREDENTIAL}"}}
             ],
             "tools": ["bash"],
-            "budget": {{ "daily_dollars": 1.0 }}
+            "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
           }}
         }}"#
     )

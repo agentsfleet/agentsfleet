@@ -39,7 +39,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::session::{
-    AbortOutcome, AbortReason, ApproveOutcome, SessionState, SessionStore, VerifyOutcome,
+    AbortReason, ApproveOutcome, SessionState, SessionStore, VerifyOutcome,
 };
 
 // Re-exported so the HTTP layer can name the state a poll reports without
@@ -250,30 +250,6 @@ impl Sessions {
         }
     }
 
-    /// Cancels one login, if `owner` is the identity that approved it.
-    ///
-    /// Answers whether THIS call performed the abort, so a caller writes an
-    /// audit record on the transition rather than on every idempotent repeat.
-    ///
-    /// # Errors
-    /// Refuses an id naming nothing held, an identity that does not hold the
-    /// session, and a session already redeemed. Reports a queue that would not
-    /// answer.
-    pub async fn cancel(&self, session_id: &str, owner: &str) -> Result<Cancelled> {
-        let id = parse_id(session_id)?;
-        let outcome = self
-            .store
-            .abort(id.as_str(), owner, AbortReason::ExplicitCancel)
-            .await?;
-        match outcome {
-            AbortOutcome::Aborted => Ok(Cancelled::Now),
-            AbortOutcome::AlreadyAborted => Ok(Cancelled::Already),
-            AbortOutcome::Missing => Err(error::session_missing()),
-            AbortOutcome::NotOwner => Err(error::session_not_owner()),
-            AbortOutcome::Consumed => Err(error::session_consumed()),
-        }
-    }
-
     /// Cancels every in-flight login `owner` holds, answering their ids.
     ///
     /// The ids rather than a count, so the caller can write one audit record
@@ -334,7 +310,7 @@ fn parse_id(session_id: &str) -> Result<Uuid7> {
 pub type SessionError = Error;
 
 mod response;
-pub use self::response::{Cancelled, Opened, Redeemed, Waiting};
+pub use self::response::{Opened, Redeemed, Waiting};
 
 #[cfg(test)]
 #[test]

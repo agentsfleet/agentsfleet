@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
 
 mod error;
 mod runner_leases;

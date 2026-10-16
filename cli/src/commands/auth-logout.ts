@@ -154,8 +154,7 @@ export const logoutEffect = (
     // local is cleared. The ordering is forced rather than chosen: both the
     // identifier and the credential that authorises the call live in the file
     // the clear erases, so spending them first is the only way the call can
-    // happen at all. A null identifier means this client never minted what it
-    // holds — a supplied tenant key — and there is nothing here to revoke.
+    // happen at all. A null identifier means nothing is stored to revoke.
     const credentialError =
       Option.isSome(existing) && credentialId !== null
         ? yield* revokeCredential(credentialId, existing.value)

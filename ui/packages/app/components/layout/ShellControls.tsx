@@ -9,7 +9,7 @@ import {
   PanelLeftOpenIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { cn, Button, Spinner, WakePulse } from "@agentsfleet/design-system";
+import { cn, Button, Spinner, BrandMark } from "@agentsfleet/design-system";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import {
@@ -82,6 +82,7 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
     <>
       {mobileNavigation.module ? (
         <mobileNavigation.module.default
+          workspaces={workspaces}
           open={mobileOpen}
           pathname={pathname}
           workspaceId={linkWorkspaceId}
@@ -90,15 +91,6 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
           restoreFocus={() => mobileTriggerRef.current?.focus()}
         />
       ) : null}
-      {/*
-        From `md` up this cluster IS the sidebar column: same width, same `px-3`
-        gutter. That is what puts the brand on the nav items' leading edge and
-        the toggle on their trailing edge, instead of leaving the toggle
-        floating mid-header over the content region. Collapsed, the column is a
-        64px rail with room for one control, so the wordmark stands down and the
-        toggle centres on the icon the nav items collapse to. Below `md` there
-        is no column and the cluster is an ordinary padded row.
-      */}
       <div
         data-testid="shell-leading-cluster"
         className={cn(
@@ -160,11 +152,6 @@ function SidebarToggle({
       aria-controls={sidebarNavId}
       variant="ghost"
       size="icon"
-      // No margin correction here on purpose. The icon button carries 10px of
-      // its own padding, so at the cluster's `md:px-3` its GLYPH already lands
-      // at x=218 — 22px in from the column's trailing edge, mirroring the 22px
-      // the nav icons sit in from the leading one. Every negative margin tried
-      // here pushed it past that.
       className="hidden shrink-0 md:inline-flex"
       onClick={shellSidebarState.toggle}
     >
@@ -190,24 +177,12 @@ function BrandLink({
       }
       className={cn(
         "inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline",
-        // `md:ml-2.5` puts the pulse dot on the nav icons' own left edge. The
-        // nav insets its content TWICE — the group's `px-3` plus each item's
-        // `px-2` — so a header matching only the group left the wordmark 10px
-        // adrift of every icon below it, which is what read as the toggle being
-        // misaligned. Measured: nav icons start at x=22, the dot at x=12.
         "md:ml-2.5",
-        // The collapsed rail is 64px wide and the toggle claims it. The
-        // wordmark hides from `md` up only — the mobile header has no rail and
-        // keeps its brand whatever the desktop sidebar is doing.
         collapsed && "md:hidden",
       )}
       aria-label="agentsfleet home"
     >
-      <WakePulse
-        live
-        className="inline-block w-3 h-3 rounded-full bg-pulse"
-        aria-hidden="true"
-      />
+      <BrandMark className="size-5" />
       <span>agentsfleet</span>
     </Link>
   );

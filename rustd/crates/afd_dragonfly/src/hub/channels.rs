@@ -1,6 +1,6 @@
 //! The channel table every reader and both hub tasks share.
 //!
-//! Split from `hub.rs` along the refcount seam: `hub.rs` is what a reader
+//! Split from `hub/mod.rs` along the refcount seam: `hub/mod.rs` is what a reader
 //! holds and sees, this is the per-channel state behind it and the ordering
 //! rule that keeps a channel's `Subscribe` ahead of its `Unsubscribe`.
 //!

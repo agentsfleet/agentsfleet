@@ -54,18 +54,20 @@ pub(crate) async fn handle<D: Services>(
         // the row is written to the wire before the row is dropped — the
         // ownership split `SelfRow` documents, held by the borrow checker
         // rather than by statement order.
-        Ok(row) => Json(payload(&row)).into_response(),
+        Ok(row) => match payload(&row) {
+            Ok(reply) => Json(reply).into_response(),
+            Err(error) => refuse(&error, EVENT),
+        },
         Err(error) => refuse(&error, EVENT),
     }
 }
 
 /// The row as the wire shape, borrowing every string from it.
 ///
-/// `assigned_policy` and `achievable` resolve through the shared decoder, so a
-/// missing or unparseable column reads as absent here exactly as it does on the
-/// heartbeat — and the host fails closed on either.
-fn payload(row: &SelfRow) -> SelfResponse<'_> {
-    SelfResponse {
+/// `assigned_policy` resolves through the shared decoder, so a row this build
+/// cannot read fails here exactly as it does on the heartbeat.
+fn payload(row: &SelfRow) -> afd_runner::Result<SelfResponse<'_>> {
+    Ok(SelfResponse {
         id: Cow::Borrowed(row.id.as_str()),
         // The column is `admin_state`; the runner-facing field has always been
         // `status`. The rename stopped at the schema, and this is where that
@@ -74,9 +76,9 @@ fn payload(row: &SelfRow) -> SelfResponse<'_> {
         host_id: Cow::Borrowed(&row.host_id),
         sandbox_tier: Cow::Borrowed(&row.assignment.sandbox_tier),
         last_seen_at: row.last_seen_at,
-        assigned_policy: row.assignment.decode(),
+        assigned_policy: row.assignment.decode()?,
         achievable: capability(row.capability_report_json.as_deref()),
         degraded: row.verdict.degraded,
         degraded_reason: row.verdict.reason.as_deref().map(Cow::Borrowed),
-    }
+    })
 }

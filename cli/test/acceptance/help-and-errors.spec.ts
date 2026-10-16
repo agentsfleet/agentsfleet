@@ -218,7 +218,7 @@ describe("help DX surfaces (real binary)", () => {
     const out = stripAnsi(result.stdout);
     // The command list, whatever the renderer calls its heading.
     assert.match(out, /subcommands/i);
-    for (const command of ["install", "status", "steer", "workspace", "memory"]) {
+    for (const command of ["chat", "status", "steer", "workspace", "memory"]) {
       assert.ok(out.includes(command), `help missing "${command}" command`);
     }
     // Env vars are documented externally; help carries a one-line pointer.
@@ -254,7 +254,7 @@ describe("help DX surfaces (real binary)", () => {
     const result = await runFleetctl(["fleet", "--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    assert.match(out, /top-level commands/);
-    assert.ok(out.includes("agentsfleet --help"), "fleet --help should point at the full guide");
+    assert.match(out, /Lifecycle commands are listed by agentsfleet --help/);
+    assert.ok(out.includes("agentsfleet chat --fleet <fleet_id>"), "fleet --help should name the improvement route");
   });
 });
