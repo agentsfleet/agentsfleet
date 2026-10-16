@@ -137,6 +137,11 @@ jobs:
 
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
+          # The collector's ingest credential, as the standard header the daemon
+          # reads. Masked before use: GitHub masks the vault pair, not this
+          # encoding of it.
+          otlp_ingest="$(printf '%s:%s' "$GRAFANA_OTLP_INSTANCE_ID" "$GRAFANA_OTLP_API_KEY" | base64 | tr -d '\n')"
+          echo "::add-mask::$otlp_ingest"
           flyctl secrets set \
             AGENTSFLEET_LOG_LEVEL="debug" \
             DATABASE_URL_API="$DATABASE_URL_API" \
@@ -152,9 +157,8 @@ jobs:
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
-            GRAFANA_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
-            GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
-            GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            OTEL_EXPORTER_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
+            OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $otlp_ingest" \
             --stage \
             --app "${{ vars.FLY_APP_DEV }}"
         env:

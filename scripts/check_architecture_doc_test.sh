@@ -237,7 +237,7 @@ build_schedule_arch_dir() {
   mkdir -p "$dir"
   printf '# Fixture\n\nQStash owns the clock.\n' >"$dir/data_flow.md"
   printf '# Fixture\n\nQStash owns the clock.\n' >"$dir/user_flow.md"
-  printf '# Fixture\n\nA cron is synchronously registered with Upstash QStash.\n' >"$dir/high_level.md"
+  printf '# Fixture\n\nA cron is mirrored to Upstash QStash.\n' >"$dir/high_level.md"
   printf '# Fixture\n\nCron triggers belong to Upstash QStash.\n' >"$dir/README.md"
   printf '# Fixture\n\n%s\n' "$body" >"$dir/capabilities.md"
   printf '%s' "$dir"

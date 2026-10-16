@@ -218,9 +218,10 @@ RUSTD_COVERAGE_FLOOR ?= 97.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
-# `crates/*/src/test_util.rs` is fixture code compiled only under the
-# `test-util` feature -- `TestDatabase::shared` and the two like it. The lane
-# measures with `--all-features`, so it was being graded as production surface:
+# `crates/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
+# children, is fixture code compiled only under the `test-util` feature --
+# `TestDatabase::shared` and the two like it. The lane measures with
+# `--all-features`, so it was being graded as production surface:
 # 143 lines, of which the suites happen to cover 127.
 #
 # That is the whole reason this is a MEASUREMENT fix and not a coverage win.
@@ -253,19 +254,13 @@ RUSTD_COVERAGE_FLOOR ?= 97.5
 # lines behind a 90.8% patch grade against the 97 floor. codecov.yml ignores
 # the same path, so the two gates read one denominator.
 #
-# The toolbox's four kernel-lane files are proven by `make test-runner-kernel`
-# (make/test-unit.mk): root on a real Linux kernel with loop devices and
-# mounts, and it fails rather than skips. The runner behind THIS lane has
-# neither, so the report it grades never hits them. On Pull Request (PR) #732
-# at 669fc1d41 they were 154 of the 172 unhit changed lines (adopt.rs 70,
-# loop_device.rs 51, admit.rs 24, kernel_mounter.rs 9) behind a 93.19% patch
-# grade against the 99 floor; the rest of the diff graded 99.24%.
-# `kernel_mounter.rs` was split out of holds.rs so a file-level ignore takes
-# exactly it. Their tests still RUN in the kernel lane; their lines are no
-# longer graded by a lane that cannot execute them. Excused on Indy's call
-# (2026-10-06, PR #732 Session notes 2). codecov.yml ignores the same four
-# paths, so the two gates read one denominator.
-RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/|/crates/afr_sandbox/src/toolbox/(adopt|loop_device|admit|kernel_mounter)\.rs$$)
+# The toolbox's kernel-lane files (`adopt`, `loop_device`, `admit`,
+# `kernel_mounter`) are graded. Pull Request (PR) #732 excused them on
+# 2026-10-06, when no lane that executes them reached this grade; b184c27f7
+# then merged `make test-coverage-runner-kernel`'s report into it, and
+# excluding them threw that lane's measurement away. Dropped on Indy's call
+# (2026-10-15, M227).
+RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
 
 # The floor's verdict, carrying the number that decided it, decided ONCE.
 #
@@ -290,10 +285,17 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/|/crates/afr_sa
 # nobody requires. The base is where this branch left `origin/main`;
 # Continuous Integration passes the pull request's base explicitly. An empty
 # base skips the patch grade (a checkout with no `origin/main` to measure from).
+#
+# Every file that patch touches is graded whole as well, against
+# `RUSTD_PER_FILE_FLOOR`: all of its instrumented lines, not only the changed
+# ones, and a renamed file counts (Indy, Oct 15, 2026: "its 99% of the rust git
+# diff patch files"; "all renames must be graded for 99%").
+# Codecov has no per-file status, so this is the only place it is graded.
 RUSTD_PATCH_FLOOR ?= 99
+RUSTD_PER_FILE_FLOOR ?= 99
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
-  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
+  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --per-file-floor $(RUSTD_PER_FILE_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
 # Shards: three, each on its own runner with its own Postgres and Dragonfly,
 # measured in parallel and graded together by `test-coverage-rustd-merge`.

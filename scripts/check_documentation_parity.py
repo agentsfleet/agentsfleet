@@ -29,7 +29,7 @@ WIRE_SRC = "rustd/crates/afd_wire/src"
 SCOPE_SRC = "rustd/crates/afd_auth/src/scope.rs"
 ROLE_SRC = "rustd/crates/afd_tenant/src/workspace/access.rs"
 ERROR_CODE_SRC = "rustd/crates/afd_core/src/error_code"
-REGISTRY_SRC = "rustd/crates/afd_connector/src/registry.rs"
+REGISTRY_SRC = "rustd/crates/afd_connector/src/registry/mod.rs"
 
 RUST_CONST = re.compile(r"\bconst (?P<name>[A-Z][A-Z0-9_]*): usize = (?P<value>[0-9_ *+]+);")
 RUST_STR_CONST = re.compile(r'\bconst (?P<name>[A-Z][A-Z0-9_]*): &str = "(?P<value>[^"]*)";')

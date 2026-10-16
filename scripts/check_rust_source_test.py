@@ -57,9 +57,6 @@ TAIL = {
     "measurements": {"frames_undelivered": 0, "streams_unreached": 0},
 }
 
-SKILL_MD = "---\nname: fixture\n---\nPost a summary comment on the pull request.\n"
-
-
 def clean_tree() -> dict[str, str]:
     return {
         f"{checker.SCHEMA_CRATES[0]}/policy.rs": WIRE_RS,
@@ -67,8 +64,6 @@ def clean_tree() -> dict[str, str]:
         checker.MIGRATION_LIST: MIGRATION_RS,
         "schema/100_schemas.sql": "CREATE SCHEMA core;\n",
         "schema/200_tenants.sql": "CREATE TABLE core.tenants ();\n",
-        f"{checker.BUNDLES}/fixture/SKILL.md": SKILL_MD,
-        f"{checker.BUNDLES}/fixture/TRIGGER.md": SKILL_MD,
         checker.KNOBS: KNOBS_RS,
         checker.TAIL_BASELINE: json.dumps(TAIL),
     }
@@ -110,7 +105,6 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         cases = {
             "rust-schema-name": seeded(f"{checker.SCHEMA_CRATES[1]}/workspace.rs", "pub struct Workspace", "pub struct LeasePolicy"),
             "rust-migration-list": unlisted,
-            "rust-bundle-retired-gate": seeded(f"{checker.BUNDLES}/fixture/TRIGGER.md", "Post a summary", "Wait for the Approval Card, then post a summary"),
             "rust-stream-ceiling": seeded(checker.KNOBS, "= 256;", "= 512;"),
         }
         for rule, files in cases.items():
@@ -146,12 +140,6 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(files)
         self.assertIn("no ToSchema derive was read", output)
         self.assertIn("no migration entry or no tracked schema file was read", output)
-
-    def test_a_bundle_directory_with_no_documents_is_a_finding(self) -> None:
-        files = {k: v for k, v in clean_tree().items() if not k.startswith(checker.BUNDLES)}
-        code, output = lint_tree(files)
-        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
-        self.assertIn(f"{checker.BUNDLES}:1: rust-bundle-retired-gate: no bundle document found to read", output)
 
 
 if __name__ == "__main__":
