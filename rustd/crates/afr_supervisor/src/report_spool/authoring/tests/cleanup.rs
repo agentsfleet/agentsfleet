@@ -6,7 +6,7 @@ use crate::{
     client::{Call, Verb},
     halt::Halt,
     report_spool::authoring::{PRIVATE_TTL_MS, files},
-    test_support::{self, Answer},
+    test_support::{self, Answer, Calls},
 };
 use afd_core::{id::Uuid7, test_util::trace::Capture};
 use afd_wire::authoring::{Outcome, Report, Reported};
@@ -19,7 +19,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 const EVENT_CLEANUP_FAILED: &str = "authoring_spool_cleanup_failed";
@@ -54,7 +54,7 @@ fn mode(directory: &Path, mode: u32) {
 struct Drain {
     halt: Arc<Halt>,
     task: JoinHandle<()>,
-    received: mpsc::UnboundedReceiver<Call>,
+    received: Calls,
     sends: Arc<AtomicUsize>,
 }
 

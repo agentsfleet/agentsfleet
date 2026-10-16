@@ -19,14 +19,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — private authoring, setup authority, money units, and clients must change together
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — one product Pull Request (PR), including folded M227_002
-**Branch:** feat/website-completion — current authorized worktree; no extra worktree
+**Branch:** feat/website-completion
+<!-- Current authorized worktree; no extra worktree. -->
 **Baseline revision:** ad3ed8f92c739b59df71863dbeec81d621dd7d0a
 **Test Baseline:** unit=10372 integration=5586
 **Baseline evidence:** docs/reviews/workspace-setup/test-baseline.md
 **Depends on:** independent schedule ownership/stable-ID fix merged before schedule acceptance; L1 guide amendment materialized before handler implementation
 **Provenance:** owner decisions L1–L21 and October14 Claude/ChatGPT/Astra High reviews, reconciled through source inspection; required implementation proofs remain pending
 **Canonical architecture:** docs/architecture/high_level.md#fleet-authoring-and-runtime; exact route/type authority is docs/architecture/api_resources.md
-
 ## Overview
 
 Goal: `test_private_draft_save_runtime_and_improve` proves an authorized person can privately author, review, Save one resumable fleet, receive runtime results, and apply an improvement without duplicate creation, leaked private text, or hidden access changes. The target has17 new person routes,7 changed,2 removed; one tagged runner claim plus 4 authoring machine routes. One typed setup authority preserves existing policy while every budget reader moves to integer nanos.

@@ -195,7 +195,7 @@ jobs:
         run: |
           IMAGE="ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}"
           echo "Deploying immutable image: $IMAGE"
-          if ! flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image "$IMAGE" --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120; then
+          if ! python3 scripts/deploy_fly.py --app "${{ vars.FLY_APP_DEV }}" --image "$IMAGE" --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120; then
             APP="${{ vars.FLY_APP_DEV }}"
             echo "Fly deploy failed; collecting diagnostics for ${APP}..."
             flyctl status --app "${APP}" || true
