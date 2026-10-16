@@ -13,7 +13,8 @@ export const MESSAGE_STATE = {
 /** `SyncStatus` in rustd/crates/afd_cron/src/model.rs: anything short of `synced` is retried by the schedule's `:sync` action. */
 export const SCHEDULE_SYNC = { syncing: "syncing", synced: "synced", failed: FAILED_STATE } as const;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
-const decimal = Schema.String.check(Schema.isPattern(DECIMAL));
+/** A daemon counter or revision: a decimal string, because nanos outgrow a JavaScript number. */
+export const decimal = Schema.String.check(Schema.isPattern(DECIMAL));
 const object = Schema.Record(Schema.String, Schema.Unknown);
 
 export const DefinitionSchema = Schema.Struct({

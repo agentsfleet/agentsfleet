@@ -8,7 +8,7 @@
 // CliError variants on failure. The dispatcher's renderError prints the
 // detail + suggestion + (for ServerError) request_id.
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -24,9 +24,10 @@ import {
   type FleetMutationStatus,
 } from "../constants/fleet-status.ts";
 import { formatDollars } from "../constants/billing.ts";
-import { decode, FleetSchema } from "./chat/protocol.ts";
+import { decimal, decode, FleetSchema } from "./chat/protocol.ts";
 import { IF_MATCH } from "./chat/transport.ts";
 import {
+  ServerError,
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
@@ -48,14 +49,34 @@ const STATUS_VERB: Record<FleetMutationStatus, string> = {
 interface FleetListItem {
   readonly name?: string;
   readonly status?: string;
-  readonly events_processed?: string | number;
-  readonly budget_used_nanos?: string | number | null;
+  readonly events_processed?: string;
+  readonly budget_used_nanos?: string;
   readonly id?: string;
 }
 
-interface FleetListResponse {
-  readonly items?: ReadonlyArray<FleetListItem>;
+/** What `status` prints: the response body for `--json`, its rows for text. */
+interface FleetsRead {
+  readonly body: Record<string, unknown>;
+  readonly fleets: ReadonlyArray<FleetListItem>;
 }
+
+// `FleetsResponse` / `FleetSummary` in rustd/crates/afd_api_wire/src/fleet/collection.rs.
+// The counters are decimal strings; anything else is a daemon this client
+// cannot render, refused here rather than thrown by `BigInt` mid-table.
+const FleetSummarySchema = Schema.Struct({
+  id: Schema.String, name: Schema.String, status: Schema.String,
+  events_processed: decimal, budget_used_nanos: decimal,
+});
+const FleetListSchema = Schema.Struct({ items: Schema.Array(FleetSummarySchema) });
+export const FLEET_LIST_INVALID = "FLEET_LIST_INVALID";
+const BAD_GATEWAY = 502;
+
+const decodeFleetList = (value: unknown): Effect.Effect<typeof FleetListSchema.Type, ServerError> =>
+  Schema.decodeUnknownEffect(FleetListSchema)(value).pipe(Effect.mapError(() => new ServerError({
+    detail: "The fleet list did not match the supported API shape",
+    suggestion: "update the CLI and verify that it targets the matching daemon build",
+    code: FLEET_LIST_INVALID, status: BAD_GATEWAY, requestId: null,
+  })));
 
 const requireFleetId = (
   fleetId: string | undefined,
@@ -103,8 +124,11 @@ const statusEffectFromId = (
   const wsId = yield* requireWorkspaceId;
   const token = yield* resolveAuthToken;
 
-  const res = fleetId === undefined
-    ? yield* http.request<FleetListResponse>({ path: wsFleetsPath(wsId), token })
+  const read: FleetsRead = fleetId === undefined
+    ? yield* Effect.flatMap(
+        http.request<Record<string, unknown>>({ path: wsFleetsPath(wsId), token }),
+        (body) => Effect.map(decodeFleetList(body), (listed): FleetsRead => ({ body, fleets: listed.items })),
+      )
     : yield* Effect.map(
         http.request<FleetListItem>({
           path: wsFleetPath(
@@ -113,15 +137,15 @@ const statusEffectFromId = (
           ),
           token,
         }),
-        (one): FleetListResponse => ({ items: [one] }),
+        (one): FleetsRead => ({ body: { items: [one] }, fleets: [one] }),
       );
 
   if (output.format !== OUTPUT_FORMAT.text) {
-    yield* output.success(FLEETS_SHOWN, { ...res });
+    yield* output.success(FLEETS_SHOWN, { ...read.body });
     return;
   }
 
-  const fleets = res.items ?? [];
+  const { fleets } = read;
   if (fleets.length === 0) {
     yield* output.info(
       NO_FLEETS_HINT,
