@@ -20,9 +20,9 @@ async fn malformed_slack_handles_cannot_become_ready() {
         json!({"integration":"slack","bot_token":TOKEN}),
         json!({"integration":"slack","team_id":42,"bot_token":TOKEN}),
         json!({"integration":"slack","team_id":"","bot_token":TOKEN}),
-        json!({"integration":"slack","team_id":"T123"}),
-        json!({"integration":"slack","team_id":"T123","bot_token":42}),
-        json!({"integration":"slack","team_id":"T123","bot_token":""}),
+        json!({"integration":"slack","team_id":"TSLACKTEAM"}),
+        json!({"integration":"slack","team_id":"TSLACKTEAM","bot_token":42}),
+        json!({"integration":"slack","team_id":"TSLACKTEAM","bot_token":""}),
     ] {
         let case = Case::create(mention("slack")).await;
         case.store("slack", body).await;
