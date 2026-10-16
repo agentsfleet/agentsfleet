@@ -31,6 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install build evidence dependencies
+        run: bun install --frozen-lockfile
 
       - uses: actions/cache@v6
         with:
@@ -44,6 +49,7 @@ jobs:
 
       - name: Build the runner in Alpine (musl-native)
         run: |
+          bun scripts/build-component.ts runner bash -euo pipefail <<'BUILD'
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target dist
           RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
           ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
@@ -53,6 +59,7 @@ jobs:
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
             -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e AGENTSFLEET_BUILD_ID \
             -e GIT_COMMIT="${GITHUB_SHA::7}" \
             -w /w/rustd \
             "$BUILDER" \
@@ -63,6 +70,7 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
           cp rustd/target/dist/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
           chmod +x dist/agentsfleet-runner-linux-amd64
+          BUILD
 
       - name: Verify static ELF — zero NEEDED, no INTERP
         run: |
@@ -81,7 +89,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: runner-binary
-          path: dist/agentsfleet-runner-linux-amd64
+          path: |
+            dist/agentsfleet-runner-linux-amd64
+            dist/acceptance-components/runner.json
           retention-days: 3
 
   # ── 1b. The toolbox, from the branch ─────────────────────────────────────
@@ -118,6 +128,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install build evidence dependencies
+        run: bun install --frozen-lockfile
 
       - uses: actions/cache@v6
         with:
@@ -138,6 +153,7 @@ jobs:
       # job, so the JS actions above and below stay on the host.
       - name: Build the daemon in Alpine (musl-native)
         run: |
+          bun scripts/build-component.ts daemon bash -euo pipefail <<'BUILD'
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target dist
           # DERIVED, never spelled twice. `make/build.mk` computes BUILDER_IMAGE
           # from this same file with this same sed, so a versions.env bump moves
@@ -151,6 +167,7 @@ jobs:
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
             -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e AGENTSFLEET_BUILD_ID \
             -e GIT_COMMIT="${GITHUB_SHA::7}" \
             -w /w/rustd \
             "$BUILDER" \
@@ -161,11 +178,14 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
           cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-amd64
           chmod +x dist/agentsfleetd-rs-linux-amd64
+          BUILD
 
       - uses: actions/upload-artifact@v7
         with:
           name: daemon-binary
-          path: dist/agentsfleetd-rs-linux-amd64
+          path: |
+            dist/agentsfleetd-rs-linux-amd64
+            dist/acceptance-components/daemon.json
           retention-days: 3
 
   # The image carries the daemon alone, but the push waits on the toolbox too:

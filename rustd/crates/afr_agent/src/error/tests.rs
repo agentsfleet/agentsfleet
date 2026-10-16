@@ -6,7 +6,7 @@
 use std::error::Error as _;
 
 use afd_core::error_code;
-use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
+use afd_wire::inference::{InferenceApi, ModelInference};
 use afr_providers::Connect as _;
 use afr_tools::Catalog;
 
@@ -41,20 +41,31 @@ fn should_name_no_tool_when_a_checkpoint_failed() {
 const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 
 #[test]
-fn should_name_the_blocked_endpoint_when_a_custom_model_is_refused() {
-    let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
+fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhosted_provider() {
     let mut policy = afr_egress::fixture::policy(true);
-    policy.provider = endpoint.clone().into();
-    let connector =
-        afr_providers::Connector::new(afr_providers::Registry::builtin().unwrap()).unwrap();
+    policy.context.context_cap_tokens = 128_000;
+    policy.inference = Some(ModelInference {
+        api: InferenceApi::Chat,
+        base_url: PRIVATE_URL.into(),
+        dialect: None,
+        max_output_tokens: 16_384,
+    });
+    let connector = afr_providers::Connector::new().unwrap();
 
     let refused = Error::from(connector.admit(&policy).unwrap_err());
 
     assert_eq!(refused.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(
         refused.unhosted(),
-        Some(Unhosted::Endpoint(endpoint.as_str())),
-        "the address is named, never a provider with no wire"
+        None,
+        "the configured provider has a wire; its endpoint is invalid"
+    );
+    assert!(
+        refused
+            .source()
+            .unwrap()
+            .to_string()
+            .contains("inference settings")
     );
 }
 

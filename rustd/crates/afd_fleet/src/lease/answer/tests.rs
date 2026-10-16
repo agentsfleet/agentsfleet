@@ -51,6 +51,7 @@ fn installed() -> Installed {
 /// A policy granting nothing, which the render copies through untouched.
 fn policy() -> ExecutionPolicy<'static> {
     ExecutionPolicy {
+        inference: None,
         network_policy: NetworkPolicy {
             allow: Vec::new(),
             read_only: true,

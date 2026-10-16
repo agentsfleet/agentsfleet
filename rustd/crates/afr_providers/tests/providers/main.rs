@@ -19,6 +19,8 @@ mod caching;
 mod ends;
 mod hosts;
 mod images;
+mod limits;
+mod logging;
 mod retries;
 mod turns;
 
@@ -247,8 +249,13 @@ async fn test_web_search_is_a_hosted_spec() {
         wire.offered(&seen[0].body).is_empty(),
         "chat has no hosted spec"
     );
-    let refused = wire.results(&seen[1].body);
-    assert!(refused[0].starts_with(HOSTED_REFUSAL), "{refused:?}");
+    // rig renders an undeclared tool's exchange as conversation text. The
+    // refusal still reaches the model, without advertising a hosted tool.
+    assert!(
+        seen[1].body.to_string().contains(HOSTED_REFUSAL),
+        "{:?}",
+        seen[1].body
+    );
     assert_eq!(
         output.trace.unwrap().calls[0].status,
         ToolCallStatus::Failed

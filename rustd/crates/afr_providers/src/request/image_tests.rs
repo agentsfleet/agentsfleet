@@ -15,7 +15,7 @@ use rig_core::message::{
 use super::tests::{CALL_ID, OUTPUT, built, conversation};
 use crate::image_input::{ImageInput, ImageKind};
 use crate::provider::Message;
-use crate::registry::Wire;
+use afd_wire::inference::InferenceApi as Wire;
 
 /// An image a call read goes back inside its result, after the text, as
 /// base64 under its media type: the shape rig turns into a Messages `image`

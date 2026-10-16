@@ -14,7 +14,10 @@
     reason = "test support: a fixture that cannot be built is a broken test"
 )]
 
+mod connect;
+mod tls;
 pub(crate) mod wires;
+pub(crate) use connect::FixtureConnector;
 
 use std::convert::Infallible;
 use std::io;
@@ -28,7 +31,6 @@ use afr_agent::testing::Discard;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, Meter, RunOutput};
 use afr_egress::testing::CountingMint;
 use afr_executor::Executor;
-use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
 use afr_tools::catalog::UPDATE_PLAN;
 use afr_tools::stub::Stub;
@@ -39,6 +41,7 @@ use axum::serve::Listener;
 use futures_util::stream;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 
 /// The provider key every suite's lease carries.
@@ -85,6 +88,7 @@ struct Script {
 #[derive(Debug)]
 pub(crate) struct Fake {
     pub(crate) base: String,
+    pub(crate) client: reqwest::Client,
     seen: mpsc::UnboundedReceiver<Seen>,
     accepted: Arc<AtomicUsize>,
 }
@@ -92,20 +96,24 @@ pub(crate) struct Fake {
 /// The fake's listener, counting every connection it accepts: a request the
 /// fake could not read, such as a TLS handshake against its plain HTTP, still
 /// opened one, where a request the client refused to send opened none.
-#[derive(Debug)]
 struct Counting {
     listener: TcpListener,
+    tls: TlsAcceptor,
     accepted: Arc<AtomicUsize>,
 }
 
 impl Listener for Counting {
-    type Io = TcpStream;
+    type Io = tokio_rustls::server::TlsStream<TcpStream>;
     type Addr = SocketAddr;
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
-        let accepted = Listener::accept(&mut self.listener).await;
-        self.accepted.fetch_add(1, Ordering::Relaxed);
-        accepted
+        loop {
+            let (stream, peer) = Listener::accept(&mut self.listener).await;
+            self.accepted.fetch_add(1, Ordering::Relaxed);
+            if let Ok(stream) = self.tls.accept(stream).await {
+                return (stream, peer);
+            }
+        }
     }
 
     fn local_addr(&self) -> io::Result<Self::Addr> {
@@ -140,7 +148,9 @@ impl Fake {
                 answer(script.replies.get(index))
             }
         });
+        let (root, tls) = tls::server();
         let listener = Counting {
+            tls,
             listener: TcpListener::bind("127.0.0.1:0").await.unwrap(),
             accepted: Arc::new(AtomicUsize::new(0)),
         };
@@ -148,7 +158,8 @@ impl Fake {
         let accepted = Arc::clone(&listener.accepted);
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
-            base: format!("http://{address}"),
+            base: format!("https://{}:{}", tls::HOST, address.port()),
+            client: tls::client(root, address),
             seen,
             accepted,
         }
@@ -211,7 +222,7 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
             "mintable": [], "provider": provider, "api_key": KEY, "inference_host": "",
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
-                "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 0}},
+                "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 200_000}},
         "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
@@ -232,21 +243,8 @@ pub(crate) fn engine(fake: &Fake) -> Loop {
 }
 
 /// The connector reaching each wire's provider at `fake`.
-pub(crate) fn connector(fake: &Fake) -> Connector {
-    let entry = |name: &str, wire, base_url: String| ProviderSpec {
-        name: name.to_owned(),
-        aliases: Vec::new(),
-        wire,
-        base_url,
-        dialect: None,
-    };
-    let registry = Registry::new([
-        entry("anthropic", Wire::Messages, fake.base.clone()),
-        entry("openai", Wire::Responses, format!("{}/v1", fake.base)),
-        entry(CHAT_PROVIDER, Wire::Chat, format!("{}/v1", fake.base)),
-    ])
-    .unwrap();
-    Connector::new(registry).unwrap()
+pub(crate) fn connector(fake: &Fake) -> FixtureConnector {
+    FixtureConnector::new(fake, None)
 }
 
 /// The loop hosting `catalog`, with each wire's provider served by `fake`.

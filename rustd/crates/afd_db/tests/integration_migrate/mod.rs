@@ -115,6 +115,7 @@ mod cutover;
 mod cutover_catalog;
 mod cutover_rows;
 mod locking;
+mod model_inference;
 mod retirement;
 mod roles;
 mod runner_policy;

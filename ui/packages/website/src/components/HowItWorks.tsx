@@ -2,7 +2,7 @@ import { useMemo, useRef, type ReactNode } from "react";
 import { Button, Card, DisplayLG, Section } from "@agentsfleet/design-system";
 import type { ExampleJob } from "../lib/example-jobs";
 import { EXAMPLE_ANCHOR, EXAMPLE_REPOSITORY_URL } from "../lib/example-jobs";
-import { APP_SIGN_UP_URL } from "../config";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { createChatStory, storyFrame } from "../lib/chat-story";
 import { useSceneMotion } from "./use-scene-motion";
 import { IncidentFlow } from "./IncidentFlow";
@@ -25,8 +25,8 @@ export default function HowItWorks({ job, navigation }: { job: ExampleJob; navig
             <div>
               {!motion.staticMode && <Button ref={control} variant="ghost" size="sm" onClick={motion.toggle}>{motion.playing ? "Pause" : "Play"}</Button>}
               {!motion.complete && <Button variant="ghost" size="sm" onClick={() => { motion.readAll(); control.current?.focus({ preventScroll: true }); trackInteractionClicked({ source: "example_read_full", surface: "example", target: job.id }); }}>Read full conversation</Button>}
-              <Button asChild size="sm"><a href={APP_SIGN_UP_URL} target="_blank" rel="noopener noreferrer"
-                onClick={() => trackSignupStarted({ source: "example_create_fleet", surface: "example", mode: "humans" })}>Create fleet <span aria-hidden="true">↗</span></a></Button>
+              <Button asChild size="sm"><a href={PUBLIC_ACCESS_URL} target="_blank" rel="noopener noreferrer"
+                onClick={() => trackSignupStarted({ source: "example_create_fleet", surface: "example", mode: "humans" })}>Join waitlist <span aria-hidden="true">↗</span></a></Button>
             </div>
           </div>
         </div></Card>

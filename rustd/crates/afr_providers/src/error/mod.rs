@@ -79,8 +79,8 @@ pub(crate) enum ErrorKind {
         source: ProviderError,
     },
 
-    /// The policy names a provider this runner does not speak.
-    #[error("the policy names a model provider this runner does not speak: {provider}")]
+    /// The selected model has no saved inference settings.
+    #[error("the selected model has no saved inference settings for provider: {provider}")]
     Unhosted {
         /// The provider, as the policy spells it.
         provider: String,
@@ -111,14 +111,11 @@ pub(crate) enum ErrorKind {
         source: EmptyToolName,
     },
 
-    /// The provider registry names an entry whose base URL does not parse.
-    #[error("the provider registry's entry {name} has a base URL that does not parse")]
-    Registry {
-        /// The entry's name.
-        name: String,
-        /// The parser's reason.
+    /// Persisted model settings could not be admitted.
+    #[error("the selected model's inference settings are invalid")]
+    Configuration {
         #[source]
-        source: url::ParseError,
+        source: afd_inference::Error,
     },
 
     /// The HTTP client could not be built.
@@ -160,15 +157,14 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. } | ErrorKind::BlockedEndpoint { .. } => {
-                error_code::AGENTSFLEET_INVALID_CONFIG
-            }
+            ErrorKind::Unhosted { .. }
+            | ErrorKind::BlockedEndpoint { .. }
+            | ErrorKind::Configuration { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
             | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
-            | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
             | ErrorKind::Wire { .. }
@@ -188,7 +184,7 @@ impl Error {
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
-            | ErrorKind::Registry { .. }
+            | ErrorKind::Configuration { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
             | ErrorKind::Wire { .. }
@@ -207,7 +203,7 @@ impl Error {
             | ErrorKind::Ended { .. }
             | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
-            | ErrorKind::Registry { .. }
+            | ErrorKind::Configuration { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
             | ErrorKind::Wire { .. }
@@ -227,7 +223,7 @@ impl Error {
             | ErrorKind::Ended { .. }
             | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
-            | ErrorKind::Registry { .. }
+            | ErrorKind::Configuration { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
             | ErrorKind::Wire { .. }

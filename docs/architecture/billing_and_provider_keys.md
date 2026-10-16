@@ -85,11 +85,11 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 
 Active implementation requirements; billing proofs remain pending.
 
-Resolve models and billing from `Owned.tenant`, the workspace owner's account, rather than the joined member's account. Send captures the selected reference; admission pins provider/model/tokenizer/prices. Idle version-guarded draft PATCH can replace a disabled selection; earlier turns retain their pins. Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
+Resolve models and billing from `Owned.tenant`, the workspace owner's account, rather than the joined member's account. Send captures the selected reference; admission pins provider/model/inference settings/context/prices. Idle version-guarded draft PATCH can replace a disabled selection; earlier turns retain their pins. Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
 
-The locked rule is `balance >= (running + 1) * worst_case_turn_cost`. Under the owner's wallet-row lock, count outstanding running or provider-uncertain attempts, compute the maximum cost bound among them and the proposed attempt, then atomically record admission. Include 8×32,768 input tokens, a total 8,192 output tokens, and 300 seconds of runtime fees. Never use a cheap proposed model to price an expensive active attempt. No fixed draft or per-person slot limit is introduced.
+The locked rule is `balance >= (running + 1) * worst_case_turn_cost`. Under the owner's wallet-row lock, count outstanding running or provider-uncertain attempts, compute the maximum cost bound among them and the proposed attempt, then atomically record admission. Include 8×32,768 input tokens, the selected model's saved maximum output tokens across the turn, and 300 seconds of runtime fees. Never use a cheap proposed model to price an expensive active attempt. No fixed draft or per-person slot limit is introduced.
 
-Pin rational rates before dispatch; do not parse prices through floating point. For each token class, round its physical-dispatch cost upward to integer nanos. Round a turn's cumulative runtime fee upward once. A conservative output bound is `ceil(8192 * output_rate / 1000000) + 7` nanos, covering eight independent roundings; input is `8 * ceil(32768 * input_rate / 1000000)`. Rates expressed fractionally use their exact numerator/denominator. Checked multiply/add/ceil must refuse overflow. Fixtures distinguish per-dispatch from aggregate rounding, fractional rates, varied prices, runtime debit interleaving, and unknown usage. Runtime billing outside authoring retains its existing semantics.
+Pin rational rates before dispatch; do not parse prices through floating point. For each token class, round its physical-dispatch cost upward to integer nanos. Round a turn's cumulative runtime fee upward once. A conservative output bound is `ceil(model_max_output_tokens * output_rate / 1000000) + 7` nanos, covering eight independent roundings; input is `8 * ceil(32768 * input_rate / 1000000)`. Rates expressed fractionally use their exact numerator/denominator. Checked multiply/add/ceil must refuse overflow. Fixtures distinguish per-dispatch from aggregate rounding, fractional rates, varied prices, runtime debit interleaving, and unknown usage. Runtime billing outside authoring retains its existing semantics.
 
 All authoring paths use wallet → subject → attempt order; claim and renewal first take the runner guard. Runtime renewal takes runner → runtime lease/affinity → wallet; reports retain runtime lease → wallet without acquiring runner or authoring rows. Cancellation/deletion never acquires a runner row after taking the wallet. Capacity reads use the guarded decision time while all capacity-changing writers serialize on that runner row. Prove competing claims, renewal, cancellation, dispatch, and settlement cannot deadlock or exceed capacity. Do not hold wallet locks during model/network calls.
 
@@ -283,7 +283,7 @@ Rates come from `core.model_library`, read fresh on every charge. `LOAD_RATE_WIT
 
 **There is no rate cache.** A cache saves a read only when the generation and the rate are fetched separately; this statement fetches both at once, so a cache would save nothing and add an eviction path (`rustd/crates/afd_billing/src/store.rs`, "Why there is no rate cache"). M143 §2.2 shipped a generation-checked rate cache, since removed, and its rule still holds: a charge path never reads "no entry" as "this model is not in the catalogue". "Not catalogued" is a database answer.
 
-Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit (`rustd/crates/afd_admin/src/model.rs`). The rows and the generation describing them therefore become visible together.
+Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit (`rustd/crates/afd_admin/src/model/mod.rs`). The rows and the generation describing them therefore become visible together.
 
 A model with no catalogue row meters at run-fee-only rates under platform: not a panic, and never a default token rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 UZ-PROVIDER-004`) and when a setup's runtime model is selected — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
 
@@ -493,36 +493,23 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ---
 
-## 9. Provider routing — what makes Fireworks + Kimi K3 work today
+## 9. Provider routing — saved model settings
 
-The runner resolves a lease's `provider` through its registry, `rustd/crates/afr_providers/assets/providers.json`. Each name maps to one of three wires and a base URL. A name the registry lacks refuses the lease at admission (`rustd/crates/afr_providers/src/registry/mod.rs`). The model library's enumeration lives in `scripts/model-library-allowlist.json`. This section names the shapes; it deliberately re-lists neither file, because a hand-copied table is wrong the moment one of them changes.
+`core.model_library.inference` owns the non-secret provider settings: `api`, `base_url`, optional `dialect`, and `max_output_tokens`. Migration 956 adds the nullable column without filling existing rows. An unconfigured row remains visible to administrators and cannot drive chat or runtime inference. Configure its real endpoint and token limits before enabling it.
 
-| Shape | Wire format | Examples |
-|---|---|---|
-| Native Anthropic | Anthropic Messages | `anthropic` |
-| Native OpenAI | OpenAI Responses | `openai` |
-| Direct vendor, OpenAI-compatible | OpenAI-compatible chat | `fireworks`, `groq`, `moonshot-intl`, `deepseek`, `mistral`, `xai`, `cerebras` |
-| Multi-vendor gateway | OpenAI-compatible chat | `openrouter`, `vercel`, `poe`, `nearai`, `huggingface` |
-| Endpoint-only | OpenAI-compatible chat via `custom:<base_url>`, `https` with a host only | `custom:https://vllm.corp/v1` |
+`afd_inference::Configured` validates these settings and builds rig's Chat Completions, Responses, or Messages codec. Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted. Curation input for prices remains an operator tool and does not decide runtime routes.
 
-A name needing request signing, a token exchange, a non-streaming wire or a loopback host, a local runtime among them, has no registry entry, so a lease naming it is refused.
+Workspace choices join the owner's model registrations to credentials and the exact `(provider, model_id)` catalogue row. The active platform default uses its own configured model and credential. Both choices require credentials, valid settings, nonnegative prices, and a usable context window. A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
 
-**Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. The base URL a lease dials is always the registry's. The registry resolves `kimi` and `kimi-intl` to the international endpoint (`api.moonshot.ai`), where the allowlist prices them, and only `moonshot`, `moonshot-cn` and `kimi-cn` to the China one; `qwen` dials DashScope's international endpoint and `glm` Z.ai's general one.
+The daemon resolves the exact selected reference for runtime leases and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor opens credentials outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the lease. Authoring keeps credentials in the daemon and sends only its scoped capability to the runner. Neither path follows redirects; outbound address guards remain in force.
 
-For self-managed provider key with Fireworks + Kimi K3:
-
-```
-provider: "fireworks"
-model:    "accounts/fireworks/models/kimi-k3"
-```
-
-The OpenAI-compatible client routes the call to `https://api.fireworks.ai/inference/v1/chat/completions`. No provider-specific code needed in this repo. Another OpenAI-compatible vendor is one reviewed line in the registry.
+`rig-core` and `rig-http` are pinned to 0.44.0. The shared `afd_inference::log_filter` filters rig's request/reply traces and the warning containing a provider's private error text in both daemon and runner logging. Model keys and private prompts never become log fields.
 
 ---
 
 ## 10. The model library — catalogue table + authenticated read
 
-The single source of truth for model context caps **and per-model token rates** is the `core.model_library` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The setup-time vs trigger-time resolution flow — which posture reads what, when, and how the setup's sentinel overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
+The single source of truth for model context caps, inference settings, output limits, **and per-model token rates** is the `core.model_library` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The setup-time vs trigger-time resolution flow — which posture reads what, when, and how the setup's sentinel overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
 
 For billing specifically: the stage charge prices platform-posture slices from `core.model_library`, reading the rate and the catalogue generation in one statement (§4.2), so a slice is never priced against a catalogue state that has since changed.
 

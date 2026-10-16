@@ -71,7 +71,7 @@ describe("fleets routes — list and loading", () => {
       ),
     );
     expect(markup).toContain("What should your fleet do?");
-    expect(markup).toContain("Your fleets");
+    expect(markup).not.toContain("Your fleets");
     expect(markup).not.toContain("Getting started");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listSecretsMock).not.toHaveBeenCalled();

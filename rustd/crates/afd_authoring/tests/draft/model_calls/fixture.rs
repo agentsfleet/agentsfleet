@@ -79,7 +79,11 @@ impl Transport for Provider {
     }
 }
 
-pub(super) async fn calls(f: &Fixture, attempt: &Attempt, provider: Arc<Provider>) -> ModelCalls {
+pub(super) async fn calls<T: Transport + 'static>(
+    f: &Fixture,
+    attempt: &Attempt,
+    provider: Arc<T>,
+) -> ModelCalls {
     let mut connection = f.connection().await;
     sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'authoring-fixture',$2,$2)")
         .bind(f.tenant.as_str()).bind(now().as_millis()).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");

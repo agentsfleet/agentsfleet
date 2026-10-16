@@ -229,8 +229,8 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
         "INSERT INTO core.model_library
            (id, model_id, provider, context_cap_tokens,
             input_nanos_per_mtok, cached_input_nanos_per_mtok,
-            output_nanos_per_mtok, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+            output_nanos_per_mtok, created_at, updated_at, inference)
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8, $9)
          ON CONFLICT (provider, model_id) DO UPDATE
            SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
                cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
@@ -245,6 +245,12 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
     .bind(CACHED_INPUT_NANOS_PER_MTOK)
     .bind(OUTPUT_NANOS_PER_MTOK)
     .bind(at)
+    .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
+        api: afd_wire::inference::InferenceApi::Messages,
+        base_url: "https://api.anthropic.com/v1".into(),
+        dialect: None,
+        max_output_tokens: 8192,
+    }))
     .execute(&mut *connection)
     .await
     .expect("the catalogue seed must run");

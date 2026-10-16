@@ -71,11 +71,11 @@ export const EXPIRED_ROW_DETAIL = "This runner stopped renewing; the work was re
 export const UNKNOWN_OUTCOME_SENTENCE = "Outcome not recorded";
 
 export const OUTCOME_LABELS: Record<LeaseOutcome, string> = {
-  [LEASE_OUTCOME.running]: "RUNNING",
-  [LEASE_OUTCOME.succeeded]: "succeeded",
-  [LEASE_OUTCOME.failed]: "failed",
-  [LEASE_OUTCOME.expired]: "expired",
-  [LEASE_OUTCOME.unknown]: "unknown",
+  [LEASE_OUTCOME.running]: "Running",
+  [LEASE_OUTCOME.succeeded]: "Succeeded",
+  [LEASE_OUTCOME.failed]: "Failed",
+  [LEASE_OUTCOME.expired]: "Expired",
+  [LEASE_OUTCOME.unknown]: "Unknown",
 };
 
 export const STRIP_LABEL = "Runner metrics";
@@ -97,14 +97,14 @@ export const CHECKS_DIALOG_DESCRIPTION =
   "Sandbox verification and mounted paths.";
 
 export const REVIEW_LEASE_TITLE = "Review lease";
-export const REVIEW_OUTCOME_LABEL = "Outcome";
+export const REVIEW_OUTCOME_LABEL = "Status";
 export const REVIEW_LEASE_ID_LABEL = "Lease";
 export const REVIEW_KIND_LABEL = "Kind";
 export const REVIEW_FENCING_LABEL = "Fencing token";
 export const REVIEW_EXPIRES_LABEL = "Expires";
 export const REVIEW_PROVIDER_LABEL = "Provider";
 export const REVIEW_MODEL_LABEL = "Model";
-export const REVIEW_POSTURE_LABEL = "Posture";
+export const REVIEW_POSTURE_LABEL = "Billing";
 export const REVIEW_TOKENS_LABEL = "Tokens metered";
 export const REVIEW_EVENT_LABEL = "Fleet event";
 export const OPEN_FLEET_LABEL = "Open Fleet";

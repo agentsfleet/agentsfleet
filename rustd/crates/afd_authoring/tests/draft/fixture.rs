@@ -15,6 +15,11 @@ use afd_db::{
 use afd_observability::{Analytics, Recorded, Telemetry};
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
+use std::sync::LazyLock;
+
+// Maintenance sweeps the shared store regardless of which fixture invokes it.
+// One sink mirrors the daemon; assertions below select their own workspace.
+static REPORTER: LazyLock<(Analytics, Recorded)> = LazyLock::new(Analytics::recording);
 
 pub(super) struct Fixture {
     pub(super) db: Db,
@@ -38,10 +43,10 @@ impl Fixture {
     pub(super) async fn create() -> Self {
         let lane = TestDatabase::shared();
         let db = lane.open(DbRole::Api, &[]).await;
-        let (analytics, recorded) = Analytics::recording();
+        let (analytics, recorded) = &*REPORTER;
         let mut fixture = Self {
-            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics),
-            recorded,
+            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics.clone()),
+            recorded: recorded.clone(),
             db,
             cleanup: OwnedRows::new(&lane),
             lane,
@@ -78,7 +83,17 @@ impl Fixture {
     /// The steps reported so far under the funnel event `name`, in order.
     pub(super) fn reported(&self, name: &str) -> Vec<Telemetry> {
         let events = self.recorded.events().into_iter();
-        events.filter(|event| event.name() == name).collect()
+        events
+            .filter(|event| {
+                let report = event.event();
+                event.name() == name
+                    && report
+                        .properties()
+                        .get("workspace_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(self.workspace.as_str())
+            })
+            .collect()
     }
 
     pub(super) fn member_access(&self) -> Access<'_> {

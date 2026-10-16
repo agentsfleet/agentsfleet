@@ -40,17 +40,9 @@ export function uniqueProviders(models: LibraryModel[]): string[] {
   return Array.from(new Set(models.map((m) => m.provider)));
 }
 
-// The provider ids whose vendor spelling title case would miss, spelled the
-// way each vendor spells itself. The ids are the runner's provider registry
-// (`rustd/crates/afr_providers/assets/providers.json`), plus the two the
-// dashboard adds: `openai-compatible` mirrors OPENAI_COMPATIBLE_PROVIDER in
-// lib/types (kept verbatim here to avoid a client-bundle import of the broader
-// types module for one string), and `vercel-ai` names the AI gateway. Every
-// other id, `anthropic` or `atlas-cloud` say, reads right title-cased by
-// `providerLabel`, so a provider added to the registry later never sits as a
-// raw slug beside the named ones in the picker. A Map, so a server-sent id
-// such as `__proto__` can never reach an inherited property.
+// Vendor spelling for configured provider identifiers; unknown names use title case.
 const PROVIDER_LABELS: ReadonlyMap<string, string> = new Map([
+  ["azure_openai", "Azure OpenAI"],
   ["aihubmix", "AIHubMix"],
   ["byteplus", "BytePlus"],
   ["byteplus-plan", "BytePlus Plan"],

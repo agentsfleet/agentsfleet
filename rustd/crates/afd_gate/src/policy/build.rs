@@ -87,9 +87,14 @@ pub fn assemble<'a>(inputs: Inputs<'a>, granted: &Grants) -> crate::Result<Assem
         });
     }
 
+    Ok(Assembled::Ready(Box::new(policy(inputs)?)))
+}
+
+fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
     let binding = inputs.config.repository_binding();
     let wire = inputs.provider.wire();
-    Ok(Assembled::Ready(Box::new(ExecutionPolicy {
+    Ok(ExecutionPolicy {
+        inference: inputs.provider.inference.clone(),
         network_policy: network(inputs.config),
         tools: inputs
             .config
@@ -97,10 +102,7 @@ pub fn assemble<'a>(inputs: Inputs<'a>, granted: &Grants) -> crate::Result<Assem
             .iter()
             .map(|tool| tool.as_ref().into())
             .collect(),
-        // Absent, not an empty object: the tool bridge reads `null` as "this
-        // fleet declared no static credentials" and `{}` as "it declared some
-        // and they resolved to nothing" — a resolution bug it would otherwise
-        // report as an unresolved placeholder instead.
+        // The tool bridge needs null when no static credentials were declared.
         secrets_map: Some(inputs.declared.secrets_map())
             .filter(|declared| !declared.is_empty())
             .map(|declared| serde_json::Value::Object(declared.clone())),
@@ -134,7 +136,7 @@ pub fn assemble<'a>(inputs: Inputs<'a>, granted: &Grants) -> crate::Result<Assem
                 model: &inputs.provider.model,
             },
         ),
-    })))
+    })
 }
 
 #[cfg(test)]
@@ -241,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn a_custom_endpoint_reaches_the_wire_as_the_prefixed_provider() {
+    fn a_configured_endpoint_reaches_the_wire_with_its_provider() {
         let config = config("");
         let resolved = provider(Some(Dialled {
             base_url: "https://vllm.corp/v1".into(),
@@ -250,7 +252,7 @@ mod tests {
         let declared = Declared::default();
         let policy = ready(&config, &resolved, &declared);
 
-        assert_eq!(policy.provider, "custom:https://vllm.corp/v1");
+        assert_eq!(policy.provider, "anthropic");
         assert_eq!(policy.base_url.as_deref(), Some("https://vllm.corp/v1"));
         assert_eq!(policy.inference_host, "vllm.corp");
     }

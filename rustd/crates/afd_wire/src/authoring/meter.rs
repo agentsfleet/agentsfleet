@@ -30,7 +30,7 @@ pub struct Meter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u64>,
     /// Known cumulative output tokens, when available.
-    #[garde(inner(range(max = 8192)))]
+    #[garde(inner(range(max = u64::from(u32::MAX))))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<u64>,
     /// Runtime from the attempt's monotonic timer.

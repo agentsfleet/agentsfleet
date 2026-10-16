@@ -4,10 +4,10 @@ import type { z } from "zod";
 import type { DraftCard, WorkspaceModel } from "./draft-types";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
 import { setupRequest } from "./draft-request";
-import { DRAFT_LIST, MODEL_PURPOSE, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
+import { DRAFT_LIST, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
 
-// The model list filters while it scans, so a page can come back empty and still carry a cursor.
+// Stop a bounded search once chat has a choice; retain other configured models for setup review.
 const MAX_MODEL_PAGES_PER_LOAD = 4;
 const RESOURCE = {models: "models", drafts: "drafts"} as const;
 
@@ -74,21 +74,21 @@ export class DraftLists {
   }
 
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {
-    const purpose = {purpose: MODEL_PURPOSE.authoring};
-    let page = await this.#page(RESOURCE.models, ModelsSchema, cursor, signal, purpose);
-    for (let read = 1; !page.items.length && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
-      page = await this.#page(RESOURCE.models, ModelsSchema, page.next_cursor, signal, purpose);
+    let page = await this.#page(RESOURCE.models, ModelsSchema, cursor, signal);
+    let items = page.items;
+    for (let read = 1; !items.some(model => model.eligibility.authoring) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
+      page = await this.#page(RESOURCE.models, ModelsSchema, page.next_cursor, signal);
+      items = appendNew(items, page.items, model => model.ref);
     }
-    return page;
+    return {items, next_cursor:page.next_cursor};
   }
 
   #cardPage(cursor: string | null, signal: AbortSignal): Promise<Page<DraftCard>> {
     return this.#page(RESOURCE.drafts, DraftCardsSchema, cursor, signal);
   }
 
-  #page<T>(resource: string, schema: z.ZodType<Page<T>>, cursor: string | null, signal: AbortSignal,
-    filter: Readonly<Record<string, string>> = {}): Promise<Page<T>> {
-    const query = new URLSearchParams({...filter, limit: String(LIST_PAGE_LIMIT)});
+  #page<T>(resource: string, schema: z.ZodType<Page<T>>, cursor: string | null, signal: AbortSignal): Promise<Page<T>> {
+    const query = new URLSearchParams({limit: String(LIST_PAGE_LIMIT)});
     if (cursor !== null) query.set("starting_after", cursor);
     return setupRequest({path: `${this.#base}/${resource}?${query}`}, schema, signal);
   }

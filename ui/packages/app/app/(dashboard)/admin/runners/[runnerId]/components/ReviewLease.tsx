@@ -3,9 +3,8 @@
 import Link from "next/link";
 import {
   Badge,
-  DescriptionDetails,
+  Button,
   DescriptionList,
-  DescriptionTerm,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,23 +21,18 @@ import {
   EXPIRED_ROW_SENTENCE,
   OPEN_FLEET_LABEL,
   OUTCOME_LABELS,
-  REVIEW_EVENT_LABEL,
   REVIEW_EXPIRES_LABEL,
-  REVIEW_FENCING_LABEL,
-  REVIEW_KIND_LABEL,
-  REVIEW_LEASE_ID_LABEL,
   REVIEW_LEASE_TITLE,
   REVIEW_MODEL_LABEL,
   REVIEW_OUTCOME_LABEL,
-  REVIEW_POSTURE_LABEL,
   REVIEW_PROVIDER_LABEL,
-  REVIEW_TOKENS_LABEL,
   UNKNOWN_OUTCOME_SENTENCE,
 } from "./runner-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
-const COUNT_FORMAT = new Intl.NumberFormat("en-US");
-const METER_SEPARATOR = " · ";
+import { LeaseDiagnostics, LeaseFact } from "./LeaseDiagnostics";
+import { modelLabel } from "@/lib/models/display";
+import { providerLabel } from "@/lib/api/model-library-types";
 
 // Per-lease panel: every field is a column on fleet.runner_leases or its
 // joined Fleet event. The request payload is deliberately absent — under any
@@ -58,53 +52,20 @@ export function ReviewLease({
           <>
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
-              <DialogDescription className="font-sans">
+              <DialogDescription className="break-words font-sans">
                 {lease.fleet_name ?? agentDisplayName(lease.fleet_id)} · {lease.event_type}
               </DialogDescription>
             </DialogHeader>
             <DescriptionList className="font-sans text-body-sm tabular-nums">
-              <DescriptionTerm>{REVIEW_OUTCOME_LABEL}</DescriptionTerm>
-              <DescriptionDetails>
-                <OutcomeSummary lease={lease} />
-              </DescriptionDetails>
-              <DescriptionTerm>{REVIEW_LEASE_ID_LABEL}</DescriptionTerm>
-              <DescriptionDetails mono className="break-all">{lease.id}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_KIND_LABEL}</DescriptionTerm>
-              <DescriptionDetails>{lease.kind}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_FENCING_LABEL}</DescriptionTerm>
-              <DescriptionDetails mono>{COUNT_FORMAT.format(lease.fencing_token)}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_EXPIRES_LABEL}</DescriptionTerm>
-              <DescriptionDetails>
-                <Time value={new Date(lease.lease_expires_at)} format="relative" />
-              </DescriptionDetails>
-              <DescriptionTerm>{REVIEW_PROVIDER_LABEL}</DescriptionTerm>
-              <DescriptionDetails>{lease.provider}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_MODEL_LABEL}</DescriptionTerm>
-              <DescriptionDetails mono>{lease.model}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_POSTURE_LABEL}</DescriptionTerm>
-              <DescriptionDetails>{lease.posture}</DescriptionDetails>
-              <DescriptionTerm>{REVIEW_TOKENS_LABEL}</DescriptionTerm>
-              <DescriptionDetails>
-                {COUNT_FORMAT.format(lease.metered_input_tokens)} in{METER_SEPARATOR}
-                {COUNT_FORMAT.format(lease.metered_cached_tokens)} cached{METER_SEPARATOR}
-                {COUNT_FORMAT.format(lease.metered_output_tokens)} out
-              </DescriptionDetails>
-              <DescriptionTerm>{REVIEW_EVENT_LABEL}</DescriptionTerm>
-              <DescriptionDetails mono className="break-all">
-                {lease.event_id}
-                {lease.fleet_name !== null ? (
-                  <>
-                    {" "}
-                    <Link
-                      className="whitespace-nowrap text-pulse no-underline"
-                      href={workspacePath(lease.workspace_id, `fleets/${lease.fleet_id}`)}
-                    >
-                      {OPEN_FLEET_LABEL} →
-                    </Link>
-                  </>
-                ) : null}
-              </DescriptionDetails>
+              <LeaseFact label={REVIEW_OUTCOME_LABEL}><OutcomeSummary lease={lease} /></LeaseFact>
+              <LeaseFact label={REVIEW_PROVIDER_LABEL}>{providerLabel(lease.provider)}</LeaseFact>
+              <LeaseFact label={REVIEW_MODEL_LABEL}><span title={lease.model}>{modelLabel(lease.model)}</span></LeaseFact>
+              <LeaseFact label={REVIEW_EXPIRES_LABEL}><Time value={new Date(lease.lease_expires_at)} format="relative" /></LeaseFact>
             </DescriptionList>
+            {lease.fleet_name !== null ? <Button asChild variant="outline" className="w-full sm:w-auto">
+              <Link href={workspacePath(lease.workspace_id, `fleets/${lease.fleet_id}`)}>{OPEN_FLEET_LABEL} →</Link>
+            </Button> : null}
+            <LeaseDiagnostics lease={lease} />
           </>
         ) : null}
       </DialogContent>

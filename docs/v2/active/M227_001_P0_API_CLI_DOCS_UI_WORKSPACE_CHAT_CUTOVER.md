@@ -29,7 +29,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Canonical architecture:** docs/architecture/high_level.md#fleet-authoring-and-runtime; exact route/type authority is docs/architecture/api_resources.md
 ## Overview
 
-Goal: `test_private_draft_save_runtime_and_improve` proves an authorized person can privately author, review, Save one resumable fleet, receive runtime results, and apply an improvement without duplicate creation, leaked private text, or hidden access changes. The target has17 new person routes,7 changed,2 removed; one tagged runner claim plus 4 authoring machine routes. One typed setup authority preserves existing policy while every budget reader moves to integer nanos.
+Goal: `test_private_draft_save_runtime_and_improve` proves an authorized person can privately author, review, Save one resumable fleet, receive runtime results, and apply an improvement without duplicate creation, leaked private text, or hidden access changes. The target has17 new person routes,7 changed,2 removed; one tagged runner claim plus 4 authoring machine routes. The [development acceptance follow-up](../../reviews/dev-acceptance-followup.md) records the current authorized corrections and proof requirements. One typed setup authority preserves existing policy while every budget reader moves to integer nanos.
 
 ## PR Intent & comprehension handshake
 

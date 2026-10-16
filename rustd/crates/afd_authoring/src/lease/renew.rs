@@ -65,7 +65,8 @@ impl Drafts {
             expires_at: until,
             stop_requested: false,
             remaining_output_tokens: u64::try_from(
-                budget::OUTPUT_PER_TURN - guarded.attempt.output_tokens,
+                budget::output_limit(&guarded.attempt.model_snapshot)
+                    - guarded.attempt.output_tokens,
             )
             .map_err(|_negative| ErrorKind::Token)?,
             model_access_expires_at: until,

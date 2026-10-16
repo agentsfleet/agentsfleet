@@ -3,7 +3,7 @@
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
 import { useCallback, useEffect, useState } from "react";
-import { Button, List, ListItem, Spinner, UnavailableState } from "@agentsfleet/design-system";
+import { Button, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
@@ -54,19 +54,31 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
     return () => controller.abort();
   }, [workspace, selected, revision, attempt, inspectionAttempt, selectionFailed]);
   return <div className="space-y-lg">
-    <div className="flex gap-sm"><Button variant={owned ? "outline" : "secondary"} onClick={() => { setOwned(false); setCursor(null); setSelected(null); }}>All recipes</Button>
-      <Button variant={owned ? "secondary" : "outline"} onClick={() => { setOwned(true); setCursor(null); setSelected(null); }}>Workspace recipes</Button></div>
+    <LibraryScope owned={owned} onChange={(value) => { setOwned(value); setCursor(null); setSelected(null); }} />
     {error ? <UnavailableState title={LIBRARY_UNAVAILABLE_TITLE} description={error}
       actions={<Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>Retry Library</Button>} /> : null}
-    {!page && !error ? <Spinner label="Loading recipes" /> : null}
+    {!page && !error ? <Spinner label="Loading published setups" /> : null}
     <LibraryChoices page={page} workspace={workspace} owned={owned} onRemoved={() => { setSelected(null); setCursor(null); setAttempt((value) => value + 1); }}
       onInspect={(card) => { setEntry(null); setSelected(card); setRevision(undefined); setError(null); setInspectionAttempt((value) => value + 1); }} />
-    {!error && page && !page.items.length ? <p className="text-sm text-muted-foreground">No recipes on this page. Create one in chat and publish it explicitly.</p> : null}
+    {!error && page && !page.items.length ? <LibraryEmpty paged={!!(cursor || page.next_cursor)} owned={owned} /> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
     {selected ? <LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
     {entry ? <LibraryInspection entry={entry} onUse={() => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}); }} /> : null}
   </div>;
+}
+
+function LibraryScope({owned, onChange}: {owned: boolean; onChange: (owned: boolean) => void}) {
+  return <Tabs value={owned ? "workspace" : "all"} onValueChange={(value) => onChange(value === "workspace")}>
+    <TabsList aria-label="Fleet library scope"><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="workspace">This workspace</TabsTrigger></TabsList>
+  </Tabs>;
+}
+
+function LibraryEmpty({paged, owned}: {paged: boolean; owned: boolean}) {
+  const copy = paged ? "No published setups on this page. Check the next page or return to All."
+    : owned ? "No setups have been published by this workspace. Create a setup in chat, review it, then publish it to the Fleet library."
+    : "No published setups are available yet. Create a setup in chat, review it, then publish it to the Fleet library.";
+  return <p className="text-sm text-muted-foreground">{copy}</p>;
 }
 
 function LibraryChoices({page, workspace, owned, onRemoved, onInspect}: {page: Page | null; workspace: string; owned: boolean; onRemoved: () => void; onInspect: (card: LibraryCard) => void}) {

@@ -196,6 +196,9 @@ pub struct ExecutionPolicy<'a> {
     /// Inference provider name.
     #[serde(borrow)]
     pub provider: Cow<'a, str>,
+    /// Saved model inference settings, required for runtime provider connections.
+    #[serde(default)]
+    pub inference: Option<crate::inference::ModelInference>,
     /// Provider credential for this run. Secret — never logged, never echoed.
     #[serde(borrow)]
     pub api_key: Cow<'a, str>,

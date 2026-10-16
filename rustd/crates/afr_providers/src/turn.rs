@@ -12,9 +12,8 @@
 //! (`ironclaw_llm/src/retry.rs`). Once text or a call has gone out live, a
 //! failure ends the turn: a second pass would show it twice.
 //!
-//! A call whose arguments are not JSON ends rig's stream. It goes out with the
-//! text the model wrote, so the tool refuses it with a reason the model reads
-//! and the run goes on, and the turn ends on what arrived before it.
+//! A malformed call goes out with its raw argument text, so the tool refuses
+//! it with a reason the model reads. Other calls and usage still arrive.
 
 use std::fmt;
 use std::ops::ControlFlow;
@@ -34,9 +33,9 @@ use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 
 use crate::error::{Error, Result, raise};
 use crate::provider::{Call, Chunk, End, Provider, Replay, Request, Usage};
-use crate::registry::Wire;
 use crate::request;
 use crate::retry::ATTEMPTS;
+use afd_wire::inference::ModelInference;
 
 /// The log line a turn opened again writes.
 const EVENT_REOPENED: &str = "provider_turn_reopened";
@@ -46,7 +45,8 @@ const UNNAMED_CALL: &str = "call_";
 /// One lease's provider: a rig model and the wire it speaks.
 pub(crate) struct Turns {
     model: DynModel<Completion>,
-    wire: Wire,
+    settings: ModelInference,
+    context_tokens: u32,
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
@@ -56,7 +56,7 @@ pub(crate) struct Turns {
 impl fmt::Debug for Turns {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Turns")
-            .field("wire", &self.wire)
+            .field("wire", &self.settings.api)
             .field("lease_id", &self.lease_id)
             .finish_non_exhaustive()
     }
@@ -64,16 +64,18 @@ impl fmt::Debug for Turns {
 
 impl Turns {
     /// Lease `lease_id`'s provider, `provider` as the policy spells it,
-    /// speaking `wire` through `model`.
+    /// using the selected model's persisted inference and context settings.
     pub(crate) fn new(
         model: DynModel<Completion>,
-        wire: Wire,
+        settings: &ModelInference,
+        context_tokens: u32,
         lease_id: &str,
         provider: &str,
     ) -> Self {
         Self {
             model,
-            wire,
+            settings: settings.clone(),
+            context_tokens,
             lease_id: lease_id.into(),
             provider: provider.into(),
             unnamed: AtomicU64::new(0),
@@ -112,7 +114,12 @@ impl Turns {
     /// # Errors
     /// The conversation cannot be sent, or rig could not start the reply.
     fn open(&self, request: &Request<'_>) -> Result<CompletionStream> {
-        let built = request::request(self.wire, request)?;
+        let built = request::request(self.settings.api, request)?;
+        let route = afd_inference::Configured::new(&self.settings, self.context_tokens)
+            .map_err(raise::configuration)?;
+        let built = route
+            .bound_output(request.model, built)
+            .map_err(raise::configuration)?;
         self.model
             .stream(built)
             .map_err(|failure| self.failed(failure))
@@ -137,7 +144,7 @@ impl Provider for Turns {
     }
 
     fn accepts_images(&self) -> bool {
-        self.wire.carries_images()
+        self.settings.api.carries_images()
     }
 }
 
@@ -212,12 +219,6 @@ impl Reading {
                 None => Step::Continue(Pass::Reading(self)),
             },
             Some(Ok(Item::Unknown(_))) => Step::Continue(Pass::Reading(self)),
-            Some(Err(ProviderError::MalformedToolInput(input))) => {
-                let raw = serde_json::Value::String(input.raw);
-                let call = turns.call(&input.id, input.name, raw);
-                let rest = ending(self.stream.partial());
-                Step::Break((Ok(Chunk::Call(call)), Pass::Ending(rest)))
-            }
             Some(Err(failure)) if !self.shown && self.attempt < ATTEMPTS && reopens(&failure) => {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
@@ -250,7 +251,10 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
             Some(Chunk::Call(turns.call(
                 &call.id,
                 name,
-                call.function.arguments,
+                call.function.invalid_arguments.map_or_else(
+                    || serde_json::Value::Object(call.function.arguments),
+                    serde_json::Value::String,
+                ),
             )))
         }
         StreamEvent::Start { .. } | StreamEvent::Arguments { .. } | StreamEvent::End { .. } => None,
@@ -270,6 +274,8 @@ fn reopens(failure: &ProviderError) -> bool {
 
 /// The chunks a finished turn ends on: what it spent, then its end.
 fn ending(response: CompletionResponse) -> Ending {
+    let cut = response.finish_reason() == Some(FinishReason::Length);
+    let replay = Replay(response.head().with_content(response.choice));
     let usage = response.usage;
     // rig counts cache reads inside `input_tokens` on every wire; the daemon
     // bills `input` and `cached_input` as two disjoint counts, so the reads
@@ -281,14 +287,6 @@ fn ending(response: CompletionResponse) -> Ending {
         cache_written: usage.cache_creation_input_tokens.unwrap_or(0),
         output: usage.output_tokens.unwrap_or(0),
     };
-    let cut = response.finish_reason() == Some(FinishReason::Length);
-    let reasoning = response
-        .choice
-        .into_iter()
-        .filter(|content| matches!(content, AssistantContent::Reasoning(_)));
-    let end = End {
-        replay: Replay(reasoning.collect()),
-        cut,
-    };
+    let end = End { replay, cut };
     [Chunk::Usage(spent), Chunk::End(end)].into_iter()
 }

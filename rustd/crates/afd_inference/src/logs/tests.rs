@@ -26,8 +26,10 @@ fn should_keep_rigs_warnings_and_drop_its_traces_at_any_level() {
 fn should_silence_the_warning_that_repeats_a_providers_message() {
     let filter = log_filter(LevelFilter::TRACE);
 
-    assert!(!filter.would_enable(QUOTES_THE_PROVIDER, &Level::WARN));
-    assert!(!filter.would_enable(QUOTES_THE_PROVIDER, &Level::ERROR));
+    for target in QUOTES_THE_PROVIDER {
+        assert!(!filter.would_enable(target, &Level::WARN));
+        assert!(!filter.would_enable(target, &Level::ERROR));
+    }
 }
 
 #[test]

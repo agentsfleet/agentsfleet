@@ -5,6 +5,8 @@ mod bounds;
 mod fixture;
 mod late_results;
 mod provider_failures;
+mod reasoning;
+mod reasoning_safety;
 mod recovery;
 mod renewal;
 mod replay;
