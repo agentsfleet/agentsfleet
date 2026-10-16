@@ -24,6 +24,7 @@ const SECRET: &str = "sk-live-CANARY-must-never-appear-in-a-log";
 
 fn policy() -> ExecutionPolicy<'static> {
     ExecutionPolicy {
+        inference: None,
         network_policy: NetworkPolicy {
             allow: vec![],
             read_only: true,

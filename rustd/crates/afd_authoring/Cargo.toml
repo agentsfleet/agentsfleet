@@ -14,6 +14,7 @@ categories.workspace = true
 
 [dependencies]
 afd_core.workspace = true
+afd_inference.workspace = true
 afd_billing.workspace = true
 afd_identity.workspace = true
 afd_crypto.workspace = true
@@ -40,10 +41,12 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 reqwest.workspace = true
+rig-core.workspace = true
+http.workspace = true
+futures-util.workspace = true
 subtle.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tiktoken-rs.workspace = true
 tokio = { workspace = true, features = ["net", "time"] }
 tracing.workspace = true
 

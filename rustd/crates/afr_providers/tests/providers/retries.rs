@@ -108,7 +108,18 @@ async fn a_send_that_cannot_connect_is_retried_as_transport() {
     let wire = Wire::Messages;
     let mut fake = Fake::serve(Vec::new()).await;
     // Nothing listens on port 1, so every send is refused before it is sent.
-    fake.base = "http://127.0.0.1:1".to_owned();
+    fake.base = "https://fake.provider.test:1".to_owned();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "fixture pins a public-shaped name to a closed local port to inject a transport refusal"
+    )]
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .resolve("fake.provider.test", "127.0.0.1:1".parse().unwrap())
+        .retry(reqwest::retry::never())
+        .build()
+        .unwrap();
+    fake.client = client;
     let provider = wire.provider();
     let leased = lease(&provider, &[], "hello");
     let (tally, recorded) = Tally::new();

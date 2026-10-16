@@ -12,13 +12,13 @@ test.describe("Footer navigation", () => {
     );
   });
 
-  test("footer sign-in matches the app destination", async ({ page }) => {
+  test("footer access link matches the waitlist destination", async ({ page }) => {
     await page.goto("/agents");
     const header = page.getByTestId("header-install-cta");
-    await expect(header).toHaveText("Sign in ↗");
+    await expect(header).toHaveText("Join waitlist ↗");
     const href = await header.getAttribute("href");
-    expect(href).toMatch(/\/sign-in$/);
-    await expect(page.getByRole("contentinfo").getByRole("link", { name: "sign in", exact: true })).toHaveAttribute("href", href!);
+    expect(href).toMatch(/\/waitlist$/);
+    await expect(page.getByRole("contentinfo").getByRole("link", { name: "join waitlist", exact: true })).toHaveAttribute("href", href!);
   });
 
   test("footer use cases link opens the example conversation", async ({ page }) => {

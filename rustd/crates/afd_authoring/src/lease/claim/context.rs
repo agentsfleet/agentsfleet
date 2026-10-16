@@ -11,7 +11,7 @@ use crate::{
         ErrorKind,
         raise::{query, stored},
     },
-    model::budget,
+    model::{self, budget},
     types::Candidate,
 };
 
@@ -77,13 +77,10 @@ fn fits(context: &Context, model: &RegisteredModel) -> Result<()> {
     {
         return Err(ErrorKind::Token.into());
     }
-    let encoding = tiktoken_rs::bpe_for_model(&model.model).map_err(|_missing| ErrorKind::Model)?;
-    let tokens = i64::try_from(encoding.encode_ordinary(&text).len())
+    let tokens = i64::try_from(model::input_tokens(&model.model, &text))
         .map_err(|_overflow| ErrorKind::Token)?;
     let framed = tokens + FIXED_INPUT_TOKENS;
-    if framed > budget::INPUT_PER_CALL
-        || framed + budget::OUTPUT_PER_TURN > i64::from(model.context_window_tokens)
-    {
+    if framed > budget::INPUT_PER_CALL || framed >= i64::from(model.context_window_tokens) {
         return Err(ErrorKind::Token.into());
     }
     Ok(())

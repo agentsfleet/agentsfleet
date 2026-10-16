@@ -26,9 +26,9 @@ WITH expired AS (SELECT id FROM fleet.authoring_dispatches
 WHERE private_expires_at<=",
     afd_db::statement::NOW_MS,
     "
-AND result IS NOT NULL
+AND (result IS NOT NULL OR native_reply IS NOT NULL)
 ORDER BY private_expires_at,id LIMIT $1 FOR UPDATE SKIP LOCKED)
-UPDATE fleet.authoring_dispatches d SET result=NULL
+UPDATE fleet.authoring_dispatches d SET result=NULL,native_reply=NULL
 FROM expired WHERE d.id=expired.id",
 );
 

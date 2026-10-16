@@ -9,7 +9,7 @@ use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "purge private draft text";
 const WIPE_DISPATCHES: &str = "\
-UPDATE fleet.authoring_dispatches SET result = NULL,
+UPDATE fleet.authoring_dispatches SET result = NULL, native_reply = NULL,
 private_expires_at = $2, updated_at = $2
 WHERE attempt_id IN (SELECT id FROM fleet.authoring_attempts WHERE draft_id = $1::uuid)";
 

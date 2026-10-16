@@ -1,20 +1,22 @@
 //! Priced-model catalogue HTTP adapters.
 
+mod input;
+
+use input::{create_request, rates_request};
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_admin::{CreateModel, DeleteModel, Model, ModelInput};
+#[cfg(feature = "openapi")]
+use afd_api_wire::admin::{AdminModelCreate, AdminModelPatch};
 use afd_api_wire::admin::{
-    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
-    ModelRates,
+    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse, ModelRates,
 };
 use afd_core::error_code;
-use afd_validate::Sentences;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
-use garde::Validate as _;
 use http::StatusCode;
 
 use crate::auth::PersonIdentity;
@@ -22,21 +24,6 @@ use crate::handler::{parse_id, refuse, reject};
 use crate::request_id::RequestId;
 use crate::services::Services;
 
-const DETAIL_BODY_REQUIRED: &str = "Request body required";
-const DETAIL_MALFORMED_JSON: &str = "Malformed JSON";
-/// The path `garde` reports a provider-length break under.
-const FIELD_PROVIDER: &str = "provider";
-/// The path a model-identity break is reported under.
-const FIELD_MODEL_ID: &str = "model_id";
-/// The path a context-ceiling break is reported under.
-const FIELD_CONTEXT_CAP: &str = "context_cap_tokens";
-/// The same break from the create, where the rates nest under `rates`.
-const FIELD_RATES_CONTEXT_CAP: &str = "rates.context_cap_tokens";
-
-const DETAIL_PROVIDER_LEN: &str = "provider must be 1–64 chars";
-const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–256 chars";
-const DETAIL_CAP_POSITIVE: &str = "context_cap_tokens must be > 0";
-const DETAIL_RATES_NONNEGATIVE: &str = "rates (input/cached/output nanos_per_mtok) must be >= 0";
 const DETAIL_ID: &str = "id must be a canonical UUIDv7";
 const DETAIL_NOT_FOUND: &str = "No catalogue model matches this id";
 const DETAIL_DUPLICATE: &str = "A catalogue row for this provider and model already exists";
@@ -76,7 +63,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     }
 }
 
-/// Creates one immutable provider/model identity with mutable rates.
+/// Creates one provider/model identity with mutable inference settings and rates.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/admin/models",
@@ -114,7 +101,8 @@ pub(crate) async fn create<D: Services>(
         request.provider.into_owned(),
         request.model_id.into_owned(),
         store_rates(request.rates),
-    );
+    )
+    .with_inference(request.inference);
     match services.models().create(&input, services.now()).await {
         Ok(CreateModel::Created(model)) => {
             let actor_id = identity.subject();
@@ -134,19 +122,19 @@ pub(crate) async fn create<D: Services>(
     }
 }
 
-/// Replaces one row's mutable context cap and rates.
+/// Updates mutable inference settings, context and rates.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/v1/admin/models/{id}",
     tag = afd_http::openapi::tag::ADMIN,
     operation_id = "update_admin_model",
-    summary = "Update a catalogue row's caps and rates",
+    summary = "Update model settings and rates",
     description = concat!(
-        "Rates-only change; `provider` and `model_id` are the row identity ",
+        "Updates rates and optional inference settings; `provider` and `model_id` are the row identity ",
         "and are immutable on this endpoint. The rate cache is repopulated on ",
         "success. Requires the `model:admin` scope. ",
     ),
-    request_body = ModelRates,
+    request_body = AdminModelPatch,
     params(
         afd_http::openapi::path::Id,
     ),
@@ -171,11 +159,20 @@ pub(crate) async fn update<D: Services>(
         Ok(id) => id,
         Err(refused) => return refused.into_response(),
     };
-    let rates = match rates_request(&body) {
-        Ok(rates) => rates,
+    let request = match rates_request(&body) {
+        Ok(request) => request,
         Err(detail) => return reject(error_code::INVALID_REQUEST, detail),
     };
-    match services.models().update(&id, rates, services.now()).await {
+    match services
+        .models()
+        .update(
+            &id,
+            store_rates(request.rates),
+            request.inference.as_ref(),
+            services.now(),
+        )
+        .await
+    {
         Ok(true) => {
             let actor_id = identity.subject();
             let model_id = id.as_str();
@@ -239,44 +236,6 @@ pub(crate) async fn delete<D: Services>(
     }
 }
 
-fn create_request(body: &[u8]) -> Result<AdminModelCreate<'_>, &'static str> {
-    if body.is_empty() {
-        return Err(DETAIL_BODY_REQUIRED);
-    }
-    let request = afd_http::handler::read_body::<AdminModelCreate<'_>>(body)
-        .map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    request.validate().map_err(|report| BOUNDS.pick(&report))?;
-    Ok(request)
-}
-
-fn rates_request(body: &[u8]) -> Result<afd_admin::ModelRates, &'static str> {
-    if body.is_empty() {
-        return Err(DETAIL_BODY_REQUIRED);
-    }
-    let rates =
-        afd_http::handler::read_body::<ModelRates>(body).map_err(|_error| DETAIL_MALFORMED_JSON)?;
-    rates.validate().map_err(|report| BOUNDS.pick(&report))?;
-    Ok(store_rates(rates))
-}
-
-/// The sentence a caller is told, keyed by the path of the bound their body
-/// broke.
-///
-/// The wording is a public commitment the dashboard renders, so the bound
-/// lives on the type and only the sentence stays here. The rates ride
-/// FLATTENED on the wire but nested in the create type, so `dive` reports the
-/// ceiling as `rates.context_cap_tokens` there and `context_cap_tokens` from
-/// the rates-only verb; both spellings are listed. Every other path is a rate.
-const BOUNDS: Sentences = Sentences::new(
-    &[
-        (FIELD_PROVIDER, DETAIL_PROVIDER_LEN),
-        (FIELD_MODEL_ID, DETAIL_MODEL_ID_LEN),
-        (FIELD_CONTEXT_CAP, DETAIL_CAP_POSITIVE),
-        (FIELD_RATES_CONTEXT_CAP, DETAIL_CAP_POSITIVE),
-    ],
-    DETAIL_RATES_NONNEGATIVE,
-);
-
 fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
     afd_admin::ModelRates::new(
         rates.context_cap_tokens,
@@ -289,6 +248,7 @@ fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
 fn item(model: &Model) -> AdminModelItem<'static> {
     let rates = model.rates();
     AdminModelItem {
+        inference: model.inference().cloned(),
         id: Cow::Owned(model.id().to_string()),
         provider: Cow::Owned(model.provider().to_owned()),
         model_id: Cow::Owned(model.model_id().to_owned()),
@@ -303,30 +263,4 @@ fn item(model: &Model) -> AdminModelItem<'static> {
 
 fn request_id() -> Cow<'static, str> {
     Cow::Owned(RequestId::mint().to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const VALID: &[u8] = br#"{"provider":"anthropic","model_id":"claude-opus-5","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
-
-    #[test]
-    fn create_validation_pins_every_bound() {
-        assert_eq!(create_request(VALID).map(|_request| ()), Ok(()));
-        assert_eq!(create_request(b""), Err(DETAIL_BODY_REQUIRED));
-        assert_eq!(create_request(b"[]"), Err(DETAIL_MALFORMED_JSON));
-        assert_eq!(
-            create_request(br#"{"provider":"","model_id":"x","context_cap_tokens":1,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#),
-            Err(DETAIL_PROVIDER_LEN)
-        );
-        assert_eq!(
-            create_request(br#"{"provider":"x","model_id":"x","context_cap_tokens":0,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#),
-            Err(DETAIL_CAP_POSITIVE)
-        );
-        assert_eq!(
-            create_request(br#"{"provider":"x","model_id":"x","context_cap_tokens":1,"input_nanos_per_mtok":-1,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#),
-            Err(DETAIL_RATES_NONNEGATIVE)
-        );
-    }
 }

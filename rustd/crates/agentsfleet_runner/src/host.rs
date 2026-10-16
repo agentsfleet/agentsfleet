@@ -142,9 +142,7 @@ impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
 /// The failure, already logged, as the exit status.
 pub(crate) fn agent() -> Result<afr_agent::Loop, ExitCode> {
     let network = afr_egress::Network::new().or_exit()?;
-    let connector = afr_providers::Registry::builtin()
-        .and_then(afr_providers::Connector::new)
-        .or_exit()?;
+    let connector = afr_providers::Connector::new().or_exit()?;
     Ok(afr_agent::Loop::new(
         afr_tools::Catalog::hosted(Arc::new(network)),
         connector,

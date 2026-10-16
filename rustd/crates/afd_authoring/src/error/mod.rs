@@ -66,7 +66,17 @@ pub(crate) enum ErrorKind {
     Provider,
     #[error("the provider obligation remains unresolved")]
     Unknown,
-    #[error("the fixed authoring transport could not complete")]
+    #[error("the configured model settings are invalid")]
+    Inference {
+        #[source]
+        source: afd_inference::Error,
+    },
+    #[error("the model SDK could not complete the dispatch")]
+    Sdk {
+        #[source]
+        source: rig_core::ProviderError,
+    },
+    #[error("the authoring transport could not complete")]
     Transport {
         #[from]
         source: reqwest::Error,
@@ -134,6 +144,8 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_core::error::Error => Identifier,
     garde::Report => Validation,
     reqwest::Error => Transport,
+    afd_inference::Error => Inference,
+    rig_core::ProviderError => Sdk,
     afd_runner::Error => Runner,
     afd_admission::Error => Admission,
     afd_approval::Error => Approval,
@@ -156,11 +168,13 @@ impl Error {
             ErrorKind::Replay => error_code::AUTHORING_REPLAY,
             ErrorKind::Review { .. } => error_code::AUTHORING_REVIEW,
             ErrorKind::Gone => error_code::AUTHORING_GONE,
-            ErrorKind::Model => error_code::AUTHORING_MODEL,
+            ErrorKind::Model | ErrorKind::Inference { .. } => error_code::AUTHORING_MODEL,
             ErrorKind::Balance => error_code::AUTHORING_BALANCE,
             ErrorKind::Token => error_code::AUTHORING_TOKEN,
             ErrorKind::Provider => error_code::AUTHORING_PROVIDER,
-            ErrorKind::Unknown | ErrorKind::Transport { .. } => error_code::AUTHORING_UNKNOWN,
+            ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
+                error_code::AUTHORING_UNKNOWN
+            }
             ErrorKind::RolledBack { .. } => error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
             ErrorKind::Cursor => error_code::AUTHORING_CURSOR,
             ErrorKind::Validation { .. }
@@ -219,9 +233,11 @@ impl Error {
             ErrorKind::Replay => Some("accepted"),
             ErrorKind::Review { .. } | ErrorKind::Policy => Some("review_required"),
             ErrorKind::NameExists => Some("name_exists"),
-            ErrorKind::Model => Some("unavailable"),
+            ErrorKind::Model | ErrorKind::Inference { .. } => Some("unavailable"),
             ErrorKind::Fence => Some("fenced"),
-            ErrorKind::Unknown | ErrorKind::Transport { .. } => Some("awaiting_accounting"),
+            ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
+                Some("awaiting_accounting")
+            }
             _ => None,
         }
     }

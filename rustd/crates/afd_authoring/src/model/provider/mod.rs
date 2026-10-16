@@ -1,13 +1,17 @@
-//! One fixed daemon-owned transport; the seam is the physical provider request.
+//! Daemon-owned credentials and a single physical send through the selected model API.
 
+mod dispatch;
 mod network;
 mod prompt;
 mod request;
 mod resolver;
 mod response;
 
+#[cfg(test)]
+mod tests;
+
 use crate::Result;
-use afd_crypto::secret::SecretString;
+pub(in crate::model) use dispatch::{Outbound, complete};
 
 pub use network::Network;
 
@@ -16,30 +20,22 @@ pub use network::Network;
 /// One spelling for the request builder, the tool schema and the decoder, so an
 /// item the daemon sends is recognised by the same name when it comes back.
 const KEY_TYPE: &str = "type";
-/// See [`KEY_TYPE`].
-const KEY_CONTENT: &str = "content";
-/// See [`KEY_TYPE`].
-const KEY_CALL_ID: &str = "call_id";
-/// See [`KEY_TYPE`].
-const KIND_FUNCTION_CALL: &str = "function_call";
 /// The single argument the proposal tool takes: the proposal as one JSON text.
 const PROPOSAL_ARGUMENT: &str = "proposal_json";
-pub(super) use prompt::{SYSTEM, tool};
 pub(super) use request::body;
 pub(super) use response::{Decoded, decode};
 
 /// A request assembled by the daemon after authorization and durable intent.
 pub struct ProviderRequest {
-    pub(super) key: SecretString,
-    pub(super) body: Vec<u8>,
+    pub(super) request: http::Request<Vec<u8>>,
     pub(super) timeout_ms: u64,
 }
 
 impl ProviderRequest {
-    /// Fixed provider JSON; contains private context and must never be logged.
+    /// SDK-encoded provider JSON; contains private context and must never be logged.
     #[must_use]
     pub fn body(&self) -> &[u8] {
-        &self.body
+        self.request.body()
     }
 }
 
@@ -67,7 +63,7 @@ impl std::fmt::Debug for ProviderResponse {
     }
 }
 
-/// Sends once. SDK retries, redirects and destination overrides are forbidden.
+/// Sends once. Retries and redirects are forbidden; the destination comes from the persisted model.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + std::fmt::Debug {
     /// Performs one physical request and returns its bounded response.

@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use afd_wire::inference::ModelInference;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -165,6 +166,25 @@ pub struct AdminModelCreate<'a> {
     #[serde(flatten)]
     #[garde(dive)]
     pub rates: ModelRates,
+    /// Explicit inference settings; omitted rows remain unavailable for inference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub inference: Option<ModelInference>,
+}
+
+/// Mutable model rates and optional replacement inference settings.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct AdminModelPatch {
+    /// Existing rate fields remain flattened on the wire.
+    #[serde(flatten)]
+    #[garde(dive)]
+    pub rates: ModelRates,
+    /// Omission preserves the current inference settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub inference: Option<ModelInference>,
 }
 
 /// One priced model row in the admin list.
@@ -184,6 +204,9 @@ pub struct AdminModelItem<'a> {
     /// Rates and context cap flattened on the existing wire.
     #[serde(flatten)]
     pub rates: ModelRates,
+    /// Non-secret settings used by setup chat and runtime leases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inference: Option<ModelInference>,
 }
 
 /// `GET /v1/admin/models` response.

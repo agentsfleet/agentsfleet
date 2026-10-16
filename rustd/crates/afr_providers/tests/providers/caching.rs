@@ -5,9 +5,7 @@
 use std::collections::HashMap;
 
 use afd_wire::lease::Turn;
-use afr_providers::{
-    Chunk, Connect as _, Connector, Message, ProviderSpec, Registry, Request, ToolSpec,
-};
+use afr_providers::{Chunk, Connect, Message, Request, ToolSpec};
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::StreamExt as _;
 use serde_json::value::RawValue;
@@ -64,7 +62,7 @@ async fn sent(wire: Wire) -> Value {
 
 /// Every chunk of one turn asking [`ASKED`] and offering one tool, sent to
 /// `provider` through `connector`.
-async fn turn(connector: &Connector, provider: &str) -> Vec<afr_providers::Result<Chunk>> {
+async fn turn(connector: &impl Connect, provider: &str) -> Vec<afr_providers::Result<Chunk>> {
     let leased = lease(provider, &[], ASKED);
     let provider = connector.connect(&leased).unwrap();
     let parameters = json!({ "type": "object", "properties": {} });
@@ -87,15 +85,8 @@ async fn turn(connector: &Connector, provider: &str) -> Vec<afr_providers::Resul
 
 /// A connector whose one route is a chat route at `fake` speaking
 /// `OpenRouter`'s dialect.
-fn openrouter(fake: &Fake) -> Connector {
-    let spec = ProviderSpec {
-        name: OPENROUTER.to_owned(),
-        aliases: Vec::new(),
-        wire: afr_providers::Wire::Chat,
-        base_url: format!("{}/v1", fake.base),
-        dialect: Some(OPENROUTER.to_owned()),
-    };
-    Connector::new(Registry::new([spec]).unwrap()).unwrap()
+fn openrouter(fake: &Fake) -> super::support::FixtureConnector {
+    super::support::FixtureConnector::new(fake, Some(OPENROUTER.to_owned()))
 }
 
 /// A Messages request marks its last tool and its system prompt, keeps the

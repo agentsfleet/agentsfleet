@@ -1,0 +1,18 @@
+# Development acceptance follow-up
+
+The current follow-up is `fix/754-dev-acceptance-app`, based on `bb164c8557d1060b92975595256b4d2ae9d2237a`. Indy authorized a fresh worktree from current main, application/acceptance fixes, a separate documentation worktree, review, merge after green checks, and matching development deployment verification.
+
+Track acceptance execution in #754, configured models in #767, dashboard/navigation/library/mobile defects in #768, website/docs waitlist in #764, and active schedule retry in #761. Broader Rust coverage remains #763. Investigate #656 only if current request-burst failures reproduce.
+
+Saved model endpoint, API format, context and output limits are authoritative. Only credentialed owner registrations and the enabled platform default are eligible. Upgrade rig-core to 0.44, delete the temporary provider JSON routing file and its readers, preserve credentials outside the sandbox, and retain native reasoning privately across tool continuations. Existing unconfigured model rows remain unconfigured until explicitly edited; no dropped library tables or old fleet formats return.
+
+Additional authorized files for these corrections:
+
+| Files | Action | Purpose |
+|---|---|---|
+| `.github/workflows/deploy-dev*.yml`; `.github/actions/acceptance-inputs/`; `scripts/{acceptance-artifacts,build-component,build-acceptance,build-source,deploy-dev-dashboard,dev-dashboard,inspect-acceptance-build,observe-acceptance-runner}.ts`; `scripts/observe-dev-runner.sh`; `scripts/package.json`; `make/acceptance.mk`; `cli/test/`; root package/lock/ignore files | CREATE / EDIT | Genuine component receipts, deployment identity and acceptance artifact/process binding |
+| `schema/956_model_inference.sql`; `schema/957_authoring_native_reply.sql`; `rustd/{Cargo.toml,Cargo.lock}`; `rustd/crates/{afd_admin,afd_api_operator,afd_api_wire,afd_authoring,afd_credential,afd_db,afd_fleet_runtime,afd_gate,afd_inference,afd_wire,afr_agent,afr_egress,afr_providers,afr_supervisor,afr_telemetry,agentsfleet_runner,agentsfleetd}/`; relevant `afd_api` and `afd_fleet` regression fixtures | CREATE / EDIT / DELETE | Saved inference settings, exact credentials, dynamic output bounds, native replay, rig upgrade, numeric validation and removal of JSON routing |
+| `ui/packages/app/`; `ui/packages/website/`; `docs/architecture/{api_resources,billing_and_provider_keys,capabilities,runner_execution,runner_fleet}.md`; `docs/AUTH.md`; `public/openapi.json`; `VERSION`; version manifests | CREATE / EDIT / DELETE | Configured model controls, centered availability, visible selection, fleet/library navigation, lease details, mobile layout, waitlist links, matching schemas and corrected source links |
+| Separate docs branch: `quickstart.mdx`; `fleets/{authoring,library,model-providers}.mdx`; `changelog.mdx` | EDIT | Public waitlist navigation and current model/library behavior |
+
+Completion still requires actual execution of Dimensions 6.1, 6.2 and 7.2, current-head review/checks and matching deployment evidence. Rust changed lines and touched files must reach at least 99% coverage; changed TypeScript must reach 100%. Local public-page mobile tests do not prove every signed-in page on Brave Android. Keep this spec active until its required proof is complete; pushing a PR alone does not move it to done.

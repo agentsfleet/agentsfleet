@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, Label, Nav, Textarea } from "@agentsfleet/design-system";
-import { APP_SIGN_UP_URL } from "../config";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { EXAMPLE_ANCHOR, JOBS_ANCHOR, JOB_ID, REQUEST_MAX_LENGTH, type ExampleJob } from "../lib/example-jobs";
 import { HERO_HEADLINE } from "../lib/marketing-copy";
 import { JobSuggestions } from "./JobSuggestions";
@@ -28,7 +28,7 @@ export function JobComposer({ request, onRequest, job, onJob }: JobComposerProps
           <div className="composer-actions">
             <span>No tools connected</span>
             <Button asChild size="icon" className="composer-start">
-              <a href={APP_SIGN_UP_URL} aria-label="Create your first fleet" target="_blank" rel="noopener noreferrer"
+              <a href={PUBLIC_ACCESS_URL} aria-label="Join waitlist" target="_blank" rel="noopener noreferrer"
                 onClick={() => trackSignupStarted({ source: "composer_create_fleet", surface: "hero", mode: "humans" })}><span aria-hidden="true">↑</span></a>
             </Button>
           </div>
@@ -40,7 +40,7 @@ export function JobComposer({ request, onRequest, job, onJob }: JobComposerProps
           <Link to={`/#${EXAMPLE_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "composer_example", surface: "hero", target: job.id })}>{exampleLabel}</Link>
         </Button>
       </Nav>}
-      <p id={`${id}-privacy`} className="signup-continuity">Keep requests general. Sign-up opens in a new tab; your text stays here and is not sent to your account yet.</p>
+      <p id={`${id}-privacy`} className="signup-continuity">Keep requests general. The waitlist opens in a new tab; your text stays on this page.</p>
     </div>
   );
 }

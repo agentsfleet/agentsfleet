@@ -11,7 +11,6 @@ use crate::{
 };
 
 pub(crate) const INPUT_PER_CALL: i64 = 32_768;
-pub(crate) const OUTPUT_PER_TURN: i64 = 8_192;
 pub(crate) const MAX_CALLS: i64 = 8;
 pub(crate) const PROVIDER_TIMEOUT_MS: i64 = 30_000;
 pub(crate) const PRIVATE_TTL_MS: i64 = 86_400_000;
@@ -22,6 +21,13 @@ SELECT w.balance_nanos, count(a.id)::bigint, coalesce(max(a.reserved_nanos),0)::
 FROM billing.tenant_wallet w LEFT JOIN fleet.authoring_attempts a
 ON a.tenant_id=w.tenant_id AND (a.status IN ('active','awaiting_accounting') OR a.usage_unknown)
 WHERE w.tenant_id=$1::uuid GROUP BY w.balance_nanos";
+
+pub(crate) fn output_limit(model: &RegisteredModel) -> i64 {
+    model
+        .inference
+        .as_ref()
+        .map_or(0, |settings| i64::from(settings.max_output_tokens))
+}
 
 pub(crate) fn cost(model: &RegisteredModel, input: i64, output: i64) -> Result<i64> {
     ceil(input, model.input_nanos_per_million)?
@@ -39,7 +45,7 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
     let input = ceil(INPUT_PER_CALL, model.input_nanos_per_million)?
         .checked_mul(MAX_CALLS)
         .ok_or(ErrorKind::Balance)?;
-    let output = ceil(OUTPUT_PER_TURN, model.output_nanos_per_million)?
+    let output = ceil(output_limit(model), model.output_nanos_per_million)?
         .checked_add(MAX_CALLS - 1)
         .ok_or(ErrorKind::Balance)?;
     runtime

@@ -65,16 +65,10 @@ jobs:
   # Loads Clerk DEV credentials and runs the acceptance suite
   # (tests/e2e/acceptance/**). Failures gate the notify step.
   #
-  # `https://app-dev.agentsfleet.net` is the dev-facing dashboard — the
-  # `agentsfleet` Vercel project's Production env has
-  # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
-  # production-customer dashboard lives behind the `app.agentsfleet.net`
-  # custom domain via a separate project). Same URL that `qa` above
-  # uses for the unauthenticated smoke. The harness-side
-  # `NEXT_PUBLIC_API_URL` env below feeds the direct fixture-seeding
-  # fetch() calls (clerk-admin, bootstrap, api-client) — Next.js bakes
-  # `NEXT_PUBLIC_*` at build time, so this var doesn't steer the
-  # dashboard's API calls.
+  # deploy-dev-dashboard builds app-dev.agentsfleet.net with the development
+  # target and revision metadata. The downloaded receipts bind these tests
+  # to that deployment. NEXT_PUBLIC_API_URL below configures fixture calls;
+  # the dashboard's API destination was embedded during its build.
   acceptance-e2e:
     runs-on: ubuntu-latest
     # Hard release budget: the suite fails fast on a dead prerequisite (the
@@ -98,14 +92,15 @@ jobs:
           cache-prefix: playwright-app
           lock-file: bun.lock
 
-      - name: Build the CLI once for browser CLI journeys
-        # The CLI-driven journeys and the preflight artifact check consume
-        # cli/dist/bin/agentsfleet.js; without this build they fail on a
-        # missing module instead of proving anything about the product.
-        run: |
-          bun install --frozen-lockfile
-          bun run build
+      - name: Install command-line dependencies before credentials
+        run: bun install --frozen-lockfile
         working-directory: cli
+
+      - uses: ./.github/actions/acceptance-inputs
+        with:
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault-dev: ${{ vars.VAULT_DEV }}
+          vault-prod: ${{ vars.VAULT_PROD }}
 
       - name: Load Clerk DEV credentials from 1Password
         uses: 1password/load-secrets-action@v5
@@ -119,8 +114,7 @@ jobs:
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Run acceptance e2e against DEV
-        run: bun run test:e2e:acceptance
-        working-directory: ui/packages/app
+        run: make acceptance-e2e
         env:
           BASE_URL: https://app-dev.agentsfleet.net
           NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
@@ -144,6 +138,10 @@ jobs:
           path: |
             ui/packages/app/playwright-acceptance-results/
             ui/packages/app/playwright-acceptance-report/
+            .tmp/acceptance-build.json
+            .tmp/acceptance-runner-process.json
+            .tmp/acceptance-preflight.md
+          include-hidden-files: true
           retention-days: 7
 
   # ── agentsfleet CLI acceptance against api-dev ──────────────────────────
@@ -151,8 +149,8 @@ jobs:
   # deployed api-dev. Same posture: Clerk DEV credentials load AFTER
   # `bun install` (WS-E #C2 — postinstall sees no Clerk admin key). The
   # lifecycle-after-login spec uses Playwright Chromium to drive the
-  # dashboard's /cli-auth/{session_id} handoff page; skips automatically
-  # when AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL is unset.
+  # dashboard's /cli-auth/{session_id} handoff page. The dashboard URL and
+  # deployed build identity are required by the build-binding preflight.
   acceptance-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -165,6 +163,15 @@ jobs:
           cache-prefix: playwright-agentsfleet
           # cli/ is its own Bun project with its own lock.
           lock-file: cli/bun.lock
+
+      - name: Install build inspection dependencies before credentials
+        run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/acceptance-inputs
+        with:
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault-dev: ${{ vars.VAULT_DEV }}
+          vault-prod: ${{ vars.VAULT_PROD }}
 
       - name: Load Clerk DEV credentials from 1Password (AFTER install)
         uses: 1password/load-secrets-action@v5
@@ -183,8 +190,7 @@ jobs:
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Run CLI acceptance suite against api-dev
-        run: bun run test:acceptance
-        working-directory: cli
+        run: make acceptance-cli
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: worktree
@@ -207,7 +213,12 @@ jobs:
         if: always()
         with:
           name: acceptance-cli-${{ github.sha }}
-          path: cli/playwright-cli-report/
+          path: |
+            cli/playwright-cli-report/
+            .tmp/acceptance-build.json
+            .tmp/acceptance-runner-process.json
+            .tmp/acceptance-preflight.md
+          include-hidden-files: true
           retention-days: 7
 
   # Report each gate's result as workflow outputs — runs on every path

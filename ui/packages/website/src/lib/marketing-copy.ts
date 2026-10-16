@@ -21,7 +21,7 @@ export const HERO_LEDE_PARTS = {
   outro: `to explain what went wrong and, when a fix is warranted, prepare one. ${PILLAR_CONTROL}`,
 } as const;
 
-export const HERO_PRIMARY_LABEL = "Create your first fleet";
+export const HERO_PRIMARY_LABEL = "Join waitlist";
 export const HERO_SECONDARY_LABEL = "See how it works";
 export const HOW_IT_WORKS_ANCHOR_ID = "how-it-works";
 export const LOOP_ANCHOR_ID = HOW_IT_WORKS_ANCHOR_ID;

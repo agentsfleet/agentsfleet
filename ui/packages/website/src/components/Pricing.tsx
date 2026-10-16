@@ -1,5 +1,5 @@
 import { Button, Card, DisplayLG, Section, SectionLabel } from "@agentsfleet/design-system";
-import { APP_SIGN_UP_URL } from "../config";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { HERO_PRIMARY_LABEL, PRICING_COPY } from "../lib/marketing-copy";
@@ -36,7 +36,7 @@ export default function Pricing() {
 function CreateFleetAction() {
   return (
     <Button wrap asChild className="min-h-11" data-testid="pricing-cta-early-access">
-      <a href={APP_SIGN_UP_URL} target="_blank" rel="noopener noreferrer"
+      <a href={PUBLIC_ACCESS_URL} target="_blank" rel="noopener noreferrer"
         onClick={() => trackSignupStarted({ source: "pricing_early_access", surface: "pricing", mode: "humans" })}
       >{HERO_PRIMARY_LABEL} <span aria-hidden="true">→</span></a>
     </Button>

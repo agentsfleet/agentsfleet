@@ -1,5 +1,5 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
@@ -45,6 +45,12 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
+function fillModelSettings() {
+  for (const [label, value] of [["Context window (tokens)", "128000"], ["Inference base URL", "https://models.example.com/v1"], ["Model output limit (tokens)", "8192"]]) {
+    fireEvent.change(screen.getByLabelText(label!), { target: { value } });
+  }
+}
+
 function rowFor(modelId: string): HTMLElement {
   return screen.getByTitle(modelId).closest("tr")!;
 }
@@ -57,8 +63,8 @@ async function loadedEditDialog(label: string) {
 }
 
 const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
+  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
+  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
 ];
 
 beforeEach(() => vi.clearAllMocks());
@@ -67,217 +73,213 @@ afterEach(() => {
   cleanup();
 });
 
-describe("AddModelDialog", () => {
-  it("describes the entry in user-facing pricing language", async () => {
-    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-    await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
-    const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByText("Create a priced model users can choose. Prices are US dollars per 1M tokens.")).toBeTruthy();
-  });
-
-  it("should convert $/1M entry to integer nanos when creating a model", async () => {
-    const user = userEvent.setup();
-    createAdminModelActionMock.mockResolvedValue({ ok: true, data: { ...CATALOGUE[0] } });
-    const onCreated = vi.fn();
-    render(React.createElement(AddModelDialog, { onCreated }));
-
-    await user.click(screen.getByRole("button", { name: "Create model library" }));
-    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
-    fireEvent.change(screen.getByLabelText("Input"), { target: { value: "0.55" } });
-
-    const dialog = screen.getByRole("dialog");
-    fireEvent.submit(dialog.querySelector("form")!);
-
-    await waitFor(() => expect(createAdminModelActionMock).toHaveBeenCalledTimes(1));
-    const arg = createAdminModelActionMock.mock.calls[0]![0];
-    expect(arg.provider).toBe("fireworks");
-    expect(arg.input_nanos_per_mtok).toBe(550_000_000);
-    expect(onCreated).toHaveBeenCalledTimes(1);
-  });
-
-  it("should reject an empty provider and not call the create action", async () => {
-    const user = userEvent.setup();
-    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-    await user.click(screen.getByRole("button", { name: "Create model library" }));
-    await user.type(screen.getByLabelText("Model"), "glm-5.2");
-    const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Create" }));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(createAdminModelActionMock).not.toHaveBeenCalled();
-  });
-
-  it("surfaces the action error and keeps the dialog open when the create fails", async () => {
-    createAdminModelActionMock.mockResolvedValue({ ok: false, error: "model exists" });
-    const onCreated = vi.fn();
-    render(React.createElement(AddModelDialog, { onCreated }));
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
-    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
-
-    const dialog = screen.getByRole("dialog");
-    fireEvent.submit(dialog.querySelector("form")!);
-
-    await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/model exists/i)).toBeTruthy());
-    expect(onCreated).not.toHaveBeenCalled();
-  });
-
-  it("closes from Cancel without creating a model", async () => {
-    const user = userEvent.setup();
-    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-
-    await user.click(screen.getByRole("button", { name: "Create model library" }));
-    const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(createAdminModelActionMock).not.toHaveBeenCalled();
-  });
+it("AddModelDialog > describes the entry in user-facing pricing language", async () => {
+  render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
+  const dialog = within(screen.getByRole("dialog"));
+  expect(dialog.getByText("Create a priced model users can choose. Prices are US dollars per 1M tokens.")).toBeTruthy();
 });
 
-describe("CatalogueList — rows + rates + empty state", () => {
-  it("renders a priced row per catalogue model with $/1M rates", () => {
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-    expect(screen.getByTestId("data-table")).toBeTruthy();
-    expect(screen.getByTitle("glm-5.2")).toBeTruthy();
-    expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
-  });
+it("AddModelDialog > should convert $/1M entry to integer nanos when creating a model", async () => {
+  const user = userEvent.setup();
+  createAdminModelActionMock.mockResolvedValue({ ok: true, data: { ...CATALOGUE[0] } });
+  const onCreated = vi.fn();
+  render(React.createElement(AddModelDialog, { onCreated }));
 
-  it("the model cell shows the name and keeps the id on hover", () => {
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-    // The marketed name reads; the provider id a fleet config needs is the hover.
-    const cell = screen.getByTitle("glm-5.2");
-    expect(cell.textContent).toBe("GLM 5.2");
-    // Actions still name the row by its id, which is what a reader acts on.
-    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
-    // Touch and keyboard reach the id through its copy button, as on the workspace table.
-    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
-  });
+  await user.click(screen.getByRole("button", { name: "Create model library" }));
+  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
+  fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
+  fillModelSettings();
+  fireEvent.change(screen.getByLabelText("Input ($/1M)"), { target: { value: "0.55" } });
 
-  it("sorts each catalogue data column from its header arrow", () => {
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  const dialog = screen.getByRole("dialog");
+  fireEvent.submit(dialog.querySelector("form")!);
 
-    for (const name of ["Provider", "Model", "Context", "Rates $/1M (in / cached / out)"]) {
-      fireEvent.click(screen.getByRole("button", { name }));
-      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
-    }
-  });
-
-  it("sorts the Model column by the name it shows, not the id", () => {
-    const base = CATALOGUE[0]!;
-    // By id `accounts/...` sorts first; by the name a reader sees, Haiku 5.5 precedes Kimi K3.
-    const kimi = "accounts/fireworks/models/kimi-k3";
-    const haiku = "claude-haiku-5-5";
-    const models = [
-      { ...base, id: "k", model_id: kimi },
-      { ...base, id: "h", model_id: haiku },
-    ];
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("ascending");
-    const order = screen.getAllByTitle(/^(claude-haiku-5-5|accounts\/fireworks\/models\/kimi-k3)$/).map((cell) => cell.getAttribute("title"));
-    expect(order).toEqual([haiku, kimi]);
-  });
-
-  it("sorts the Provider column by the name it shows, not the slug", () => {
-    const base = CATALOGUE[0]!;
-    // By slug `hunyuan` sorts before `openai`; by the name a reader sees,
-    // OpenAI precedes Tencent Hunyuan.
-    const models = [
-      { ...base, id: "t", provider: "hunyuan", model_id: "hunyuan-t1" },
-      { ...base, id: "o", provider: "openai", model_id: "gpt-6" },
-    ];
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Provider" }));
-    const [openai, hunyuan] = ["OpenAI", "Tencent Hunyuan"];
-    const shown = screen.getAllByText(new RegExp(`^(${openai}|${hunyuan})$`)).map((badge) => badge.textContent);
-    expect(shown).toEqual([openai, hunyuan]);
-  });
-
-  it("shows the empty state when there are no models", () => {
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-    expect(screen.getByText("No models yet")).toBeTruthy();
-    expect(screen.getByText("Add a model to price it and make it the platform default.")).toBeTruthy();
-    expect(screen.queryByTestId("data-table")).toBeNull();
-  });
-
-  it("does not speculate on the editor from a coarse-pointer hover", () => {
-    vi.spyOn(window, "matchMedia").mockReturnValue({
-      matches: true,
-    } as MediaQueryList);
-    renderWithTooltipProvider(
-      React.createElement(CatalogueList, {
-        models: CATALOGUE,
-        activeDefault: null,
-        onDeleted: vi.fn(),
-        onUpdated: vi.fn(),
-      }),
-    );
-
-    fireEvent.pointerEnter(
-      within(rowFor("glm-5.2")).getByRole("button", {
-        name: "Edit glm-5.2",
-      }),
-    );
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
+  await waitFor(() => expect(createAdminModelActionMock).toHaveBeenCalledTimes(1));
+  const arg = createAdminModelActionMock.mock.calls[0]![0];
+  expect(arg.provider).toBe("fireworks");
+  expect(arg.input_nanos_per_mtok).toBe(550_000_000);
+  expect(onCreated).toHaveBeenCalledTimes(1);
 });
 
-describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
-  it("does not delete on the icon click alone — a confirm dialog gates the irreversible action", async () => {
-    const onDeleted = vi.fn();
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+it("AddModelDialog > should reject an empty provider and not call the create action", async () => {
+  const user = userEvent.setup();
+  render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
+  await user.click(screen.getByRole("button", { name: "Create model library" }));
+  await user.type(screen.getByLabelText("Model"), "glm-5.2");
+  const dialog = screen.getByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(createAdminModelActionMock).not.toHaveBeenCalled();
+});
 
-    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
+it("AddModelDialog > surfaces the action error and keeps the dialog open when the create fails", async () => {
+  createAdminModelActionMock.mockResolvedValue({ ok: false, error: "model exists" });
+  const onCreated = vi.fn();
+  render(React.createElement(AddModelDialog, { onCreated }));
 
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
-    expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
-    expect(onDeleted).not.toHaveBeenCalled();
-  });
+  await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
+  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
+  fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
+  fillModelSettings();
 
-  it("removes a row from the parent on a successful delete, after confirming", async () => {
-    deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
-    const onDeleted = vi.fn();
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+  const dialog = screen.getByRole("dialog");
+  fireEvent.submit(dialog.querySelector("form")!);
 
-    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/model exists/i)).toBeTruthy());
+  expect(onCreated).not.toHaveBeenCalled();
+});
 
-    await waitFor(() => expect(deleteAdminModelActionMock).toHaveBeenCalledWith("u1"));
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("u1"));
-  });
+it("AddModelDialog > closes from Cancel without creating a model", async () => {
+  const user = userEvent.setup();
+  render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
 
-  it("delete failure surfaces errorMessage inline and keeps the dialog open (test_catalogue_row_delete_is_icon_only_same_behavior)", async () => {
-    deleteAdminModelActionMock.mockResolvedValue({ ok: false, error: "model is the active platform default" });
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  await user.click(screen.getByRole("button", { name: "Create model library" }));
+  const dialog = screen.getByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
 
-    fireEvent.click(within(rowFor("claude-opus-4-8")).getByRole("button", { name: "Delete claude-opus-4-8" }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(createAdminModelActionMock).not.toHaveBeenCalled();
+});
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/model is the active platform default/i));
-    expect(screen.queryByRole("alertdialog")).toBeTruthy();
-  });
+it("CatalogueList — rows + rates + empty state > renders a priced row per catalogue model with $/1M rates", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  expect(screen.getByTestId("data-table")).toBeTruthy();
+  expect(screen.getByTitle("glm-5.2")).toBeTruthy();
+  expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
+});
 
-  it("Delete is an icon-only button named by its aria-label, not text", () => {
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
-    const del = within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" });
-    // No visible "Delete" text label — the trigger is icon-only now.
-    expect(del.textContent?.trim()).toBe("");
-  });
+it("CatalogueList — rows + rates + empty state > the model cell shows the name and keeps the id on hover", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  // The marketed name reads; the provider id a fleet config needs is the hover.
+  const cell = screen.getByTitle("glm-5.2");
+  expect(cell.textContent).toBe("GLM 5.2");
+  // Actions still name the row by its id, which is what a reader acts on.
+  expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
+  // Touch and keyboard reach the id through its copy button, as on the workspace table.
+  expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
+});
 
-  it("cancel on the dialog clears the target without invoking the delete action", async () => {
-    const user = userEvent.setup();
-    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+it("CatalogueList — rows + rates + empty state > sorts each catalogue data column from its header arrow", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
-    await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
-  });
+  for (const name of ["Provider", "Model", "Context", "Rates $/1M (in / cached / out)"]) {
+    fireEvent.click(screen.getByRole("button", { name }));
+    expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
+  }
+});
+
+it("CatalogueList — rows + rates + empty state > sorts the Model column by the name it shows, not the id", () => {
+  const base = CATALOGUE[0]!;
+  // By id `accounts/...` sorts first; by the name a reader sees, Haiku 5.5 precedes Kimi K3.
+  const kimi = "accounts/fireworks/models/kimi-k3";
+  const haiku = "claude-haiku-5-5";
+  const models = [
+    { ...base, id: "k", model_id: kimi },
+    { ...base, id: "h", model_id: haiku },
+  ];
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+  fireEvent.click(screen.getByRole("button", { name: "Model" }));
+  expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("ascending");
+  const order = screen.getAllByTitle(/^(claude-haiku-5-5|accounts\/fireworks\/models\/kimi-k3)$/).map((cell) => cell.getAttribute("title"));
+  expect(order).toEqual([haiku, kimi]);
+});
+
+it("CatalogueList — rows + rates + empty state > sorts the Provider column by the name it shows, not the slug", () => {
+  const base = CATALOGUE[0]!;
+  // By slug `hunyuan` sorts before `openai`; by the name a reader sees,
+  // OpenAI precedes Tencent Hunyuan.
+  const models = [
+    { ...base, id: "t", provider: "hunyuan", model_id: "hunyuan-t1" },
+    { ...base, id: "o", provider: "openai", model_id: "gpt-6" },
+  ];
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+  fireEvent.click(screen.getByRole("button", { name: "Provider" }));
+  const [openai, hunyuan] = ["OpenAI", "Tencent Hunyuan"];
+  const shown = screen.getAllByText(new RegExp(`^(${openai}|${hunyuan})$`)).map((badge) => badge.textContent);
+  expect(shown).toEqual([openai, hunyuan]);
+});
+
+it("CatalogueList — rows + rates + empty state > shows the empty state when there are no models", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  expect(screen.getByText("No models yet")).toBeTruthy();
+  expect(screen.getByText("Add a model to price it and make it the platform default.")).toBeTruthy();
+  expect(screen.queryByTestId("data-table")).toBeNull();
+});
+
+it("CatalogueList — rows + rates + empty state > does not speculate on the editor from a coarse-pointer hover", () => {
+  vi.spyOn(window, "matchMedia").mockReturnValue({
+    matches: true,
+  } as MediaQueryList);
+  renderWithTooltipProvider(
+    React.createElement(CatalogueList, {
+      models: CATALOGUE,
+      activeDefault: null,
+      onDeleted: vi.fn(),
+      onUpdated: vi.fn(),
+    }),
+  );
+
+  fireEvent.pointerEnter(
+    within(rowFor("glm-5.2")).getByRole("button", {
+      name: "Edit glm-5.2",
+    }),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("CatalogueList — Delete (icon-only, confirm-gated) > does not delete on the icon click alone — a confirm dialog gates the irreversible action", async () => {
+  const onDeleted = vi.fn();
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+
+  fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
+
+  await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+  expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
+  expect(onDeleted).not.toHaveBeenCalled();
+});
+
+it("CatalogueList — Delete (icon-only, confirm-gated) > removes a row from the parent on a successful delete, after confirming", async () => {
+  deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
+  const onDeleted = vi.fn();
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+
+  fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
+  await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => expect(deleteAdminModelActionMock).toHaveBeenCalledWith("u1"));
+  await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("u1"));
+});
+
+it("CatalogueList — Delete (icon-only, confirm-gated) > delete failure surfaces errorMessage inline and keeps the dialog open (test_catalogue_row_delete_is_icon_only_same_behavior)", async () => {
+  deleteAdminModelActionMock.mockResolvedValue({ ok: false, error: "model is the active platform default" });
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+  fireEvent.click(within(rowFor("claude-opus-4-8")).getByRole("button", { name: "Delete claude-opus-4-8" }));
+  await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/model is the active platform default/i));
+  expect(screen.queryByRole("alertdialog")).toBeTruthy();
+});
+
+it("CatalogueList — Delete (icon-only, confirm-gated) > Delete is an icon-only button named by its aria-label, not text", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  const del = within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" });
+  // No visible "Delete" text label — the trigger is icon-only now.
+  expect(del.textContent?.trim()).toBe("");
+});
+
+it("CatalogueList — Delete (icon-only, confirm-gated) > cancel on the dialog clears the target without invoking the delete action", async () => {
+  const user = userEvent.setup();
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+  await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
+  await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+  await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
 });

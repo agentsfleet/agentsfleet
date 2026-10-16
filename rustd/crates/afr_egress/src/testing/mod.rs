@@ -221,6 +221,7 @@ pub fn inbound(status: u16, body: &str) -> Inbound {
 
 /// The policy a closed guard admits under: no host, no credential.
 static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
+    inference: None,
     network_policy: NetworkPolicy {
         allow: Vec::new(),
         read_only: true,
