@@ -3,16 +3,12 @@ import { render } from "@testing-library/react";
 import { PageHeader, PageDescription } from "./PageHeader";
 
 describe("PageHeader", () => {
-  it("renders as a <div> with children", () => {
-    const { container, getByText } = render(
-      <PageHeader>
-        <span>Title</span>
-        <span>Actions</span>
-      </PageHeader>,
-    );
-    expect(container.firstChild?.nodeName).toBe("DIV");
-    expect(getByText("Title")).toBeInTheDocument();
-    expect(getByText("Actions")).toBeInTheDocument();
+  it("keeps a title-only header in the same bounded column as a header with actions", () => {
+    const { container, getByText } = render(<PageHeader><span>Title</span></PageHeader>);
+    const titleColumn = getByText("Title").parentElement;
+    expect(titleColumn).toHaveClass("min-w-0", "max-w-full");
+    expect(titleColumn?.parentElement).toBe(container.firstChild);
+    expect(container.firstChild).toHaveClass("flex-col");
   });
 
   it("merges consumer className without dropping base utilities", () => {

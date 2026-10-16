@@ -39,6 +39,8 @@ export type DataTableColumn<T extends DataTableRowData> = {
   compare?: (a: T, b: T) => number;
   /** Optional right-align (common for numeric/spend cells). */
   numeric?: boolean;
+  /** Emphasize the record's identity, independent of its column position. */
+  primary?: boolean;
   /** Hide on mobile (< sm breakpoint) to reduce horizontal scroll. */
   hideOnMobile?: boolean;
   /** Override whether the header exposes a sorting control. */

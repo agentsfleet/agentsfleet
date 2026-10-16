@@ -105,10 +105,11 @@ describe("Pagination (page variant)", () => {
     expect(screen.getByText("25")).toBeInTheDocument();
   });
 
-  it("SSR renders with role=navigation", () => {
+  it("server rendering preserves the caller's navigation label", () => {
     const html = renderToStaticMarkup(
-      <Pagination kind="page" page={1} pageSize={25} hasNext onPageChange={() => {}} />,
+      <Pagination kind="page" page={1} pageSize={25} hasNext onPageChange={() => {}} aria-label="Example pagination" />,
     );
     expect(html).toContain('role="navigation"');
+    expect(html).toContain('aria-label="Example pagination"');
   });
 });

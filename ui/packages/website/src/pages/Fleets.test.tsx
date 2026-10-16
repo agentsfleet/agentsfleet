@@ -39,9 +39,8 @@ describe("Fleets", () => {
     expect(block).toBeInTheDocument();
     expect(block).toHaveTextContent(/npm install -g @agentsfleet\/cli/);
     expect(block).toHaveTextContent(/agentsfleet login/);
-    expect(block).toHaveTextContent(/npx skills add agentsfleet\/skills/);
+    expect(block).not.toHaveTextContent(/\bnpx\b/);
     expect(block).toHaveTextContent("Create a fleet for incident response in my workspace.");
-    expect(block).not.toHaveTextContent("/agentsfleet-install-platform-ops");
     expect(block).not.toHaveTextContent("curl -fsSL https://agentsfleet.dev | bash");
   });
 

@@ -9,9 +9,12 @@ describe("Terms", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/terms of service/i);
   });
 
-  it("publishes no price, credit, or enterprise tier in the terms", () => {
+  it("states the approved starting price, included credit, and own-key billing", () => {
     render(<Terms />);
-    expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/starter credit|free to try|zero markup|\$\d/i);
+    expect(screen.getByTestId("terms-page")).toHaveTextContent("Fleet runtime starts at $0.");
+    expect(screen.getByTestId("terms-page")).toHaveTextContent("Run your first jobs with $25 in included credit.");
+    expect(screen.getByTestId("terms-page")).toHaveTextContent("If you bring your own key, usage is billed by your provider directly.");
+    expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/early access|model credit|zero markup/i);
     expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/enterprise tier/i);
   });
 

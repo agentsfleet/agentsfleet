@@ -176,10 +176,10 @@ describe("ConfirmDialog", () => {
         "true",
       ),
     );
-    // The Radix close affordance now routes through Dialog's onOpenChange;
-    // while pending the ConfirmDialog wrapper must swallow it (the
-    // `if (!pending)` false arm) so the dialog can't close mid-action.
+    // The disabled close button and Escape must both retain the pending decision.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(screen.getByRole("alertdialog"), {key: "Escape"});
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
     // Resolve so the act() teardown is clean.
     await waitFor(() => expect(release).toBeDefined());

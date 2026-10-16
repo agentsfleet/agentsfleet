@@ -25,6 +25,8 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
    * silent no-op affordance is worse than no affordance.
    */
   copyText?: string;
+  /** Called once per copy-button click, including a denied clipboard write. */
+  onCopyClick?: () => void;
   /**
    * Opt-in install-demo animation: reveals child lines in sequence via CSS
    * (`[data-terminal-reveal]` in tokens.css), so the demo reads as "running
@@ -50,7 +52,7 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
  * --text (text-foreground) for the body. The `green` variant flips
  * the body border to success-green for "success"-flavoured demos.
  */
-export default function Terminal({ label, green, copyable, copyText, animate, children, className, ...rest }: Props) {
+export default function Terminal({ label, green, copyable, copyText, onCopyClick, animate, children, className, ...rest }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,6 +79,7 @@ export default function Terminal({ label, green, copyable, copyText, animate, ch
         : "";
 
   const handleCopy = useCallback(() => {
+    onCopyClick?.();
     // Clipboard access can reject (denied permission, non-secure context,
     // sandboxed iframe). Catch the rejection so the user-facing failure
     // path is silent rather than an unhandled promise rejection in the
@@ -91,7 +94,7 @@ export default function Terminal({ label, green, copyable, copyText, animate, ch
       .catch(() => {
         /* clipboard denied — leave button in resting state */
       });
-  }, [resolvedCopyText]);
+  }, [resolvedCopyText, onCopyClick]);
 
   return (
     <div

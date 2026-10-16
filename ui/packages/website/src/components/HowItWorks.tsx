@@ -1,48 +1,38 @@
-import { DisplayLG, Section, SectionLabel, Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@agentsfleet/design-system";
-import { FleetPreview } from "./FleetPreview";
-import { HOW_IT_WORKS_ANCHOR_ID, HOW_IT_WORKS_FOOTNOTE, HOW_IT_WORKS_HEADING } from "../lib/marketing-copy";
+import { useMemo, useRef, type ReactNode } from "react";
+import { Button, Card, DisplayLG, Section } from "@agentsfleet/design-system";
+import type { ExampleJob } from "../lib/example-jobs";
+import { EXAMPLE_ANCHOR, EXAMPLE_REPOSITORY_URL } from "../lib/example-jobs";
+import { APP_SIGN_UP_URL } from "../config";
+import { createChatStory, storyFrame } from "../lib/chat-story";
+import { useSceneMotion } from "./use-scene-motion";
+import { IncidentFlow } from "./IncidentFlow";
+import { trackInteractionClicked, trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 
-const WORKFLOW = { incident: "incident", slack: "slack" } as const;
-
-export default function HowItWorks() {
+export default function HowItWorks({ job, navigation }: { job: ExampleJob; navigation?: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  const control = useRef<HTMLButtonElement>(null);
+  const motion = useSceneMotion(ref);
+  const story = useMemo(() => createChatStory(job), [job]);
+  const frame = storyFrame(story, motion.elapsed, motion.complete);
   return (
-    <Section asChild className="site-section" data-testid="how-it-works">
-      <section id={HOW_IT_WORKS_ANCHOR_ID} aria-label="How it works">
-        <div className="wrap flex flex-col gap-8">
-          <div className="section-intro">
-            <div className="flex flex-col gap-3">
-              <SectionLabel as="p" className="mb-0">How it works</SectionLabel>
-              <DisplayLG className="max-w-narrow">{HOW_IT_WORKS_HEADING}</DisplayLG>
+    <Section asChild>
+      <section ref={ref} id={EXAMPLE_ANCHOR} className="workbench-section" data-testid="how-it-works" data-running={motion.running}>
+        <Card asChild className="workbench p-0"><div>
+          <div className="workbench-bar">{navigation}<DisplayLG>{job.title}</DisplayLG><span className="example-badge">Example run</span></div>
+          <IncidentFlow key={motion.resumeGeneration} job={job} frame={frame} running={motion.running} onInspect={motion.pause} onFollowLatest={() => control.current?.focus({ preventScroll: true })} />
+          <div className="scene-controls">
+            <span>{frame.finished ? "Report ready · repository unchanged" : "One conversation, from idea to work"}</span>
+            <div>
+              {!motion.staticMode && <Button ref={control} variant="ghost" size="sm" onClick={motion.toggle}>{motion.playing ? "Pause" : "Play"}</Button>}
+              {!motion.complete && <Button variant="ghost" size="sm" onClick={() => { motion.readAll(); control.current?.focus({ preventScroll: true }); trackInteractionClicked({ source: "example_read_full", surface: "example", target: job.id }); }}>Read full conversation</Button>}
+              <Button asChild size="sm"><a href={APP_SIGN_UP_URL} target="_blank" rel="noopener noreferrer"
+                onClick={() => trackSignupStarted({ source: "example_create_fleet", surface: "example", mode: "humans" })}>Create fleet <span aria-hidden="true">↗</span></a></Button>
             </div>
-            <p className="m-0 text-body-lg text-text-muted max-w-form">Your dashboards hold the clues. Your fleet brings them together so your team can decide what to do next.</p>
           </div>
-          <Accordion type="single" collapsible defaultValue={WORKFLOW.incident}>
-            <AccordionItem value={WORKFLOW.incident}>
-              <AccordionTrigger>Incident Response</AccordionTrigger>
-              <AccordionContent className="flex flex-col gap-4">
-              <FleetPreview />
-              <p className="m-0 text-body-sm text-text-muted max-w-measure">{HOW_IT_WORKS_FOOTNOTE}</p>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value={WORKFLOW.slack}>
-              <AccordionTrigger>Slack Teammate</AccordionTrigger>
-              <AccordionContent><SlackExample /></AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
+        </div></Card>
+        <p className="workbench-footnote">Example conversation with <a href={EXAMPLE_REPOSITORY_URL} target="_blank" rel="noopener noreferrer"
+          onClick={() => trackNavigationClicked({ source: "example_repository", surface: "example", target: "github" })}>agentsfleet/linkwarden ↗</a> · sample run, no changes applied.</p>
       </section>
     </Section>
-  );
-}
-
-function SlackExample() {
-  return (
-    <figure aria-label="Illustrated example: Slack teammate" className="m-0 rounded-lg border border-border bg-card p-6">
-      <figcaption className="mb-6 text-body-sm text-text-muted">Illustrative example · Slack Teammate</figcaption>
-      <p className="font-medium text-text">You mention @agentsfleet in your channel.</p>
-      <blockquote className="my-4 border-l-2 border-pulse pl-4 text-text-muted">What did we learn from the last checkout incident?</blockquote>
-      <p className="text-text">Your agent answers in the thread using that channel’s saved context.</p>
-      <p className="mt-4 text-body-sm text-text-muted">Invite it to the channel and mention it when you need help. It stays read-only and does not read other channels’ memory.</p>
-    </figure>
   );
 }

@@ -3,6 +3,7 @@
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { type ComponentProps } from "react";
 import { cn } from "../utils";
+const CHEVRON_CLASS_NAME = "ml-2 shrink-0 opacity-60";
 
 /*
  * Select — Radix Select composition with semantic utilities. Mirrors
@@ -67,11 +68,11 @@ export function SelectTrigger({
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex w-full items-center justify-between rounded-md border border-border bg-background",
+        "flex h-9 w-full items-center justify-between rounded-md border border-border-strong bg-secondary",
         // No resting shadow: borders define panels, and shadows belong to
         // dialogs and menus. This was the only box-shadow inside <main> on
         // every route that renders it.
-        "px-3 py-2 text-sm transition-colors duration-snap ease-snap",
+        "px-md py-sm font-sans text-body-sm transition-colors duration-snap ease-snap enabled:hover:border-ring",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.
@@ -85,7 +86,7 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <span className="ml-2 shrink-0 opacity-60">
+        <span className={CHEVRON_CLASS_NAME}>
           <ChevronDownIcon />
         </span>
       </SelectPrimitive.Icon>
@@ -128,7 +129,7 @@ export function SelectContent({
           // inside it, so the border and the rounding stay put while the
           // items move.
           position === POSITION_POPPER && AVAILABLE_HEIGHT,
-          "bg-card text-card-foreground shadow-md",
+          "bg-card text-card-foreground shadow-floating",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",

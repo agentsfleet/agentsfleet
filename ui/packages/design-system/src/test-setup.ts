@@ -7,3 +7,14 @@ import { afterEach, vi } from "vitest";
 afterEach(() => {
   vi.useRealTimers();
 });
+
+// jsdom has no scrolling implementation; model the browser method for table tests.
+HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
+  if (typeof options === "object") {
+    this.scrollTop = options.top ?? this.scrollTop;
+    this.scrollLeft = options.left ?? this.scrollLeft;
+  } else {
+    this.scrollLeft = options ?? this.scrollLeft;
+    this.scrollTop = y ?? this.scrollTop;
+  }
+};

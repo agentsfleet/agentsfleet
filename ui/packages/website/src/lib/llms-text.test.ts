@@ -30,7 +30,8 @@ describe("llms text builders", () => {
     expect(body).toContain(PRICING_COPY.note);
     expect(body).toContain("produce an evidence-backed result");
     expect(body).not.toContain("Each one opens a fix");
-    expect(body).not.toMatch(/\$\d|starter credit|zero markup/i);
+    expect(body).toContain(PRICING_COPY.status);
+    expect(body).not.toMatch(/starter credit|zero markup|unlimited/i);
     expect(body).toContain(`[Docs](${DOCS_URL})`);
     expect(body).toContain("[OpenAPI](/openapi.json)");
     expect(body).toContain(`[Source](${GITHUB_URL})`);
@@ -47,6 +48,14 @@ describe("llms text builders", () => {
     expect(body).not.toContain("https://example.test//#");
   });
 
+  it("should describe native setup without retired file authoring or automatic publication", () => {
+    for (const body of [buildLlmsIndexText(inputs), buildLlmsFullText(inputs)]) {
+      expect(body).toContain("Save creates a fleet.");
+      expect(body).toContain("Publishing to the Library is a separate action.");
+      expect(body).not.toMatch(/SKILL\.md|TRIGGER\.md|bundle|install-time write grant|Hosted access is gated/i);
+    }
+  });
+
   it("should render llms-full.txt with pillars, loop, sources, and links", () => {
     const body = buildLlmsFullText(inputs);
     expect(body).toContain("Some runs end with diagnosis");
@@ -61,7 +70,7 @@ describe("llms text builders", () => {
       expect(body).toContain(`- ${category.label}: ${category.examples.join(", ")}`);
     }
     expect(body).toContain(PRICING_COPY.note);
-    expect(body).not.toMatch(/\$\d|starter credit|zero markup/i);
+    expect(body).not.toMatch(/starter credit|zero markup|unlimited/i);
     expect(body).not.toContain("curl -fsSL");
   });
 });

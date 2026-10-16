@@ -73,9 +73,9 @@ test.describe("Button — computed styles", () => {
     expect(parseFloat(h)).toBeCloseTo(32, 0);
   });
 
-  test("lg size has h-12 (48px)", async ({ page }) => {
+  test("lg size has the approved 44px height", async ({ page }) => {
     const h = await computed(page, "btn-lg", "height");
-    expect(parseFloat(h)).toBeCloseTo(48, 0);
+    expect(parseFloat(h)).toBeCloseTo(COARSE_TARGET_PX, 0);
   });
 
   test("icon size is 36x36 square (spec max for icon-only)", async ({ page }) => {

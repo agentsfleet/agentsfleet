@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "./Dialog";
 import { Button } from "./Button";
+import { Alert } from "./Alert";
 
 /*
  * ConfirmDialog — accessible confirmation overlay. Client boundary:
@@ -88,6 +89,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-describedby={description ? descId : undefined}
         className="max-w-md"
+        closeDisabled={pending}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -96,12 +98,7 @@ export function ConfirmDialog({
           ) : null}
         </DialogHeader>
         {errorMessage ? (
-          <p
-            role="alert"
-            className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {errorMessage}
-          </p>
+          <Alert variant="destructive">{errorMessage}</Alert>
         ) : null}
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
           <Button

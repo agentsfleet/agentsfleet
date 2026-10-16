@@ -1,7 +1,5 @@
-import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import posthog from "posthog-js";
-import CTABlock from "../components/CTABlock";
 import {
   EVENT_NAVIGATION_CLICKED,
   EVENT_SIGNUP_STARTED,
@@ -10,32 +8,8 @@ import {
   resetAnalyticsForTests,
   trackNavigationClicked,
   trackSignupStarted,
+  trackInteractionClicked,
 } from "./posthog";
-
-function walkElements(node: React.ReactNode, visit: (element: React.ReactElement<Record<string, unknown>>) => void): void {
-  if (!node || typeof node !== "object") return;
-  const element = node as React.ReactElement<Record<string, unknown>>;
-  visit(element);
-  const children = element.props?.children;
-  if (Array.isArray(children)) {
-    children.forEach((child) => walkElements(child, visit));
-    return;
-  }
-  walkElements(children as React.ReactNode, visit);
-}
-
-function ctaOnClick(label: string) {
-  const tree = CTABlock();
-  let handler: (() => void) | undefined;
-  walkElements(tree, (element) => {
-    if (handler) return;
-    if (typeof element.props?.onClick !== "function") return;
-    if (typeof element.props?.children !== "string") return;
-    if (element.props.children !== label) return;
-    handler = element.props.onClick as () => void;
-  });
-  return handler;
-}
 
 vi.mock("posthog-js", () => ({
   default: {
@@ -73,6 +47,9 @@ describe("website analytics", () => {
     await flushAnalyticsForTests();
 
     expect(mockedPosthog.init).toHaveBeenCalledTimes(1);
+    expect(mockedPosthog.init).toHaveBeenCalledWith("phc_test_key", expect.objectContaining({
+      advanced_disable_flags: true, autocapture: true, capture_pageview: "history_change", capture_pageleave: true,
+    }));
     expect(mockedPosthog.capture).toHaveBeenCalledTimes(1);
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_SIGNUP_STARTED,
@@ -88,8 +65,8 @@ describe("website analytics", () => {
   });
 
   it("captures Fleet-safe CTA navigation events", async () => {
-    ctaOnClick("→ read quickstart")?.();
-    ctaOnClick("view pricing")?.();
+    trackNavigationClicked({ source: "agents_cta_docs", surface: "cta_block" });
+    trackNavigationClicked({ source: "agents_cta_pricing", surface: "cta_block" });
     await flushAnalyticsForTests();
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
@@ -102,6 +79,33 @@ describe("website analytics", () => {
     );
   });
 
+  it.each([EVENT_NAVIGATION_CLICKED, "$pageview", "$autocapture"])("filters enriched %s payloads before transport", async (event) => {
+    trackNavigationClicked({ source: "header_nav_docs", surface: "header" });
+    await flushAnalyticsForTests();
+    const hook = mockedPosthog.init.mock.calls[0]?.[1]?.before_send;
+    expect(hook).toBeTypeOf("function");
+    if (typeof hook !== "function") throw new Error("Missing outgoing privacy filter");
+    window.history.replaceState({}, "", "/agents?private=query#private-fragment");
+    try {
+      const identity = { token: "synthetic-token", distinct_id: "visitor", $session_id: "session", $device_id: "device" };
+      const filtered = hook({
+        uuid: "synthetic-event", event,
+        properties: {
+          ...identity, source: "header_nav_docs", surface: "header", path: "/?private=query#fragment",
+          $current_url: window.location.href, $referrer: "https://example.test/?private=referrer#fragment",
+          $session_entry_url: window.location.href, utm_source: "private-campaign",
+          $session_entry_utm_source: "private-campaign", $elements_chain: "private-element-data",
+          $set: { $current_url: window.location.href }, $set_once: { $initial_current_url: window.location.href },
+        },
+        $set: { $current_url: window.location.href }, $set_once: { $initial_referrer: "private-referrer" },
+      });
+      expect(filtered).toEqual({ uuid: "synthetic-event", event, properties: { ...identity, source: "header_nav_docs", surface: "header", path: "/agents" } });
+      expect(hook(null)).toBeNull();
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
   it("does not emit when analytics is disabled", async () => {
     resetAnalyticsForTests();
     (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__ = {
@@ -110,7 +114,7 @@ describe("website analytics", () => {
       host: "https://us.i.posthog.com",
     };
 
-    ctaOnClick("→ read quickstart")?.();
+    trackNavigationClicked({ source: "agents_cta_docs", surface: "cta_block" });
     await flushAnalyticsForTests();
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();
@@ -188,5 +192,24 @@ describe("website analytics", () => {
       EVENT_NAVIGATION_CLICKED,
       expect.objectContaining({ source: "agents_cta_pricing" }),
     );
+  });
+
+  it("keeps draining buffered clicks when the analytics client rejects one", async () => {
+    mockedPosthog.capture.mockImplementationOnce(() => { throw new Error("blocked capture"); });
+    trackInteractionClicked({ source: "cli_install_copy" });
+    trackNavigationClicked({ source: "cli_install_guide" });
+    await expect(flushAnalyticsForTests()).resolves.toBeUndefined();
+    expect(mockedPosthog.capture).toHaveBeenCalledTimes(2);
+    expect(mockedPosthog.capture).toHaveBeenLastCalledWith(EVENT_NAVIGATION_CLICKED, expect.objectContaining({ source: "cli_install_guide" }));
+  });
+
+  it("contains a loaded client's failure so the caller can finish its action", async () => {
+    initAnalytics();
+    trackNavigationClicked({ source: "prime" });
+    await flushAnalyticsForTests();
+    mockedPosthog.capture.mockImplementationOnce(() => { throw new Error("blocked capture"); });
+    expect(() => trackInteractionClicked({ source: "cli_install_copy" })).not.toThrow();
+    trackNavigationClicked({ source: "cli_install_guide" });
+    expect(mockedPosthog.capture).toHaveBeenLastCalledWith(EVENT_NAVIGATION_CLICKED, expect.objectContaining({ source: "cli_install_guide" }));
   });
 });
