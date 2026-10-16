@@ -1,7 +1,7 @@
 # Adversarial doc-shape review — M102 (GitHub App connector / agent-identity-proxy, "Approach A") vs `docs/architecture/*`
 
 **Author:** Orly (CTO mode) · **Date:** Jun 26, 2026 · **Feeds:** M102_001 §8 docs sweep (Files-Changed)
-**Scope reviewed:** `user_flow.md`, `data_flow.md`, `high_level.md`, `capabilities.md`, `roadmap.md`, `README.md`, `runner_fleet.md`, `fleet_bundles.md`, `scenarios/github-pr-reviewer.md`
+**Scope reviewed:** `user_flow.md`, `data_flow.md`, `high_level.md`, `capabilities.md`, `roadmap.md`, `README.md`, `runner_fleet.md`, `fleet_definitions.md`, `scenarios/github-pr-reviewer.md`
 
 ---
 

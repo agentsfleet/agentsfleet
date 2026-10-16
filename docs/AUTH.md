@@ -143,7 +143,7 @@ The complete capability vocabulary. The enum in `rustd/crates/afd_auth/src/scope
 | `connector:read` / `connector:write` | read connector status and the catalogue / start, complete, or disconnect a connector — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §"OAuth connectors (separate surface — M106, generalized by the M108 registry)" |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
-| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/fleets/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy) and `DELETE` (retire a revoked runner's record) |
+| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/fleets/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
 
 **Discrete verbs** (no ladder — a distinct action):
 
@@ -161,7 +161,7 @@ The complete capability vocabulary. The enum in `rustd/crates/afd_auth/src/scope
 
 | Scope | Grants |
 |---|---|
-| `runner:self` | the runner's own plane: `/v1/runners/me/*` (heartbeat, lease and the per-lease routes under it, report, credential-mint, memory, bundles). Only the runner-token principal carries it, and it carries *only* this — so a runner cannot reach a tenant route and a user/api-key cannot reach a runner route |
+| `runner:self` | the runner's own plane: `/v1/runners/me/*` (heartbeat, lease and the per-lease routes under it, report, credential-mint, memory). Only the runner-token principal carries it, and it carries *only* this — so a runner cannot reach a tenant route and a user/api-key cannot reach a runner route |
 
 **Cross-tenant override** (held by almost no one; every use audited):
 
@@ -251,7 +251,7 @@ Clerk user.created
   ├─► primary address, verified    (none → 400 UZ-REQ-001, metric reason missing_email;
   │                                 unproven → 400 UZ-REQ-001, reason unverified_email)
   │
-  ├─► ONE Postgres transaction     (rustd/crates/afd_tenant/src/signup.rs)
+  ├─► ONE Postgres transaction     (rustd/crates/afd_tenant/src/signup/mod.rs)
   │     1. core.tenants            one per person
   │     2. core.users              the OIDC subject, unique
   │     3. core.memberships        owner, linking the two
@@ -720,7 +720,7 @@ It also means a Postgres outage fails runner auth immediately rather than being 
 
 ### Least privilege
 
-A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, bundle download, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
+A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
 The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves it per lease (`Providers::resolve`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `fleet.runner_leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
@@ -730,41 +730,20 @@ The same placement model carries the resolved **LLM provider key** (M80_009): `a
 
 ---
 
-## Fleet Bundle import and credential boundary
+## Fleet setup and credential boundary
 
-The Fleet Bundle list (`GET /v1/fleets/bundles`) and the Fleet library routes that
-onboard a bundle from a GitHub source (`POST /v1/workspaces/{workspace_id}/fleet-libraries`,
-`POST /v1/admin/fleet-libraries`) are ordinary `Guard::Bearer` routes. They
-authenticate exactly as the dashboard and command-line install paths do; they do not
-mint a new auth surface. There is no preview or direct-upload route: uploads enter
-only through library onboarding.
+A fleet's setup is a typed Definition authored in chat and stored as an
+immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
+Its configuration names the credentials the fleet needs, by name only: a setup
+cannot carry a secret value, and nothing in authoring reads the workspace vault.
+Publishing a setup to the Library and saving a fleet from one are ordinary
+`Guard::Bearer` routes. There is no upload or import route.
 
-Bundle content is untrusted user content until validation finishes. The import
-handler may store parsed metadata, required credential keys, required tools,
-network hosts, and an immutable source snapshot, but it must never resolve or
-store raw credential values. A bundle can say "requires `github`" or "requires
-`zoho`"; it cannot carry the secret and cannot read the workspace vault during
-onboarding.
-
-Install is the first point where credential presence matters. The existing
-`POST /v1/workspaces/{workspace_id}/fleets` path checks that the workspace has
-the named credentials needed by the validated bundle, then stores references on
-the fleet config. Secret bytes still resolve just-in-time at lease, inside
-`agentsfleetd`, and ride only the existing runner lease envelope described above.
-
-Runner materialization follows the same rule. A lease for a bundle-backed fleet
-may include immutable snapshot metadata and support-file paths so the runner can
-place files in the sandbox workspace before the agent turn starts
-(`rustd/crates/afr_supervisor/src/lease_loop/workspace.rs`). That manifest is
-not a credential carrier. Prose files such as `SOUL.md` or `ZOHO.md` can instruct
-the fleet, but capability comes only from the server-built `ExecutionPolicy` and
-workspace credential grants.
-
-Inbound provider webhooks remain separate: provider signatures are verified by
-the ingress webhook handler (`rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`), not by bundle import routes, and the receiver still uses
-the installed fleet trigger config to decide which provider path is valid.
-
----
+The setup review is where credential presence matters: it reports each named
+credential and why the setup needs it (`rustd/crates/afd_authoring/src/review/credentials/`).
+Secret bytes still resolve just-in-time at lease, inside `agentsfleetd`, and
+ride only the runner lease envelope described above. Capability comes only from
+the server-built `ExecutionPolicy` and workspace credential grants.
 
 ## Backend validation (the common path)
 
@@ -793,7 +772,7 @@ flowchart TD
     Gate --> Handler["route handler"]
 ```
 
-### Configuration knobs (from `rustd/crates/agentsfleetd/src/preflight.rs`)
+### Configuration knobs (from `rustd/crates/agentsfleetd/src/preflight/mod.rs`)
 
 | Knob              | Source                | Purpose                                                                         |
 | ----------------- | --------------------- | ------------------------------------------------------------------------------- |
@@ -878,7 +857,7 @@ Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint a token fo
 
 `agentsfleetd` reads the Clerk Backend API root **once at boot** from `CLERK_API_BASE` and hands the same value to every backend call. The knob is **required**: boot refuses without it, `UZ-STARTUP-001` (`rustd/crates/agentsfleetd/src/preflight/read.rs`). There is no compiled-in default; each Fly deployment sets `https://api.clerk.com/v1` in its `fly.toml` (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`).
 
-The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/afd_identity/src/users.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/agentsfleetd/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
+The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/afd_identity/src/users/mod.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/agentsfleetd/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
 
 ### Rotation procedure
 
@@ -1014,13 +993,13 @@ Each of these is a real concern, named here so future fleets and security-review
 
 ## Manual fleet-webhook auth (separate surface)
 
-The three flows above (CLI, UI, API key) all converge on `Authorization: Bearer …`. **Inbound webhooks are a different surface entirely** — they never carry a Bearer token. The manual fleet-addressed HMAC routes, `/v1/webhooks/{fleet_id}` and `/v1/webhooks/{fleet_id}/github`, carry `Guard::WebhookSignature` in the route table (`rustd/crates/afd_http/src/route/webhook.rs`); the Svix route `/v1/webhooks/svix/{fleet_id}` carries `Guard::Svix`. The ingress handler reads the fleet's trigger binding and vault secret, then verifies the provider's signature before it parses the body (`verified`, `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`); the HMAC itself is `Scheme::verify_at` (`rustd/crates/afd_webhook/src/scheme.rs`). GitHub App and Slack App ingress verify their platform App secrets inside their handlers because their payload routing fields identify the workspace and fleet only after authentication. No route falls back to Bearer auth.
+The three flows above (CLI, UI, API key) all converge on `Authorization: Bearer …`. **Inbound webhooks are a different surface entirely** — they never carry a Bearer token. The manual fleet-addressed HMAC routes, `/v1/webhooks/{fleet_id}/{source}` and `/v1/webhooks/{fleet_id}/github`, carry `Guard::WebhookSignature` in the route table (`rustd/crates/afd_http/src/route/webhook.rs`); the Svix route `/v1/webhooks/svix/{fleet_id}` carries `Guard::Svix`. The ingress handler reads the fleet's trigger binding and vault secret, then verifies the provider's signature before it parses the body (`verified`, `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`); the HMAC itself is `Scheme::verify_at` (`rustd/crates/afd_webhook/src/scheme.rs`). GitHub App and Slack App ingress verify their platform App secrets inside their handlers because their payload routing fields identify the workspace and fleet only after authentication. No route falls back to Bearer auth.
 
 This is industry standard for inbound webhooks: GitHub (`X-Hub-Signature-256`), Slack (`X-Slack-Signature`), Stripe (`Stripe-Signature`), Linear (`linear-signature`), and Svix-fronted providers (Clerk, AgentMail) all ship HMAC-SHA256 over the raw body. Bearer tokens are for *outbound* API calls (where the caller authenticates itself); HMAC is for *inbound* (where the receiver verifies the body wasn't tampered with).
 
 ### Manual-route provider scheme registry
 
-The schemes are a closed enum, `afd_webhook::Scheme` (`rustd/crates/afd_webhook/src/scheme.rs`): `BodyHex` (GitHub), `BodyHexBare` (Linear) and `SlackV0` (Slack). Each names its signature header, prefix and timestamp policy, and `afd_fleet_runtime`'s `StaticRegistry` resolves a trigger's source against `Scheme::ALL` (`rustd/crates/afd_fleet_runtime/src/provider.rs`):
+The schemes are a closed enum, `afd_webhook::Scheme` (`rustd/crates/afd_webhook/src/scheme.rs`): `BodyHex` (GitHub), `BodyHexBare` (Linear) and `SlackV0` (Slack). Each names its signature header, prefix and timestamp policy. These are also the only sources a webhook trigger may declare unsigned: `afd_fleet_runtime` refuses any other source at parse time unless the trigger names a Svix `signature.secret_ref`, verified on `/v1/webhooks/svix/{fleet_id}` (`rustd/crates/afd_fleet_runtime/src/config/trigger/mod.rs`). A trigger cannot override a scheme's header, prefix or timestamp; the signature block carries `secret_ref` alone.
 
 | Provider | `sig_header` | `prefix` | Includes timestamp? | Drift |
 | --- | --- | --- | --- | --- |
@@ -1028,11 +1007,11 @@ The schemes are a closed enum, `afd_webhook::Scheme` (`rustd/crates/afd_webhook/
 | Slack | `x-slack-signature` | `v0=` | yes (`x-slack-request-timestamp`) | 5 min (`MAX_DRIFT_SECONDS`, `rustd/crates/afd_webhook/src/freshness.rs`) |
 | Linear | `linear-signature` | (none) | no | n/a |
 
-Adding a new manual-route provider is one new `Scheme` variant. No new guard. App-level ingress uses the corresponding ingress descriptor and platform secret described under *OAuth connectors*.
+Adding a new manual-route provider is one new `Scheme` variant, which the parser and the model prompt pick up from the same table (`VERIFIED_WEBHOOK_SOURCES`). No new guard. App-level ingress uses the corresponding ingress descriptor and platform secret described under *OAuth connectors*.
 
 ### Manual-route workspace-credential resolver
 
-The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/afd_ingress/src/binding.rs`):
+The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/afd_ingress/src/binding/mod.rs`):
 
 1. **The scheme** — `Binding::scheme()`, set whenever one of the fleet's `triggers[].source` entries names a known scheme, even if the vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
 2. **The secret** — `Ingress::signing_secret` (`rustd/crates/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value but can be overridden by the fleet's `x-agentsfleet.triggers[].credential_name` frontmatter for the per-fleet credential-scoping case — two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
@@ -1055,11 +1034,11 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 - **Bearer tokens.** Sending `Authorization: Bearer …` to `/v1/webhooks/...`, `/v1/ingress/...`, or a provider App-events route contributes nothing — the header is not consulted. Generic Bearer auth applies only to the normal API surface listed above.
 - **Session cookies.** Webhook URLs are not session-authed; cookies are ignored.
-- **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43 — the matcher no longer recognizes the two-segment form.
+- **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43. The two-segment form is now `/v1/webhooks/{fleet_id}/{source}`, and its second segment names the webhook trigger's `source`, a lowercase slug, never a credential: the signature header is still the only proof, and a segment no trigger declares resolves no binding (`UZ-WH-001`). Spans record the route template, not the segment.
 
 ### Cross-references — manual fleet webhooks
 
-- Implementation: `rustd/crates/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/afd_ingress/src/binding.rs` and `secret.rs` (scheme and secret), `rustd/crates/afd_webhook/src/scheme.rs` (the schemes).
+- Implementation: `rustd/crates/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/afd_ingress/src/binding/mod.rs` and `secret.rs` (scheme and secret), `rustd/crates/afd_webhook/src/scheme.rs` (the schemes).
 - Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)", [`architecture/user_flow.md`](./architecture/user_flow.md) §"§8.3 Triggering the Fleet".
 - Error registry: codes in `rustd/crates/afd_core/src/error_code/request.rs`, HTTP status and hint per code in `rustd/crates/afd_core/src/problem/request.rs`.
 
@@ -1073,14 +1052,14 @@ The dashboard's **connectors** (GitHub App, Slack, and every future registry pro
 
 `POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`**. A Hash-based Message Authentication Code (HMAC) signs the workspace, a keyed tag of the starter identity, a nonce, and expiry. The provider receives the tag, never the raw identity-provider subject.
 
-The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callback`. The signed-in dashboard forwards its current Bearer token and the original query to `POST /v1/connectors/{provider}/callback`. That endpoint requires `connector:write`, the same identity that started the state, and current access to the state workspace. It checks those three conditions before consuming the nonce, exchanging a provider code, or writing a connector row. A copied provider URL therefore cannot bind the approving person's provider account to the starter's workspace. The legacy `GET /v1/connectors/{provider}/callback` URL only redirects the browser to the dashboard relay while old provider registrations are changed. It labels that relay as legacy so token exchange can echo the old registered redirect URL. It never consumes state, exchanges a code, or writes connector data.
+The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callback`. The signed-in dashboard forwards its current Bearer token and the original query to `POST /v1/connectors/{provider}/callback`. That endpoint requires `connector:write`, the same identity that started the state, and current access to the state workspace. It checks those three conditions before consuming the nonce, exchanging a provider code, or writing a connector row. A copied provider URL therefore cannot bind the approving person's provider account to the starter's workspace. The API host serves no `GET` on that path, so a provider registration must name the dashboard URL.
 
 A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`. Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific persistence to the registry hook:
 
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
 - **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation. When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it: the daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001). More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `core.connector_installs` route. The token never enters provider-visible state and is discarded after the probe.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
-- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector: there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`, and `TRIGGER.md` references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
+- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector: there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`, and the fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
 
 The rows themselves:
 
@@ -1097,7 +1076,7 @@ Disconnect changes only `agentsfleet`. It does not revoke provider authorization
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/afd_credential/src/credential/platform.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/agentsfleetd/src/preflight/knobs.rs`).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/afd_credential/src/credential/platform/mod.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/agentsfleetd/src/preflight/knobs.rs`).
 
 The bag is per-provider. `slack-app` holds `{client_id, client_secret, signing_secret}`. `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}`: the private key signs outbound App identity, the webhook secret verifies inbound deliveries, and the client credentials exchange the one-time user-authorization code. The Open Authorization 2.0 (OAuth 2.0) refresh connectors `zoho-app`, `jira-app` and `linear-app` hold `{client_id, client_secret}`.
 
@@ -1155,7 +1134,7 @@ Keep the credential owner and routing key straight:
 
 | | Manual fleet trigger | GitHub App events | Slack App events |
 | --- | --- | --- | --- |
-| Route | `/v1/webhooks/{fleet_id}` (`…/{fleet_id}/github` for GitHub) | `/v1/ingress/github` | `/v1/connectors/slack/events` |
+| Route | `/v1/webhooks/{fleet_id}/{source}` (`…/{fleet_id}/github` for GitHub; `/v1/webhooks/svix/{fleet_id}` for a Svix-signed source) | `/v1/ingress/github` | `/v1/connectors/slack/events` |
 | Secret | workspace `<source>.webhook_secret` | admin `github-app.webhook_secret` | admin `slack-app.signing_secret` |
 | Scope | one workspace/fleet URL | one platform App, every tenant | one platform App, every tenant |
 | Routing | fleet identifier in URL | installation → workspace → repository/event/grant fleets | team → workspace → channel-resident fleet |
@@ -1180,6 +1159,6 @@ Slack's signature failures share the webhook codes (`UZ-WH-010`, `UZ-WH-011`, §
 ### Cross-references — OAuth connectors
 
 - Platform shape (registry, archetypes, bounded outbound, add-a-provider recipe, terminology): [`architecture/connectors.md`](./architecture/connectors.md).
-- Implementation: `afd_connector` (`rustd/crates/afd_connector/src/provider.rs`, the route-side provider list) and `rustd/crates/afd_credential/src/secrets/connector.rs` (the mint-side registry), plus the generic connect, callback and status routes in `rustd/crates/afd_http/src/route/connector.rs`; the signed connect state in `rustd/crates/afd_connector/src/state.rs`; the mint-side `<provider>-app` credentials in `rustd/crates/afd_credential/src/credential/platform.rs`, the refresh-token grant in `rustd/crates/afd_credential/src/credential/oauth.rs`, the GitHub App exchange in `rustd/crates/afd_credential/src/credential/github/exchange.rs`, and the mint cache in `rustd/crates/afd_credential/src/credential/broker.rs`; `afd_credential` owns the bounded outbound; the Slack and GitHub App ingress live in `afd_api_ingress`. Per-install/webhook handles are vaulted under their bare provider/source name — no storage-key prefix (M121).
+- Implementation: `afd_connector` (`rustd/crates/afd_connector/src/provider.rs`, the route-side provider list) and `rustd/crates/afd_credential/src/secrets/connector/mod.rs` (the mint-side registry), plus the generic connect, callback and status routes in `rustd/crates/afd_http/src/route/connector.rs`; the signed connect state in `rustd/crates/afd_connector/src/state/mod.rs`; the mint-side `<provider>-app` credentials in `rustd/crates/afd_credential/src/credential/platform/mod.rs`, the refresh-token grant in `rustd/crates/afd_credential/src/credential/oauth/mod.rs`, the GitHub App exchange in `rustd/crates/afd_credential/src/credential/github/exchange.rs`, and the mint cache in `rustd/crates/afd_credential/src/credential/broker/mod.rs`; `afd_credential` owns the bounded outbound; the Slack and GitHub App ingress live in `afd_api_ingress`. Per-install/webhook handles are vaulted under their bare provider/source name — no storage-key prefix (M121).
 - Scopes: `rustd/crates/afd_http/src/route/connector.rs` (`ConnectorRoute::Connect` and `Complete` → `connector:write`; `Status` GET → `connector:read`, DELETE → `connector:write`; `Catalog` → `connector:read`; the compatibility `Callback` and `Events` routes take no bearer by design).
 - Error registry: `rustd/crates/afd_core/src/error_code/integration.rs`, statuses in `rustd/crates/afd_core/src/problem/integration.rs`.

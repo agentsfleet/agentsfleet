@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Sandbox tiers are not egress policy — no tier substitutes for the egress model (§Sandbox tiers).
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
 - The readiness index is a hint, never the system of record — a lost mark costs latency, never the event (§Datastore topology).
-- Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§Scope).
+- Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§"Scope — an execution plane, deliberately not a control plane").
 - A dashboard must not sum `agentsfleet_fleet_ready_depth`; each replica reports what its own polls' peeks of the one shared index offered (§The four per-runner families).
 - Memory isolation does not rest on `fleet_id` scoping alone; a feature breaking single-live-holder must scope by `lease_id` first (§Memory continuity).
 - No secret enters a sandbox: model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
@@ -127,7 +127,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 | Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `try_candidate` releases the won `runner_affinity` slot through `let_go` before the error propagates, on the reclaim probe and on the fresh-envelope build alike (`rustd/crates/afd_fleet/src/lease/assign/claim.rs`). A release that itself fails degrades to the slot's own `leased_until` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL_MS` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
 | Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `AUTOCLAIM_MIN_IDLE_MS` + `ceil(active_fleets / BATCH_LIMIT)` × the 30 s pass interval — **scales with fleet count** | the reclaim sweeper (`afd_runner::sweep::reclaim`) re-marks any fleet still holding deliverable work. Its probe reads the consumer group's `lag` (entries never delivered) and pending count from `XINFO GROUPS`, and reads an unknown `lag` as deliverable, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
 
-> **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass runs every 30 s and reaches at most `BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)` (`rustd/crates/afd_runner/src/sweep/reclaim.rs`). So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`, where min-idle is `AUTOCLAIM_MIN_IDLE_MS`, five minutes (`rustd/crates/afd_dragonfly/src/streams.rs`): about 5.5 minutes at 100 active fleets, about 10 at 1 000, about 30 at 5 000. Quote operators the formula, not the single-batch case.
+> **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass runs every 30 s and reaches at most `BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)` (`rustd/crates/afd_runner/src/sweep/reclaim/mod.rs`). So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`, where min-idle is `AUTOCLAIM_MIN_IDLE_MS`, five minutes (`rustd/crates/afd_dragonfly/src/streams/mod.rs`): about 5.5 minutes at 100 active fleets, about 10 at 1 000, about 30 at 5 000. Quote operators the formula, not the single-batch case.
 >
 > The same arithmetic is the **cold-start** window. On first deploy the index is empty while streams already hold undelivered entries, so nothing is leasable until a sweep finds it. This is a deliberate, Indy-acked deferral (M141_001 Discovery): a boot-time reconciliation pass and a raised batch bound were both offered and declined, because both are discovery scaffolding the future scheduler replaces. What is *not* deferred is the keyset cursor — without it the fleets past the first batch are never reached at all rather than merely reached late.
 
@@ -202,7 +202,7 @@ The layout makes the "runner holds zero datastore credentials" guarantee **struc
 |---|---|---|---|---|
 | wire | `rustd/crates/afd_wire` | both | none | the frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
 | shared knobs | `rustd/crates/afd_core` | both | none | the knobs both planes key off (`LEASE_TTL_MS`, …), `error_shell!` |
-| control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the background sweepers (`afd_runner::sweep`, started in `rustd/crates/agentsfleetd/src/sweepers.rs`), and the `/v1/runners` handlers over them |
+| control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the background sweepers (`afd_runner::sweep`, started in `rustd/crates/agentsfleetd/src/sweepers/mod.rs`), and the `/v1/runners` handlers over them |
 | runner | `rustd/crates/afr_supervisor` · `afr_agent` · `afr_providers` · `afr_tools` · `afr_egress` · `afr_secrets` · `afr_memory` · `afr_executor` · `afr_sandbox` · `afr_telemetry` | `agentsfleet-runner` (`rustd/crates/agentsfleet_runner`) | none | supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine; imports nothing from the control plane |
 
 ## The control protocol — `/v1/runners`
@@ -293,7 +293,7 @@ Lease history: API reference › Fleet (List a runner's leases). Neither item st
 
 Two indexes serve the read. `idx_runner_leases_runner_id_created_at_id` answers the page, and `idx_runner_leases_fleet_id_event_id_fencing_token` answers the per-row reclaim derivation. On `fleet.runner_events`, `idx_runner_events_runner_id_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count, so that read stops walking the per-lease bulk. A partial index was rejected there: the tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
-**History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, started with the other sweepers in `rustd/crates/agentsfleetd/src/sweepers.rs`) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
+**History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, started with the other sweepers in `rustd/crates/agentsfleetd/src/sweepers/mod.rs`) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
 
 Only the per-lease event tags are eligible — `PER_LEASE_EVENT_TYPES`, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
 
@@ -355,15 +355,16 @@ If connection-level isolation of the fleet write path is ever warranted, that is
 A `lease` reply is the runner's entire input for an event. The runner runs the event's turn and sends the result back with `report`. [Runner execution](./runner_execution.md) §"One lease, end to end" walks the runner's side.
 
 ```
-lease → { event, ExecutionPolicy, instructions (SKILL.md body), bundle? }  (full shape: API reference › Runner plane)
-   (`instructions` = the installed fleet's SKILL.md body, extracted server-side by
-    `afd_fleet_runtime::instructions`; the agent loop builds the system prompt from it so the installed
-    behaviour runs on every trigger. Soft reasoning input, never a secret: the
-    provider key and secrets_map stay in ExecutionPolicy and the supervisor. M84_008.)
+lease → { event, ExecutionPolicy, instructions }  (full shape: API reference › Runner plane)
+   (`instructions` = the `instructions_md` of the fleet's selected setup revision,
+    read by the claim (`afd_fleet/src/lease/installed.rs`); the agent loop builds the system
+    prompt from it so the reviewed behaviour runs on every trigger. Soft reasoning input,
+    never a secret: the provider key and secrets_map stay in ExecutionPolicy and the
+    supervisor.)
    │
-agentsfleet-runner supervisor: admit the policy, take the fleet's turn, fetch the bundle,
-   hydrate memory; when a tool runs in a sandbox, take the fleet's held sandbox or build
-   one, check the bound repositories out and land the bundle's support files in it
+agentsfleet-runner supervisor: admit the policy, take the fleet's turn, hydrate memory;
+   when a tool runs in a sandbox, take the fleet's held sandbox or build one and check
+   the bound repositories out
    │
    └─ agent loop (in the supervisor): model calls with the lease's key; each tool call
       runs where its runtime says, in the supervisor or through the sandbox's executor
@@ -385,17 +386,15 @@ by that same runner and is answered with the stored outcome for no charge. See
 
 The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox: a sandbox is held or destroyed exactly once, and the engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
-Bundle support files land in the lease's workspace and grant nothing ([capabilities.md](./capabilities.md) §"1. Reasoning + tool inventory (declared in the fleet's own files)").
-
 ### Process-boundary hardening
 
 bubblewrap, Landlock, seccomp, the lease's cgroup and the process boundary under them are [runner_execution.md](./runner_execution.md) §"Sandbox engines". Network egress is the orthogonal layer (§Egress model).
 
 ### Multi-run events
 
-One lease is one run. The agent loop does not split a run across leases: at `stage_chunk_threshold` of the model's context window it stops offering tools and asks the model to answer with what it has (`rustd/crates/afr_agent/src/context/mod.rs`). A report's outcome is `processed` or `fleet_error` and never asks to be resumed (`rustd/crates/afd_wire/src/report.rs`).
+One lease is one run. The agent loop does not split a run across leases: at `stage_chunk_threshold` of the model's context window it stops offering tools and asks the model to answer with what it has (`rustd/crates/afr_agent/src/context/mod.rs`). A report's outcome is `processed` or `fleet_error` and never asks to be resumed (`rustd/crates/afd_wire/src/report/mod.rs`).
 
-A continuation event still exists, chained by `resumes_event_id`: an approval's answer writes one, and the next lease runs it (`rustd/crates/afd_approval/src/inbox/resolve.rs`). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event. Sticky routing (below) prefers the runner that ran the previous one, but correctness never depends on it.
+A continuation event still exists, chained by `resumes_event_id`: an approval's answer writes one, and the next lease runs it (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event. Sticky routing (below) prefers the runner that ran the previous one, but correctness never depends on it.
 
 ## Memory continuity — durable fleet memory rides the trusted plane
 
@@ -519,7 +518,7 @@ All three are decided by `agentsfleetd`, which owns both `core.fleets.status` an
 
 - **Steer** — a human message. `agentsfleetd` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
 - **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. A lease in flight runs on as under Kill, below: to its own end, its fleet's budget ceiling, or `MAX_RUNTIME_MS`.
-- **Kill** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: killed` sets `status=killed` and stops issuing leases for the fleet. It writes nothing to `fleet.runner_leases` (`rustd/crates/afd_fleet_lifecycle/src/sql.rs`), so a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME_MS`, and its report settles like any other.
+- **Kill** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: killed` sets `status=killed` and stops issuing leases for the fleet. It writes nothing to `fleet.runner_leases` (`rustd/crates/afd_fleet_lifecycle/src/sql/mod.rs`), so a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME_MS`, and its report settles like any other.
 
 No cancel channel exists: a revocation carried on the heartbeat, or a dedicated low-latency channel, is unbuilt.
 
@@ -533,7 +532,7 @@ A lease that ends **processed** leaves its sandbox **held** for the same fleet: 
 
 ## Config
 
-A Fleet's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.fleets.config_json`. A `PATCH /v1/workspaces/{ws}/fleets/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
+A Fleet's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is the `config` member of its selected setup revision in `core.fleet_definition_revisions`, validated by `afd_fleet_runtime::Definition` (`afd_fleet_runtime/src/definition/mod.rs`). The claim reads it from that revision (`afd_fleet/src/lease/installed.rs`). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it; `PATCH` on the fleet changes only its status and name.
 
 `agentsfleetd` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `fleet_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
 
@@ -559,7 +558,7 @@ The lease clears on exactly two exits, both after a won claim. **Drained:** the 
 
 ## Sandbox tiers
 
-The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat. The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. Only tiers with real enforcement are assignable (`rustd/crates/afd_wire/src/runner.rs`).
+The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat. The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. Only tiers with real enforcement are assignable (`rustd/crates/afd_wire/src/runner/mod.rs`).
 
 | `sandbox_tier` | Where | What the daemon demands of the report |
 |---|---|---|
@@ -598,7 +597,7 @@ The table covers the file system alone. Under `allow_all` the sandbox also share
 
 The runner box is **outbound-only**: it runs no inbound listener (the supervisor dials the control plane over HTTPS; see §Datastore role model) and holds no co-located datastore. No model key or minted token enters a sandbox, so the network threat from a sandbox is a tenant program sending the workspace's contents, or anything it computes, somewhere it should not, or reaching an internal address.
 
-Three network policies, assigned per runner (`rustd/crates/afd_wire/src/runner.rs`):
+Three network policies, assigned per runner (`rustd/crates/afd_wire/src/runner/mod.rs`):
 
 - **`allow_all`** — bubblewrap is not given `--unshare-net`, so the sandbox stays in the host's network namespace and all outbound egress is allowed (`rustd/crates/afr_sandbox/src/bubblewrap/mod.rs`).
 - **`deny_all_egress`** — the sandbox's own network namespace, with loopback only; it reaches nothing. A missing assignment gets the same, because a runner never opens egress on missing input.
@@ -673,3 +672,55 @@ Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that 
 ### The deferred refresher — exact gauges without metrics-in-the-DB
 
 The exact, restart-resilient form of the two gauges is a read-only background thread per replica. On a ~15 s timer it queries Postgres for `last_seen_at` and the live lease count (`count(*) WHERE lease_expires_at > now()`), overwrites an in-memory snapshot, and lets the OTLP export read that snapshot. This keeps the export path DB-free while giving every replica identical, exact values and closing the abandoned-lease over-count. It is **not "metrics in Postgres"**: it *reads* already-durable operational state to derive a gauge — the timeseries still lives only in the metrics backend. Deferred; it is the persistent answer for a scaled-out future.
+
+## Authoring leases
+
+Active implementation requirements; focused and repository proofs remain pending.
+
+POST `/v1/runners/me/leases` requires `accepted_kinds` and returns `kind:"fleet"` or `kind:"authoring"`. All claim paths lock the runner row before checking unexpired active leases across both kinds, and insert the selected lease in that same transaction. A host's authenticated worker_count is server-owned registration/heartbeat data, not a per-poll capacity override. Reducing it stops new claims while old leases drain. Migration 944 adds a host claim revision and last successful kind. The shared poll reads an optimistic choice; each lease write rechecks its revision under the host lock and advances it with the lease. Successful mixed placements alternate preference across daemon replicas. An empty kind tries the other; a competing placement invalidates the old offer.
+
+Both fleet and authoring renewal also take that runner-row guard before their lease/affinity or authoring locks. Sample authoritative database time after acquiring the guard. Require the original lease and matching affinity deadline to exceed that time; equality or expiry loses the lease. Extend both deadlines atomically, then commit before releasing the host guard. Expired work requires a new capacity-checked claim. Runtime issue and renewal now use `afd_runner/src/capacity/` and strict original-expiry checks in `afd_fleet/src/lease/renew/mod.rs` and `src/lease/sql/renew.rs`. The focused ledger records their tests; authoring admission and renewal remain pending. A two-replica barrier test orders expiry → authoring admission → delayed runtime renewal and asserts rejection, one live slot, and no deadlock.
+
+Authoring is creator-private work. Resolve its workspace owner, recheck creator membership, choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft. Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; Dragonfly publishes wake/progress hints, not another authoritative message copy.
+
+Additive migrations 935–942 define creator-private `core.authoring_drafts`, `core.authoring_messages`, candidates and replay receipts; content-free `fleet.authoring_attempts` and dispatch/activity receipts; and independently retained `billing.authoring_settlements`. Immutable native setup/Library revisions join their existing domains. The authoring progress channel is `draft:{draft_id}:events`; its ownership is checked before subscription and every reconnect. No private event joins workspace broadcast. The tables are registered and applied to the local test database. The private channel and stream still require implementation; migrations do not prove their runtime behavior.
+
+Each authoring lease has an attempt identity, fence, deletion generation, expiry, pinned model/tokenizer/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
+
+### Scoped provider boundary
+
+The daemon issues an opaque lease capability and serves the fourth machine route, `/model-calls`. [The resource reference](api_resources.md) owns its issuance, bindings, wire, expiry, revocation, dispatch receipts, and replay behavior. The daemon holds provider keys and dispatches each authorized call; the runner receives bounded text/proposals/usage. Existing raw-key runtime transport is not reused for authoring. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch. Real-router integration tests must deny foreign runner/model bindings, expired/revoked tokens, duplicate physical sends, and runtime credential minting. A local capability type alone supplies no boundary proof.
+
+### Token and time bounds
+
+| Bound | Value | Enforcement |
+|---|---|---|
+| Input per model call | 32,768 tokens | Selected model tokenizer counts system, tool schemas, bounded history, current text, and candidate excerpts before dispatch. |
+| Output across a turn | 8,192 tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
+| Calls per attempt | 8 | Daemon and runner counters; no tool loop beyond this count. |
+| Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
+| Provider request | 30 seconds | Request timeout and local abort; upstream cancellation is not assumed confirmed. |
+| Lease TTL / renewal | 30 seconds /10 seconds | No overlapping admitted lease while the prior live attempt remains counted. |
+| First instructions / edited | 12 KiB /32 KiB | Shared validated text bounds, independently of tokenizer counts. |
+| System / tool schemas | 2,048 /4,096 tokens maximum | Pin assembled prompt version; validate these counts on model eligibility and before each call. |
+| Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
+
+The model's context window must also cover the counted input plus remaining output reservation. Reject ineligible models rather than choosing a fallback. If context cannot fit, trim only disclosed eligible history with a recorded summary boundary, or fail before calling the provider; never truncate the policy or tool schema. Output includes hidden/reasoning tokens if the provider charges/counts them. Eligibility requires a provider-supported hard output bound and reliable usage semantics. Byte counts cannot prove these caps. Count every physical provider dispatch, including retries, against the call limit; disable hidden SDK retries. An uncertain provider call ends the attempt instead of allowing another call to consume an unknown output remainder.
+
+The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Claim includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits. It may ask clarifying questions. It cannot grant access, publish, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits. Assistant answer and candidate changes are separate records; terminal report does not re-emit the whole definition.
+
+### Private copies and report recovery
+
+| Copy | Owner | Lifetime and removal |
+|---|---|---|
+| Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and invalidates the deletion generation. |
+| Dispatch result and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours; accounting receipts retain no answer. |
+| Authoring report, temporary files and rejected copies | Supervisor | Private bytes are encrypted with a separate local content key. Logical expiry is 24 hours from first write and survives retry or rename. Cleanup runs during uptime and before any restart content read or upload. |
+| Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |
+| Provider logs and infrastructure snapshots | Their service owners | Follow their published retention; draft deletion cannot promise physical removal from these systems. |
+
+The 24-hour limit is logical expiry enforced by the supervisor. Physical files can remain while a machine is powered off. A holder of retained ciphertext and its local key can decrypt offline; storage snapshots follow their own retention.
+
+Authenticate attempt, generation, first-write time and deadline metadata before reading encrypted content. Keep a separate `kind:"accounting"` report without text, content digests or capabilities. Startup scans every spool category before decrypting or uploading private bytes. Remove expired, corrupt, orphaned and clock-uncertain content and keys while preserving content-free settlement. During uptime a monotonic deadline prevents wall-clock changes from extending retention. Across restarts compare UTC with the saved high-water clock and fail closed on rollback. Cleanup failure stops private draining. Retry, quarantine and rename never extend expiry.
+
+Accounting-only replay uses the original report identity and normalized accounting fields. It settles once against daemon receipts whether the original terminal report committed, its acknowledgement was lost, it never arrived, or the draft was deleted. Altered usage conflicts. No accounting retry restores a message, answer or candidate. This section states implementation requirements; focused evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).

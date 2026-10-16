@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-09-14
+**Direction:** Clear Signal · **Updated:** 2026-10-15
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -9,8 +9,10 @@ The website gallery demonstrates the components.
 ## Intent
 
 Make work, evidence, and next actions easy to recognize.
-Keep the mint identity. Use flat surfaces, readable typography, and precise alignment.
-Brightness comes from foreground contrast and deliberate color.
+Keep the mint identity. Use compact controls, confident type, flat surfaces, and precise alignment.
+The interface should feel bold, simple, and colorful enough to distinguish actions and outcomes at a glance.
+Brightness comes from foreground contrast, mint action surfaces, and visible semantic accents.
+Reduce padding and repetition before reducing readable text. Avoid oversized controls and empty panels.
 
 The memorable impression is an active fleet whose work you can follow.
 Marketing explains outcomes with product examples.
@@ -36,36 +38,39 @@ Do not redefine a font family in a consumer stylesheet.
 | heading | 20px | Working sections and card headings |
 | body-lg | 18px | Website introductions, and the fleet chat transcript |
 | body | 15px | Default reading and controls |
-| body-sm | 14px | Supporting copy and navigation |
+| body-sm | 14px | Supporting copy, table cells, and navigation |
 | label | 13px | Metadata, table headings, and compact status badges |
 | eyebrow | 12px | Short section labels |
-| mono | 13px | Technical content, and the density step for table cells |
+| mono | 13px | Technical content and aligned identifiers |
 
 Use sentence case for controls and navigation.
-Uppercase is reserved for short eyebrows, table headings, compact status labels, and shared agent display names.
+Form labels use 13px semibold sans; normal button labels use 14px semibold sans.
+Keep descriptions at normal weight so labels and actions carry a clear hierarchy.
+Uppercase is reserved for short eyebrows, compact status labels, and shared agent display names. Table headings use sentence case.
 Keep long labels in sentence case so they remain easy to scan.
 Use tabular numerals for changing values and aligned numeric columns.
 Do not use mono for an entire table when its rows contain names and descriptions.
 
-The 13px step serves compact sans labels, dense table cells, and technical mono values.
+The 13px step serves compact sans labels, table headings, and technical mono values.
 Use 14px for supporting descriptions, operational status lines, and relative times such as “2 hours ago.”
 Reserve monospace for exact values whose character alignment helps comparison.
 App page titles use the shared 28px semibold `PageTitle`; do not restyle individual page headings.
 
 ## Color
 
-Dark is the primary brand presentation. Use lifted graphite surfaces and clear silver secondary text; avoid near-black page fills. Light has equal usability requirements.
+Dark is the primary brand presentation. Use charcoal surfaces, warm off-white text, and restrained mint. Light has equal usability requirements.
 The token file owns exact values; the following roles explain their use.
 
 | Role | Dark | Light |
 |---|---|---|
-| Page | Graphite | Cool off-white |
-| Card | Lifted graphite | White |
-| Input / secondary surface | Distinct graphite layer | Pale green-gray |
-| Hover / selected surface | Brighter graphite | Muted green-gray |
-| Primary text | Near-white | Deep green-black |
-| Secondary text | Clear silver | Dark gray-green |
+| Page | Charcoal | Warm off-white |
+| Card | Lifted charcoal | White |
+| Input / secondary surface | Distinct charcoal layer | Pale green-gray |
+| Hover / selected surface | Brighter charcoal | Muted green-gray |
+| Primary text | Warm off-white | Deep green-black |
+| Secondary text | Clear gray-green | Dark gray-green |
 | Brand action | Bright mint with dark text | Solid ink with white text |
+| Secondary action | Mint tint, mint text and border | Teal tint, deep teal text and border |
 | Link / live signal | Bright mint | Deep teal |
 
 Use semantic foreground tokens on their intended backgrounds.
@@ -84,11 +89,19 @@ Mint identifies primary actions, links, selected navigation, and live signals.
 Success, warning, error, information, and evidence colors communicate their named meanings.
 Status always includes text or an icon; color alone carries no required information.
 Success uses a distinct green, while mint remains the action and live-signal accent.
+Use information blue for informative state, evidence amber for sourced material, and amber for attention.
+Give compact badges a visible tinted surface and boundary. Keep neutral metadata quiet; do not color every label.
+Secondary actions and hovered controls use a mint tint instead of another indistinguishable gray layer.
+
+The shared `BrandMark` is a static eight-ray signal with a central dot, paired with
+the wordmark. It identifies the product without implying live execution. Use
+`WakePulse` only for actual live state. Shared brand assets live in
+`ui/packages/design-system/assets/`; website and app icons reference that source.
 
 ## Surfaces and layout
 
-- Use solid fills. No linear, radial, conic, or mesh gradients, including avatars and usage bars.
-- Remove ambient glow fields, text shadows, and glowing buttons.
+- Keep reading surfaces solid. Restrained mint light may frame the brand mark and active composer; it must not sit behind body text or reduce contrast.
+- Use soft glow and layered light to mark the chat entrance and input focus. Keep their intensity low in both themes and preserve a clear border without the light.
 - Borders define panels. Shadows are reserved for dialogs, menus, and other floating surfaces.
 - Use 6px, 8px, and 12px radii for small details, controls, and panels.
 - Circular shapes are reserved for avatars and status dots.
@@ -113,13 +126,13 @@ Keep narrow-screen reading order meaningful without relying on visual placement.
 
 | Component | Rules |
 |---|---|
-| Button | Sans label, solid fill, visible focus, stable disabled state |
-| Input and textarea | Sans by default; explicit mono only for code or technical data |
+| Button | Compact semibold sans label; solid primary fill, tinted secondary fill, visible focus, stable disabled state |
+| Input and textarea | Compact sans fields with strong resting boundary; explicit mono only for code or technical data |
 | Navigation | Readable sans labels, clear selected state, consistent icon size |
 | Tabs | Shared underline style for both route and local tabs |
 | Card | Flat surface, fine border, one clear heading |
 | Table | Sans names and descriptions; mono identifiers; aligned numeric values |
-| Badge | Short readable label; semantic color only when meaningful |
+| Badge | Short semibold label, compact line height, visible semantic tint and border |
 | Dialog | Clear title, focused first action, keyboard dismissal when safe |
 | Empty state | Explain the missing item and provide the next action |
 | Error state | Explain what failed and retain the recovery action |
@@ -130,12 +143,27 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
+### Compact density
+
+Default buttons, text inputs, and select triggers are 36px tall on fine pointers. Small buttons are 32px; large actions are 44px. Icon buttons share the same compact rhythm.
+Coarse pointers retain a minimum 44px interactive target. Visible density must not make touch, keyboard focus, or long labels harder to use.
+Use 13px form labels and badges, 14px control labels and supporting text, and the existing 15px body scale. Smaller components do not mean tiny type.
+Place related controls in one wrapping row where practical. Keep dialogs focused on the current decision and disclose advanced configuration through the shared Accordion.
+Use shared Button, Input, Select, Label, Badge, and StatusPill variants for these decisions. Pages must not recreate their appearance with local class overrides.
+
 ### Tables and record dates
 
-Record lists place Time after the record identity and before Actions; the column is Time everywhere, never Created, so one label reads the same on Secrets, API Keys, and the feeds.
+DataTable uses 13px sentence-case headings and 14px sans body cells. Mark the identity column with `primary` to strengthen its hierarchy.
+Shared cell tokens provide 16px horizontal and 12px vertical padding. Pages must not override row density individually.
+The table palette defines its header, alternating surfaces, dividers, and mint hover or focus treatment in `tokens.css`.
+Clickable rows expose an Open column and chevron. Nested buttons, links, and inputs retain their own pointer and keyboard actions.
+Stable row keys preserve focus and unfinished edits through refreshes.
+
+Label creation timestamps Created across tables and detail views. Other timestamps name their event: Updated, Last used, Occurred, Expires, or Joined / invited. Use the shared app timestamp labels; avoid a generic Time or Date heading.
+Record lists place the timestamp after the record identity and before Actions.
 Secrets and API Keys fold creation metadata beneath Name on narrow screens, keeping Actions visible.
-The separate Time column returns at the small-screen breakpoint.
-Event and runner activity feeds keep their primary Time column first, followed by Tokens, Duration, Cost, Status and Details; the Runs repeat count closes the row.
+The separate Created column returns at the small-screen breakpoint.
+Event and runner activity feeds keep their primary timestamp before metrics and status columns; the Runs repeat count closes the event row.
 A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
@@ -145,23 +173,39 @@ Keep loading and completion cues inside that fixed square.
 Do not add creation dates to catalog tables whose records have no useful creation-date field.
 
 Column labels and cells share horizontal padding and alignment.
-Left-align dates beneath Time, including secondary usage details in the same cell.
+Left-align dates beneath their heading, including secondary usage details in the same cell.
 Right-align numeric columns and row actions. Every sort icon follows its label, numeric columns included.
 Use shared DataTable sorting, pagination, and scroll behavior.
+Default page sizes are 25, 50, and 100. Previous and Next replace the current page; paginated tables never append rows.
+Keep the header and pagination footer visible around the scrolling body. Loading disables sorting and paging until the current request settles.
+Use Search for text matching. Label structured filters by their fields and state exact-match behavior beside the controls.
 
 Runner detail bounds its table height on desktop and scrolls the page on mobile.
 Wrapped headers must never shrink the table viewport until all rows disappear.
-Align the table and status line to the same edges, with a 20px gap and an 8px bottom inset.
+Align the table and status line to the same edges. Use the shared extra-large spacing token between working sections.
 Status lines use 14px sans-serif text, tabular digits, and keyboard-accessible horizontal scrolling.
+
+Runner cards show host identity, status, last seen, and an Open action. Create runner belongs in the page header.
+Runner detail places actions beside the title and status beneath it. Leases and Activity tabs sit directly above their content.
+A checks badge reports the result; a separate View checks button makes inspection discoverable.
+Activity and Approvals belong in workspace navigation. Keep Approvals available when its inbox is empty. Hide Platform navigation when the person has no operator destinations.
 
 ### Forms and popups
 
 Inputs have a visible resting boundary, a mint hover boundary, and a two-pixel focus ring.
 Pointer hover must preserve the focus ring on an already focused input.
-Dialogs use the shared panel radius, strong border, and overlay token.
+Dialogs use the shared panel radius, strong border, overlay, and dialog elevation tokens.
+Select and dropdown surfaces use the floating elevation token. Motion follows shared timing and respects reduced-motion preferences.
 The close control uses Button and reserves space beside the dialog title.
 Constrain the panel to the viewport and scroll its content so footer actions remain reachable.
 Shared buttons provide a minimum 44-pixel touch target on coarse pointers.
+Event details focus on the outcome, request context, and actionable failure guidance. Omit clipboard controls and empty action footers.
+
+Keep mutation errors inside their confirmation dialog, with the failed action available for retry. Prevent dismissal while a destructive request is pending.
+
+Read failures use UnavailableState, which composes the warning Alert with a title, explanation, and recovery actions.
+Never substitute an empty result for an unsuccessful read. Reserve destructive alerts for failed changes or destructive decisions.
+Workspace and Platform library reads share recovery wording; a missing selected recipe has its own explanation.
 
 Clerk sign-in, sign-up, account menus, and profile forms use `lib/clerkAppearance.ts`.
 This adapter maps shared tokens through Clerk’s typed Core 3 appearance API, including `theme`, `options`, and `variables`.
@@ -193,25 +237,73 @@ cannot determine whether arbitrary prose is a technical value; that remains a re
 
 ## Motion
 
-Use brief color transitions for hover, focus, and selection.
-Do not move cards or whole pages when navigating or hovering.
+Use brief color transitions for hover, focus, and selection. Chat entrance elements may settle gently into place; composer focus may ease into a soft mint glow.
+Keep conversation rows and controls stable while typing. Avoid moving whole pages or shifting neighboring content on hover.
 The live indicator may pulse only when the underlying entity is live.
 Reduced motion leaves a static, readable state without dimming the content.
 Terminal demonstrations may reveal lines when their final content remains available without animation.
 
-## Website illustrations
+## Website product entrance
 
-Use original product illustrations alongside concrete interface examples.
-The hero leads with incident response and a small vector teammate. The detailed workflow belongs in How it works.
-Supporting diagrams explain an example run and the context available to the next run.
-Use recognizable tool marks where they clarify evidence sources or delivery destinations.
-The incident diagram distinguishes diagnosis from repair. A human request or failed workflow starts the separate approval-gated repair path.
-Label example activity explicitly. Do not present it as live customer activity.
-Keep illustrations still. Supporting path animations play once and respect reduced motion.
-Use solid color regions and crisp edges. Avoid gradients, glossy shading, and ambient glow.
+The website leads with an incident-investigation request composer and one inspectable example conversation.
+Explain a fleet once, after the job is clear. Keep docs, source, and sign-in accessible.
+Use the shared charcoal, warm off-white, and mint identity.
+`ui/packages/design-system/src/tokens.css` owns the palette across website and app.
 
-The shared vector is `ui/packages/website/src/components/AgentIllustration.tsx`.
-The large workshop raster is removed. Incident Response and Slack Teammate are the first two showcased workflows.
+The user authorized a website-only motion and gradient exception on 2026-10-13.
+An original, low-contrast dithered signal field may use an SVG gradient mask and a
+brief entrance animation behind the hero. It cannot intercept input or carry essential information.
+Foreground surfaces stay solid and readable. Do not add glossy shading or glowing controls.
+
+The conversation types a problem, refines setup, shows a reviewed save, and continues into scheduled work.
+Save creates an independent fleet from the reviewed setup. It does not publish to the Library.
+Save to Library is a separate, explicit action that publishes an immutable version.
+Choose a Library version before creating a new private setup; show the selected version throughout review.
+Improve and Apply revise an existing fleet through a new review rather than creating another fleet.
+Use native setup records throughout. Do not offer file imports, bundle exports, `SKILL.md`, or `TRIGGER.md` authoring.
+
+### Workspace authoring and publication
+
+The sidebar labels private New Fleet conversations as Fleet setup chats. Search loaded chats filters their loaded titles within the current workspace.
+It does not search message bodies or fleets. Hide search until there are loaded conversations.
+Distinguish loading, unavailable history, a successful empty list, and no matching titles. Failed loading must never look like an empty history.
+
+Keep every accepted message and persisted assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
+During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
+Show the current instructions, runtime model, required access, budget, and readiness before the person saves a fleet or publishes to the Library. Keep review and correction available throughout a long conversation. Never imply that publication rereads or summarizes the transcript: it stores the selected candidate unchanged. The transcript remains private and is not included in the Library revision.
+The current authoring context has a bounded model window. If it cannot fit, show the recorded failure and recovery action; do not silently discard earlier messages or imply that automatic compaction exists.
+These boundaries follow the [model instructions](../rustd/crates/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
+
+### Example playback
+
+Append messages in one bounded native scroll region. The branded signal loader names its current activity.
+A blinking cursor follows the typing text. Use Bricolage Grotesque for the entrance headline,
+Instrument Sans for messages, and CommitMono for commands and technical excerpts.
+
+Loop the example after a readable hold on the final report. Remove stage tabs and Replay.
+Keep Pause and Read full conversation available; the primary example action is Create fleet.
+The conversation scroll region must be reachable by keyboard and show the shared focus indicator.
+Reading the full conversation transfers focus to the stable Play control when its reveal action disappears.
+Pause timers offscreen, in hidden tabs, and when a person inspects evidence.
+Manual scrolling stops following while playback continues; show Jump to latest without moving the document.
+Visibility recovery preserves the reading position. Explicit Play resets inspection and following.
+Evidence inspection stays paused until Play; closing restores the reading position and citation focus.
+Reduced motion shows the complete conversation immediately. Mobile keeps the same bounded conversation.
+Animation never grants permission, connects tools, authenticates, or starts real work.
+
+Keep Example run visible and disclose that authoring illustrates the planned experience.
+Every identifier, excerpt, and output is sample data; arbitrary visitor input never changes the sample diagnosis.
+Separate investigation, recommendation, access limits, and report. Repair remains a separately configured job.
+Do not show child-role progress until the runtime supplies real child lifecycle and origin facts.
+
+The anonymous entrance has one composer, three useful job suggestions, and an optional CLI entry.
+Investigate an incident, Catch test regressions, and Automate recurring work each open their own animated example directly.
+Remove Tools & setup and its preview dialog. Opening signup in a new tab preserves page text.
+Written requests stay in page memory; never forward them through URLs, analytics, or browser storage.
+CLI setup names Claude Code, Codex, and OpenCode and uses the shared Terminal copy control.
+Keep installer release status in installation documentation; the entrance has no preview or planned label.
+A future authenticated handoff needs its reviewed draft APIs before signup can retain a server-saved request.
+
 The website JavaScript budget is 128 kB gzip; the CSS budget remains 20 kB.
 
 ## Product copy and pricing
@@ -220,10 +312,11 @@ Explain what a fleet does, what it reads, and what the user can inspect.
 Keep backend implementation details out of product instructions.
 Retain explicit approval requirements wherever an action requires approval.
 
-The website invites early users to try real workflows and provide feedback before launch pricing is decided.
-Explain fleet runtime and model usage separately, including that a personal model key does not remove runtime costs.
-Do not publish unapproved prices, starter-credit promises, savings estimates, or unlimited free usage.
-State that early-access terms precede use and pricing is confirmed before paid usage.
+The website invites users to create their first fleet and provide workflow feedback.
+Indy approved “$0 to start · $25 credit included” on 2026-10-14, replacing the earlier early-access copy.
+Show this offer near the welcome heading and in the pricing card. Describe credit as running the first jobs; keep model terminology out of this offer.
+Explain that using a personal key bills usage directly with the provider.
+Do not publish unapproved future prices, savings estimates, unlimited free usage, or behavior after the included credit runs out.
 The authenticated app still displays actual balances and charges from its existing billing data.
 Do not add subscriptions, payment methods, or automatic reload controls without supporting behavior.
 Enterprise discussions must distinguish offered capabilities from requested arrangements.
@@ -236,6 +329,9 @@ Show setup requirements after the product example. Do not promise instant setup 
 Expressed intent proceeds without redundant confirmation.
 Credentials and prerequisites appear at the point of need when supported.
 Loading, success, and failure states remain visible where the action began.
+Reuse the signed-in session and server credential helper; preserve current access checks on every private read, write, and stream reconnect.
+Use one private Server-Sent Events (SSE) connection for active authoring. Coalesce progress hints into durable-state refreshes and reconcile on reconnect. A healthy quiet stream must not become a polling loop. Abort streams and reads when the account, workspace, creator, or draft changes.
+Keep private conversation responses uncached. Cache public assets and immutable reusable content only within the appropriate authorization scope; live readiness, permissions, and mutable Library heads require current reads.
 If navigation leaves an empty route slot, the shell shows a spinner until route content returns.
 Destructive actions retain their existing confirmation behavior.
 
@@ -247,9 +343,9 @@ Destructive actions retain their existing confirmation behavior.
 4. Migrate explicit consumer styles.
 5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
-Use the existing design-system gallery as the visual reference.
+Use the development-only `/_design-system` gallery as the visual reference. Production builds omit its route and gallery bundle.
 Keep token mappings, accessible contrast, and meaningful component behavior covered.
-Run focused UI checks during implementation.
+Complete the owned implementation before running focused behavioral checks.
 Run full repository unit and integration suites immediately before the PR, as directed by the user.
 
 ## Scope
@@ -287,5 +383,11 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-09-05 | Clear Signal: sans interface, expressive display, flat surfaces | User approved brighter clarity, retained mint, and removal of gradients across app and website. |
 | 2026-09-13 | 13px carries a sans role as well as a mono one | An audit measured every `DataTable` cell at 13px sans (`DataTableView.tsx:279` sets `font-sans text-mono`) while the scale gave 13px only to mono, making the smallest documented sans step 14px. Code and doc disagreed; the code was right. Table density was a deliberate choice — `Pagination.tsx` reasons about it — so the step is documented rather than removed, and no rendered size changed. |
 | 2026-09-13 | Larger labels, clearer status colors, and mobile table access | Labels use 13px; operational status uses 14px sans. Contrast checks cover both themes. Mobile layouts preserve the wordmark, actions, and runner rows. |
+| 2026-10-13 | Website job entrance with controlled product motion | User explicitly authorized overriding still illustrations and no gradients for the website. An original dithered SVG mask and brief scenes explain work. The preview cannot activate a fleet; a future hosted handoff requires review and explicit execution. |
+| 2026-10-13 | Shared charcoal, warm-white, and mint identity | User approved applying the website direction to the shared design system and app. One token palette and a static signal mark serve both surfaces. Actual live indicators keep their existing meaning. |
+| 2026-10-15 | Native setup, explicit Library publication, and accessible conversation playback | Save creates a fleet; publishing an immutable Library version is separate. File-based authoring is removed. Website and app retain the approved shared identity, with keyboard focus and reading position preserved during conversation inspection. |
+| 2026-10-15 | Compact controls, stronger typography, and clearer color | User authorized a modern, bold, simple, more colorful system with smaller components. Shared controls use a 36px desktop rhythm, semibold labels, mint-tinted secondary actions, and clearer semantic badge borders; coarse-pointer targets remain 44px. |
 
-The flat-fill rule is enforced by `.orly/audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.
+The flat-fill rule is enforced by `.orly/audits/design-tokens.sh` across production CSS and TypeScript sources. The website signal field uses the explicitly scoped SVG mask above; no CSS gradient exception or audit relaxation is needed.
+
+| 2026-10-15 | Shared table hierarchy and Runner navigation | Live visual approval covers sentence-case table headings, readable rows, shared pagination, dialogs, Runner cards and controls, and workspace Activity placement. Table colors, spacing, and elevations remain shared tokens. |

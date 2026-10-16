@@ -44,7 +44,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 
 ## The registry: a provider is a data entry
 
-The connector registry is the closed `Provider` enum (`rustd/crates/afd_connector/src/provider.rs`), declared once by the `catalogue!` macro, which also generates `Provider::ALL`. `Provider::archetype()` (`rustd/crates/afd_connector/src/registry.rs`) says which flow each variant runs. Adding a provider is one variant plus its match arms — never new route or flow code:
+The connector registry is the closed `Provider` enum (`rustd/crates/afd_connector/src/provider.rs`), declared once by the `catalogue!` macro, which also generates `Provider::ALL`. `Provider::archetype()` (`rustd/crates/afd_connector/src/registry/mod.rs`) says which flow each variant runs. Adding a provider is one variant plus its match arms — never new route or flow code:
 
 ```
             ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile. Unit tests pin the rest: every id parses back to its variant, no two display names match, every OAuth connector asks for at least one scope, and no two providers share a signed-state domain or nonce namespace (`provider.rs`, `registry/tests.rs`).
 - **A callback and a Disconnect each write both rows in one transaction.** A completing callback commits its sealed grant and its routing row together, so a connect that cannot seal its grant leaves no routing row behind. Disconnect deletes the grant and the routing rows together, so a refused delete leaves both (`afd_connector/src/grant/holding.rs`). Both lock the workspace row first (`core.workspaces`, `FOR NO KEY UPDATE`, `afd_connector/src/sql.rs`), so a callback and a Disconnect take turns even on a first connect, before the grant's row exists, and end with both rows or neither. The vault and the routing table share one Postgres, so no advisory lock is needed.
-- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
+- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app/mod.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
 
@@ -99,12 +99,13 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
 6. **The standing integration grant authorises every mint, including a
    repository write.** `core.integration_grants` holds one row per
    `(fleet_id, service)` — `UNIQUE (fleet_id, service)` — and only an `approved`,
-   unrevoked row admits a mint. An install writes that row approved, because
-   installing the fleet IS the answer: the bundle names the integration and the
-   fleet's binding names the repositories and the access level. A repository
-   write raises no per-event card; `agentsfleet grant delete` is the manual stop
-   and takes effect on the next event before any provider call, and
-   `budget.daily_dollars` bounds the money. The token is still narrowed to the
+   unrevoked row admits a mint. Save writes that row `pending` and raises one
+   approval card; a person's yes on that card is the answer, because the
+   reviewed Definition names the integration and its binding names the
+   repositories and the access level. A repository write raises no per-event
+   card; `agentsfleet grant delete` is the manual stop and takes effect on the
+   next event before any provider call, and `budget.daily_nanos` bounds the
+   money. The token is still narrowed to the
    declared repositories by `ScopedRequest::for_binding` and the response still
    checked by `Granted::verify` — the grant is the authorisation above that
    scoping, never a replacement for it.
@@ -179,7 +180,7 @@ triggers:
     repositories: [acme/payments]
 ```
 
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/afd_ingress/src/binding.rs`).
+For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/afd_ingress/src/binding/mod.rs`).
 
 ### What the event belongs to
 
@@ -217,17 +218,17 @@ This gives each layer one job:
 
 ### Where a grant comes from
 
-A grant is **originated at install**: installing a fleet that declares a
-credential whose stored handle is mintable writes an `approved`
-`core.integration_grants` row and raises no approval card, because choosing the
-fleet is the answer (`rustd/crates/afd_fleet_lifecycle/src/install/grants.rs`).
-The write runs after the fleet is flipped `active` and is best-effort: a failed
-write is logged, the install stands, and the lease path asks for the grant the
-first time a delivery needs it (`rustd/crates/afd_fleet/src/lease/deliver.rs`).
+A grant is **requested at Save**: when a saved fleet's readiness review finds a
+declared credential's grant missing, setup activation asks for it
+(`rustd/crates/afd_authoring/src/creation/activate.rs`). The request writes a
+`pending` `core.integration_grants` row and raises an approval card in one
+transaction (`rustd/crates/afd_approval/src/grant_sql.rs`), and the fleet stays
+`installing` until every readiness check, the grant included, is ready
+(`rustd/crates/afd_authoring/src/creation/progress.rs`). The lease path asks the
+same way the first time a delivery reaches a credential with no grant
+(`rustd/crates/afd_fleet/src/lease/deliver/mod.rs`).
 
-When the lease path has to ask (a fleet installed before install-time grants, a
-credential added by a later edit, or an install-time write that failed), the
-decision belongs to the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
+Either way, the decision belongs to the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
 a timeout sweeper, and an append-only audit. **A gate is a per-event decision; a
 grant is the standing answer that outlives the run.** The gate asks; the grant
 remembers. Resolving the gate as approved flips the grant and the gate in one
@@ -270,7 +271,7 @@ active fleets in that workspace
 core.fleet_admissions row (body digest + fleet) → XADD fleet:{id}:events
 ```
 
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app.rs`).
+Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 
@@ -294,7 +295,7 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
 | <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`rustd/crates/afd_api_ingress/src/handler/mention.rs`) |
+| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`) |
 | <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
@@ -303,7 +304,7 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 
 Every connector vendor call runs under a deadline set at its call site. A callback exchange past its deadline, or one that cannot reach the vendor, answers `UZ-CONN-003` (502); background paths log the same code and retry.
 
-- **Deadlines are named per call class.** Token exchange and credential mint: 10 s, a client-wide total timeout that covers connect and the Transport Layer Security (TLS) handshake (`rustd/crates/agentsfleetd/src/credentials.rs`, `EXCHANGE_TIMEOUT`). Slack post: 5 s (`rustd/crates/afd_outbound/src/slack.rs`, `POST_DEADLINE`). Slack thread re-read: 1.5 s (`rustd/crates/afd_connector/src/slack/replies.rs`, `READ_DEADLINE`). Slack answer check: 3 s (`rustd/crates/afd_connector/src/slack/answered.rs`, `ANSWER_CHECK_DEADLINE`).
+- **Deadlines are named per call class.** Token exchange and credential mint: 10 s, a client-wide total timeout that covers connect and the Transport Layer Security (TLS) handshake (`rustd/crates/agentsfleetd/src/credentials.rs`, `EXCHANGE_TIMEOUT`). Slack post: 5 s (`rustd/crates/afd_outbound/src/slack/mod.rs`, `POST_DEADLINE`). Slack thread re-read: 1.5 s (`rustd/crates/afd_connector/src/slack/replies/mod.rs`, `READ_DEADLINE`). Slack answer check: 3 s (`rustd/crates/afd_connector/src/slack/answered/mod.rs`, `ANSWER_CHECK_DEADLINE`).
 - **The exchange and the mint hold separate clients.** A slow connect exchange cannot consume the connection slots a credential mint needs (`rustd/crates/agentsfleetd/src/credentials.rs`).
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes a priority-1 review finding on merged Pull Request #468).
 

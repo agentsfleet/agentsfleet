@@ -16,6 +16,10 @@ agent) loads only the file that answers their question. This README is the
 lookup surface: find your topic in the table below, open that one file, grep
 inside it. Do not read the whole directory to answer one question.
 
+## Shared topic ownership
+
+Browser and terminal authoring, saved revisions and runtime setup use the same topic owners below. Definition and revisions belong to fleet_definitions; activation and recovery to data_flow; runner protocol/execution, billing, concurrency and web_app retain their existing responsibilities. API resources owns exact wire shapes. Review artifacts live under docs/reviews and do not define another architecture.
+
 ## Question → anchor index
 
 Start here: find the question, jump to the one §-section that answers it. The larger topic files front-load a Facts table, so the answer is usually in the first screen; the short files (direction, testing, product_analytics) are one screen already.
@@ -56,7 +60,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read" |
 | How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §"§8.0 The wedge surface", §"§8.2.1 Cold-machine bootstrap (run once per machine)" |
 | Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" |
-| What triggers can `TRIGGER.md` declare? | [`user_flow.md`](./user_flow.md) §"§8.3 Triggering the Fleet" |
+| What triggers can a fleet's setup declare? | [`user_flow.md`](./user_flow.md) §"§8.3 Triggering the Fleet" |
 | What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack as a resident surface (Rung 0) — M106" |
 | How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
 | What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
@@ -69,9 +73,25 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §"Shutdown choreography" |
 | How do I add a connector provider? | [`connectors.md`](./connectors.md) §"Adding a provider (the recipe)" |
 | How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution" |
-| What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §"Two layers: the immutable Bundle vs the live Fleet" |
+| How do drafts, Library revisions and installed fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-library-and-fleets) |
 | What does one lease write, end to end, and when is its sandbox destroyed? | [`lease_flow.md`](./lease_flow.md) — one lease walked end to end against the Rust source, with its open gaps |
-| How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §"The publish gate (M128)" |
+| How does a definition become reusable in Library? | [Explicit publication](fleet_definitions.md#explicit-library-publication) |
+| What is the proposed chat-to-fleet journey? | [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) |
+| Where is the complete workspace chat review packet? | [`docs/reviews/workspace-setup/review-packet.md`](../reviews/workspace-setup/review-packet.md) |
+| Which documents changed in the chat cutover rewrite? | [Rewrite report](../reviews/workspace-setup/rewrite-report.md) |
+| What is the detailed signup-to-result ASCII flow? | [`docs/architecture/data_flow.md#fleet-setup-and-runtime-sequence`](data_flow.md#fleet-setup-and-runtime-sequence) |
+| What are all the proposed workspace screens and options? | [`workspace-chat-options.md`](../designs/workspace-chat-options.md) |
+| What setup format do both chat clients save? | [Validated Definition](fleet_definitions.md#validated-definition) |
+| How does this design compare with the lease-pickup runtime? | [`docs/reviews/workspace-setup/runtime-baseline.md`](../reviews/workspace-setup/runtime-baseline.md) |
+| Which resources support fleet setup and runtime? | [API resources](api_resources.md) |
+| What are the exact new API inputs, outputs, and missing pieces? | [`docs/architecture/api_resources.md`](api_resources.md) |
+| How can creation retry without duplicate fleets or lost schedule fires? | [`docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`](data_flow.md#fleet-creation-and-setup-recovery) |
+| How would a runner refine a private draft? | [`docs/architecture/runner_fleet.md#authoring-leases`](runner_fleet.md#authoring-leases) |
+| What should Claude Agent Aiwa challenge before agreement? | [`docs/reviews/workspace-setup/claude-review-prompt.md`](../reviews/workspace-setup/claude-review-prompt.md) |
+| What prompt should ChatGPT use as CTO AIWA? | [`docs/reviews/workspace-setup/chatgpt-review-prompt.md`](../reviews/workspace-setup/chatgpt-review-prompt.md) |
+| Which owner decisions and source answers govern the cutover? | [Decision ledger](../reviews/workspace-setup/decisions.md) and [source findings](../reviews/workspace-setup/source-findings.md) |
+| What specs make this one product PR? | [M227_001](../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) and [folded M227_002](../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) |
+| Which public changes need a documentation branch? | [Public handoff](../reviews/workspace-setup/public-changes.md) |
 | Which test root owns my component? | [`testing.md`](./testing.md) §"Component ownership" |
 | When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §"Review rubric" |
 | What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §"Client event rules" |
@@ -96,7 +116,7 @@ After that, dip into whichever of these matches the change you're making:
 | 📐 [`direction.md`](./direction.md) | Design constants every spec must fit. |
 | 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user installs, triggers and supervises Fleets. |
 | 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, steer or cron fire lands. |
-| 📦 [`fleet_bundles.md`](./fleet_bundles.md) | Immutable bundle versus editable fleet; onboarding. |
+| 📦 [`fleet_definitions.md`](./fleet_definitions.md) | Native Definition, immutable revisions and explicit Library publication. |
 | 🏃 [`runner_fleet.md`](./runner_fleet.md) | Control plane and runner: leasing, fencing, recovery. |
 | ⚙️ [`runner_execution.md`](./runner_execution.md) | How the runner executes one lease. |
 | 🎟️ [`lease_flow.md`](./lease_flow.md) | One lease, from install to sandbox teardown. |
@@ -108,6 +128,7 @@ After that, dip into whichever of these matches the change you're making:
 | 📏 [`scaling.md`](./scaling.md) | Sizing the runtime and its tuning knobs. |
 | 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | The Dragonfly cluster target and its status. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
+| [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
 | 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
 | 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
@@ -147,9 +168,9 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **`agentsfleet-runner`** | The host binary (`rustd/crates/agentsfleet_runner`) that asks `agentsfleetd` for leases and runs each one in a sandbox. [(more)](./runner_execution.md#process-model) |
 | **Tenant** (`core.tenants`) | The paying account: it owns one or more workspaces and one wallet (`billing.tenant_wallet`). [(more)](../AUTH.md#signup--what-usercreated-writes) |
 | **Workspace** (`core.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
-| **Fleet** (`core.fleets`, `fleet_id`) | A durable AI agent defined by `SKILL.md`, installed into one workspace. [(more)](./high_level.md#1-product-thesis) |
-| **Fleet Bundle** | A validated template or import holding `SKILL.md`. [(more)](./user_flow.md#81-authoring-the-fleet) |
-| **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `repair_verification` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-the-row-is-the-acceptance-the-stream-entry-is-a-receipt) |
+| **Fleet** (`core.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
+| **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
+| **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-the-row-is-the-acceptance-the-stream-entry-is-a-receipt) |
 | **Admission** (`core.fleet_admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./lease_flow.md#admission-the-row-is-the-acceptance-the-stream-entry-is-a-receipt) |
 | **Fleet stream** (`fleet:{id}:events`) | The fleet's durable Dragonfly stream: each new admission appends one entry, and `agentsfleetd` reads it through consumer group `fleet_lease` when a runner asks for work. [(more)](./data_flow.md#two-streams--one-pubsub-channel--and-the-one-that-retired) |
 | **Readiness index** (`fleet:ready:{p}`) | Sixteen Dragonfly hashes marking which fleets have work waiting; a hint the lease poll reads before it touches Postgres, never the record. [(more)](./runner_fleet.md#datastore-topology) |
@@ -172,7 +193,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
 | **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
 | **App webhook trigger** | A provider App delivery; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
-| **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}`, signed with the fleet's own webhook secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
+| **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}/{source}`, the URL Save returns for that trigger, signed with the fleet's own webhook secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
 | **Trigger panel** | The card on a fleet's page (`/w/{workspaceId}/fleets/{id}`, `TriggerPanel`) showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |
 | **Free usage** | The starter credit a new tenant gets: a balance that drains. [(more)](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window) |
 | **Cron trigger** | An Upstash QStash schedule; QStash owns the clock. [(more)](./user_flow.md#83-triggering-the-fleet) |

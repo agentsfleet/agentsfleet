@@ -2,11 +2,11 @@
 
 > Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) and [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 
-> References: [`../fleet_bundles.md`](../fleet_bundles.md) (bundle storage), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
+> References: [`../api_resources.md`](../api_resources.md) (drafts, Save and the Library), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
 >
-> It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet through the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching the fleet read a Pull Request (PR); the review post is refused at egress today (§4). Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
+> It follows one persona — **John Doe** — saving the `github-pr-reviewer` fleet through terminal chat in the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching the fleet read a Pull Request (PR); the review post is refused at egress today (§4). Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
-**Outcome under test:** from a GitHub Pull Request reviewer template to a posted review comment, with the fleet running its installed `SKILL.md` against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. Today the run reads the diff and the review post is refused at egress (§4). This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
+**Outcome under test:** from a published GitHub Pull Request reviewer Library revision to a posted review comment, with the fleet running its reviewed instructions against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. Today the run reads the diff and the review post is refused at egress (§4). This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
 
 Legend: ✅ implemented and locally proven · 🔨 not built or not proven.
 
@@ -18,13 +18,12 @@ sequenceDiagram
   participant CLI as agentsfleet
   participant API as agentsfleetd
   participant GH as GitHub
-  participant R2 as R2 (object store)
   participant PG as Postgres
   participant Runner as agentsfleet-runner
 
   Admin->>GH: create App; set callback + /v1/ingress/github
   Admin->>API: vault App identity, webhook secret, and client credentials
-  Note over Admin,PG: admin already onboarded github-pr-reviewer → R2 + core.fleet_library
+  Note over Admin,PG: admin already staged and published github-pr-reviewer from a reviewed chat draft → core.fleet_library_revisions
   Op->>API: sign up and create/select workspace W
   Op->>API: connect github (signed single-use state)
   API-->>Op: GitHub user-authorization URL
@@ -35,22 +34,22 @@ sequenceDiagram
   GH-->>API: installation accessible
   API->>PG: conditional vault handle + connector_installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
-  Op->>CLI: install --library github-pr-reviewer
-  CLI->>API: GET /v1/workspaces/{ws}/fleet-libraries
-  API-->>CLI: platform row { id:"github-pr-reviewer", visibility:"platform" }
-  CLI->>API: POST /v1/workspaces/{ws}/fleets { platform_library_id:"github-pr-reviewer" }
-  API->>PG: INSERT core.fleets
-  API-->>CLI: { fleet_id }
-  Op->>API: TRIGGER: repositories=[acme/payments], events=[pull_request]
+  Op->>CLI: chat --library github-pr-reviewer --revision <revision_id>
+  CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
+  Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
+  CLI->>API: GET draft review (setup, access, readiness, review digest)
+  CLI->>API: POST /v1/workspaces/{ws}/fleets { source: draft candidate, review_digest }
+  API->>PG: INSERT core.fleets (installing) + setup revision 1
+  API-->>CLI: { fleet, setup checks: github grant pending }
+  Op->>API: approve the github grant on the setup check
+  API->>PG: stream + group ready; locked recheck ⇒ active
   Note over Op,Runner: …a PR is opened…
   GH->>API: POST /v1/ingress/github
   API->>API: verify App signature before payload routing
   API->>PG: installation → workspace → repository/event/grant fleets
   API->>PG: INSERT core.fleet_admissions (webhook_app, fleet:body digest)
   API->>API: XADD fleet:{id}:events ✅
-  Runner->>API: lease → { instructions:<SKILL>, event, bundle:{hash} }
-  Runner->>API: GET /v1/runners/me/bundles/{hash} (no sandbox: every tool runs in the supervisor)
-  API->>R2: GET bundle tar (the runner holds no object-store key)
+  Runner->>API: lease → { instructions, event, policy } (no sandbox: every tool runs in the supervisor)
   Runner->>GH: GET /pulls/{n} (Accept: vnd.github.diff, Bearer ${secrets.github.token})
   Note over Runner,GH: POST /pulls/{n}/reviews refused at egress, never sent ❌
   Runner->>API: report → event processed → dashboard event stream
@@ -58,29 +57,29 @@ sequenceDiagram
 
 ---
 
-## 1. Install — the bundle storage journey
+## 1. Save — from a Library revision to a fleet
 
-A platform admin onboards the template once (`POST /v1/admin/fleet-libraries`), and each user installs a fleet from it (`POST /v1/workspaces/{ws}/fleets`) with no GitHub fetch and no upload ([`../fleet_bundles.md`](../fleet_bundles.md) §"Onboard: fetch, validate, re-pack (agentsfleet builds its own tar)").
+A platform admin stages a reviewed chat candidate as a platform Library revision and publishes it (`POST` and `PATCH /v1/admin/fleet-libraries`). John opens a private draft pinned to that revision with `agentsfleet chat --library github-pr-reviewer --revision <revision_id>`, asks for his repository in plain language, reviews the exact setup and Saves it (`POST /v1/workspaces/{ws}/fleets`). The routes and their errors are N2–N10, C1 and C6 in [`../api_resources.md`](../api_resources.md).
 
-## 2. Two layers: immutable Bundle vs live Fleet
+## 2. Two layers: the immutable revision and the live fleet
 
-The runner executes the fleet's `SKILL.md`, which reflects any `PATCH`, and takes only support files from the immutable bundle ([`../fleet_bundles.md`](../fleet_bundles.md) §"Two layers: the immutable Bundle vs the live Fleet").
+The fleet runs the instructions and policy of its selected setup revision in `core.fleet_definition_revisions`, read fresh by every claim (`rustd/crates/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
 
 ## 3. Connect the App, bind the repository, then receive the PR
 
 1. **Platform setup and workspace connection.** The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet execution". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
-2. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding.rs:250-256`).
+2. **Fleet subscription.** The saved fleet's webhook trigger declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in its reviewed setup. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding/mod.rs:250-256`).
 3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, writes one `core.fleet_admissions` row per fleet keyed by fleet and body digest, and appends the event to that fleet's stream ([`../lease_flow.md`](../lease_flow.md) §"Admission: the row is the acceptance, the stream entry is a receipt").
 
-4. **The authorisation, once, at install.** Installing the fleet writes an approved `core.integration_grants` row for `(fleet_id, "github")` and raises no approval card. The write is best effort: a failure is logged, the install still succeeds, and the first delivery asks for the grant instead (`rustd/crates/afd_fleet_lifecycle/src/install/grants.rs`). Why installing is the answer, how the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, edit `repositories:` instead.
+4. **The authorisation, once, at Save.** The setup's `github` credential shows as a grant check. Save raises a pending approval card for `(fleet_id, "github")`, John approves it, and the fleet activates only after a locked recheck sees every check ready (`rustd/crates/afd_authoring/src/creation/activate.rs`, `rustd/crates/afd_approval/src/request/setup.rs`). How the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, apply a reviewed improvement with a shorter `repositories` list instead.
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 
 The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret, does not require `repositories`, and is not the default App path (`rustd/crates/afd_api_ingress/src/handler/webhook/github_route.rs`).
 
-## 4. The run — SKILL.md drives the review
+## 4. The run — the reviewed instructions drive the review
 
-A runner leases the event, and the model reads the PR diff through `http_request` with a per-lease installation token substituted at egress. The review POST is refused at egress with `RequestPolicyNotAllowed`, because no write rule admits `/pulls/{n}/reviews` and `SKILL.md` cannot widen the rules ([`../lease_flow.md`](../lease_flow.md) §"3. `github-pr-reviewer` end to end" and §"4. How AGENT BOB 01 can reply").
+A runner leases the event, and the model reads the PR diff through `http_request` with a per-lease installation token substituted at egress. The review POST is refused at egress with `RequestPolicyNotAllowed`, because no write rule admits `/pulls/{n}/reviews` and instructions cannot widen the rules ([`../lease_flow.md`](../lease_flow.md) §"3. `github-pr-reviewer` end to end" and §"4. How AGENT BOB 01 can reply").
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
@@ -91,9 +90,9 @@ The gate + billing path is identical to every other event — see [`../billing_a
 
 ## 6. Proof status
 
-Everything but the external proof is green: bundle install, App callback and
-reconnect, ingress filtering by installation / repository / event / grant,
-`SKILL.md` delivery per lease, the diff read, and the local
+Everything but the external proof is green: the native setup install, App
+callback and reconnect, ingress filtering by installation / repository / event /
+grant, instructions delivery per lease, the diff read, and the local
 repository-bound `pull_request` suite against real Postgres and Dragonfly.
 
 Three remain open, and the scenario is not fixed until the first two pass:
