@@ -18,7 +18,7 @@ fn lease(provider: &str) -> LeasePayload<'static> {
         "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": "{}", "created_at": 1},
-        "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": [], "secrets_map": null, "mintable": [], "provider": provider,
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,

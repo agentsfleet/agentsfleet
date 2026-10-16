@@ -75,6 +75,10 @@ fn reply(api: InferenceApi) -> Value {
     }
 }
 
+// Value: protects=provider diagnostics hide private fields while the physical request retains its prompt;
+// fails_when=Debug leaks request fields, hides the timeout or redaction removes the provider prompt;
+// why_new=the existing boundary test checks secret absence but not prompt delivery or useful diagnostics;
+// seam=none; no_claim=live provider acceptance (existing physical-send fixture).
 #[tokio::test]
 async fn every_api_uses_the_configured_model_credential_limit_and_one_physical_send() {
     for (api, path, header) in [
@@ -103,8 +107,11 @@ async fn every_api_uses_the_configured_model_credential_limit_and_one_physical_s
         assert_eq!(sent.request.uri().path(), path);
         assert_eq!(sent.timeout_ms, 1234);
         assert!(sent.request.headers().contains_key(header));
-        assert!(!format!("{sent:?}").contains("private-"));
+        let diagnostic = format!("{sent:?}");
+        assert!(!diagnostic.contains("private-") && !diagnostic.contains("models.example.com"));
+        assert!(diagnostic.contains("1234"), "{diagnostic}");
         let body: Value = serde_json::from_slice(sent.body()).expect("SDK request");
+        assert!(body.to_string().contains("private-prompt"));
         assert_eq!(body.get("model"), Some(&json!("workspace/model-next")));
         assert_eq!(
             body.get("max_tokens")
@@ -165,4 +172,49 @@ async fn failed_http_status_keeps_reported_usage_for_accounting() {
         physical.requests.lock().expect("recorded requests").len(),
         1
     );
+}
+
+// Value: protects=successful and failed provider bodies cannot leak through boundary response diagnostics;
+// fails_when=ProviderResponse Debug includes body bytes or safe formatting changes the physical response;
+// why_new=existing request privacy tests never format a ProviderResponse;
+// seam=none; no_claim=SDK response decoding or live provider acceptance (boundary value only).
+#[test]
+fn provider_response_diagnostics_keep_status_without_private_reply_bytes() {
+    for status in [200, 401, 503] {
+        let body = serde_json::to_vec(&json!({
+            "text": "private-provider-answer",
+            "reasoning": "private-provider-reasoning",
+            "credential": "private-provider-credential"
+        }))
+        .expect("private response JSON");
+        let response = ProviderResponse {
+            status,
+            body: body.clone(),
+        };
+        let exposed_bytes = format!("{body:?}").replace(' ', "");
+        for rendered in [format!("{response:?}"), format!("{response:#?}")] {
+            assert!(
+                !rendered.contains("private-"),
+                "private response leaked: {rendered}"
+            );
+            assert!(
+                !rendered.contains("credential"),
+                "private field leaked: {rendered}"
+            );
+            let compact: String = rendered.chars().filter(|ch| !ch.is_whitespace()).collect();
+            assert!(
+                !compact.contains(exposed_bytes.trim_end_matches(']')),
+                "private response bytes leaked: {rendered}"
+            );
+            assert!(
+                rendered.contains(&status.to_string()),
+                "status remains readable: {rendered}"
+            );
+        }
+        assert_eq!(response.status, status);
+        assert_eq!(
+            response.body, body,
+            "diagnostics must not alter the provider response"
+        );
+    }
 }

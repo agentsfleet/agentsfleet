@@ -12,7 +12,10 @@ use afd_db::test_util::FleetSeed;
 const FLEET_ACTIVE: &str = "active";
 
 pub(super) async fn funded(workers: i32) -> Fixture {
-    let f = Fixture::create().await;
+    fund(Fixture::create().await, workers).await
+}
+
+pub(super) async fn fund(f: Fixture, workers: i32) -> Fixture {
     sqlx::query("INSERT INTO fleet.runners(id,host_id,token_hash,sandbox_tier,admin_state,labels,network_policy,registry_allowlist,worker_count,degraded,last_seen_at,created_at,updated_at) VALUES($1::uuid,$1,$1,'dev_none','active','[]','deny_all_egress','[]',$2,false,$3,$3,$3)")
         .bind(f.runner.as_str()).bind(workers).bind(now().as_millis())
         .execute(&mut *f.connection().await).await.expect("owned host");

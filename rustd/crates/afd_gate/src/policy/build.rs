@@ -95,6 +95,7 @@ fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
     let wire = inputs.provider.wire();
     Ok(ExecutionPolicy {
         inference: inputs.provider.inference.clone(),
+        model_context_tokens: inputs.provider.context_cap_tokens,
         network_policy: network(inputs.config),
         tools: inputs
             .config
@@ -130,7 +131,6 @@ fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
             .unwrap_or_default(),
         context: context::resolve(
             inputs.config.context(),
-            inputs.config.model(),
             Overlay {
                 cap_tokens: inputs.provider.context_cap_tokens,
                 model: &inputs.provider.model,
@@ -162,7 +162,7 @@ mod tests {
         resolved: &'a Resolved,
         declared: &'a Declared,
     ) -> ExecutionPolicy<'a> {
-        match assemble(
+        let assembled = assemble(
             Inputs {
                 config,
                 provider: resolved,
@@ -170,12 +170,13 @@ mod tests {
                 repair_branch: None,
             },
             &Grants::none(),
-        ) {
-            Ok(Assembled::Ready(policy)) => *policy,
-            Ok(Assembled::Ungranted { credential, .. }) => {
-                panic!("expected a policy; parked on {credential}")
+        )
+        .expect("fixture policy assembles");
+        match assembled {
+            Assembled::Ready(policy) => *policy,
+            parked @ Assembled::Ungranted { .. } => {
+                panic!("expected a ready policy, got {parked:?}")
             }
-            Err(failure) => panic!("expected a policy; refused with {failure}"),
         }
     }
 
@@ -296,5 +297,25 @@ mod tests {
 
         assert_eq!(policy.context.model, "resolved-model");
         assert_eq!(policy.context.context_cap_tokens, RESOLVED_CAP_TOKENS);
+    }
+
+    #[test]
+    fn explicit_registry_references_cannot_override_resolved_execution_model_details() {
+        const LARGE_OPERATING_CAP: u32 = 1_000_000;
+        for cap in [8192, LARGE_OPERATING_CAP] {
+            let config = config(&format!(
+                r#","model":"platform-default","context":{{"context_cap_tokens":{cap}}}"#
+            ));
+            let resolved = resolved_with("provider-native-model", RESOLVED_CAP_TOKENS, None);
+            let declared = Declared::default();
+            let policy = ready(&config, &resolved, &declared);
+            assert_eq!(policy.context.model, "provider-native-model");
+            assert_eq!(policy.context.context_cap_tokens, cap);
+            let wire = serde_json::to_value(&policy).expect("serialized lease policy");
+            assert_eq!(
+                wire.get("model_context_tokens"),
+                Some(&serde_json::json!(RESOLVED_CAP_TOKENS))
+            );
+        }
     }
 }

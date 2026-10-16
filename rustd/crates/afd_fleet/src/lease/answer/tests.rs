@@ -52,6 +52,7 @@ fn installed() -> Installed {
 fn policy() -> ExecutionPolicy<'static> {
     ExecutionPolicy {
         inference: None,
+        model_context_tokens: 0,
         network_policy: NetworkPolicy {
             allow: Vec::new(),
             read_only: true,

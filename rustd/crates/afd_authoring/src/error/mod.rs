@@ -3,6 +3,8 @@
 use afd_core::error_code::{self, ErrorCode};
 
 pub(crate) mod raise;
+#[cfg(test)]
+mod tests;
 
 afd_core::error_shell!(
     /// A private-setup refusal or a failure to reach its durable store.

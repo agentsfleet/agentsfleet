@@ -6,6 +6,7 @@
     reason = "test fixtures fail loudly"
 )]
 
+mod context;
 mod execution;
 mod failures;
 

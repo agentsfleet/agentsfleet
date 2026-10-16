@@ -57,6 +57,7 @@ const LOOPBACK: &str = "127.0.0.1";
 pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
     ExecutionPolicy {
         inference: None,
+        model_context_tokens: 0,
         network_policy: NetworkPolicy {
             allow: [GITHUB, GRAFANA, ELASTIC, PUSHOVER, LOOPBACK]
                 .map(Cow::Borrowed)

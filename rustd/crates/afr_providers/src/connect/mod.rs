@@ -84,7 +84,7 @@ fn configured<'a>(policy: &'a ExecutionPolicy<'_>) -> Result<Configured<'a>> {
         .inference
         .as_ref()
         .ok_or_else(|| raise::unhosted(&policy.provider))?;
-    Configured::new(settings, policy.context.context_cap_tokens).map_err(raise::configuration)
+    Configured::new(settings, policy.model_context_tokens).map_err(raise::configuration)
 }
 
 impl Connect for Connector {
@@ -102,13 +102,7 @@ impl Connect for Connector {
         let lease_id = lease.lease_id.as_ref();
         let transport = Transport::new(self.client.clone(), lease_id, &policy.provider);
         let model = route.model(&policy.context.model, &policy.api_key, transport);
-        Ok(Box::new(Turns::new(
-            model,
-            settings,
-            policy.context.context_cap_tokens,
-            lease_id,
-            &policy.provider,
-        )))
+        Ok(Box::new(Turns::new(model, settings, policy, lease_id)))
     }
 }
 
