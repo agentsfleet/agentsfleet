@@ -11,7 +11,7 @@ mod failures;
 
 use crate::{
     client::{Call, Verb},
-    test_support::{Answer, Behaviour, FakeAgent, FakeEngine, Rig, json},
+    test_support::{Answer, Behaviour, FakeAgent, FakeEngine, Rig, bounded, json},
 };
 use afd_wire::authoring::Lease;
 use serde_json::{Value, json};
@@ -58,7 +58,9 @@ fn ack() -> Answer {
 }
 
 async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
-    rig.lessee.author(&lease).await.unwrap();
+    bounded("authoring turn", rig.lessee.author(&lease))
+        .await
+        .unwrap();
     let lessee = std::sync::Arc::clone(&rig.lessee);
     let draining = tokio::spawn(async move {
         lessee
@@ -70,7 +72,7 @@ async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
     let report = loop {
         let call = tokio::time::timeout(std::time::Duration::from_secs(2), rig.calls.recv())
             .await
-            .unwrap()
+            .unwrap_or_else(|error| panic!("timed out waiting for authoring report call: {error}"))
             .unwrap();
         if call.verb == Verb::AuthoringReport {
             let report = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
@@ -80,6 +82,8 @@ async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
         calls.push(call);
     };
     rig.shutdown.cancel();
-    draining.await.unwrap();
+    bounded("authoring drainer shutdown", draining)
+        .await
+        .unwrap();
     (calls, report)
 }

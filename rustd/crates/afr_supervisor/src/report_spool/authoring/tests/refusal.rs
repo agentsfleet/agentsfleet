@@ -5,7 +5,7 @@ use crate::{
     client::{Call, ControlPlane, Verb},
     error,
     halt::Halt,
-    test_support::{self, Answer},
+    test_support::{self, Answer, Calls},
 };
 use afd_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use afd_wire::authoring::{Outcome, Reported};
@@ -18,7 +18,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 const OTHER_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8070";
@@ -55,7 +55,7 @@ fn refused(status: u16) -> Answer {
 struct Drain {
     halt: Arc<Halt>,
     task: JoinHandle<()>,
-    received: mpsc::UnboundedReceiver<Call>,
+    received: Calls,
     sends: Arc<AtomicUsize>,
 }
 
