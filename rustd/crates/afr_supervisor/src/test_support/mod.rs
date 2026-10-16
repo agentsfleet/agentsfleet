@@ -2,19 +2,16 @@
 //! executor, and the agent. Every one is driven by the suites that use it.
 #![expect(
     clippy::unwrap_used,
-    clippy::indexing_slicing,
     clippy::assertions_on_result_states,
     clippy::panic,
     reason = "test support: a fixture that cannot be built is a broken test"
 )]
 
-use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
-use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::tool_detail::ToolCallRecord;
@@ -28,16 +25,15 @@ use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
-use tokio::sync::mpsc;
-
-use crate::client::{Call, ControlPlane, RunnerApi};
-use crate::test_util::LEASE_JSON;
-
+mod daemon;
+mod fixtures;
 mod git_fixture;
 mod resolver;
 mod rig;
 mod sandbox;
 
+pub(crate) use self::daemon::{Calls, bounded, drain, plane};
+pub(crate) use self::fixtures::lease;
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::assigned;
 pub(crate) use self::rig::{Rig, daemon, position, reported};
@@ -83,65 +79,6 @@ pub(crate) enum Answer {
 /// A reply of `value`, encoded.
 pub(crate) fn json<T: Serialize>(value: &T) -> Answer {
     Answer::Reply(Bytes::from(serde_json::to_vec(value).unwrap()))
-}
-
-/// The daemon, answering every call from one closure and recording each.
-pub(crate) struct FakeApi<F> {
-    answer: F,
-    calls: mpsc::UnboundedSender<Call>,
-}
-
-impl<F> fmt::Debug for FakeApi<F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("FakeApi")
-    }
-}
-
-#[async_trait::async_trait]
-impl<F> RunnerApi for FakeApi<F>
-where
-    F: Fn(&Call) -> Answer + Send + Sync,
-{
-    async fn send(&self, call: Call) -> crate::Result<Bytes> {
-        let answer = (self.answer)(&call);
-        drop(self.calls.send(call));
-        match answer {
-            Answer::Reply(bytes) => Ok(bytes),
-            Answer::Fail(failure) => Err(failure),
-            Answer::Stall => std::future::pending().await,
-            Answer::Late(after, bytes) => {
-                tokio::time::sleep(after).await;
-                Ok(bytes)
-            }
-        }
-    }
-}
-
-/// A control plane over a fake daemon, and the calls it receives.
-pub(crate) fn plane<F>(answer: F) -> (ControlPlane, mpsc::UnboundedReceiver<Call>)
-where
-    F: Fn(&Call) -> Answer + Send + Sync + 'static,
-{
-    let (calls, received) = mpsc::unbounded_channel();
-    (
-        ControlPlane::new(Box::new(FakeApi { answer, calls })),
-        received,
-    )
-}
-
-/// Every call received so far.
-pub(crate) fn drain(received: &mut mpsc::UnboundedReceiver<Call>) -> Vec<Call> {
-    std::iter::from_fn(|| received.try_recv().ok()).collect()
-}
-
-/// A native lease carrying the installed fleet instructions.
-pub(crate) fn lease(lease_id: &str, fleet: &str) -> LeasePayload<'static> {
-    let mut document: serde_json::Value = serde_json::from_str(LEASE_JSON).unwrap();
-    document["lease_id"] = lease_id.into();
-    document["event"]["fleet_id"] = fleet.into();
-    // Leaked so the borrowed payload lives as long as the test that reads it.
-    let text: &'static str = Box::leak(document.to_string().into_boxed_str());
-    serde_json::from_str(text).unwrap()
 }
 
 /// What the fake agent does with a run.

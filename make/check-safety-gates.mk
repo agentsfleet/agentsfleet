@@ -58,3 +58,4 @@ check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremet
 	@# inside the cluster's connection budget.
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_infra_config_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_infra_config.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/deploy_fly_test.py
