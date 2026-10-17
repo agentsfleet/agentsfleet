@@ -18,8 +18,6 @@ pub struct SelectedModel {
     pub provider: String,
     /// Selected provider model identifier.
     pub model: String,
-    /// Local tokenizer family pinned by the admitted model.
-    pub tokenizer: String,
     /// Integer prices; no floating-point money enters the protocol.
     pub pricing: Pricing,
 }

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { APP_SIGN_UP_URL } from "../config";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import Pricing from "./Pricing";
 
@@ -30,10 +30,10 @@ describe("Getting started and pricing", () => {
   it("opens hosted sign-up and preserves existing attribution", () => {
     render(<Pricing />);
     const action = screen.getByTestId("pricing-cta-early-access");
-    expect(action).toHaveAttribute("href", APP_SIGN_UP_URL);
+    expect(action).toHaveAttribute("href", PUBLIC_ACCESS_URL);
     expect(action).toHaveAttribute("target", "_blank");
     expect(action).toHaveAttribute("rel", "noopener noreferrer");
-    expect(action).toHaveTextContent(/Create your first fleet/);
+    expect(action).toHaveTextContent(/Join waitlist/);
     fireEvent.click(action);
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
       source: "pricing_early_access", surface: "pricing", mode: "humans",

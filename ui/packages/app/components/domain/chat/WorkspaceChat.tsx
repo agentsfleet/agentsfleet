@@ -5,8 +5,7 @@ import type { Schedule, Source } from "@/lib/api/draft-types";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
-import { Alert, AlertTitle, Button, DashboardPanel, DashboardPanelDescription, Skeleton } from "@agentsfleet/design-system";
-import { CircleAlertIcon } from "lucide-react";
+import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
 import { stagePlatformLibraryAction } from "@/app/(dashboard)/admin/fleet-libraries/actions";
 import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftClient } from "@/lib/api/drafts";
@@ -17,6 +16,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { useDraftSidebarBridge } from "@/components/layout/DraftSidebarHistory";
 import { SetupProgress } from "./SetupProgress";
 import { ScheduleSync } from "./ScheduleSync";
+import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean};
 const ignore = (): void => undefined;
@@ -65,8 +65,7 @@ function ChatSurface({client, workspace, subject}: {client: DraftClient; workspa
     {view.error ? <ChatError client={client} view={view} workspace={workspace} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
     <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
-    {view.models.length === 0 && !view.busy && !view.inaccessible && !view.error ? <Alert variant="warning">Add a model to this workspace to start chatting.
-      <Button variant="link" asChild><Link href={`/w/${workspace}/settings/models`}>Open model settings</Link></Button></Alert> : null}
+    <ChatModelAvailability client={client} view={view} workspace={workspace} />
     <DraftConversation client={client} view={view} onReview={review} />
     {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy}
       onContinue={() => { void client.retry().catch(ignore); }} onRetrySchedule={retrySchedule} /> : null}
@@ -75,18 +74,11 @@ function ChatSurface({client, workspace, subject}: {client: DraftClient; workspa
 }
 
 function ChatError({client, view, workspace}: {client: DraftClient; view: DraftView; workspace: string}) {
-  return <DashboardPanel role="alert" padding="compact" className="mx-auto flex w-full max-w-measure items-start gap-md">
-    <CircleAlertIcon size={18} className="mt-xs shrink-0 text-warning" aria-hidden="true" />
-    <div className="min-w-0 flex-1 space-y-sm">
-      <AlertTitle>{view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"}</AlertTitle>
-      <DashboardPanelDescription>{view.error}</DashboardPanelDescription>
-      <div className="flex flex-wrap items-center gap-sm">
+  return <ChatAvailability title={view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"} actions={<>
         <Button size="sm" variant="secondary" disabled={view.busy} onClick={() => {
           if (view.inaccessible) window.location.reload();
           else void (view.draft || view.pending ? client.retry() : client.initialize()).catch(ignore);
         }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
         <Button size="sm" variant="ghost" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
-      </div>
-    </div>
-  </DashboardPanel>;
+    </>}>{view.error}</ChatAvailability>;
 }

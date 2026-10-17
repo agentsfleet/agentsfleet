@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 
-use rig_core::completion::{CompletionRequest, ProviderToolDefinition, ToolDefinition};
+use rig_core::completion::{
+    CacheRetention, CompletionRequest, ProviderToolDefinition, ToolDefinition,
+};
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
     ToolResultContent, UserContent,
@@ -18,7 +20,9 @@ use rig_core::message::{
 use crate::error::{Result, raise};
 use crate::image_input::{self, ImageInput};
 use crate::provider::{Call, Hosted, Message, Request};
-use crate::registry::Wire;
+use afd_wire::inference::InferenceApi as Wire;
+
+mod replay;
 
 /// Anthropic's server-side web search, as its tool spec names it.
 const WEB_SEARCH_MESSAGES: &str = "web_search_20250305";
@@ -34,11 +38,18 @@ const FIELD_PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 /// conversation.
 pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionRequest> {
     let history = Conversation::default().map(request.messages)?;
-    let tools = request.tools.iter().map(|spec| ToolDefinition {
-        name: spec.name.to_owned(),
-        description: spec.description.to_owned(),
-        parameters: spec.parameters.clone(),
-    });
+    let tools = request
+        .tools
+        .iter()
+        .map(|spec| {
+            Ok(ToolDefinition {
+                name: ToolName::new(spec.name)
+                    .map_err(|source| raise::unnamed(spec.name, source))?,
+                description: spec.description.to_owned(),
+                parameters: spec.parameters.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     let hosted = request
         .hosted
         .iter()
@@ -52,10 +63,13 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         built.additional_params =
             Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
     }
+    if wire == Wire::Messages {
+        built = built.cache(CacheRetention::Short);
+    }
     Ok(built
         .model(request.model)
         .preamble(request.instructions)
-        .tools(tools.collect())
+        .tools(tools)
         .provider_tools(hosted.collect()))
 }
 
@@ -93,9 +107,10 @@ impl<'a> Conversation<'a> {
                     calls,
                     replay,
                 } => {
-                    let content = self.assistant(text, calls, &replay.0)?;
-                    if !content.is_empty() {
-                        history.push(RigMessage::Assistant { id: None, content });
+                    let content = self.assistant(text, calls)?;
+                    let turn = replay::restore(&replay.0, text, content);
+                    if !turn.content.is_empty() {
+                        history.push(RigMessage::Assistant(turn));
                     }
                 }
                 Message::ToolResult {
@@ -113,13 +128,8 @@ impl<'a> Conversation<'a> {
 
     /// An assistant turn: the reasoning handed back first, then the text, then
     /// each call under the id its result echoes.
-    fn assistant(
-        &mut self,
-        text: &str,
-        calls: &'a [Call],
-        replay: &[AssistantContent],
-    ) -> Result<Vec<AssistantContent>> {
-        let mut content = replay.to_vec();
+    fn assistant(&mut self, text: &str, calls: &'a [Call]) -> Result<Vec<AssistantContent>> {
+        let mut content = Vec::new();
         if !text.is_empty() {
             content.push(AssistantContent::text(text.to_owned()));
         }

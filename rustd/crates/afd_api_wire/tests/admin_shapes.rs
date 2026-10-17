@@ -12,6 +12,7 @@ use afd_api_wire::admin::{
 fn admin_catalogue_wire_shapes_are_metadata_only() {
     let models = AdminModelsResponse {
         models: vec![AdminModelItem {
+            inference: None,
             id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01"),
             provider: Cow::Borrowed("anthropic"),
             model_id: Cow::Borrowed("claude-opus-5"),
@@ -78,6 +79,7 @@ fn test_platform_key_success_shapes_never_reveal_key_material() {
 #[test]
 fn test_model_mutation_success_shapes() {
     let model = AdminModelItem {
+        inference: None,
         id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01"),
         provider: Cow::Borrowed("anthropic"),
         model_id: Cow::Borrowed("claude-opus-5"),

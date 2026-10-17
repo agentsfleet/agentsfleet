@@ -1,0 +1,64 @@
+name: deploy-dev / dashboard
+
+on:
+  workflow_call:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      # All installation completes before loading deployment credentials.
+      - name: Install candidate dependencies
+        run: |
+          bun install --frozen-lockfile
+          (cd cli && bun install --frozen-lockfile)
+          for package in ui/packages/*; do
+            (cd "$package" && bun install --frozen-lockfile)
+          done
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: '*-binary'
+          path: dist
+          merge-multiple: true
+
+      - name: Load Vercel deployment credential
+        uses: 1password/load-secrets-action@v5
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_TOKEN: op://${{ vars.VAULT_PROD }}/vercel-api-token/credential
+
+      - name: Prepare the existing development dashboard project
+        run: bun scripts/deploy-dev-dashboard.ts prepare
+
+      - name: Build the candidate command-line application
+        run: bun scripts/build-component.ts cli bash -euo pipefail -c 'cd cli && bun run build'
+
+      - name: Build the candidate dashboard
+        run: bun scripts/build-component.ts app node_modules/.bin/vercel build --target=development-agentsfleet
+
+      - name: Assemble evidence from the four component builds
+        run: make acceptance-assemble
+        env:
+          ACCEPTANCE_ENVIRONMENT: dev
+
+      - name: Deploy the prebuilt candidate dashboard
+        run: bun scripts/deploy-dev-dashboard.ts deploy
+
+      # Preserve executable modes, and exclude pulled Vercel environment files.
+      - name: Archive the deployed candidate for acceptance
+        run: tar -cf .tmp/acceptance-build.tar dist cli/dist ui/packages/app/.next .tmp/acceptance-build.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-build-${{ github.sha }}
+          path: .tmp/acceptance-build.tar
+          retention-days: 7

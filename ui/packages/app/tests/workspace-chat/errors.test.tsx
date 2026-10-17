@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
-import { response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
@@ -51,7 +51,38 @@ it("offers model settings when a successful list confirms there are no authoring
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
     ? Promise.resolve(response({items: [], next_cursor: null})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  await screen.findByText("Add a model to this workspace to start chatting.");
+  expect((await screen.findByRole("alert")).textContent).toContain("Add a model to start chatting");
+  expect(screen.getByRole("alert").className).toContain("max-w-measure");
   expect(screen.getByRole("link", {name: "Open model settings"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
+});
+
+it("explains configured but ineligible models and prevents an empty model menu", async () => {
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
+    ? Promise.resolve(response({items: [{...MODEL, eligibility: {authoring: false, runtime: true}}], next_cursor: null})) : base(input, init));
+  render(<WorkspaceChat {...CHAT_PROPS} />);
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("No chat model is available");
+  expect(alert.textContent).toContain("provider credentials and model configuration");
+  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(screen.getByRole("combobox")).toHaveProperty("disabled", true);
+  expect(fixture.writes()).toEqual([]);
+});
+
+it("keeps an incomplete model search distinct from a workspace with no configured models", async () => {
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
+    ? Promise.resolve(response({items: [], next_cursor: "next-model-page"})) : base(input, init));
+  render(<WorkspaceChat {...CHAT_PROPS} />);
+  expect((await screen.findByRole("alert")).textContent).toContain("Load more chat models");
+  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(within(screen.getByRole("alert")).getByRole("button", {name: /Load more models/})).toBeTruthy();
+  const reads = fixture.fetch.mock.calls.length;
+  fireEvent.click(within(screen.getByRole("alert")).getByRole("button", {name: /Load more models/}));
+  await waitFor(() => expect(fixture.fetch.mock.calls.length).toBeGreaterThan(reads));
+  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(fixture.writes()).toEqual([]);
 });

@@ -4,10 +4,18 @@
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
+import type { INFERENCE_API } from "./admin-model-library-types";
 import { request } from "./client";
 
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
+
+export interface ModelInference {
+  api: (typeof INFERENCE_API)[keyof typeof INFERENCE_API];
+  base_url: string;
+  dialect?: string;
+  max_output_tokens: number;
+}
 
 export interface AdminModel {
   id: string;
@@ -17,6 +25,7 @@ export interface AdminModel {
   input_nanos_per_mtok: number;
   cached_input_nanos_per_mtok: number;
   output_nanos_per_mtok: number;
+  inference?: ModelInference;
 }
 
 export interface AdminModelList {
@@ -30,9 +39,10 @@ export interface LibraryModelInput {
   input_nanos_per_mtok: number;
   cached_input_nanos_per_mtok: number;
   output_nanos_per_mtok: number;
+  inference?: ModelInference;
 }
 
-/** Caps/rates only — provider+model_id are the immutable row identity (PATCH). */
+/** Provider and model identity remain immutable when settings change. */
 export type ModelRatesInput = Omit<LibraryModelInput, "provider" | "model_id">;
 
 export interface PlatformDefaultInput {

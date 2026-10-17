@@ -61,43 +61,48 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
     });
   }
 
+  if (fleets.length === 0 && !cursor && !error) return null;
+
   return (
     <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
-      <div className="grid gap-xl">
-      <SectionHeader as="p"
-        actions={
-          <WallLiveBadge liveTotal={liveTotal} />
-        }
-      >
-        Your fleets
-      </SectionHeader>
+      <FleetWallContent workspaceId={workspaceId} fleets={fleets} cursor={cursor}
+        error={error} pending={pending} liveTotal={liveTotal} loadMore={loadMore} />
+    </WorkspaceStreamProvider>
+  );
+}
 
+type ContentProps = {
+  workspaceId: string;
+  fleets: Fleet[];
+  cursor: string | null;
+  error: string | null;
+  pending: boolean;
+  liveTotal: number;
+  loadMore: (cursor: string) => void;
+};
+
+function FleetWallContent({ workspaceId, fleets, cursor, error, pending, liveTotal, loadMore }: ContentProps) {
+  return (
+    <div className="grid gap-xl">
+      {fleets.length > 0 ? (
+        <SectionHeader as="p" actions={<WallLiveBadge liveTotal={liveTotal} />}>
+          Your fleets
+        </SectionHeader>
+      ) : null}
       <div>
         <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-3">
-          {fleets.map((z) => (
-            <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
-          ))}
+          {fleets.map((fleet) => <FleetTile key={fleet.id} fleet={fleet} workspaceId={workspaceId} />)}
         </div>
-
-        {error ? (
-          <Alert variant="destructive" className="mt-3">{error}</Alert>
-        ) : null}
-
+        {error ? <Alert variant="destructive" className="mt-3">{error}</Alert> : null}
         {cursor ? (
           <div className="mt-4 flex justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => loadMore(cursor)}
-              disabled={pending}
-              aria-busy={pending}
-            >
+            <Button variant="ghost" size="sm" onClick={() => loadMore(cursor)}
+              disabled={pending} aria-busy={pending}>
               {pending ? "Loading…" : "Load more"}
             </Button>
           </div>
         ) : null}
       </div>
-      </div>
-    </WorkspaceStreamProvider>
+    </div>
   );
 }

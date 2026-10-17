@@ -121,11 +121,14 @@ pub fn install(env: &dyn EnvSource) -> bool {
     // The slot is layered FIRST, so what it holds is a layer over the bare
     // registry: a reloadable layer's type names the subscriber beneath it, and
     // adding it last would name the whole stack instead.
-    let subscriber = Registry::default().with(slot).with(level).with(
-        tracing_subscriber::fmt::layer()
-            .with_writer(std::io::stderr)
-            .with_ansi(Rendering::of_stderr() == Rendering::Rich),
-    );
+    let subscriber = Registry::default()
+        .with(slot)
+        .with(afd_inference::log_filter(level))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_ansi(Rendering::of_stderr() == Rendering::Rich),
+        );
     if tracing::subscriber::set_global_default(subscriber).is_err() {
         return false;
     }

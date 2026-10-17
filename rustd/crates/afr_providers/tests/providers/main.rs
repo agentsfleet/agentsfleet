@@ -19,6 +19,10 @@ mod caching;
 mod ends;
 mod hosts;
 mod images;
+mod limits;
+mod limits_flow;
+mod logging;
+mod privacy;
 mod retries;
 mod turns;
 
@@ -30,10 +34,9 @@ use afd_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
 use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
-use tracing::level_filters::LevelFilter;
 
 use self::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
-use self::support::{Fake, KEY, LEASE_ID, Reply, TOKEN, engine, lease, run};
+use self::support::{Fake, LEASE_ID, Reply, engine, lease, run};
 
 /// The answer every scripted run ends on.
 const ANSWER: &str = "It is 4.";
@@ -161,63 +164,6 @@ async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
 }
 
 #[tokio::test]
-async fn test_api_key_never_leaves_the_supervisor() {
-    for wire in Wire::ALL {
-        // What the journal holds at the loudest level an operator can name.
-        let capture = Capture::install_filtered(afr_providers::log_filter(LevelFilter::TRACE));
-        let echoed = json!({"expression": KEY, "token": TOKEN});
-        let mut fake = Fake::serve(vec![
-            wire.call(CALL_ID, UPDATE_PLAN.name(), &echoed),
-            wire.answer(&format!("the key was {KEY}")),
-        ])
-        .await;
-        let leased = lease(
-            &wire.provider(),
-            &[UPDATE_PLAN.name()],
-            &format!("use {TOKEN}"),
-        );
-
-        let (output, frames) = run(&engine(&fake), &leased).await;
-
-        let seen = fake.seen();
-        assert!(
-            seen.iter()
-                .all(|request| wire.carries_key(&request.headers, KEY)),
-            "{wire:?}"
-        );
-        for request in &seen {
-            let mut elsewhere = request
-                .headers
-                .iter()
-                .filter(|(name, _)| !matches!(name.as_str(), "x-api-key" | "authorization"));
-            assert!(
-                elsewhere.all(|(_, value)| !value.to_str().unwrap().contains(KEY)),
-                "{wire:?}: the key rides one header"
-            );
-            let prompt = request.body.to_string();
-            assert!(
-                !prompt.contains(KEY) && !prompt.contains(TOKEN),
-                "{wire:?}: {prompt}"
-            );
-        }
-        let rendered = format!("{frames:?}{output:?}");
-        assert!(
-            !rendered.contains(KEY) && !rendered.contains(TOKEN),
-            "{wire:?}: {rendered}"
-        );
-        let logged = format!("{:?}", capture.events());
-        assert!(
-            !logged.contains(KEY) && !logged.contains(TOKEN),
-            "{wire:?}: {logged}"
-        );
-        assert!(
-            output.result.content.contains("«secret:llm.api_key»"),
-            "{wire:?}"
-        );
-    }
-}
-
-#[tokio::test]
 async fn test_web_search_is_a_hosted_spec() {
     for wire in [Wire::Messages, Wire::Responses] {
         let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
@@ -247,8 +193,13 @@ async fn test_web_search_is_a_hosted_spec() {
         wire.offered(&seen[0].body).is_empty(),
         "chat has no hosted spec"
     );
-    let refused = wire.results(&seen[1].body);
-    assert!(refused[0].starts_with(HOSTED_REFUSAL), "{refused:?}");
+    // rig renders an undeclared tool's exchange as conversation text. The
+    // refusal still reaches the model, without advertising a hosted tool.
+    assert!(
+        seen[1].body.to_string().contains(HOSTED_REFUSAL),
+        "{:?}",
+        seen[1].body
+    );
     assert_eq!(
         output.trace.unwrap().calls[0].status,
         ToolCallStatus::Failed

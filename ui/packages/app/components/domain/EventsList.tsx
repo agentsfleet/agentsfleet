@@ -40,7 +40,7 @@ export type EventsListProps = {
 export const WORKSPACE_EVENTS_LABEL = "Workspace events";
 export const FLEET_EVENTS_LABEL = "Fleet events";
 
-const EVENTS_EMPTY_TITLE = "No events yet";
+const EVENTS_EMPTY_TITLE = "No activity yet";
 const EVENTS_EMPTY_DESCRIPTION = "Fleet activity appears here.";
 // An unknown figure renders a dash — never a fabricated zero.
 const VALUE_UNKNOWN = "—";

@@ -6,8 +6,8 @@ it.each([
   [403, false, "Your account doesn’t have access to this library. Ask your administrator for access."],
   [404, false, "We couldn’t load the library. Please try again shortly."],
   [410, false, "We couldn’t load the library. Please try again shortly."],
-  [404, true, "This recipe is no longer available, or your access has changed. Choose another recipe."],
-  [410, true, "This recipe is no longer available, or your access has changed. Choose another recipe."],
+  [404, true, "This published setup is no longer available, or your access has changed. Choose another setup."],
+  [410, true, "This published setup is no longer available, or your access has changed. Choose another setup."],
   [503, true, "We couldn’t load the library. Please try again shortly."],
 ] as const)("gives the appropriate recovery for HTTP %i with selected recipe %s", (status, selected, message) => {
   expect(libraryUnavailableDescription(status, selected)).toBe(message);

@@ -19,7 +19,7 @@ use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
 use afr_executor::{Executor, ProcessId, Spawn};
-use afr_providers::{Connect as _, Connector, Registry, Usage};
+use afr_providers::{Connect as _, Connector, Usage};
 use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
@@ -129,7 +129,7 @@ impl FakeAgent {
                 Stub::boxed(&UPDATE_PLAN),
                 Stub::boxed(&HTTP_REQUEST),
             ]),
-            connect: Connector::new(Registry::builtin().unwrap()).unwrap(),
+            connect: Connector::new().unwrap(),
         }
     }
 }

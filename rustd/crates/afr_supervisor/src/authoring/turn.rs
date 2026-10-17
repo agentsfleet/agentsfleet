@@ -4,7 +4,7 @@ use super::{Ending, meter::Observed, proposal};
 use crate::{Result, client::ControlPlane, error};
 use afd_core::{clock::Clock, id::Uuid7};
 use afd_crypto::entropy::Entropy;
-use afd_wire::authoring::{ContextRole, Knowledge, Lease, ModelCall, ModelMessage, ModelRequest};
+use afd_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
 use serde_json::Value;
 
 pub(super) struct Turn<'a> {
@@ -22,12 +22,8 @@ impl Turn<'_> {
         let mut answer = None;
         for call_index in 1..=u32::try_from(self.lease.limits.max_calls.min(8)).unwrap_or(0) {
             let meter = self.observed.snapshot()?;
-            if meter.knowledge == Knowledge::Unknown {
-                return Ok(Ending::unknown());
-            }
             let budget = u64::try_from(self.lease.limits.output_per_turn)
-                .map_err(|_negative| error::config("the authoring output allowance is invalid"))?
-                .min(8192);
+                .map_err(|_negative| error::config("the authoring output allowance is invalid"))?;
             let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
             if remaining == 0 {
                 break;
@@ -41,7 +37,9 @@ impl Turn<'_> {
                 call_index,
                 request: ModelRequest {
                     messages: messages.clone(),
-                    max_output_tokens: u32::try_from(remaining).unwrap_or(8192),
+                    max_output_tokens: u32::try_from(remaining).map_err(|_overflow| {
+                        error::config("the authoring output allowance exceeds the wire bound")
+                    })?,
                 },
             };
             let result = self.plane.authoring_model(self.id, &request).await?;

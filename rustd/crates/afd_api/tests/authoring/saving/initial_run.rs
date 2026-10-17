@@ -112,6 +112,7 @@ async fn a_refused_receipt_keeps_the_first_run_pending_through_reload_until_one_
         "receipt",
         &fleet,
         &format!("NEW.fleet_id='{fleet}'::uuid AND NEW.receipt IS NOT NULL"),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     case.fund().await;

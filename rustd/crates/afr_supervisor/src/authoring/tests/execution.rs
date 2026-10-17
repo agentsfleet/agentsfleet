@@ -5,6 +5,25 @@ use crate::client::Verb;
 use std::sync::atomic::Ordering;
 
 #[tokio::test]
+async fn saved_output_allowances_above_eight_thousand_reach_the_daemon() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => result(call, &json!([]), false),
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let mut configured = lease();
+    configured.limits.output_per_turn = 32_768;
+    let (calls, report) = run(&mut rig, configured).await;
+    let model = calls
+        .iter()
+        .find(|call| call.verb == Verb::AuthoringModel)
+        .unwrap();
+    let request: serde_json::Value = serde_json::from_slice(model.body.as_ref().unwrap()).unwrap();
+    assert_eq!(request["request"]["max_output_tokens"], 32_768);
+    assert_eq!(report["usage"]["calls"], 1);
+}
+
+#[tokio::test]
 async fn a_plain_answer_uses_only_the_canonical_scoped_route_and_private_report() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => result(call, &json!([]), false),

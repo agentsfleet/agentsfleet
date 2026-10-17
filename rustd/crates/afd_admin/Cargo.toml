@@ -18,7 +18,9 @@ test-util = ["afd_core/test-util", "afd_crypto/test-util", "afd_db/test-util"]
 afd_core.workspace = true
 afd_crypto.workspace = true
 afd_db.workspace = true
-sqlx.workspace = true
+afd_wire.workspace = true
+afd_inference.workspace = true
+sqlx = { workspace = true, features = ["json"] }
 thiserror.workspace = true
 
 [dev-dependencies]

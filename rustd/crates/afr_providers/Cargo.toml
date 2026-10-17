@@ -19,6 +19,7 @@ workspace = true
 afr_telemetry.workspace = true
 # `error_shell!` and the registry code a provider failure is logged under.
 afd_core.workspace = true
+afd_inference.workspace = true
 # The stream text kinds the live tail carries, and the failure classes a
 # report names.
 afd_wire.workspace = true
@@ -49,14 +50,13 @@ serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
-# The provider table's base URLs, parsed once when the registry is built.
+# Provider transport URL validation.
 url.workspace = true
 # The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
-# The filter that holds rig's lines to its warnings.
-tracing-subscriber.workspace = true
 
 [dev-dependencies]
+afd_identity.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # The log capture the retry and key suites read their lines through.
@@ -78,6 +78,9 @@ tempfile.workspace = true
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock.
 axum.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
 # The connect-refused send the retry suite classifies, and the fake provider
 # servers the wire suites stream from.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync"] }

@@ -6,7 +6,7 @@ use afd_wire::report::FailureClass;
 use afr_agent::Unhosted;
 
 use super::{
-    DETAIL_BLOCKED_ENDPOINT, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
+    DETAIL_CONFIGURATION, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
     EVENT_UNHOSTED_PROVIDER, LeaseRun,
 };
 use crate::report::Ending;
@@ -21,11 +21,8 @@ impl LeaseRun<'_> {
                 DETAIL_UNHOSTED_PROVIDER,
                 Some(name),
             ),
-            Some(Unhosted::Endpoint(name)) => {
-                (EVENT_UNHOSTED_PROVIDER, DETAIL_BLOCKED_ENDPOINT, Some(name))
-            }
             Some(Unhosted::Tool(name)) => (EVENT_UNHOSTED, DETAIL_UNHOSTED, Some(name)),
-            None => (EVENT_UNHOSTED, DETAIL_UNHOSTED, None),
+            None => (EVENT_UNHOSTED, DETAIL_CONFIGURATION, None),
         };
         let code = refusal.code().as_str();
         let lease_id = self.ids.lease.as_str();

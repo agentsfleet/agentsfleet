@@ -10,7 +10,7 @@ vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
 import { HERO_HEADLINE } from "./lib/marketing-copy";
-import { APP_SIGN_IN_URL, APP_SIGN_UP_URL } from "./config";
+import { PUBLIC_ACCESS_URL } from "./config";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -59,8 +59,8 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   it("renders primary navigation in topbar", () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: /primary/i });
-    const earlyAccess = within(nav).getByRole("link", { name: /Get started/i });
-    expect(earlyAccess).toHaveAttribute("href", APP_SIGN_UP_URL);
+    const earlyAccess = within(nav).getByRole("link", { name: /Early access/i });
+    expect(earlyAccess).toHaveAttribute("href", PUBLIC_ACCESS_URL);
     expect(earlyAccess).toHaveAttribute("target", "_blank");
     expect(earlyAccess).toHaveAttribute("rel", "noopener noreferrer");
     expect(within(nav).getByRole("link", { name: /^Product$/i })).toHaveAttribute("href", "/#how-it-works");
@@ -71,15 +71,15 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     );
   });
 
-  it("routes sign-in to the existing app", () => {
+  it("routes public access to the waitlist", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
-    expect(cta).toHaveAttribute("href", APP_SIGN_IN_URL);
+    expect(cta).toHaveAttribute("href", PUBLIC_ACCESS_URL);
     expect(cta).toHaveAttribute("target", "_blank");
     expect(cta).toHaveAttribute("rel", "noopener noreferrer");
-    expect(cta.textContent).toContain("Sign in");
+    expect(cta.textContent).toContain("Join waitlist");
   });
 
   it("clicking Dashboard tracks navigation", () => {

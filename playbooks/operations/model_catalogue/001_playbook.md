@@ -62,6 +62,36 @@ ACTION=apply ENV=prod ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
 
 The apply arm prompts for the environment name and refuses any other answer.
 
+## Configure inference after pricing
+
+Freshly seeded rows contain rates and context metadata. A row also needs saved
+inference settings before setup chat or runtime can use it. This is a separate
+operator write: obtain approval for the target environment before saving.
+
+1. Sign in to the target dashboard with `model:admin` and open `/admin/models`.
+2. Edit the intended provider/model row. Provider and model identity stay locked.
+3. Set **Inference API** to the provider's supported Chat completions, Responses
+   or Messages API, and enter its **Inference base URL**. Enter the physical
+   **Context window (tokens)** and **Model output limit (tokens)**. These are the
+   model's actual limits; authored operating thresholds are separate.
+4. Leave **SDK dialect (optional)** blank for the standard API, or enter a
+   supported Software Development Kit (SDK) dialect for that provider. The server
+   validates the route and dialect. Preserve the current rates unless a rate
+   change was also approved.
+5. Select **Save changes**, reload the page and reopen the row to check that the
+   settings persisted. The underlying update is `PATCH /v1/admin/models/{id}`;
+   its body includes the current rate/context fields and the `inference` object
+   (`api`, `base_url`, optional `dialect`, `max_output_tokens`). Omitting
+   `inference` preserves the existing settings.
+6. Confirm the workspace has a credentialed registration for this model or an
+   enabled platform model. New fleet uses those eligible models; setup chat
+   additionally requires the selected SDK route to support tools. Saving
+   catalogue metadata alone does not provision credentials or select a default.
+
+Implementation references: `rustd/crates/afd_wire/src/inference.rs`,
+`rustd/crates/afd_api_wire/src/admin_catalogue.rs`, and
+`ui/packages/app/app/(dashboard)/admin/models/components/EditModelDialog.tsx`.
+
 ## Required result
 
 - The diff arm prints the catalogue delta and writes nothing.

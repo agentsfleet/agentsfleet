@@ -8,7 +8,7 @@ const MOTION_CLOCK_TIME = new Date("2026-10-14T00:00:00Z");
 const MOTION_STEP_MS = 1000;
 const HISTORY_SCROLL_DISTANCE = 120;
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-const HOSTED_SIGN_UP = "https://app.agentsfleet.net/sign-up";
+const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 const INCIDENT_LINK = /Investigate an incident.*Explore example run/;
 const BACK_LINK = "Back to home";
 const BROWSER_TIMEOUT_DEFAULT = "Number(process.env.BROWSER_TIMEOUT) || 5";
@@ -36,7 +36,7 @@ test("visitors inspect the full planned journey without connecting or running an
   await expect(page.getByRole("figure")).toContainText("/schedule every 15 minutes");
   await expect(page.getByRole("figure")).toContainText(`${DEFAULT_JOB.name} created. Waiting for its next scheduled check.`);
   await expect(page.getByRole("figure")).not.toContainText(/Saved to your fleet library/);
-  await expect(page.getByRole("link", { name: "Create fleet", exact: true })).toBeVisible();
+  await expect(page.getByTestId("how-it-works").getByRole("link", { name: "Join waitlist", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Replay" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Example stages" })).toHaveCount(0);
   const citation = page.getByRole("button", { name: "E2 · GitHub" });
@@ -53,7 +53,7 @@ test("visitors inspect the full planned journey without connecting or running an
   expect(mutations).toEqual([]);
 });
 test("signup cancellation preserves private text without sending or storing it", async ({ page, context }) => {
-  await context.route(HOSTED_SIGN_UP, route => route.fulfill({ contentType: "text/html", body: "<p>Sign-up cancelled</p>" }));
+  await context.route(WAITLIST, route => route.fulfill({ contentType: "text/html", body: "<p>Sign-up cancelled</p>" }));
   const request = "Keep my private investigation request";
   await page.goto("/");
   await page.getByRole("textbox").fill(request);
@@ -61,10 +61,10 @@ test("signup cancellation preserves private text without sending or storing it",
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await expect(page.getByRole("figure")).not.toContainText(request);
   const opened = page.waitForEvent("popup");
-  await page.getByRole("link", { name: "Create fleet", exact: true }).click();
+  await page.getByTestId("how-it-works").getByRole("link", { name: "Join waitlist", exact: true }).click();
   const tab = await opened;
   await tab.waitForLoadState();
-  expect(tab.url()).toBe(HOSTED_SIGN_UP);
+  expect(tab.url()).toBe(WAITLIST);
   await tab.close();
   await expect(page.getByRole("figure")).toContainText(DEFAULT_JOB.report);
   expect(decodeURIComponent(page.url())).not.toContain(request);

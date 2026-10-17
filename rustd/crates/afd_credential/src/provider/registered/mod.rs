@@ -13,7 +13,13 @@ use crate::error::{Result, query};
 
 /// Stable reference to the deployment's currently configured platform default.
 pub const PLATFORM_MODEL_REF: &str = "platform-default";
-const CONTEXT: &str = "resolve registered owner model";
+pub(super) const CONTEXT: &str = "resolve registered owner model";
+
+pub(super) struct Registration {
+    pub(super) row: PgRow,
+    pub(super) model: RegisteredModel,
+    pub(super) inference_host: Box<str>,
+}
 
 /// Non-secret facts selected by an explicit reference.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -24,6 +30,11 @@ pub struct RegisteredModel {
     pub provider: Box<str>,
     /// Provider model identifier, never supplied separately by a runner.
     pub model: Box<str>,
+    /// Optional endpoint restriction carried by the credential.
+    #[serde(default)]
+    pub base_url: Option<Box<str>>,
+    /// Persisted non-secret settings, pinned by the catalogue generation.
+    pub inference: Option<afd_wire::inference::ModelInference>,
     /// Priced catalogue context window.
     pub context_window_tokens: i32,
     /// Fresh input nanos per million tokens.
@@ -46,36 +57,57 @@ pub async fn registered_model(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<RegisteredModel>> {
-    read(connection, owner, reference)
+    Ok(read(connection, owner, reference)
         .await?
-        .as_ref()
-        .map(|row| metadata(row, reference))
-        .transpose()
+        .map(|registration| registration.model))
 }
 
-async fn read(
+pub(super) async fn read(
     connection: &mut PgConnection,
     owner: &Uuid7,
     reference: &str,
-) -> Result<Option<PgRow>> {
+) -> Result<Option<Registration>> {
     let statement = if reference == PLATFORM_MODEL_REF {
         sql::PLATFORM
     } else {
         sql::ENTRY
     };
-    sqlx::query(statement)
+    let row = sqlx::query(statement)
         .bind(owner.as_str())
         .bind(reference)
         .fetch_optional(connection)
         .await
-        .map_err(query(CONTEXT))
+        .map_err(query(CONTEXT))?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let model = metadata(&row, reference)?;
+    let Some(inference) = &model.inference else {
+        return Ok(None);
+    };
+    let context = u32::try_from(model.context_window_tokens).unwrap_or_default();
+    let route = match afd_inference::Configured::new(inference, context) {
+        Ok(route) if route.accepts_endpoint(model.base_url.as_deref()) => route,
+        _ => return Ok(None),
+    };
+    let inference_host = route.into_host();
+    Ok(Some(Registration {
+        row,
+        model,
+        inference_host,
+    }))
 }
 
-fn metadata(row: &PgRow, reference: &str) -> Result<RegisteredModel> {
+pub(super) fn metadata(row: &PgRow, reference: &str) -> Result<RegisteredModel> {
     Ok(RegisteredModel {
         reference: reference.into(),
         provider: row.try_get(0).map_err(query(CONTEXT))?,
         model: row.try_get(1).map_err(query(CONTEXT))?,
+        base_url: row.try_get(8).map_err(query(CONTEXT))?,
+        inference: row
+            .try_get::<Option<sqlx::types::Json<_>>, _>(9)
+            .map_err(query(CONTEXT))?
+            .map(|value| value.0),
         context_window_tokens: row.try_get(2).map_err(query(CONTEXT))?,
         input_nanos_per_million: row.try_get(3).map_err(query(CONTEXT))?,
         output_nanos_per_million: row.try_get(4).map_err(query(CONTEXT))?,

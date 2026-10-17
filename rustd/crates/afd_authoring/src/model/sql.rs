@@ -20,7 +20,7 @@ pub(super) const LOCK_ATTEMPT: &str = "\
 SELECT id::text FROM fleet.authoring_attempts WHERE id=$1::uuid AND runner_id=$2::uuid FOR UPDATE";
 pub(super) const COMPLETE: &str = "\
 UPDATE fleet.authoring_dispatches SET status=$3,result=$4::jsonb,usage=$5::jsonb,
-updated_at=$6
+updated_at=$6,native_reply=$7::jsonb
 WHERE id=$1::uuid AND attempt_id=$2::uuid AND status IN ('pending','unknown')";
 pub(super) const METER: &str = "\
 UPDATE fleet.authoring_attempts SET input_tokens=input_tokens+$2,output_tokens=output_tokens+$3,

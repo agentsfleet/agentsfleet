@@ -1,5 +1,5 @@
 import { DisplayLG, Section } from "@agentsfleet/design-system";
-import { APP_SIGN_UP_URL, DOCS_URL, GITHUB_URL, SELF_HOSTED_URL } from "../config";
+import { PUBLIC_ACCESS_URL, DOCS_URL, GITHUB_URL, SELF_HOSTED_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 
 const SOURCE_SURFACE = "source_strip";
@@ -19,8 +19,8 @@ export function AudienceSection() {
         </div>
       </div>
       <div className="wrap source-strip"><span>Built in the open. Inspect the runtime.</span><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackNavigationClicked({ source: "source_github", surface: SOURCE_SURFACE, target: "github" })}>GitHub ↗</a><span><a href={APP_SIGN_UP_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Hosted ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackNavigationClicked({ source: "source_github", surface: SOURCE_SURFACE, target: "github" })}>GitHub ↗</a><span><a href={PUBLIC_ACCESS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Hosted waitlist ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
         onClick={() => trackNavigationClicked({ source: "source_self_hosted", surface: SOURCE_SURFACE, target: "self_hosted" })}>Self hosting in your infrastructure ↗</a></span></div>
     </section></Section>
   );

@@ -94,12 +94,17 @@ describe("ApiKeyList component", () => {
     expect(screen.getByRole("button", { name: /^created$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
   });
 
-  it("renders active and revoked rows with status badges", async () => {
+  it("renders active and revoked badges in a separate Status column", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
     expect(screen.getByText("ci-runner")).toBeTruthy();
     expect(screen.getByText("old-zapier")).toBeTruthy();
-    expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.getByText("Revoked")).toBeTruthy();
+    const activeRow = screen.getByText(ACTIVE.key_name).closest("tr")!;
+    const revokedRow = screen.getByText(REVOKED.key_name).closest("tr")!;
+    expect(within(activeRow).getByRole("cell", { name: "Active" })).toBeTruthy();
+    expect(within(revokedRow).getByRole("cell", { name: "Revoked" })).toBeTruthy();
+    expect(within(activeRow).getAllByRole("cell").at(2)?.textContent).toBe("Active");
+    expect(within(revokedRow).getAllByRole("cell").at(2)?.textContent).toBe("Revoked");
     expect(screen.queryByText(/never used/i)).toBeNull();
   });
 

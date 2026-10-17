@@ -40,8 +40,9 @@ pub struct WorkspaceModel {
     pub model: String,
     /// Catalogue context bound.
     pub context_window_tokens: i32,
-    /// Deployment output ceiling.
-    pub max_output_tokens: i64,
+    /// Saved output ceiling; omitted while inference settings are unconfigured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<i64>,
     /// Supported purposes.
     pub eligibility: Eligibility,
     /// Exact current rates.

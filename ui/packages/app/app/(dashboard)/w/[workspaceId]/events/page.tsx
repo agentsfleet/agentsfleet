@@ -96,7 +96,7 @@ export async function EventsData({
 
   return (
     <Section aria-label="Workspace events" className="flex min-h-0 flex-1 flex-col gap-xl">
-      <SectionHeader as="p">Manage events</SectionHeader>
+      <SectionHeader as="p">Manage activity</SectionHeader>
       <EventsList initial={page} pageSize={pageSize} />
     </Section>
   );

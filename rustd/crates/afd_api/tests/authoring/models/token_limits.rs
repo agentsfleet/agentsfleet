@@ -25,7 +25,7 @@ const NARROW_WINDOW: i32 = 64;
 #[ignore = "requires live Postgres"]
 async fn output_limits_refuse_at_the_runner_route_and_the_exact_allowance_dispatches() {
     let model = Model::create().await;
-    let past_wire = with_output(&model.request, OUTPUT_PER_TURN + 1);
+    let past_wire = with_output(&model.request, 0);
     assert_eq!(call(&model, &past_wire).await.0, StatusCode::BAD_REQUEST);
     assert_eq!(model.receipts().await, 0, "the wire bound wrote nothing");
 
@@ -56,12 +56,36 @@ async fn output_limits_refuse_at_the_runner_route_and_the_exact_allowance_dispat
 #[ignore = "requires live Postgres"]
 async fn a_window_too_small_for_the_prompt_refuses_at_the_runner_route() {
     let model = Model::create().await;
-    window(&model, NARROW_WINDOW).await;
+    window(&model, NARROW_WINDOW, NARROW_WINDOW.cast_unsigned()).await;
     let refused = call(&model, &with_output(&model.request, 1)).await;
     assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY, "{}", refused.1);
     assert_eq!(code(&refused.1), Some(error_code::AUTHORING_TOKEN.as_str()));
     assert_eq!(model.provider.effects.load(Ordering::SeqCst), 0);
     assert_eq!(model.receipts().await, 0, "no physical intent");
+    model.running.f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn configured_output_limits_above_eight_thousand_dispatch_and_bound_the_remaining_turn() {
+    let model = Model::create().await;
+    let configured = 16_384;
+    window(&model, 128_000, configured).await;
+    let dispatched = call(&model, &with_output(&model.request, configured)).await;
+    assert_eq!(dispatched.0, StatusCode::OK, "{}", dispatched.1);
+    assert_eq!(model.provider.effects.load(Ordering::SeqCst), 1);
+    let refused = call(
+        &model,
+        &next_call(&with_output(
+            &model.request,
+            configured - PROVIDER_OUTPUT + 1,
+        )),
+    )
+    .await;
+    assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY, "{}", refused.1);
+    assert_eq!(code(&refused.1), Some(error_code::AUTHORING_TOKEN.as_str()));
+    assert_eq!(model.provider.effects.load(Ordering::SeqCst), 1);
+    assert_eq!(model.receipts().await, 1);
     model.running.f.cleanup().await;
 }
 
@@ -111,12 +135,16 @@ async fn spend(model: &Model, output: u32) {
 
 /// Window changes alter the live model, so the pinned snapshot follows them;
 /// the case is about token bounds, not about a model swap.
-async fn window(model: &Model, tokens: i32) {
+async fn window(model: &Model, tokens: i32, output: u32) {
     let f = &model.running.f;
     let mut connection = f.db.acquire().await.expect("window");
-    sqlx::query("UPDATE core.model_library SET context_cap_tokens=$2 WHERE id=$1::uuid")
+    sqlx::query(
+        "UPDATE core.model_library SET context_cap_tokens=$2, \
+         inference=jsonb_set(inference, '{max_output_tokens}', to_jsonb($3::bigint)) WHERE id=$1::uuid",
+    )
         .bind(f.catalogue.as_str())
         .bind(tokens)
+        .bind(i64::from(output))
         .execute(&mut *connection)
         .await
         .expect("set the owned model's window");

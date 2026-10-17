@@ -35,30 +35,31 @@ macro_rules! priced_version {
 pub(super) const ENTRY: &str = concat!(
     "SELECT s.meta_provider, e.model_id, ",
     priced_version!("e.id"),
-    ", s.workspace_id::text, s.key_name
+    ", s.workspace_id::text, s.key_name, s.meta_base_url, m.inference
 FROM core.tenant_model_entries e
 JOIN LATERAL (
     SELECT id FROM core.workspaces WHERE tenant_id = e.tenant_id
     ORDER BY created_at, id LIMIT 1
 ) w ON true
 JOIN vault.secrets s ON s.workspace_id = w.id AND s.key_name = e.secret_ref
-JOIN core.model_library m ON m.provider = s.meta_provider AND m.model_id = e.model_id
+JOIN LATERAL (SELECT * FROM core.model_library WHERE model_id=e.model_id
+AND provider=s.meta_provider FOR SHARE) m ON true
 CROSS JOIN core.model_catalogue_revision r
 WHERE e.tenant_id = $1::uuid AND e.id::text = $2
-  AND s.meta_has_key = true AND s.meta_base_url IS NULL
-FOR SHARE OF e,s,m,r"
+  AND s.meta_has_key = true
+FOR SHARE OF e,s,r"
 );
 
 /// The platform choice is explicit; an absent owner entry never selects it.
 pub(super) const PLATFORM: &str = concat!(
     "SELECT p.provider, p.model, ",
     priced_version!("p.provider"),
-    ", s.workspace_id::text, s.key_name
+    ", s.workspace_id::text, s.key_name, s.meta_base_url, m.inference
 FROM core.platform_provider_defaults p
 JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
 JOIN core.model_library m ON m.provider = p.provider AND m.model_id = p.model
 CROSS JOIN core.model_catalogue_revision r
-WHERE p.active = true AND p.base_url IS NULL AND s.meta_has_key = true
+WHERE p.active = true AND s.meta_has_key = true
   AND s.meta_provider = p.provider
   AND EXISTS (SELECT 1 FROM core.tenants WHERE id = $1::uuid)
   AND $2::text IS NOT NULL

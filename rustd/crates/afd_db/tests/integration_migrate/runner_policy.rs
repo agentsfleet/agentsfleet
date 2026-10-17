@@ -50,7 +50,11 @@ async fn test_a_runner_assignment_is_required_and_assigned_rows_survive() {
         "extra_binds=YES,network_policy=YES,registry_allowlist=YES"
     );
 
-    let carried = Migrator::new().run(&db).await.expect("955 applies");
+    let carried = Migrator::new()
+        .with_migrations(through(RUNNER_POLICY))
+        .run(&db)
+        .await
+        .expect("955 applies");
     assert_eq!(carried.applied, [RUNNER_POLICY]);
     assert_eq!(
         nullability(&db).await,
