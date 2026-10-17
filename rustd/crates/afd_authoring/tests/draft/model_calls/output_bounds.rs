@@ -23,6 +23,8 @@ fn proposal(id: &str) -> Value {
 async fn unsupported_output_call_bounds_and_native_overflow_keep_known_usage() {
     for output in [
         json!([{"type":"web_search_call","id":"unexpected","status":"completed"}]),
+        json!([{"type":"function_call","name":"grant_access","call_id":"wrong-tool","arguments":"{}"}]),
+        json!([{"type":"function_call","name":"propose_setup","call_id":"bad-arguments","arguments":"incomplete JSON"}]),
         json!([proposal(&"x".repeat(129))]),
         json!([{"type":"message","content":[{"type":"output_text","text":"x".repeat(ENVELOPE_BYTES_MAX - 190)}]}]),
         json!([

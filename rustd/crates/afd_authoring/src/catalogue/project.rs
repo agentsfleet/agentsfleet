@@ -26,15 +26,20 @@ pub(super) fn decode(raw: &str) -> Result<Row> {
 }
 
 pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<WorkspaceModel> {
-    let authoring = row.has_key
-        && model::eligible(
-            row.inference.as_ref(),
-            row.base_url.as_deref(),
-            row.context,
-            row.input,
-            row.output,
-        );
-    let runtime = authoring;
+    let route = row
+        .has_key
+        .then(|| {
+            model::configured(
+                row.inference.as_ref(),
+                row.base_url.as_deref(),
+                row.context,
+                row.input,
+                row.output,
+            )
+        })
+        .flatten();
+    let runtime = route.is_some();
+    let authoring = route.is_some_and(|route| route.supports_tools(&row.model));
     let allowed = match purpose {
         Some(ModelPurpose::Authoring) => authoring,
         Some(ModelPurpose::Runtime) => runtime,

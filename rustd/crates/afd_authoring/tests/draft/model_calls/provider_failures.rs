@@ -11,6 +11,32 @@ use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
+async fn a_failed_http_status_keeps_known_cost_without_publishing_successful_content() {
+    let f = Fixture::create().await;
+    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+    let mut stub = Provider::known();
+    stub.status = 503;
+    let provider = Arc::new(stub);
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
+    let request = fixture::request(&attempt);
+    for request in [request.clone(), request] {
+        let error = calls
+            .call(&f.runner, &attempt.lease, request)
+            .await
+            .expect_err("HTTP failure cannot publish the enclosed answer");
+        assert_eq!(error.code(), error_code::AUTHORING_PROVIDER);
+    }
+    assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid")
+        .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("retained provider accounting");
+    assert_eq!(receipt, (true, "known".into()));
+    assert_eq!(provider.count(), 1);
+    assert_eq!(f.counts().await, (1, 0, 1));
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
 async fn malformed_proposal_keeps_known_usage_and_replays_a_provider_failure() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;

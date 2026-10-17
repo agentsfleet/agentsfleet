@@ -12,6 +12,29 @@ const OVERFLOWING_OUTPUT_TOKENS: u64 = 1_000_000_000;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
+async fn an_unfunded_wallet_cannot_dispatch_an_already_admitted_attempt() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let provider = Arc::new(Provider::known());
+    let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
+    sqlx::query("UPDATE billing.tenant_wallet SET balance_nanos=0 WHERE tenant_id=$1::uuid")
+        .bind(f.tenant.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("funding removed after admission");
+    let error = calls
+        .call(&f.runner, &a.lease, fixture::request(&a))
+        .await
+        .expect_err("current funding must cover active obligations");
+    assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
+    assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
+    assert_eq!(provider.count(), 0);
+    assert_eq!(f.counts().await, (1, 0, 1));
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
 async fn aggregate_reservation_overflow_cannot_authorize_a_physical_request() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;

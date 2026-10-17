@@ -83,6 +83,10 @@ async fn a_tool_continuation_replays_native_reasoning_without_exposing_it_to_the
 fn assert_native_replay(provider: &Reasoning) {
     let bodies = provider.bodies.lock().expect("sent requests");
     assert_eq!(bodies.len(), 2);
+    for body in bodies.iter() {
+        assert_eq!(body.pointer("/tools/0/type"), Some(&json!("function")));
+        assert_eq!(body.pointer("/tools/0/name"), Some(&json!("propose_setup")));
+    }
     let items = bodies
         .get(1)
         .and_then(|body| body.get("input"))

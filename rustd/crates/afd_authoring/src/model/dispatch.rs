@@ -2,7 +2,7 @@
 
 use afd_core::{clock::UnixMillis, id::Uuid7};
 use afd_credential::provider::Providers;
-use sqlx::{Connection as _, PgConnection};
+use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 use std::sync::Arc;
 use tokio::time::Instant;
 
@@ -189,7 +189,7 @@ impl ModelCalls {
 
     async fn next(
         &self,
-        connection: &mut PgConnection,
+        connection: &mut Transaction<'_, Postgres>,
         guarded: guard::Guarded,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,

@@ -36,6 +36,26 @@ fn should_name_no_tool_when_a_checkpoint_failed() {
     assert_eq!(failure.unhosted(), None);
 }
 
+#[test]
+fn should_preserve_a_real_scrub_refusal_without_naming_an_unhosted_resource() {
+    // The matcher checks this sparse mapping's length before reading any bytes.
+    // Its size refusal needs virtual address space, not a multi-gigabyte allocation.
+    let length = aho_corasick::PatternID::MAX
+        .as_usize()
+        .checked_add(1)
+        .unwrap();
+    let pattern = memmap2::MmapMut::map_anon(length).unwrap();
+    let refusal = aho_corasick::AhoCorasick::new([pattern.as_ref()]).unwrap_err();
+
+    let failure = Error::from(afr_secrets::Error::from(refusal));
+
+    assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(failure.unhosted(), None);
+    let scrub = failure.source().unwrap();
+    assert!(scrub.is::<afr_secrets::Error>());
+    assert!(scrub.source().unwrap().is::<aho_corasick::BuildError>());
+}
+
 /// The URL of a self-hosted endpoint at a loopback literal, which no runner
 /// dials.
 const PRIVATE_URL: &str = "https://127.0.0.1/v1";

@@ -126,6 +126,17 @@ impl<'a> Configured<'a> {
         })
     }
 
+    /// Whether the selected SDK wire can carry tool calls for this model.
+    #[must_use]
+    pub fn supports_tools(&self, model: &str) -> bool {
+        match self.dialect {
+            Dialect::Chat(dialect) | Dialect::Responses(dialect) => {
+                tools(&self.openai(dialect, model, ""), model)
+            }
+            Dialect::Messages(dialect) => tools(&self.messages(dialect, model, ""), model),
+        }
+    }
+
     /// Creates a model over a caller-owned physical transport without SDK retries.
     #[must_use]
     pub fn with_transport<T>(&self, model: &str, key: &str, transport: T) -> DynModel<Completion>
@@ -194,6 +205,12 @@ impl<'a> Configured<'a> {
             tool_input_streaming: dialect.quirks.tool_input_streaming,
         }
     }
+}
+
+fn tools(wire: &impl rig_core::wire::Wire, model: &str) -> bool {
+    wire.describe()
+        .replay
+        .is_some_and(|target| target.accepts(model).tools)
 }
 
 fn encode<W>(wire: &W, request: CompletionRequest, mode: Mode) -> Result<Encoded>

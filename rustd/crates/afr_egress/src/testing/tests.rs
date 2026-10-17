@@ -37,6 +37,7 @@ async fn fixed_replies_record_the_exact_prepared_request() {
         .await
         .expect("static credential allowed");
     let (transport, sent) = RecordingTransport::replying(202, "queued");
+    assert_eq!(format!("{transport:?}"), "RecordingTransport { .. }");
     let response = transport.send(outbound).await.expect("scripted reply");
     assert_eq!(response.status, 202);
     assert_eq!(response.body, "queued");
