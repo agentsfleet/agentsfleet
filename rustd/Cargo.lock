@@ -50,6 +50,8 @@ dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "jiff",
+ "jiff-sqlx",
  "sqlx",
  "thiserror",
  "tokio",
