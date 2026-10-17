@@ -107,6 +107,23 @@ fn a_credential_endpoint_restriction_cannot_be_replaced_by_catalogue_routing() {
     assert!(!route.accepts_endpoint(Some("")));
 }
 
+#[test]
+fn tool_support_follows_the_selected_sdk_api_and_dialect() {
+    for (api, dialect, expected) in [
+        (InferenceApi::Chat, None, true),
+        (InferenceApi::Chat, Some("perplexity"), false),
+        (InferenceApi::Chat, Some("hyperbolic"), false),
+        (InferenceApi::Chat, Some("mira"), false),
+        (InferenceApi::Responses, Some("perplexity"), true),
+        (InferenceApi::Messages, None, true),
+    ] {
+        let mut value = settings(api);
+        value.dialect = dialect.map(str::to_owned);
+        let route = Configured::new(&value, 100).unwrap();
+        assert_eq!(route.supports_tools("owner/model-next"), expected);
+    }
+}
+
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<Request<Bytes>>>>);
 

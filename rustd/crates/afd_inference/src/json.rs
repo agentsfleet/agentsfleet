@@ -60,16 +60,11 @@ mod tests {
         assert!(!format!("{error:?}").contains("private prompt"));
         let sdk = rig_core::ProviderError::from(error);
         assert!(!format!("{sdk:?}").contains("private prompt"));
-        assert!(matches!(sdk, rig_core::ProviderError::Http(_)));
-        if let rig_core::ProviderError::Http(transport) = sdk {
-            let source = std::error::Error::source(transport.as_ref())
-                .expect("typed inference cause behind SDK transport");
-            assert!(source.is::<crate::Error>());
-            assert!(
-                source
-                    .to_string()
-                    .contains("inference request must contain JSON bytes")
-            );
-        }
+        assert!(matches!(sdk, rig_core::ProviderError::Http(transport) if
+            std::error::Error::source(transport.as_ref()).is_some_and(|source|
+                source.is::<crate::Error>()
+                    && source.to_string().contains("inference request must contain JSON bytes")
+            )
+        ));
     }
 }

@@ -44,6 +44,32 @@ async fn queued(f: &Fixture) -> afd_authoring::types::Draft {
         .draft
 }
 
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn saved_platform_reference_resolves_the_platform_credential_and_billing_posture() {
+    let f = configured().await;
+    let draft = queued(&f).await;
+    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+        .expect("fixture encryption key");
+    let providers =
+        afd_credential::provider::Providers::new(f.db.clone(), Arc::new(key), Entropy::new());
+    let resolved = providers
+        .resolve_reference(&f.tenant, &draft.authoring_model_ref)
+        .await
+        .expect("platform model and credential resolve together");
+    assert_eq!(resolved.posture, afd_billing::Posture::Platform);
+    assert_eq!(resolved.provider.as_ref(), "openai");
+    assert_eq!(resolved.api_key().expose(), "platform-fixture-key");
+    assert_eq!(
+        resolved
+            .inference
+            .expect("persisted route")
+            .max_output_tokens,
+        8192
+    );
+    f.cleanup().await;
+}
+
 // Value: protects=platform choices reserve actual provider costs and saved output settings;
 // fails_when=admission treats platform inference as bring-your-own credentials or hardcodes a cap;
 // why_new=the existing admitted leases use only workspace-owned models;

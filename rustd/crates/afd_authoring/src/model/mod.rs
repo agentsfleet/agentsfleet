@@ -33,31 +33,32 @@ pub(crate) async fn selected(
     let selected = afd_credential::provider::registered_model(connection, owner, reference)
         .await?
         .ok_or(ErrorKind::Model)?;
-    if !eligible(
+    if !configured(
         selected.inference.as_ref(),
         selected.base_url.as_deref(),
         selected.context_window_tokens,
         selected.input_nanos_per_million,
         selected.output_nanos_per_million,
-    ) {
+    )
+    .is_some_and(|route| route.supports_tools(&selected.model))
+    {
         return Err(ErrorKind::Model.into());
     }
     Ok(selected)
 }
 
-pub(crate) fn eligible(
-    inference: Option<&afd_wire::inference::ModelInference>,
+pub(crate) fn configured<'a>(
+    inference: Option<&'a afd_wire::inference::ModelInference>,
     endpoint: Option<&str>,
     context: i32,
     input: i64,
     output: i64,
-) -> bool {
+) -> Option<afd_inference::Configured<'a>> {
     let context = u32::try_from(context).unwrap_or_default();
-    inference.is_some_and(|settings| {
-        afd_inference::Configured::new(settings, context)
-            .is_ok_and(|route| route.accepts_endpoint(endpoint))
-    }) && input >= 0
-        && output >= 0
+    inference
+        .filter(|_| input >= 0 && output >= 0)
+        .and_then(|settings| afd_inference::Configured::new(settings, context).ok())
+        .filter(|route| route.accepts_endpoint(endpoint))
 }
 
 #[cfg(test)]
