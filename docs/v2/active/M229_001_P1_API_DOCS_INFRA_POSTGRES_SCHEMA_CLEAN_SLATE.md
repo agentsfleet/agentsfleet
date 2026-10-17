@@ -131,6 +131,8 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 - **Dimension 4.4** — `tenant provider set` writes one `tenant_models` row and points the selection at it; reset stores NULL; a pointer to another tenant's model is refused → Test `test_tenant_selection_points_at_model`
 - **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the runner and its report spool decode without it; the draft message response still carries `operation_id`, joined from the receipt → Test `test_runner_wire_drops_deletion_generation`
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
+- **Dimension 4.7** — the API, the CLI and the UI send and read every instant as an RFC 3339 string in UTC with three fraction digits; the device-flow window is `expires_at` → Test `test_api_instants_are_rfc3339`
+- **Dimension 4.8** — every locking validity check (lease renew, report fence, draft and schedule reads under lock) refuses a row that expired while it waited on the lock → Test `test_expiry_checks_read_clock_after_lock`
 
 ### §6 — Docs
 
@@ -214,6 +216,8 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one row, selection points at it; reset → NULL row; another tenant's model id → refused |
 | 4.5 | unit | `test_runner_wire_drops_deletion_generation` | lease payload and report spool entry without the field → decode; message response → has `operation_id` |
 | 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
+| 4.7 | unit | `test_api_instants_are_rfc3339` | every published `_at` field → `type: string, format: date-time`; a response instant → `…:49.000Z`; the CLI and UI parse it |
+| 4.8 | integration | `test_expiry_checks_read_clock_after_lock` | per locking shape: hold the row lock past its expiry, release → the check refuses |
 | 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
 | 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
@@ -307,6 +311,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **No legacy, anywhere** — > Indy (2026-10-17): "Record this i never asked for compatibilty to legacy, i said clearly we are tearing down db, period" and "that clearly says you have more open freedom to change" — context: the database is torn down and every client ships in this PR, so no compatibility window, versioning prefix, alias or adapter is designed, asked about, or kept for any surface: schema, wire or API. The 80 integer `_at` fields become RFC 3339 strings in place under `/v1`.
 - **Timestamps and clock** — signed off by Indy (2026-10-17) after review by Tarzy: instants are `TIMESTAMPTZ(3)`; Rust holds `jiff::Timestamp` end to end, `afd_core` included, with `UnixMillis` deleted; rows bridge through `jiff-sqlx`; the API emits RFC 3339 in UTC through jiff's standard serialization, with no integer adapter. Clock rule: a locking validity check locks first, then reads `clock_timestamp()` once; non-locking reads and `SKIP LOCKED` sweeps use `statement_timestamp()`; lifecycle stamps are `now()`; `now()` never decides an expiry. Evidence: scratch-container contention and `EXPLAIN` runs on Postgres 18.6. Rules land in orly 0.14.7.
 - **§5 order and shape** — > Indy (2026-10-18): "I think Dimension 5 must be started after 6 and 7. 5 must happen and get tested on the docker container locally, upon PR merged when the spec is moved to done as well the migration happens auto." — context: the owner-present procedure on deployed databases is replaced by a local from-empty proof; deployed databases migrate on merge.
+- **§4–§7 prior approval** — > Indy (2026-10-18): "approved 4,5,6,7" — context: §4 including the new 4.7 (RFC 3339 instants in API, CLI and UI) and 4.8 (clock read after the lock wait), §6 including the `~/Projects/docs` branch, §7 as written, and §5 as the local from-empty proof after §6 and §7. Post write-ups remain due after each Dimension.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
