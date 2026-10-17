@@ -82,16 +82,6 @@ impl Nanos {
         self.0
     }
 
-    /// Whether this is a charge at all.
-    ///
-    /// The receive charge is zero today, and a caller that skips the ledger
-    /// write on that basis would break the budget drain — so this exists for
-    /// LOGGING and nothing else, and no gate branches on it.
-    #[must_use]
-    pub const fn is_zero(self) -> bool {
-        self.0 == 0
-    }
-
     /// A declared ceiling, in nanos.
     ///
     /// Preserves an already validated ceiling without rounding.

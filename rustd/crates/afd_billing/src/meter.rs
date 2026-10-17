@@ -17,7 +17,7 @@
 //! # The fail-open posture is the CALLER's, not this module's
 //!
 //! Two different failures can look like one run-fee-only answer: a catalogue
-//! generation that could not be read, and a catalogue that authoritatively
+//! that could not be read, and a catalogue that authoritatively
 //! carries no such model. Only the second is a fact about pricing. The first is
 //! a datastore fault, and returning a priced meter for it means a slice was
 //! charged against rates nobody verified.
@@ -105,7 +105,7 @@ impl Accounts {
     /// Reports a datastore that would not answer — which is NOT the same as a
     /// missing rate, and the two must not be collapsed. A caller that meters a
     /// slice against rates it could not verify has charged a tenant against a
-    /// generation nobody read.
+    /// catalogue nobody read.
     pub async fn meter(
         &self,
         posture: Posture,

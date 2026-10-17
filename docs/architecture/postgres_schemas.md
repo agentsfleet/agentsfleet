@@ -228,7 +228,7 @@ producer's instant billing uses, which the event row does not hold; the lease's 
 | Table | Purpose | Columns |
 |---|---|---|
 | `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at` |
-| `catalogue_version` | Singleton edit counter read with every price | `id (=1), resource_version, created_at, updated_at` |
+| `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution | `id (=1), resource_version, created_at, updated_at` |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key | `provider (PK), source_workspace_id, active, platform_model_id, base_url, created_at, updated_at` |
 | `tenant_models` | A tenant's own models, each pointing at a vault key | `id, tenant_id, model_name, secret_ref, created_at, updated_at` |
 | `tenant_selections` | The tenant's default; NULL means platform default | `tenant_id (PK), tenant_model_id, created_at, updated_at` |

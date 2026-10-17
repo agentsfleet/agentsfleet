@@ -24,10 +24,10 @@
 //! channels: a fault is `Err`, and a verdict — including "the stored ceiling
 //! will not parse" — is `Ok`.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::Nanos;
 use crate::error::{Result, query};
@@ -103,6 +103,13 @@ pub fn covers(budget: Budget, spend: Spend) -> Verdict {
     }
 }
 
+/// The drain's two sums, by name.
+#[derive(Debug, sqlx::FromRow)]
+struct Drained {
+    day_nanos: i64,
+    month_nanos: i64,
+}
+
 impl Accounts {
     /// What `fleet_id` has drained inside the windows opening at `now`.
     ///
@@ -117,15 +124,15 @@ impl Accounts {
         &self,
         workspace_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Spend> {
         let windows = Windows::at(now);
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::SELECT_BUDGET_DRAIN)
+        let drained: Drained = sqlx::query_as(sql::SELECT_BUDGET_DRAIN)
             .bind(workspace_id.as_str())
             .bind(fleet_id.as_str())
-            .bind(windows.day.as_millis())
-            .bind(windows.month.as_millis())
+            .bind(windows.day.to_sqlx())
+            .bind(windows.month.to_sqlx())
             .bind(sql::charge::STAGE)
             .bind(sql::charge::RECEIVE)
             .fetch_one(&mut *connection)
@@ -133,8 +140,8 @@ impl Accounts {
             .map_err(query(CONTEXT_DRAIN))?;
 
         Ok(Spend {
-            day: Nanos::from_i64(row.try_get(0).map_err(query(CONTEXT_DRAIN))?),
-            month: Nanos::from_i64(row.try_get(1).map_err(query(CONTEXT_DRAIN))?),
+            day: Nanos::from_i64(drained.day_nanos),
+            month: Nanos::from_i64(drained.month_nanos),
         })
     }
 }

@@ -43,7 +43,6 @@ pub mod sql;
 // would have had to link the api-key and login plane to serve a balance.
 pub mod store;
 pub mod tenant;
-mod tenant_sql;
 pub mod wallet;
 pub mod window;
 

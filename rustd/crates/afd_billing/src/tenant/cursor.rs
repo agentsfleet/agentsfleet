@@ -1,4 +1,5 @@
-//! The charges endpoint's opaque cursor: base64url of `{recorded_at}:{id}`.
+//! The charges endpoint's opaque cursor: base64url of `{created_at}:{id}`,
+//! the instant written as a Unix millisecond count.
 //!
 //! # A second cursor format, not a variant of the first
 //!
@@ -20,6 +21,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
+use jiff::Timestamp;
 
 use crate::error;
 
@@ -40,23 +42,28 @@ const ID_MAX_LEN: usize = 128;
 pub struct Boundary {
     /// The boundary row's `created_at`.
     #[garde(skip)]
-    pub recorded_at: i64,
+    pub created_at: Timestamp,
     /// The boundary row's identifier, breaking ties within one instant.
     #[garde(length(bytes, min = 1, max = ID_MAX_LEN))]
     pub id: String,
 }
 
-/// Renders the token a client resumes from after the row `(recorded_at, id)`.
+/// Renders the token a client resumes from after the row `(created_at, id)`.
+///
+/// The instant travels as whole milliseconds, which is all a `TIMESTAMPTZ(3)`
+/// column holds, so the boundary a token names is exactly the row's.
 #[must_use]
-pub fn render(recorded_at: i64, id: &str) -> String {
-    BASE64.encode(format!("{recorded_at}{SEPARATOR}{id}"))
+pub fn render(created_at: Timestamp, id: &str) -> String {
+    let millis = created_at.as_millisecond();
+    BASE64.encode(format!("{millis}{SEPARATOR}{id}"))
 }
 
 /// Reads a token this daemon issued.
 ///
 /// # Errors
-/// Refuses anything that is not base64url of `{integer}:{id}` with a non-empty
-/// id within its cap, as one undifferentiated refusal.
+/// Refuses anything that is not base64url of `{integer}:{id}`, with the integer
+/// an instant jiff can hold and a non-empty id within its cap, as one
+/// undifferentiated refusal.
 pub fn parse(token: &str) -> crate::Result<Boundary> {
     let decoded = BASE64
         .decode(token)
@@ -65,11 +72,13 @@ pub fn parse(token: &str) -> crate::Result<Boundary> {
     let (instant, id) = plain
         .split_once(SEPARATOR)
         .ok_or_else(error::charges_cursor_invalid)?;
-    let recorded_at = instant
+    let millis = instant
         .parse()
         .map_err(|_not_numeric| error::charges_cursor_invalid())?;
+    let created_at = Timestamp::from_millisecond(millis)
+        .map_err(|_out_of_range| error::charges_cursor_invalid())?;
     garde::Unvalidated::new(Boundary {
-        recorded_at,
+        created_at,
         id: id.to_owned(),
     })
     .validate()
@@ -83,13 +92,18 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
+    use jiff::Timestamp;
+
     use super::{ID_MAX_LEN, parse, render};
+
+    /// 2024-04-12T12:20:00Z, the instant every pinned token below names.
+    const APRIL_2024: Timestamp = Timestamp::constant(1_712_924_400, 0);
 
     #[test]
     fn a_rendered_token_round_trips() {
-        let token = render(1_712_924_400_000, "abc123");
+        let token = render(APRIL_2024, "abc123");
         let boundary = parse(&token).expect("a token this daemon issued must parse");
-        assert_eq!(boundary.recorded_at, 1_712_924_400_000);
+        assert_eq!(boundary.created_at, APRIL_2024);
         assert_eq!(boundary.id, "abc123");
     }
 
@@ -99,13 +113,15 @@ mod tests {
         use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
         let long_id = format!("1712924400000:{}", "a".repeat(129));
         // One case per way a token can be wrong: not base64url, base64 of
-        // no separator, an empty id, a non-numeric instant, an id past the
-        // cap. Each earns the SAME refusal, which is the opacity claim.
+        // no separator, an empty id, a non-numeric instant, an instant past
+        // jiff's range, an id past the cap. Each earns the SAME refusal, which
+        // is the opacity claim.
         for bad in [
             "!!not-valid-base64!!".to_owned(),
             BASE64.encode("no-separator"),
             BASE64.encode("1712924400000:"),
             BASE64.encode("not-a-number:abc"),
+            BASE64.encode(format!("{}:abc", i64::MAX)),
             BASE64.encode(long_id),
         ] {
             assert!(
@@ -131,18 +147,15 @@ mod tests {
         let past_cap = BASE64.encode(format!("1712924400000:{}", "a".repeat(ID_MAX_LEN + 1)));
         assert!(malformed.is_some());
         assert_eq!(refusal(&past_cap), malformed);
-        let at_cap = render(1, &"a".repeat(ID_MAX_LEN));
+        let at_cap = render(APRIL_2024, &"a".repeat(ID_MAX_LEN));
         assert_eq!(refusal(&at_cap), None);
     }
 
     #[test]
-    fn the_wire_form_is_base64url_of_recorded_at_and_id() {
+    fn the_wire_form_is_base64url_of_created_at_millis_and_id() {
         // Pinned bytes: base64url-no-pad of "1712924400000:abc123". A client
         // holding an issued cursor must be able to spend it after a deploy, so
         // the encoding is a wire fact rather than a choice.
-        assert_eq!(
-            render(1_712_924_400_000, "abc123"),
-            "MTcxMjkyNDQwMDAwMDphYmMxMjM"
-        );
+        assert_eq!(render(APRIL_2024, "abc123"), "MTcxMjkyNDQwMDAwMDphYmMxMjM");
     }
 }

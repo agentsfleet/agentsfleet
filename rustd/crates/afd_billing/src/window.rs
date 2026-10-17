@@ -23,7 +23,6 @@
 //! that opens on the wrong day is one nobody can reconcile against an invoice,
 //! so the walk is imported rather than re-derived.
 
-use afd_core::clock::UnixMillis;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
@@ -41,17 +40,17 @@ const ROLLING_DAY_MS: i64 = afd_core::timing::DAY_MS;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Windows {
     /// The rolling 24-hour window's opening instant.
-    pub day: UnixMillis,
+    pub day: Timestamp,
     /// The current UTC month's first instant.
-    pub month: UnixMillis,
+    pub month: Timestamp,
 }
 
 impl Windows {
     /// Both floors, for one instant.
     #[must_use]
-    pub fn at(now: UnixMillis) -> Self {
+    pub fn at(now: Timestamp) -> Self {
         Self {
-            day: now.saturating_add_millis(-ROLLING_DAY_MS),
+            day: afd_core::clock::add_millis(now, -ROLLING_DAY_MS),
             month: month_floor(now),
         }
     }
@@ -64,48 +63,41 @@ impl Windows {
 /// A non-positive instant answers the epoch: there is no month before the
 /// epoch to name, so the floor clamps rather than traps.
 ///
-/// An instant no calendar can place answers the epoch too. That widens the
-/// month window to everything ever recorded, which makes the gate STRICTER, and
-/// it is the one place in this file that leans away from the budget gate's
-/// fail-open posture. The lean is affordable because the branch is unreachable
-/// with a working clock: `jiff` spans years -9999 to 9999, so reaching it means
-/// the host's clock reported an instant tens of millennia from now, and a
-/// deployment in that state has a larger problem than one fleet's ceiling.
-fn month_floor(now: UnixMillis) -> UnixMillis {
-    if now.as_millis() <= 0 {
-        return UnixMillis::EPOCH;
+/// A month start jiff cannot zone answers the epoch too. That widens the month
+/// window to everything ever recorded, which makes the gate STRICTER, and it is
+/// the one place in this file that leans away from the budget gate's fail-open
+/// posture. The lean costs nothing: the first of any month after the epoch is
+/// inside jiff's range, so the fallback stands only for the type system.
+fn month_floor(now: Timestamp) -> Timestamp {
+    if now <= Timestamp::UNIX_EPOCH {
+        return Timestamp::UNIX_EPOCH;
     }
-    Timestamp::from_millisecond(now.as_millis())
-        .ok()
-        // A civil date, not a mutated instant: `first_of_month` answers with a
-        // value of the right KIND, so there is no time-of-day component left
-        // over to forget to clear. That is the whole reason this window costs a
-        // dependency rather than three lines of field assignment.
-        .map(|instant| instant.to_zoned(TimeZone::UTC).date().first_of_month())
-        .and_then(|first| first.to_zoned(TimeZone::UTC).ok())
-        .map_or(UnixMillis::EPOCH, |zoned| {
-            UnixMillis::from_millis(zoned.timestamp().as_millisecond())
-        })
+    // A civil date, not a mutated instant: `first_of_month` answers with a
+    // value of the right KIND, so there is no time-of-day component left over
+    // to forget to clear. That is the whole reason this window costs a
+    // dependency rather than three lines of field assignment.
+    now.to_zoned(TimeZone::UTC)
+        .date()
+        .first_of_month()
+        .to_zoned(TimeZone::UTC)
+        .map_or(Timestamp::UNIX_EPOCH, |zoned| zoned.timestamp())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ROLLING_DAY_MS, Windows, month_floor};
-    use afd_core::clock::UnixMillis;
+    use jiff::Timestamp;
 
     /// 2026-07-10T16:04:00Z, and the first instant of its month.
     ///
     /// Pinned as literals, so the floor is asserted against a fixed value
     /// rather than against the arithmetic under test.
-    const MID_JULY_2026: i64 = 1_783_699_440_000;
-    const JULY_2026_START: i64 = 1_782_864_000_000;
+    const MID_JULY_2026: Timestamp = Timestamp::constant(1_783_699_440, 0);
+    const JULY_2026_START: Timestamp = Timestamp::constant(1_782_864_000, 0);
 
     #[test]
     fn the_month_window_opens_at_the_first_instant_of_the_utc_month() {
-        assert_eq!(
-            month_floor(UnixMillis::from_millis(MID_JULY_2026)),
-            UnixMillis::from_millis(JULY_2026_START)
-        );
+        assert_eq!(month_floor(MID_JULY_2026), JULY_2026_START);
     }
 
     #[test]
@@ -113,18 +105,17 @@ mod tests {
         // Idempotent, which is what makes the drain query's inclusive `>=`
         // filter safe: a charge stamped exactly at the boundary belongs to the
         // month it opens, not the one before.
-        let start = UnixMillis::from_millis(JULY_2026_START);
-        assert_eq!(month_floor(start), start);
+        assert_eq!(month_floor(JULY_2026_START), JULY_2026_START);
     }
 
     #[test]
     fn the_last_millisecond_of_a_month_belongs_to_that_month() {
         // 2026-06-30T23:59:59.999Z falls in June, not July — the off-by-one
         // that would silently move a tenant's whole month.
-        const JUNE_2026_START: i64 = 1_780_272_000_000;
+        const JUNE_2026_START: Timestamp = Timestamp::constant(1_780_272_000, 0);
         assert_eq!(
-            month_floor(UnixMillis::from_millis(JULY_2026_START - 1)),
-            UnixMillis::from_millis(JUNE_2026_START)
+            month_floor(Timestamp::constant(1_782_863_999, 999_000_000)),
+            JUNE_2026_START
         );
     }
 
@@ -133,36 +124,33 @@ mod tests {
         // 2024-02-29T23:59:59.999Z → 2024-02-01. The case a hand-written
         // epoch-day walk gets wrong, and the reason this is a crate.
         assert_eq!(
-            month_floor(UnixMillis::from_millis(1_709_251_199_999)),
-            UnixMillis::from_millis(1_706_745_600_000)
+            month_floor(Timestamp::constant(1_709_251_199, 999_000_000)),
+            Timestamp::constant(1_706_745_600, 0)
         );
         // And the instant after it is March, proving the leap day did not
         // shift the following month's opening.
         assert_eq!(
-            month_floor(UnixMillis::from_millis(1_709_251_200_000)),
-            UnixMillis::from_millis(1_709_251_200_000)
+            month_floor(Timestamp::constant(1_709_251_200, 0)),
+            Timestamp::constant(1_709_251_200, 0)
         );
     }
 
     #[test]
     fn pre_epoch_instants_clamp_instead_of_trapping() {
-        assert_eq!(month_floor(UnixMillis::EPOCH), UnixMillis::EPOCH);
-        assert_eq!(month_floor(UnixMillis::from_millis(-1)), UnixMillis::EPOCH);
+        assert_eq!(month_floor(Timestamp::UNIX_EPOCH), Timestamp::UNIX_EPOCH);
+        let just_before = afd_core::clock::add_millis(Timestamp::UNIX_EPOCH, -1);
+        assert_eq!(month_floor(just_before), Timestamp::UNIX_EPOCH);
     }
 
     #[test]
     fn the_daily_window_rolls_and_does_not_snap_to_midnight() {
         // The distinction the product documents: the window opens exactly 24h
         // back from the instant asked about, wherever in the day that lands.
-        let now = UnixMillis::from_millis(MID_JULY_2026);
-        let windows = Windows::at(now);
-        assert_eq!(
-            windows.day,
-            UnixMillis::from_millis(MID_JULY_2026 - ROLLING_DAY_MS)
-        );
+        let windows = Windows::at(MID_JULY_2026);
+        assert_eq!(windows.day, Timestamp::constant(1_783_613_040, 0));
         // Which is emphatically NOT the day's own midnight — if it were, the
         // ceiling would reset on a boundary rather than sliding.
-        assert_ne!(windows.day.as_millis() % ROLLING_DAY_MS, 0);
+        assert_ne!(windows.day.as_millisecond() % ROLLING_DAY_MS, 0);
     }
 
     #[test]
@@ -170,7 +158,7 @@ mod tests {
         // The day floor sits inside the month it is nested in, for any instant
         // past the month's first day — the property that two separate clock
         // reads could break.
-        let windows = Windows::at(UnixMillis::from_millis(MID_JULY_2026));
-        assert!(windows.day.as_millis() > windows.month.as_millis());
+        let windows = Windows::at(MID_JULY_2026);
+        assert!(windows.day > windows.month);
     }
 }

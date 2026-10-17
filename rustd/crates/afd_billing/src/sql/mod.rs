@@ -1,12 +1,16 @@
-//! `billing.*` and the two `core` tables a money decision reads.
+//! Every statement this crate runs: `billing.*`, and the `identity` and `model`
+//! tables a money decision reads.
 //!
-//! The wallet and the workspace→tenant hop, the apportioning drain, the ledger
-//! insert and the rate read. The rest of the money path sits beside its
-//! callers: the lease renewal and settle statements in
+//! The wallet and the workspace→tenant hop, the apportioning drain, the charge
+//! insert, the rate read and the tenant's charges pages. The rest of the money
+//! path sits beside its callers: the lease renewal and settle statements in
 //! `afd_fleet/src/lease/sql/{renew,report}.rs` drain the balance and write the
-//! `stage` ledger rows, and `INSERT_WALLET` in `afd_tenant/src/sql/signup.rs`
-//! opens a wallet with its starter grant. Every statement here is written out
-//! flat, never concatenated, so a review reads the SQL that runs.
+//! `stage` charge rows, and `INSERT_WALLET` in `afd_tenant/src/sql/signup.rs`
+//! opens a wallet with its starter grant.
+//!
+//! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
+//! checked against the rebuilt schema by `afd_db`'s
+//! `test_every_sql_file_prepares`.
 
 /// The tenant a workspace belongs to.
 ///
@@ -18,18 +22,15 @@
 /// what the gate's refusal class turns on.
 ///
 /// `$1` workspace.
-pub const SELECT_TENANT_FOR_WORKSPACE: &str = "\
-SELECT tenant_id::text
-FROM core.workspaces
-WHERE id = $1::uuid
-LIMIT 1";
+pub const SELECT_TENANT_FOR_WORKSPACE: &str = include_str!("select_tenant_for_workspace.sql");
 
 /// The tenant's credit pool.
 ///
-/// `balance_exhausted_at` is selected but unread by the lease gate: the gate
-/// compares the balance against an estimate and does not care when the pool ran
-/// dry. It stays in the projection because the statement is shared with the
-/// billing endpoint, and narrowing it here would fork one statement into two.
+/// `exhausted_at` is selected but unread by the lease gate: the gate compares
+/// the balance against an estimate and does not care when the pool ran dry. It
+/// stays in the projection because the statement is shared with the billing
+/// endpoint ([`crate::tenant::Billing::snapshot`]), and narrowing it here would
+/// fork one statement into two.
 ///
 /// A tenant with NO wallet row is not a refusal — `getBilling` answers null and
 /// `balanceCoversEstimate` admits. A tenant that has never been provisioned is
@@ -37,11 +38,7 @@ LIMIT 1";
 /// an outage for a fleet that is otherwise healthy.
 ///
 /// `$1` tenant.
-pub const SELECT_TENANT_BALANCE: &str = "\
-SELECT balance_nanos, updated_at, balance_exhausted_at
-FROM billing.tenant_wallet
-WHERE tenant_id = $1::uuid
-LIMIT 1";
+pub const SELECT_WALLET: &str = include_str!("select_wallet.sql");
 
 /// Credit drained by one fleet inside two windows, apportioned by run span.
 ///
@@ -52,38 +49,23 @@ LIMIT 1";
 ///
 /// Each `CASE` is one row's share of the window opening at that floor: none if
 /// the run stopped charging before it, all of it if the run began after it,
-/// else the covered fraction of `[created_at, last_charged_at]`. `numeric`
-/// because nanos times a millisecond span overflows `BIGINT`.
+/// else the covered fraction of `[created_at, updated_at]`. A stage row's
+/// `updated_at` is its last charge, since nothing but a charge updates the row.
+/// The fraction is a ratio of `EXTRACT(EPOCH …)` spans, which Postgres answers
+/// as `numeric`, so nanos times a span cannot overflow `BIGINT`.
 ///
 /// The floor test is `< floor` and not `<= floor`, matching the row filter's
 /// `>=`, so a one-shot charge stamped exactly at a month start is counted
 /// rather than dropped. `NULLIF` guards a future arm reordering rather than a
 /// reachable divide: reaching the fraction arm implies `created_at < floor <=
-/// last_charged_at`, which makes the divisor strictly positive.
+/// updated_at`, which makes the divisor strictly positive.
 ///
 /// The two arms are spelled out rather than factored into a helper. This is a
 /// money path, and the SQL a reader sees here is the SQL that runs.
 ///
 /// `$1` workspace, `$2` fleet, `$3` day floor, `$4` month floor, `$5` and `$6`
 /// the two charge types counted.
-pub const SELECT_BUDGET_DRAIN: &str = "\
-SELECT
-  COALESCE(SUM(CASE
-    WHEN l.last_charged_at < $3::bigint THEN 0
-    WHEN l.created_at >= $3::bigint THEN l.credit_deducted_nanos
-    ELSE l.credit_deducted_nanos::numeric * (l.last_charged_at - $3::bigint)
-         / NULLIF(l.last_charged_at - l.created_at, 0)
-  END), 0)::bigint,
-  COALESCE(SUM(CASE
-    WHEN l.last_charged_at < $4::bigint THEN 0
-    WHEN l.created_at >= $4::bigint THEN l.credit_deducted_nanos
-    ELSE l.credit_deducted_nanos::numeric * (l.last_charged_at - $4::bigint)
-         / NULLIF(l.last_charged_at - l.created_at, 0)
-  END), 0)::bigint
-FROM billing.usage_ledger l
-WHERE l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
-  AND l.charge_type IN ($5, $6)
-  AND l.last_charged_at >= LEAST($3::bigint, $4::bigint)";
+pub const SELECT_BUDGET_DRAIN: &str = include_str!("select_budget_drain.sql");
 
 /// Record one charge.
 ///
@@ -100,59 +82,36 @@ WHERE l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
 /// accumulates. A clock read here would disagree with the lease's copy whenever
 /// the two straddle a millisecond.
 ///
-/// `last_charged_at` equals `created_at` for a receive fee — it is charged once,
-/// so its span is a point and the drain's apportioning degenerates to
-/// all-or-nothing, which is what it has always been for this row.
+/// `updated_at` equals `created_at` for a receive fee: both are the statement's
+/// `now()`, it is charged once, so its span is a point and the drain's
+/// apportioning degenerates to all-or-nothing, which is what it has always been
+/// for this row.
 ///
 /// `$1` row id, `$2` tenant, `$3` workspace, `$4` fleet, `$5` event, `$6` charge
 /// type, `$7` posture, `$8` model, `$9` nanos, `$10`–`$13` token counts and wall
-/// time, `$14` event instant, `$15` row instant, `$16` last-charged instant.
+/// time, `$14` event instant.
 ///
 /// # `fleet_name` is read, never bound
 ///
 /// It takes no parameter of its own — the subselect reads it from the fleet
 /// `$4` already names. That is the difference between a snapshot and a claim: a
 /// caller cannot pass a name that disagrees with the identifier beside it, and
-/// no request field reaches this column. A fleet row that cannot be read yields
-/// NULL and the charge is still written, because a missing name must never cost
-/// a charge (schema/915 says the same thing from the column's side).
-pub const INSERT_USAGE_LEDGER: &str = "\
-INSERT INTO billing.usage_ledger
-  (id, tenant_id, workspace_id, fleet_id, event_id,
-   charge_type, posture, model,
-   credit_deducted_nanos,
-   token_count_input, token_count_cached_input, token_count_output, wall_ms,
-   event_created_at, created_at, last_charged_at, fleet_name)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16,
-        (SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid))
-ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING";
+/// no request field reaches this column. The column is `NOT NULL`, so a fleet
+/// row purged before the charge lands refuses the insert, and the caller's
+/// retry posture applies. A charge only follows a lease on a live fleet, so
+/// that refusal needs a purge racing an admission.
+pub const INSERT_FLEET_CHARGE: &str = include_str!("insert_fleet_charge.sql");
 
-/// A model's rates, and the catalogue generation they were read at.
+/// A platform model's three per-token prices.
 ///
-/// Two properties of its shape are load-bearing and neither is obvious:
+/// No row is an authoritative miss: the catalogue does not carry the model,
+/// which [`crate::Accounts::meter`] prices at the run fee alone. A datastore that
+/// would not answer is an `Err`, so the two never collapse.
 ///
-/// The join is driven FROM the singleton revision row, not from the catalogue.
-/// A `LEFT JOIN` this way round still yields the generation on one row when the
-/// model is absent, where an inner join would return nothing and leave the
-/// caller unable to tell "no such model" from "could not read the generation".
-/// Those two get different treatment — one is `None`, the other fails closed.
-///
-/// One statement is one snapshot, so the generation and the row cannot skew.
-/// Two statements would need an explicit transaction to claim as much, and a
-/// caller that forgot one would cache a rate under a generation it does not
-/// belong to — the exact failure the counter exists to prevent.
-///
-/// `$1` provider, `$2` model.
-pub const LOAD_RATE_WITH_REVISION: &str = "\
-SELECT r.revision, m.context_cap_tokens, m.input_nanos_per_mtok, \
-m.cached_input_nanos_per_mtok, m.output_nanos_per_mtok
-  FROM core.model_catalogue_revision r
-  LEFT JOIN core.model_library m
-    ON m.provider = $1 AND m.model_id = $2
- WHERE r.id = 1";
+/// `$1` provider, `$2` model name.
+pub const SELECT_PLATFORM_MODEL_PRICES: &str = include_str!("select_platform_model_prices.sql");
 
-/// The `billing.usage_ledger.charge_type` values this crate writes and counts.
+/// The `billing.fleet_charges.charge_type` values this crate writes and counts.
 ///
 /// Two spellings, declared once (RULE UFS): the budget drain counts BOTH, so a charge type spelled
 /// differently at the insert than at the drain is spend that never reaches a
@@ -167,7 +126,7 @@ pub mod charge {
     pub const STAGE: &str = "stage";
 }
 
-/// The `billing.usage_ledger.posture` values, as the resolver spells them.
+/// The `billing.fleet_charges.posture` values, as the resolver spells them.
 ///
 /// The column is written by this codebase only, so an unknown spelling read
 /// back is a data-integrity fault to surface rather than a value to guess at —
@@ -181,3 +140,21 @@ pub mod posture {
     /// and only the run fee is charged.
     pub const SELF_MANAGED: &str = "self_managed";
 }
+
+/// The tenant's first charges page: newest first, no boundary.
+///
+/// `fleet_charges.id` is table-qualified in the ORDER BY because the select
+/// list emits `id::text`, which names an OUTPUT column `id`. A bare `ORDER BY
+/// … id` resolves against the output list first and sorts by the text cast, an
+/// ordering no index supplies. `cached_input_token_count` is not selected: the
+/// charges response does not carry it.
+///
+/// `$1` tenant, `$2` limit.
+pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
+    include_str!("select_tenant_charges_first.sql");
+
+/// A later charges page: strictly older than the cursor's boundary.
+///
+/// `$1` tenant, `$2` boundary instant, `$3` boundary id, `$4` limit.
+pub(crate) const SELECT_TENANT_CHARGES_AFTER: &str =
+    include_str!("select_tenant_charges_after.sql");
