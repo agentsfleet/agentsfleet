@@ -20,7 +20,7 @@ Canonical reference for `agentsfleet` database schema patterns. All new tables *
 
 ## Migrator
 
-SQLx's `Migrator` applies the slots from the explicit list in `rustd/crates/afd_db/src/migration.rs` (`Migrator::with_migrations`; the `migrate` feature only, `macros` stays off). It keeps checksums, so an edited applied slot is refused, and records the ledger in the `audit` schema. Locking is ours: SQLx's lock is off (`set_locking(false)`) and a bounded `pg_try_advisory_lock` poll wraps the run, so a held lock fails loudly instead of hanging a deploy. Migrate refuses to start while a ledger from an older migrator exists.
+SQLx's `Migrator` applies the slots from the explicit list in `rustd/crates/afd_db/src/migration.rs` (`Migrator::with_migrations`; the `migrate` feature only, `macros` stays off). It keeps checksums, so an edited applied slot is refused, and records the ledger in the `audit` schema. Locking is ours: SQLx's lock is off (`set_locking(false)`) and a bounded `pg_try_advisory_lock` poll wraps the run, so a held lock fails loudly instead of hanging a deploy.
 
 ## Schema File Organization
 
@@ -92,16 +92,21 @@ Every root a user or operator can delete — draft, user, Library card, fleet, w
 
 ## Timestamps
 
-- **Type:** `BIGINT NOT NULL` — milliseconds since the Unix epoch, from the application clock (`afd_core::clock::UnixMillis`).
-- **Never** `TIMESTAMPTZ`, `TIMESTAMP` or `DEFAULT now()`.
+- **Type:** `TIMESTAMPTZ(3) NOT NULL` (nullable for a NULL marker), so the database, the Rust `jiff::Timestamp` and the API agree on millisecond precision. Never `BIGINT` epoch integers or `TIMESTAMP` without a time zone.
+- **Server lifecycle stamps** (`created_at`, `updated_at`) are written by the statement as `now()`: one database clock, one instant per transaction. No column `DEFAULT`; every write names its stamp in its `.sql` file.
+- **Deadlines** are computed in SQL as `clock_timestamp() + $ttl::interval`, with the TTL bound as an exact interval.
+- **A locking validity check** ("is this lease still live?") locks the target rows first, then reads `clock_timestamp()` once in a `MATERIALIZED` step that depends on the locked rows. A clock read in the `WHERE` or select list of a locking statement can run before the lock wait and accept an expired row.
+- **A non-locking read or `SKIP LOCKED` sweep** compares against `statement_timestamp()`, which an index can use; `clock_timestamp()` cannot be an index bound.
+- **`now()` and `CURRENT_TIMESTAMP` never decide an expiry**, because both are fixed at transaction start.
+- A time supplied by another system is stored as given in its own column, apart from the received or processed stamp.
 
 ## Standard Columns
 
 | Column | Type | Required | Notes |
 |--------|------|----------|-------|
 | `id` | `UUID PRIMARY KEY` | Yes | UUIDv7, application-minted |
-| `created_at` | `BIGINT NOT NULL` | Yes | Set once at INSERT |
-| `updated_at` | `BIGINT NOT NULL` | If the row ever changes | Set at INSERT and every UPDATE |
+| `created_at` | `TIMESTAMPTZ(3) NOT NULL` | Yes | `now()` at INSERT |
+| `updated_at` | `TIMESTAMPTZ(3) NOT NULL` | If the row ever changes | `now()` at INSERT and every UPDATE |
 
 ## Audit Pattern
 
