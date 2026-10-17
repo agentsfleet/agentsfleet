@@ -113,7 +113,7 @@ pub(crate) enum ErrorKind {
 
     #[error("migration {version} failed to apply")]
     MigrationFailed {
-        version: i32,
+        version: i64,
         #[source]
         source: sqlx::Error,
     },
@@ -122,7 +122,16 @@ pub(crate) enum ErrorKind {
     MigrationLockUnavailable { waited_ms: u128 },
 
     #[error("the ledger records version {found}, which this binary does not know")]
-    MigrationSchemaAhead { found: i32 },
+    MigrationSchemaAhead { found: i64 },
+
+    #[error("migration {version} was applied, and its file has changed since")]
+    MigrationEdited { version: i64 },
+
+    #[error("the migrator refused to run")]
+    MigrationRefused {
+        #[source]
+        source: sqlx::migrate::MigrateError,
+    },
 }
 
 impl Error {
@@ -193,13 +202,23 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::MigrationFailed { .. })
     }
 
-    /// Whether the ledger refused this binary — lock held, or a version ahead.
+    /// Whether the migrator refused this binary — lock held, a version ahead,
+    /// or an applied slot edited.
     #[must_use]
     pub fn is_migration_refused(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::MigrationLockUnavailable { .. } | ErrorKind::MigrationSchemaAhead { .. }
+            ErrorKind::MigrationLockUnavailable { .. }
+                | ErrorKind::MigrationSchemaAhead { .. }
+                | ErrorKind::MigrationEdited { .. }
+                | ErrorKind::MigrationRefused { .. }
         )
+    }
+
+    /// Whether an applied slot's file changed after it was applied.
+    #[must_use]
+    pub fn is_migration_edited(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::MigrationEdited { .. })
     }
 
     /// The registry code a handler would surface for this failure.
@@ -218,7 +237,9 @@ impl Error {
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::MigrationFailed { .. }
             | ErrorKind::MigrationLockUnavailable { .. }
-            | ErrorKind::MigrationSchemaAhead { .. } => error_code::STARTUP_MIGRATION_CHECK,
+            | ErrorKind::MigrationSchemaAhead { .. }
+            | ErrorKind::MigrationEdited { .. }
+            | ErrorKind::MigrationRefused { .. } => error_code::STARTUP_MIGRATION_CHECK,
         }
     }
 }

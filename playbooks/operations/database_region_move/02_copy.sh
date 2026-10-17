@@ -24,7 +24,7 @@ playbooks_require_op_auth
 playbooks_require_tool docker
 
 readonly POSTGRES_IMAGE="postgres:18-alpine"
-readonly LEDGER_TABLES=("audit.schema_migrations" "audit.schema_migration_failures")
+readonly LEDGER_TABLES=("audit._sqlx_migrations")
 
 echo ""
 echo "== database-region-move Section 2: data copy =="
@@ -56,7 +56,7 @@ trap 'rm -rf -- "$work_dir"' EXIT
 ledger_version() {
   local url="$1"
   DATABASE_URL="$url" docker run --rm -e DATABASE_URL "$POSTGRES_IMAGE" \
-    sh -c 'psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT coalesce(max(version), 0) FROM audit.schema_migrations"'
+    sh -c 'psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT coalesce(max(version), 0) FROM audit._sqlx_migrations WHERE success"'
 }
 
 # The target must already carry the source's schema, or the rows have nowhere

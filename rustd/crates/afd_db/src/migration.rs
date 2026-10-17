@@ -2,10 +2,17 @@
 //!
 //! # The version IS the slot number
 //!
-//! `550_connector_installs.sql` applies as version 550. [`version_of`] derives
+//! `1610_connector_installs.sql` applies as version 1610. [`version_of`] derives
 //! the number from the filename during constant evaluation, so a version that
 //! disagrees with the file it names is not a mistake anyone can make. A
-//! filename that is not `<digits>_<name>.sql` fails the build.
+//! filename that is not `<digits>_<name>.sql` fails the build. Slot files are
+//! named `NNNN_<schema>_<table>.sql`.
+//!
+//! # sqlx applies them
+//!
+//! [`Migration::to_sqlx`] hands each file to sqlx's `Migrator`, which records it
+//! with a checksum in `audit._sqlx_migrations` and refuses an applied slot whose
+//! file later changed. The list itself stays ours, for the reason below.
 //!
 //! # Why this list is written out rather than globbed
 //!
@@ -18,10 +25,14 @@
 //! a file added to `schema/` and missing here fails the lint rather than a
 //! production migrate.
 
+use std::borrow::Cow;
+
+use sqlx::SqlSafeStr as _;
+
 /// One versioned schema migration: the file, its slot number, and its SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Migration {
-    version: i32,
+    version: i64,
     name: &'static str,
     sql: &'static str,
 }
@@ -29,7 +40,7 @@ pub struct Migration {
 impl Migration {
     /// The slot number this migration applies as.
     #[must_use]
-    pub const fn version(&self) -> i32 {
+    pub const fn version(&self) -> i64 {
         self.version
     }
 
@@ -45,14 +56,29 @@ impl Migration {
         self.sql
     }
 
+    /// This file as sqlx applies it: one transaction, checksummed.
+    ///
+    /// The SQL is a committed schema file embedded with `include_str!`, never
+    /// text assembled at run time, which is what `AssertSqlSafe` asserts.
+    #[must_use]
+    pub fn to_sqlx(&self) -> sqlx::migrate::Migration {
+        sqlx::migrate::Migration::new(
+            self.version,
+            Cow::Borrowed(self.name),
+            sqlx::migrate::MigrationType::Simple,
+            sqlx::AssertSqlSafe(self.sql).into_sql_str(),
+            false,
+        )
+    }
+
     /// Builds a migration that is not one of the committed schema files.
     ///
-    /// The failure-bookkeeping proof needs a migration that fails, and
-    /// `schema/` contains no such file — nor should it. Behind `test-util` so
+    /// The failed-slot and edited-slot proofs need migrations that are not
+    /// committed, and `schema/` contains no such file — nor should it. Behind `test-util` so
     /// the production binary has no way to apply SQL that is not committed.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub const fn for_test(version: i32, name: &'static str, sql: &'static str) -> Self {
+    pub const fn for_test(version: i64, name: &'static str, sql: &'static str) -> Self {
         Self { version, name, sql }
     }
 }
@@ -82,122 +108,80 @@ macro_rules! migration {
 /// context is not const, so this exercises the same body the build does.
 #[cfg(feature = "test-util")]
 #[must_use]
-pub fn version_from_name(name: &str) -> i32 {
+pub fn version_from_name(name: &str) -> i64 {
     version_of(name)
 }
 
 /// Every migration this binary knows, in application order.
 ///
-/// Order is ascending version, which is also dependency order: `1xx` substrate
-/// before `2xx` identity before `5xx` fleets, because that is the order a
-/// database bootstrapped from empty must create them in.
+/// Order is ascending version, which is also foreign-key order: a table follows
+/// every table it references, across schemas, and a foreign key that closes a
+/// cycle (a head pointer) has its own slot after both of its tables.
 pub static MIGRATIONS: &[Migration] = &[
-    // 1xx substrate — runs before any table exists
-    migration!("100_schemas.sql"),
-    migration!("110_roles_and_privileges.sql"),
-    // 2xx identity — the tenant root and everything that authenticates
-    migration!("200_tenants.sql"),
-    migration!("210_workspaces.sql"),
-    migration!("220_users.sql"),
-    migration!("230_memberships.sql"),
-    migration!("240_api_keys.sql"),
-    migration!("250_cli_credentials.sql"),
-    // 3xx secrets
-    migration!("300_vault_secrets.sql"),
-    // 4xx catalogue
-    migration!("400_model_library.sql"),
-    migration!("410_model_catalogue_revision.sql"),
-    migration!("420_platform_provider_defaults.sql"),
-    migration!("430_tenant_model_selection.sql"),
-    migration!("440_tenant_model_entries.sql"),
-    migration!("450_fleet_library.sql"),
-    migration!("460_tenant_fleet_library.sql"),
-    // 5xx fleets
-    migration!("500_fleets.sql"),
-    migration!("510_fleet_sessions.sql"),
-    migration!("520_fleet_schedules.sql"),
-    migration!("540_integration_grants.sql"),
-    migration!("550_connector_installs.sql"),
-    migration!("551_connector_installs_delete_privilege.sql"),
-    migration!("560_connector_channels.sql"),
-    migration!("570_user_preferences.sql"),
-    // 6xx runner control plane
-    migration!("600_runners.sql"),
-    migration!("610_runner_leases.sql"),
-    migration!("620_runner_lease_indexes.sql"),
-    migration!("630_runner_affinity.sql"),
-    migration!("640_runner_events.sql"),
-    migration!("650_runner_lifetime_counters.sql"),
-    migration!("660_runner_selftest_columns.sql"),
-    migration!("670_runner_extra_binds.sql"),
-    // 7xx money
-    migration!("700_tenant_wallet.sql"),
-    migration!("710_usage_ledger.sql"),
-    migration!("720_usage_ledger_indexes.sql"),
-    // 8xx history
-    migration!("800_fleet_events.sql"),
-    migration!("810_fleet_approval_gates.sql"),
-    migration!("811_fleet_approval_gates_event_binding.sql"),
-    migration!("820_memory_entries.sql"),
-    migration!("830_repair_pr_links.sql"),
-    migration!("831_repair_run_results.sql"),
-    migration!("832_repair_pr_merge_correlation.sql"),
-    migration!("833_fleet_approval_gates_spend.sql"),
-    migration!("834_repair_production_results.sql"),
-    migration!("835_repair_verifications.sql"),
-    migration!("836_fleet_approval_gates_grant_card.sql"),
-    migration!("837_fleet_approval_gates_inbox_page.sql"),
-    migration!("838_fleet_approval_gates_resolved_by_name.sql"),
-    migration!("880_fleet_activity_counters.sql"),
-    migration!("890_fleet_activity_counter_triggers.sql"),
-    migration!("900_purge_delete_grants.sql"),
-    // 9xx forward migrations — the datastore is live from 0.30.0, so a change
-    // is a new slot applied forward, never an edit to a shipped one
-    migration!("910_fleet_admissions.sql"),
-    migration!("911_runner_leases_receipt.sql"),
-    migration!("912_repair_verifications_drop_once_cleanup.sql"),
-    migration!("913_fleet_obligations.sql"),
-    migration!("914_fleet_admissions_delivery_lookup.sql"),
-    migration!("915_usage_ledger_retains_fleet_identity.sql"),
-    migration!("916_usage_ledger_fleet_scoped_key.sql"),
-    migration!("917_tenant_fleet_library_delete_grant.sql"),
-    migration!("918_fleet_admissions_reply_destination.sql"),
-    migration!("919_fleet_obligations_destination.sql"),
-    migration!("920_fleet_obligations_abandonment.sql"),
-    migration!("921_connector_channels_rebind_grant.sql"),
-    migration!("922_fleet_events_scope_statistics.sql"),
-    migration!("923_workspace_invites.sql"),
-    migration!("924_fleet_events_tool_calls.sql"),
-    migration!("925_fleet_tool_call_details.sql"),
-    migration!("926_memory_entries_workspace_scope.sql"),
-    migration!("927_fleet_memory_access.sql"),
-    migration!("928_fleet_schedules_once.sql"),
-    migration!("929_runner_leases_messages_posted.sql"),
-    migration!("930_fleet_events_actor_index.sql"),
-    migration!("931_fleet_schedules_fire_at.sql"),
-    migration!("932_runner_affinity_held_until.sql"),
-    // 933/934 are reserved by the independent schedule ownership workstream.
-    migration!("935_authoring_drafts.sql"),
-    migration!("936_authoring_messages.sql"),
-    migration!("937_authoring_candidates.sql"),
-    migration!("938_authoring_attempts.sql"),
-    migration!("939_authoring_dispatches.sql"),
-    migration!("940_authoring_accounting.sql"),
-    migration!("941_native_setup_revisions.sql"),
-    migration!("942_authoring_replay_receipts.sql"),
-    migration!("943_authoring_report_receipts.sql"),
-    migration!("944_runner_claim_choice.sql"),
-    migration!("945_authoring_failure_facts.sql"),
-    migration!("946_authoring_source_pins.sql"),
-    migration!("947_resumable_native_setup.sql"),
-    migration!("948_inherited_schedule_recipes.sql"),
-    migration!("949_native_platform_library.sql"),
-    migration!("950_drop_fleet_bundle_storage.sql"),
-    migration!("951_fleet_obligations_destination_required.sql"),
-    migration!("952_fleet_sessions_drop_execution.sql"),
-    migration!("953_drop_repair_storage.sql"),
-    migration!("954_drop_dead_columns.sql"),
-    migration!("955_runner_policy_required.sql"),
+    // 10xx substrate — runs before any table exists
+    migration!("1000_schemas.sql"),
+    migration!("1010_roles_and_privileges.sql"),
+    // 11xx identity — the tenant root and everything that authenticates
+    migration!("1100_identity_tenants.sql"),
+    migration!("1110_identity_workspaces.sql"),
+    migration!("1120_identity_users.sql"),
+    migration!("1130_identity_memberships.sql"),
+    migration!("1140_identity_invites.sql"),
+    migration!("1150_identity_api_keys.sql"),
+    migration!("1160_identity_cli_credentials.sql"),
+    migration!("1170_identity_user_preferences.sql"),
+    // 12xx vault
+    migration!("1200_vault_secrets.sql"),
+    // 13xx model catalogue and tenant models
+    migration!("1300_model_platform_models.sql"),
+    migration!("1310_model_catalogue_version.sql"),
+    migration!("1320_model_platform_defaults.sql"),
+    migration!("1330_model_tenant_models.sql"),
+    migration!("1340_model_tenant_selections.sql"),
+    // 14xx authoring Library — cards and their frozen revisions
+    migration!("1400_authoring_library_entries.sql"),
+    migration!("1410_authoring_library_revisions.sql"),
+    migration!("1420_authoring_library_entries_head_revision.sql"),
+    // 15xx fleets and their frozen setup history
+    migration!("1500_fleet_fleets.sql"),
+    migration!("1510_fleet_revisions.sql"),
+    migration!("1520_fleet_fleets_head_revision.sql"),
+    // 16xx connector — grants, outside accounts, channels
+    migration!("1600_connector_integration_grants.sql"),
+    migration!("1610_connector_installs.sql"),
+    migration!("1620_connector_channels.sql"),
+    // 17xx fleet work — events, admissions, gates, obligations, schedules
+    migration!("1700_fleet_events.sql"),
+    migration!("1710_fleet_tool_calls.sql"),
+    migration!("1720_fleet_admissions.sql"),
+    migration!("1730_fleet_approval_gates.sql"),
+    migration!("1740_fleet_obligations.sql"),
+    migration!("1750_fleet_schedules.sql"),
+    migration!("1760_fleet_sessions.sql"),
+    migration!("1770_fleet_activity_counters.sql"),
+    // 18xx runner control plane
+    migration!("1800_runner_runners.sql"),
+    migration!("1810_runner_leases.sql"),
+    migration!("1820_runner_fleet_slots.sql"),
+    migration!("1830_runner_events.sql"),
+    migration!("1840_runner_lifetime_counters.sql"),
+    // 19xx authoring chat — drafts, turns, attempts, receipts
+    migration!("1900_authoring_drafts.sql"),
+    migration!("1910_authoring_candidates.sql"),
+    migration!("1920_authoring_drafts_head_candidate.sql"),
+    migration!("1930_authoring_messages.sql"),
+    migration!("1940_authoring_attempts.sql"),
+    migration!("1950_authoring_dispatches.sql"),
+    migration!("1960_authoring_activity_receipts.sql"),
+    migration!("1970_authoring_answer_receipts.sql"),
+    migration!("1980_authoring_replay_receipts.sql"),
+    // 20xx billing — the wallet and every charge
+    migration!("2000_billing_wallets.sql"),
+    migration!("2010_billing_fleet_charges.sql"),
+    migration!("2020_billing_authoring_settlements.sql"),
+    migration!("2030_billing_authoring_report_receipts.sql"),
+    // 21xx memory
+    migration!("2100_memory_entries.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.
@@ -210,13 +194,13 @@ pub static MIGRATIONS: &[Migration] = &[
 /// During constant evaluation, when the name does not start with digits
 /// followed by `_`. Every call site is a `static` initialiser, so a malformed
 /// filename fails the build and never the process.
-const fn version_of(name: &str) -> i32 {
+const fn version_of(name: &str) -> i64 {
     let mut rest = name.as_bytes();
-    let mut version: i32 = 0;
+    let mut version: i64 = 0;
     let mut digits: usize = 0;
 
     while let [digit @ b'0'..=b'9', tail @ ..] = rest {
-        version = version * 10 + (*digit - b'0') as i32;
+        version = version * 10 + (*digit - b'0') as i64;
         digits += 1;
         rest = tail;
     }

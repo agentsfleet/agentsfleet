@@ -1,20 +1,13 @@
 //! Postgres for `agentsfleetd`: one pool per role, and the schema migrator.
 //!
-//! # The ledger is shared, so the port cannot invent its own
+//! # sqlx applies the schema; the list and the lock are ours
 //!
-//! Whichever binary a deploy runs, it migrates the same database. That makes
-//! `audit.schema_migrations`, the version numbers in it, and the advisory key
-//! the lock is taken under a DATA FORMAT rather than an implementation detail
-//! — which is why `sqlx`'s own migrator is not enabled here. It keeps a
-//! different ledger under a different lock, and two migrators disagreeing
-//! about what is applied is the one failure this module exists to prevent.
-//!
-//! What the Rust side does differently is everything that is not the format:
-//! versions are derived from filenames during constant evaluation rather than
-//! restated beside them ([`migration`]), an unterminated migration cannot be
-//! turned into a statement list at all ([`sql`]), the reap list is a bind
-//! rather than a rendered `IN` clause ([`migrate::ledger`]), and the lock owns
-//! the session that holds it ([`migrate::lock`]).
+//! sqlx's `Migrator` applies `schema/*.sql` with a checksum per slot, its ledger
+//! in `audit._sqlx_migrations`. What stays here is what sqlx does not do the way
+//! this deployment needs: versions are derived from filenames during constant
+//! evaluation rather than restated beside them ([`migration`]), the list is
+//! explicit rather than a directory scan, and the advisory lock is a bounded
+//! poll that owns the session holding it ([`migrate::lock`]).
 //!
 //! # Two acquire failures, kept apart
 //!

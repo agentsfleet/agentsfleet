@@ -1,11 +1,10 @@
-//! The migrator's failure bookkeeping, against a live database.
+//! What the migrator does when a slot or its ledger misbehaves, against a live
+//! database.
 //!
 //! `integration_migrate/mod.rs` proves what a migrate does when it works. These
-//! prove what it does when it does not, and the distinction they all turn on is
-//! the same one: **a bookkeeping write that fails must never replace the cause
-//! it was trying to record.** A migration that fails and a ledger that cannot
-//! say so are two problems, and an operator who is shown only the second one
-//! goes looking in the wrong place.
+//! prove what it does when it does not: a failed slot applies nothing and is
+//! never recorded, a broken ledger write fails as itself, and a ledger naming a
+//! slot this binary does not know refuses the run.
 //!
 //! Every fault here is injected by breaking the database out from under the
 //! code — dropping the table it is about to write, killing the session holding
@@ -25,7 +24,7 @@ use std::time::Duration;
 
 use afd_db::Migrator;
 use afd_db::config::DbRole;
-use afd_db::migrate::{MigrationLock, RetryPolicy, ledger};
+use afd_db::migrate::{MigrationLock, RetryPolicy};
 use afd_db::migration::Migration;
 use afd_db::test_util::TestDatabase;
 use sqlx::Row as _;
@@ -47,42 +46,26 @@ const UNTERMINATED: &[Migration] = &[Migration::for_test(
 const DROPS_THE_LEDGER: &[Migration] = &[Migration::for_test(
     9002,
     "9002_drops_the_ledger.sql",
-    "DROP TABLE audit.schema_migrations",
+    "DROP TABLE audit._sqlx_migrations",
 )];
 
 /// A retry policy that gives up quickly; nothing here contends for the lock.
 const IMPATIENT: RetryPolicy = RetryPolicy::new(3, Duration::from_millis(20));
 
-/// A migrator that refuses a newer schema accepts one that is merely current.
-///
-/// A refusal of a database it had nothing to complain about would stop every
-/// deployment, which is the failure nobody catches in review because the happy
-/// path is the one nobody writes down.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_migrator_accepts_a_ledger_that_is_not_ahead() {
-    let database = TestDatabase::create().await;
-    let db = database.open(DbRole::Migrator, &[]).await;
-
-    Migrator::new().run(&db).await.expect("the first migrate");
-
-    let outcome = Migrator::new()
-        .run(&db)
+/// Whether sqlx recorded `version` as applied.
+async fn recorded(connection: &mut sqlx::PgConnection, version: i64) -> bool {
+    sqlx::query("SELECT count(*) = 1 FROM audit._sqlx_migrations WHERE version = $1")
+        .bind(version)
+        .fetch_one(connection)
         .await
-        .expect("a ledger at exactly the canonical set must not be refused");
-    assert!(
-        outcome.applied.is_empty(),
-        "the second run has nothing left to apply"
-    );
-
-    db.close().await;
-    database.cleanup().await;
+        .unwrap()
+        .get(0)
 }
 
-/// A malformed SQL batch applies nothing and leaves a failure record.
+/// A malformed SQL batch applies nothing and is never recorded.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_malformed_migration_applies_nothing_and_records_its_failure() {
+async fn test_a_malformed_migration_applies_nothing() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
 
@@ -93,18 +76,17 @@ async fn test_a_malformed_migration_applies_nothing_and_records_its_failure() {
         .expect_err("a migration that ends inside a literal must be refused");
 
     assert!(error.is_migration_failed(), "got {error}");
+    assert!(
+        error.to_string().contains("9001"),
+        "names the slot: {error}"
+    );
     assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
 
     let mut connection = db.acquire().await.unwrap();
-    let recorded: i64 =
-        sqlx::query("SELECT count(*) FROM audit.schema_migration_failures WHERE version = 9001")
-            .fetch_one(&mut *connection)
-            .await
-            .unwrap()
-            .get(0);
-    assert_eq!(recorded, 1, "the refusal must leave a failure row behind");
-
-    // Nothing applied: the statement before the broken one must not have run.
+    assert!(
+        !recorded(&mut connection, 9001).await,
+        "a failed slot is never recorded"
+    );
     let created: bool = sqlx::query("SELECT to_regclass('public.never_created') IS NOT NULL")
         .fetch_one(&mut *connection)
         .await
@@ -112,7 +94,7 @@ async fn test_a_malformed_migration_applies_nothing_and_records_its_failure() {
         .get(0);
     assert!(
         !created,
-        "the split is refused whole; no statement in the file may apply"
+        "the batch is refused whole; no statement in it may apply"
     );
     drop(connection);
 
@@ -120,17 +102,11 @@ async fn test_a_malformed_migration_applies_nothing_and_records_its_failure() {
     database.cleanup().await;
 }
 
-/// A migration that invalidates the ledger mid-transaction fails with the
-/// bookkeeping error, and applies nothing.
-///
-/// The transaction is what makes this safe: the schema change and the row
-/// recording it commit together, so an insert that cannot run rolls the DDL
-/// back with it. What the caller must get is the query error naming the insert
-/// — not a success, and not the migration's own error, because the migration
-/// did not fail.
+/// A migration that invalidates the ledger mid-transaction fails as a ledger
+/// error and applies nothing: the slot and its ledger row commit together.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_migration_that_breaks_its_own_bookkeeping_rolls_back() {
+async fn test_a_migration_that_breaks_its_own_ledger_rolls_back() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
 
@@ -138,37 +114,26 @@ async fn test_a_migration_that_breaks_its_own_bookkeeping_rolls_back() {
         .with_migrations(DROPS_THE_LEDGER)
         .run(&db)
         .await
-        .expect_err("an insert into a dropped table must fail the migration");
-
+        .expect_err("an insert into a dropped ledger must fail the run");
     assert!(
         error.is_query(),
-        "the bookkeeping insert failed, not the migration: {error}"
+        "the ledger write failed, not the slot: {error}"
     );
 
-    // The rollback restored the table the migration dropped.
     let mut connection = db.acquire().await.unwrap();
     let ledger_exists: bool =
-        sqlx::query("SELECT to_regclass('audit.schema_migrations') IS NOT NULL")
+        sqlx::query("SELECT to_regclass('audit._sqlx_migrations') IS NOT NULL")
             .fetch_one(&mut *connection)
             .await
             .unwrap()
             .get(0);
     assert!(
         ledger_exists,
-        "the transaction rolled back, so the ledger table must still be there"
+        "the transaction rolled back, so the ledger is still there"
     );
-
-    // And the failure was still recorded — on the connection, outside the
-    // transaction that rolled back, which is why it survives.
-    let recorded: i64 =
-        sqlx::query("SELECT count(*) FROM audit.schema_migration_failures WHERE version = 9002")
-            .fetch_one(&mut *connection)
-            .await
-            .unwrap()
-            .get(0);
-    assert_eq!(
-        recorded, 1,
-        "the failure row outlives the rolled-back apply"
+    assert!(
+        !recorded(&mut connection, 9002).await,
+        "nothing was recorded"
     );
     drop(connection);
 
@@ -176,36 +141,44 @@ async fn test_a_migration_that_breaks_its_own_bookkeeping_rolls_back() {
     database.cleanup().await;
 }
 
-/// Bookkeeping writes that cannot run are logged and swallowed, never raised.
-///
-/// Both of these are called on paths where something has ALREADY gone wrong, or
-/// where the caller has no error to return at all. A `record_failure` that
-/// propagated would replace the migration failure it was recording; a
-/// `clear_failure` that propagated would fail a migrate that had succeeded.
-/// Neither returns a `Result`, and this is what holds that they cannot start.
+/// A ledger naming a slot this binary does not know refuses the run, and the
+/// unknown row is left alone: an older image rolled onto a newer database stops.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_bookkeeping_writes_that_cannot_run_are_swallowed() {
+async fn test_a_ledger_ahead_of_this_binary_refuses_the_run() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
-
-    Migrator::new()
-        .run(&db)
-        .await
-        .expect("the ledger tables have to exist before they can be removed");
+    Migrator::new().run(&db).await.expect("first migrate");
 
     let mut connection = db.acquire().await.unwrap();
-    sqlx::query("DROP TABLE audit.schema_migration_failures")
-        .execute(&mut *connection)
-        .await
-        .unwrap();
-
-    // Neither of these returns anything. Reaching the line after each one IS
-    // the assertion: a propagated error would be a panic here.
-    ledger::record_failure(&mut connection, 1, "a failure nothing can record").await;
-    ledger::clear_failure(&mut connection, 1).await;
-
+    sqlx::query(
+        "INSERT INTO audit._sqlx_migrations \
+             (version, description, success, checksum, execution_time) \
+         VALUES (99999, 'from a newer binary', TRUE, '\\x00', 0)",
+    )
+    .execute(&mut *connection)
+    .await
+    .unwrap();
     drop(connection);
+
+    let error = Migrator::new()
+        .run(&db)
+        .await
+        .expect_err("a slot this binary does not know must refuse the run");
+    assert!(error.is_migration_refused(), "got {error}");
+    assert!(
+        error.to_string().contains("99999"),
+        "names the slot: {error}"
+    );
+    assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
+
+    let mut connection = db.acquire().await.unwrap();
+    assert!(
+        recorded(&mut connection, 99_999).await,
+        "the unknown row survives"
+    );
+    drop(connection);
+
     db.close().await;
     database.cleanup().await;
 }
@@ -254,5 +227,3 @@ async fn test_releasing_a_lock_over_a_killed_session_is_survived() {
     db.close().await;
     database.cleanup().await;
 }
-
-mod ledger_bounds;

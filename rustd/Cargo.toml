@@ -435,12 +435,10 @@ rig-core = { version = "=0.43.0", default-features = false }
 # the lock through hyper, which parses the same header family with it.
 httpdate = { version = "1.0.3", default-features = false }
 
-# Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
-# both off, because this workspace runs its own migrator over its own ledger
-# (`audit.schema_migrations`, versions equal to the schema slot numbers, one
-# advisory key; see `afd_db`). sqlx's
-# built-in migrator keeps a different ledger under a different lock, so enabling
-# it would mean two migrators disagreeing about the same database.
+# Postgres. `migrate` is on: SQLx's `Migrator` applies the schema slots from the
+# explicit list in `afd_db`, under `afd_db`'s own bounded advisory lock (SQLx's
+# lock is switched off). `macros` stays off: queries are static `.sql` files
+# checked by one `PREPARE`-every-file integration test, not compile-time macros.
 #
 # `tls-rustls-aws-lc-rs` rather than native roots: sqlx still enables
 # `webpki-roots`, so the trust anchors ship in the binary. An explicit
@@ -453,6 +451,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
     # to prevent.
     "tls-rustls-aws-lc-rs",
     "postgres",
+    "migrate",
 ] }
 # The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
 # contention tests need real parallelism); the library asks only for what it

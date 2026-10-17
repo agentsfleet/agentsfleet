@@ -50,7 +50,7 @@ WHERE table_type = 'BASE TABLE'
   AND table_schema NOT LIKE 'pg\_%'
   AND table_schema NOT LIKE 'pscale%'
 ORDER BY 1 \gexec
-SELECT 'ledger.version=' || coalesce(max(version), 0) FROM audit.schema_migrations;
+SELECT 'ledger.version=' || coalesce(max(version), 0) FROM audit._sqlx_migrations WHERE success;
 SQL
 
 census() {

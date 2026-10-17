@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `test_migrate_from_empty_builds_nine_owned_schemas` — `agentsfleetd migrate` on an empty database creates exactly the tables in `docs/architecture/postgres_schemas.md`, no schema object carries a vocabulary literal, and the full integration lane passes against it.
 **Problem:** 33 of 47 tables sit in `core`; the setup-chat tables span `core`, `fleet` and `billing`. Columns exist with no reader (`drafts.creation_digest`, `wallets.grant_source`), facts are stored twice or three times (`fleets.config_json`, `fleets.setup_version`), account erasure deletes billing records, and an owner reading the schema cannot tell what a field means or who fills it.
-**Solution summary:** delete all 97 `schema/*.sql` slots and author one slot per table across nine schemas, exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. The runner protocol loses one field. Money records survive every deletion and private dispatch text is scrubbed on every erasure path. The development and production databases are dropped and rebuilt from empty by a guarded one-shot procedure. The naming rules land in the schema conventions at their source in the orly repository. Three data-access fixes ride the same rewrite: typed row reads replace whole-row JSON, the Library list becomes one query, and every pooled connection carries statement and lock time limits.
+**Solution summary:** delete all 95 `schema/*.sql` slots and author one slot per table across nine schemas, exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. The runner protocol loses one field. Money records survive every deletion and private dispatch text is scrubbed on every erasure path. The development and production databases are dropped and rebuilt from empty by a guarded one-shot procedure. The naming rules land in the schema conventions at their source in the orly repository. Three data-access fixes ride the same rewrite: typed row reads replace whole-row JSON, the Library list becomes one query, and every pooled connection carries statement and lock time limits.
 
 ## PR Intent & comprehension handshake
 
@@ -56,7 +56,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/*.sql` (97 slots) | DELETE | Clean slate; slot history is not migrated |
+| `schema/*.sql` (95 slots) | DELETE | Clean slate; slot history is not migrated |
 | `schema/*.sql` (one per table) | CREATE | The signed-off design, ordered per table by foreign key |
 | `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | SQLx `Migrator` over the explicit slot list; bounded lock kept; hand-rolled ledger deleted |
 | `rustd/crates/*/src/**/sql/*.sql` | CREATE | Every static runtime statement as a file beside its use case |
@@ -104,15 +104,16 @@ The rules, the counter table and the deletion-matrix requirement land in `~/Proj
 - **Dimension 1.1** — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `test_conventions_carry_naming_rules`
 - **Dimension 1.2** — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
 
-### §2 — Slots rebuilt from empty
+### §2 — Slots rebuilt from empty — DONE
 
-All 97 slots go. SQLx's `Migrator` applies the new ones from the explicit list (`with_migrations`; `migrate` feature only), with checksums, its ledger in `audit`, and our bounded advisory lock around it (`set_locking(false)`). Every database starts empty (§5), so migrate carries no knowledge of the old ledger. Slot files are named `NNNN_<schema>_<table>.sql`, numbered from 1000. One slot per table, ordered by foreign key (a table follows everything it references, across schemas). Each cycle — `fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`, `approval_gates.active_grant_id` if `integration_grants` follows `fleets` — gets its foreign key in its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
+All 95 slots go (an earlier count of 97 was wrong; `git ls-files 'schema/*.sql'` listed 95). 52 replace them: two substrate slots, 47 tables and three cycle closers. SQLx's `Migrator` applies the new ones from the explicit list (`with_migrations`; `migrate` feature only), with checksums, its ledger in `audit`, and our bounded advisory lock around it (`set_locking(false)`). Every database starts empty (§5), so migrate carries no knowledge of the old ledger. Slot files are named `NNNN_<schema>_<table>.sql`, numbered from 1000. One slot per table, ordered by foreign key (a table follows everything it references, across schemas). Each cycle — `fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`, `approval_gates.active_grant_id` if `integration_grants` follows `fleets` — gets its foreign key in its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
 
-- **Dimension 2.1** — migrate from empty yields exactly the documented tables and columns → Test `test_migrate_from_empty_builds_nine_owned_schemas`
-- **Dimension 2.2** — no index predicate, trigger, CHECK or DEFAULT carries a vocabulary literal; structural literals match the allowed list → Test `test_schema_objects_carry_no_vocabulary_literals`
-- **Dimension 2.3** — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and refuse UPDATE, and cascades still delete them → Test `test_immutable_tables_refuse_update`
-- **Dimension 2.4** — no table repeats its schema name; every foreign-key column ends `_id` and names its table or a stated role → Test `test_table_and_key_names_follow_rules`
-- **Dimension 2.5** — an applied slot whose file changed is refused by checksum, naming the version → Test `test_migrate_refuses_edited_slot`
+- **Dimension 2.1** — DONE — migrate from empty yields exactly the documented tables and columns → Test `test_migrate_from_empty_builds_nine_owned_schemas`
+- **Dimension 2.2** — DONE — no index predicate, trigger, CHECK or DEFAULT carries a vocabulary literal; structural literals match the allowed list → Test `test_schema_objects_carry_no_vocabulary_literals`
+- **Dimension 2.3** — DONE — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and refuse UPDATE, and cascades still delete them → Test `test_immutable_tables_refuse_update`
+- **Dimension 2.4** — DONE — no table repeats its schema name; every foreign-key column ends `_id` and names its table or a stated role → Test `test_table_and_key_names_follow_rules`
+- **Dimension 2.5** — DONE — an applied slot whose file changed is refused by checksum, naming the version → Test `test_migrate_refuses_edited_slot`
+- **Evidence** — (inner loop: `cargo test -p afd_db --all-features --test db_suite -- --ignored integration_migrate` against an empty Postgres 18: 18 passed, 0 failed; the repository lane goes green with §3). Every product table's grants are probed role by role in `test_every_table_grants_exactly_its_role`.
 
 ### §3 — Every reader and writer follows the new names
 
@@ -276,7 +277,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 
 1. **Successful user moment** — the owner opens `docs/architecture/postgres_schemas.md`, picks any column, and can say what it holds, who fills it and why, without reading Rust.
 2. **Preserved user behaviour** — every dashboard page, CLI command and runner keeps working; chat, save, publish, install, schedules, approvals and billing behave as before apart from §4.
-3. **Optimal-way check** — a from-empty rebuild is the most direct route while no production data exists; forward migrations would keep 97 slots of history and every copy column.
+3. **Optimal-way check** — a from-empty rebuild is the most direct route while no production data exists; forward migrations would keep 95 slots of history and every copy column.
 4. **Rebuild-vs-iterate** — rebuild; the owner chose it, and iterating would mean dozens of `ALTER` slots that freeze the mistakes.
 5. **What we build** — new slots, renamed queries with typed reads, the one-query Library list, connection time limits, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
 6. **What we do NOT build** — new features; the remaining data-access work; per-schema roles; Firecracker; wire renames.

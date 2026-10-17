@@ -9,12 +9,14 @@
 )]
 
 use afd_db::config::DbRole;
-use afd_db::migrate::Ledger;
 use afd_db::migration::Migration;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, Migrator};
 
-const VERSION: i32 = 900_003;
+const VERSION: i64 = 900_003;
+
+/// The versions sqlx recorded as applied.
+const APPLIED: &str = "SELECT version FROM audit._sqlx_migrations WHERE success ORDER BY version";
 const FAILING: &[Migration] = &[Migration::for_test(
     VERSION,
     "900003_batch_probe.sql",
@@ -34,7 +36,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
 
-    assert_failed_batch_leaves_only_its_failure(&db).await;
+    assert_failed_batch_leaves_nothing(&db).await;
 
     let recovered = Migrator::new()
         .with_migrations(RECOVERED)
@@ -42,7 +44,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
         .await
         .expect("the corrected batch can create the rolled-back table");
     assert_eq!(recovered.applied, [VERSION]);
-    assert_eq!(recovered.skipped, [] as [i32; 0]);
+    assert_eq!(recovered.skipped, [] as [i64; 0]);
     assert_recovered_state(&db).await;
 
     let repeated = Migrator::new()
@@ -50,7 +52,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
         .run(&db)
         .await
         .expect("an applied migration is skipped, including its non-idempotent SQL");
-    assert_eq!(repeated.applied, [] as [i32; 0]);
+    assert_eq!(repeated.applied, [] as [i64; 0]);
     assert_eq!(repeated.skipped, [VERSION]);
     assert_recovered_state(&db).await;
 
@@ -58,7 +60,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
     database.cleanup().await;
 }
 
-async fn assert_failed_batch_leaves_only_its_failure(db: &Db) {
+async fn assert_failed_batch_leaves_nothing(db: &Db) {
     let error = Migrator::new()
         .with_migrations(FAILING)
         .run(db)
@@ -68,17 +70,18 @@ async fn assert_failed_batch_leaves_only_its_failure(db: &Db) {
     assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
 
     let mut connection = db.acquire().await.expect("inspect the failed migration");
-    let ledger = Ledger::read(&mut connection)
+    let applied: Vec<i64> = sqlx::query_scalar(APPLIED)
+        .fetch_all(&mut *connection)
         .await
         .expect("read the ledger");
-    assert!(ledger.applied.is_empty());
-    assert_eq!(ledger.failures.len(), 1);
-    let failure = ledger
-        .failures
-        .get(&VERSION)
-        .expect("the failure survives rollback");
-    assert!(failure.error_text.contains("afd_missing_batch_target"));
-    assert!(failure.failed_at > 0);
+    assert!(
+        applied.is_empty(),
+        "a failed batch is never recorded: {applied:?}"
+    );
+    assert!(
+        error.to_string().contains("900003"),
+        "names the slot: {error}"
+    );
 
     let created: bool =
         sqlx::query_scalar("SELECT to_regclass('public.afd_batch_probe') IS NOT NULL")
@@ -93,14 +96,11 @@ async fn assert_failed_batch_leaves_only_its_failure(db: &Db) {
 
 async fn assert_recovered_state(db: &Db) {
     let mut connection = db.acquire().await.expect("inspect the recovered migration");
-    let ledger = Ledger::read(&mut connection)
+    let applied: Vec<i64> = sqlx::query_scalar(APPLIED)
+        .fetch_all(&mut *connection)
         .await
         .expect("read the ledger");
-    assert_eq!(ledger.applied.into_iter().collect::<Vec<_>>(), [VERSION]);
-    assert!(
-        ledger.failures.is_empty(),
-        "recovery clears the prior failure"
-    );
+    assert_eq!(applied, [VERSION]);
     let rows: Vec<i32> = sqlx::query_scalar("SELECT id FROM public.afd_batch_probe ORDER BY id")
         .fetch_all(&mut *connection)
         .await

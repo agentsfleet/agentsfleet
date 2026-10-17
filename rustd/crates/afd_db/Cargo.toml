@@ -2,7 +2,7 @@
 name = "afd_db"
 # One aggregated test binary; see tests/db_suite.rs for why.
 autotests = false
-description = "Postgres pools by role and the versioned schema migrator, with its ledger in audit.schema_migrations."
+description = "Postgres pools by role and the versioned schema migrator, applied by SQLx under a bounded lock."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
