@@ -844,6 +844,7 @@ dependencies = [
  "csv",
  "dashmap",
  "hex",
+ "jiff",
  "opentelemetry",
  "opentelemetry_sdk",
  "posthog-rs",

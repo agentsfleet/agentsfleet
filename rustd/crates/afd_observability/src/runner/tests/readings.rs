@@ -18,7 +18,7 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
         "a table with room admits the runner itself"
     );
 
-    metrics.seen(&runner_id, 1_760_000_000_999);
+    metrics.seen(&runner_id, jiff::Timestamp::constant(1_760_000_000, 999_000_000));
     metrics.leased(&runner_id);
     metrics.leased(&runner_id);
     metrics.released(&runner_id);
@@ -64,7 +64,7 @@ fn a_runner_never_heard_from_publishes_no_last_seen_reading() {
 #[test]
 fn gauges_ignore_a_runner_that_has_not_acquired_a_series() {
     let metrics = RunnerMetrics::new();
-    metrics.seen("unknown", 1);
+    metrics.seen("unknown", jiff::Timestamp::UNIX_EPOCH);
     metrics.leased("unknown");
     metrics.released("unknown");
     assert_eq!(metrics.series_count(), 0);
