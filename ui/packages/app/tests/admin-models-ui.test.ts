@@ -107,9 +107,10 @@ it("AddModelDialog > should reject an empty provider and not call the create act
   render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
   await user.click(screen.getByRole("button", { name: "Create model library" }));
   await user.type(screen.getByLabelText("Model"), "glm-5.2");
+  fillModelSettings();
   const dialog = screen.getByRole("dialog");
   await user.click(within(dialog).getByRole("button", { name: "Create" }));
-  await new Promise((r) => setTimeout(r, 50));
+  expect(await within(dialog).findByText("Name the provider")).toBeTruthy();
   expect(createAdminModelActionMock).not.toHaveBeenCalled();
 });
 
