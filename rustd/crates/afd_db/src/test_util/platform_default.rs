@@ -1,7 +1,7 @@
 //! The platform provider default a suite seeds, removed by the suite that
 //! created it.
 //!
-//! `core.platform_provider_defaults` is keyed by provider, so the row is one
+//! `model.platform_defaults` is keyed by provider, so the row is one
 //! per deployment and every test in a run that needs it shares it: the first
 //! to arrive writes it (`ON CONFLICT DO NOTHING`) and the rest reuse it. The
 //! row used to outlive the run, pointing at a workspace whose key the suite's
@@ -26,18 +26,18 @@ use super::lane_url;
 use crate::pool::Db;
 
 /// Seeds the default when no provider row exists, answering whether it did.
-const INSERT_DEFAULT: &str = "INSERT INTO core.platform_provider_defaults \
-     (provider, source_workspace_id, active, model, context_cap_tokens, created_at, updated_at) \
-     VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
-     ON CONFLICT (provider) DO NOTHING \
-     RETURNING provider";
+///
+/// The default points at a catalogue row, so the model is written too unless
+/// the catalogue already has it. Its prices are zero: a suite that meters
+/// seeds its own priced row first, and this one leaves that row as it is. The
+/// catalogue row outlives the hold; the lane reset clears it.
+const INSERT_DEFAULT: &str = include_str!("sql/insert_platform_default.sql");
 
 /// Removes exactly the row this process inserted.
-const DELETE_DEFAULT: &str = "DELETE FROM core.platform_provider_defaults \
-     WHERE provider = $1 AND source_workspace_id = $2::uuid";
+const DELETE_DEFAULT: &str = include_str!("sql/delete_platform_default.sql");
 
 /// Which database a connection is on, so the drop deletes from that one.
-const CURRENT_DATABASE: &str = "SELECT current_database()";
+const CURRENT_DATABASE: &str = include_str!("sql/current_database.sql");
 
 /// How long a new holder waits between looks while a delete is running.
 const DELETE_POLL: Duration = Duration::from_millis(10);
@@ -54,7 +54,7 @@ pub struct DefaultSeed<'a> {
     /// The context ceiling the default carries.
     pub context_cap_tokens: i32,
     /// The instant stamped on the row.
-    pub created_at: i64,
+    pub created_at: jiff::Timestamp,
 }
 
 /// The row this process inserted, and the database it lives in.
@@ -101,7 +101,8 @@ impl PlatformDefault {
             .bind(seed.source_workspace_id)
             .bind(seed.model)
             .bind(seed.context_cap_tokens)
-            .bind(seed.created_at)
+            .bind(jiff_sqlx::ToSqlx::to_sqlx(seed.created_at))
+            .bind(super::mint_id())
             .fetch_optional(&mut *connection)
             .await
             .unwrap_or_else(|failure| panic!("the platform default seed must run: {failure}"));

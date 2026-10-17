@@ -319,7 +319,15 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 jiff = { version = "0.2.35", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
+  # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
+  # UTC (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4), with no hand adapter.
+  "serde",
 ] }
+# The sqlx bridge for `jiff::Timestamp` <-> `TIMESTAMPTZ`. The orphan rule keeps
+# every crate here from implementing sqlx's traits for jiff's type, so row
+# fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
+# through `ToSqlx`. Postgres only; its sqlite half stays off.
+jiff-sqlx = { version = "0.2.0", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:

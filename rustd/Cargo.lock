@@ -528,6 +528,8 @@ version = "0.61.0"
 dependencies = [
  "afd_core",
  "backon",
+ "jiff",
+ "jiff-sqlx",
  "sqlx",
  "thiserror",
  "tokio",
@@ -4316,6 +4318,16 @@ checksum = "5e52fe76043ccecc9005d2305ebaadf7d7fc0cc89ca6baa10a94d6bc68c7128c"
 dependencies = [
  "defmt 1.2.0",
  "log",
+]
+
+[[package]]
+name = "jiff-sqlx"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07f07e4e3efb45ce1507e32af3b1e8f31d33d5edbf041ffeda3180042c3abc58"
+dependencies = [
+ "jiff",
+ "sqlx",
 ]
 
 [[package]]

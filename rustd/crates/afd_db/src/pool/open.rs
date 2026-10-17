@@ -15,6 +15,9 @@ use crate::error::{Result, classify_acquire, unreachable_datastore};
 
 use super::{IDLE_TIMEOUT, MAX_LIFETIME};
 
+/// Drops every advisory lock a returned connection still holds.
+const UNLOCK_ALL: &str = include_str!("sql/unlock_all.sql");
+
 /// Opens and closes ONE connection, so a refused port, a wrong password and a
 /// TLS fault each report as themselves rather than as a pool timeout.
 ///
@@ -62,9 +65,7 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
     // checkin on a pool that sees a handful of them per process lifetime.
     builder.after_release(|connection, _meta| {
         Box::pin(async move {
-            sqlx::query("SELECT pg_advisory_unlock_all()")
-                .execute(connection)
-                .await?;
+            sqlx::query(UNLOCK_ALL).execute(connection).await?;
             Ok(true)
         })
     })
