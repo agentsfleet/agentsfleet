@@ -22,6 +22,7 @@ pub use network::Network;
 const KEY_TYPE: &str = "type";
 /// The single argument the proposal tool takes: the proposal as one JSON text.
 const PROPOSAL_ARGUMENT: &str = "proposal_json";
+pub(super) use prompt::SYSTEM;
 pub(super) use request::body;
 pub(super) use response::{Decoded, decode};
 

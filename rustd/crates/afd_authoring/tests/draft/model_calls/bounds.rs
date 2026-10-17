@@ -48,23 +48,25 @@ async fn a_physical_completion_uses_the_context_left_after_the_assembled_input()
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn a_small_context_window_is_rejected_before_any_dispatch() {
-    let f = Fixture::create().await;
-    set_context(&f, 64).await;
-    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
-    assert_eq!(
-        calls
-            .call(&f.runner, &attempt.lease, fixture::request(&attempt))
-            .await
-            .expect_err("assembled tokenizer/window bound")
-            .code(),
-        error_code::AUTHORING_TOKEN
-    );
-    assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
-    assert_eq!(provider.count(), 0);
-    f.cleanup().await;
+async fn the_complete_request_including_system_instructions_is_bounded_before_dispatch() {
+    for context in [64, 2048] {
+        let f = Fixture::create().await;
+        set_context(&f, context).await;
+        let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+        let provider = Arc::new(Provider::known());
+        let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+        assert_eq!(
+            calls
+                .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+                .await
+                .expect_err("assembled tokenizer/window bound includes system instructions")
+                .code(),
+            error_code::AUTHORING_TOKEN
+        );
+        assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
+        assert_eq!(provider.count(), 0);
+        f.cleanup().await;
+    }
 }
 
 #[tokio::test]
