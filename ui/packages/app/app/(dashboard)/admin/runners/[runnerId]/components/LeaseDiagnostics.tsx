@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { RunnerLease } from "@/lib/api/runners";
-import { LEASE_KIND } from "@/lib/api/runners";
+import { LEASE_KIND } from "@/lib/api/runners-types";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger,
   DescriptionDetails, DescriptionList, DescriptionTerm } from "@agentsfleet/design-system";
 import { REVIEW_EVENT_LABEL, REVIEW_FENCING_LABEL, REVIEW_KIND_LABEL,

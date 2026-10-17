@@ -4,12 +4,12 @@
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
+import type { INFERENCE_API } from "./admin-model-library-types";
 import { request } from "./client";
 
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
 
-export const INFERENCE_API = { chat: "chat", responses: "responses", messages: "messages" } as const;
 export interface ModelInference {
   api: (typeof INFERENCE_API)[keyof typeof INFERENCE_API];
   base_url: string;
