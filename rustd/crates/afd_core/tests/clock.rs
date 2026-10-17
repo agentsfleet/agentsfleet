@@ -20,18 +20,18 @@ use afd_core::clock::{
 use jiff::Timestamp;
 
 /// 2020-01-01T00:00:00Z. Any reading below this is not the present.
-const YEAR_2020_MS: i64 = 1_577_836_800_000;
+const YEAR_2020: Timestamp = Timestamp::constant(1_577_836_800, 0);
 /// 2100-01-01T00:00:00Z. Any reading above this is not the present either.
-const YEAR_2100_MS: i64 = 4_102_444_800_000;
+const YEAR_2100: Timestamp = Timestamp::constant(4_102_444_800, 0);
 
 /// Microseconds in one millisecond, for the sub-millisecond cases.
 const MICROS_PER_MILLI: i64 = 1_000;
 
 /// Two instants 3.5 seconds apart, for the arithmetic assertions.
-const EARLIER_MS: i64 = 1_000;
+const EARLIER: Timestamp = Timestamp::constant(1, 0);
 
 /// The later of that pair.
-const LATER_MS: i64 = 4_500;
+const LATER: Timestamp = Timestamp::constant(4, 500_000_000);
 
 /// The span between them.
 const BETWEEN: Duration = Duration::from_millis(3_500);
@@ -50,9 +50,8 @@ fn at_micros(micros: i64) -> Timestamp {
 #[test]
 fn test_the_reading_is_the_present_in_whole_milliseconds() {
     let reading = now();
-    let millis = reading.as_millisecond();
-    assert!(millis > YEAR_2020_MS, "{reading} is before 2020");
-    assert!(millis < YEAR_2100_MS, "{reading} is after 2100");
+    assert!(reading > YEAR_2020, "{reading} is before 2020");
+    assert!(reading < YEAR_2100, "{reading} is after 2100");
     assert_eq!(
         whole_millis(reading),
         reading,
@@ -111,10 +110,13 @@ fn test_arithmetic_saturates_at_the_bounds() {
         "an add at the ceiling must not wrap into the past"
     );
     assert_eq!(after(Timestamp::UNIX_EPOCH, Duration::MAX), Timestamp::MAX);
-    assert_eq!(before(Timestamp::MIN, Duration::from_millis(1)), Timestamp::MIN);
+    assert_eq!(
+        before(Timestamp::MIN, Duration::from_millis(1)),
+        Timestamp::MIN
+    );
     assert_eq!(before(Timestamp::UNIX_EPOCH, Duration::MAX), Timestamp::MIN);
-    assert_eq!(after(at(EARLIER_MS), BETWEEN), at(LATER_MS));
-    assert_eq!(before(at(LATER_MS), BETWEEN), at(EARLIER_MS));
+    assert_eq!(after(EARLIER, BETWEEN), LATER);
+    assert_eq!(before(LATER, BETWEEN), EARLIER);
 }
 
 /// The real clock and the free function are the same reading.
