@@ -8,11 +8,10 @@
 //!
 //! # Why milliseconds and not [`std::time::Duration`]
 //!
-//! Every one of these is compared against a `bigint` column holding epoch
-//! milliseconds, or arrives on the wire as one. A `Duration` would be converted
-//! at each of those boundaries, and a conversion is where a unit is lost. The
-//! type that carries an INSTANT is [`crate::clock::UnixMillis`]; these are the
-//! spans it is moved by, and they stay in the units the rows are in.
+//! Each is a span in milliseconds, the precision every instant carries. The
+//! type that carries an INSTANT is a `jiff::Timestamp` (see [`crate::clock`]);
+//! these are the spans it is moved by, through [`crate::clock::add_millis`] in
+//! Rust or as a bound interval in SQL.
 //!
 //! The relationships between them are load-bearing, and each is asserted below
 //! in a `const` block rather than left to a comment.

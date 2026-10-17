@@ -25,9 +25,9 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::clock::UnixMillis;
 use crate::error::{Error, ErrorKind, Result};
 use crate::lower_hex;
+use jiff::Timestamp;
 
 /// Length of canonical dashed UUID text: 32 hex characters plus 4 dashes.
 pub const TEXT_LEN: usize = 36;
@@ -42,14 +42,6 @@ pub const ENTROPY_LEN: usize = 10;
 
 /// The identifier's raw width, before it is spelled with dashes.
 pub const BYTE_LEN: usize = 16;
-
-/// The largest instant the 48-bit millisecond field holds — the year 10889.
-///
-/// Kept even though `uuid` owns the bit layout, because `uuid` MASKS an
-/// oversized value into the field rather than refusing it. A silently truncated
-/// timestamp mints an identifier that sorts wrongly for the rest of the row's
-/// life, so the bound is checked here and reported.
-const MAX_TIMESTAMP_MILLIS: u64 = 0xffff_ffff_ffff;
 
 /// Byte offsets carrying the dashes in canonical text.
 const DASH_OFFSETS: [usize; 4] = [8, 13, 18, 23];
@@ -152,22 +144,17 @@ impl Uuid7 {
     /// with another would define "canonical" twice, and the two could drift.
     ///
     /// # Errors
-    /// Returns `UZ-UUIDV7-009` when `at` precedes the Unix epoch, or exceeds the
-    /// 48-bit millisecond field. Both are unrepresentable rather than merely
-    /// unusual — a negative instant would wrap into a far-future timestamp and a
-    /// post-year-10889 one would lose its high bits — so they fail loudly
-    /// instead of minting an identifier that sorts wrongly forever.
-    pub fn encode(at: UnixMillis, entropy: [u8; ENTROPY_LEN]) -> Result<Self> {
-        let Ok(millis) = u64::try_from(at.as_millis()) else {
+    /// Returns `UZ-UUIDV7-009` when `at` precedes the Unix epoch: a negative
+    /// instant would wrap into a far-future timestamp, so it fails loudly
+    /// instead of minting an identifier that sorts wrongly forever. The 48-bit
+    /// field runs to the year 10889, past the last instant a `Timestamp` holds,
+    /// so the top end needs no check.
+    pub fn encode(at: Timestamp, entropy: [u8; ENTROPY_LEN]) -> Result<Self> {
+        let Ok(millis) = u64::try_from(at.as_millisecond()) else {
             return Err(Error::from(ErrorKind::IdShape {
                 reason: "instant precedes the Unix epoch",
             }));
         };
-        if millis > MAX_TIMESTAMP_MILLIS {
-            return Err(Error::from(ErrorKind::IdShape {
-                reason: "instant exceeds the 48-bit millisecond field",
-            }));
-        }
         let minted = uuid::Builder::from_unix_timestamp_millis(millis, &entropy).into_uuid();
         // Into a stack buffer rather than through `to_string`: an identifier is
         // minted on the lease path, and `parse` copies the text it is handed

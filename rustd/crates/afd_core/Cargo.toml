@@ -52,6 +52,10 @@ serde_ignored.workspace = true
 # runner fetches by.
 hex.workspace = true
 thiserror.workspace = true
+# Every instant is a `jiff::Timestamp` (`crate::clock`): the database stores
+# `TIMESTAMPTZ(3)` and the API writes RFC 3339, and jiff is the one type both
+# edges read and write without a hand conversion.
+jiff.workspace = true
 # `test_util::trace` only: the capture is a `tracing` layer. Optional, so the
 # value layer links neither outside `test-util`.
 tracing = { workspace = true, optional = true }
