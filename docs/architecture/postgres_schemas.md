@@ -22,10 +22,13 @@ table has one obvious home and one obvious shape.
    names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,
    `source_workspace_id`, `last_runner_id`). A deliberately missing foreign key is explained in the
    slot comment (money outlives an account; a charge outlives a purged fleet).
-3. **Status** columns are named `status`; categories are `<thing>_type`. No *vocabulary* literal (a
-   status, type or scope value) appears in an index predicate, trigger, CHECK or DEFAULT (RULE STS);
-   a predicate that needs a state reads a NULL marker column. Structural literals stay allowed: the
-   UUID version nibble `'7'`, `TG_OP` names, a named session setting, an exception message.
+3. **Status** columns are named `status`; categories are `<thing>_type`. RULE STS applies in full:
+   no literal that names a value or identifier the application also names — a `DEFAULT`, a CHECK
+   value list, a trigger comparison against a column, a `current_setting()` name, or `RAISE
+   EXCEPTION` text a caller matches on. A predicate that needs a state reads a NULL marker column; a
+   privileged path is a grant, not a session setting (so `fleet.approval_gates` purges through a
+   dedicated grant, replacing today's `fleet.allow_gate_purge` setting). The only literals left are
+   the UUID version nibble `'7'`, `TG_OP` values, and exception text no caller matches on.
 4. **Timestamps.** Every table has `created_at`. Every table whose rows change has `updated_at`.
    Any other time column is one of: (a) a deadline, named `*expires_at`; (b) a NULL marker an index
    or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an
