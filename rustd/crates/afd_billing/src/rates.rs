@@ -21,8 +21,6 @@
 //! IS the charge. That inversion is why pricing returns a value describing what
 //! happened rather than a bare `Option` that has already chosen for both.
 
-use sqlx::Row as _;
-
 use crate::error::{Result, query};
 use crate::sql;
 use crate::store::Accounts;
@@ -32,7 +30,18 @@ use crate::{
 };
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_RATE: &str = "model rate at revision";
+const CONTEXT_RATE: &str = "platform model prices";
+
+/// A `model.platform_models` row's three prices, in nanos per million tokens.
+#[derive(Debug, sqlx::FromRow)]
+struct Prices {
+    #[sqlx(rename = "input_nanos_per_mtok")]
+    input: i64,
+    #[sqlx(rename = "cached_input_nanos_per_mtok")]
+    cached_input: i64,
+    #[sqlx(rename = "output_nanos_per_mtok")]
+    output: i64,
+}
 
 /// No time has elapsed at lease issue, so the estimate carries no run fee.
 ///
@@ -172,18 +181,13 @@ impl Accounts {
 
     /// The catalogue's rates for one `(provider, model)` pair.
     ///
-    /// One statement, which returns the rate AND the generation it was read at
-    /// in a single snapshot — so there is no window for the counter to advance
-    /// between reading it and reading the rate, and no cache to hold a rate
-    /// under a generation it does not belong to. See [`super::store`] for why
-    /// no rate cache sits in front of it.
+    /// One fresh read per call; see [`super::store`] for why no rate cache
+    /// sits in front of it.
     ///
-    /// `Ok(None)` is the join's null half: the revision row answered and the
-    /// catalogue carried no matching model. The `LEFT JOIN` is driven from the
-    /// singleton precisely so those two facts arrive together.
+    /// `Ok(None)` is the catalogue carrying no such model, a fact about
+    /// pricing. A datastore that would not answer is an `Err`, a fault.
     /// `pub(super)` rather than private: [`super::meter`] resolves the same
-    /// rates for a metered slice, and a second copy of this statement's
-    /// handling — the presence witness, the null-tier default — is a second
+    /// rates for a metered slice, and a second copy of this read is a second
     /// place for the catalogue's shape to be read wrong.
     pub(super) async fn catalogue_rates(
         &self,
@@ -191,31 +195,17 @@ impl Accounts {
         model: &str,
     ) -> Result<Option<SliceRates>> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::LOAD_RATE_WITH_REVISION)
+        let prices: Option<Prices> = sqlx::query_as(sql::SELECT_PLATFORM_MODEL_PRICES)
             .bind(provider)
             .bind(model)
-            .fetch_one(&mut *connection)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RATE))?;
-
-        // Column 1 is the context cap, and it is the join's presence witness:
-        // NULL there means no catalogue row matched, whatever the rate columns
-        // hold. Testing a rate column instead would read a genuinely zero-rated
-        // model as absent.
-        let present: Option<i32> = row.try_get(1).map_err(query(CONTEXT_RATE))?;
-        if present.is_none() {
-            return Ok(None);
-        }
-        let tier = |index: usize| -> Result<i64> {
-            row.try_get::<Option<i64>, _>(index)
-                .map(|value| value.unwrap_or(0))
-                .map_err(query(CONTEXT_RATE))
-        };
-        Ok(Some(SliceRates {
+        Ok(prices.map(|prices| SliceRates {
             run_nanos_per_sec: RUN_NANOS_PER_SEC,
-            input_nanos_per_mtok: tier(2)?,
-            cached_input_nanos_per_mtok: tier(3)?,
-            output_nanos_per_mtok: tier(4)?,
+            input_nanos_per_mtok: prices.input,
+            cached_input_nanos_per_mtok: prices.cached_input,
+            output_nanos_per_mtok: prices.output,
         }))
     }
 }

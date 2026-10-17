@@ -17,8 +17,9 @@
 //! protects the money, by charging on a first delivery only — see
 //! [`Accounts::debit_receive`].
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::error::{Result, query};
 use crate::rates::Posture;
@@ -27,7 +28,7 @@ use crate::store::Accounts;
 use crate::{Nanos, RECEIVE_NANOS};
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_CHARGE: &str = "usage ledger insert";
+const CONTEXT_CHARGE: &str = "fleet charge insert";
 
 /// A charge was recorded.
 ///
@@ -37,7 +38,7 @@ const EVENT_DEBIT: &str = "debit";
 /// Who and what a charge is recorded against.
 ///
 /// One struct rather than nine positional parameters, for the reason
-/// [`afd_fleet::sql::lease::LeaseRow`] is one: the insert binds sixteen values and
+/// [`afd_fleet::sql::lease::LeaseRow`] is one: the insert binds fourteen values and
 /// four of them are identifiers of the same shape, which compile clean in any
 /// order. `tenant_id` is inside the struct rather than a parameter beside it:
 /// the tenant is who is charged, so it belongs with the rest of the identity.
@@ -61,7 +62,7 @@ pub struct Charged<'a> {
     /// must carry the same value, and the receive row is written on a different
     /// path at a different moment from the stage row a renewal accumulates. Two
     /// clock reads straddling a millisecond would disagree.
-    pub event_created_at: UnixMillis,
+    pub event_created_at: Timestamp,
 }
 
 impl Accounts {
@@ -89,7 +90,7 @@ impl Accounts {
     /// an instant that cannot be encoded, and a datastore that would not
     /// answer. Every one of those leaves the delivery leasable — the caller
     /// answers no-work and the next poll retries.
-    pub async fn debit_receive(&self, charged: Charged<'_>, now: UnixMillis) -> Result<Nanos> {
+    pub async fn debit_receive(&self, charged: Charged<'_>, now: Timestamp) -> Result<Nanos> {
         self.record(charged, sql::charge::RECEIVE, RECEIVE_NANOS, now)
             .await?;
 
@@ -109,11 +110,11 @@ impl Accounts {
         Ok(RECEIVE_NANOS)
     }
 
-    /// Write one `billing.usage_ledger` row.
+    /// Write one `billing.fleet_charges` row.
     ///
     /// Split from the charge verbs above because both of this milestone's debit
     /// points land the same row shape and differ only in charge type and
-    /// amount — and because binding sixteen parameters inside a verb would push
+    /// amount — and because binding fourteen parameters inside a verb would push
     /// it past the function-length line for no gain.
     ///
     /// No transaction. A `BEGIN`/`COMMIT` around this insert would be
@@ -126,12 +127,12 @@ impl Accounts {
         charged: Charged<'_>,
         charge_type: &str,
         nanos: Nanos,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let row_id = self.entropy().uuid7(now)?;
 
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::INSERT_USAGE_LEDGER)
+        sqlx::query(sql::INSERT_FLEET_CHARGE)
             .bind(row_id.as_str())
             .bind(charged.tenant_id.as_str())
             .bind(charged.workspace_id.as_str())
@@ -148,11 +149,7 @@ impl Accounts {
             .bind(Option::<i64>::None)
             .bind(Option::<i64>::None)
             .bind(Option::<i64>::None)
-            .bind(charged.event_created_at.as_millis())
-            .bind(now.as_millis())
-            // A one-shot charge's span is a point, so the budget drain's
-            // apportioning degenerates to all-or-nothing for this row.
-            .bind(now.as_millis())
+            .bind(charged.event_created_at.to_sqlx())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_CHARGE))?;

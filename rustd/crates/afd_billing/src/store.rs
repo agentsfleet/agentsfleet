@@ -8,20 +8,17 @@
 //!
 //! # Why there is no rate cache
 //!
-//! A rate cache earns its keep when the catalogue generation is read in ONE
-//! statement and the rate looked up separately, so a cache hit saves the
-//! second round trip. It then needs a fixed-capacity table, a hash over the
-//! `(provider, model)` pair, and a generation stored beside every entry so a
-//! caller never accepts a rate older than the catalogue revision it observed.
-//! That machinery answers a real question — a stale rate prices a charge
-//! wrong, silently.
+//! A rate cache needs a fixed-capacity table, a hash over the `(provider,
+//! model)` pair, and `model.catalogue_version.resource_version` stored beside
+//! every entry so a caller never accepts a rate older than the catalogue it
+//! observed. That machinery answers a real question: a stale rate prices a
+//! charge wrong, silently.
 //!
-//! [`crate::sql::LOAD_RATE_WITH_REVISION`] returns the rate and the generation
-//! it was read at in a single snapshot. Reading through that statement every
-//! time costs ONE round trip, and there is then no generation to compare, no
-//! entry to evict, and no window in which a resident rate can be older than
-//! the catalogue. A cache's entire purpose is to avoid a read that this shape
-//! does not perform.
+//! [`crate::sql::SELECT_PLATFORM_MODEL_PRICES`] is one primary-key-shaped
+//! lookup on `(provider, model_name)`'s unique index. Reading it every time
+//! costs ONE round trip, and there is then no version to compare, no entry to
+//! evict, and no window in which a resident rate can be older than the
+//! catalogue.
 //!
 //! So the issue-time gate reads fresh. §3's renewal path prices a slice per
 //! renewal rather than once per lease, and may want a cache for LATENCY — but
