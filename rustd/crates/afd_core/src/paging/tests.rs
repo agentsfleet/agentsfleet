@@ -58,11 +58,19 @@ fn query<'p>(pairs: &'p [(&'p str, &'static str)]) -> impl Fn(&str) -> Option<&'
 #[test]
 fn a_timestamp_cursor_round_trips_through_its_millis_spelling() {
     let cursor = Cursor::Timestamp {
-        at_ms: 1_744_000_000_000,
+        at: jiff::Timestamp::constant(1_744_000_000, 0),
         id: "019abc".to_owned(),
     };
     assert_eq!(cursor.to_string(), "1744000000000:019abc");
     assert_eq!(Cursor::parse("1744000000000:019abc"), Ok(cursor));
+}
+
+#[test]
+fn a_timestamp_cursor_past_the_representable_range_is_refused() {
+    // An integer that parses but names no instant jiff can hold is as foreign
+    // as one that does not parse at all.
+    let raw = format!("{}:019abc", i64::MAX);
+    assert_eq!(Cursor::parse(&raw), Err(InvalidCursor));
 }
 
 #[test]
