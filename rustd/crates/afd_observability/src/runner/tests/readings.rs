@@ -18,7 +18,10 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
         "a table with room admits the runner itself"
     );
 
-    metrics.seen(&runner_id, jiff::Timestamp::constant(1_760_000_000, 999_000_000));
+    metrics.seen(
+        &runner_id,
+        jiff::Timestamp::constant(1_760_000_000, 999_000_000),
+    );
     metrics.leased(&runner_id);
     metrics.leased(&runner_id);
     metrics.released(&runner_id);
