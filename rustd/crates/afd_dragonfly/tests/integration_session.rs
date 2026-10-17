@@ -17,6 +17,8 @@ use crate::support::DragonflyHarness;
 const GOOD_HMAC: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const BAD_HMAC: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 const FINGERPRINT: &str = "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff";
+/// The instant every redemption here is presented at, inside the session's life.
+const REDEEMED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_020, 0);
 
 fn approved_session(session_id: &str) -> SessionState {
     SessionState {
@@ -29,14 +31,14 @@ fn approved_session(session_id: &str) -> SessionState {
         nonce: Some("nonce".to_owned()),
         verification_code_hmac_hex: Some(GOOD_HMAC.to_owned()),
         verification_attempts: 0,
-        created_at_ms: 1_700_000_000_000,
-        expires_at_ms: 1_700_000_300_000,
-        approved_at_ms: Some(1_700_000_010_000),
-        consumed_at_ms: None,
+        created_at: jiff::Timestamp::constant(1_700_000_000, 0),
+        expires_at: jiff::Timestamp::constant(1_700_000_300, 0),
+        approved_at: Some(jiff::Timestamp::constant(1_700_000_010, 0)),
+        consumed_at: None,
         aborted_reason: None,
         clerk_user_id: Some("user_1".to_owned()),
         consumed_client_fingerprint_hex: None,
-        consume_payload_expires_at_ms: None,
+        consume_payload_expires_at: None,
     }
 }
 
@@ -69,7 +71,7 @@ async fn test_session_transition_atomic() {
         let fingerprint = format!("{FINGERPRINT}{index:04x}");
         tokio::spawn(async move {
             store
-                .verify_and_consume(&session_id, GOOD_HMAC, 1_700_000_020_000, &fingerprint)
+                .verify_and_consume(&session_id, GOOD_HMAC, REDEEMED_AT, &fingerprint)
                 .await
         })
     });
@@ -109,7 +111,7 @@ async fn test_session_transition_atomic() {
         .expect("the session survives its redemption");
     assert_eq!(after.status, SessionStatus::Consumed);
     assert!(after.status.is_terminal());
-    assert_eq!(after.consumed_at_ms, Some(1_700_000_020_000));
+    assert_eq!(after.consumed_at, Some(REDEEMED_AT));
 
     cleanup(&harness, &session_id).await;
 }
@@ -132,7 +134,7 @@ async fn test_session_locks_out_after_repeated_wrong_codes() {
     // Attempts one through four are counted and reported.
     for expected in 1..=4_u8 {
         let outcome = store
-            .verify_and_consume(&session_id, BAD_HMAC, 1_700_000_020_000, FINGERPRINT)
+            .verify_and_consume(&session_id, BAD_HMAC, REDEEMED_AT, FINGERPRINT)
             .await
             .expect("verify");
         assert_eq!(
@@ -145,14 +147,14 @@ async fn test_session_locks_out_after_repeated_wrong_codes() {
     // The fifth trips the cap, and says so — a caller that saw `invalid_code`
     // here would tell the user to try again on a dead session.
     let outcome = store
-        .verify_and_consume(&session_id, BAD_HMAC, 1_700_000_020_000, FINGERPRINT)
+        .verify_and_consume(&session_id, BAD_HMAC, REDEEMED_AT, FINGERPRINT)
         .await
         .expect("verify");
     assert_eq!(outcome, VerifyOutcome::RateLimited);
 
     // And the correct code no longer works, because the session is aborted.
     let outcome = store
-        .verify_and_consume(&session_id, GOOD_HMAC, 1_700_000_020_000, FINGERPRINT)
+        .verify_and_consume(&session_id, GOOD_HMAC, REDEEMED_AT, FINGERPRINT)
         .await
         .expect("verify");
     assert_eq!(
@@ -178,7 +180,7 @@ async fn test_session_missing_and_unapproved_are_distinct() {
     let absent = harness.name("absent");
     assert_eq!(
         store
-            .verify_and_consume(&absent, GOOD_HMAC, 1_700_000_020_000, FINGERPRINT)
+            .verify_and_consume(&absent, GOOD_HMAC, REDEEMED_AT, FINGERPRINT)
             .await
             .expect("verify"),
         VerifyOutcome::Missing
@@ -193,7 +195,7 @@ async fn test_session_missing_and_unapproved_are_distinct() {
 
     assert_eq!(
         store
-            .verify_and_consume(&pending_id, GOOD_HMAC, 1_700_000_020_000, FINGERPRINT)
+            .verify_and_consume(&pending_id, GOOD_HMAC, REDEEMED_AT, FINGERPRINT)
             .await
             .expect("verify"),
         VerifyOutcome::NotApproved,

@@ -6,11 +6,13 @@
 //! fleet, forever — where an append runs once per event; the two halves have
 //! different costs, different failure modes, and no caller that needs both.
 
+use std::time::Duration;
+
 use redis::ToRedisArgs as _;
 use redis::streams::{StreamRangeReply, StreamReadOptions, StreamReadReply};
 
 use super::{
-    ARG_COUNT, AUTOCLAIM_MIN_IDLE_MS, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XRANGE,
+    ARG_COUNT, AUTOCLAIM_MIN_IDLE, AUTOCLAIM_START, CMD_XACK, CMD_XAUTOCLAIM, CMD_XRANGE,
     CMD_XREADGROUP, EventId, FLEET_CONSUMER_GROUP, FleetEvent, FleetStreams, NEW_ENTRIES,
     stringify,
 };
@@ -22,7 +24,7 @@ const JUST_THE_ONE: usize = 1;
 /// A takeover's idle floor: none. The won lease claim, not an idle clock, is
 /// what proves nobody is working the entry — see
 /// [`FleetStreams::take_over_oldest`].
-const TAKEOVER_MIN_IDLE_MS: usize = 0;
+const TAKEOVER_MIN_IDLE: Duration = Duration::ZERO;
 
 impl FleetStreams {
     /// Reads the next undelivered event, without blocking.
@@ -63,7 +65,7 @@ impl FleetStreams {
         fleet_id: &str,
         consumer: &str,
     ) -> Result<Option<FleetEvent>> {
-        self.claim_oldest(fleet_id, consumer, TAKEOVER_MIN_IDLE_MS)
+        self.claim_oldest(fleet_id, consumer, TAKEOVER_MIN_IDLE)
             .await
     }
 
@@ -158,24 +160,24 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error, or an unavailable error when Dragonfly is gone.
     pub async fn autoclaim(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
-        self.claim_oldest(fleet_id, consumer, AUTOCLAIM_MIN_IDLE_MS)
+        self.claim_oldest(fleet_id, consumer, AUTOCLAIM_MIN_IDLE)
             .await
     }
 
     /// The one `XAUTOCLAIM` both claims send, from the head of the pending
-    /// list, one entry, idle at least `min_idle_ms`.
+    /// list, one entry, idle at least `min_idle`.
     async fn claim_oldest(
         &self,
         fleet_id: &str,
         consumer: &str,
-        min_idle_ms: usize,
+        min_idle: Duration,
     ) -> Result<Option<FleetEvent>> {
         let key = self.stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XAUTOCLAIM);
         cmd.arg(&key)
             .arg(FLEET_CONSUMER_GROUP)
             .arg(consumer)
-            .arg(min_idle_ms)
+            .arg(afd_core::clock::saturating_millis(min_idle))
             .arg(AUTOCLAIM_START)
             .arg(ARG_COUNT)
             .arg(JUST_THE_ONE);

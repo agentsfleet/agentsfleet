@@ -26,16 +26,15 @@
 //! # Every command under a deadline
 //!
 //! The ring and the peek of a rung partition give up at
-//! [`READY_WAKE_DEADLINE_MS`]: the doorbell exists to make a poll faster, so a
+//! [`READY_WAKE_DEADLINE`]: the doorbell exists to make a poll faster, so a
 //! slow node may cost a mark its ring or a poll its rung peek, never the
 //! datastore's request timeout.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::time::Duration;
 
 use afd_core::error_code::{self, Coded as _, Logged};
-use afd_core::timing::READY_WAKE_DEADLINE_MS;
+use afd_core::timing::READY_WAKE_DEADLINE;
 use afd_observability::metrics::label::fleet::ReadyWake;
 
 use super::partition::{Partition, READY_PARTITIONS, ReadyPrefix};
@@ -46,9 +45,6 @@ use crate::streams::{CMD_PUBLISH, FleetStreams};
 
 /// The `event` a mark logs when its ring was not published.
 pub(crate) const EVENT_WAKE_RING_FAILED: &str = "ready_wake_ring_failed";
-
-/// [`READY_WAKE_DEADLINE_MS`] as the duration a timeout takes.
-const WAKE_DEADLINE: Duration = Duration::from_millis(READY_WAKE_DEADLINE_MS);
 
 const _: () = assert!(
     READY_PARTITIONS as u32 == u16::BITS,
@@ -158,9 +154,9 @@ impl ReadyIndex {
 /// `command`'s answer, or a timeout error naming it once the doorbell's
 /// deadline passes.
 async fn within<T>(command: &'static str, sent: impl Future<Output = Result<T>>) -> Result<T> {
-    tokio::time::timeout(WAKE_DEADLINE, sent)
+    tokio::time::timeout(READY_WAKE_DEADLINE, sent)
         .await
-        .map_err(|_elapsed| error::timed_out(command, WAKE_DEADLINE.as_millis()))?
+        .map_err(|_elapsed| error::timed_out(command, READY_WAKE_DEADLINE))?
 }
 
 /// `partition`'s bit.
