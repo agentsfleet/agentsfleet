@@ -58,9 +58,9 @@ pub fn processed(runner_id: &str) {
 /// Ignored for a runner the table never admitted: a merged last-seen stamp
 /// would describe whichever overflowed runner spoke most recently, which is
 /// worse than not answering — counters merge meaningfully and a gauge does not.
-pub fn seen(runner_id: &str, at_ms: i64) {
+pub fn seen(runner_id: &str, at: jiff::Timestamp) {
     if let Some(producers) = installed() {
-        producers.fleet.runners.seen(runner_id, at_ms);
+        producers.fleet.runners.seen(runner_id, at);
     }
 }
 

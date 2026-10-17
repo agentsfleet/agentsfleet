@@ -6,8 +6,6 @@
 
 use std::sync::atomic::Ordering;
 
-use afd_core::clock::UnixMillis;
-
 use super::{Counters, NEVER_HEARD_FROM, RunnerMetrics};
 
 impl RunnerMetrics {
@@ -30,8 +28,9 @@ impl RunnerMetrics {
             // reports from 1970, so nothing real is lost by refusing it. The
             // delivery span refuses a pre-epoch start for the same reason.
             (stamp > NEVER_HEARD_FROM)
-                .then(|| u64::try_from(UnixMillis::from_millis(stamp).as_seconds()).ok())
+                .then(|| jiff::Timestamp::from_millisecond(stamp).ok())
                 .flatten()
+                .and_then(|at| u64::try_from(at.as_second()).ok())
         })
     }
 

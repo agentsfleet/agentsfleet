@@ -191,9 +191,11 @@ impl RunnerMetrics {
     /// describe whichever overflowed runner spoke most recently, which is worse
     /// than not answering — the counters merge meaningfully and a gauge does
     /// not.
-    pub fn seen(&self, runner_id: &str, at_ms: i64) {
+    pub fn seen(&self, runner_id: &str, at: jiff::Timestamp) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.last_seen_ms.store(at_ms, Ordering::Relaxed);
+            counters
+                .last_seen_ms
+                .store(at.as_millisecond(), Ordering::Relaxed);
         }
     }
 
