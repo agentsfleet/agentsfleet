@@ -65,6 +65,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | `rustd/crates/afd_authoring/src/privacy.rs`, `rustd/crates/afd_tenant/src/**` erasure paths | EDIT | Every deletion root scrubs dispatch text; money is not cascaded |
 | `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afr_supervisor/src/**` | EDIT | `deletion_generation` leaves the runner protocol and its report spool |
 | `rustd/crates/*/tests/**`, `rustd/crates/afd_db/src/test_util/**`, `rustd/crates/afd_bench/**` | EDIT | Fixtures and assertions use the new schema |
+| `rustd/crates/afd_memory/src/{flip,flip_fixture,flip_tests,flip_prune_tests,flip_race_tests,in_memory,in_memory_tests,route,store}.rs`, `src/sql/{import_entry,delete_stale_entry,select_workspace_entries}.sql`, `tests/{integration_flip,integration_prune,support/paused}.rs` | DELETE | The memory flip, its route table, the `MemoryStore` trait and the in-memory store had no production caller; `Memories` holds `PgStore` directly (M-DI-HIERARCHY) |
 | `rustd/Cargo.toml` | EDIT | SQLx `migrate` feature on, `macros` stays off; comment naming `core.fleet_events` |
 | `public/openapi.json` | EDIT | Regenerated for the runner protocol removal |
 | `cli/src/**`, `ui/packages/app/**`, `scripts/**`, `playbooks/**`, `make/*.mk` | EDIT | Only where the inventory check finds a removed name |
@@ -122,6 +123,8 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 
 - **Dimension 3.1** — the full integration lane passes on the rebuilt schema → Test `test_integration_lane_on_rebuilt_schema`
 - **Dimension 3.2** — every §Settled item carries a recorded outcome with a citation → Test `test_settled_columns_have_outcomes`
+- **Dimension 3.3** — GitHub App JWT minting, the installation read, the scoped token mint and the `pull_request` and `workflow_run` webhook reads run on `reqwest` and `jsonwebtoken` 11; `octocrab` is absent from `Cargo.lock` → Test `test_github_app_without_octocrab`
+- **Dimension 3.4** — no converted crate holds a span or instant as integer milliseconds outside a protocol edge (Redis `PX`, Lua `ARGV`, a `BIGINT` span column, a wire span field), each edge converting in one place → Test `test_no_integer_millis_outside_edges`
 
 ### §4 — Behaviour that changes with the schema
 
@@ -210,6 +213,8 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 2.6 | integration | `test_instant_columns_are_timestamptz_ms` | every `_at` column is `timestamp with time zone` at precision 3, and no other column is |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
 | 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
+| 3.3 | unit | `test_github_app_without_octocrab` | `cargo tree -i octocrab` → not found; an App JWT minted with `jsonwebtoken` 11 → RS256 header, `iss` the App id, `exp` ≤ 10 minutes after `iat`; a `pull_request` and a `workflow_run` payload → decode into the fields the handlers read |
+| 3.4 | unit | `test_no_integer_millis_outside_edges` | per-crate scan of every converted crate → 0 integer-millisecond spans, instants or `*_MS` constants outside the listed edges (Redis `PX`, Lua `ARGV`, a `BIGINT` span column, a wire span field, the cursor token, the UUIDv7 layout, JWT NumericDate); a seeded `const X_MS: i64` fails the scan naming its file |
 | 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
 | 4.2 | integration | `test_replay_receipt_window` | same key at 23h59m → replay; changed body → refused; other user → refused; deleted resource → Gone; at 24h → new |
 | 4.3 | integration | `test_library_delete_cascades_revisions` | card A→draft→B, installed fleet → card and revisions gone; fleet intact; draft references NULL; foreign tenant → refused |
@@ -269,6 +274,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 | `setup_version`, `config_json`, `setup_context` | `git grep -nwE "setup_version\|config_json\|setup_context" -- rustd \| head` | 0 matches |
 | `creation_digest`, `grant_source`, `checkpoint_at`, `selftest_all_ok` | `git grep -nwE "creation_digest\|grant_source\|checkpoint_at\|selftest_all_ok" -- rustd \| head` | 0 matches |
 | removed table names | the R2 inventory check | 0 |
+| `MemoryStore`, `InMemory`, `Memories::flip`, `Flipped`, `Route` | `git grep -nwE "MemoryStore\|InMemory\|Flipped\|Route\|arc_swap\|async_trait" -- rustd/crates/afd_memory \| head` | 0 matches |
 
 ## Out of Scope
 
@@ -312,6 +318,10 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Timestamps and clock** — signed off by Indy (2026-10-17) after review by Tarzy: instants are `TIMESTAMPTZ(3)`; Rust holds `jiff::Timestamp` end to end, `afd_core` included, with `UnixMillis` deleted; rows bridge through `jiff-sqlx`; the API emits RFC 3339 in UTC through jiff's standard serialization, with no integer adapter. Clock rule: a locking validity check locks first, then reads `clock_timestamp()` once; non-locking reads and `SKIP LOCKED` sweeps use `statement_timestamp()`; lifecycle stamps are `now()`; `now()` never decides an expiry. Evidence: scratch-container contention and `EXPLAIN` runs on Postgres 18.6. Rules land in orly 0.14.7.
 - **§5 order and shape** — > Indy (2026-10-18): "I think Dimension 5 must be started after 6 and 7. 5 must happen and get tested on the docker container locally, upon PR merged when the spec is moved to done as well the migration happens auto." — context: the owner-present procedure on deployed databases is replaced by a local from-empty proof; deployed databases migrate on merge.
 - **§4–§7 prior approval** — > Indy (2026-10-18): "approved 4,5,6,7" — context: §4 including the new 4.7 (RFC 3339 instants in API, CLI and UI) and 4.8 (clock read after the lock wait), §6 including the `~/Projects/docs` branch, §7 as written, and §5 as the local from-empty proof after §6 and §7. Post write-ups remain due after each Dimension.
+- **Dependencies at their latest** — > Indy (2026-10-18): "Also ensure you use the latest crates in Cargo.toml of rustd" and "donot pin to a downlevel" — context: Rust 1.99.1 and every crate release taken in `9e08f1e25`. Two holds, each chosen via AskUserQuestion: `jsonwebtoken` stays on 10.x while `octocrab` (latest 0.54.5) depends on it ("Hold 10.x, note why"), and `gix` stays on 0.88 because 0.89's `worktree-mutation` pulls nine uncalled crates ("Hold 0.88"; "Hold gix on 0.88 in this PR, indy decides later").
+- **octocrab replaced in this PR** — Indy (2026-10-18), via AskUserQuestion: "Replace inside M229" — context: the workspace uses three slices of its 75,205 lines (App JWT, two calls, two webhook payloads) and already bypasses its typed request and response; it brings eight crates nothing else uses and holds `jsonwebtoken` at 10. Lands with afd_credential and afd_api_ingress in §3 (Dimension 3.3), and `jsonwebtoken` moves to 11 in the same commit.
+- **Integer milliseconds** — > Indy (2026-10-18): "confirm in every crate there are not handrolled serde millisecons, any mills still available, or i64 based milliseconds, or i64 millisecond constants being used and so on - on a per crate level" — context: Dimension 3.4; spans become `std::time::Duration`, `afd_core::clock::{add_millis, millis_between, from_millis}` are deleted for `after` and `before`.
+- **Memory flip removed** — Indy (2026-10-18), asked "are there production callers, you said there we none, if so why keep", then via AskUserQuestion: "Delete it" — context: `Memories::flip` had no caller outside its tests, `InMemory` compiled only under `test-util`, and `PgStore` was the only production `MemoryStore`. The flip, its route table (`arc-swap`), the `dyn` trait (`async-trait`), the in-memory store, the flip-only error kinds (`Moving`, `MissedWrite`, `Refused`) and the `test-util` feature are deleted; `Memories` holds `PgStore` directly per M-DI-HIERARCHY. `runner_fleet.md` §"Memory backends and scope" keeps the vendor-store decision and records that the trait and flip return with the first vendor store.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.

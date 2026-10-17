@@ -32,12 +32,7 @@ impl Memories {
             workspace: &workspace,
             fleet,
         };
-        let records = self
-            .routes()
-            .of(&workspace)
-            .store
-            .window(owner, grants.read)
-            .await?;
+        let records = self.store().window(owner, grants.read).await?;
         let (own, others): (Vec<Record>, Vec<Record>) = records
             .into_iter()
             .partition(|record| record.written_by(fleet));
@@ -92,9 +87,7 @@ impl Memories {
             fleet,
         };
         let records = self
-            .routes()
-            .of(&workspace)
-            .store
+            .store()
             .search(owner, grants.read, query, limit)
             .await?;
         let (own, others): (Vec<Record>, Vec<Record>) = records

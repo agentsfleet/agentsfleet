@@ -2,13 +2,11 @@
 //! internal database codes, the operator surface names the operation that
 //! failed, and a refusal before any statement is reported unchanged.
 //!
-//! The last two need no datastore and run in the unit lane too.
+//! The last needs no datastore and runs in the unit lane too.
 #![expect(
     clippy::expect_used,
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
-
-use std::sync::Arc;
 
 use afd_core::error_code::{
     INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE, INTERNAL_OPERATION_FAILED, MEM_UNAVAILABLE,
@@ -19,13 +17,13 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id, unreachable_db};
 use afd_memory::error::detail::{DATABASE_ERROR, LIST_FAILED, OPERATION_FAILED};
 use afd_memory::page::View;
-use afd_memory::{InMemory, Memories, MemoryStore, Owner, PgStore, Record};
+use afd_memory::{Memories, Owner, PgStore};
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
 
 use crate::workspace::delta;
 
 /// The instant every write here is stamped with.
-const AT: i64 = 1_760_000_000_000;
+const AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
 fn minted() -> Uuid7 {
     Uuid7::parse(&mint_id()).expect("a minted id is canonical")
@@ -46,7 +44,7 @@ async fn test_a_runner_statement_the_database_refuses_answers_the_query_code() {
     let orphan = delta("orphan", PINNED_CATEGORY, Visibility::Fleet);
 
     let refused = store
-        .upsert(owner, &[&orphan], afd_core::clock::from_millis(AT))
+        .upsert(owner, &[&orphan], AT)
         .await
         .expect_err("an entry for a fleet that does not exist is refused");
 
@@ -85,39 +83,40 @@ async fn test_an_operator_statement_the_database_refuses_answers_its_operation_s
 }
 
 #[tokio::test]
-async fn test_an_import_whose_identifier_cannot_be_minted_answers_operation_failed() {
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_upsert_whose_identifier_cannot_be_minted_answers_operation_failed() {
+    let lane = TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
     let (entropy, ctrl) = Entropy::new_mocked();
     ctrl.fail_next();
-    // The identifier is minted before any connection is asked for.
-    let store = PgStore::new(unreachable_db(), entropy);
-    let record = Record {
-        fleet: minted(),
-        key: "copied".to_owned(),
-        content: "what the source held".to_owned(),
-        category: PINNED_CATEGORY.to_owned(),
-        visibility: Visibility::Fleet,
-        created_at: afd_core::clock::from_millis(AT),
-        updated_at: afd_core::clock::from_millis(AT),
+    let store = PgStore::new(database.clone(), entropy);
+    let (workspace, fleet) = (minted(), minted());
+    let owner = Owner {
+        workspace: &workspace,
+        fleet: &fleet,
     };
+    let entry = delta("unminted", PINNED_CATEGORY, Visibility::Fleet);
 
     let refused = store
-        .import(&minted(), &record)
+        .upsert(owner, &[&entry], AT)
         .await
-        .expect_err("an import with no identifier to write under is refused");
+        .expect_err("an entry with no identifier to write under is refused");
 
     assert_eq!(
         (refused.code(), refused.detail()),
         (INTERNAL_OPERATION_FAILED, OPERATION_FAILED)
     );
+    drop(database);
+    lane.cleanup().await;
 }
 
 #[tokio::test]
 async fn test_a_capture_whose_grants_cannot_be_read_reports_the_datastore_refusal() {
-    let memories = Memories::over(unreachable_db(), Arc::new(InMemory::new("unread")));
+    let memories = Memories::new(unreachable_db(), Entropy::new());
     let pushed = [delta("never_stored", PINNED_CATEGORY, Visibility::Fleet)];
 
     let refused = memories
-        .capture(&minted(), &pushed, afd_core::clock::from_millis(AT))
+        .capture(&minted(), &pushed, AT)
         .await
         .expect_err("a capture whose grants cannot be read is refused");
 

@@ -1,4 +1,4 @@
-//! Dimension 1.1 and 3.3: the Postgres store, reached only through the trait,
+//! Dimension 1.1 and 3.3: the Postgres store, reached through `Memories`,
 //! keeps today's window, upsert, sweep and eviction, and skips a share from a
 //! fleet that may not publish.
 #![expect(
@@ -6,13 +6,13 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
-use afd_memory::window::DAILY_RETENTION_MS;
+use afd_memory::window::DAILY_RETENTION;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};
 
 /// The instant the first capture lands at.
-const START_AT: i64 = 1_760_000_000_000;
+const START_AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 /// The scratch category a capture's sweep expires.
 const DAILY: &str = "daily";
 /// A category that is neither pinned nor swept.
@@ -32,13 +32,17 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         delta("scratch", DAILY, Visibility::Fleet),
     ];
     let stored = memories
-        .capture(&fleet, &first, afd_core::clock::from_millis(START_AT))
+        .capture(&fleet, &first, START_AT)
         .await
         .expect("a capture");
     assert_eq!((stored.stored, stored.skipped, stored.swept), (3, 0, 0));
     let again = [delta("chat", CONVERSATION, Visibility::Fleet)];
     memories
-        .capture(&fleet, &again, afd_core::clock::from_millis(START_AT + 1))
+        .capture(
+            &fleet,
+            &again,
+            afd_core::clock::after(START_AT, std::time::Duration::from_millis(1)),
+        )
         .await
         .expect("a re-capture");
     let hydrated = memories.hydrate(&fleet).await.expect("a hydrate");
@@ -64,7 +68,10 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     );
 
     // Sweep: a capture past the retention removes the scratch note.
-    let later = afd_core::clock::from_millis(START_AT + DAILY_RETENTION_MS + 2);
+    let later = afd_core::clock::after(
+        START_AT,
+        DAILY_RETENTION + std::time::Duration::from_millis(2),
+    );
     let swept = memories
         .capture(&fleet, &[], later)
         .await
@@ -79,7 +86,10 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .capture(
             &fleet,
             &filler,
-            afd_core::clock::from_millis(START_AT + DAILY_RETENTION_MS + 3),
+            afd_core::clock::after(
+                START_AT,
+                DAILY_RETENTION + std::time::Duration::from_millis(3),
+            ),
         )
         .await
         .expect("a capture to the cap");
@@ -111,7 +121,7 @@ async fn test_push_skips_an_unpublished_share() {
     ];
     let captured = space
         .memories
-        .capture(&fleet, &pushed, afd_core::clock::from_millis(START_AT))
+        .capture(&fleet, &pushed, START_AT)
         .await
         .expect("a capture");
 

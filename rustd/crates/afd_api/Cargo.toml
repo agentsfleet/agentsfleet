@@ -118,8 +118,8 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }
 # The interim message poster the harness builds its services with.
 afd_outbound.workspace = true
-# The memory store the harness builds the plane with, and the in-memory store.
-afd_memory = { workspace = true, features = ["test-util"] }
+# The memory store the harness builds the plane with.
+afd_memory.workspace = true
 afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
 # The document parser, so a fleet row a suite seeds stores exactly what an
 # install would, rather than a hand-written `config_json` that could drift.

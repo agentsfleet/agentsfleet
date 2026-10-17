@@ -31,17 +31,3 @@ pub const FORGET_FAILED: &str = "memory forget failed";
 
 /// A forget naming a key the fleet holds no entry under.
 pub const ENTRY_NOT_FOUND: &str = "No memory entry with that key";
-
-/// A call that reached the workspace while its memory was being copied to
-/// another store; retrying after the copy finishes succeeds.
-pub const MOVING: &str = "memory is moving to another store; try again shortly";
-
-/// A flip that did not switch because a write made while it copied failed on
-/// the store being filled; the workspace stays where it was, holding that
-/// write, and the flip can be run again.
-pub const MISSED_WRITE: &str =
-    "a write did not reach the store memory was moving to; memory stayed where it was";
-
-/// A stand-in store's refusal.
-#[cfg(feature = "test-util")]
-pub const STORE_REFUSED: &str = "the memory store refused the call";

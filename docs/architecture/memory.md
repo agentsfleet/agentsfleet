@@ -13,7 +13,7 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 | Fact | Where it's enforced |
 |---|---|
 | Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql`, `schema/926_memory_entries_workspace_scope.sql` |
-| Every read and write goes through one trait, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `MemoryStore`, the Postgres store, the grants, and the flip |
+| Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `Memories`, the Postgres store (`PgStore`), and the grants |
 | The grants are read and set as the api role on `core.fleets`, never by the store | `schema/927_fleet_memory_access.sql`, `rustd/crates/afd_memory/src/access.rs` |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` hands the path's fleet to `Plane::hydrate` / `Plane::capture` (`rustd/crates/afd_fleet/src/lease/memory.rs`), which refuse a runner holding no live lease on that fleet |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
@@ -29,7 +29,7 @@ Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres
 
 Two layers, deliberately split:
 
-- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists. A workspace can later be flipped to another store, which migrates its memory ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
+- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 - **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report; it is gone when the run ends ([Runner execution](./runner_execution.md#crates)).
 
 Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
