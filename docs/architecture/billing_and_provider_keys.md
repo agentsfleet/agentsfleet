@@ -8,7 +8,7 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and reflects the cost difference (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** The authenticated billing surface and `agentsfleet doctor --json` report the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately do not quote dollar amounts because they go stale when a rate moves. For implementers: server-authoritative constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
+> **Where the live values are.** The authenticated billing surface reports the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately do not quote dollar amounts because they go stale when a rate moves. For implementers: server-authoritative constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
 
 ---
 
@@ -19,7 +19,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.tenant_wallet.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
-| Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
+| Postures | exactly 2, selected by the saved runtime reference | `platform-default` uses `platform`; an owner's model registration uses `self_managed`; both debit the owner's wallet | §1 |
 | Debit points | 2 per event | receive (`RECEIVE_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
 | Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
@@ -38,7 +38,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
 | Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
-| Live dollar values | never in this doc | served by the authenticated billing surface and `agentsfleet doctor --json`; the rate constants are declared once, in `afd_billing` | preamble, §4.2 |
+| Live dollar values | never in this doc | served by the authenticated billing surface; the rate constants are declared once, in `afd_billing` | preamble, §4.2 |
 
 ## Traps
 
@@ -52,7 +52,7 @@ Each trap is enforced in its owner section; this list is the index.
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
 - Model-registry entries reference vault keys — they never own credential material (§8.4).
-- Absence of a `tenant_model_selection` row is `mode=platform`; new tenants get no eager row (§1).
+- Absence of a `tenant_model_selection` row means a platform account default; it does not replace a fleet's saved model reference (§1).
 - No silent auto-fallback from self-managed to platform on provider error — it would charge without consent (§13).
 - `tenant provider create` never test-calls the provider; a bad key surfaces at the first event, when the provider refuses it (§7).
 - Budget overshoot is bounded, not zero — at most one renewal window past the cap (§5.1).
@@ -109,18 +109,18 @@ Everything below is the full reference. Headings are stable — specs cite them 
 
 ## 1. The two postures
 
-One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a Fleet on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying agentsfleet for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
+One persona carries the worked examples: **John Doe** first saves a fleet with the platform default, then selects his own Fireworks model. The second setup uses his credential, so he pays Fireworks directly for tokens. Both setups debit the same tenant wallet for runtime.
 
-A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per fleet):
+There are two billing postures. A fleet's saved `runtime_model_ref` selects its posture when a runtime lease is admitted. Different fleets in one tenant can use different postures:
 
-- **Platform-managed.** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores the selected provider credential in its own workspace's `vault.secrets` (the same M45 vault path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_provider_defaults` row records a pointer `(provider, source_workspace_id)` plus the default's `model`, optional `base_url` and `context_cap_tokens`; no key material lives there. At lease time the control plane (`agentsfleetd`) reads the row and follows the pointer into the admin workspace's vault for the api_key alone (`rustd/crates/afd_credential/src/provider/platform.rs`). There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
-- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_model_selection` row points at that name through `secret_ref`. The runner's supervisor uses that key to call the provider's API; the key never enters a sandbox. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed.** `platform-default` selects the administrator's enabled default model and its credential. The `agentsfleet-admin` account stores that credential in its workspace vault. `PUT /v1/admin/platform-keys` saves the default pointer in `core.platform_provider_defaults`, without key material. At lease time, `agentsfleetd` follows that pointer and reads the model's saved inference settings. The user pays runtime fees and the model's token rates.
+- **Self-managed provider keys.** An owner model reference selects a `core.tenant_model_entries` registration and its named vault credential. The runner supervisor uses the resolved key outside the sandbox. The user pays the provider for tokens; `agentsfleet` charges runtime fees without token markup.
 
 The platform administrator selects the default model and its credential. Its saved catalogue row supplies the endpoint, API format, physical context window and maximum output length (§9). Neither the provider name nor this document selects a model or route.
 
 The default is a **pointer, not a constant**: `core.platform_provider_defaults` names `(provider, source_workspace_id)` and carries the model and its context cap; the admin credential supplies only the key. Changing it is an admin write, not a deploy. `(provider, model)` is a foreign key into `core.model_library` with `ON DELETE RESTRICT` (`schema/420_platform_provider_defaults.sql`), so the default can never name an uncatalogued model. Naming a superseded model here left platform slices unpriced until M168. Both postures dial the selected model's saved endpoint (§9). Platform uses the admin workspace's key; self-managed uses the user's key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
-The posture flip lives in `core.tenant_model_selection.mode` (`platform` or `self_managed`). Switching is a single command (`agentsfleet tenant provider create --secret <name>` / `agentsfleet tenant provider delete`) or a single dashboard toggle. **Absence of a `tenant_model_selection` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
+`core.tenant_model_selection` holds the separate account default. The tenant provider commands update that default; a missing row means `platform`. Runtime resolution uses the fleet's saved reference without consulting this default (`afd_credential/src/provider/runtime/resolve.rs`). Changing the account default does not rewrite saved fleets.
 
 ---
 
@@ -323,7 +323,7 @@ total_nanos = RECEIVE_NANOS                            // receive
 ```mermaid
 flowchart TD
     A([Lease poll: readiness peek, claim, stream read]) --> B[INSERT fleet_events status=received]
-    B --> C[Resolve posture<br/>Providers::resolve]
+    B --> C[Resolve saved runtime model and posture<br/>Providers::resolve_reference]
     C --> D[Estimate event cost:<br/>receive + run floor]
     D --> E{balance_nanos<br/>≥ estimate?}
     E -->|no| Block[UPDATE fleet_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
@@ -410,13 +410,13 @@ The reasoning is that a balance-exhausted event is usually evidence the user was
 
 ## 7. Switching posture mid-stream
 
-A user can switch between platform and self-managed at any time. Effects on subsequent billing:
+A saved setup can select either the platform default or an owner's configured model. Effects on subsequent billing:
 
-- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `agentsfleet tenant provider create --secret <name>` flips `tenant_model_selection.mode=self_managed` immediately. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
-- **self-managed → platform** (user stops paying their provider): `agentsfleet tenant provider delete` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
-- **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
+- **Platform → self-managed.** Save the owner's model reference in the fleet setup. New leases use its credential and charge runtime fees without token markup.
+- **Self-managed → platform.** Save `platform-default` in the fleet setup. New leases use the enabled platform default and its token rates. The balance gate still applies.
+- **Mid-event change.** The claim-time model and posture snapshot governs that running lease. A later setup change does not reprice it.
 
-The "in-flight events" question matters because self-managed and platform have different per-event costs. We never want a request that the user started under one posture to bill at another.
+Changing the tenant's account default alone does not change either saved selection. The current reference, credential and settings must remain eligible at admission (§9).
 
 The `tenant provider create` PUT validates eagerly on structure (body shape, credential presence, JSON shape, model-library catalogue membership). It does **not** make a synthetic call to the large language model (LLM) provider to verify the key works — a bad key surfaces at the first event, when the provider refuses it. The CLI prints a one-line *"Tip: run a test event to verify the key works"* hint after a successful set.
 
@@ -451,7 +451,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `vault.secrets` rows as envelope ciphertext.
-- Server-side process memory — `agentsfleetd`'s process (the return value of `Providers::resolve`, `rustd/crates/afd_credential/src/provider/mod.rs`) **and** the runner's supervisor, whose provider client sends it in the one header its wire names; no sandbox ever holds it ([`runner_execution.md`](./runner_execution.md#crates)). `agentsfleetd` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner uses it for the inference call only. The key rides the same trusted-fleet inline envelope as `secrets_map`. Inside `agentsfleetd` it is a private `SecretString` field reachable only through `Resolved::api_key` (`rustd/crates/afd_credential/src/provider/resolved.rs`).
+- Server-side process memory. For runtime, `Providers::resolve_reference` opens the selected key in `agentsfleetd` and delivers it on `ExecutionPolicy.api_key` to the trusted runner supervisor. The key stays outside the sandbox and `secrets_map` ([`runner_execution.md`](./runner_execution.md#crates)). Authoring instead opens the selected inference key inside the daemon for each scoped dispatch; the authoring runner receives only its capability. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that distinction. Resolved keys use `SecretString` (`rustd/crates/afd_credential/src/provider/resolved.rs`).
 - Outbound HTTPS request headers to the provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
@@ -499,9 +499,9 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 `afd_inference::Configured` validates these settings and builds rig's Chat Completions, Responses, or Messages codec. Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted. Curation input for prices remains an operator tool and does not decide runtime routes.
 
-Workspace choices join the owner's model registrations to credentials and the exact `(provider, model_id)` catalogue row. The active platform default uses its own configured model and credential. Both choices require credentials, valid settings, nonnegative prices, and a usable context window. A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
+Workspace choices join the owner's model registrations to credentials and the exact `(provider, model_id)` catalogue row. The active platform default uses its own configured model and credential. Both choices require credentials, valid settings, nonnegative prices, and a usable context window. Authoring additionally requires that the selected SDK wire supports proposal tools; runtime eligibility is checked separately. A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
 
-The daemon resolves the exact selected reference for runtime leases and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor opens credentials outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the lease. Authoring keeps credentials in the daemon and sends only its scoped capability to the runner. Neither path follows redirects; outbound address guards remain in force.
+The daemon resolves the exact selected reference for runtime leases and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor uses the resolved key outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the lease. Authoring keeps credentials in the daemon and sends only its scoped capability to the runner. Neither path follows redirects; outbound address guards remain in force.
 
 The fleet's operating context cap stops tool use and requests a final answer. It does not replace the model's physical window. Every provider request bounds output by both the saved maximum output length and the physical space remaining after the complete encoded input; exhausted physical context refuses dispatch.
 

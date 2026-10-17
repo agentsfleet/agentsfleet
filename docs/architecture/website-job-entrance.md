@@ -69,10 +69,9 @@ The animation does not claim automatic repair, GitHub posting, or currently impl
 
 ## Signup and installer boundaries
 
-Create fleet opens the configured app's `/sign-up` page in a new tab.
-`VITE_APP_BASE_URL` selects the app origin; the default is `https://app.agentsfleet.net`.
-The existing deployment mapping selects `https://app-dev.agentsfleet.net` for previews.
-Sign-in also opens a new tab, preserving the original page and request if authentication is cancelled.
+Public hosted-access links open the waitlist in a new tab.
+`VITE_WAITLIST_URL` overrides the default `https://accounts.agentsfleet.net/waitlist` in `ui/packages/website/src/config.ts`.
+All access links use `PUBLIC_ACCESS_URL`, preserving the original page and request when the visitor closes the waitlist.
 The request remains in React memory; reload clears it.
 
 Private input is not placed in URL parameters, analytics, session storage, or local storage.
@@ -95,7 +94,7 @@ The shared Terminal exposes a copy-click callback; the website owns the analytic
 
 Indy approved “$0 to start · $25 credit included” on 2026-10-14, replacing the earlier early-access copy.
 The welcome and pricing card share this offer. The card explains that included credit runs the first jobs and using a personal key bills the provider directly.
-Create your first fleet opens hosted signup. The source strip uses “Hosted ↗,” “Self hosting in your infrastructure ↗,” and plain “GitHub ↗” without an icon.
+Join waitlist opens the configured waitlist. The source strip uses “Hosted waitlist ↗,” “Self hosting in your infrastructure ↗,” and plain “GitHub ↗” without an icon.
 Pricing copy does not promise unlimited usage or behavior after the credit is spent. The pricing banner emits no custom event and excludes automatic capture.
 The footer's use cases link opens the existing example conversation.
 

@@ -91,7 +91,7 @@ A draft starts from one of three sources (`cli/src/commands/chat/commands.ts`):
 
 Configuration such as a Slack channel, a production-branch glob, or a cron schedule lives in the reviewed setup. The conversation changes it; the review shows exactly what Save will store.
 
-## §8.0.1 Deployment posture## §8.0.1 Deployment posture: hosted-only in v2
+## §8.0.1 Deployment posture: hosted-only in v2
 
 v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
 
@@ -110,7 +110,7 @@ The user describes the Fleet in a private draft. Browser and terminal chat share
 
 The conversation produces one typed JSON Definition (`rustd/crates/afd_fleet_runtime/src/definition/mod.rs`):
 
-- `description` is one required line of display text saying what the Fleet does. The Fleet's name is `config.name`. Any top-level key besides `schema_version`, `description`, `instructions_md` and `config` is refused.
+- `description` is required display text saying what the Fleet does; line breaks are allowed and line endings are normalized. The Fleet's name is `config.name`. Any top-level key besides `schema_version`, `description`, `instructions_md` and `config` is refused.
 - `instructions_md` describes how the Fleet should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. The run receives it as its instructions.
 - `config` is the policy document. Under `x-agentsfleet` it declares `triggers`, `tools`, `credentials`, `network`, `budget` (`daily_nanos` and `monthly_nanos`, decimal strings), `gates`, `repositories`, `context`, and `model`.
 
@@ -274,7 +274,7 @@ remaining physical headroom        0.75 x operating cap
 and saved maximum output
 ```
 
-**Model identity and context limits have separate jobs.** `afd_credential::Providers::resolve_reference` loads the exact owner registration or active platform default, its saved model metadata, and its vault credential. `afd_gate` carries that metadata into `ExecutionPolicy`; its context resolver always uses the selected model (`rustd/crates/afd_credential/src/provider/{runtime/resolve,registered/sql}.rs`, `rustd/crates/afd_gate/src/policy/{build,context}.rs`). Credentials remain in the daemon and runner supervisor, outside the sandbox and browser.
+**Model identity and context limits have separate jobs.** `afd_credential::Providers::resolve_reference` loads the exact owner registration or active platform default, its saved model metadata, and its vault credential. `afd_gate` carries that metadata into `ExecutionPolicy`; its context resolver always uses the selected model (`rustd/crates/afd_credential/src/provider/{runtime/resolve,registered/sql}.rs`, `rustd/crates/afd_gate/src/policy/{build/mod,context}.rs`). Credentials remain in the daemon and runner supervisor, outside the sandbox and browser.
 
 An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap sets the operating threshold for wrapping up; it leaves `ExecutionPolicy.model_context_tokens` unchanged. After tools stop, the final answer can use the remaining physical headroom, bounded by the saved maximum output length (`rustd/crates/afd_inference/src/budget.rs`). The other `x-agentsfleet.context.*` knobs retain their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
 

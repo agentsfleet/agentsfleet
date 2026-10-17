@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M225
 **Workstream:** 001
 **Date:** Oct 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE (closed on Indy's direction; deployment measurements deferred, not passed)
 **Priority:** P1 — every steer waits about 2 s, up to about 4 s, before any runner looks at it
 **Categories:** API, OBS
 **Batch:** B1 — one Pull Request; the doorbell and the segment timings ship together so the second measures the first
@@ -171,8 +171,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §4 — Measured on dev
 
-- **Dimension 4.1** — Ten steers on dev after deploy: pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` on the daemon's `runner_lease_issued` lines (`flyctl logs`), never from the runner journal → Test `test_dev_pickup_p50_under_250ms`
-- **Dimension 4.2** — Two `github-pr-reviewer` fleets in two workspaces, one `pull_request` delivery each within the same second: both `runner_lease_issued` lines carry `queue_wait_ms` ≤1,000 and name different runner workers → Test `test_dev_two_fleets_pick_up_in_parallel`
+- **Dimension 4.1** — DEFERRED to Indy: ten steers on dev after deploy, pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` on the daemon's `runner_lease_issued` lines (`flyctl logs`), never from the runner journal → Test `test_dev_pickup_p50_under_250ms` — unverified; see Discovery closure decision
+- **Dimension 4.2** — DEFERRED to Indy: two `github-pr-reviewer` fleets in two workspaces, one `pull_request` delivery each within the same second, both `runner_lease_issued` lines carry `queue_wait_ms` ≤1,000 and name different runner workers → Test `test_dev_two_fleets_pick_up_in_parallel` — unverified; see Discovery closure decision
 
 ## Interfaces
 
@@ -244,7 +244,7 @@ Constants: worker offset = n × NO_WORK_RETRY_AFTER_MS / N; READY_WAKE_DEADLINE_
 | R3 | A busy rung partition cannot starve the rotation (§1) | `make test-integration-rustd` | `test_a_busy_rung_partition_does_not_starve_rotation` passed | P0 | |
 | R4 | Each terminal lease line logs its segments (§2) | `make test-unit-all` | `test_lease_completed_logs_its_segments` passed | P0 | |
 | R5 | The first frame of a lease posts at once (§3) | `make test-unit-all` | `test_first_frame_posts_without_waiting` passed | P0 | |
-| R6 | Dev pickup p50 ≤250 ms (§4) | manual — ten `queue_wait_ms` values in Session Notes | p50 ≤250, max ≤1,000 | P0 | |
+| R6 | Dev pickup p50 ≤250 ms (§4) | manual — ten `queue_wait_ms` values in Session Notes | p50 ≤250, max ≤1,000 | P0 | DEFERRED to Indy; no measurements recorded; Discovery closure decision |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -315,6 +315,6 @@ N/A — no files deleted.
 
 > Indy (2026-10-14): "Fix + fault test (Recommended)" and "Defer all to M225_002 (Recommended)" — context: the hub's redial wait, and the review's doorbell design gaps held for the pickup bench spec. Round 4: "Fix in #750 (Recommended)", "Hold-5s reset (Recommended)", "Defer to M225_002 (Recommended)" — the cut scan's lost ring, the hub's climb reset, the hung claim.
 
-- **Deferrals** — §4 (Dimensions 4.1, 4.2) to after the merge: it needs this branch on dev, and dev deploys only from `main` (`.github/workflows/deploy-dev.yml` `on: push: branches: main`), so §4 stays IN_PROGRESS through the Pull Request.
-
+- **Closure decision (Oct 17, 2026):** close this spec and defer §4 (Dimensions 4.1, 4.2 and R6) to Indy for manual review after deployment and later GitHub issues. No pickup timing or parallel-delivery result is claimed. This supersedes keeping the spec active until those checks run; current pull request verification remains required.
+> Indy (2026-10-17 10:03): "So close the docs/v2/active/ specs with a feedback that Indy will deal with it via issues later on and do a manual eyeball on deploy" — context: explicit closure with the remaining deployment checks deferred to Indy.
 > Indy (2026-10-12): "Defer §4 to after merge (Recommended)" — context: the ten dev steers and the two-workspace check wait for the merge's dev deploy.

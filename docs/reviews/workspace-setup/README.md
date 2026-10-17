@@ -10,7 +10,7 @@ executable: false
 
 ## What it is
 
-A private setup conversation helps a person write, review, and save a fleet in a workspace. Runtime conversation remains shared according to fleet access. This is the proposed target under [one cutover spec](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md); these documents do not implement the backend.
+A private setup conversation helps a person write, review, and save a fleet in a workspace. Runtime conversation remains shared according to fleet access. This is the proposed target under [one cutover spec](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md); these documents do not implement the backend.
 
 The interface remains approved. The [21 owner decisions](decisions.md) and [source findings](source-findings.md) settle the backend revision. The [resource reference](../../architecture/api_resources.md) is the single proposed route and type authority.
 
