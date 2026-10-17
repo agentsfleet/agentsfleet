@@ -25,66 +25,65 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none blocking. Ordering: lands before M224_001 puts production data in Postgres; the `fix/754-dev-acceptance-app` branch's slots 956/957 fold into the new slots if it has not merged first
-**Provenance:** LLM-drafted (Claude Opus 5.5, Oct 17, 2026), from a table-by-table owner review against `main` at `a8646bb2a`
-**Canonical architecture:** `docs/architecture/postgres_schemas.md` §Rules, §Layout and one section per schema
+**Provenance:** LLM-drafted (Claude Opus 5.5, Oct 17, 2026), from a table-by-table owner review against `main` at `a8646bb2a`, amended after an adversarial review the same day
+**Canonical architecture:** `docs/architecture/postgres_schemas.md` §Rules, §Layout, one section per schema, §Deletion matrix
 
 ---
 
 ## Overview
 
-**Goal (testable):** `test_migrate_from_empty_builds_nine_owned_schemas` — `agentsfleetd migrate` on an empty database creates exactly the tables in `docs/architecture/postgres_schemas.md`, no schema object carries a string literal, and the full integration lane passes against it.
-**Problem:** 33 of 47 tables sit in `core`; the setup-chat tables span `core`, `fleet` and `billing`. Columns exist with no reader (`drafts.creation_digest`, `wallets.grant_source`), facts are stored twice or three times (`fleets.config_json`, `fleets.setup_version`), and an owner reading the schema cannot tell what a field means or who fills it.
-**Solution summary:** delete all 97 `schema/*.sql` slots and author one slot per table across nine schemas (identity, authoring, fleet, runner, connector, model, billing, vault, memory), exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. Two wire fields leave the public surface. The development and production databases are dropped and rebuilt from empty under an owner-recorded override. The naming rules land in the schema conventions at their source in the orly repository so the next table starts right.
+**Goal (testable):** `test_migrate_from_empty_builds_nine_owned_schemas` — `agentsfleetd migrate` on an empty database creates exactly the tables in `docs/architecture/postgres_schemas.md`, no schema object carries a vocabulary literal, and the full integration lane passes against it.
+**Problem:** 33 of 47 tables sit in `core`; the setup-chat tables span `core`, `fleet` and `billing`. Columns exist with no reader (`drafts.creation_digest`, `wallets.grant_source`), facts are stored twice or three times (`fleets.config_json`, `fleets.setup_version`), account erasure deletes billing records, and an owner reading the schema cannot tell what a field means or who fills it.
+**Solution summary:** delete all 97 `schema/*.sql` slots and author one slot per table across nine schemas, exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. The runner protocol loses one field. Money records survive every deletion and private dispatch text is scrubbed on every erasure path. The development and production databases are dropped and rebuilt from empty by a guarded one-shot procedure. The naming rules land in the schema conventions at their source in the orly repository.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** feat(schema): rebuild Postgres into nine owned schemas
-- **Intent (one sentence):** every table has one obvious home, every column has a reader and one meaning, and the conventions stop the drift recurring.
+- **Intent (one sentence):** every table has one obvious home, every column has a reader and one meaning, money outlives deletion, and the conventions stop the drift recurring.
 - **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
 
-1. `docs/architecture/postgres_schemas.md` — the signed-off layout, every table's columns, the nine rules and the counter names; the schema files are a transcription of it.
-2. `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — the previous from-empty rebuild: slot ordering by dependency layer, registry and test mechanics.
+1. `docs/architecture/postgres_schemas.md` — the signed-off layout, every table's columns, the rules, the counter names and the deletion matrix; the slots are a transcription of it.
+2. `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — the previous from-empty rebuild: registry and test mechanics.
 3. `.orly/dispatch/write_sql.md` — SCHEMA GUARD, RULE STS, NSQ, SGR and ITF; the guard fires on every slot edit here.
-4. `rustd/crates/afd_db/src/migration.rs` — the explicit migration list and the `rust-migration-list` lint that compares it to tracked files.
-5. `rustd/crates/afd_db/src/migrate/ledger.rs` — `audit.schema_migrations`; old version numbers collide with new slot numbers.
+4. `rustd/crates/afd_db/src/migrate/mod.rs` — refuses an unknown ledger version but skips a known one; new slot numbers must never overlap old ones.
+5. `rustd/crates/afd_authoring/src/privacy.rs` — the draft-purge scrub every erasure path must now reach.
 
 ## Files Changed (blast radius)
 
-Discovery grep (rerun at PLAN, same pattern in the Dead Code Sweep): `git grep -lE "(^|[^a-z_])(core|fleet|billing|vault|memory)\.[a-z_]+"` — 832 tracked files at `a8646bb2a`, of which 92 are schema slots and 142 are `docs/v2` specs.
+Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|vault|memory)\.[a-z_]+"` — 832 tracked files at `a8646bb2a`; it over-matches (`rig-core.workspace`), so acceptance uses the exact removed-name inventory in the rubric instead.
 
 | File | Action | Why |
 |------|--------|-----|
 | `schema/*.sql` (97 slots) | DELETE | Clean slate; slot history is not migrated |
-| `schema/*.sql` (one per table, numbered by schema block) | CREATE | The signed-off design, dependency-ordered |
-| `rustd/crates/afd_db/src/migration.rs` | EDIT | Registry equals the new slot set |
-| `rustd/crates/afd_db/src/migrate/**` | EDIT | Refuse a ledger version the registry lacks |
+| `schema/*.sql` (one per table, versions from 1000) | CREATE | The signed-off design, ordered per table by foreign key |
+| `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | Registry equals the new slot set; overlap refusal test |
 | `rustd/crates/*/src/**/*.rs` with a schema-qualified table name | EDIT | Queries and row structs follow new names; dropped columns lose their writers |
+| `rustd/crates/afd_authoring/src/privacy.rs`, `rustd/crates/afd_tenant/src/**` erasure paths | EDIT | Every deletion root scrubs dispatch text; money is not cascaded |
+| `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afr_supervisor/src/**` | EDIT | `deletion_generation` leaves the runner protocol and its report spool |
 | `rustd/crates/*/tests/**`, `rustd/crates/afd_db/src/test_util/**`, `rustd/crates/afd_bench/**` | EDIT | Fixtures and assertions use the new schema |
-| `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afd_api_wire/src/authoring/**` | EDIT | Drop `deletion_generation` and the message `operation_id` |
-| `public/openapi.json` | EDIT | Regenerated for the two wire removals |
-| `ui/packages/app/lib/api/draft-types.ts` | EDIT | Message schema without `operation_id` |
-| `cli/src/**`, `scripts/**`, `playbooks/**`, `make/*.mk` | EDIT | Only where a discovery-grep hit names a renamed table |
-| `docs/architecture/*.md` | EDIT | Old table names replaced; `postgres_schemas.md` §Settled outcomes |
-| `docs/v2/pending/*.md`, `docs/v2/active/*.md` | EDIT | Live specs naming a renamed table; `done/` stays frozen |
-| `.orly/docs/SCHEMA_CONVENTIONS.md` | EDIT | Only through `orly update` after the source change |
-| `~/Projects/orly/docs/SCHEMA_CONVENTIONS.md` | EDIT | Cross-repository, own branch and PR (owner-approved) |
-| `~/Projects/docs/**` | EDIT | Runner protocol and draft message pages, changelog `<Update>`; own branch |
-| `HANDOFF_schema_clean_slate.md` | DELETE | Ephemeral sign-off log absorbed by this spec and the canonical doc |
+| `rustd/Cargo.toml` | EDIT | Comment naming `core.fleet_events` |
+| `public/openapi.json` | EDIT | Regenerated for the runner protocol removal |
+| `cli/src/**`, `ui/packages/app/**`, `scripts/**`, `playbooks/**`, `make/*.mk` | EDIT | Only where the inventory check finds a removed name |
+| `docs/AUTH.md`, `docs/AUTH_DEVICE_LOGIN.md`, `docs/architecture/*.md` | EDIT | Old table names replaced; `postgres_schemas.md` §Settled outcomes |
+| `docs/v2/pending/*.md`, `docs/v2/active/*.md` | EDIT | Live specs naming a removed table; `done/` stays frozen |
+| `.orly/docs/SCHEMA_CONVENTIONS.md`, `.orly/AGENTS.md` | EDIT | Only through `orly update` after the source change (the latter mandates `core.fleet_*`) |
+| `~/Projects/orly/**` (conventions doc and the pack carrying `core.fleet_*`) | EDIT | Cross-repository, own branch and PR (owner-approved) |
+| `~/Projects/docs/**` | EDIT | Runner protocol, retention, retry window, Library deletion, changelog `<Update>`; own branch |
 
 ## Applicable Rules
 
-- **`.orly/docs/greptile-learnings/RULES.md`** — STS (no string literals in schema objects), NSQ (schema-qualified SQL through named constants), SGR (every slot grants), ITF (integration tests on the real schema), NDC (dropped columns lose every writer), NLR, NLG (no alias for an old table or column name), UFS, ORP (orphan sweep across Rust, TypeScript, docs), VLT (no credential material in rows), KYS (keyset indexes carry the tiebreak).
+- **`.orly/docs/greptile-learnings/RULES.md`** — STS (no vocabulary literals in schema objects), NSQ, SGR (every slot grants), ITF (integration tests on the real schema), NDC (dropped columns lose every writer), NLR, NLG (no alias for an old table or column name), UFS, ORP (orphan sweep across Rust, TypeScript, docs), VLT, KYS.
 - `.orly/docs/SCHEMA_CONVENTIONS.md` — identity, timestamps and standard columns, as amended by §1.
-- `docs/RUST_ERROR_STANDARD.md` — the migrator's new refusal is an `ErrorKind` arm, never a hand-written error type.
+- `docs/RUST_ERROR_STANDARD.md` — any new refusal is an `ErrorKind` arm, never a hand-written error type.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | SCHEMA GUARD | yes — every slot deletion, `migration.rs` edit; `VERSION` is 0.62.0 | Owner records `SCHEMA GUARD: SKIPPED per user override (reason: …)` before the first slot deletion; guard output lists every removed and created slot |
-| File & Function Length (≤350/≤50/≤70) | yes | One table per slot keeps each under 100 lines; split any Rust file a rename pushes over the cap |
+| File & Function Length (≤350/≤50/≤70) | yes | One table per slot; split any Rust file a rename pushes over the cap |
 | UFS | yes | Status, type and scope values stay named constants bound as parameters |
 | MILESTONE-ID | yes | No `M229` in source, test names or slot comments |
 | GREPTILE | yes | End-of-turn read of the rules named above |
@@ -92,61 +91,61 @@ Discovery grep (rerun at PLAN, same pattern in the Dead Code Sweep): `git grep -
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — same from-empty posture and dependency-layer ordering; this rebuild diverges by grouping slots per Postgres schema and by requiring an owner override, because `VERSION` is past 0.30.0.
+- **Reference:** `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — same from-empty posture; this rebuild diverges by ordering slots per table, numbering them from 1000, and requiring an owner override because `VERSION` is past 0.30.0.
 
 ## Sections (implementation slices)
 
 ### §1 — Conventions land at their source
 
-The nine rules and the counter table from the canonical doc land in `~/Projects/orly/docs/SCHEMA_CONVENTIONS.md` on its own branch and PR, together with removing the stale Zig timestamp and `schema/embed.zig` lines. After it merges, `orly update --no-hooks` refreshes the generated copy here. **Implementation default:** the source edit precedes any slot, because the slots are reviewed against it.
+The rules, the counter table and the deletion-matrix requirement land in `~/Projects/orly` on their own branch and PR: the conventions doc (dropping its stale Zig timestamp and `schema/embed.zig` lines) and the pack text that mandates `core.fleet_*`. After it merges, `orly update --no-hooks` refreshes the generated copies here.
 
-- **Dimension 1.1** — generated conventions carry rules 1–9, the counter table, and no Zig or `embed.zig` text → Test `test_conventions_carry_naming_rules`
+- **Dimension 1.1** — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `test_conventions_carry_naming_rules`
 - **Dimension 1.2** — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
 
 ### §2 — Slots rebuilt from empty
 
-All 97 slots go. New slots follow the canonical doc table by table, one per table, in dependency order: roles, identity, model, vault, connector, fleet, runner, authoring, billing, memory. A circular head pointer (`fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`) gets its foreign key as `DEFERRABLE INITIALLY DEFERRED`, declared in the slot of the second table. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
+All 97 slots go. New slots are numbered from 1000, so any old ledger row is an unknown version and is refused. One slot per table, ordered by foreign key (a table follows everything it references, across schemas). Each cycle — `fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`, `approval_gates.active_grant_id` if `integration_grants` follows `fleets` — gets its foreign key in its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
 
 - **Dimension 2.1** — migrate from empty yields exactly the documented tables and columns → Test `test_migrate_from_empty_builds_nine_owned_schemas`
-- **Dimension 2.2** — no index predicate, trigger, CHECK or DEFAULT contains a string literal → Test `test_schema_objects_carry_no_string_literals`
-- **Dimension 2.3** — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and reject UPDATE → Test `test_immutable_tables_reject_update`
-- **Dimension 2.4** — no table name repeats its schema; every foreign-key column ends `_id` → Test `test_table_and_key_names_follow_rules`
-- **Dimension 2.5** — a ledger holding a version the registry lacks is refused before any slot runs → Test `test_migrate_refuses_unknown_ledger_version`
+- **Dimension 2.2** — no index predicate, trigger, CHECK or DEFAULT carries a vocabulary literal; structural literals match the allowed list → Test `test_schema_objects_carry_no_vocabulary_literals`
+- **Dimension 2.3** — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and refuse UPDATE, and cascades still delete them → Test `test_immutable_tables_refuse_update`
+- **Dimension 2.4** — no table repeats its schema name; every foreign-key column ends `_id` and names its table or a stated role → Test `test_table_and_key_names_follow_rules`
+- **Dimension 2.5** — a ledger holding only old version numbers is refused with zero slots applied → Test `test_migrate_refuses_old_ledger`
 
 ### §3 — Every reader and writer follows the new names
 
-Every query, row struct and fixture moves to the new tables and columns. Each column in the canonical doc's §Settled list is resolved from source: a cited reader keeps it, otherwise it is dropped, and the outcome is written into that section.
+Every query, row struct and fixture moves to the new tables and columns. Each item in the canonical doc's §Settled list is resolved from source: a cited reader keeps it, otherwise it is dropped, and the outcome is written into that section.
 
 - **Dimension 3.1** — the full integration lane passes on the rebuilt schema → Test `test_integration_lane_on_rebuilt_schema`
-- **Dimension 3.2** — every §Settled column carries a recorded outcome with a citation → Test `test_settled_columns_have_outcomes`
+- **Dimension 3.2** — every §Settled item carries a recorded outcome with a citation → Test `test_settled_columns_have_outcomes`
 
 ### §4 — Behaviour that changes with the schema
 
-- **Dimension 4.1** — closed drafts untouched for 30 days are swept with their messages and candidates; attempts and settlements remain → Test `test_closed_draft_sweep_keeps_money`
-- **Dimension 4.2** — a retried request inside the receipt window returns the first result; after its resource is deleted it returns Gone; receipts past the window are swept → Test `test_replay_receipt_window`
-- **Dimension 4.3** — deleting a Library card deletes its revisions while a fleet installed from it keeps its own setup → Test `test_library_delete_cascades_revisions`
-- **Dimension 4.4** — `tenant provider set` writes through `model.tenant_models`; the selection holds only a pointer, NULL meaning platform default → Test `test_tenant_selection_points_at_model`
-- **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the draft message response carries no `operation_id` → Test `test_wire_drops_retired_fields`
+- **Dimension 4.1** — each deletion root in the matrix keeps attempts, settlements and charges and scrubs `dispatches.result` at once; an open draft and an installing fleet survive their sweeps → Test `test_deletion_matrix_keeps_money`
+- **Dimension 4.2** — inside 24 hours from `created_at` the same key and body replay, a changed body or a different user is refused, and a deleted resource answers Gone; at the boundary and after it the key is new → Test `test_replay_receipt_window`
+- **Dimension 4.3** — deleting a Library card deletes its revisions; a fleet installed from it keeps its setup; drafts started from or published to it keep existing with the reference NULL; another tenant's card cannot be deleted → Test `test_library_delete_cascades_revisions`
+- **Dimension 4.4** — `tenant provider set` writes one `tenant_models` row and points the selection at it; reset stores NULL; a pointer to another tenant's model is refused → Test `test_tenant_selection_points_at_model`
+- **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the runner and its report spool decode without it; the draft message response still carries `operation_id`, joined from the receipt → Test `test_runner_wire_drops_deletion_generation`
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
 
-### §5 — Databases rebuilt
+### §5 — Databases rebuilt by a guarded one-shot procedure
 
-Development first, then production, each dropped to empty (including `audit`) and migrated by the release command. Production is rebuilt only while M224_001 is unlaunched, with the owner present.
+A procedure in the PR's Session Notes, run with the owner present, development first: confirm the target environment by name; count rows in `core.tenants`, `core.users`, `core.fleets` and `billing.tenant_wallet` and refuse to continue unless the owner confirms the counts are test data; stop `agentsfleetd` and the runner so nothing writes; drop the database including `audit`; deploy, letting the release command migrate; start the single runner on the same release. The procedure is retired once M224_001 launches; from then on only forward migrations exist.
 
-- **Dimension 5.1** — development and production report the new layout after rebuild → Test `test_deployed_databases_rebuilt` (manual)
+- **Dimension 5.1** — both databases report the new layout after rebuild → Test `test_deployed_databases_rebuilt` (manual)
 
 ### §6 — Docs
 
 - **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `test_docs_name_no_removed_table`
-- **Dimension 6.2** — public runner protocol and draft message pages and a changelog `<Update>` land on their own docs branch → Test `test_public_docs_branch_open` (manual)
+- **Dimension 6.2** — public pages for the runner protocol, closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch → Test `test_public_docs_branch_open` (manual)
 
 ## Interfaces
 
 ```
 Runner protocol (POST /v1/runners/me/authoring-leases/{lease_id}/{activity|model-calls|renew|reports},
-  lease payload): field `deletion_generation` removed.
-Draft messages (GET/POST /v1/workspaces/{workspace_id}/drafts/{draft_id}/messages): field
-  `operation_id` removed from each message; request bodies unchanged.
+  lease payload): field `deletion_generation` removed. One development runner restarts on the release.
+Draft messages: unchanged on the wire; `operation_id` is joined from authoring.replay_receipts.
+Drafts: `closed_at` and `expires_at` unchanged on the wire.
 CLI: `agentsfleet tenant provider set` unchanged from outside; server writes model.tenant_models.
 Tables and columns: docs/architecture/postgres_schemas.md is the interface; renames there are final.
 ```
@@ -155,19 +154,22 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Stale ledger | Migrate runs against a database still holding old `audit.schema_migrations` rows | Migrator refuses before any slot with the unknown version named; nothing applied |
-| Old name survives | A query still names a removed table or column | Integration lane fails on the undefined relation; discovery grep in the Dead Code Sweep reports it |
-| Circular insert order | Head pointer written before its target in one transaction | Deferred foreign key checks at commit; an orphan pointer rolls the transaction back |
-| Production holds data | Rebuild attempted after M224_001 launched | §5 stops; owner decides a forward migration instead |
+| Stale ledger | Migrate runs against a database still holding old `audit.schema_migrations` rows | Every old row is an unknown version below 1000; migrate refuses before any slot, naming it |
+| Old name survives | A query still names a removed table or column | Integration lane fails on the undefined relation; the rubric's inventory check reports it |
+| Cycle order | Head pointer written before its target in one transaction | Deferred foreign key checks at commit; an orphan pointer rolls back |
+| Wrong environment | Rebuild pointed at a database with real users | §5 row counts and owner confirmation stop it before DROP |
+| Production holds data | Rebuild attempted after M224_001 launched | Procedure retired; owner decides a forward migration |
+| Erasure loses money | A deletion root cascades into attempts, settlements or charges | No foreign key from money rows to an erasable owner; `test_deletion_matrix_keeps_money` fails |
 | Late 754 merge | Slots 956/957 land on `main` after this branch opens | Rebase folds them into the new slots; `rust-migration-list` fails until folded |
 | Concurrent resolution | Two people resolve one gate or invite | Guarded UPDATE on `resolved_at IS NULL`; second sees zero rows and a conflict |
 
 ## Invariants
 
-1. No schema object carries a string literal — catalogue query in `test_schema_objects_carry_no_string_literals` fails the lane.
-2. Immutable tables cannot be updated — no UPDATE grant plus an append-only trigger; `test_immutable_tables_reject_update`.
+1. No schema object carries a vocabulary literal — catalogue scan in `test_schema_objects_carry_no_vocabulary_literals`.
+2. Immutable tables cannot be updated — no UPDATE grant plus a refusing trigger; `test_immutable_tables_refuse_update`.
 3. The migration list equals the tracked slots — `rust-migration-list` in `make lint-all`.
-4. A ledger the registry does not recognise never migrates — refusal arm in `afd_db::migrate`; `test_migrate_refuses_unknown_ledger_version`.
+4. No old ledger migrates — every new version is ≥ 1000 and unknown versions are refused; `test_migrate_refuses_old_ledger`.
+5. No money row has a foreign key to an erasable owner — catalogue assertion in `test_deletion_matrix_keeps_money`.
 
 ## Metrics & Observability
 
@@ -179,31 +181,31 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_conventions_carry_naming_rules` | generated conventions file → contains the counter table heading; 0 matches for `embed.zig` |
+| 1.1 | unit | `test_conventions_carry_naming_rules` | generated conventions → contains the counter table heading; 0 matches for `embed.zig` and `core.fleet_*` |
 | 1.2 | manual | `test_orly_doctor_clean_after_update` | `orly doctor` after update → no drift line; owner merges the orly PR |
 | 2.1 | integration | `test_migrate_from_empty_builds_nine_owned_schemas` | empty database → table and column set equals the canonical doc, nine schemas plus `audit` |
-| 2.2 | integration | `test_schema_objects_carry_no_string_literals` | catalogue scan of index predicates, triggers, CHECKs, DEFAULTs → 0 quoted literals |
-| 2.3 | integration | `test_immutable_tables_reject_update` | UPDATE on each append-only table → privilege or trigger error; mutable tables all have `updated_at` |
-| 2.4 | integration | `test_table_and_key_names_follow_rules` | catalogue → no table prefixed by its schema; foreign-key columns end `_id` |
-| 2.5 | integration | `test_migrate_refuses_unknown_ledger_version` | ledger seeded with version 955 → refusal naming 955; 0 slots applied |
+| 2.2 | integration | `test_schema_objects_carry_no_vocabulary_literals` | catalogue scan → only allowed structural literals; a seeded `'pending'` predicate fails the scan |
+| 2.3 | integration | `test_immutable_tables_refuse_update` | UPDATE on each append-only table → refused; parent DELETE still cascades; mutable tables all have `updated_at` |
+| 2.4 | integration | `test_table_and_key_names_follow_rules` | catalogue → no schema-prefixed table; foreign-key columns end `_id` and match a table or a listed role |
+| 2.5 | integration | `test_migrate_refuses_old_ledger` | ledger seeded with versions 100–955 → refusal naming the first; 0 slots applied |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
-| 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → carries kept/dropped plus a citation |
-| 4.1 | integration | `test_closed_draft_sweep_keeps_money` | closed draft 31 days old → draft, messages, candidates gone; attempt and settlement remain |
-| 4.2 | integration | `test_replay_receipt_window` | same key twice → one message; resource deleted → Gone; aged receipt → swept |
-| 4.3 | integration | `test_library_delete_cascades_revisions` | card with two revisions, one installed → card and revisions gone; fleet revision intact |
-| 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one `tenant_models` row, selection points at it; reset → NULL pointer row |
-| 4.5 | unit | `test_wire_drops_retired_fields` | serialised lease payload and message → no `deletion_generation`, no `operation_id` |
-| 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one succeeds, one conflict; second invite for same address while pending → refused |
-| 5.1 | manual | `test_deployed_databases_rebuilt` | owner-present rebuild; `agentsfleetd doctor --schema-gate` output pasted in Session Notes |
-| 6.1 | unit | `test_docs_name_no_removed_table` | discovery grep over docs outside `done/` → 0 hits |
-| 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the two pages and the `<Update>` recorded in Session Notes |
+| 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
+| 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
+| 4.2 | integration | `test_replay_receipt_window` | same key at 23h59m → replay; changed body → refused; other user → refused; deleted resource → Gone; at 24h → new |
+| 4.3 | integration | `test_library_delete_cascades_revisions` | card A→draft→B, installed fleet → card and revisions gone; fleet intact; draft references NULL; foreign tenant → refused |
+| 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one row, selection points at it; reset → NULL row; another tenant's model id → refused |
+| 4.5 | unit | `test_runner_wire_drops_deletion_generation` | lease payload and report spool entry without the field → decode; message response → has `operation_id` |
+| 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
+| 5.1 | manual | `test_deployed_databases_rebuilt` | owner-present §5 run; `agentsfleetd migrate` output and a catalogue table count pasted in Session Notes |
+| 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
+| 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Schema rebuilds from empty into the documented layout (§2) | `make test-integration-rustd` | exit 0 | P0 | |
-| R2 | No code or live doc names a pre-rebuild table (§3, §6) | `git grep -nE "(^\|[^a-z_])core\.[a-z_]+" -- rustd ui cli scripts docs/architecture docs/v2/pending docs/v2/active \| wc -l` | 0 | P0 | |
+| R1 | Schema rebuilds from empty into the documented layout (§2–§4) | `make test-integration-rustd` | exit 0 | P0 | |
+| R2 | No code or live doc names a removed table (§3, §6) | the inventory check below | 0 | P0 | |
 | R3 | Conventions carry the rules (§1) | `grep -c "Counter and pointer names" .orly/docs/SCHEMA_CONVENTIONS.md` | 1 | P1 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -212,7 +214,15 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | S4 | Version in sync | `make check-version` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S7 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+
+R2 inventory check — removed names are the tables `CREATE`d at `a8646bb2a` and absent at `HEAD`:
+
+```bash
+old=$(git grep -hoE "CREATE TABLE IF NOT EXISTS [a-z_]+\.[a-z_]+" a8646bb2a -- schema | awk '{print $NF}' | sort -u)
+new=$(git grep -hoE "CREATE TABLE IF NOT EXISTS [a-z_]+\.[a-z_]+" HEAD -- schema | awk '{print $NF}' | sort -u)
+comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
+  | xargs -I{} git grep -nwE "{}" -- rustd ui cli scripts playbooks make docs/architecture docs/AUTH.md docs/AUTH_DEVICE_LOGIN.md docs/v2/pending docs/v2/active | wc -l
+```
 
 **Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ + one decisive output line. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes. A P1 ❌ requires an owner-acked deferral quote in Discovery.
 
@@ -222,8 +232,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 | File to delete | Verify |
 |----------------|--------|
-| `schema/500_fleets.sql` and every other pre-rebuild slot | `git ls-files schema \| grep -cE '^schema/(5[0-9]{2}\|9[0-9]{2})_'` → 0 |
-| `HANDOFF_schema_clean_slate.md` | `test ! -f HANDOFF_schema_clean_slate.md` |
+| every pre-rebuild slot (`schema/100_schemas.sql` … `schema/955_runner_policy_required.sql`) | `git ls-files schema \| grep -cE '^schema/[0-9]{3}_'` → 0 |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -231,15 +240,15 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 |-----------------------|------|----------|
 | `deletion_generation` | `git grep -nw deletion_generation -- rustd ui cli public \| head` | 0 matches |
 | `setup_version`, `config_json`, `setup_context` | `git grep -nwE "setup_version\|config_json\|setup_context" -- rustd \| head` | 0 matches |
-| `creation_digest`, `grant_source`, `checkpoint_at` | `git grep -nwE "creation_digest\|grant_source\|checkpoint_at" -- rustd \| head` | 0 matches |
-| `core.` table names | `git grep -nE "(^\|[^a-z_])core\.[a-z_]+" -- rustd \| head` | 0 matches |
+| `creation_digest`, `grant_source`, `checkpoint_at`, `selftest_all_ok` | `git grep -nwE "creation_digest\|grant_source\|checkpoint_at\|selftest_all_ok" -- rustd \| head` | 0 matches |
+| removed table names | the R2 inventory check | 0 |
 
 ## Out of Scope
 
+- Data-access hardening (statement and lock budgets, typed row decoding, query macros, claim contention, Library list in one query, live-set cache, pool-saturation bench, `dispatches.result` holding only private content) — its own milestone, per the owner's tiering of the review.
 - Narrowing `api_runtime` to per-schema runtime roles — its own milestone, as `300_vault_secrets.sql` and `700_tenant_wallet.sql` record.
-- A Firecracker or SPACE sandbox tier — `runners.sandbox_config` is ready for its keys; the tier ships with its own spec.
+- A Firecracker or SPACE sandbox tier — `runners.sandbox_config` is ready for its keys.
 - Renaming wire fields to the new column names (`fence`, `call_index`, `activity_sequence`) — owner chose column names only.
-- Moving `authoring.attempts` beside `runner.leases` — owner kept it in `authoring`.
 
 ---
 
@@ -249,11 +258,11 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 2. **Preserved user behaviour** — every dashboard page, CLI command and runner keeps working; chat, save, publish, install, schedules, approvals and billing behave as before apart from §4.
 3. **Optimal-way check** — a from-empty rebuild is the most direct route while no production data exists; forward migrations would keep 97 slots of history and every copy column.
 4. **Rebuild-vs-iterate** — rebuild; the owner chose it, and iterating would mean dozens of `ALTER` slots that freeze the mistakes.
-5. **What we build** — new slots, renamed queries, two wire removals, the conventions at source, the docs.
-6. **What we do NOT build** — new features; per-schema roles; Firecracker; wire renames.
+5. **What we build** — new slots, renamed queries, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
+6. **What we do NOT build** — new features; data-access hardening; per-schema roles; Firecracker; wire renames.
 7. **Fit with existing features** — compounds with M224_001 launch readiness; must not destabilise the fleet lease path (`runner.fleet_slots`, fencing).
-8. **Surface order** — API and runner first; the CLI is unchanged from outside.
-9. **Dashboard restraint** — no new UI; the draft client stops parsing a field it never read.
+8. **Surface order** — API and runner first; the CLI and dashboard are unchanged from outside.
+9. **Dashboard restraint** — no new UI.
 10. **Confused-user next step** — `docs/architecture/postgres_schemas.md` for contributors; the changelog `<Update>` for runner operators.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -264,7 +273,9 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 ## Discovery (consult log)
 
-- **Consults** — Owner decisions via AskUserQuestion, Oct 17, 2026, recorded verbatim as the chosen option: clean slate "Yes, whole repo"; layout "Fold library into authoring"; shared definitions table "Drop it"; invite email table "Drop it"; library delete "Cascade delete"; deadline rename "Rename"; conventions "Orly repo + orly update"; counter names "Apply everywhere"; runner knobs "Add Firecracker knobs now" then "Fold it in"; fleet "Keep required_tags"; model "Approve with fold"; invites "Add resolved_at"; each schema "Approve". Architecture: `ARCH: grounded in schema/600_runners.sql | proposal: nine owned schemas | status: silent | landing: a` — doc-only commit `a8646bb2a`.
+- **Consults** — Owner decisions via AskUserQuestion, Oct 17, 2026, recorded as the chosen option: clean slate "Yes, whole repo"; layout "Fold library into authoring"; shared definitions table "Drop it"; invite email table "Drop it"; library delete "Cascade delete"; deadline rename "Rename"; conventions "Orly repo + orly update"; counter names "Apply everywhere"; runner knobs "Add Firecracker knobs now" then "Fold it in"; fleet "Keep required_tags"; model "Approve with fold"; invites "Add resolved_at"; each schema "Approve". After the adversarial review: operation_id "Keep, serve via join"; erasure "Keep money, scrub text"; tiers "Yes i agree to fix Tier 1, Tier 2". Architecture: `ARCH: grounded in schema/600_runners.sql | proposal: nine owned schemas | status: silent | landing: a` — doc-only commit `a8646bb2a`.
+- **Adversarial review (Oct 17, 2026)** — 14 P1 findings verified against source; seven corrected the design (`installs.scopes`, mutable `channels`, API instants, frozen `review_context`, separate draft source and publication, `leases.event_created_at`, the CLI's required `operation_id`). Data-access findings moved to their own milestone.
+- **Runner upgrade** — > Indy (2026-10-17): "Well when we deploy, there is just 1 runner in dev, so its easy to restart. Currently there are no fleets and we start with clean db migration. So there is no issue here on coordinated upgrade to fear or think about." — context: `deletion_generation` removal needs no compatibility window.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
@@ -274,25 +285,12 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 Paste as-is. The reviewer reads source on `main`; prose is a claim to check, never evidence.
 
 ```text
-Review the milestone spec docs/v2/pending/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md
-in ~/Projects/agentsfleet against its canonical design docs/architecture/postgres_schemas.md and
-the source on main. Be adversarial: find what breaks, not what reads well.
-
-Attack, with file:line evidence for every claim:
-1. Ordering: can §2's dependency order (roles, identity, model, vault, connector, fleet, runner,
-   authoring, billing, memory) create every foreign key, including the deferred head pointers?
-2. Ledger collision: does a database holding old audit.schema_migrations rows get refused before
-   any slot runs (rustd/crates/afd_db/src/migrate/)? Name the failure if it would silently skip.
-3. Blast radius: does Files Changed cover every writer and reader the discovery grep finds,
-   including fixtures, bench seeds, scripts and live specs? List any path it misses.
-4. Behaviour changes in §4: is each one tested by a negative case, and is any user-visible change
-   missing from Interfaces or the docs list in §6?
-5. Wire removals: does dropping deletion_generation break a runner build still in the field, and
-   does anything in ui/ or cli/ read the message operation_id?
-6. Production safety: is §5 safe to run only while M224_001 is unlaunched, and what stops it after?
-7. Template: every Dimension has a test with a concrete assertion; the rubric uses the exact
-   commands in .orly/orly.json; no estimates, owners or dates of completion.
-
-Output: a table of findings, most severe first — severity (P0/P1/P2), file:line, what fails,
-the smallest fix. Then a verdict: READY, or BLOCKED with the P0s that block. No praise, no summary.
+Re-review docs/v2/pending/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md in
+~/Projects/agentsfleet with docs/architecture/postgres_schemas.md, against source on main. Your
+previous review's findings were applied or scoped out; check each fix, then look for new breaks.
+Attack with file:line evidence: slot order and cycle slots; old-ledger refusal; the deletion matrix
+(does any root still cascade money or leave dispatch text); every dropped column's last reader;
+§5's guard; the R2 inventory check's correctness; each §4 negative case.
+Output: findings table, most severe first — severity, section, evidence, what fails, smallest fix.
+Then: spec READY or BLOCKED, design SOUND or UNSOUND, with the P0s behind each. No praise.
 ```
