@@ -87,6 +87,20 @@ pub fn whole_millis(instant: Timestamp) -> Timestamp {
     Timestamp::from_millisecond(millis).unwrap_or(instant)
 }
 
+/// The instant `millis` after the epoch, saturating at the ends of the range.
+///
+/// For a millisecond count kept outside Postgres and the API — an atomic, a
+/// Dragonfly record a Lua script does arithmetic on — where an integer is the
+/// honest representation and only the edge reads it as an instant.
+#[must_use]
+pub fn from_millis(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).unwrap_or(if millis < 0 {
+        Timestamp::MIN
+    } else {
+        Timestamp::MAX
+    })
+}
+
 /// `instant` moved by `millis`, saturating at the ends of the range.
 ///
 /// Saturating rather than wrapping: a TTL added to a clock near the end of the

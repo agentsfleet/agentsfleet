@@ -14,8 +14,8 @@
 use std::time::{Duration, UNIX_EPOCH};
 
 use afd_core::clock::{
-    Clock, SystemClock, add_millis, instant_at, millis_between, now, saturating_millis,
-    saturating_millis_signed, whole_millis,
+    Clock, SystemClock, add_millis, from_millis, instant_at, millis_between, now,
+    saturating_millis, saturating_millis_signed, whole_millis,
 };
 use jiff::Timestamp;
 
@@ -112,6 +112,15 @@ fn test_arithmetic_saturates_at_the_bounds() {
     );
     assert_eq!(add_millis(Timestamp::MIN, -1), Timestamp::MIN);
     assert_eq!(add_millis(at(EARLIER_MS), 3_500), at(LATER_MS));
+}
+
+/// A millisecond count reads as its instant, saturating past the range.
+#[test]
+fn test_a_millisecond_count_reads_as_its_instant() {
+    assert_eq!(from_millis(LATER_MS), at(LATER_MS));
+    assert_eq!(from_millis(-LATER_MS), at(-LATER_MS));
+    assert_eq!(from_millis(i64::MAX), Timestamp::MAX);
+    assert_eq!(from_millis(i64::MIN), Timestamp::MIN);
 }
 
 /// A difference is signed, so "how long ago" and "how far ahead" are one call.
