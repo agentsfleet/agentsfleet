@@ -208,7 +208,9 @@ fn exhausted(policy: RetryPolicy) -> Error {
         error_code,
         event = "migrate_lock_exhausted"
     );
-    Error::new(ErrorKind::MigrationLockUnavailable { waited_ms })
+    Error::new(ErrorKind::MigrationLockUnavailable {
+        waited: policy.budget(),
+    })
 }
 
 /// Whether the migration lock is currently free, without holding it.

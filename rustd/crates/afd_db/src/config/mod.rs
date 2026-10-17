@@ -16,8 +16,7 @@ mod sizing;
 mod tls;
 
 use self::sizing::{
-    ACQUIRE_TIMEOUT_MS_DEFAULT, CONNECT_TIMEOUT_MS_DEFAULT, min_connections_default,
-    pool_size_default,
+    ACQUIRE_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_DEFAULT, min_connections_default, pool_size_default,
 };
 use crate::error::{Error, ErrorKind, Result};
 use afd_core::env::{EnvSource, optional};
@@ -115,10 +114,10 @@ impl PoolConfig {
                 .and_then(|raw| u32::try_from(raw).ok())
                 .unwrap_or_else(|| min_connections_default(max_connections))
                 .min(max_connections),
-            acquire_timeout: Duration::from_millis(
-                read_knob(env, ACQUIRE_TIMEOUT_KNOB, role).unwrap_or(ACQUIRE_TIMEOUT_MS_DEFAULT),
-            ),
-            connect_timeout: Duration::from_millis(CONNECT_TIMEOUT_MS_DEFAULT),
+            // The knob spells whole milliseconds; this is where they become a span.
+            acquire_timeout: read_knob(env, ACQUIRE_TIMEOUT_KNOB, role)
+                .map_or(ACQUIRE_TIMEOUT_DEFAULT, Duration::from_millis),
+            connect_timeout: CONNECT_TIMEOUT_DEFAULT,
         })
     }
 
@@ -141,7 +140,7 @@ impl PoolConfig {
     }
 
     /// How long an acquire may take, the handshake included when the pool has
-    /// to open one. See [`ACQUIRE_TIMEOUT_MS_DEFAULT`]: sqlx spends this one
+    /// to open one. See [`ACQUIRE_TIMEOUT_DEFAULT`]: sqlx spends this one
     /// deadline on both halves.
     #[must_use]
     pub const fn acquire_timeout(&self) -> Duration {

@@ -74,9 +74,7 @@ impl Drop for OwnedRows {
             runtime.block_on(async {
                 tokio::time::timeout(TIMEOUT, remove(&url, &rows))
                     .await
-                    .unwrap_or_else(|_elapsed| {
-                        Err(error::unreachable_datastore(ROLE, TIMEOUT.as_millis()))
-                    })
+                    .unwrap_or_else(|_elapsed| Err(error::unreachable_datastore(ROLE, TIMEOUT)))
             })
         })
         .join();

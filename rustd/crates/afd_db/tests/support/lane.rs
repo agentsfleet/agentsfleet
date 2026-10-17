@@ -21,10 +21,10 @@ pub(crate) const LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Short enough that a test waits it out, long enough that a loaded machine
 /// does not trip it while the proxy is still relaying normally.
-pub(crate) const ACQUIRE_BUDGET_MS: u64 = 400;
+pub(crate) const ACQUIRE_BUDGET: Duration = Duration::from_millis(400);
 
 /// The same, for the handshake the probe makes.
-pub(crate) const CONNECT_BUDGET: Duration = Duration::from_millis(ACQUIRE_BUDGET_MS);
+pub(crate) const CONNECT_BUDGET: Duration = ACQUIRE_BUDGET;
 
 /// The lane's Postgres, as an address a proxy can forward to.
 pub(crate) fn lane_target() -> SocketAddr {
@@ -83,7 +83,7 @@ pub(crate) fn config_through(addr: SocketAddr, role: DbRole, database: &str) -> 
         (role.url_knob(), url.as_str()),
         (
             "DATABASE_ACQUIRE_TIMEOUT_MS",
-            &ACQUIRE_BUDGET_MS.to_string(),
+            &afd_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
         ),
     ]);
     PoolConfig::resolve(&env, role)

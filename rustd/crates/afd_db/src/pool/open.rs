@@ -31,8 +31,8 @@ pub(super) async fn probe(config: &PoolConfig) -> Result<()> {
         sqlx::PgConnection::connect_with(&config.connect_options()),
     )
     .await
-    .map_err(|_elapsed| unreachable_datastore(role.tag(), config.connect_timeout().as_millis()))?
-    .map_err(|source| classify_acquire(role.tag(), config.acquire_timeout().as_millis(), source))?;
+    .map_err(|_elapsed| unreachable_datastore(role.tag(), config.connect_timeout()))?
+    .map_err(|source| classify_acquire(role.tag(), config.acquire_timeout(), source))?;
     // A failed close on a connection that already answered proves nothing
     // and is not the caller's problem; the socket goes with the value.
     let _ = probe.close().await;

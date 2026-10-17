@@ -176,7 +176,7 @@ impl Db {
     /// warming cannot buy its way past a budget it inherits. A pool whose
     /// establishment costs more than one acquire budget warms to ZERO however
     /// generous this deadline is, and then serves every request from an empty
-    /// pool. See `config::ACQUIRE_TIMEOUT_MS_DEFAULT`.
+    /// pool. See `config::ACQUIRE_TIMEOUT_DEFAULT`.
     ///
     /// # Errors
     /// Never. A pool that could not reach its floor is a slower pool, not a
