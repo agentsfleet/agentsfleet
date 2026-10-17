@@ -63,4 +63,4 @@ The previous worker, preview POST, weaker configuration schema, fixed authoring 
 ## Related pages
 
 - [Source findings](source-findings.md)
-- [Cutover spec](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)
+- [Cutover spec](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)

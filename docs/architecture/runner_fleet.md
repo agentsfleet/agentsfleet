@@ -196,7 +196,7 @@ The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 ### Where the code lives
 
-The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate`, `afd_observability` and `afd_otlp` (the OpenTelemetry export, which `afr_telemetry` links). No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
+The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate`, `afd_observability`, `afd_inference` and `afd_otlp` (the OpenTelemetry export, which `afr_telemetry` links). No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|

@@ -297,11 +297,10 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   failed memory pushes, tool call duration (by tool and outcome), tenant
   processes killed for memory inside a sandbox, and sandboxes held between a
   fleet's leases. A
-  provider label is the provider registry's name
-  (`afr_providers/assets/providers.json`), or `_other` for a `custom:`
-  endpoint. OpenTelemetry's well-known names cover six of the registry's
-  providers, so a metric labelled by them would fold the rest into one series;
-  the `invoke_agent` span keeps the well-known `gen_ai.provider.name`. A tool
+  provider label is a vendor name from rig's bounded provider list, or `_other`
+  for any other configured name (`afr_telemetry/src/labels/mod.rs`).
+  These labels describe telemetry only; saved model settings choose the route.
+  The `invoke_agent` span keeps the well-known `gen_ai.provider.name`. A tool
   label is a published catalog name or `_other`; every outcome and reason is a
   closed enum.
 - **Its own losses:** spans suppressed by the budget, and
@@ -673,7 +672,7 @@ Labels are bounded at the source:
 | `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
 | `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
-| `gen_ai.request.model` | the run's model name as the lease carried it: a catalogue value, or any name a tenant typed for an `openai-compatible` custom endpoint, which `core.model_library` does not bound; the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
+| `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the lease; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
 | `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
 | `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
@@ -683,13 +682,13 @@ distinct-value guard cannot cap series across replicas and restarts. Exact
 per-workspace cost is a Postgres query against the ledger, which is exact
 rather than bounded.
 
-**Model attribution carries no cap of its own, and the catalogue does not bound it.**
+**Model attribution carries no metric-family series cap.**
 The cost families copy the run's model name into `gen_ai.request.model`
-(`rustd/crates/afd_observability/src/producers/cost.rs`). Most names come from
-the catalogue, but a tenant's `openai-compatible` custom endpoint can name any
-model, absent from `core.model_library`
-([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8. The self-managed credential and the api_key visibility boundary"). The
-families declare no ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
+(`rustd/crates/afd_observability/src/producers/cost.rs`). Runtime dispatch resolves
+the saved model reference through `core.model_library` for both owner and
+platform models (`rustd/crates/afd_credential/src/provider/registered/sql.rs`).
+Catalogue updates can add model identities over time. The families declare no
+ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
 only bound is the SDK's default of 2,000 series per stream: past it, new
 `(model, …)` combinations are folded into one `otel.metric.overflow` series, and
 their spend is no longer told apart in the export. Exact per-model cost stays a

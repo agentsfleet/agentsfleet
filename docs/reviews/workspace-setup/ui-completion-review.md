@@ -12,7 +12,7 @@ executable: false
 
 This records reviewed user interface (UI) work for one combined Pull Request (PR).
 [M227_002](../../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) covers the website and branding.
-[M227_001](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) keeps the backend, live journeys and release checks.
+[M227_001](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) keeps the backend, live journeys and release checks.
 
 M227_002 is DONE and moved to `docs/v2/done/`; all 135 browser checks pass.
 The app setup and API alignment updates are complete at package scope. Indy signed off the website and app changes.

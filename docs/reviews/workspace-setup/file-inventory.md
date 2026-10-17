@@ -516,7 +516,7 @@ The inventory is a discovery map, not a passing test or implemented route list. 
 
 ## Related pages
 
-- [Owning spec](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)
+- [Owning spec](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)
 - [Folded batch](../../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md)
 
 ## Active implementation additions

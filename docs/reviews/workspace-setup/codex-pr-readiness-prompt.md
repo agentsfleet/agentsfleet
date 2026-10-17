@@ -11,7 +11,7 @@ against HEAD: `git diff HEAD` plus untracked files from `git status -uall`. Part
 The spec's comparison revision is `ad3ed8f92`.
 
 Read first, in order:
-1. `docs/v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md`: Sections 1-7, Dimensions,
+1. `docs/v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md`: Sections 1-7, Dimensions,
    Failure Modes, Invariants, Files Changed, and Discovery. Discovery holds owner decisions; do not reopen them.
 2. `docs/reviews/workspace-setup/decisions.md`: 21 locked decisions.
 3. `docs/architecture/api_resources.md`, `docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`,

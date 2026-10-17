@@ -83,7 +83,7 @@ The Astra update extends the existing report and proposal; it does not edit runt
 
 | Document | Comparison | Change |
 |---|---|---|
-| [M227_001](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) | New | Owns the cutover, seven implementation sections, failure proofs, file scope, prerequisites, and final repository checks. |
+| [M227_001](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) | New | Owns the cutover, seven implementation sections, failure proofs, file scope, prerequisites, and final repository checks. |
 | [M227_002](../../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) | New | Folds carried website, PostHog analytics, branding, shell, email, and readme work into the owning PR. |
 
 Both specs remain `PENDING`; their comparison revision is recorded and their test baseline remains pending.

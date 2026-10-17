@@ -114,7 +114,7 @@ The block sits in the fleet's `config`:
 - `stage_chunk_threshold` is the fraction (0 to 1) of the context window at which a stage chunks.
 - `context_cap_tokens` is the operating cap used for wrap-up. `0` or absent inherits the selected model's saved physical window. Authored caps leave that physical window unchanged.
 
-**Wire-shape parser status.** The four `x-agentsfleet.context.*` knobs are parsed into `FleetConfig` and applied through the lease's `ContextBudget`. Absent or zero values use the runtime defaults below. The saved model supplies execution identity and the separate `ExecutionPolicy.model_context_tokens` physical window (`rustd/crates/afd_gate/src/policy/{context,build}.rs`).
+**Wire-shape parser status.** The four `x-agentsfleet.context.*` knobs are parsed into `FleetConfig` and applied through the lease's `ContextBudget`. Absent or zero values use the runtime defaults below. The saved model supplies execution identity and the separate `ExecutionPolicy.model_context_tokens` physical window (`rustd/crates/afd_gate/src/policy/{context,build/mod}.rs`).
 
 ### How the three layers compose (defence-in-depth, not override)
 
