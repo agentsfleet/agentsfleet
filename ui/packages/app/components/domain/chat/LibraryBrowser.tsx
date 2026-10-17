@@ -61,6 +61,7 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
     <LibraryChoices page={page} workspace={workspace} owned={owned} onRemoved={() => { setSelected(null); setCursor(null); setAttempt((value) => value + 1); }}
       onInspect={(card) => { setEntry(null); setSelected(card); setRevision(undefined); setError(null); setInspectionAttempt((value) => value + 1); }} />
     {!error && page && !page.items.length ? <LibraryEmpty paged={!!(cursor || page.next_cursor)} owned={owned} /> : null}
+    {cursor ? <Button variant="outline" onClick={() => { setCursor(null); setSelected(null); }}>First page</Button> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
     {selected ? <LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
@@ -75,7 +76,7 @@ function LibraryScope({owned, onChange}: {owned: boolean; onChange: (owned: bool
 }
 
 function LibraryEmpty({paged, owned}: {paged: boolean; owned: boolean}) {
-  const copy = paged ? "No published setups on this page. Check the next page or return to All."
+  const copy = paged ? "No published setups on this page. Check another page or change the library scope."
     : owned ? "No setups have been published by this workspace. Create a setup in chat, review it, then publish it to the Fleet library."
     : "No published setups are available yet. Create a setup in chat, review it, then publish it to the Fleet library.";
   return <p className="text-sm text-muted-foreground">{copy}</p>;

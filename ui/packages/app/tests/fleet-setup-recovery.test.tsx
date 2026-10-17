@@ -8,7 +8,7 @@ import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 const {resume, refresh} = vi.hoisted(() => ({resume: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStatusAction: resume}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
-afterEach(() => {cleanup(); vi.resetAllMocks();});
+afterEach(() => {cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals();});
 
 it.each([200, 403, 412])("reconciles setup continuation status %i without hiding the fleet", async (status) => {
   resume.mockResolvedValue(status === 200 ? {ok: true} : {ok: false, error: "Denied", status});
@@ -60,4 +60,33 @@ it.each(["installing", "active", "stopped"] as const)("retries an unregistered s
   fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
   expect((await screen.findByText("Scheduler unavailable")).textContent).toBe("Scheduler unavailable");
   vi.unstubAllGlobals();
+});
+
+// Value: protects=active fleets expose retry for every unconfirmed schedule state;
+// fails_when=syncing or unknown states lose recovery, or synced schedules offer retry;
+// why_new=the fleet-page retry scenario covers failed registrations only; seam=none;
+// no_claim=external scheduler registration (HTTP response is fixture controlled).
+it.each(["failed", "syncing", "synced", "unconfirmed"])("reconciles an active fleet's %s schedule registration", async (sync) => {
+  const schedule = {schedule_id: "sched-matrix", fleet_id: FLEET.id, sync, last_error: null};
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({...schedule, sync: "synced"}), {status: 200}));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "accepted"}, schedules: [schedule]}} workspace={WORKSPACE} />);
+  const retry = screen.queryByRole("button", {name: "Retry registration"});
+  if (sync === "synced") {
+    expect(retry).toBeNull();
+    expect(screen.queryByLabelText("Schedule registration")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    return;
+  }
+  expect(retry).toBeTruthy();
+  const warning = sync === "failed" ? "is saved but not registered, so it will not fire"
+    : "is saved but its registration was not confirmed, so it may not fire";
+  expect(screen.getByText(new RegExp(warning))).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith(`/live/v1/workspaces/${WORKSPACE}/fleets/${FLEET.id}/schedules/sched-matrix/sync`, expect.objectContaining({method: "POST"}));
+  expect(resume).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getByRole("alert", {name: "Schedule registration"})).toBeTruthy();
 });

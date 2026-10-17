@@ -59,7 +59,7 @@ function PublicationActions({client, view}: {client: DraftClient; view: Reviewed
   const [label, setLabel] = useState(view.reviewed.effective.instance_name);
   const disabled = view.busy || view.pending || view.draft.state !== DRAFT_STATE.editing;
   return <div className="space-y-sm border-t border-border pt-lg">
-    <h3 className="font-medium">Publish to Library</h3><p className="text-sm text-muted-foreground">Publish the reviewed instructions and configuration as an immutable recipe. Your conversation stays private. Existing fleets keep their setup.</p>
+    <h3 className="font-medium">Publish to Library</h3><p className="text-sm text-muted-foreground">Publish the reviewed instructions and configuration as an immutable setup. Your conversation stays private. Existing fleets keep their setup.</p>
     <div className="space-y-xs"><Label htmlFor={inputId}>Library name</Label><Input id={inputId} value={label} onChange={(event) => setLabel(event.target.value)} maxLength={100} /></div>
     <div className="flex flex-wrap gap-sm"><Button variant="outline" disabled={disabled || !label.length} onClick={() => { void client.publish(label, false).catch(ignore); }}>Publish new entry</Button>
       {view.draft.publication ? <Button variant="secondary" disabled={disabled} onClick={() => { void client.publish(label, true).catch(ignore); }}>Publish next revision</Button> : null}
