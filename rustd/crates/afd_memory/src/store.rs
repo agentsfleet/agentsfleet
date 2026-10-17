@@ -2,9 +2,9 @@
 
 use std::fmt;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::page::{After, View};
@@ -41,7 +41,7 @@ pub trait MemoryStore: Send + Sync + fmt::Debug {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept>;
 
     /// Entries whose key or content holds `query`, ignoring case: the fleet's
@@ -80,12 +80,17 @@ pub trait MemoryStore: Send + Sync + fmt::Debug {
     async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool>;
 
     /// Removes `owner.fleet`'s entry under `key` only while it is no newer
-    /// than `seen_ms`, answering whether it removed one: a flip's prune
+    /// than `seen`, answering whether it removed one: a flip's prune
     /// deletes the version it read, never a write that replaced it since.
     ///
     /// # Errors
     /// The store cannot answer.
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool>;
+    async fn forget_stale(
+        &self,
+        owner: Owner<'_>,
+        key: &str,
+        seen: jiff::Timestamp,
+    ) -> Result<bool>;
 
     /// Every entry of every fleet in `workspace`, for a flip's copy.
     ///

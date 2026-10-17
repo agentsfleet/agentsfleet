@@ -54,7 +54,7 @@ impl View<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct After<'a> {
     /// The boundary row's creation instant.
-    pub created_at_ms: i64,
+    pub created_at: jiff::Timestamp,
     /// Its key, which breaks a tie inside one millisecond.
     pub key: &'a str,
     /// Its writer, which breaks a tie between two fleets' entries under one

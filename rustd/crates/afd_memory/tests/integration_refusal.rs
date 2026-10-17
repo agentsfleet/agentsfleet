@@ -10,7 +10,6 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{
     INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE, INTERNAL_OPERATION_FAILED, MEM_UNAVAILABLE,
 };
@@ -47,7 +46,7 @@ async fn test_a_runner_statement_the_database_refuses_answers_the_query_code() {
     let orphan = delta("orphan", PINNED_CATEGORY, Visibility::Fleet);
 
     let refused = store
-        .upsert(owner, &[&orphan], UnixMillis::from_millis(AT))
+        .upsert(owner, &[&orphan], afd_core::clock::from_millis(AT))
         .await
         .expect_err("an entry for a fleet that does not exist is refused");
 
@@ -97,8 +96,8 @@ async fn test_an_import_whose_identifier_cannot_be_minted_answers_operation_fail
         content: "what the source held".to_owned(),
         category: PINNED_CATEGORY.to_owned(),
         visibility: Visibility::Fleet,
-        created_at_ms: AT,
-        updated_at_ms: AT,
+        created_at: afd_core::clock::from_millis(AT),
+        updated_at: afd_core::clock::from_millis(AT),
     };
 
     let refused = store
@@ -118,7 +117,7 @@ async fn test_a_capture_whose_grants_cannot_be_read_reports_the_datastore_refusa
     let pushed = [delta("never_stored", PINNED_CATEGORY, Visibility::Fleet)];
 
     let refused = memories
-        .capture(&minted(), &pushed, UnixMillis::from_millis(AT))
+        .capture(&minted(), &pushed, afd_core::clock::from_millis(AT))
         .await
         .expect_err("a capture whose grants cannot be read is refused");
 

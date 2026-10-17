@@ -127,7 +127,7 @@ impl Memories {
                         .unwrap_or_default(),
                 ),
                 writer_fleet_id: Cow::Owned(record.fleet.as_str().to_owned()),
-                updated_at: record.updated_at_ms,
+                updated_at: record.updated_at,
                 key: Cow::Owned(record.key),
                 content: Cow::Owned(record.content),
                 category: Cow::Owned(record.category),

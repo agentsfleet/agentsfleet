@@ -114,7 +114,7 @@ pub(super) async fn page(
             }
             if let Some(boundary) = after {
                 statement = statement
-                    .bind(boundary.created_at_ms)
+                    .bind(jiff_sqlx::ToSqlx::to_sqlx(boundary.created_at))
                     .bind(boundary.key)
                     .bind(boundary.fleet.as_str());
             }

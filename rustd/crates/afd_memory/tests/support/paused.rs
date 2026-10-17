@@ -4,11 +4,11 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_memory::page::{After, View};
 use afd_memory::{Housekept, InMemory, MemoryStore, Owner, Record, Result};
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 use tokio::sync::Notify;
 
 /// The verb a [`Paused`] store holds, before it touches a row.
@@ -73,7 +73,7 @@ impl<S: MemoryStore> MemoryStore for Paused<S> {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept> {
         self.hold(Verb::Upsert).await;
         self.inner.upsert(owner, entries, now).await
@@ -105,9 +105,14 @@ impl<S: MemoryStore> MemoryStore for Paused<S> {
         self.inner.forget(owner, key).await
     }
 
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+    async fn forget_stale(
+        &self,
+        owner: Owner<'_>,
+        key: &str,
+        seen: jiff::Timestamp,
+    ) -> Result<bool> {
         self.hold(Verb::ForgetStale).await;
-        self.inner.forget_stale(owner, key, seen_ms).await
+        self.inner.forget_stale(owner, key, seen).await
     }
 
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
