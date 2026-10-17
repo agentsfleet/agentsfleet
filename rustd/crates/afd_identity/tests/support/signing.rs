@@ -28,13 +28,13 @@ use aws_lc_rs::signature::KeyPair as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 
-/// The instant every verification below is judged at, in milliseconds.
+/// The instant every verification below is judged at.
 ///
 /// Named because two test targets assert time bounds against it: `exp` and
 /// `nbf` are only meaningful relative to a clock a test can state.
-pub(crate) const NOW_MS: i64 = 1_704_067_400_000;
+pub(crate) const NOW: jiff::Timestamp = jiff::Timestamp::constant(NOW_S, 0);
 /// The same instant in seconds, which is the unit both time claims carry.
-pub(crate) const NOW_S: i64 = NOW_MS / 1_000;
+pub(crate) const NOW_S: i64 = 1_704_067_400;
 
 /// A throwaway 2048-bit RSA key as PKCS#1 DER, base64 without PEM armor.
 pub(crate) const TEST_KEY_PKCS1_B64: &str = "MIIEowIBAAKCAQEAxBs4iJWrDhpuy4GQyfrQhtnrXhzEM86cswmwrs9ouW5S4cCi+yzb+xsMZrK2n1AkVkep6c56My6P/13awSMYdtejrSs/b71W+iE83XSWPJJI4sjzUJ0UEU/AQMiMW6LVmWU55n25NyhVOrLxqO3DI5Kb6qlCxDL1yXgyKEmls1e0qXQD2kigsJp6QhcxXgPhAX6wUL0nhSUACPFG468iRU3DLR66dAsTcy7FjNWxh8ljC8ScM9Rm6yNo9i9CGTQQIRwAolMpIMcSxpBKEIhZpwkiEgtwkSvI1s+u5GxSZ6IyBM9tooyb1TlRsWhYm9pkrroGeG0Y3YSdZawXOWrEUwIDAQABAoIBAFC5J8dJXJU8mjjZB6GsxeOMlo8x5i2xMd2c8oayx9f0qtdUtYIREChIFQ29KOFhWuPNMgsVPEYPN6UVnDN+X9ajozNoJv+2/7OMtQIvuJwMV0ZLE6UuU5Fgs7G3G9eoqqYu/et7+x7SUmsMN9+ip33gHqA0tlAO7g/Vk0f0MOomSYGg85ClU9tUVqWS9WOZk7dDcF0zmXDG2aoZEE0oSV62ysQqtkX6ClC2XX4ZtiaBrPGEMB5yxNr6uPiHj7p0IAJtpxRa7jJ5ylWMYqqYGVsGBRkxYsFIDfXs79oxrs9Jf93wZ7A/yyhgWgU9B05LiO8jZ29VlMyu2BqgvP6ITzECgYEA+0UWu8O9vKEMOq2w8AZh9rDQL/L/mJNVFwKok6j6uBQgdvgN5M/ga8tfXj+PR8slFBhydDj80lESxNWwgTzcn7bNglSxdV4A+gCa01o5W6XE0mSe/hug+7pIR2wO9UYNT0gh10Av0xyUn62dLq2qBT60D0HzX57x5Axv6+Ua3TkCgYEAx8xKLWD18oavkQKucVXR/vTb8OWX6qrKG6IFEtzxOAyaRXN7y/cB7rJdl91ytTvZ4djc3lz+Zj9n3DU3HTtj85MktyomawKNpSif4BMx1MzS7cMX24y8ixBzHhroCObu4h200AIWEs3/4HhafTBVLj8tY65WiPfvqrYQPuKAOesCgYEAh3K2zoC1xvkJnpgCyWCnblPh5fcX0Seatsy4EuEERjaTSY5t7uogD/uRbTzV/92CH1MOX5hYsQcDFxgaDZDBXVctcRQ2lQ4XeKzayRPZ142Ei+Wxz0kVfpzsWZPmfFFG23YGyAHRxfuiInF0SbVT8X/bkF38047a1hPeQUs/MAECgYBQLQebPCyWHTw4ycWsz06MrD/SZJ/Y2J5wBk1Y63aVEmGZ+ySzjbSlz8fFGGVemtztR3Qie1jPOSR5dpVeUqXiaaqzIeP2zzh+DVZSugEmLud55+8b+Fb0yy4W558za1BzRo53Zk7rTuUec82ELTARdeLF/IDXR/9SFutgAM6J7wKBgF/WfKsWeV++aRYXS7vsJqq9xM+P1y9JNcIUtItVA7eYe9vbm8/mQ5e1Qln45k1EgzzkcYBBVbuTF5d92xMAHLfdZUjRCDMc752b9B6i1pgPUnd8w1YDoYK7V/wVavOhXuNPc+btdItLFps0+eOa2NCmJ7G4ekqIAvrTRwmwKlJa";
@@ -99,7 +99,7 @@ pub(crate) fn sign_with_header(header: &str, payload: &str) -> Presented {
 }
 
 pub(crate) fn verify(payload: &str) -> Result<VerifiedClaims, VerifyError> {
-    verify_at(payload, NOW_MS)
+    verify_at(payload, NOW)
 }
 
 /// Verifies a fixture token that carries the supplied protected header.
@@ -107,23 +107,29 @@ pub(crate) fn verify_with_header(
     header: &str,
     payload: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    verify_signed_at(&sign_with_header(header, payload), NOW_MS)
+    verify_signed_at(&sign_with_header(header, payload), NOW)
 }
 
 /// The same, judged at a caller-chosen instant.
 ///
 /// Separate entry point rather than a defaulted argument so the tests that do
 /// not care about time keep reading as tests about claim shape.
-pub(crate) fn verify_at(payload: &str, now_ms: i64) -> Result<VerifiedClaims, VerifyError> {
-    verify_signed_at(&sign(payload), now_ms)
+pub(crate) fn verify_at(
+    payload: &str,
+    now: jiff::Timestamp,
+) -> Result<VerifiedClaims, VerifyError> {
+    verify_signed_at(&sign(payload), now)
 }
 
 /// Verifies one already-signed fixture token at a stated instant.
-fn verify_signed_at(token: &Presented, now_ms: i64) -> Result<VerifiedClaims, VerifyError> {
+fn verify_signed_at(
+    token: &Presented,
+    now: jiff::Timestamp,
+) -> Result<VerifiedClaims, VerifyError> {
     let verifier = JwksVerifier::new(
         StaticKeySet::new(key_set().into_bytes()),
         VerifierConfig::new(ISSUER, AUDIENCE),
-        Arc::new(FixedClock::at(afd_core::clock::from_millis(now_ms))) as Arc<dyn Clock>,
+        Arc::new(FixedClock::at(now)) as Arc<dyn Clock>,
     );
     tokio::runtime::Builder::new_current_thread()
         .enable_all()

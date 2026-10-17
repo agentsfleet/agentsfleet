@@ -7,14 +7,11 @@ use std::sync::{Arc, Mutex};
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
 use afd_core::clock::{Clock, FixedClock};
-use afd_identity::jwks::cache::{DEFAULT_TTL_MS, REFRESH_MIN_INTERVAL_MS};
+use afd_identity::jwks::cache::{DEFAULT_TTL, REFRESH_MIN_INTERVAL, STALE_GRACE};
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, VerifierConfig};
 
-use crate::support::signing;
-
-// The public outage policy: fifteen minutes after the six-hour refresh window.
-const STALE_GRACE_MS: i64 = 15 * 60 * 1_000;
+use crate::support::{ONE_MS, signing};
 
 #[derive(Debug)]
 struct Source {
@@ -37,9 +34,7 @@ impl KeySetSource for Source {
 }
 
 fn verifier() -> (JwksVerifier<Source>, Arc<FixedClock>, Presented) {
-    let clock = Arc::new(FixedClock::at(afd_core::clock::from_millis(
-        signing::NOW_MS,
-    )));
+    let clock = Arc::new(FixedClock::at(signing::NOW));
     let source = Source {
         offline: AtomicBool::new(false),
         document: Mutex::new(signing::key_set().into_bytes()),
@@ -61,17 +56,17 @@ async fn repeated_outages_do_not_extend_the_last_confirmed_keys_lifetime() {
         .await
         .expect("the provider publishes the key");
     verifier.source().offline.store(true, Ordering::SeqCst);
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     verifier
         .verify(&token)
         .await
         .expect("the outage is within the grace period");
-    clock.advance_millis(STALE_GRACE_MS - 1);
+    clock.advance(STALE_GRACE.saturating_sub(ONE_MS));
     verifier
         .verify(&token)
         .await
         .expect("the ceiling itself remains usable");
-    clock.advance_millis(1);
+    clock.advance(ONE_MS);
     assert_eq!(
         verifier
             .verify(&token)
@@ -86,7 +81,7 @@ async fn a_successful_refresh_restores_verification_after_the_ceiling() {
     let (verifier, clock, token) = verifier();
     verifier.verify(&token).await.expect("warm the cache");
     verifier.source().offline.store(true, Ordering::SeqCst);
-    clock.advance_millis(DEFAULT_TTL_MS + STALE_GRACE_MS + 1);
+    clock.advance(DEFAULT_TTL + STALE_GRACE + ONE_MS);
     assert_eq!(
         verifier
             .verify(&token)
@@ -95,7 +90,7 @@ async fn a_successful_refresh_restores_verification_after_the_ceiling() {
         VerifyError::KeySetUnavailable
     );
     verifier.source().offline.store(false, Ordering::SeqCst);
-    clock.advance_millis(REFRESH_MIN_INTERVAL_MS + 1);
+    clock.advance(REFRESH_MIN_INTERVAL + ONE_MS);
     verifier
         .verify(&token)
         .await
@@ -113,7 +108,7 @@ async fn removed_keys_stop_verifying_after_refresh_of_the_same_cache() {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = signing::key_set()
         .replace(signing::KID, "replacement-key")
         .into_bytes();
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     assert_eq!(
         verifier
             .verify(&token)
@@ -126,7 +121,7 @@ async fn removed_keys_stop_verifying_after_refresh_of_the_same_cache() {
         .document
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = signing::key_set().into_bytes();
-    clock.advance_millis(REFRESH_MIN_INTERVAL_MS + 1);
+    clock.advance(REFRESH_MIN_INTERVAL + ONE_MS);
     verifier
         .verify(&token)
         .await

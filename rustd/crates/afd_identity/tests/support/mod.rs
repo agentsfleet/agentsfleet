@@ -11,6 +11,16 @@
 pub(crate) mod capability;
 pub(crate) mod signing;
 
+/// One millisecond, the step that puts a clock just past a window's edge.
+pub(crate) const ONE_MS: std::time::Duration = std::time::Duration::from_millis(1);
+
+/// Where every capability suite's clock starts.
+///
+/// Arbitrary, and identical across every window test on purpose: the
+/// assertions are about elapsed time from a common origin, so one name is what
+/// keeps them comparable.
+pub(crate) const CLOCK_ORIGIN: jiff::Timestamp = jiff::Timestamp::constant(1_000, 0);
+
 /// Installs a subscriber so event macros actually run.
 ///
 /// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates
