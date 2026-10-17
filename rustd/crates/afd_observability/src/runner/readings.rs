@@ -6,14 +6,13 @@
 
 use std::sync::atomic::Ordering;
 
-use super::{Counters, NEVER_HEARD_FROM, RunnerMetrics};
+use super::{Counters, RunnerMetrics};
 
 impl RunnerMetrics {
     /// What every admitted runner was last heard from at, in seconds.
     ///
-    /// Milliseconds are the storage and seconds are the wire, because the
-    /// census declares this family in seconds — converting at the callback is
-    /// what keeps one conversion in the process rather than one per reader.
+    /// Seconds are the wire, because the census declares this family in
+    /// seconds; the callback converts once for every reader.
     ///
     /// A runner that has never been heard from publishes NO reading: a zero
     /// there would read as 1970, which every dashboard would draw as the
@@ -21,15 +20,11 @@ impl RunnerMetrics {
     #[must_use]
     pub fn last_seen_readings(&self) -> Vec<crate::metrics::instrument::Reading> {
         self.readings(|counters| {
-            let stamp = counters.last_seen_ms.load(Ordering::Relaxed);
-            // Zero is the ABSENCE sentinel, not a time. A runner admitted and
-            // never heard from would otherwise publish the epoch, which every
-            // dashboard draws as the oldest host in the fleet — and no runner
-            // reports from 1970, so nothing real is lost by refusing it. The
-            // delivery span refuses a pre-epoch start for the same reason.
-            (stamp > NEVER_HEARD_FROM)
-                .then(|| jiff::Timestamp::from_millisecond(stamp).ok())
-                .flatten()
+            // The delivery span refuses a pre-epoch start for the same reason
+            // `LastSeen` reads one as never heard from.
+            counters
+                .last_seen
+                .get()
                 .and_then(|at| u64::try_from(at.as_second()).ok())
         })
     }
