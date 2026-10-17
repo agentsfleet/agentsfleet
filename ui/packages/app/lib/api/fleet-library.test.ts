@@ -33,13 +33,13 @@ describe("native Library transport", () => {
     const result = await listPlatformFleetLibrary("session");
     expect(result.entries[0]).toMatchObject({id: LIBRARY_CARD.id, published: false, visibility: "platform_draft"});
   });
-  it("requires matching body and response tags after conditional curation", async () => {
-    fetchMock.mockResolvedValue(response({...platform, card: {...platform.card, etag: TAG}}, 200, {etag: TAG}));
+  it.each([TAG, `W/${TAG}`])("preserves the resource tag after conditional curation with response %s", async (etag) => {
+    fetchMock.mockResolvedValue(response({...platform, card: {...platform.card, etag: TAG}}, 200, {etag}));
     const updated = await patchPlatformFleetLibraryEntry("recipe", {published: true}, TAG, "session");
     expect(updated.etag).toBe(TAG); expect(call().headers.get("If-Match")).toBe(TAG);
     expect(call().body).toEqual({published: true});
   });
-  it.each([null, '\"other\"'])("refuses an unconfirmed curation tag %s", async (etag) => {
+  it.each([null, '\"other\"', 'W/\"other\"', `W/W/${TAG}`])("refuses an unconfirmed curation tag %s", async (etag) => {
     fetchMock.mockResolvedValue(response(platform, 200, etag ? {etag} : {}));
     await expect(patchPlatformFleetLibraryEntry("recipe", {published: true}, TAG, "session")).rejects.toThrow("ETag disagree");
   });
