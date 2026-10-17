@@ -98,6 +98,7 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
         &format!(
             "NEW.workspace_id='{workspace}'::uuid AND OLD.current_definition_revision_id IS NULL"
         ),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     let aborted = c
@@ -136,6 +137,7 @@ async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry()
         &format!(
             "NEW.id='{fleet}'::uuid AND NEW.setup_stream_ready AND NOT OLD.setup_stream_ready"
         ),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     c.fund().await;
@@ -184,6 +186,7 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_str
         "activate",
         fleet.as_str(),
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     c.fund().await;

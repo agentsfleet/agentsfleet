@@ -4,8 +4,11 @@
 //! the client's resolver, before a connection opens.
 
 use afd_core::test_util::trace::Capture;
-use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
+use afd_wire::inference::{InferenceApi, ModelInference};
+use afr_agent::Loop;
 use afr_agent::ResultOutcome;
+use afr_providers::Connector;
+use afr_tools::Catalog;
 
 use super::ANSWER;
 use super::support::wires::Wire;
@@ -42,10 +45,17 @@ async fn should_refuse_a_custom_endpoint_whose_name_resolves_to_loopback() {
     let Some((_, port)) = fake.base.rsplit_once(':') else {
         panic!("the fake's base names its port: {}", fake.base);
     };
-    let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}https://localhost:{port}/v1");
-    let leased = lease(&endpoint, &[], "hello");
+    let endpoint = format!("https://localhost:{port}/v1");
+    let mut leased = lease("configured-localhost", &[], "hello");
+    leased.policy.inference = Some(ModelInference {
+        api: InferenceApi::Chat,
+        base_url: endpoint,
+        dialect: None,
+        max_output_tokens: 4096,
+    });
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let guarded = Loop::new(Catalog::new(vec![]), Connector::new().unwrap());
+    let (output, _frames) = run(&guarded, &leased).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("an endpoint the resolver refuses is no answer");

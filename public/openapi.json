@@ -887,8 +887,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Update a catalogue row's caps and rates",
-        "description": "Rates-only change; `provider` and `model_id` are the row identity and are immutable on this endpoint. The rate cache is repopulated on success. Requires the `model:admin` scope. ",
+        "summary": "Update model settings and rates",
+        "description": "Updates rates and optional inference settings; `provider` and `model_id` are the row identity and are immutable on this endpoint. The rate cache is repopulated on success. Requires the `model:admin` scope. ",
         "operationId": "update_admin_model",
         "parameters": [
           {
@@ -905,7 +905,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelRates"
+                "$ref": "#/components/schemas/AdminModelPatch"
               }
             }
           },
@@ -17383,6 +17383,17 @@
               "model_id"
             ],
             "properties": {
+              "inference": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Explicit inference settings; omitted rows remain unavailable for inference."
+                  }
+                ]
+              },
               "model_id": {
                 "type": "string",
                 "description": "Provider-native model identity."
@@ -17435,6 +17446,17 @@
                 "type": "string",
                 "description": "Opaque `UUIDv7` row identity."
               },
+              "inference": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Non-secret settings used by setup chat and runtime leases."
+                  }
+                ]
+              },
               "model_id": {
                 "type": "string",
                 "description": "Provider-native model identity."
@@ -17447,6 +17469,31 @@
           }
         ],
         "description": "One priced model row in the admin list."
+      },
+      "AdminModelPatch": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ModelRates",
+            "description": "Existing rate fields remain flattened on the wire."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "inference": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Omission preserves the current inference settings."
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Mutable model rates and optional replacement inference settings."
       },
       "AdminModelUpdated": {
         "type": "object",
@@ -18463,7 +18510,7 @@
           "context_cap_tokens": {
             "type": "integer",
             "format": "int32",
-            "description": "The active model's context cap in tokens, or zero when unresolved.",
+            "description": "The fleet's operating context cap, or zero when unresolved.",
             "minimum": 0
           },
           "memory_checkpoint_every": {
@@ -19036,7 +19083,6 @@
                 "provider",
                 "model",
                 "context_window_tokens",
-                "max_output_tokens",
                 "eligibility",
                 "pricing"
               ],
@@ -19055,9 +19101,12 @@
                   "description": "Display label."
                 },
                 "max_output_tokens": {
-                  "type": "integer",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
                   "format": "int64",
-                  "description": "Deployment output ceiling."
+                  "description": "Saved output ceiling; omitted while inference settings are unconfigured."
                 },
                 "model": {
                   "type": "string",
@@ -19292,7 +19341,7 @@
               "number",
               "null"
             ],
-            "format": "float",
+            "format": "double",
             "description": "The fraction of the context, from 0 to 1, at which a stage splits into chunks.\nZero means the runner chooses.",
             "maximum": 1,
             "minimum": 0
@@ -20478,6 +20527,17 @@
             },
             "description": "Per-host request boundaries."
           },
+          "inference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Saved model inference settings, required for runtime provider connections."
+              }
+            ]
+          },
           "inference_host": {
             "type": "string",
             "description": "Inference host to dial."
@@ -20488,6 +20548,12 @@
               "$ref": "#/components/schemas/Mintable"
             },
             "description": "Credentials the run may mint on demand."
+          },
+          "model_context_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Saved physical model context, independent of the fleet's operating cap.\nZero is unresolved and cannot authorize a provider connection.",
+            "minimum": 0
           },
           "network_policy": {
             "$ref": "#/components/schemas/NetworkPolicy",
@@ -21223,6 +21289,15 @@
             "description": "Which rule dropped it."
           }
         }
+      },
+      "InferenceApi": {
+        "type": "string",
+        "description": "The provider API rig uses for this configured model.",
+        "enum": [
+          "chat",
+          "responses",
+          "messages"
+        ]
       },
       "InviteEmailResponse": {
         "type": "object",
@@ -22530,6 +22605,39 @@
             "description": "The vault key name backing it."
           }
         }
+      },
+      "ModelInference": {
+        "type": "object",
+        "description": "Admin-owned model settings; credentials remain separate vault references.",
+        "required": [
+          "api",
+          "base_url",
+          "max_output_tokens"
+        ],
+        "properties": {
+          "api": {
+            "$ref": "#/components/schemas/InferenceApi",
+            "description": "Explicit provider API; never inferred from a model identifier."
+          },
+          "base_url": {
+            "type": "string",
+            "description": "HTTPS provider base. Host safety is proven by the credential service."
+          },
+          "dialect": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registered rig dialect, or absent for a plain compatible gateway."
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Model's configured maximum completion length, including reasoning.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "ModelMessage_Value_Value_Value": {
         "oneOf": [
@@ -25513,7 +25621,6 @@
           "ref",
           "provider",
           "model",
-          "tokenizer",
           "pricing"
         ],
         "properties": {
@@ -25532,10 +25639,6 @@
           "ref": {
             "type": "string",
             "description": "Explicit owner registry reference."
-          },
-          "tokenizer": {
-            "type": "string",
-            "description": "Local tokenizer family pinned by the admitted model."
           }
         }
       },
@@ -26799,7 +26902,6 @@
           "provider",
           "model",
           "context_window_tokens",
-          "max_output_tokens",
           "eligibility",
           "pricing"
         ],
@@ -26818,9 +26920,12 @@
             "description": "Display label."
           },
           "max_output_tokens": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Deployment output ceiling."
+            "description": "Saved output ceiling; omitted while inference settings are unconfigured."
           },
           "model": {
             "type": "string",

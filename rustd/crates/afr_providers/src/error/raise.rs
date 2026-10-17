@@ -48,12 +48,9 @@ pub(crate) fn client(source: reqwest::Error) -> Error {
     Error::from(ErrorKind::Client { source })
 }
 
-/// The registry entry `name` has a base URL that does not parse, for `source`.
-pub(crate) fn registry(name: &str, source: url::ParseError) -> Error {
-    Error::from(ErrorKind::Registry {
-        name: name.to_owned(),
-        source,
-    })
+/// Persisted model settings could not be admitted; preserve the typed cause.
+pub(crate) fn configuration(source: afd_inference::Error) -> Error {
+    Error::from(ErrorKind::Configuration { source })
 }
 
 /// The conversation cannot be sent: the result for `call_id` answers no call

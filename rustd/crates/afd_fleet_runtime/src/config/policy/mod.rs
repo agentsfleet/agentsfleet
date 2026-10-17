@@ -99,7 +99,14 @@ impl TryFrom<raw::Context> for ContextBudget {
             memory_checkpoint_every: authored
                 .memory_checkpoint_every
                 .map_or(0, raw::Knob::or_auto),
-            stage_chunk_threshold: authored.stage_chunk_threshold.unwrap_or(0.0),
+            stage_chunk_threshold: {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "garde proved a finite fraction in 0..=1 before this conversion"
+                )]
+                let fraction = authored.stage_chunk_threshold.unwrap_or(0.0) as f32;
+                fraction
+            },
         })
     }
 }

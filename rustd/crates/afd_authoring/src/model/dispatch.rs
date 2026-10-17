@@ -2,13 +2,12 @@
 
 use afd_core::{clock::UnixMillis, id::Uuid7};
 use afd_credential::provider::Providers;
-use sqlx::{Connection as _, PgConnection};
+use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 use std::sync::Arc;
 use tokio::time::Instant;
 
 use super::{
-    ModelCallInput, ModelCallResult, ProviderRequest, Transport, budget, capability, prepare,
-    provider, receipt, sql,
+    ModelCallInput, ModelCallResult, Transport, budget, capability, prepare, provider, receipt, sql,
 };
 use crate::{
     Drafts, Error, Result,
@@ -30,8 +29,42 @@ pub struct ModelCalls {
 
 pub(super) struct Intent {
     pub(super) attempt: guard::Attempt,
-    pub(super) outbound: ProviderRequest,
+    pub(super) outbound: provider::Outbound,
     pub(super) authorized_at: Instant,
+    pub(super) output_limit: u32,
+}
+
+impl Intent {
+    fn new(
+        attempt: guard::Attempt,
+        key: afd_crypto::secret::SecretString,
+        prepared: prepare::Prepared,
+        now: UnixMillis,
+        authorized_at: Instant,
+    ) -> Result<Self> {
+        let timeout_ms = (attempt.deadline - now.as_millis())
+            .min(budget::PROVIDER_TIMEOUT_MS)
+            .cast_unsigned();
+        let outbound = provider::Outbound {
+            key,
+            body: prepared.body,
+            timeout_ms,
+            inference: attempt
+                .model_snapshot
+                .inference
+                .clone()
+                .ok_or(ErrorKind::Model)?,
+            model: attempt.model_snapshot.model.clone(),
+            context_tokens: u32::try_from(attempt.model_snapshot.context_window_tokens)
+                .map_err(|_invalid| ErrorKind::Model)?,
+        };
+        Ok(Self {
+            outbound,
+            attempt,
+            authorized_at,
+            output_limit: prepared.output_limit,
+        })
+    }
 }
 
 pub(super) enum Decision {
@@ -75,16 +108,24 @@ impl ModelCalls {
             attempt,
             mut outbound,
             authorized_at,
+            output_limit,
         } = *intent;
         let elapsed = u64::try_from(authorized_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         outbound.timeout_ms = outbound.timeout_ms.saturating_sub(elapsed);
         let decoded = if outbound.timeout_ms == 0 {
             Err(ErrorKind::Unknown.into())
         } else {
-            self.transport
-                .send(outbound)
+            provider::complete(outbound, Arc::clone(&self.transport))
                 .await
-                .and_then(|response| provider::decode(&response, &request, &attempt.model_snapshot))
+                .and_then(|(status, response)| {
+                    provider::decode(
+                        status,
+                        &response,
+                        &request,
+                        &attempt.model_snapshot,
+                        output_limit,
+                    )
+                })
         };
         receipt::finish(
             &self.drafts,
@@ -148,27 +189,31 @@ impl ModelCalls {
 
     async fn next(
         &self,
-        connection: &mut PgConnection,
+        connection: &mut Transaction<'_, Postgres>,
         guarded: guard::Guarded,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         digest: &str,
     ) -> Result<Decision> {
-        if guarded.attempt.usage_unknown {
-            return Err(ErrorKind::Unknown.into());
-        }
         if guarded.attempt.calls.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {
             return Err(ErrorKind::Replay.into());
         }
         if i64::from(request.request.max_output_tokens)
-            > budget::OUTPUT_PER_TURN - guarded.attempt.output_tokens
+            > budget::output_limit(&guarded.attempt.model_snapshot) - guarded.attempt.output_tokens
         {
             return Err(ErrorKind::Token.into());
         }
         budget::coverage(connection, &guarded.attempt).await?;
-        let body = prepare::body(request, &guarded.attempt.model_snapshot)?;
+        let continuations = super::continuation::read(
+            connection,
+            &guarded.attempt,
+            request,
+            guarded.now.as_millis(),
+        )
+        .await?;
+        let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
         let key = self
             .providers
             .registered_key(
@@ -180,19 +225,22 @@ impl ModelCalls {
             .ok_or(ErrorKind::Model)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
-        insert(connection, request, &guarded.attempt, digest, now).await?;
-        let timeout_ms = (guarded.attempt.deadline - now.as_millis())
-            .min(budget::PROVIDER_TIMEOUT_MS)
-            .cast_unsigned();
-        Ok(Decision::Send(Box::new(Intent {
-            attempt: guarded.attempt,
-            outbound: ProviderRequest {
-                key,
-                body,
-                timeout_ms,
-            },
+        insert(
+            connection,
+            request,
+            &guarded.attempt,
+            digest,
+            now,
+            prepared.output_limit,
+        )
+        .await?;
+        Ok(Decision::Send(Box::new(Intent::new(
+            guarded.attempt,
+            key,
+            prepared,
+            now,
             authorized_at,
-        })))
+        )?)))
     }
 }
 
@@ -202,13 +250,14 @@ async fn insert(
     attempt: &guard::Attempt,
     digest: &str,
     now: UnixMillis,
+    output_limit: u32,
 ) -> Result<()> {
     let inserted = sqlx::query(sql::INSERT)
         .bind(&request.dispatch_id)
         .bind(attempt.id.as_str())
         .bind(i64::from(request.call_index))
         .bind(digest)
-        .bind(i64::from(request.request.max_output_tokens))
+        .bind(i64::from(output_limit))
         .bind(now.as_millis() + budget::PRIVATE_TTL_MS)
         .bind(now.as_millis())
         .execute(&mut *connection)

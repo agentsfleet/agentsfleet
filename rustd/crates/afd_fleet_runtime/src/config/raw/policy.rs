@@ -72,11 +72,9 @@ pub(crate) struct Context {
     pub(crate) memory_checkpoint_every: Option<Knob>,
     /// The fraction of the context, from 0 to 1, at which a stage splits into chunks.
     /// Zero means the runner chooses.
-    // `finite` first, beside the range, because the range alone admits NaN;
-    // and a value past `f32`'s range, `1e39`, arrives as +∞, which would
-    // serialize into every lease as `null`.
-    #[garde(inner(custom(finite_fraction), range(min = FRACTION_MIN, max = FRACTION_MAX)))]
-    pub(crate) stage_chunk_threshold: Option<f32>,
+    // Validate at JSON's numeric precision before narrowing the proven fraction.
+    #[garde(inner(custom(afd_validate::finite), range(min = FRACTION_MIN, max = FRACTION_MAX)))]
+    pub(crate) stage_chunk_threshold: Option<f64>,
     // Every key in the block that is none of the above. Ignored by the schema:
     // the parser refuses each one by name.
     #[serde(flatten)]
@@ -86,23 +84,9 @@ pub(crate) struct Context {
 }
 
 /// The smallest fraction of the window: zero, which means "auto".
-pub(super) const FRACTION_MIN: f32 = 0.0;
+pub(super) const FRACTION_MIN: f64 = 0.0;
 /// The largest: the whole window.
-pub(super) const FRACTION_MAX: f32 = 1.0;
-
-/// `afd_validate::finite` over an `f32`. Widening keeps NaN and both
-/// infinities as they are, so the rule answers exactly as it would on the
-/// narrower value.
-///
-/// # Errors
-/// `afd_validate::rules::NOT_FINITE` for NaN, +∞ or −∞.
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "garde fixes the custom-rule signature at `fn(&T, &C) -> garde::Result`; a float taken by value is not callable from the attribute that runs it"
-)]
-fn finite_fraction<C: ?Sized>(value: &f32, context: &C) -> garde::Result {
-    afd_validate::finite(&f64::from(*value), context)
-}
+pub(super) const FRACTION_MAX: f64 = 1.0;
 
 /// A number, or `auto` to let the runner choose.
 //

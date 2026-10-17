@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { HERO_HEADLINE } from "../../src/lib/marketing-copy";
 
-const HOSTED_SIGN_UP = "https://app.agentsfleet.net/sign-up";
+const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 
 type InternalLinkCase = {
   label: RegExp;
@@ -15,7 +15,7 @@ async function assertFooterLinks(page: Page) {
 
   const dashboardHref = await page.getByTestId("header-install-cta").getAttribute("href");
   expect(dashboardHref).toMatch(/^https?:\/\//);
-  await expect(footer.getByRole("link", { name: "sign in", exact: true })).toHaveAttribute("href", dashboardHref!);
+  await expect(footer.getByRole("link", { name: "join waitlist", exact: true })).toHaveAttribute("href", dashboardHref!);
   await expect(footer.getByRole("link", { name: /^early access$/i })).toHaveCount(0);
 
   const internalFooterLinks: InternalLinkCase[] = [
@@ -52,20 +52,20 @@ test.describe("Cross-page link coverage", () => {
     );
 
     await expect(page.getByRole("button", { name: /copy the install command/i })).toHaveCount(0);
-    await expect(page.getByTestId("hero").getByRole("link", { name: /Create your first fleet/ })).toBeVisible();
+    await expect(page.getByTestId("hero").getByRole("link", { name: /Join waitlist/ })).toBeVisible();
 
-    const earlyAccess = nav.getByRole("link", { name: /^Get started$/i });
-    await expect(earlyAccess).toHaveAttribute("href", HOSTED_SIGN_UP);
+    const earlyAccess = nav.getByRole("link", { name: /^Early access$/i });
+    await expect(earlyAccess).toHaveAttribute("href", WAITLIST);
     await expect(earlyAccess).toHaveAttribute("target", "_blank");
-    await expect(page.getByTestId("audience-section").getByRole("link", { name: "Hosted ↗", exact: true })).toHaveAttribute("href", HOSTED_SIGN_UP);
+    await expect(page.getByTestId("audience-section").getByRole("link", { name: "Hosted waitlist ↗", exact: true })).toHaveAttribute("href", WAITLIST);
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
 
     await expect(
       page.getByTestId("hero").getByRole("link", { name: /talk to us/i }),
     ).toHaveCount(0);
-    await expect(page.getByTestId("pricing-cta-early-access")).toHaveText(/Create your first fleet/i);
-    await expect(page.getByTestId("pricing-cta-early-access")).toHaveAttribute("href", HOSTED_SIGN_UP);
+    await expect(page.getByTestId("pricing-cta-early-access")).toHaveText(/Join waitlist/i);
+    await expect(page.getByTestId("pricing-cta-early-access")).toHaveAttribute("href", WAITLIST);
 
     await assertFooterLinks(page);
   });

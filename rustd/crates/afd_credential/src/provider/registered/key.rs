@@ -4,9 +4,9 @@ use afd_core::id::Uuid7;
 use afd_crypto::{aad::Aad, secret::SecretString};
 use afd_vault::StoredEnvelope;
 use serde::Deserialize;
-use sqlx::{FromRow as _, PgConnection, Row as _};
+use sqlx::{FromRow as _, Postgres, Row as _, Transaction};
 
-use super::{CONTEXT, RegisteredModel, metadata, read};
+use super::{CONTEXT, RegisteredModel, read};
 use crate::{
     error::{Result, provider_malformed, query, vault_open},
     provider::{Providers, credential},
@@ -31,27 +31,26 @@ impl Providers {
     /// Preserves store/decryption failures; stale metadata answers `None`.
     pub async fn registered_key(
         &self,
-        connection: &mut PgConnection,
+        connection: &mut Transaction<'_, Postgres>,
         owner: &Uuid7,
         pinned: &RegisteredModel,
     ) -> Result<Option<SecretString>> {
-        let Some(row) = read(connection, owner, &pinned.reference).await? else {
+        let Some(registration) = read(connection, owner, &pinned.reference).await? else {
             return Ok(None);
         };
-        if metadata(&row, &pinned.reference)? != *pinned {
+        if registration.model != *pinned {
             return Ok(None);
         }
+        let row = registration.row;
         let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
         let name: String = row.try_get(7).map_err(query(CONTEXT))?;
         let row = sqlx::query(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)
-            .fetch_optional(connection)
+            // The metadata read holds this credential FOR SHARE until dispatch commits.
+            .fetch_one(&mut **connection)
             .await
             .map_err(query(CONTEXT))?;
-        let Some(row) = row else {
-            return Ok(None);
-        };
         let body = StoredEnvelope::from_row(&row)
             .map_err(query(CONTEXT))?
             .into_envelope()

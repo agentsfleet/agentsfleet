@@ -7,6 +7,7 @@
     "ui/packages/design-system"
   ],
   "devDependencies": {
+    "vercel": "64.3.1",
     "zod": "^4.6.5"
   },
   "overrides": {

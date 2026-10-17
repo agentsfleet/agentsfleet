@@ -18,7 +18,9 @@ mod listing;
 mod maintenance;
 mod messages;
 mod model_calls;
+mod model_keys;
 mod model_metadata;
+mod model_tools;
 mod privacy;
 mod proposals;
 #[path = "../support/refusal.rs"]

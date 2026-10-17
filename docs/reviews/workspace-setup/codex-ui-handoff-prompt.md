@@ -72,7 +72,7 @@ targets (`make lint-app`, `make test-unit-app`, `make lint-cli`,
    - The events are `draft_message_accepted`, `draft_message_finished`,
      `draft_review_opened`, `fleet_setup_finished`, `fleet_setup_cancelled`
      and `fleet_library_published`, per the M227 spec at
-     `docs/v2/active/M227_001_*.md:237`.
+     `docs/v2/done/M227_001_*.md:237`.
    - Only kind, state, outcome and opaque authorized identifiers may be sent.
      No text, Definitions, URLs or secret values.
    - Server acceptance is authoritative; browser clicks are intent only.

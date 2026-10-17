@@ -8,6 +8,70 @@ use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 
 #[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_output_limit() {
+    use afd_authoring::types::{ModelPurpose, ModelsQuery};
+    let f = Fixture::create().await;
+    sqlx::query("UPDATE core.model_library SET inference=NULL WHERE id=$1::uuid")
+        .bind(f.catalogue.first().expect("first catalogue model").as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("unconfigure one model");
+    for purpose in [
+        None,
+        Some(ModelPurpose::Authoring),
+        Some(ModelPurpose::Runtime),
+    ] {
+        let page = f
+            .drafts
+            .models(
+                f.access(),
+                ModelsQuery {
+                    limit: 100,
+                    purpose,
+                    starting_after: None,
+                },
+            )
+            .await
+            .expect("model response");
+        let raw = serde_json::to_value(page).expect("API representation");
+        let items = raw
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .expect("model items");
+        assert_eq!(items.len(), if purpose.is_none() { 2 } else { 1 });
+        let usable = items
+            .iter()
+            .find(|row| {
+                row.pointer("/eligibility/authoring")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+            })
+            .expect("usable choice retained");
+        assert_eq!(
+            usable.get("max_output_tokens"),
+            Some(&serde_json::json!(8192))
+        );
+        if purpose.is_none() {
+            assert_unconfigured(items);
+        }
+    }
+    f.cleanup().await;
+}
+
+fn assert_unconfigured(items: &[serde_json::Value]) {
+    let unconfigured = items
+        .iter()
+        .find(|row| {
+            row.pointer("/eligibility/authoring")
+                .and_then(serde_json::Value::as_bool)
+                == Some(false)
+        })
+        .expect("configuration fact");
+    assert!(unconfigured.get("max_output_tokens").is_none());
+}
+
+#[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn rotating_with_the_same_timestamp_changes_resolution_generation() {
     let f = Fixture::create().await;

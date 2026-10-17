@@ -10,12 +10,12 @@ use std::sync::atomic::Ordering;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
-use afd_wire::policy::{CUSTOM_PROVIDER_PREFIX, ExecutionPolicy};
+use afd_wire::policy::ExecutionPolicy;
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{
-    DETAIL_BLOCKED_ENDPOINT, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
+    DETAIL_CONFIGURATION, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
     EVENT_UNHOSTED_PROVIDER,
 };
 use crate::client::{Call, Verb};
@@ -150,11 +150,12 @@ async fn should_catch_a_panicking_engine_on_a_supervisor_only_lease() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_starts() {
+async fn a_lease_without_saved_inference_settings_is_refused_before_anything_starts() {
     let capture = Capture::install();
     let mut rig = rig();
     let mut refused_lease = offering(&[UPDATE_PLAN.name()]);
     refused_lease.policy.provider = UNSPOKEN_PROVIDER.into();
+    refused_lease.policy.inference = None;
 
     rig.run(&refused_lease).await.unwrap();
 
@@ -173,17 +174,15 @@ async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_sta
     );
 }
 
-/// A provider the daemon accepts and no runner wire speaks: it signs its
-/// requests rather than taking a key.
+/// Provider labels alone cannot supply missing inference configuration.
 const UNSPOKEN_PROVIDER: &str = "bedrock";
 
 #[tokio::test(start_paused = true)]
-async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
+async fn a_private_persisted_endpoint_refuses_the_lease_before_any_model_or_sandbox() {
     let capture = Capture::install();
     let mut rig = rig();
-    let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
     let mut refused_lease = offering(&[UPDATE_PLAN.name()]);
-    refused_lease.policy.provider = endpoint.clone().into();
+    refused_lease.policy.inference.as_mut().unwrap().base_url = PRIVATE_URL.into();
 
     rig.run(&refused_lease).await.unwrap();
 
@@ -191,14 +190,14 @@ async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(
-        report[FAILURE_DETAIL], DETAIL_BLOCKED_ENDPOINT,
-        "the address is the cause, never the provider name"
+        report[FAILURE_DETAIL], DETAIL_CONFIGURATION,
+        "invalid settings are a configuration refusal"
     );
     assert_no_model_call(&rig);
     assert_eq!(position(&calls, Verb::Hydrate), None);
-    let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
+    let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
-    assert_eq!(refused.field(FIELD_NAME), Some(endpoint.as_str()));
+    assert_eq!(refused.field(FIELD_NAME), None);
     assert_eq!(
         refused.field(FIELD_ERROR_CODE),
         Some(error_code::AGENTSFLEET_INVALID_CONFIG.as_str())
@@ -242,7 +241,7 @@ async fn a_refusal_naming_nothing_still_ends_the_lease_before_anything_starts() 
     let calls = rig.calls();
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
-    assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED);
+    assert_eq!(report[FAILURE_DETAIL], DETAIL_CONFIGURATION);
     assert_eq!(position(&calls, Verb::Hydrate), None);
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);

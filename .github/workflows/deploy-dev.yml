@@ -92,6 +92,13 @@ jobs:
     uses: ./.github/workflows/deploy-dev-metal.yml
     secrets: inherit
 
+  # Build, deploy, and retain the same dashboard and command-line outputs
+  # whose identities acceptance checks alongside the native component builds.
+  dashboard:
+    needs: [build, fly]
+    uses: ./.github/workflows/deploy-dev-dashboard.yml
+    secrets: inherit
+
   # ── 4. Wait for the Fly development environment to go green ─────────────
   verify:
     needs: fly
@@ -110,14 +117,14 @@ jobs:
   # success. A FAILED runner deploy skips these gates, which the verdict below
   # already reads as red — the honest reading, since nothing was measured.
   acceptance:
-    needs: [verify, metal]
+    needs: [verify, metal, dashboard]
     uses: ./.github/workflows/deploy-dev-acceptance.yml
     secrets: inherit
 
   # ── 6. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [build, fly, acceptance, metal]
+    needs: [build, fly, acceptance, metal, dashboard]
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -144,6 +151,7 @@ jobs:
           TOOLBOX_BUILD: ${{ needs.build.outputs.toolbox }}
           DAEMON_BUILD: ${{ needs.build.outputs.daemon }}
           GHCR_RESULT: ${{ needs.build.outputs.ghcr }}
+          DASHBOARD_RESULT: ${{ needs.dashboard.result }}
           FLY_RESULT: ${{ needs.fly.outputs.result }}
           QA_RESULT: ${{ needs.acceptance.outputs.qa }}
           ACCEPTANCE_RESULT: ${{ needs.acceptance.outputs.acceptance }}
@@ -158,21 +166,22 @@ jobs:
           DAEMON_BUILD="${DAEMON_BUILD:-skipped}"
           GHCR_RESULT="${GHCR_RESULT:-skipped}"
           FLY_RESULT="${FLY_RESULT:-skipped}"
+          DASHBOARD_RESULT="${DASHBOARD_RESULT:-skipped}"
           QA_RESULT="${QA_RESULT:-skipped}"
           ACCEPTANCE_RESULT="${ACCEPTANCE_RESULT:-skipped}"
           CLI_RESULT="${CLI_RESULT:-skipped}"
           METAL_RESULT="${METAL_RESULT:-skipped}"
-          for entry in "compile-runner=$RUNNER_BUILD" "build-toolbox=$TOOLBOX_BUILD" "compile-daemon=$DAEMON_BUILD" "push-ghcr=$GHCR_RESULT" "deploy-fly=$FLY_RESULT" "qa=$QA_RESULT" "acceptance-e2e=$ACCEPTANCE_RESULT" "acceptance-cli=$CLI_RESULT" "deploy-metal=$METAL_RESULT"; do
+          for entry in "compile-runner=$RUNNER_BUILD" "build-toolbox=$TOOLBOX_BUILD" "compile-daemon=$DAEMON_BUILD" "push-ghcr=$GHCR_RESULT" "deploy-fly=$FLY_RESULT" "dashboard=$DASHBOARD_RESULT" "qa=$QA_RESULT" "acceptance-e2e=$ACCEPTANCE_RESULT" "acceptance-cli=$CLI_RESULT" "deploy-metal=$METAL_RESULT"; do
             echo "dev_release_acceptance_summary job=${entry%%=*} result=${entry#*=} commit=$SHORT_SHA"
           done
 
-          if [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
+          if [ "$DASHBOARD_RESULT" = success ] && [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
             && { [ "$METAL_RESULT" = success ] || [ "$METAL_RESULT" = skipped ]; }; then
             STATUS=success
-            MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | acceptance-cli: passed | metal: ${METAL_RESULT}\\n→ ready for tag release"
+            MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | acceptance-cli: passed | metal: ${METAL_RESULT} | dashboard: ${DASHBOARD_RESULT}\\n→ ready for tag release"
           else
             STATUS=failure
-            MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nbuild: runner ${RUNNER_BUILD} | toolbox ${TOOLBOX_BUILD} | daemon ${DAEMON_BUILD} | ghcr ${GHCR_RESULT} | fly ${FLY_RESULT}\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | acceptance-cli: ${CLI_RESULT} | metal: ${METAL_RESULT}\\nCheck: ${RUN_URL}"
+            MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nbuild: runner ${RUNNER_BUILD} | toolbox ${TOOLBOX_BUILD} | daemon ${DAEMON_BUILD} | ghcr ${GHCR_RESULT} | fly ${FLY_RESULT}\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | acceptance-cli: ${CLI_RESULT} | metal: ${METAL_RESULT} | dashboard: ${DASHBOARD_RESULT}\\nCheck: ${RUN_URL}"
           fi
 
           echo "status=$STATUS" >>"$GITHUB_OUTPUT"

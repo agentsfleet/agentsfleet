@@ -1,7 +1,7 @@
 export const DOCS_URL = "https://docs.agentsfleet.net";
-const APP_BASE_URL = import.meta.env.VITE_APP_BASE_URL?.trim().replace(/\/+$/, "") || "https://app.agentsfleet.net";
-export const APP_SIGN_IN_URL = `${APP_BASE_URL}/sign-in`;
-export const APP_SIGN_UP_URL = `${APP_BASE_URL}/sign-up`;
+export const WAITLIST_URL = import.meta.env.VITE_WAITLIST_URL?.trim() || "https://accounts.agentsfleet.net/waitlist";
+// Every public hosted-access surface switches destination here when access opens.
+export const PUBLIC_ACCESS_URL = WAITLIST_URL;
 export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
 export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";
 export const SELF_HOSTED_URL = `${GITHUB_URL}#quick-start`;

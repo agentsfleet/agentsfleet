@@ -8,6 +8,7 @@ use sqlx::PgConnection;
 
 pub(crate) mod budget;
 mod capability;
+mod continuation;
 mod dispatch;
 mod prepare;
 mod provider;
@@ -22,7 +23,7 @@ pub type ModelCallInput = afd_wire::authoring::ModelCall<Definition, ConfigOp, I
 /// A bounded result containing validated native proposal shapes.
 pub type ModelCallResult = afd_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
 
-const OPENAI: &str = "openai";
+pub(crate) use afd_inference::input_tokens;
 
 pub(crate) async fn selected(
     connection: &mut PgConnection,
@@ -32,36 +33,43 @@ pub(crate) async fn selected(
     let selected = afd_credential::provider::registered_model(connection, owner, reference)
         .await?
         .ok_or(ErrorKind::Model)?;
-    // Only transports with a local, recognized tokenizer and authoritative
-    // usage can be admitted. An unknown model never guesses an encoding.
-    if !eligible(
-        &selected.provider,
-        &selected.model,
+    if !configured(
+        selected.inference.as_ref(),
+        selected.base_url.as_deref(),
         selected.context_window_tokens,
         selected.input_nanos_per_million,
         selected.output_nanos_per_million,
-    ) {
+    )
+    .is_some_and(|route| route.supports_tools(&selected.model))
+    {
         return Err(ErrorKind::Model.into());
     }
     Ok(selected)
 }
 
-pub(crate) fn eligible(provider: &str, model: &str, context: i32, input: i64, output: i64) -> bool {
-    provider == OPENAI
-        && context > 0
-        && input >= 0
-        && output >= 0
-        && tiktoken_rs::tokenizer::get_tokenizer(model).is_some()
-        && text_transport(model)
+pub(crate) fn configured<'a>(
+    inference: Option<&'a afd_wire::inference::ModelInference>,
+    endpoint: Option<&str>,
+    context: i32,
+    input: i64,
+    output: i64,
+) -> Option<afd_inference::Configured<'a>> {
+    let context = u32::try_from(context).unwrap_or_default();
+    inference
+        .filter(|_| input >= 0 && output >= 0)
+        .and_then(|settings| afd_inference::Configured::new(settings, context).ok())
+        .filter(|route| route.accepts_endpoint(endpoint))
 }
 
-fn text_transport(model: &str) -> bool {
-    // This adapter supports stateless text/function Responses calls. Audio,
-    // realtime and reasoning transports require different continuation rules.
-    ["gpt-4o", "gpt-4.1"]
-        .iter()
-        .any(|family| model.starts_with(family))
-        && !["audio", "realtime", "transcribe", "tts", "search"]
-            .iter()
-            .any(|kind| model.contains(kind))
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn configured_models_without_a_known_tokenizer_keep_a_conservative_bound() {
+        let text = "語 and plain text";
+        assert_eq!(
+            super::input_tokens("workspace/model-next", text),
+            text.len()
+        );
+        assert_eq!(super::input_tokens("gpt-4.1", "hello"), 1);
+    }
 }

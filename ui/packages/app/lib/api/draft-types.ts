@@ -80,7 +80,7 @@ export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: dec
   schedules: z.array(ScheduleSchema)});
 export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
-  context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive(),
+  context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
   eligibility: z.object({authoring: z.boolean(), runtime: z.boolean()}),
   pricing: z.object({input_nanos_per_million: decimal, output_nanos_per_million: decimal, runtime_nanos_per_second: decimal}),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});

@@ -1,4 +1,4 @@
-//! Eligibility reuses the dispatch predicate and the runtime endpoint registry.
+//! Choices use the same configured-model predicate as dispatch.
 
 use crate::{
     Result,
@@ -13,6 +13,7 @@ pub(super) struct Row {
     pub(super) reference: String,
     provider: String,
     model: String,
+    inference: Option<afd_wire::inference::ModelInference>,
     base_url: Option<String>,
     has_key: bool,
     context: i32,
@@ -25,22 +26,24 @@ pub(super) fn decode(raw: &str) -> Result<Row> {
 }
 
 pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<WorkspaceModel> {
-    let authoring = row.has_key
-        && row.base_url.is_none()
-        && model::eligible(
-            &row.provider,
-            &row.model,
-            row.context,
-            row.input,
-            row.output,
-        );
-    let runtime =
-        afd_credential::provider::validate_endpoint_pair(&row.provider, row.base_url.as_deref())
-            .is_ok();
+    let route = row
+        .has_key
+        .then(|| {
+            model::configured(
+                row.inference.as_ref(),
+                row.base_url.as_deref(),
+                row.context,
+                row.input,
+                row.output,
+            )
+        })
+        .flatten();
+    let runtime = route.is_some();
+    let authoring = route.is_some_and(|route| route.supports_tools(&row.model));
     let allowed = match purpose {
         Some(ModelPurpose::Authoring) => authoring,
         Some(ModelPurpose::Runtime) => runtime,
-        None => authoring || runtime,
+        None => true,
     };
     allowed.then(|| WorkspaceModel {
         label: format!("{} · {}", row.model, row.provider),
@@ -48,7 +51,10 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
         provider: row.provider,
         model: row.model,
         context_window_tokens: row.context,
-        max_output_tokens: model::budget::OUTPUT_PER_TURN.min(i64::from(row.context)),
+        max_output_tokens: row
+            .inference
+            .as_ref()
+            .map(|settings| i64::from(settings.max_output_tokens)),
         eligibility: ModelEligibility { authoring, runtime },
         pricing: ModelPricing {
             input_nanos_per_million: row.input.to_string(),

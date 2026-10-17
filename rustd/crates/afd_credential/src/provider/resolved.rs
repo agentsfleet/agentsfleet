@@ -45,6 +45,8 @@ pub struct Resolved {
     /// value here is already https and already SSRF-safe — interior code needs
     /// no defensive re-check, and there is none.
     pub endpoint: Option<Dialled>,
+    /// Model settings pinned by explicit native model selection.
+    pub inference: Option<afd_wire::inference::ModelInference>,
     /// The key itself.
     ///
     /// Private. See the module note: this is the field Invariant 3 is about,
@@ -74,7 +76,15 @@ impl Resolved {
             context_cap_tokens,
             endpoint,
             api_key,
+            inference: None,
         }
+    }
+
+    /// Pins the configured model's non-secret inference settings on this resolution.
+    #[must_use]
+    pub fn with_inference(mut self, inference: afd_wire::inference::ModelInference) -> Self {
+        self.inference = Some(inference);
+        self
     }
 
     /// The provider key, borrowed.

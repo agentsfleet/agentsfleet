@@ -1,49 +1,87 @@
-//! Translate the closed lease protocol to fixed Responses fields.
+//! Translate the closed lease protocol into the SDK's typed conversation.
 
 use super::super::ModelCallInput;
-use super::prompt::{SYSTEM, TOOL, tool};
-use super::{KEY_CALL_ID, KEY_CONTENT, KEY_TYPE, KIND_FUNCTION_CALL, PROPOSAL_ARGUMENT};
-use crate::{Result, error::raise::stored};
+use super::PROPOSAL_ARGUMENT;
+use super::prompt::{TOOL, tool};
+use crate::{
+    Result,
+    error::{ErrorKind, raise::stored},
+};
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::ModelMessage;
-use serde_json::{Value, json};
-
-/// Who a conversation item speaks for.
-const KEY_ROLE: &str = "role";
+use afd_wire::{authoring::ModelMessage, inference::InferenceApi};
+use rig_core::completion::{CompletionRequest, ToolDefinition};
+use rig_core::message::{
+    AssistantContent, CallId, Message, ToolCall, ToolFunction, ToolName, UserContent,
+};
+use serde_json::json;
 
 pub(in crate::model) fn body(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
-) -> Result<Value> {
-    let mut input = Vec::new();
+) -> Result<CompletionRequest> {
+    let name = ToolName::new(TOOL).map_err(|_invalid| ErrorKind::Model)?;
+    let mut history = Vec::with_capacity(request.request.messages.len());
     for message in &request.request.messages {
-        match message {
-            ModelMessage::User { text } => input.push(json!({KEY_ROLE:"user",KEY_CONTENT:text})),
-            ModelMessage::Assistant {
-                text,
-                proposal_calls,
-            } => {
-                if !text.is_empty() {
-                    input.push(json!({KEY_ROLE:"assistant",KEY_CONTENT:text}));
-                }
-                for call in proposal_calls {
-                    let proposal = serde_json::to_string(&call.proposal).map_err(stored)?;
-                    let arguments = serde_json::to_string(&json!({PROPOSAL_ARGUMENT:proposal}))
-                        .map_err(stored)?;
-                    input.push(json!({KEY_TYPE:KIND_FUNCTION_CALL,KEY_CALL_ID:call.id,"name":TOOL,"arguments":arguments}));
-                }
-            }
-            ModelMessage::Tool { call_id, text } => {
-                input.push(
-                    json!({KEY_TYPE:"function_call_output",KEY_CALL_ID:call_id,"output":text}),
-                );
-            }
-        }
+        history.push(message_to_sdk(message, &name)?);
     }
-    Ok(json!({
-        "model": model.model, "instructions":SYSTEM, "input":input,
-        "tools":[tool()], "tool_choice":"auto", "parallel_tool_calls":false,
-        "max_output_tokens":request.request.max_output_tokens,
-        "store":false, "stream":false, "truncation":"disabled"
-    }))
+    let schema = tool();
+    let mut body = CompletionRequest::new(Message::user(String::new()))
+        .model(model.model.as_ref())
+        .tools(vec![ToolDefinition {
+            name,
+            description: schema
+                .get("description")
+                .and_then(serde_json::Value::as_str)
+                .ok_or(ErrorKind::Model)?
+                .into(),
+            parameters: schema.get("parameters").ok_or(ErrorKind::Model)?.clone(),
+        }])
+        .max_tokens(u64::from(request.request.max_output_tokens));
+    body.chat_history = history;
+    if model
+        .inference
+        .as_ref()
+        .is_some_and(|settings| settings.api == InferenceApi::Responses)
+    {
+        body.additional_params =
+            Some(json!({"store":false,"parallel_tool_calls":false,"truncation":"disabled"}));
+    }
+    Ok(body)
+}
+
+fn message_to_sdk(
+    message: &ModelMessage<
+        afd_fleet_runtime::Definition,
+        afd_fleet_runtime::definition::ConfigOp,
+        afd_fleet_runtime::definition::InstructionEdit,
+    >,
+    tool: &ToolName,
+) -> Result<Message> {
+    Ok(match message {
+        ModelMessage::User { text } => Message::user(text.clone()),
+        ModelMessage::Assistant {
+            text,
+            proposal_calls,
+        } => {
+            let mut content = Vec::new();
+            if !text.is_empty() {
+                content.push(AssistantContent::text(text.clone()));
+            }
+            for call in proposal_calls {
+                let proposal = serde_json::to_string(&call.proposal).map_err(stored)?;
+                content.push(AssistantContent::ToolCall(ToolCall::new(
+                    CallId::from_wire(call.id.clone()),
+                    ToolFunction::new(tool.clone(), json!({PROPOSAL_ARGUMENT:proposal})),
+                )));
+            }
+            Message::Assistant(rig_core::message::AssistantMessage::new(content))
+        }
+        ModelMessage::Tool { call_id, text } => Message::User {
+            content: vec![UserContent::tool_result(
+                CallId::from_wire(call_id.clone()),
+                tool.clone(),
+                vec![rig_core::message::ToolResultContent::text(text.clone())],
+            )],
+        },
+    })
 }

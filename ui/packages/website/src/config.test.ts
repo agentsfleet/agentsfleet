@@ -5,48 +5,43 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 // Pin the user-facing destination independently of the configuration export.
-const HOSTED_SIGN_UP = "https://app.agentsfleet.net/sign-up";
-const PRODUCTION_APP = "https://app.agentsfleet.net";
-const DEVELOPMENT_APP = "https://app-dev.agentsfleet.net";
-const SIGNUP_LINKS = [/^Get started$/i, /^Hosted ↗$/, /^Create your first fleet/i];
+const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
+const PREVIEW_WAITLIST = "https://accounts-preview.agentsfleet.net/waitlist";
+const ACCESS_LINKS = [/^Early access$/i, /^Hosted waitlist ↗$/, /^Join waitlist/i];
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
 });
 
-describe("Application destinations follow the configured build environment", () => {
+describe("Public access follows the configured waitlist destination", () => {
   it.each([
-    { configured: undefined, expected: PRODUCTION_APP, label: "missing" },
-    { configured: "", expected: PRODUCTION_APP, label: "empty" },
-    { configured: "   ", expected: PRODUCTION_APP, label: "whitespace-only" },
-    { configured: PRODUCTION_APP, expected: PRODUCTION_APP, label: "production" },
-    { configured: DEVELOPMENT_APP, expected: DEVELOPMENT_APP, label: "development preview" },
-    { configured: `${DEVELOPMENT_APP}/`, expected: DEVELOPMENT_APP, label: "trailing slash" },
-    { configured: ` ${DEVELOPMENT_APP}/// `, expected: DEVELOPMENT_APP, label: "whitespace and trailing slashes" },
-  ])("uses the expected app for $label configuration", async ({ configured, expected }) => {
-    vi.stubEnv("VITE_APP_BASE_URL", configured);
+    { configured: undefined, expected: WAITLIST, label: "missing" },
+    { configured: "", expected: WAITLIST, label: "empty" },
+    { configured: "   ", expected: WAITLIST, label: "whitespace-only" },
+    { configured: WAITLIST, expected: WAITLIST, label: "production" },
+    { configured: PREVIEW_WAITLIST, expected: PREVIEW_WAITLIST, label: "preview" },
+    { configured: ` ${PREVIEW_WAITLIST} `, expected: PREVIEW_WAITLIST, label: "whitespace" },
+  ])("uses the expected destination for $label configuration", async ({ configured, expected }) => {
+    vi.stubEnv("VITE_WAITLIST_URL", configured);
     vi.resetModules();
-    const { APP_SIGN_IN_URL, APP_SIGN_UP_URL } = await import("./config");
-    expect(APP_SIGN_IN_URL).toBe(`${expected}/sign-in`);
-    expect(APP_SIGN_UP_URL).toBe(`${expected}/sign-up`);
+    const { PUBLIC_ACCESS_URL, WAITLIST_URL } = await import("./config");
+    expect(WAITLIST_URL).toBe(expected);
+    expect(PUBLIC_ACCESS_URL).toBe(expected);
   });
 });
 
-describe("Hosted sign-up destinations in the local website", () => {
-  it.each(["/", "/#how-it-works"])("opens the application from every entrance on %s", (path) => {
+describe("Public access destinations in the local website", () => {
+  it.each(["/", "/#how-it-works"])("opens the waitlist from every entrance on %s", (path) => {
     const router = createMemoryRouter([{ path: "*", element: createElement(App) }], { initialEntries: [path] });
     render(createElement(RouterProvider, { router }));
-    for (const name of SIGNUP_LINKS) {
+    for (const name of ACCESS_LINKS) {
       for (const link of screen.getAllByRole("link", { name })) {
-        expect(link).toHaveAttribute("href", HOSTED_SIGN_UP);
+        expect(link).toHaveAttribute("href", WAITLIST);
         expect(link).toHaveAttribute("target", "_blank");
         expect(link).toHaveAttribute("rel", "noopener noreferrer");
       }
     }
-    const createLabel = path === "/" ? "Create your first fleet" : "Create fleet";
-    for (const link of screen.getAllByRole("link", { name: createLabel })) {
-      expect(link).toHaveAttribute("href", HOSTED_SIGN_UP);
-    }
+    expect(screen.getByRole("contentinfo").querySelector('a[href$="/sign-in"]')).toBeNull();
   });
 });

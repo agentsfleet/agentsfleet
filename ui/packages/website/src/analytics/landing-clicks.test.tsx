@@ -24,7 +24,7 @@ const LINKS = [
 ] as const;
 const FOOTER_LINKS = [
   { name: "use cases", source: "footer_use_cases", target: "example" },
-  { name: "sign in", source: "footer_sign_in", target: "sign_in" },
+  { name: "join waitlist", source: "footer_sign_in", target: "sign_in" },
   { name: "docs", source: "footer_docs", target: "docs" },
   { name: "agents", source: "footer_agents", target: "agents" },
   { name: "github", source: "footer_github", target: "github" },
@@ -67,7 +67,7 @@ afterEach(() => {
 describe("website click attribution", () => {
   it.each([
     { name: /^Product$/, event: NAVIGATION, source: "header_nav_product", target: "example" },
-    { name: /^Get started$/, event: SIGNUP, source: "header_early_access", mode: "humans" },
+    { name: /^Early access$/, event: SIGNUP, source: "header_early_access", mode: "humans" },
     { name: /^Docs$/, event: NAVIGATION, source: "header_nav_docs", target: "docs" },
     { name: /^GitHub ↗$/, event: NAVIGATION, source: "header_nav_source", target: "github" },
   ])("tracks $source from primary navigation", async ({ name, event, ...props }) => {
@@ -101,25 +101,25 @@ describe("website click attribution", () => {
     expect(write).toHaveBeenCalledWith(INSTALL_COMMAND);
     await expectEvent(INTERACTION, { source: "cli_install_copy", surface: "cli_quickstart", target: "installation" });
   });
-  it("tracks Create fleet without exposing the private composer text", async () => {
+  it("tracks Join waitlist without exposing the private composer text", async () => {
     renderLanding();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     expect(sdk.capture).not.toHaveBeenCalled();
-    fireEvent.click(within(screen.getByTestId("hero")).getByRole("link", { name: "Create your first fleet" }));
+    fireEvent.click(within(screen.getByTestId("hero")).getByRole("link", { name: "Join waitlist" }));
     await expectEvent(SIGNUP, { source: "composer_create_fleet", surface: "hero", mode: "humans" });
     expect(JSON.stringify(sdk.capture.mock.calls)).not.toContain(PRIVATE_REQUEST);
   });
   it.each([
-    { area: "audience-section", name: /^Hosted ↗$/, source: "source_early_access", surface: "source_strip" },
-    { area: "pricing-block", name: /Create your first fleet/, source: "pricing_early_access", surface: "pricing" },
+    { area: "audience-section", name: /^Hosted waitlist ↗$/, source: "source_early_access", surface: "source_strip" },
+    { area: "pricing-block", name: /Join waitlist/, source: "pricing_early_access", surface: "pricing" },
   ])("tracks $source signup intent", async ({ area, name, ...props }) => {
     renderLanding();
     fireEvent.click(within(screen.getByTestId(area)).getByRole("link", { name }));
     await expectEvent(SIGNUP, { ...props, mode: "humans" });
   });
-  it("tracks the example's Create fleet action", async () => {
+  it("tracks the example's Join waitlist action", async () => {
     renderLanding(EXAMPLE_PATH);
-    fireEvent.click(screen.getByRole("link", { name: "Create fleet" }));
+    fireEvent.click(within(screen.getByTestId("how-it-works")).getByRole("link", { name: "Join waitlist" }));
     await expectEvent(SIGNUP, { source: "example_create_fleet", surface: "example", mode: "humans" });
   });
   it("tracks exploration and returning home while preserving private text", async () => {

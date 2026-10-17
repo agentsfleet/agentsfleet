@@ -10,7 +10,7 @@ use std::ops::AddAssign;
 
 use afd_wire::activity::StreamTextKind;
 use futures_util::stream::BoxStream;
-use rig_core::message::AssistantContent;
+use rig_core::message::{AssistantContent, AssistantMessage};
 
 use crate::error::Result;
 use crate::image_input::ImageInput;
@@ -36,13 +36,16 @@ pub struct Call {
 /// produced it and hands it back unopened; a provider that reasons in the
 /// open, or not at all, leaves it empty.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Replay(pub(crate) Vec<AssistantContent>);
+pub struct Replay(pub(crate) AssistantMessage);
 
 impl Replay {
     /// Whether there is nothing to hand back.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.0
+            .content
+            .iter()
+            .all(|part| matches!(part, AssistantContent::Text(_)))
     }
 }
 

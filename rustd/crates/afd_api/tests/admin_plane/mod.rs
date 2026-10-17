@@ -184,6 +184,23 @@ async fn refused_as_an_unusable_pairing(admin: &axum::Router, body: &str) {
 
 mod library;
 
+#[tokio::test]
+async fn model_edits_and_deletion_report_datastore_unavailability() {
+    let admin = fleet(Scope::ModelAdmin);
+    for method in [Method::PATCH, Method::DELETE] {
+        let response = send(
+            &admin,
+            method,
+            &format!("/v1/admin/models/{MODEL_ID}"),
+            Some(PLATFORM_KEY),
+            r#"{"context_cap_tokens":1,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(code(response).await, Some("UZ-INTERNAL-001"));
+    }
+}
+
 async fn code(response: axum::response::Response) -> Option<&'static str> {
     match json_body(response)
         .await

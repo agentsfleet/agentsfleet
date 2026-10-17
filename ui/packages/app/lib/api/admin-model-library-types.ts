@@ -5,6 +5,8 @@
 
 import { NANOS_PER_USD } from "../types";
 
+export const INFERENCE_API = { chat: "chat", responses: "responses", messages: "messages" } as const;
+
 // Rates are stored as integer nanos per million tokens (1 nano = 1e-9 USD) so the
 // billing math stays in integers. The UI presents $/1M tokens — the conversion
 // lives here, in one place, so every catalogue view and form agrees.

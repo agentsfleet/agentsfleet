@@ -33,11 +33,11 @@ pub(crate) struct Refusal {
 }
 
 impl Refusal {
-    /// Refuses every `UPDATE` on `table` whose row satisfies `when`.
+    /// Applies the fixture's static trigger effect to updates satisfying `when`.
     ///
     /// `kind` and `fleet` name the trigger, so two faults on one fleet never
     /// collide. Both, and `when`, come from the fixture's own minted IDs and
-    /// constant SQL, never from input, which is what makes interpolating them
+    /// constant SQL, as does `effect`, which is what makes interpolating them
     /// safe.
     pub(crate) async fn install(
         url: &str,
@@ -45,6 +45,7 @@ impl Refusal {
         kind: &str,
         fleet: &str,
         when: &str,
+        effect: &'static str,
     ) -> Self {
         let guard = Self {
             url: url.to_owned(),
@@ -64,7 +65,7 @@ impl Refusal {
         for statement in [
             format!(
                 "CREATE FUNCTION public.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ \
-                 BEGIN RAISE EXCEPTION 'fixture refusal {name}'; END $$"
+                 BEGIN {effect}; END $$"
             ),
             format!(
                 "CREATE TRIGGER {name} BEFORE UPDATE ON {table} FOR EACH ROW \

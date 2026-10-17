@@ -76,3 +76,33 @@ async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
     assert_eq!(property(&finished, "state").as_deref(), Some("failed"));
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
+    use super::super::funnel::{FINISHED, about, only};
+    let f = Fixture::create().await;
+    let worker = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+        .bind(a.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("interrupted worker");
+    worker
+        .drafts
+        .maintain()
+        .await
+        .expect("another worker sweeps the shared store");
+    let finished = only(
+        f.reported(FINISHED),
+        "the workspace sees the event whoever swept it",
+    );
+    about(&f, &finished, &a.draft.id);
+    assert!(
+        worker.reported(FINISHED).is_empty(),
+        "another workspace cannot contaminate the assertion"
+    );
+    worker.cleanup().await;
+    f.cleanup().await;
+}
