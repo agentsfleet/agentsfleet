@@ -9,6 +9,7 @@
 mod error;
 mod model;
 mod platform_key;
+mod sql;
 
 pub use error::{Error, Result};
 pub use model::{CreateModel, DeleteModel, Model, ModelInput, ModelRates, Models};
