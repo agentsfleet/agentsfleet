@@ -6,7 +6,6 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_memory::window::DAILY_RETENTION_MS;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
 
@@ -33,13 +32,13 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         delta("scratch", DAILY, Visibility::Fleet),
     ];
     let stored = memories
-        .capture(&fleet, &first, UnixMillis::from_millis(START_AT))
+        .capture(&fleet, &first, afd_core::clock::from_millis(START_AT))
         .await
         .expect("a capture");
     assert_eq!((stored.stored, stored.skipped, stored.swept), (3, 0, 0));
     let again = [delta("chat", CONVERSATION, Visibility::Fleet)];
     memories
-        .capture(&fleet, &again, UnixMillis::from_millis(START_AT + 1))
+        .capture(&fleet, &again, afd_core::clock::from_millis(START_AT + 1))
         .await
         .expect("a re-capture");
     let hydrated = memories.hydrate(&fleet).await.expect("a hydrate");
@@ -65,7 +64,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     );
 
     // Sweep: a capture past the retention removes the scratch note.
-    let later = UnixMillis::from_millis(START_AT + DAILY_RETENTION_MS + 2);
+    let later = afd_core::clock::from_millis(START_AT + DAILY_RETENTION_MS + 2);
     let swept = memories
         .capture(&fleet, &[], later)
         .await
@@ -80,7 +79,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .capture(
             &fleet,
             &filler,
-            UnixMillis::from_millis(START_AT + DAILY_RETENTION_MS + 3),
+            afd_core::clock::from_millis(START_AT + DAILY_RETENTION_MS + 3),
         )
         .await
         .expect("a capture to the cap");
@@ -112,7 +111,7 @@ async fn test_push_skips_an_unpublished_share() {
     ];
     let captured = space
         .memories
-        .capture(&fleet, &pushed, UnixMillis::from_millis(START_AT))
+        .capture(&fleet, &pushed, afd_core::clock::from_millis(START_AT))
         .await
         .expect("a capture");
 

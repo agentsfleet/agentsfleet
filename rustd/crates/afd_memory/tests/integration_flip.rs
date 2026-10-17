@@ -3,7 +3,7 @@
 //! capture and forgets that race a flip's copy, and the forget and flip a
 //! dropped flip leaves room for.
 //!
-//! The grants are read from `core.fleets`, so these need the live schema; the
+//! The grants are read from `fleet.fleets`, so these need the live schema; the
 //! racing stores are in memory, so the test lands the flip where it wants.
 #![expect(
     clippy::expect_used,
@@ -12,7 +12,6 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::MEM_UNAVAILABLE;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
@@ -34,7 +33,7 @@ const KEY: &str = "deploy_target";
 /// A second key, in the category neither pinned nor swept.
 const CHAT: &str = "chat";
 const CONVERSATION: &str = "conversation";
-/// The key a writer `core.fleets` never held stores, which Postgres refuses.
+/// The key a writer `fleet.fleets` never held stores, which Postgres refuses.
 const ORPHAN: &str = "orphan";
 /// The fleet whose forget a flip meets.
 const FORGETTER: &str = "forgetter";
@@ -52,7 +51,7 @@ fn owner<'a>(space: &'a Workspace, fleet: &'a Uuid7) -> Owner<'a> {
 async fn seed(store: &InMemory, owner: Owner<'_>, entries: &[MemoryDelta<'_>], at: i64) {
     let refs: Vec<_> = entries.iter().collect();
     store
-        .upsert(owner, &refs, UnixMillis::from_millis(at))
+        .upsert(owner, &refs, afd_core::clock::from_millis(at))
         .await
         .expect("a seed");
 }
@@ -236,7 +235,7 @@ async fn test_a_capture_that_straddles_a_flip_lands_in_the_new_store() {
         flipped
     };
 
-    let at = UnixMillis::from_millis(AT);
+    let at = afd_core::clock::from_millis(AT);
     let (captured, flipped) = tokio::join!(memories.capture(&fleet, &pushed, at), flip);
 
     assert_eq!(captured.expect("the capture is taken").stored, 1);

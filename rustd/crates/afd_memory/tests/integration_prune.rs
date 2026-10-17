@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_memory::{Flipped, Memories, MemoryStore, Owner, PgStore};
@@ -42,16 +41,16 @@ fn postgres(space: &Workspace) -> PgStore {
 /// Writes `entries` as `fleet` into `store` at the seeded instant.
 async fn seed(store: &PgStore, space: &Workspace, fleet: &Uuid7, entries: &[MemoryDelta<'_>]) {
     let refs: Vec<_> = entries.iter().collect();
-    let at = UnixMillis::from_millis(SEEDED_AT);
+    let at = afd_core::clock::from_millis(SEEDED_AT);
     let seeded = store.upsert(owner(space, fleet), &refs, at).await;
     seeded.expect("a seed");
 }
 
 /// Every `(key, updated_at)` `store` holds in `space`.
-async fn versions(store: &dyn MemoryStore, space: &Workspace) -> Vec<(String, i64)> {
+async fn versions(store: &dyn MemoryStore, space: &Workspace) -> Vec<(String, jiff::Timestamp)> {
     let rows = store.export(&space.id).await.expect("an export");
     rows.into_iter()
-        .map(|row| (row.key, row.updated_at_ms))
+        .map(|row| (row.key, row.updated_at))
         .collect()
 }
 
@@ -69,9 +68,9 @@ async fn test_a_stale_forget_spares_a_newer_row_and_takes_one_at_or_under_its_bo
     let forget = |key, bound| store.forget_stale(owner(&space, &fleet), key, bound);
 
     let removed = [
-        forget(KEY, SEEDED_AT - 1).await,
-        forget(KEY, SEEDED_AT).await,
-        forget(OLDER, SEEDED_AT + 1).await,
+        forget(KEY, afd_core::clock::from_millis(SEEDED_AT - 1)).await,
+        forget(KEY, afd_core::clock::from_millis(SEEDED_AT)).await,
+        forget(OLDER, afd_core::clock::from_millis(SEEDED_AT + 1)).await,
     ]
     .map(|answer| answer.expect("a stale forget"));
 
@@ -104,7 +103,7 @@ async fn test_a_rewrite_after_the_prunes_read_survives_two_stores_over_one_datab
         // `from` was read without it; the fleet writes it again before the
         // prune deletes.
         to.reached.notified().await;
-        let later = UnixMillis::from_millis(REWRITTEN_AT);
+        let later = afd_core::clock::from_millis(REWRITTEN_AT);
         let captured = memories.capture(&fleet, &held, later).await;
         to.release.notify_one();
         captured
@@ -123,7 +122,7 @@ async fn test_a_rewrite_after_the_prunes_read_survives_two_stores_over_one_datab
     let survived = versions(&table, &space).await;
     assert_eq!(
         survived,
-        [(KEY.to_owned(), REWRITTEN_AT)],
+        [(KEY.to_owned(), afd_core::clock::from_millis(REWRITTEN_AT))],
         "it is in the table"
     );
     space.cleanup().await;

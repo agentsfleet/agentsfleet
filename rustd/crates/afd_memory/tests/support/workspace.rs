@@ -11,7 +11,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_memory::Memories;
 use afd_wire::memory::{MemoryDelta, Visibility};
 
@@ -41,19 +41,16 @@ impl Workspace {
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
         let id = Uuid7::parse(&mint_id()).expect("a minted id is canonical");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Shared memory', 1, 1) \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($2::uuid, $1::uuid, 'shared-memory', 'user_memory_suite', 1)",
-        )
-        .bind(&tenant)
-        .bind(id.as_str())
-        .execute(&mut *database.acquire().await.expect("an API connection"))
-        .await
-        .expect("the tenant and workspace seed");
+        let mut connection = database.acquire().await.expect("an API connection");
+        TenantSeed::new(&tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seed");
+        WorkspaceSeed::new(id.as_str(), &tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seed");
+        drop(connection);
         let memories = Memories::new(database.clone(), Entropy::new());
         Self {
             lane,
@@ -70,7 +67,6 @@ impl Workspace {
         FleetSeed::new(fleet.as_str(), self.id.as_str(), &self.tenant, FLEET_ACTIVE)
             .name(name)
             .memory(grants.read, grants.publish)
-            .at(1)
             .insert(&mut *self.database.acquire().await.expect("an API connection"))
             .await
             .expect("the fleet seeds");
@@ -79,7 +75,7 @@ impl Workspace {
 
     /// Erases everything the suite seeded, through the tenant's cascade.
     pub(crate) async fn cleanup(self) {
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *self.database.acquire().await.expect("an API connection"))
             .await

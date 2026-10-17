@@ -5,9 +5,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 use tokio::sync::Notify;
 
 use crate::error::Result;
@@ -96,7 +96,7 @@ impl MemoryStore for Rigged {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept> {
         self.hold(Hold::Upsert).await;
         if self.refuses == Refuse::Upsert {
@@ -130,9 +130,14 @@ impl MemoryStore for Rigged {
         self.inner.forget(owner, key).await
     }
 
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+    async fn forget_stale(
+        &self,
+        owner: Owner<'_>,
+        key: &str,
+        seen: jiff::Timestamp,
+    ) -> Result<bool> {
         self.hold(Hold::ForgetStale).await;
-        self.inner.forget_stale(owner, key, seen_ms).await
+        self.inner.forget_stale(owner, key, seen).await
     }
 
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {

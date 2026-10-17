@@ -14,7 +14,6 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::MEM_UNAVAILABLE;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
@@ -88,7 +87,7 @@ async fn seeded(store: &InMemory) {
             .collect();
         let refs: Vec<_> = entries.iter().collect();
         store
-            .upsert(owner, &refs, UnixMillis::from_millis(SEEDED_AT))
+            .upsert(owner, &refs, afd_core::clock::from_millis(SEEDED_AT))
             .await
             .expect("the in-memory store takes a write");
     }
@@ -221,7 +220,7 @@ async fn test_push_during_flip_reaches_both_stores() {
             workspace: &workspace,
             fleet: &fleet,
         };
-        let at = UnixMillis::from_millis(PUSHED_AT);
+        let at = afd_core::clock::from_millis(PUSHED_AT);
         memories
             .upsert_through(owner, &[&raced], at)
             .await
@@ -242,8 +241,8 @@ async fn test_push_during_flip_reaches_both_stores() {
             .find(|row| row.written_by(&fleet) && row.key == RACED)
             .expect("the pushed key is in both stores");
         assert_eq!(
-            landed.updated_at_ms,
-            PUSHED_AT,
+            landed.updated_at,
+            afd_core::clock::from_millis(PUSHED_AT),
             "{} holds the push, not the snapshot",
             store.name()
         );
@@ -270,7 +269,7 @@ async fn test_a_flip_does_not_switch_to_a_store_a_write_missed() {
             workspace: &workspace,
             fleet: &fleet,
         };
-        let at = UnixMillis::from_millis(PUSHED_AT);
+        let at = afd_core::clock::from_millis(PUSHED_AT);
         let pushed = memories.upsert_through(owner, &[&raced], at).await;
         target.release.notify_one();
         pushed
@@ -292,6 +291,10 @@ async fn test_a_flip_does_not_switch_to_a_store_a_write_missed() {
         .await
         .into_iter()
         .find(|row| row.written_by(&fleet) && row.key == RACED)
-        .map(|row| row.updated_at_ms);
-    assert_eq!(held, Some(PUSHED_AT), "which holds the write");
+        .map(|row| row.updated_at);
+    assert_eq!(
+        held,
+        Some(afd_core::clock::from_millis(PUSHED_AT)),
+        "which holds the write"
+    );
 }

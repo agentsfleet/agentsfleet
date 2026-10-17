@@ -11,7 +11,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::test_util::unreachable_db;
 use afd_wire::memory::Visibility;
@@ -53,7 +52,7 @@ async fn write(store: &dyn MemoryStore, key: &str, at: i64) {
         .upsert(
             owner(&workspace, &fleet),
             &[&entry],
-            UnixMillis::from_millis(at),
+            afd_core::clock::from_millis(at),
         )
         .await
         .expect("the in-memory store takes a write");
@@ -70,11 +69,11 @@ async fn forget(store: &dyn MemoryStore, key: &str) {
 }
 
 /// When `store` holds `key`, the instant it was last written.
-async fn written_at(store: &dyn MemoryStore, key: &str) -> Option<i64> {
+async fn written_at(store: &dyn MemoryStore, key: &str) -> Option<jiff::Timestamp> {
     let held = rows(store).await;
     held.into_iter()
         .find(|row| row.key == key)
-        .map(|row| row.updated_at_ms)
+        .map(|row| row.updated_at)
 }
 
 #[tokio::test]
@@ -93,7 +92,11 @@ async fn a_retried_flip_does_not_bring_back_a_key_forgotten_after_a_partial_copy
     let partial = memories.flip(&workspace, shared(&target)).await;
     assert!(partial.is_err(), "precondition: import two is refused");
     let carried = written_at(target.inner.as_ref(), KEY).await;
-    assert_eq!(carried, Some(PUSHED_AT), "after import one landed");
+    assert_eq!(
+        carried,
+        Some(afd_core::clock::from_millis(PUSHED_AT)),
+        "after import one landed"
+    );
     forget(source.as_ref(), KEY).await;
 
     let retried = memories.flip(&workspace, shared(&target)).await;
@@ -107,7 +110,11 @@ async fn a_retried_flip_does_not_bring_back_a_key_forgotten_after_a_partial_copy
         }
     );
     let kept = written_at(target.inner.as_ref(), KEPT).await;
-    assert_eq!(kept, Some(SEEDED_AT), "what the fleet kept moves");
+    assert_eq!(
+        kept,
+        Some(afd_core::clock::from_millis(SEEDED_AT)),
+        "what the fleet kept moves"
+    );
     let forgotten = written_at(target.inner.as_ref(), KEY).await;
     assert_eq!(forgotten, None, "the forgotten key stays forgotten");
 }
@@ -148,7 +155,7 @@ async fn a_rewrite_in_the_millisecond_the_prune_read_comes_back_with_the_copy() 
     let rewritten = delta(KEY, Visibility::Fleet);
     let entries = [&rewritten];
     // The leftover's own millisecond: the prune's bound takes the rewrite too.
-    let at = UnixMillis::from_millis(SEEDED_AT);
+    let at = afd_core::clock::from_millis(SEEDED_AT);
     let racing = async {
         // The prune has read both stores, and holds its delete of `KEY`.
         let reached = tokio::time::timeout(PATIENCE, target.reached.notified()).await;
@@ -173,7 +180,11 @@ async fn a_rewrite_in_the_millisecond_the_prune_read_comes_back_with_the_copy() 
         "the copy, read after the prune, carries it back"
     );
     let landed = written_at(target.inner.as_ref(), KEY).await;
-    assert_eq!(landed, Some(SEEDED_AT), "the new store holds the write");
+    assert_eq!(
+        landed,
+        Some(afd_core::clock::from_millis(SEEDED_AT)),
+        "the new store holds the write"
+    );
 }
 
 #[tokio::test]
@@ -188,7 +199,7 @@ async fn a_rewrite_after_the_prunes_read_survives_over_rows_two_stores_share() {
     let (workspace, fleet) = (id(WORKSPACE), id(FLEETS[0]));
     let rewritten = delta(KEY, Visibility::Fleet);
     let entries = [&rewritten];
-    let at = UnixMillis::from_millis(PUSHED_AT);
+    let at = afd_core::clock::from_millis(PUSHED_AT);
     let interleave = async {
         // `to` was read holding `KEY`; it goes before `from` is read.
         let read_to = tokio::time::timeout(PATIENCE, to.reached.notified()).await;
@@ -215,5 +226,9 @@ async fn a_rewrite_after_the_prunes_read_survives_over_rows_two_stores_share() {
     };
     assert_eq!(done, spared, "the prune spares the rewrite");
     let survived = written_at(rows_shared.as_ref(), KEY).await;
-    assert_eq!(survived, Some(PUSHED_AT), "the shared rows still hold it");
+    assert_eq!(
+        survived,
+        Some(afd_core::clock::from_millis(PUSHED_AT)),
+        "the shared rows still hold it"
+    );
 }

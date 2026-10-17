@@ -9,10 +9,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::MemoryDelta;
 use arc_swap::ArcSwap;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::page::{After, View};
@@ -66,13 +66,13 @@ impl InMemory {
 
 /// Newest write first.
 fn newest(left: &Record, right: &Record) -> std::cmp::Ordering {
-    right.updated_at_ms.cmp(&left.updated_at_ms)
+    right.updated_at.cmp(&left.updated_at)
 }
 
 /// Where `record` sits in an operator page: the Postgres store's keyset,
 /// `(created_at, key, fleet_id)`, compared the same way.
-fn position(record: &Record) -> (i64, &str, &Uuid7) {
-    (record.created_at_ms, &record.key, &record.fleet)
+fn position(record: &Record) -> (Timestamp, &str, &Uuid7) {
+    (record.created_at, &record.key, &record.fleet)
 }
 
 /// Whether `row` is another fleet's shared entry in `owner`'s workspace.
@@ -106,22 +106,22 @@ impl MemoryStore for InMemory {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept> {
-        let at = now.as_millis();
+        let at = now;
         self.rows.rcu(|rows| {
             let mut next = Rows::clone(rows);
             for delta in entries {
                 let id = (owner.fleet.clone(), delta.key.to_string());
-                let created = next.get(&id).map_or(at, |row| row.record.created_at_ms);
+                let created = next.get(&id).map_or(at, |row| row.record.created_at);
                 let record = Record {
                     fleet: owner.fleet.clone(),
                     key: delta.key.to_string(),
                     content: delta.content.to_string(),
                     category: delta.category.to_string(),
                     visibility: delta.visibility,
-                    created_at_ms: created,
-                    updated_at_ms: at,
+                    created_at: created,
+                    updated_at: at,
                 };
                 let workspace = owner.workspace.clone();
                 next.insert(id, Row { workspace, record });
@@ -175,7 +175,7 @@ impl MemoryStore for InMemory {
         };
         let past = |record: &Record| {
             after.is_none_or(|boundary| {
-                position(record) < (boundary.created_at_ms, boundary.key, boundary.fleet)
+                position(record) < (boundary.created_at, boundary.key, boundary.fleet)
             })
         };
         let mut rows = self.select(
@@ -200,11 +200,16 @@ impl MemoryStore for InMemory {
         Ok(previous.contains_key(&id))
     }
 
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
+    async fn forget_stale(
+        &self,
+        owner: Owner<'_>,
+        key: &str,
+        seen: jiff::Timestamp,
+    ) -> Result<bool> {
         let id = (owner.fleet.clone(), key.to_owned());
         let stale = |rows: &Rows| {
             rows.get(&id)
-                .is_some_and(|row| row.record.updated_at_ms <= seen_ms)
+                .is_some_and(|row| row.record.updated_at <= seen)
         };
         let previous = self.rows.rcu(|rows| {
             let mut next = Rows::clone(rows);
@@ -225,7 +230,7 @@ impl MemoryStore for InMemory {
         self.rows.rcu(|rows| {
             let newer_here = rows
                 .get(&id)
-                .is_some_and(|row| row.record.updated_at_ms >= record.updated_at_ms);
+                .is_some_and(|row| row.record.updated_at >= record.updated_at);
             let mut next = Rows::clone(rows);
             if !newer_here {
                 let row = Row {

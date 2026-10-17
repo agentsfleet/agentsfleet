@@ -3,7 +3,7 @@
 //!
 //! # The role switch is a transaction, not a pair of statements
 //!
-//! `memory.memory_entries` is written as `memory_runtime`, a role the api pool
+//! `memory.entries` is written as `memory_runtime`, a role the api pool
 //! does not otherwise hold. `SET LOCAL ROLE` inside a transaction is restored
 //! by Postgres at COMMIT or ROLLBACK — including the rollback a dropped
 //! transaction performs — so there is no reset to fail and no connection can
@@ -14,13 +14,13 @@ mod page;
 mod read;
 mod write;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_wire::memory::{MemoryDelta, Visibility};
+use jiff::Timestamp;
 use sqlx::postgres::PgRow;
-use sqlx::{Acquire as _, PgConnection, Row as _};
+use sqlx::{Acquire as _, FromRow as _, PgConnection};
 
 use crate::error::detail::ROLE_SWITCH;
 use crate::error::{Error, Result, query, unavailable};
@@ -102,22 +102,35 @@ impl PgStore {
     }
 }
 
+/// The seven columns every read returns, by name.
+#[derive(Debug, sqlx::FromRow)]
+struct EntryRow {
+    fleet_id: String,
+    key: String,
+    content: String,
+    category: String,
+    workspace_visible: bool,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: jiff::Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: jiff::Timestamp,
+}
+
 /// One row of the seven-column read every statement shares.
 fn record(row: &PgRow, failure: Failure) -> Result<Record> {
-    let column = |source| failure.raise(source);
-    let writer: String = row.try_get(0).map_err(column)?;
+    let row = EntryRow::from_row(row).map_err(|source| failure.raise(source))?;
     Ok(Record {
-        fleet: Uuid7::parse(&writer)?,
-        key: row.try_get(1).map_err(column)?,
-        content: row.try_get(2).map_err(column)?,
-        category: row.try_get(3).map_err(column)?,
-        visibility: if row.try_get(4).map_err(column)? {
+        fleet: Uuid7::parse(&row.fleet_id)?,
+        key: row.key,
+        content: row.content,
+        category: row.category,
+        visibility: if row.workspace_visible {
             Visibility::Workspace
         } else {
             Visibility::Fleet
         },
-        created_at_ms: row.try_get(5).map_err(column)?,
-        updated_at_ms: row.try_get(6).map_err(column)?,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     })
 }
 
@@ -135,7 +148,7 @@ impl MemoryStore for PgStore {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept> {
         write::upsert(self, owner, entries, now).await
     }
@@ -165,8 +178,13 @@ impl MemoryStore for PgStore {
         write::forget(self, owner, key).await
     }
 
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
-        write::forget_stale(self, owner, key, seen_ms).await
+    async fn forget_stale(
+        &self,
+        owner: Owner<'_>,
+        key: &str,
+        seen: jiff::Timestamp,
+    ) -> Result<bool> {
+        write::forget_stale(self, owner, key, seen).await
     }
 
     async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {

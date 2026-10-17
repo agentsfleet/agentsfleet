@@ -7,10 +7,10 @@
 )]
 
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::clock::UnixMillis;
 use afd_memory::Record;
 use afd_memory::page::{After, View};
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
+use jiff::Timestamp;
 
 use crate::workspace::{Grants, Workspace, delta};
 
@@ -44,11 +44,7 @@ async fn test_shared_memory_reaches_only_granted_fleets() {
     ];
     space
         .memories
-        .capture(
-            &writer,
-            &published,
-            UnixMillis::from_millis(1_760_000_000_000),
-        )
+        .capture(&writer, &published, Timestamp::constant(1_760_000_000, 0))
         .await
         .expect("the publisher's capture");
 
@@ -139,7 +135,7 @@ async fn a_page_walk_past_two_tied_writers_skips_neither(view: View<'_>) {
     let second = space.fleet("publisher-b", publish).await;
     let reader = space.fleet("reader", read).await;
     let shared = [delta(SHARED_KEY, PINNED_CATEGORY, Visibility::Workspace)];
-    let tied = UnixMillis::from_millis(1_760_000_000_000);
+    let tied = Timestamp::constant(1_760_000_000, 0);
     for writer in [&first, &second] {
         space
             .memories
@@ -152,7 +148,7 @@ async fn a_page_walk_past_two_tied_writers_skips_neither(view: View<'_>) {
     // One page per writer, and one more that must come back empty.
     for _page in 0..3 {
         let boundary = walked.last().map(|row| After {
-            created_at_ms: row.created_at_ms,
+            created_at: row.created_at,
             key: &row.key,
             fleet: &row.fleet,
         });

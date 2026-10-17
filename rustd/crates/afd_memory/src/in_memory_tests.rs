@@ -10,7 +10,6 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY, Visibility};
 
@@ -39,7 +38,7 @@ fn id(text: &str) -> Uuid7 {
 /// The boundary a walk resumes from after `row`.
 fn after(row: &Record) -> After<'_> {
     After {
-        created_at_ms: row.created_at_ms,
+        created_at: row.created_at,
         key: &row.key,
         fleet: &row.fleet,
     }
@@ -62,7 +61,7 @@ async fn a_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
             fleet: &fleet,
         };
         store
-            .upsert(owner, &[&shared], UnixMillis::from_millis(AT))
+            .upsert(owner, &[&shared], afd_core::clock::from_millis(AT))
             .await
             .expect("a publish");
     }
@@ -132,7 +131,7 @@ async fn write(store: &InMemory, fleet: &str, deltas: &[MemoryDelta<'_>], offset
     };
     let refs: Vec<_> = deltas.iter().collect();
     store
-        .upsert(owner, &refs, UnixMillis::from_millis(AT + offset))
+        .upsert(owner, &refs, afd_core::clock::from_millis(AT + offset))
         .await
         .expect("the in-memory store takes a write");
 }
@@ -292,9 +291,15 @@ async fn a_stale_forget_spares_a_newer_row_and_takes_one_at_or_under_its_bound()
     let owner = own_owner(&workspace, &own);
 
     let removed = [
-        store.forget_stale(owner, ALPHA, AT - 1).await,
-        store.forget_stale(owner, ALPHA, AT).await,
-        store.forget_stale(owner, BETA, AT + 1).await,
+        store
+            .forget_stale(owner, ALPHA, afd_core::clock::from_millis(AT - 1))
+            .await,
+        store
+            .forget_stale(owner, ALPHA, afd_core::clock::from_millis(AT))
+            .await,
+        store
+            .forget_stale(owner, BETA, afd_core::clock::from_millis(AT + 1))
+            .await,
     ]
     .map(|answer| answer.expect("a stale forget"));
 

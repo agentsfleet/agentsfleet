@@ -283,7 +283,7 @@ async fn prune(from: &dyn MemoryStore, to: &dyn MemoryStore, workspace: &Uuid7) 
             workspace,
             fleet: &row.fleet,
         };
-        let removed = to.forget_stale(owner, &row.key, row.updated_at_ms).await?;
+        let removed = to.forget_stale(owner, &row.key, row.updated_at).await?;
         pruned += usize::from(removed);
     }
     Ok(pruned)

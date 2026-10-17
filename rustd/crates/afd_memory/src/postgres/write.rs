@@ -2,9 +2,9 @@
 //! flip's newer-row-wins import and its version-bounded prune, and the
 //! operator's forget.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
+use jiff::Timestamp;
 
 use super::{Failure, PgStore};
 use crate::error::Result;
@@ -29,7 +29,7 @@ pub(super) async fn upsert(
     store: &PgStore,
     owner: Owner<'_>,
     entries: &[&MemoryDelta<'_>],
-    now: UnixMillis,
+    now: Timestamp,
 ) -> Result<Housekept> {
     store
         .as_memory_role(Failure::Runner(CONTEXT_UPSERT), async |connection| {
@@ -43,7 +43,7 @@ pub(super) async fn upsert(
                     .bind(owner.fleet.as_str())
                     .bind(owner.workspace.as_str())
                     .bind(delta.visibility.is_workspace())
-                    .bind(now.as_millis())
+                    .bind(jiff_sqlx::ToSqlx::to_sqlx(now))
                     .execute(&mut *connection)
                     .await
                     .map_err(|source| Failure::Runner(CONTEXT_UPSERT).raise(source))?;
@@ -51,7 +51,10 @@ pub(super) async fn upsert(
             let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
                 .bind(owner.fleet.as_str())
                 .bind(DAILY_CATEGORY)
-                .bind(now.as_millis().saturating_sub(DAILY_RETENTION_MS))
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(afd_core::clock::add_millis(
+                    now,
+                    -DAILY_RETENTION_MS,
+                )))
                 .execute(&mut *connection)
                 .await
                 .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
@@ -72,9 +75,7 @@ pub(super) async fn upsert(
 /// Writes `record` as it stands, unless a newer row is already here.
 pub(super) async fn import(store: &PgStore, workspace: &Uuid7, record: &Record) -> Result<()> {
     let failure = Failure::Runner(CONTEXT_IMPORT);
-    let row_id = store
-        .entropy
-        .uuid7(UnixMillis::from_millis(record.created_at_ms))?;
+    let row_id = store.entropy.uuid7(record.created_at)?;
     store
         .as_memory_role(failure, async |connection| {
             sqlx::query(sql::IMPORT_ENTRY)
@@ -85,8 +86,8 @@ pub(super) async fn import(store: &PgStore, workspace: &Uuid7, record: &Record) 
                 .bind(record.fleet.as_str())
                 .bind(workspace.as_str())
                 .bind(record.visibility.is_workspace())
-                .bind(record.created_at_ms)
-                .bind(record.updated_at_ms)
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(record.created_at))
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(record.updated_at))
                 .execute(&mut *connection)
                 .await
                 .map_err(|source| failure.raise(source))?;
@@ -115,13 +116,13 @@ pub(super) async fn forget(store: &PgStore, owner: Owner<'_>, key: &str) -> Resu
         .await
 }
 
-/// Removes the fleet's entry under `key` while it is no newer than `seen_ms`;
+/// Removes the fleet's entry under `key` while it is no newer than `seen`;
 /// whether there was one. Commits before answering, as [`forget`] does.
 pub(super) async fn forget_stale(
     store: &PgStore,
     owner: Owner<'_>,
     key: &str,
-    seen_ms: i64,
+    seen: jiff::Timestamp,
 ) -> Result<bool> {
     let failure = Failure::Runner(CONTEXT_PRUNE);
     store
@@ -129,7 +130,7 @@ pub(super) async fn forget_stale(
             let removed = sqlx::query(sql::DELETE_STALE_ENTRY)
                 .bind(owner.fleet.as_str())
                 .bind(key)
-                .bind(seen_ms)
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(seen))
                 .fetch_optional(&mut *connection)
                 .await
                 .map_err(|source| failure.raise(source))?;

@@ -36,9 +36,9 @@ pub struct Record {
     /// Who reads it.
     pub visibility: Visibility,
     /// When it was first written — the operator page's cursor value.
-    pub created_at_ms: i64,
+    pub created_at: jiff::Timestamp,
     /// When it was last written — what a copy compares to keep the newer row.
-    pub updated_at_ms: i64,
+    pub updated_at: jiff::Timestamp,
 }
 
 impl Record {

@@ -10,12 +10,12 @@
 use std::sync::Arc;
 
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers::memory;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 
 use crate::access::{Access, Directory};
 use crate::admit::admit;
@@ -126,7 +126,7 @@ impl Memories {
         &self,
         fleet: &Uuid7,
         deltas: &[MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Captured> {
         let captured = self.capture_counted(fleet, deltas, now).await;
         match captured {
@@ -140,7 +140,7 @@ impl Memories {
         &self,
         fleet: &Uuid7,
         deltas: &[MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Captured> {
         let Access { workspace, grants } = self.access(fleet).await?;
         let admitted = admit(deltas, grants.publish);
@@ -254,7 +254,7 @@ impl Memories {
         &self,
         owner: Owner<'_>,
         entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Housekept> {
         let mut route = self.routes().of(owner.workspace);
         let mut written: Vec<Arc<dyn MemoryStore>> = Vec::with_capacity(2);

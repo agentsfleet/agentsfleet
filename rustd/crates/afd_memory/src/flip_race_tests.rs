@@ -15,7 +15,6 @@ use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{INTERNAL_OPERATION_FAILED, MEM_UNAVAILABLE};
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
@@ -182,7 +181,7 @@ async fn a_flipping_write_reaches_the_store_being_left_before_the_store_being_fi
         held_first
     };
 
-    let at = UnixMillis::from_millis(PUSHED_AT);
+    let at = afd_core::clock::from_millis(PUSHED_AT);
     let (written, held_first) = tokio::join!(memories.upsert_through(owner, &entries, at), watch);
 
     written.expect("the write is taken");
