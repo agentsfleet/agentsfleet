@@ -27,9 +27,6 @@ const YEAR_2100_MS: i64 = 4_102_444_800_000;
 /// Microseconds in one millisecond, for the sub-millisecond cases.
 const MICROS_PER_MILLI: i64 = 1_000;
 
-/// Nanoseconds in one millisecond: a whole-millisecond reading leaves none over.
-const NANOS_PER_MILLI: i32 = 1_000_000;
-
 /// Two instants 3.5 seconds apart, for the signed-difference assertions.
 const EARLIER_MS: i64 = 1_000;
 
@@ -54,8 +51,8 @@ fn test_the_reading_is_the_present_in_whole_milliseconds() {
     assert!(millis > YEAR_2020_MS, "{reading} is before 2020");
     assert!(millis < YEAR_2100_MS, "{reading} is after 2100");
     assert_eq!(
-        reading.subsec_nanosecond() % NANOS_PER_MILLI,
-        0,
+        whole_millis(reading),
+        reading,
         "{reading} carries a fraction of a millisecond"
     );
 }
