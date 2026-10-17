@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig, jwks_url};
 use base64::Engine as _;
@@ -51,14 +51,14 @@ const EXPIRED_EXP_S: i64 = 1_704_067_300;
 /// One clock makes both assertions: the valid token verifies here, the expiring
 /// one does not, and the only difference between them is `exp`.
 fn now_after_expiry() -> Arc<dyn Clock> {
-    Arc::new(FixedClock::at(UnixMillis::from_millis(
+    Arc::new(FixedClock::at(afd_core::clock::from_millis(
         (EXPIRED_EXP_S + 100) * MILLIS_PER_SECOND,
     )))
 }
 
 /// A moment BEFORE the expiring token's expiry.
 fn now_before_expiry() -> Arc<dyn Clock> {
-    Arc::new(FixedClock::at(UnixMillis::from_millis(
+    Arc::new(FixedClock::at(afd_core::clock::from_millis(
         (FIXTURE_IAT_S + 10) * MILLIS_PER_SECOND,
     )))
 }
@@ -142,7 +142,7 @@ fn test_expiry_is_decided_by_the_clock_and_not_by_the_signature() {
 /// said, on every request, forever.
 #[test]
 fn test_a_token_expiring_exactly_now_is_expired() {
-    let at_the_boundary = Arc::new(FixedClock::at(UnixMillis::from_millis(
+    let at_the_boundary = Arc::new(FixedClock::at(afd_core::clock::from_millis(
         EXPIRED_EXP_S * MILLIS_PER_SECOND,
     )));
     let verifier = verifier(key_set(TEST_KID), at_the_boundary);

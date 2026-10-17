@@ -124,7 +124,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
         }
         // One clock read for both time bounds, so they can never disagree about
         // when "now" was.
-        let now = self.clock.now().as_seconds();
+        let now = self.clock.now().as_second();
         let exp = claims.exp.ok_or(VerifyError::MissingClaim)?;
         // `exp` is seconds since the epoch; the clock reads milliseconds.
         // Compared in seconds, and the boundary is inclusive: a token expiring

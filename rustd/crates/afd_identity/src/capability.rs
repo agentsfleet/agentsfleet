@@ -21,7 +21,8 @@ use afd_auth::capability::CapabilitySource;
 use afd_auth::error::Unavailable;
 use afd_auth::principal::Subject;
 use afd_auth::scope::{ScopeSet, parse_claim};
-use afd_core::clock::{Clock, UnixMillis};
+use afd_core::clock::Clock;
+use jiff::Timestamp;
 
 /// How long a fetched claim is served without asking again.
 pub const DEFAULT_TTL_MS: i64 = 60 * 1_000;
@@ -61,7 +62,7 @@ pub trait ClaimSource: Send + Sync + std::fmt::Debug + 'static {
 #[derive(Debug, Clone, Copy)]
 struct Cached {
     scopes: ScopeSet,
-    fetched_at: UnixMillis,
+    fetched_at: Timestamp,
 }
 
 /// Live capabilities, cached against the provider.
@@ -220,7 +221,7 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
 
     /// How old `entry` is, by the injected clock.
     fn age(&self, entry: Cached) -> i64 {
-        self.clock.now().saturating_millis_since(entry.fetched_at)
+        afd_core::clock::millis_between(entry.fetched_at, self.clock.now())
     }
 }
 

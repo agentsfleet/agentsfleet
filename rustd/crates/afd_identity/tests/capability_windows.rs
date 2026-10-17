@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_auth::capability::CapabilitySource;
 use afd_auth::principal::Subject;
 use afd_auth::scope::{Scope, ScopeSet, parse_claim};
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock};
 use afd_identity::ProviderCapabilities;
 use afd_identity::capability::{ClaimSource, DEFAULT_STALE_CEILING_MS, DEFAULT_TTL_MS};
 use afd_identity::error::ClaimUnavailable;
@@ -95,7 +95,7 @@ impl ClaimSource for Provider {
 }
 
 fn clock_at(millis: i64) -> Arc<FixedClock> {
-    Arc::new(FixedClock::at(UnixMillis::from_millis(millis)))
+    Arc::new(FixedClock::at(afd_core::clock::from_millis(millis)))
 }
 
 fn resolver(

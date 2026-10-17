@@ -20,6 +20,8 @@ categories.workspace = true
 test-util = ["afd_auth/test-util", "afd_core/test-util"]
 
 [dependencies]
+# Instants are `jiff::Timestamp`, the type afd_core's clock returns.
+jiff.workspace = true
 afd_auth.workspace = true
 afd_core.workspace = true
 # The rule that a subject spliced into a path is not `.` or `..`.

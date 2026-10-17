@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use afd_auth::verifier::VerifyError;
-use afd_core::clock::{Clock, UnixMillis};
+use afd_core::clock::Clock;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::jwks::key_set::JwkKeySet;
@@ -40,7 +41,7 @@ pub(crate) enum Reason {
 #[derive(Debug, Clone)]
 struct Held {
     keys: Arc<JwkKeySet>,
-    fetched_at: UnixMillis,
+    fetched_at: Timestamp,
 }
 
 /// The key set this verifier holds, and the policy for replacing it.
@@ -57,7 +58,7 @@ pub(crate) struct KeyCache<S> {
 
 /// When the last fetch was attempted, guarded by the flight gate.
 #[derive(Debug, Clone, Copy)]
-struct LastAttempt(Option<UnixMillis>);
+struct LastAttempt(Option<Timestamp>);
 
 impl<S: KeySetSource> KeyCache<S> {
     /// Builds a cache over `source`.
@@ -109,7 +110,7 @@ impl<S: KeySetSource> KeyCache<S> {
             return Err(VerifyError::KeySetUnavailable);
         };
         let ceiling = self.ttl_ms.max(0).saturating_add(STALE_GRACE_MS);
-        if self.clock.now().saturating_millis_since(entry.fetched_at) > ceiling {
+        if afd_core::clock::millis_between(entry.fetched_at, self.clock.now()) > ceiling {
             return Err(VerifyError::KeySetUnavailable);
         }
         if entry.keys.find(kid).is_none() {
@@ -136,7 +137,7 @@ impl<S: KeySetSource> KeyCache<S> {
 
     /// Whether `entry` is within its time-to-live.
     fn is_fresh(&self, entry: &Held) -> bool {
-        self.clock.now().saturating_millis_since(entry.fetched_at) <= self.ttl_ms
+        afd_core::clock::millis_between(entry.fetched_at, self.clock.now()) <= self.ttl_ms
     }
 
     /// One flight at a time, rate-limited, and never fatal.
@@ -153,7 +154,7 @@ impl<S: KeySetSource> KeyCache<S> {
             return;
         }
         if let LastAttempt(Some(previous)) = *last
-            && entered.saturating_millis_since(previous) < REFRESH_MIN_INTERVAL_MS
+            && afd_core::clock::millis_between(previous, entered) < REFRESH_MIN_INTERVAL_MS
         {
             // Rate-limited. The caller serves whatever set we still hold, which
             // is the same thing it would do after a failed fetch.

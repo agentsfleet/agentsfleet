@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock};
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig};
 use aws_lc_rs::signature::KeyPair as _;
 use base64::Engine as _;
@@ -123,7 +123,7 @@ fn verify_signed_at(token: &Presented, now_ms: i64) -> Result<VerifiedClaims, Ve
     let verifier = JwksVerifier::new(
         StaticKeySet::new(key_set().into_bytes()),
         VerifierConfig::new(ISSUER, AUDIENCE),
-        Arc::new(FixedClock::at(UnixMillis::from_millis(now_ms))) as Arc<dyn Clock>,
+        Arc::new(FixedClock::at(afd_core::clock::from_millis(now_ms))) as Arc<dyn Clock>,
     );
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
