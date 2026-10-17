@@ -127,6 +127,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🧵 [`concurrency.md`](./concurrency.md) | Tasks, locks, channels and shutdown order. |
 | 📏 [`scaling.md`](./scaling.md) | Sizing the runtime and its tuning knobs. |
 | 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | The Dragonfly cluster target and its status. |
+| 🗃️ [`postgres_schemas.md`](./postgres_schemas.md) | Which Postgres schema owns each table, and the naming rules. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
 | [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
 | 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
