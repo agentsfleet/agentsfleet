@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::cache::{DEFAULT_TTL_MS, REFRESH_MIN_INTERVAL_MS};
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, VerifierConfig};
@@ -37,7 +37,9 @@ impl KeySetSource for Source {
 }
 
 fn verifier() -> (JwksVerifier<Source>, Arc<FixedClock>, Presented) {
-    let clock = Arc::new(FixedClock::at(UnixMillis::from_millis(signing::NOW_MS)));
+    let clock = Arc::new(FixedClock::at(afd_core::clock::from_millis(
+        signing::NOW_MS,
+    )));
     let source = Source {
         offline: AtomicBool::new(false),
         document: Mutex::new(signing::key_set().into_bytes()),
