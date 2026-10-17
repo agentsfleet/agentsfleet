@@ -30,6 +30,9 @@ afd_db.workspace = true
 # out of the same parse the ciphertext is produced from.
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
+# Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp`.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 # A secret name's bound and the canonical body's size bound, declared on the
