@@ -75,9 +75,9 @@ fn a_size_one_past_any_bound_is_refused() {
 /// The lease the daemon sends today, carrying `limits` as given.
 fn lease(limits: &str) -> String {
     format!(
-        r#"{{"lease_id":"l","fencing_token":1,"lease_expires_at":0,"secret_delivery":"inline",
+        r#"{{"lease_id":"l","fencing_token":1,"lease_expires_at":"1970-01-01T00:00:00.000Z","secret_delivery":"inline",
         "event":{{"event_id":"e","fleet_id":"f","workspace_id":"w","actor":"a",
-        "event_type":"chat","request_json":"{{}}","created_at":0}},
+        "event_type":"chat","request_json":"{{}}","created_at":"1970-01-01T00:00:00.000Z"}},
         "policy":{{"network_policy":{{"allow":[],"read_only":true,"read_post_paths":[]}},
         "tools":[],"secrets_map":null,"mintable":[],"provider":"p","api_key":"k",
         "inference_host":"h","base_url":null,"repository_binding":null,

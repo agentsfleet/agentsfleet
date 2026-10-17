@@ -19,7 +19,7 @@ use serde_json::Value;
 
 /// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
 /// at several offsets and every cut must fail as a typed error.
-const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":931,"secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":426},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
+const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":"1970-01-01T00:00:00.931Z","secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
 
 /// A malformed payload must produce a typed error, never a panic and never a
 /// half-built value. Truncation is the realistic shape: a connection dropped
@@ -204,7 +204,7 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
         r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"heartbeat_interval_ms":10000,"future":1}}"#
     );
     let own = format!(
-        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":1,"assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
+        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":"1970-01-01T00:00:00.001Z","assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
     );
     [
         ("heartbeat", heartbeat, |b| {
@@ -240,7 +240,7 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
         }),
         (
             "renew",
-            r#"{"lease_expires_at":9,"future":1}"#.to_owned(),
+            r#"{"lease_expires_at":"1970-01-01T00:00:00.009Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<RenewResponse>(b).is_ok(),
         ),
         ("report", r#"{"ok":true,"future":1}"#.to_owned(), |b| {

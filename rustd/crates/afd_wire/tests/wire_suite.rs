@@ -13,6 +13,8 @@
 
 mod claim_selection;
 
+#[path = "instants.rs"]
+mod instants;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
 #[path = "policy_shapes.rs"]

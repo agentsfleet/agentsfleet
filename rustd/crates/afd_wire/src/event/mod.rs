@@ -109,7 +109,8 @@ pub struct EventEnvelope<'a> {
     #[serde(borrow)]
     pub request_json: Cow<'a, str>,
     /// Epoch milliseconds at which the event was created.
-    pub created_at: i64,
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// One event as the operator surface renders it.
@@ -159,9 +160,11 @@ pub struct EventSummary<'a> {
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
     /// Epoch milliseconds the row was created.
-    pub created_at: i64,
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
     /// Epoch milliseconds the row last changed.
-    pub updated_at: i64,
+    #[serde(with = "crate::instant")]
+    pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
     //
     // `null` when the event recorded no telemetry, which the console renders
@@ -251,9 +254,11 @@ pub struct EventDetail<'a> {
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
     /// Epoch milliseconds the row was created.
-    pub created_at: i64,
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
     /// Epoch milliseconds the row last changed.
-    pub updated_at: i64,
+    #[serde(with = "crate::instant")]
+    pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
     //
     // `null` when the event recorded no telemetry — see [`EventSummary`] on

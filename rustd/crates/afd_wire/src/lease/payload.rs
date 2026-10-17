@@ -58,7 +58,8 @@ pub struct LeasePayload<'a> {
     /// Monotonic guard a report must echo.
     pub fencing_token: u64,
     /// Epoch milliseconds after which the event becomes reclaimable.
-    pub lease_expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub lease_expires_at: jiff::Timestamp,
     /// How secrets reached this run.
     pub secret_delivery: SecretDelivery,
     /// The event to run.

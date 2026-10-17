@@ -75,7 +75,8 @@ pub enum FailureClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenewResponse {
     /// Epoch milliseconds of the new deadline.
-    pub lease_expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub lease_expires_at: jiff::Timestamp,
 }
 
 /// `POST /v1/runners/me/leases/{lease_id}/renew` request.

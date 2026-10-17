@@ -43,7 +43,8 @@ pub struct ModelAccess {
     /// Random capability; never log or spool it.
     pub token: String,
     /// Current lease expiry, capped by the attempt deadline.
-    pub expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
     /// Relative daemon route; no provider destination or key is delivered.
     pub invocation_path: String,
 }
@@ -120,7 +121,8 @@ pub struct Lease<C> {
     /// Decimal private deletion generation.
     pub deletion_generation: String,
     /// Lease deadline in epoch milliseconds.
-    pub expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
     /// Original attempt deadline; renewal cannot extend it.
     pub deadline: i64,
     /// Non-secret selected model metadata.
