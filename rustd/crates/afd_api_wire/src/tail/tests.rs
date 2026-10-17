@@ -38,8 +38,8 @@ fn row() -> EventSummary<'static> {
         failure_label: None,
         failure_detail: None,
         resumes_event_id: None,
-        created_at: 1_725_000_000_000,
-        updated_at: 1_725_000_012_000,
+        created_at: jiff::Timestamp::constant(1_725_000_000, 0),
+        updated_at: jiff::Timestamp::constant(1_725_000_012, 0),
         cost_nanos: Some(40_000_000),
     }
 }
@@ -63,7 +63,7 @@ fn admitted() -> TailFrame<'static> {
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
         message: Cow::Borrowed("check the tests"),
-        created_at: 1_725_000_000_000,
+        created_at: jiff::Timestamp::constant(1_725_000_000, 0),
     }
 }
 
@@ -77,7 +77,7 @@ fn should_lead_every_frame_with_its_kind() {
             event_id: Cow::Borrowed("e"),
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
-            created_at: 1,
+            created_at: jiff::Timestamp::constant(1, 0),
             message: None,
             counters: Some(COUNTERS),
         },
@@ -191,7 +191,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
             event_id: Cow::Borrowed("e"),
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
-            created_at: 1,
+            created_at: jiff::Timestamp::constant(1, 0),
             message: None,
             counters: Some(COUNTERS),
         },
@@ -270,7 +270,7 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
         event_id: Cow::Borrowed("e"),
         actor: Cow::Borrowed("cron"),
         event_type: Cow::Borrowed("cron"),
-        created_at: 1,
+        created_at: jiff::Timestamp::constant(1, 0),
         message: None,
         counters: None,
     });
@@ -296,7 +296,7 @@ fn should_carry_the_typed_message_on_an_admitted_frame() {
     assert_eq!(value["event_id"], json!("1725000000000-3"), "{text}");
     assert_eq!(value["actor"], json!(STEER_ACTOR), "{text}");
     assert_eq!(value["message"], json!("check the tests"), "{text}");
-    assert_eq!(value["created_at"], json!(1_725_000_000_000_i64), "{text}");
+    assert_eq!(value["created_at"], json!("2024-08-30T06:40:00.000Z"), "{text}");
     assert!(value.get("events_processed").is_none(), "{text}");
 }
 
@@ -308,7 +308,7 @@ fn should_carry_a_message_on_a_received_frame_only_when_given() {
         event_id: Cow::Borrowed("e"),
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
-        created_at: 1,
+        created_at: jiff::Timestamp::constant(1, 0),
         message: message.map(Cow::Borrowed),
         counters: None,
     };

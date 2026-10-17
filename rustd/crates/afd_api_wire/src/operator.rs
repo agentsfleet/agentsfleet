@@ -28,10 +28,12 @@ pub struct RunnerItem<'a> {
     /// Placement labels.
     #[serde(borrow)]
     pub labels: Vec<Cow<'a, str>>,
-    /// Last heartbeat instant in epoch milliseconds.
-    pub last_seen_at: i64,
-    /// Enrolment instant in epoch milliseconds.
-    pub created_at: i64,
+    /// Last heartbeat instant.
+    #[serde(with = "afd_wire::instant")]
+    pub last_seen_at: jiff::Timestamp,
+    /// Enrolment instant.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// Policy currently assigned to the host.
     #[serde(borrow)]
     pub assigned_policy: AssignedPolicy<'a>,
@@ -81,9 +83,11 @@ pub struct RunnerDetail<'a> {
     /// Lifetime expired count.
     pub leases_expired: i64,
     /// Outstanding self-test request instant.
-    pub selftest_requested_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub selftest_requested_at: Option<jiff::Timestamp>,
     /// Latest self-test completion instant.
-    pub selftest_completed_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub selftest_completed_at: Option<jiff::Timestamp>,
     /// Latest complete self-test report.
     #[serde(borrow)]
     pub selftest: Option<SelftestReport<'a>>,
@@ -172,10 +176,12 @@ pub struct RunnerLeaseItem<'a> {
     pub metered_output_tokens: i64,
     /// Settled wall time, absent before settlement.
     pub wall_ms: Option<i64>,
-    /// Holder deadline in epoch milliseconds.
-    pub lease_expires_at: i64,
-    /// Claim instant in epoch milliseconds.
-    pub created_at: i64,
+    /// Holder deadline.
+    #[serde(with = "afd_wire::instant")]
+    pub lease_expires_at: jiff::Timestamp,
+    /// Claim instant.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// A keyset page of one runner's lease history.
@@ -224,8 +230,8 @@ mod tests {
                 metered_cached_tokens: 17,
                 metered_output_tokens: 29,
                 wall_ms: Some(1_250),
-                lease_expires_at: 1_725_000_030_000,
-                created_at: 1_725_000_000_000,
+                lease_expires_at: jiff::Timestamp::constant(1_725_000_030, 0),
+                created_at: jiff::Timestamp::constant(1_725_000_000, 0),
             }],
             total: 3,
             next_cursor: Some(Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")),
@@ -254,8 +260,8 @@ mod tests {
                     "metered_cached_tokens": 17,
                     "metered_output_tokens": 29,
                     "wall_ms": 1_250,
-                    "lease_expires_at": 1_725_000_030_000_i64,
-                    "created_at": 1_725_000_000_000_i64
+                    "lease_expires_at":"2024-08-30T06:40:30.000Z",
+                    "created_at":"2024-08-30T06:40:00.000Z"
                 }],
                 "total": 3,
                 "next_cursor": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010"

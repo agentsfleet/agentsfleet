@@ -55,9 +55,11 @@ pub struct View<'s> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<Cow<'s, str>>,
     /// When it was created.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// When it was last changed.
-    pub updated_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
 }
 
 /// A page of schedules.

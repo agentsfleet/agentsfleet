@@ -78,8 +78,9 @@ pub struct ModelEntryRow<'a> {
     pub output_nanos_per_mtok: Option<i64>,
     /// Whether this entry is the tenant's current selection.
     pub active: bool,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at: i64,
+    /// When it was first stored.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// The deployment's platform default, as the page's Default row shows it.
@@ -140,8 +141,9 @@ pub struct StoredModelEntry<'a> {
     pub model_id: &'a str,
     /// The vault key name backing it.
     pub secret_ref: &'a str,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at: i64,
+    /// When it was first stored.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// Registers a model against a stored credential.
@@ -201,7 +203,7 @@ mod tests {
             cached_input_nanos_per_mtok: None,
             output_nanos_per_mtok: None,
             active: false,
-            created_at: 1_777_507_200_000,
+            created_at: jiff::Timestamp::constant(1_777_507_200, 0),
         }
     }
 
@@ -214,7 +216,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":1777507200000}"#
+            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00.000Z"}"#
         );
     }
 

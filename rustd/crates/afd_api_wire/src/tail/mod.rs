@@ -72,10 +72,12 @@ pub struct TailRow<'a> {
     pub failure_detail: Option<Cow<'a, str>>,
     /// The event this one continues, set on a continuation.
     pub resumes_event_id: Option<Cow<'a, str>>,
-    /// Epoch milliseconds the row was created.
-    pub created_at: i64,
-    /// Epoch milliseconds the row last changed.
-    pub updated_at: i64,
+    /// When the row was created.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
+    /// When the row last changed.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
     pub cost_nanos: Option<i64>,
 }
@@ -156,8 +158,9 @@ pub enum TailFrame<'a> {
         event_type: Cow<'a, str>,
         /// What was typed, at most [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`].
         message: Cow<'a, str>,
-        /// Epoch milliseconds the admission was recorded.
-        created_at: i64,
+        /// When the admission was recorded.
+        #[serde(with = "afd_wire::instant")]
+        created_at: jiff::Timestamp,
     },
     /// The narrative log opened: a run is about to start.
     EventReceived {
@@ -167,8 +170,9 @@ pub enum TailFrame<'a> {
         actor: Cow<'a, str>,
         /// How the event entered the system.
         event_type: Cow<'a, str>,
-        /// Epoch milliseconds the row was created.
-        created_at: i64,
+        /// When the row was created.
+        #[serde(with = "afd_wire::instant")]
+        created_at: jiff::Timestamp,
         /// What a person typed, on a steer only: absent for every other
         /// actor, above [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
         /// stored body does not parse.

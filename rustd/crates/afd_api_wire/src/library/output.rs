@@ -16,7 +16,8 @@ pub struct Card<Q = Value> {
     /// platform or tenant.
     pub visibility: String,
     /// UTC milliseconds.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// Declarative needs of the head revision.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub requirements: Q,
@@ -49,7 +50,8 @@ pub struct Revision<D = Value, Q = Value> {
     /// Pinned policy meaning.
     pub policy_semantics: String,
     /// UTC milliseconds.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -92,7 +94,8 @@ pub struct RevisionSummary {
     /// Content identity.
     pub canonical_digest: String,
     /// UTC milliseconds.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

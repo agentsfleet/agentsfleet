@@ -37,7 +37,8 @@ pub struct MintedApiKeyResponse<'a> {
     /// The credential itself. Shown once and never stored in this shape.
     pub key: Cow<'a, str>,
     /// When it was minted.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// `POST /v1/cli-credentials` — mint this machine's credential.
@@ -92,7 +93,8 @@ pub struct RevokedApiKeyResponse<'a> {
     /// straight into whatever it was holding.
     pub active: bool,
     /// When the row records it stopped working.
-    pub revoked_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub revoked_at: jiff::Timestamp,
 }
 
 /// One key as a list shows it: metadata, never a secret.
@@ -106,13 +108,15 @@ pub struct ApiKeySummary<'a> {
     /// Whether it still authenticates.
     pub active: bool,
     /// When it was minted.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// When it stopped working, if it has.
     ///
     /// Emitted as `null` rather than omitted — here and on every optional in
     /// this module — so a row is always the same set of keys. Omission would
     /// be a shape change a dashboard's `"revoked_at" in row` check can feel.
-    pub revoked_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub revoked_at: Option<jiff::Timestamp>,
 }
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
@@ -127,12 +131,14 @@ pub struct BillingResponse {
     /// What remains, in nanos — one thousand-millionth of a dollar.
     pub balance_nanos: i64,
     /// When the balance last moved.
-    pub updated_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
     /// Whether the balance has reached zero.
     pub is_exhausted: bool,
     /// When it did, or `null` while money remains — emitted either way, for
     /// the module's null rule.
-    pub exhausted_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub exhausted_at: Option<jiff::Timestamp>,
 }
 
 /// One ledger row as the charges list shows it.
@@ -180,7 +186,8 @@ pub struct ChargeSummary<'a> {
     pub wall_ms: Option<i64>,
     /// When the row was written — the walk's sort key, and what its cursor
     /// half is rendered from.
-    pub recorded_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub recorded_at: jiff::Timestamp,
 }
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.

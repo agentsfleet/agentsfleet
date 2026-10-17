@@ -91,8 +91,9 @@ pub struct StoredSecretResponse<'a> {
 pub struct SecretSummary<'a> {
     /// The name the secret is stored and interpolated under.
     pub name: Cow<'a, str>,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at: i64,
+    /// When it was first stored.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// The server's classification. A client reads this and never re-derives it.
     pub kind: &'static str,
     /// The provider label, for the kinds that carry one.
@@ -154,7 +155,7 @@ mod tests {
         let body = serde_json::to_string(&SecretsResponse {
             secrets: vec![SecretSummary {
                 name: Cow::Borrowed("stripe"),
-                created_at: 1_777_507_200_000,
+                created_at: jiff::Timestamp::constant(1_777_507_200, 0),
                 kind: "custom_secret",
                 provider: None,
                 base_url: None,
@@ -164,7 +165,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"secrets":[{"name":"stripe","created_at":1777507200000,"kind":"custom_secret"}]}"#
+            r#"{"secrets":[{"name":"stripe","created_at":"2026-04-30T00:00:00.000Z","kind":"custom_secret"}]}"#
         );
     }
 
@@ -172,7 +173,7 @@ mod tests {
     fn a_custom_endpoint_carries_both_descriptors() {
         let body = serde_json::to_string(&SecretSummary {
             name: Cow::Borrowed("gateway"),
-            created_at: 1,
+            created_at: jiff::Timestamp::constant(1, 0),
             kind: "custom_endpoint",
             provider: Some(Cow::Borrowed("openai-compatible")),
             base_url: Some(Cow::Borrowed("https://gw.example.com/v1")),
@@ -181,7 +182,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"name":"gateway","created_at":1,"kind":"custom_endpoint","provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
+            r#"{"name":"gateway","created_at":"1970-01-01T00:00:01.000Z","kind":"custom_endpoint","provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
         );
     }
 

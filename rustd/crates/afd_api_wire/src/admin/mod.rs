@@ -109,12 +109,13 @@ pub struct RunnerAdminPatchResponse<'a> {
     /// The labels as stored, each once, when the request carried labels.
     #[serde(borrow)]
     pub labels: Option<Vec<Cow<'a, str>>>,
-    /// When the self-test request was recorded, epoch milliseconds.
+    /// When the self-test request was recorded.
     ///
     /// The reply is the REQUEST, never a verdict — the daemon picks the ask up
     /// on its next beat, so a result cannot exist yet. Returning the instant
     /// lets a reader age the pending state instead of spinning with no clock.
-    pub selftest_requested_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub selftest_requested_at: Option<jiff::Timestamp>,
 }
 
 /// Append-only runner history values.
@@ -170,8 +171,9 @@ pub struct RunnerEventItem<'a> {
     pub runner_id: Cow<'a, str>,
     /// What happened.
     pub event_type: RunnerEventType,
-    /// When, in epoch milliseconds.
-    pub occurred_at: i64,
+    /// When.
+    #[serde(with = "afd_wire::instant")]
+    pub occurred_at: jiff::Timestamp,
     /// Event-specific detail. Free-form by design.
     pub metadata: serde_json::Value,
 }

@@ -51,8 +51,9 @@ pub struct PlatformKeyItem<'a> {
     pub model: Option<Cow<'a, str>>,
     /// Whether this row is the platform default.
     pub active: bool,
-    /// Last mutation instant in epoch milliseconds.
-    pub updated_at: i64,
+    /// Last mutation instant.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
 }
 
 /// `GET /v1/admin/platform-keys` response.

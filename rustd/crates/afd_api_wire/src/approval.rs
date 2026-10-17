@@ -108,11 +108,14 @@ pub struct ApprovalSummary<'a> {
     /// The resolver's note, empty while pending.
     pub detail: Cow<'a, str>,
     /// When it was raised.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// When it stops waiting.
-    pub timeout_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub timeout_at: jiff::Timestamp,
     /// When it was resolved, or `null` while pending.
-    pub updated_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub updated_at: Option<jiff::Timestamp>,
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
     /// That person's display name, empty when this deployment holds no user
@@ -181,7 +184,8 @@ pub struct ResolvedResponse<'a> {
     /// Where it now stands.
     pub outcome: Cow<'a, str>,
     /// When it was decided.
-    pub resolved_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub resolved_at: jiff::Timestamp,
     /// Who decided it — not necessarily this caller.
     pub resolved_by: Cow<'a, str>,
 }
