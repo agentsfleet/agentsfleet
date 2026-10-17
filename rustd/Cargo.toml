@@ -23,7 +23,7 @@ edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
-rust-version = "1.99.0"
+rust-version = "1.99.1"
 # MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
 # manifest said Apache-2.0 from its first commit, which made this workspace the
 # only part of the product claiming a licence the project does not ship under —
@@ -203,7 +203,7 @@ schemars = { version = "1.2.2", default-features = false, features = ["derive", 
 # `OpenApi`, which is the whole of what the derives and the collectors need.
 # `jiff_0_2` publishes every `jiff::Timestamp` field as `type: string, format:
 # date-time`, so no `_at` field carries a hand-written schema attribute.
-utoipa = { version = "5.5.0", default-features = false, features = ["macros", "jiff_0_2"] }
+utoipa = { version = "6.0.0", default-features = false, features = ["macros", "jiff_0_2"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.92", default-features = false }
 
@@ -379,15 +379,17 @@ aws-lc-rs = { version = "1.18.0", default-features = false, features = [
 # the build through rustls; declared so the runner's sandbox crate names it.
 rustls-pki-types = { version = "1.15.1", default-features = false, features = ["std"] }
 
-# The subject to capability-claim cache. `future` rather than `sync`: the
-# request path is asynchronous, and `try_get_with` coalesces concurrent loads
-# for the same key, so no hand-rolled sequence counter has to stop an
-# out-of-order response resurrecting a pre-revocation claim. With one flight per subject there is no second response to be out of
-# order with.
-posthog-rs = { version = "0.25.3", default-features = false, features = ["async-client"] }
+# Product analytics: the async client only. It still compiles reqwest's
+# blocking client and chrono, which nothing here calls.
+posthog-rs = { version = "0.27.0", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
+# The subject to capability-claim cache. `future` rather than `sync`: the
+# request path is asynchronous, and `try_get_with` coalesces concurrent loads
+# for the same key, so no hand-rolled sequence counter has to stop an
+# out-of-order response resurrecting a pre-revocation claim. With one flight
+# per subject there is no second response to be out of order with.
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
 # The JWKS fetch and the provider capability call.
@@ -421,6 +423,10 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 # token never enters the sandbox. A native library, not a spawned `git`,
 # per the operating model's native-SDK rule; Codex reads repositories with it
 # too. Network and checkout features are chosen by the crate that uses them.
+#
+# Held at 0.88 for M229 (Indy decides later, 2026-10-18): 0.89's `worktree-mutation` also pulls
+# `status`, `dirwalk` and `gix-worktree/remove`, nine crates (dua-core,
+# crossbeam among them) the checkout never calls.
 gix = { version = "0.88.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
@@ -436,10 +442,10 @@ html2text = { version = "0.17.1", default-features = false }
 # on the same library; the runner owns what rig does not: which providers a
 # lease may reach, the transport (one client, no redirect, `backon` retry), the
 # key's one header and the secret scrub. Pinned exactly: rig's minors break
-# their API (0.43 lists 40 breaking entries), so an upgrade is a reviewed
+# their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
-rig-core = { version = "=0.43.0", default-features = false }
+rig-core = { version = "=0.44.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.
@@ -684,7 +690,7 @@ octocrab = { version = "0.54.1", default-features = false, features = [
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
-opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
 
 # The transport. A NEW dependency and not a feature flag on one already in the
 # lock: nothing here spoke OTLP before, and this is the encoder and the client
@@ -706,7 +712,7 @@ opentelemetry = { version = "0.32.0", default-features = false, features = ["tra
 #
 # The version resolves the SAME `reqwest` line this workspace already pins, so
 # the binary carries one HTTP client rather than two.
-opentelemetry-otlp = { version = "0.32.0", default-features = false, features = [
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = [
     "http-proto",
     # Both encodings, because the knob accepts both: a deployment that asked
     # for `http/json` and got protobuf would be told it was configured and be
@@ -730,13 +736,13 @@ opentelemetry-otlp = { version = "0.32.0", default-features = false, features = 
 # layer: the first would ingest the `log` crate's records, which nothing here
 # emits, and the second is a second metrics pipeline beside the census-built
 # one.
-tracing-opentelemetry = { version = "0.33.0", default-features = false }
+tracing-opentelemetry = { version = "0.34.0", default-features = false }
 
 # The same bridge for log RECORDS. Its own crate rather than a feature of the
 # one above, upstream's split: a span and an event become different signals and
 # only one of them is a trace.
-opentelemetry-appender-tracing = { version = "0.32.0", default-features = false }
-opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
+opentelemetry-appender-tracing = { version = "0.33.1", default-features = false }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
     "trace",
     "rt-tokio",
     "metrics",
