@@ -184,7 +184,7 @@ describe("EventsList — the standard workspace events table", () => {
 
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
-    expect(screen.getByText(/No events yet/i)).toBeTruthy();
+    expect(screen.getByText(/No activity yet/i)).toBeTruthy();
     expect(screen.getByText(/Fleet activity appears here/i)).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
     // No pagination affordance on an empty feed — nothing to page through.
@@ -197,7 +197,7 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({ items: [], next_cursor: "cur_more" });
     // Compaction between pages can return an empty page with a live cursor —
     // the affordance to keep paging must survive the empty state.
-    expect(screen.getByText(/No events yet/i)).toBeTruthy();
+    expect(screen.getByText(/No activity yet/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
