@@ -7,8 +7,8 @@
 CREATE TABLE model.tenant_selections (
     tenant_id        UUID PRIMARY KEY REFERENCES identity.tenants(id) ON DELETE CASCADE,
     tenant_model_id  UUID,
-    created_at       BIGINT NOT NULL,
-    updated_at       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ(3) NOT NULL,
+    updated_at       TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_tenant_selections_tenant_model
         FOREIGN KEY (tenant_model_id, tenant_id)
         REFERENCES model.tenant_models (id, tenant_id)

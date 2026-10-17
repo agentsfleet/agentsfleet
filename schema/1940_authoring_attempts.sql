@@ -27,8 +27,8 @@ CREATE TABLE authoring.attempts (
     model_token_hash        TEXT    NOT NULL,
     model_snapshot          JSONB   NOT NULL,
     status                  TEXT    NOT NULL,
-    lease_expires_at        BIGINT  NOT NULL,
-    expires_at              BIGINT  NOT NULL,
+    lease_expires_at        TIMESTAMPTZ(3)  NOT NULL,
+    expires_at              TIMESTAMPTZ(3)  NOT NULL,
     reserved_nanos          BIGINT  NOT NULL,
     usage_unknown           BOOLEAN NOT NULL,
     call_count              INTEGER NOT NULL,
@@ -36,8 +36,8 @@ CREATE TABLE authoring.attempts (
     reported_runtime_ms     BIGINT  NOT NULL,
     last_activity_sequence  BIGINT  NOT NULL,
     failure_reason          TEXT,
-    created_at              BIGINT  NOT NULL,
-    updated_at              BIGINT  NOT NULL,
+    created_at              TIMESTAMPTZ(3)  NOT NULL,
+    updated_at              TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_attempts_lease_id UNIQUE (lease_id),
     CONSTRAINT uq_attempts_draft_id_message_sequence UNIQUE (draft_id, message_sequence)
 );

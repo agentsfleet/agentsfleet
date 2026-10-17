@@ -12,8 +12,8 @@ CREATE TABLE model.platform_defaults (
     active               BOOLEAN NOT NULL,
     platform_model_id    UUID REFERENCES model.platform_models(id) ON DELETE RESTRICT,
     base_url             TEXT,
-    created_at           BIGINT  NOT NULL,
-    updated_at           BIGINT  NOT NULL
+    created_at           TIMESTAMPTZ(3)  NOT NULL,
+    updated_at           TIMESTAMPTZ(3)  NOT NULL
 );
 
 CREATE INDEX idx_platform_defaults_platform_model_id

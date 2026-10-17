@@ -11,7 +11,7 @@ CREATE TABLE identity.workspaces (
     CONSTRAINT ck_workspaces_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id   UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     name        TEXT,
-    created_at  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_workspaces_id_tenant_id UNIQUE (id, tenant_id)
 );
 

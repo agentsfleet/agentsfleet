@@ -16,7 +16,7 @@ CREATE TABLE authoring.replay_receipts (
     operation_id    UUID   NOT NULL,
     request_digest  TEXT   NOT NULL,
     resource_id     UUID   NOT NULL,
-    created_at      BIGINT NOT NULL,
+    created_at      TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_replay_receipts_scope_operation_id UNIQUE (scope, operation_id)
 );
 

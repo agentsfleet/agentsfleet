@@ -94,23 +94,24 @@ async fn test_immutable_tables_refuse_update() {
 async fn assert_refused_yet_cascaded(connection: &mut PgConnection) {
     let tenant = mint_id();
     let workspace = mint_id();
-    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1::uuid, $2, 1, 1)")
+    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1::uuid, $2, now(), now())")
         .bind(&tenant)
         .bind("tenant")
         .execute(&mut *connection)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO identity.workspaces (id, tenant_id, created_at) VALUES ($1::uuid, $2::uuid, 1)")
+    sqlx::query("INSERT INTO identity.workspaces (id, tenant_id, created_at) VALUES ($1::uuid, $2::uuid, now())")
         .bind(&workspace)
         .bind(&tenant)
         .execute(&mut *connection)
         .await
         .unwrap();
 
-    let update = sqlx::query("UPDATE identity.workspaces SET created_at = 2 WHERE id = $1::uuid")
-        .bind(&workspace)
-        .execute(&mut *connection)
-        .await;
+    let update =
+        sqlx::query("UPDATE identity.workspaces SET created_at = now() WHERE id = $1::uuid")
+            .bind(&workspace)
+            .execute(&mut *connection)
+            .await;
     assert!(update.is_err(), "an immutable row was updated");
 
     sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")

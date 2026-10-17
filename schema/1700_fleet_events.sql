@@ -23,8 +23,8 @@ CREATE TABLE fleet.events (
     failure_reason    TEXT,
     failure_detail    TEXT,
     resumes_event_id  TEXT,
-    created_at        BIGINT NOT NULL,
-    updated_at        BIGINT NOT NULL,
+    created_at        TIMESTAMPTZ(3) NOT NULL,
+    updated_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_events_fleet_id_event_id UNIQUE (fleet_id, event_id)
 );
 

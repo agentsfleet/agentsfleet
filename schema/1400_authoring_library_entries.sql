@@ -19,8 +19,8 @@ CREATE TABLE authoring.library_entries (
     credential_reasons  JSONB,
     head_revision_id    UUID,
     resource_version    BIGINT NOT NULL,
-    created_at          BIGINT NOT NULL,
-    updated_at          BIGINT NOT NULL
+    created_at          TIMESTAMPTZ(3) NOT NULL,
+    updated_at          TIMESTAMPTZ(3) NOT NULL
 );
 
 -- The Library page, newest first, keyset-paged on (created_at, id).

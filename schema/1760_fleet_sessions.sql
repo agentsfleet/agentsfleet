@@ -6,8 +6,8 @@
 CREATE TABLE fleet.sessions (
     fleet_id      UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     context_json  JSONB  NOT NULL,
-    created_at    BIGINT NOT NULL,
-    updated_at    BIGINT NOT NULL
+    created_at    TIMESTAMPTZ(3) NOT NULL,
+    updated_at    TIMESTAMPTZ(3) NOT NULL
 );
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.sessions TO api_runtime;

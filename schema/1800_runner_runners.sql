@@ -26,16 +26,16 @@ CREATE TABLE runner.runners (
     sandbox_config           JSONB,
     capability_report        JSONB,
     degraded_reason          TEXT,
-    last_seen_at             BIGINT  NOT NULL,
-    selftest_requested_at    BIGINT,
-    selftest_completed_at    BIGINT,
+    last_seen_at             TIMESTAMPTZ(3)  NOT NULL,
+    selftest_requested_at    TIMESTAMPTZ(3),
+    selftest_completed_at    TIMESTAMPTZ(3),
     selftest_checks          JSONB,
     selftest_sandbox_tier    TEXT,
     selftest_network_policy  TEXT,
     lease_version            BIGINT  NOT NULL,
     last_lease_type          TEXT,
-    created_at               BIGINT  NOT NULL,
-    updated_at               BIGINT  NOT NULL,
+    created_at               TIMESTAMPTZ(3)  NOT NULL,
+    updated_at               TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_runners_token_hash UNIQUE (token_hash)
 );
 

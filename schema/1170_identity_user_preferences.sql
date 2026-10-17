@@ -8,8 +8,8 @@ CREATE TABLE identity.user_preferences (
     workspace_id  UUID NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     value         TEXT NOT NULL,
-    created_at    BIGINT NOT NULL,
-    updated_at    BIGINT NOT NULL,
+    created_at    TIMESTAMPTZ(3) NOT NULL,
+    updated_at    TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_user_preferences_user_id_workspace_id_name
         UNIQUE (user_id, workspace_id, name)
 );

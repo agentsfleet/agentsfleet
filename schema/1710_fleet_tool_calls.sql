@@ -21,8 +21,8 @@ CREATE TABLE fleet.tool_calls (
     output_line_count    BIGINT  NOT NULL,
     truncated            BOOLEAN NOT NULL,
     byte_count           BIGINT  NOT NULL,
-    created_at           BIGINT  NOT NULL,
-    updated_at           BIGINT  NOT NULL,
+    created_at           TIMESTAMPTZ(3)  NOT NULL,
+    updated_at           TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_tool_calls_fleet_event_id_fencing_token_sequence
         UNIQUE (fleet_event_id, fencing_token, sequence)
 );

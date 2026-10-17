@@ -13,7 +13,7 @@ CREATE TABLE billing.authoring_settlements (
     failure_reason     TEXT,
     usage              JSONB  NOT NULL,
     charged_nanos      BIGINT NOT NULL,
-    created_at         BIGINT NOT NULL,
+    created_at         TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_authoring_settlements_attempt_id UNIQUE (attempt_id)
 );
 

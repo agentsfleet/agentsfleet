@@ -10,7 +10,7 @@ CREATE TABLE authoring.activity_receipts (
     sequence        BIGINT NOT NULL,
     request_digest  TEXT   NOT NULL,
     candidate_id    UUID,
-    created_at      BIGINT NOT NULL,
+    created_at      TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_activity_receipts_attempt_id_sequence UNIQUE (attempt_id, sequence)
 );
 

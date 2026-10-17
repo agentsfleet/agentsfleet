@@ -83,11 +83,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "schema ahead",
-            Error::new(ErrorKind::MigrationSchemaAhead { found: SAMPLE_UNKNOWN_SLOT }),
+            Error::new(ErrorKind::MigrationSchemaAhead {
+                found: SAMPLE_UNKNOWN_SLOT,
+            }),
         ),
         (
             "slot edited",
-            Error::new(ErrorKind::MigrationEdited { version: SAMPLE_SLOT }),
+            Error::new(ErrorKind::MigrationEdited {
+                version: SAMPLE_SLOT,
+            }),
         ),
         (
             "migrator refused",

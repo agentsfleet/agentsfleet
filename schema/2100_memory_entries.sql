@@ -15,8 +15,8 @@ CREATE TABLE memory.entries (
     content            TEXT    NOT NULL,
     category           TEXT    NOT NULL,
     workspace_visible  BOOLEAN NOT NULL,
-    created_at         BIGINT  NOT NULL,
-    updated_at         BIGINT  NOT NULL,
+    created_at         TIMESTAMPTZ(3)  NOT NULL,
+    updated_at         TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_entries_fleet_id_key UNIQUE (fleet_id, key)
 );
 

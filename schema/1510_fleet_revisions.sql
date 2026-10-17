@@ -21,7 +21,7 @@ CREATE TABLE fleet.revisions (
     review_digest        TEXT,
     review_context       JSONB,
     source_candidate_id  UUID,
-    created_at           BIGINT NOT NULL,
+    created_at           TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_revisions_fleet_id_revision UNIQUE (fleet_id, revision)
 );
 

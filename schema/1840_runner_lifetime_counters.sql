@@ -8,8 +8,8 @@ CREATE TABLE runner.lifetime_counters (
     succeeded_count  BIGINT NOT NULL,
     failed_count     BIGINT NOT NULL,
     expired_count    BIGINT NOT NULL,
-    created_at       BIGINT NOT NULL,
-    updated_at       BIGINT NOT NULL
+    created_at       TIMESTAMPTZ(3) NOT NULL,
+    updated_at       TIMESTAMPTZ(3) NOT NULL
 );
 
 GRANT SELECT, INSERT, UPDATE ON runner.lifetime_counters TO api_runtime;

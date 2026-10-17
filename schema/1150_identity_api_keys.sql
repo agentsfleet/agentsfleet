@@ -11,9 +11,9 @@ CREATE TABLE identity.api_keys (
     description         TEXT NOT NULL,
     key_hash            TEXT NOT NULL,
     created_by_subject  TEXT NOT NULL,
-    revoked_at          BIGINT,
-    created_at          BIGINT NOT NULL,
-    updated_at          BIGINT NOT NULL,
+    revoked_at          TIMESTAMPTZ(3),
+    created_at          TIMESTAMPTZ(3) NOT NULL,
+    updated_at          TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_api_keys_tenant_id_name UNIQUE (tenant_id, name),
     CONSTRAINT uq_api_keys_key_hash UNIQUE (key_hash)
 );
