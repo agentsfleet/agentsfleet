@@ -10,13 +10,16 @@
 
 use std::error::Error as _;
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 use afd_core::error_code;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 
 /// An instant well inside the range a version-7 identifier carries.
-const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const AT: Timestamp = Timestamp::constant(1_767_225_600, 0);
+
+/// One millisecond before the epoch, which no `UUIDv7` can carry.
+const BEFORE_EPOCH: Timestamp = Timestamp::constant(0, -1_000_000);
 
 /// The bytes the mocked source hands the next draw.
 const DRAWN: [u8; ENTROPY_LEN] = [0x5A; ENTROPY_LEN];
@@ -57,7 +60,7 @@ fn test_uuid7_keeps_the_identifier_refusal_as_its_cause() {
     control.push_bytes(&DRAWN);
 
     let refused = entropy
-        .uuid7(UnixMillis::from_millis(-1))
+        .uuid7(BEFORE_EPOCH)
         .expect_err("a pre-epoch instant has no identifier");
 
     assert!(!refused.is_entropy(), "the draw succeeded: {refused}");
@@ -66,7 +69,7 @@ fn test_uuid7_keeps_the_identifier_refusal_as_its_cause() {
         .source()
         .and_then(|cause| cause.downcast_ref::<afd_core::error::Error>())
         .expect("the identifier layer's own error is kept as the cause");
-    let direct = Uuid7::encode(UnixMillis::from_millis(-1), DRAWN)
+    let direct = Uuid7::encode(BEFORE_EPOCH, DRAWN)
         .expect_err("the same instant refuses directly");
     assert!(cause.is_id_shape(), "got {cause}");
     assert_eq!(cause.code(), error_code::UUIDV7_INVALID_ID_SHAPE);

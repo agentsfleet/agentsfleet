@@ -25,6 +25,8 @@ test-util = []
 hex.workspace = true
 # The wire codes a crypto failure answers. No runtime, no transport.
 afd_core.workspace = true
+# `Entropy::uuid7` mints at a `jiff::Timestamp`, the instant type `afd_core` uses.
+jiff.workspace = true
 # RustCrypto throughout: pure Rust, audited, no C linkage, the workspace's no-C
 # posture. `aes-gcm` is the AES-256-GCM construction every stored row was
 # sealed with, and must open with.
