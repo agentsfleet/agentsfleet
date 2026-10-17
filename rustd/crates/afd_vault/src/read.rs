@@ -42,8 +42,8 @@ const CONTEXT_LIST: &str = "list workspace secrets";
 pub struct SecretSummary {
     /// The name the secret is stored and interpolated under.
     pub name: String,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at_ms: i64,
+    /// When it was first stored.
+    pub created_at: jiff::Timestamp,
     /// What it is, as the server classified it at write time.
     ///
     /// A sum type, not a kind beside two options: the dashboard narrows on a
@@ -105,7 +105,7 @@ impl Directory {
 fn read_row(row: &PgRow) -> Result<SecretSummary> {
     let unreadable = query(CONTEXT_LIST);
     let name: String = row.try_get(0).map_err(&unreadable)?;
-    let created_at_ms: i64 = row.try_get(1).map_err(&unreadable)?;
+    let created_at: jiff_sqlx::Timestamp = row.try_get(1).map_err(&unreadable)?;
     let stored_kind: Option<String> = row.try_get(2).map_err(&unreadable)?;
     let provider: Option<String> = row.try_get(3).map_err(&unreadable)?;
     let base_url: Option<String> = row.try_get(4).map_err(&unreadable)?;
@@ -113,7 +113,7 @@ fn read_row(row: &PgRow) -> Result<SecretSummary> {
     let classified = Classified::classify(stored_kind.as_deref(), &name, provider, base_url);
     Ok(SecretSummary {
         name,
-        created_at_ms,
+        created_at: created_at.to_jiff(),
         classified,
     })
 }

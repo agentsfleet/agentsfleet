@@ -997,6 +997,8 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "garde",
+ "jiff",
+ "jiff-sqlx",
  "serde_json",
  "sqlx",
  "thiserror",

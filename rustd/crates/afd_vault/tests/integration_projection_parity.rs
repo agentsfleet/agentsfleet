@@ -141,7 +141,6 @@ async fn a_replace_rewrites_both_halves_or_neither() {
             &lane.workspace,
             &named("anthropic-prod"),
             &body(ENDPOINT),
-            Lane::now(),
         )
         .await
         .expect("a held name replaces");
