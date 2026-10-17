@@ -26,12 +26,6 @@
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-/// The rolling daily window's width.
-///
-/// One day of milliseconds, taken from `afd_core::timing::DAY_MS` rather than
-/// declared a second time.
-const ROLLING_DAY_MS: i64 = afd_core::timing::DAY_MS;
-
 /// Where each spend window opens.
 ///
 /// Two floors and no widths: every consumer binds these straight into
@@ -50,7 +44,7 @@ impl Windows {
     #[must_use]
     pub fn at(now: Timestamp) -> Self {
         Self {
-            day: afd_core::clock::add_millis(now, -ROLLING_DAY_MS),
+            day: afd_core::clock::before(now, afd_core::timing::DAY),
             month: month_floor(now),
         }
     }
@@ -85,7 +79,7 @@ fn month_floor(now: Timestamp) -> Timestamp {
 
 #[cfg(test)]
 mod tests {
-    use super::{ROLLING_DAY_MS, Windows, month_floor};
+    use super::{Windows, month_floor};
     use jiff::Timestamp;
 
     /// 2026-07-10T16:04:00Z, and the first instant of its month.
@@ -138,7 +132,8 @@ mod tests {
     #[test]
     fn pre_epoch_instants_clamp_instead_of_trapping() {
         assert_eq!(month_floor(Timestamp::UNIX_EPOCH), Timestamp::UNIX_EPOCH);
-        let just_before = afd_core::clock::add_millis(Timestamp::UNIX_EPOCH, -1);
+        let just_before =
+            afd_core::clock::before(Timestamp::UNIX_EPOCH, std::time::Duration::from_millis(1));
         assert_eq!(month_floor(just_before), Timestamp::UNIX_EPOCH);
     }
 
@@ -150,7 +145,10 @@ mod tests {
         assert_eq!(windows.day, Timestamp::constant(1_783_613_040, 0));
         // Which is emphatically NOT the day's own midnight — if it were, the
         // ceiling would reset on a boundary rather than sliding.
-        assert_ne!(windows.day.as_millisecond() % ROLLING_DAY_MS, 0);
+        assert_ne!(
+            windows.day.to_zoned(jiff::tz::TimeZone::UTC).time(),
+            jiff::civil::Time::midnight()
+        );
     }
 
     #[test]
