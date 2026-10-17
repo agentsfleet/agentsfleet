@@ -183,7 +183,9 @@ impl FixedClock {
     /// The shared reading. A poisoned lock still holds a valid instant, so a
     /// test that panicked mid-update does not take every clone down with it.
     fn reading(&self) -> std::sync::MutexGuard<'_, Timestamp> {
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
