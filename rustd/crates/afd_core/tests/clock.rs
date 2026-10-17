@@ -14,8 +14,8 @@
 use std::time::{Duration, UNIX_EPOCH};
 
 use afd_core::clock::{
-    Clock, SystemClock, add_millis, from_millis, instant_at, millis_between, now,
-    saturating_millis, saturating_millis_signed, whole_millis,
+    Clock, SystemClock, after, before, instant_at, now, saturating_millis,
+    saturating_millis_signed, whole_millis,
 };
 use jiff::Timestamp;
 
@@ -27,11 +27,14 @@ const YEAR_2100_MS: i64 = 4_102_444_800_000;
 /// Microseconds in one millisecond, for the sub-millisecond cases.
 const MICROS_PER_MILLI: i64 = 1_000;
 
-/// Two instants 3.5 seconds apart, for the signed-difference assertions.
+/// Two instants 3.5 seconds apart, for the arithmetic assertions.
 const EARLIER_MS: i64 = 1_000;
 
 /// The later of that pair.
 const LATER_MS: i64 = 4_500;
+
+/// The span between them.
+const BETWEEN: Duration = Duration::from_millis(3_500);
 
 /// The instant `millis` after the epoch, for a fixture.
 fn at(millis: i64) -> Timestamp {
@@ -103,33 +106,15 @@ fn test_seconds_truncate_toward_zero() {
 #[test]
 fn test_arithmetic_saturates_at_the_bounds() {
     assert_eq!(
-        add_millis(Timestamp::MAX, 1),
+        after(Timestamp::MAX, Duration::from_millis(1)),
         Timestamp::MAX,
         "an add at the ceiling must not wrap into the past"
     );
-    assert_eq!(add_millis(Timestamp::MIN, -1), Timestamp::MIN);
-    assert_eq!(add_millis(at(EARLIER_MS), 3_500), at(LATER_MS));
-}
-
-/// A millisecond count reads as its instant, saturating past the range.
-#[test]
-fn test_a_millisecond_count_reads_as_its_instant() {
-    assert_eq!(from_millis(LATER_MS), at(LATER_MS));
-    assert_eq!(from_millis(-LATER_MS), at(-LATER_MS));
-    assert_eq!(from_millis(i64::MAX), Timestamp::MAX);
-    assert_eq!(from_millis(i64::MIN), Timestamp::MIN);
-}
-
-/// A difference is signed, so "how long ago" and "how far ahead" are one call.
-#[test]
-fn test_a_difference_carries_its_direction() {
-    let earlier = at(EARLIER_MS);
-    let later = at(LATER_MS);
-
-    assert_eq!(millis_between(earlier, later), 3_500);
-    assert_eq!(millis_between(later, earlier), -3_500);
-    assert_eq!(millis_between(later, later), 0);
-    assert!(earlier < later, "instants order by the instant");
+    assert_eq!(after(Timestamp::UNIX_EPOCH, Duration::MAX), Timestamp::MAX);
+    assert_eq!(before(Timestamp::MIN, Duration::from_millis(1)), Timestamp::MIN);
+    assert_eq!(before(Timestamp::UNIX_EPOCH, Duration::MAX), Timestamp::MIN);
+    assert_eq!(after(at(EARLIER_MS), BETWEEN), at(LATER_MS));
+    assert_eq!(before(at(LATER_MS), BETWEEN), at(EARLIER_MS));
 }
 
 /// The real clock and the free function are the same reading.
@@ -159,7 +144,7 @@ fn test_a_fixed_clock_shares_one_reading_across_clones() {
     let handed_over = held.clone();
     assert_eq!(handed_over.now(), at(1_700_000_000_000));
 
-    held.advance_millis(5_000);
+    held.advance(Duration::from_secs(5));
     assert_eq!(
         handed_over.now(),
         at(1_700_000_005_000),
@@ -191,15 +176,23 @@ fn test_a_fixed_clock_can_step_backward() {
     use afd_core::clock::FixedClock;
 
     let clock = FixedClock::at(at(2_000));
-    clock.advance_millis(-1_500);
+    clock.rewind(Duration::from_millis(1_500));
     assert_eq!(clock.now(), at(500));
 
     clock.set(Timestamp::MIN);
-    clock.advance_millis(-1);
+    clock.rewind(Duration::from_millis(1));
     assert_eq!(
         clock.now(),
         whole_millis(Timestamp::MIN),
         "stepping back past the bound saturates rather than wrapping to the future"
+    );
+
+    clock.set(Timestamp::MAX);
+    clock.advance(Duration::MAX);
+    assert_eq!(
+        clock.now(),
+        whole_millis(Timestamp::MAX),
+        "stepping forward past the bound saturates rather than wrapping to the past"
     );
 }
 

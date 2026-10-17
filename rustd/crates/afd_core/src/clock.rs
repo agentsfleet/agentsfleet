@@ -40,7 +40,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
+use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 
 /// The current wall-clock instant, in whole milliseconds.
 #[must_use]
@@ -86,46 +86,26 @@ pub fn whole_millis(instant: Timestamp) -> Timestamp {
     instant.round(floor).unwrap_or(instant)
 }
 
-/// The instant `millis` after the epoch, saturating at the ends of the range.
-///
-/// For a millisecond count kept outside Postgres and the API — an atomic, a
-/// Dragonfly record a Lua script does arithmetic on — where an integer is the
-/// honest representation and only the edge reads it as an instant.
-#[must_use]
-pub fn from_millis(millis: i64) -> Timestamp {
-    Timestamp::from_millisecond(millis).unwrap_or(if millis < 0 {
-        Timestamp::MIN
-    } else {
-        Timestamp::MAX
-    })
-}
-
-/// `instant` moved by `millis`, saturating at the ends of the range.
+/// `instant` moved forward by `span`, saturating at the end of the range.
 ///
 /// Saturating rather than wrapping: a TTL added to a clock near the end of the
 /// range is a broken input, and wrapping would turn "far future" into "long
-/// past" — an expiry check that then passes.
+/// past", an expiry check that then passes. jiff answers a `Duration` with a
+/// `Result` only because its calendar spans can fail; a `Duration` cannot, so
+/// the fallback is the saturation point itself.
 #[must_use]
-pub fn add_millis(instant: Timestamp, millis: i64) -> Timestamp {
-    let fallback = if millis < 0 {
-        Timestamp::MIN
-    } else {
-        Timestamp::MAX
-    };
-    instant
-        .saturating_add(SignedDuration::from_millis(millis))
-        .unwrap_or(fallback)
+pub fn after(instant: Timestamp, span: Duration) -> Timestamp {
+    instant.saturating_add(span).unwrap_or(Timestamp::MAX)
 }
 
-/// Milliseconds from `earlier` to `later`, negative when `later` is earlier,
-/// saturating at the ends of `i64`.
+/// `instant` moved back by `span`, saturating at the start of the range.
 #[must_use]
-pub fn millis_between(earlier: Timestamp, later: Timestamp) -> i64 {
-    let millis = later.duration_since(earlier).as_millis();
-    i64::try_from(millis).unwrap_or(if millis < 0 { i64::MIN } else { i64::MAX })
+pub fn before(instant: Timestamp, span: Duration) -> Timestamp {
+    instant.saturating_sub(span).unwrap_or(Timestamp::MIN)
 }
 
-/// A span in whole milliseconds, saturated rather than wrapped.
+/// A span in whole milliseconds, saturated rather than wrapped, for the wire
+/// fields that spell a span as a count (`retry_after_ms`, a Redis `PX`).
 #[must_use]
 pub fn saturating_millis(span: Duration) -> u64 {
     u64::try_from(span.as_millis()).unwrap_or(u64::MAX)
@@ -162,55 +142,54 @@ impl Clock for SystemClock {
 ///
 /// Clones share one reading, the way `exonum`'s `MockTimeProvider` does: the
 /// point of the seam is to hand a copy to the component under test and keep one
-/// to move time with, which does not work if the copy has its own clock. The
-/// reading is held as whole milliseconds, so it never carries a fraction the
+/// to move time with, which does not work if the copy has its own clock. Every
+/// reading is floored to the millisecond, so it never carries a fraction the
 /// real clock could not.
 #[cfg(feature = "test-util")]
 #[derive(Debug, Clone)]
-pub struct FixedClock(std::sync::Arc<std::sync::atomic::AtomicI64>);
+pub struct FixedClock(std::sync::Arc<std::sync::Mutex<Timestamp>>);
 
 #[cfg(feature = "test-util")]
 impl FixedClock {
-    /// A clock stopped at `instant`, floored to the millisecond.
+    /// A clock stopped at `instant`.
     #[must_use]
     pub fn at(instant: Timestamp) -> Self {
-        Self(std::sync::Arc::new(std::sync::atomic::AtomicI64::new(
-            whole_millis(instant).as_millisecond(),
-        )))
+        Self(std::sync::Arc::new(std::sync::Mutex::new(whole_millis(
+            instant,
+        ))))
     }
 
-    /// Moves every clone to `instant`, floored to the millisecond.
+    /// Moves every clone to `instant`.
     pub fn set(&self, instant: Timestamp) {
-        self.0.store(
-            whole_millis(instant).as_millisecond(),
-            std::sync::atomic::Ordering::SeqCst,
-        );
+        *self.reading() = whole_millis(instant);
     }
 
-    /// Moves every clone forward by `millis`, saturating at the ends of the range.
+    /// Moves every clone forward by `span`, saturating at the end of the range.
+    pub fn advance(&self, span: Duration) {
+        let mut reading = self.reading();
+        *reading = whole_millis(after(*reading, span));
+    }
+
+    /// Moves every clone BACK by `span`, saturating at the start of the range.
     ///
-    /// Negative values step the clock BACKWARD on purpose: a wall clock that
-    /// goes back is a real event (an operator correcting drift, an NTP step),
-    /// and code that treats time as monotonic breaks exactly there.
-    pub fn advance_millis(&self, millis: i64) {
-        let _previous = self
-            .0
-            .try_update(
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-                |current| {
-                    let moved = add_millis(Timestamp::from_millisecond(current).ok()?, millis);
-                    Some(moved.as_millisecond())
-                },
-            )
-            .unwrap_or_default();
+    /// A wall clock that goes back is a real event (an operator correcting
+    /// drift, an NTP step), and code that treats time as monotonic breaks
+    /// exactly there.
+    pub fn rewind(&self, span: Duration) {
+        let mut reading = self.reading();
+        *reading = whole_millis(before(*reading, span));
+    }
+
+    /// The shared reading. A poisoned lock still holds a valid instant, so a
+    /// test that panicked mid-update does not take every clone down with it.
+    fn reading(&self) -> std::sync::MutexGuard<'_, Timestamp> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
 #[cfg(feature = "test-util")]
 impl Clock for FixedClock {
     fn now(&self) -> Timestamp {
-        let millis = self.0.load(std::sync::atomic::Ordering::SeqCst);
-        Timestamp::from_millisecond(millis).unwrap_or(Timestamp::UNIX_EPOCH)
+        *self.reading()
     }
 }

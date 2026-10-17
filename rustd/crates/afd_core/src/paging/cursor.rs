@@ -13,6 +13,7 @@ use std::fmt::{self, Display, Formatter};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
+use jiff::Timestamp;
 
 use super::{CURSOR_SEPARATOR, TEXT_FORM_PREFIX};
 
@@ -39,7 +40,7 @@ impl Comparator {
 /// What a cursor's boundary value is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundaryKind {
-    /// Milliseconds since the epoch — a `created_at` ordering.
+    /// An instant: a `created_at` ordering.
     Timestamp,
     /// A sort key that is text — a `key_name` ordering.
     Text,
@@ -51,7 +52,7 @@ pub enum Cursor {
     /// The boundary is an instant.
     Timestamp {
         /// The boundary row's sort value.
-        at_ms: i64,
+        at: Timestamp,
         /// The boundary row's identifier, which breaks the tie.
         id: String,
     },
@@ -97,17 +98,18 @@ impl Cursor {
             let value = String::from_utf8(decoded).map_err(|_utf8| InvalidCursor)?;
             return Self::of_text(value, id);
         }
-        let at_ms = head.parse().map_err(|_digits| InvalidCursor)?;
-        Self::of_timestamp(at_ms, rest)
+        let millis = head.parse().map_err(|_digits| InvalidCursor)?;
+        let at = Timestamp::from_millisecond(millis).map_err(|_out_of_range| InvalidCursor)?;
+        Self::of_timestamp(at, rest)
     }
 
     /// A timestamp-boundary cursor, refusing an empty identifier.
-    fn of_timestamp(at_ms: i64, id: &str) -> Result<Self, InvalidCursor> {
+    fn of_timestamp(at: Timestamp, id: &str) -> Result<Self, InvalidCursor> {
         if id.is_empty() {
             return Err(InvalidCursor);
         }
         Ok(Self::Timestamp {
-            at_ms,
+            at,
             id: id.to_owned(),
         })
     }
@@ -128,7 +130,11 @@ impl Display for Cursor {
     /// Writes the form the other binary reads. See the module note.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Timestamp { at_ms, id } => write!(f, "{at_ms}{CURSOR_SEPARATOR}{id}"),
+            // Whole milliseconds, the precision every stored instant has.
+            Self::Timestamp { at, id } => {
+                let millis = at.as_millisecond();
+                write!(f, "{millis}{CURSOR_SEPARATOR}{id}")
+            }
             Self::Text { value, id } => {
                 let encoded = BASE64.encode(value.as_bytes());
                 write!(
