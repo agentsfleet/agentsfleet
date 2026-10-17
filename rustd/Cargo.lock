@@ -832,8 +832,6 @@ dependencies = [
  "afd_db",
  "afd_observability",
  "afd_wire",
- "arc-swap",
- "async-trait",
  "garde",
  "jiff",
  "jiff-sqlx",

@@ -24,15 +24,6 @@ pub(crate) const ASSUME_MEMORY_ROLE: &str = include_str!("assume_memory_role.sql
 /// `$6` workspace, `$7` workspace-visible, `$8` now.
 pub(crate) const UPSERT_ENTRY: &str = include_str!("upsert_entry.sql");
 
-/// Copy one entry in as it stands, keeping any newer row already here.
-///
-/// The flip's rule: a push that landed in this store during the copy carries a
-/// later `updated_at` than the snapshot row, and the `WHERE` keeps it.
-///
-/// `$1` row id, `$2` key, `$3` content, `$4` category, `$5` writer fleet,
-/// `$6` workspace, `$7` workspace-visible, `$8` created, `$9` updated.
-pub(crate) const IMPORT_ENTRY: &str = include_str!("import_entry.sql");
-
 /// Evict past the cap, keeping pinned and recent entries.
 ///
 /// `ORDER BY (category = $3) DESC` sorts the protected category first, so
@@ -72,11 +63,6 @@ pub(crate) const SEARCH_OWN: &str = include_str!("search_own.sql");
 /// `$1` workspace, `$2` the reading fleet, `$3` the escaped pattern, `$4` limit.
 pub(crate) const SEARCH_SHARED: &str = include_str!("search_shared.sql");
 
-/// Every entry in a workspace, for a flip's copy.
-///
-/// `$1` workspace.
-pub(crate) const SELECT_WORKSPACE_ENTRIES: &str = include_str!("select_workspace_entries.sql");
-
 /// Forget one key — the fleet's own row and never another's.
 ///
 /// `RETURNING key` separates a real deletion from a no-op, so the caller can
@@ -84,11 +70,3 @@ pub(crate) const SELECT_WORKSPACE_ENTRIES: &str = include_str!("select_workspace
 ///
 /// `$1` fleet, `$2` key.
 pub(crate) const DELETE_ENTRY_BY_KEY: &str = include_str!("delete_entry_by_key.sql");
-
-/// Forget one key while its row is no newer than the version a flip's prune
-/// read: a write that replaced it since carries a later `updated_at` and
-/// stays.
-///
-/// `$1` fleet, `$2` key, `$3` the `updated_at` the prune read, the instant
-/// [`IMPORT_ENTRY`] compares.
-pub(crate) const DELETE_STALE_ENTRY: &str = include_str!("delete_stale_entry.sql");

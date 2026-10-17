@@ -32,7 +32,7 @@ pub const DAILY_CATEGORY: &str = "daily";
 ///
 /// Seventy-two hours. Scratch notes only — every other category is exempt
 /// because the sweep binds its category as a parameter.
-pub const DAILY_RETENTION_MS: i64 = 72 * 60 * 60 * 1_000;
+pub const DAILY_RETENTION: std::time::Duration = std::time::Duration::from_hours(72);
 
 /// Cumulative [`MemoryDelta::bytes`] over a slice.
 #[must_use]
