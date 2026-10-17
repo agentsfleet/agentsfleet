@@ -122,11 +122,7 @@ async fn a_replace_creates_nothing_when_the_name_is_not_held() {
 
     let refused = lane
         .vault
-        .replace(
-            &lane.workspace,
-            &named("never-stored"),
-            &body(PROVIDER_KEY),
-        )
+        .replace(&lane.workspace, &named("never-stored"), &body(PROVIDER_KEY))
         .await
         .expect_err("claiming a name is create's job");
 

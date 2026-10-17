@@ -16,7 +16,9 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{DefaultSeed, PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{
+    DefaultSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 
 /// The model every case prices, under its own provider.
 const MODEL: &str = "guard-model";
@@ -49,19 +51,14 @@ impl Scene {
             model_row: mint_id(),
         };
         let mut connection = scene.database.acquire().await.expect("a connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Guard fixture', now(), now()) \
-             ) \
-             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             VALUES ($2::uuid, $1::uuid, 'guard-fixture', now())",
-        )
-        .bind(&scene.tenant)
-        .bind(&scene.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant and workspace seed");
+        TenantSeed::new(&scene.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seed");
+        WorkspaceSeed::new(&scene.workspace, &scene.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seed");
         sqlx::query(
             "INSERT INTO model.platform_models \
                (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, \
@@ -133,7 +130,10 @@ impl Scene {
                 "DELETE FROM identity.workspaces WHERE id = $1::uuid",
                 &self.workspace,
             ),
-            ("DELETE FROM identity.tenants WHERE id = $1::uuid", &self.tenant),
+            (
+                "DELETE FROM identity.tenants WHERE id = $1::uuid",
+                &self.tenant,
+            ),
         ] {
             sqlx::query(statement)
                 .bind(id)

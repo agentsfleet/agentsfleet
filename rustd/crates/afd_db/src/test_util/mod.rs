@@ -56,6 +56,7 @@ use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
 mod fleet;
+mod identity;
 mod platform_default;
 mod rows;
 mod unreachable;
@@ -64,6 +65,7 @@ pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
+pub use self::identity::{TenantSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::rows::OwnedRows;
 pub use self::unreachable::unreachable_db;
