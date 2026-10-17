@@ -46,7 +46,7 @@ const OPAQUE: &str = r#"{"host":"db.internal","api_token":"t"}"#;
 
 /// How far the database's stamp may sit from this host's clock: both read the
 /// same machine's time, so the gap is the test's own duration.
-const STAMP_WINDOW_MS: i64 = 60_000;
+const STAMP_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
@@ -74,11 +74,11 @@ async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
     assert_eq!(provider_key.provider(), Some("anthropic"));
     assert_eq!(provider_key.base_url(), None);
     // Stamped by the database's `now()` while this test ran.
-    let age = afd_core::clock::millis_between(provider_key.created_at, afd_core::clock::now());
-    assert!(
-        (0..STAMP_WINDOW_MS).contains(&age.abs()),
-        "stamped {age}ms from now"
-    );
+    let age = provider_key
+        .created_at
+        .duration_until(afd_core::clock::now())
+        .unsigned_abs();
+    assert!(age < STAMP_WINDOW, "stamped {age:?} from now");
 
     let endpoint = row(1);
     assert_eq!(endpoint.kind(), Kind::CustomEndpoint);
