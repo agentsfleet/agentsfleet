@@ -24,11 +24,13 @@ pub struct Renew {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Renewed {
     /// Extended Unix-millisecond deadline.
-    pub expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
     /// Whether the runner must stop private work.
     pub stop_requested: bool,
     /// Output tokens still available across this attempt.
     pub remaining_output_tokens: u64,
     /// The original capability remains bound to the renewed lease.
-    pub model_access_expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub model_access_expires_at: jiff::Timestamp,
 }

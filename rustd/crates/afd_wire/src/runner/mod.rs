@@ -290,7 +290,8 @@ pub struct SelfResponse<'a> {
     #[serde(borrow)]
     pub sandbox_tier: Cow<'a, str>,
     /// Epoch milliseconds of the last beat; zero when never seen.
-    pub last_seen_at: i64,
+    #[serde(with = "crate::instant")]
+    pub last_seen_at: jiff::Timestamp,
     /// The policy currently assigned to it.
     #[serde(borrow)]
     pub assigned_policy: AssignedPolicy<'a>,

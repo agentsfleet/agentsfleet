@@ -20,8 +20,9 @@
 //!
 //! # Primitives, not validated newtypes
 //!
-//! Identifiers are `Cow<'a, str>` and counts are plain integers — this crate
-//! does NOT depend on `afd_core`. Validation belongs at the service boundary,
+//! Identifiers are `Cow<'a, str>`, counts are plain integers and instants are
+//! `jiff::Timestamp` through [`instant`] — this crate does NOT depend on
+//! `afd_core`. Validation belongs at the service boundary,
 //! and doing it at parse would break the thing this layer exists to guarantee:
 //! `afd_core::limits::WorkerCount` clamps on deserialize, so a payload carrying
 //! `worker_count: 168` would decode to `64` and re-serialize to `64` — a byte
@@ -54,6 +55,7 @@ pub mod activity;
 pub mod authoring;
 pub mod credentials;
 pub mod event;
+pub mod instant;
 pub mod lease;
 pub mod memory;
 pub mod message_verb;

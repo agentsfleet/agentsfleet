@@ -73,7 +73,7 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
         category: Cow::Borrowed("core"),
         writer_fleet_id: Cow::Borrowed("fleet-2"),
         writer_fleet_name: Cow::Borrowed("triage"),
-        updated_at: 7,
+        updated_at: jiff::Timestamp::from_millisecond(7).unwrap_or(jiff::Timestamp::UNIX_EPOCH),
     };
     let reply = MemoryHydrateResponse {
         memory: Vec::new(),
@@ -195,7 +195,7 @@ fn test_a_shared_entry_detached_from_its_reply_keeps_every_field() {
         category: Cow::Borrowed(PINNED_CATEGORY),
         writer_fleet_id: Cow::Borrowed("fleet-2"),
         writer_fleet_name: Cow::Borrowed("triage"),
-        updated_at: 7,
+        updated_at: jiff::Timestamp::from_millisecond(7).unwrap_or(jiff::Timestamp::UNIX_EPOCH),
     };
     let text = serde_json::to_string(&entry).unwrap();
     let read: SharedMemory<'_> = serde_json::from_str(&text).unwrap();

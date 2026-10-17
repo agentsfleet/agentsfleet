@@ -201,7 +201,9 @@ schemars = { version = "1.2.2", default-features = false, features = ["derive", 
 #
 # `macros` is the only feature taken: it carries `ToSchema`, `IntoParams` and
 # `OpenApi`, which is the whole of what the derives and the collectors need.
-utoipa = { version = "5.5.0", default-features = false, features = ["macros"] }
+# `jiff_0_2` publishes every `jiff::Timestamp` field as `type: string, format:
+# date-time`, so no `_at` field carries a hand-written schema attribute.
+utoipa = { version = "5.5.0", default-features = false, features = ["macros", "jiff_0_2"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.92", default-features = false }
 
