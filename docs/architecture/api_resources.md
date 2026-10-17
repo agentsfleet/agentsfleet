@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-10-14
-product_version: 0.60.0
+verified: 2026-10-18
+product_version: 0.62.1
 executable: false
 ---
 
