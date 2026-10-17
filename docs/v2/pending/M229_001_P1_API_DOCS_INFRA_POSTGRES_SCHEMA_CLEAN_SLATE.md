@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `test_migrate_from_empty_builds_nine_owned_schemas` — `agentsfleetd migrate` on an empty database creates exactly the tables in `docs/architecture/postgres_schemas.md`, no schema object carries a vocabulary literal, and the full integration lane passes against it.
 **Problem:** 33 of 47 tables sit in `core`; the setup-chat tables span `core`, `fleet` and `billing`. Columns exist with no reader (`drafts.creation_digest`, `wallets.grant_source`), facts are stored twice or three times (`fleets.config_json`, `fleets.setup_version`), account erasure deletes billing records, and an owner reading the schema cannot tell what a field means or who fills it.
-**Solution summary:** delete all 97 `schema/*.sql` slots and author one slot per table across nine schemas, exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. The runner protocol loses one field. Money records survive every deletion and private dispatch text is scrubbed on every erasure path. The development and production databases are dropped and rebuilt from empty by a guarded one-shot procedure. The naming rules land in the schema conventions at their source in the orly repository.
+**Solution summary:** delete all 97 `schema/*.sql` slots and author one slot per table across nine schemas, exactly as signed off in the canonical doc. Every Rust query, struct and test follows the new names. The runner protocol loses one field. Money records survive every deletion and private dispatch text is scrubbed on every erasure path. The development and production databases are dropped and rebuilt from empty by a guarded one-shot procedure. The naming rules land in the schema conventions at their source in the orly repository. Three data-access fixes ride the same rewrite: typed row reads replace whole-row JSON, the Library list becomes one query, and every pooled connection carries statement and lock time limits.
 
 ## PR Intent & comprehension handshake
 
@@ -59,6 +59,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | `schema/*.sql` (97 slots) | DELETE | Clean slate; slot history is not migrated |
 | `schema/*.sql` (one per table, versions from 1000) | CREATE | The signed-off design, ordered per table by foreign key |
 | `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | Registry equals the new slot set; overlap refusal test |
+| `rustd/crates/afd_db/src/pool/**` | EDIT | Statement and lock time limits on every pooled connection; migrate exempt |
 | `rustd/crates/*/src/**/*.rs` with a schema-qualified table name | EDIT | Queries and row structs follow new names; dropped columns lose their writers |
 | `rustd/crates/afd_authoring/src/privacy.rs`, `rustd/crates/afd_tenant/src/**` erasure paths | EDIT | Every deletion root scrubs dispatch text; money is not cascaded |
 | `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afr_supervisor/src/**` | EDIT | `deletion_generation` leaves the runner protocol and its report spool |
@@ -139,6 +140,14 @@ A procedure in the PR's Session Notes, run with the owner present, development f
 - **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `test_docs_name_no_removed_table`
 - **Dimension 6.2** — public pages for the runner protocol, closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch → Test `test_public_docs_branch_open` (manual)
 
+### §7 — Data access rides the rewrite
+
+Every query is rewritten here, so three fixes land with it rather than touching each query twice. The 22 whole-row `to_jsonb(<alias>)::text` reads in 16 files (count at `a8646bb2a`) become explicit column lists into typed rows; `Json<T>` stays for real JSON columns. The Library list joins each card to its head revision in one statement. Each pooled connection sets `lock_timeout` and `statement_timeout`; the migrate connection sets neither. **Implementation default:** `lock_timeout` 2 s and `statement_timeout` 15 s as named constants in `afd_db`, because 15 s is the whole setup budget (`SETUP_BUDGET`, `afd_authoring/src/creation/activate.rs:16`) and a lock wait must fail well inside it.
+
+- **Dimension 7.1** — no whole-row JSON read remains in runtime source → Test `test_no_whole_row_json_reads`
+- **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
+- **Dimension 7.3** — a request waiting on a held wallet lock fails within the lock limit with a retryable error, and the pool serves the next request → Test `test_lock_wait_is_bounded`
+
 ## Interfaces
 
 ```
@@ -162,6 +171,8 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | Erasure loses money | A deletion root cascades into attempts, settlements or charges | No foreign key from money rows to an erasable owner; `test_deletion_matrix_keeps_money` fails |
 | Late 754 merge | Slots 956/957 land on `main` after this branch opens | Rebase folds them into the new slots; `rust-migration-list` fails until folded |
 | Concurrent resolution | Two people resolve one gate or invite | Guarded UPDATE on `resolved_at IS NULL`; second sees zero rows and a conflict |
+| Lock held too long | A wallet or fleet row stays locked past the lock limit | The waiting statement fails; the caller gets a retryable dependency error; the connection returns to the pool |
+| Migrate hits a limit | Long DDL on the migrate connection | Migrate's connection carries no limits, so it is never cut off mid-slot |
 
 ## Invariants
 
@@ -170,6 +181,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 3. The migration list equals the tracked slots — `rust-migration-list` in `make lint-all`.
 4. No old ledger migrates — every new version is ≥ 1000 and unknown versions are refused; `test_migrate_refuses_old_ledger`.
 5. No money row has a foreign key to an erasable owner — catalogue assertion in `test_deletion_matrix_keeps_money`.
+6. Every pooled runtime connection carries both time limits — `SHOW lock_timeout` on a pooled connection in `test_lock_wait_is_bounded`.
 
 ## Metrics & Observability
 
@@ -199,6 +211,9 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 5.1 | manual | `test_deployed_databases_rebuilt` | owner-present §5 run; `agentsfleetd migrate` output and a catalogue table count pasted in Session Notes |
 | 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
+| 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
+| 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
+| 7.3 | integration | `test_lock_wait_is_bounded` | wallet row held in another transaction → request fails under 3 s, retryable; next request succeeds |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -207,6 +222,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | R1 | Schema rebuilds from empty into the documented layout (§2–§4) | `make test-integration-rustd` | exit 0 | P0 | |
 | R2 | No code or live doc names a removed table (§3, §6) | the inventory check below | 0 | P0 | |
 | R3 | Conventions carry the rules (§1) | `grep -c "Counter and pointer names" .orly/docs/SCHEMA_CONVENTIONS.md` | 1 | P1 | |
+| R5 | No whole-row JSON reads remain (§7) | `git grep -cE "to_jsonb\([a-z]+\)" -- 'rustd/**/src/**/*.rs' \| wc -l` | 0 | P1 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -245,7 +261,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 
 ## Out of Scope
 
-- Data-access hardening (statement and lock budgets, typed row decoding, query macros, claim contention, Library list in one query, live-set cache, pool-saturation bench, `dispatches.result` holding only private content) — its own milestone, per the owner's tiering of the review.
+- The rest of data-access hardening (pool-saturation benchmark first, then chat-claim contention, live-set cache coalescing, compile-checked query macros, `dispatches.result` holding only private content) — its own milestone, per the owner's tiering of the review.
 - Narrowing `api_runtime` to per-schema runtime roles — its own milestone, as `300_vault_secrets.sql` and `700_tenant_wallet.sql` record.
 - A Firecracker or SPACE sandbox tier — `runners.sandbox_config` is ready for its keys.
 - Renaming wire fields to the new column names (`fence`, `call_index`, `activity_sequence`) — owner chose column names only.
@@ -258,8 +274,8 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 2. **Preserved user behaviour** — every dashboard page, CLI command and runner keeps working; chat, save, publish, install, schedules, approvals and billing behave as before apart from §4.
 3. **Optimal-way check** — a from-empty rebuild is the most direct route while no production data exists; forward migrations would keep 97 slots of history and every copy column.
 4. **Rebuild-vs-iterate** — rebuild; the owner chose it, and iterating would mean dozens of `ALTER` slots that freeze the mistakes.
-5. **What we build** — new slots, renamed queries, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
-6. **What we do NOT build** — new features; data-access hardening; per-schema roles; Firecracker; wire renames.
+5. **What we build** — new slots, renamed queries with typed reads, the one-query Library list, connection time limits, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
+6. **What we do NOT build** — new features; the remaining data-access work; per-schema roles; Firecracker; wire renames.
 7. **Fit with existing features** — compounds with M224_001 launch readiness; must not destabilise the fleet lease path (`runner.fleet_slots`, fencing).
 8. **Surface order** — API and runner first; the CLI and dashboard are unchanged from outside.
 9. **Dashboard restraint** — no new UI.
@@ -276,6 +292,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Consults** — Owner decisions via AskUserQuestion, Oct 17, 2026, recorded as the chosen option: clean slate "Yes, whole repo"; layout "Fold library into authoring"; shared definitions table "Drop it"; invite email table "Drop it"; library delete "Cascade delete"; deadline rename "Rename"; conventions "Orly repo + orly update"; counter names "Apply everywhere"; runner knobs "Add Firecracker knobs now" then "Fold it in"; fleet "Keep required_tags"; model "Approve with fold"; invites "Add resolved_at"; each schema "Approve". After the adversarial review: operation_id "Keep, serve via join"; erasure "Keep money, scrub text"; tiers "Yes i agree to fix Tier 1, Tier 2". Architecture: `ARCH: grounded in schema/600_runners.sql | proposal: nine owned schemas | status: silent | landing: a` — doc-only commit `a8646bb2a`.
 - **Adversarial review (Oct 17, 2026)** — 14 P1 findings verified against source; seven corrected the design (`installs.scopes`, mutable `channels`, API instants, frozen `review_context`, separate draft source and publication, `leases.event_created_at`, the CLI's required `operation_id`). Data-access findings moved to their own milestone.
 - **Runner upgrade** — > Indy (2026-10-17): "Well when we deploy, there is just 1 runner in dev, so its easy to restart. Currently there are no fleets and we start with clean db migration. So there is no issue here on coordinated upgrade to fear or think about." — context: `deletion_generation` removal needs no compatibility window.
+- **Data-access fold** — > Indy (2026-10-17): "I think fold these for Tier 3 1. First 2 2. Statement and lock time limits" — context: typed row reads, the one-query Library list and connection time limits join this PR (§7); the rest is its own milestone.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
