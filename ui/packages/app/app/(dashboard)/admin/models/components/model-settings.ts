@@ -1,7 +1,6 @@
 import type { AdminModel, ModelInference } from "@/lib/api/admin_model_library";
 import { z } from "zod";
-import { INFERENCE_API } from "@/lib/api/admin_model_library";
-import { nanosToUsdPerMtok, usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
+import { INFERENCE_API, nanosToUsdPerMtok, usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
 
 const positiveInteger = z.string().trim().refine((value) => value !== "" && Number.isSafeInteger(Number(value)) && Number(value) > 0, "Enter a positive integer");
 const rate = z.string().trim().refine((value) => value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0, "Enter a number of zero or more");

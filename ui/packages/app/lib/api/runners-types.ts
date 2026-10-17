@@ -94,6 +94,13 @@ export const LEASE_OUTCOME = {
 } as const;
 export type LeaseOutcome = (typeof LEASE_OUTCOME)[keyof typeof LEASE_OUTCOME];
 
+export const LEASE_KIND = {
+  fresh: "fresh",
+  reclaim: "reclaim",
+} as const;
+
+export type LeaseKind = (typeof LEASE_KIND)[keyof typeof LEASE_KIND];
+
 /**
  * Split the free-form labels field (comma-separated) into a deduped, validated
  * set. Returns the first offending label as an error so the form can surface it;

@@ -3,7 +3,7 @@
 import { useFormContext } from "react-hook-form";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
   Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@agentsfleet/design-system";
-import { INFERENCE_API } from "@/lib/api/admin_model_library";
+import { INFERENCE_API } from "@/lib/api/admin-model-library-types";
 import type { ModelSettingsValues } from "./model-settings";
 
 const TEXT_FIELDS = [

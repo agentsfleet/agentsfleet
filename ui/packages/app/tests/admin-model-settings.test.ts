@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { INFERENCE_API, type AdminModel } from "@/lib/api/admin_model_library";
+import type { AdminModel } from "@/lib/api/admin_model_library";
+import { INFERENCE_API } from "@/lib/api/admin-model-library-types";
 import { SETTINGS_DEFAULTS, modelSettings, settingsSchema, valuesFromModel } from "@/app/(dashboard)/admin/models/components/model-settings";
 
 const MODEL: AdminModel = {
