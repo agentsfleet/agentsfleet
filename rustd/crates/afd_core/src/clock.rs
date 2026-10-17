@@ -40,10 +40,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use jiff::{SignedDuration, Timestamp};
-
-/// Microseconds in one millisecond, the step [`whole_millis`] floors to.
-const MICROS_PER_MILLI: i64 = 1_000;
+use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
 
 /// The current wall-clock instant, in whole milliseconds.
 #[must_use]
@@ -83,8 +80,10 @@ pub fn instant_at(instant: SystemTime) -> Timestamp {
 /// every other one does; the two differ only before 1970.
 #[must_use]
 pub fn whole_millis(instant: Timestamp) -> Timestamp {
-    let millis = instant.as_microsecond().div_euclid(MICROS_PER_MILLI);
-    Timestamp::from_millisecond(millis).unwrap_or(instant)
+    let floor = TimestampRound::new()
+        .smallest(Unit::Millisecond)
+        .mode(RoundMode::Floor);
+    instant.round(floor).unwrap_or(instant)
 }
 
 /// The instant `millis` after the epoch, saturating at the ends of the range.

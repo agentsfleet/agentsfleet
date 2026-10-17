@@ -14,12 +14,9 @@
 
 use std::borrow::Cow;
 
-use jiff::Timestamp;
+use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serializer};
-
-/// Nanoseconds in one millisecond: an accepted instant leaves none over.
-const NANOS_PER_MILLI: i32 = 1_000_000;
 
 /// The refusal for an instant finer than the millisecond the API carries.
 pub const SUB_MILLISECOND: &str = "instant must carry at most millisecond precision";
@@ -47,7 +44,10 @@ fn parse(text: &str) -> Result<Timestamp, Cow<'static, str>> {
     let at: Timestamp = text
         .parse()
         .map_err(|error: jiff::Error| Cow::Owned(error.to_string()))?;
-    if at.subsec_nanosecond() % NANOS_PER_MILLI == 0 {
+    let millisecond = TimestampRound::new()
+        .smallest(Unit::Millisecond)
+        .mode(RoundMode::Trunc);
+    if at.round(millisecond).is_ok_and(|whole| whole == at) {
         Ok(at)
     } else {
         Err(Cow::Borrowed(SUB_MILLISECOND))
