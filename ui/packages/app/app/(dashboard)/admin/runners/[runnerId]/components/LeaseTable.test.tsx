@@ -192,7 +192,7 @@ it("LeaseTable > opens the workspace, not Review lease, when the workspace link 
   // Leaving for the workspace is a different intent, so the link stops the
   // click travelling — otherwise the operator lands on the fleet wall with a
   // panel they never asked for left open behind them.
-  expect(screen.queryByText("1,884")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Review lease" })).toBeNull();
 });
 
 it("LeaseTable > applies both filter fields and drops the cursor trail with the old result set", () => {
@@ -218,7 +218,7 @@ it("LeaseTable > applies both filter fields and drops the cursor trail with the 
   expect(params.getAll("c")).toHaveLength(0);
   expect(params.get("cps")).toBeNull();
   // Filtering narrows the feed; it must not also open Review lease.
-  expect(screen.queryByText("1,884")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Review lease" })).toBeNull();
 });
 
 it("LeaseTable > clears one filter without disturbing the other", () => {

@@ -13,6 +13,34 @@ const PROPS = {workspace: WORKSPACE, onSelect: vi.fn()};
 const EMPTY_HISTORY = {items: [], next_cursor: null};
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
+it.each([false, true])("returns to the first page without changing library scope (owned=%s)", async (owned) => {
+  const firstPageLabel = "First page";
+  const nextPageLabel = "Next page";
+  const fetcher = vi.fn(async (input: string) => {
+    const url = new URL(input, "https://app.test");
+    const later = url.searchParams.has("starting_after");
+    return response({items: later ? [] : [LIBRARY_CARD], next_cursor: later ? null : "later"});
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<LibraryBrowser {...PROPS} />);
+  const scope = screen.getByRole("tab", {name: owned ? "This workspace" : "All"});
+  if (owned) fireEvent.mouseDown(scope);
+  await screen.findByText(LIBRARY_CARD.name);
+  expect(screen.queryByRole("button", {name: firstPageLabel})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: nextPageLabel}));
+  await waitFor(() => expect(screen.queryByText(LIBRARY_CARD.name)).toBeNull());
+  fireEvent.click(screen.getByRole("button", {name: firstPageLabel}));
+  await screen.findByText(LIBRARY_CARD.name);
+  const last = fetcher.mock.calls.at(-1)?.[0];
+  if (!last) throw new Error("Expected a library page request");
+  const url = new URL(last, "https://app.test");
+  expect(url.pathname.endsWith("/owned")).toBe(owned);
+  expect(url.searchParams.has("starting_after")).toBe(false);
+  expect(scope.getAttribute("aria-selected")).toBe("true");
+  expect(screen.queryByRole("button", {name: firstPageLabel})).toBeNull();
+  expect(screen.getByRole("button", {name: nextPageLabel})).toBeTruthy();
+});
+
 it("keeps empty later pages distinct and resets the cursor when changing tabs", async () => {
   const fetcher = vi.fn(async (input: string) => {
     const url = new URL(input, "https://app.test");
@@ -23,7 +51,7 @@ it("keeps empty later pages distinct and resets the cursor when changing tabs", 
   render(<LibraryBrowser {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: "Next page"}));
   await waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(input, "https://app.test").searchParams.get("starting_after") === "later")).toBe(true));
-  await screen.findByText("No published setups on this page. Check the next page or return to All.");
+  await screen.findByText("No published setups on this page. Check another page or change the library scope.");
   fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
   await screen.findByText(/No setups have been published by this workspace/);
   expect(screen.getByRole("tab", {name: "This workspace"}).getAttribute("aria-selected")).toBe("true");
