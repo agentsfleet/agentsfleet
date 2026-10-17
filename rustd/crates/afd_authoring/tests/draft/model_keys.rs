@@ -15,6 +15,37 @@ fn key() -> Kek {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
+async fn saved_workspace_reference_resolves_only_its_owners_key_and_model_settings() {
+    let f = Fixture::create().await;
+    let providers = Providers::new(f.db.clone(), Arc::new(key()), Entropy::new());
+    let resolved = providers
+        .resolve_reference(&f.tenant, f.model.as_str())
+        .await
+        .expect("saved workspace model and owner credential resolve together");
+    assert_eq!(resolved.posture, afd_billing::Posture::SelfManaged);
+    assert_eq!(resolved.api_key().expose(), "fixture-authoring-key");
+    assert_eq!(resolved.provider.as_ref(), "openai");
+    assert_eq!(
+        resolved.model.as_ref(),
+        format!("workspace-model-{}", f.catalogue[0])
+    );
+    assert_eq!(resolved.context_cap_tokens, 128_000);
+    let inference = resolved.inference.expect("saved inference settings");
+    assert_eq!(inference.api, afd_wire::inference::InferenceApi::Responses);
+    assert_eq!(inference.base_url, "https://models.example.com/v1");
+    assert_eq!(inference.max_output_tokens, 8192);
+    let refused = providers
+        .resolve_reference(&f.member_tenant, f.model.as_str())
+        .await
+        .expect_err("another owner cannot open the saved workspace credential");
+    assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(refused.is_config_permanent());
+    assert!(!refused.to_string().contains("fixture-authoring-key"));
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
 async fn key_opening_refuses_a_foreign_owner_and_changed_admitted_model() {
     let f = Fixture::create().await;
     let providers = Providers::new(f.db.clone(), Arc::new(key()), Entropy::new());
