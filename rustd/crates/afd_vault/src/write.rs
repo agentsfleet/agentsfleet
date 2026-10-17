@@ -15,10 +15,10 @@
 //! is total for the same reason it is safe: a stored secret is never readable,
 //! so a partial write is one the caller cannot reason about.
 
-use jiff::Timestamp;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
+use jiff::Timestamp;
 
 use sqlx::{Acquire as _, Transaction};
 

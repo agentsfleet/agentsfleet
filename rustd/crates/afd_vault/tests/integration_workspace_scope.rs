@@ -55,11 +55,7 @@ async fn the_vault_never_reads_another_workspaces_key() {
     );
 
     lane.vault
-        .replace(
-            &lane.workspace,
-            &named(SHARED_NAME),
-            &body(REPLACED),
-        )
+        .replace(&lane.workspace, &named(SHARED_NAME), &body(REPLACED))
         .await
         .expect("the held name replaces");
     assert_eq!(

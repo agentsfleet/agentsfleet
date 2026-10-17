@@ -137,11 +137,7 @@ async fn a_replace_rewrites_both_halves_or_neither() {
     lane.store("anthropic-prod", PROVIDER_KEY).await;
 
     lane.vault
-        .replace(
-            &lane.workspace,
-            &named("anthropic-prod"),
-            &body(ENDPOINT),
-        )
+        .replace(&lane.workspace, &named("anthropic-prod"), &body(ENDPOINT))
         .await
         .expect("a held name replaces");
 

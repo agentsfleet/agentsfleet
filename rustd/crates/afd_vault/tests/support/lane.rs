@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use jiff::Timestamp;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
@@ -30,8 +29,9 @@ use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed};
 use afd_vault::{Directory, SecretBody, SecretName, Vault};
+use jiff::Timestamp;
 use serde_json::value::RawValue;
 use sqlx::Row as _;
 
@@ -92,15 +92,10 @@ impl Lane {
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
         let workspace = mint();
-        sqlx::query(
-            "INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'second', now())",
-        )
-        .bind(workspace.as_str())
-        .bind(self.tenant.as_str())
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a second workspace");
+        WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a second workspace");
         workspace
     }
 
@@ -291,24 +286,14 @@ impl Lane {
     /// Seeds the tenant and the workspace every fixture secret lands in.
     async fn seed_tenant_and_workspace(&self) {
         let mut connection = self.connection().await;
-        sqlx::query(
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'fixture', now(), now())",
-        )
-        .bind(self.tenant.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a tenant");
-
-        sqlx::query(
-            "INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'fixture', now())",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
+        TenantSeed::new(self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
     }
 }
 

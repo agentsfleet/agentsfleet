@@ -33,7 +33,9 @@ fn placeholders(text: &str) -> Vec<usize> {
 #[test]
 fn every_named_column_has_exactly_one_placeholder_in_order() {
     let columns = between(INSERT_FLEET, "fleet.fleets (", ')').map(|list| list.split(',').count());
-    let values = INSERT_FLEET.split_once("VALUES (").map(|(_, rest)| placeholders(rest));
+    let values = INSERT_FLEET
+        .split_once("VALUES (")
+        .map(|(_, rest)| placeholders(rest));
 
     assert!(columns.is_some_and(|count| count > 0), "{INSERT_FLEET}");
     assert_eq!(

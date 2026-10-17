@@ -15,7 +15,6 @@ use sqlx::query::Query;
 /// sibling crate to borrow the spelling.
 pub type Bound<'q> = Query<'q, sqlx::Postgres, PgArguments>;
 
-
 /// The escape character a `LIKE` pattern built by [`like_escape`] relies on,
 /// which is Postgres's default and what a statement's `ESCAPE` clause names.
 pub const LIKE_ESCAPE: char = '\\';

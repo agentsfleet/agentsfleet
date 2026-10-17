@@ -44,7 +44,6 @@ const CUSTOM_ENDPOINT: &str =
 /// An opaque credential a skill reads fields out of by name.
 const OPAQUE: &str = r#"{"host":"db.internal","api_token":"t"}"#;
 
-
 /// How far the database's stamp may sit from this host's clock: both read the
 /// same machine's time, so the gap is the test's own duration.
 const STAMP_WINDOW_MS: i64 = 60_000;
@@ -76,7 +75,10 @@ async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
     assert_eq!(provider_key.base_url(), None);
     // Stamped by the database's `now()` while this test ran.
     let age = afd_core::clock::millis_between(provider_key.created_at, afd_core::clock::now());
-    assert!((0..STAMP_WINDOW_MS).contains(&age.abs()), "stamped {age}ms from now");
+    assert!(
+        (0..STAMP_WINDOW_MS).contains(&age.abs()),
+        "stamped {age}ms from now"
+    );
 
     let endpoint = row(1);
     assert_eq!(endpoint.kind(), Kind::CustomEndpoint);
@@ -180,11 +182,7 @@ async fn a_replace_rewrites_the_body_whole_and_the_projection_with_it() {
     lane.store("anthropic-prod", PROVIDER_KEY).await;
 
     lane.vault
-        .replace(
-            &lane.workspace,
-            &named("anthropic-prod"),
-            &body(OPAQUE),
-        )
+        .replace(&lane.workspace, &named("anthropic-prod"), &body(OPAQUE))
         .await
         .expect("a held name replaces");
 
