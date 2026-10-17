@@ -1,7 +1,7 @@
 //! The doorbell's two commands against a node that never answers.
 //!
 //! The ring and the rung peek exist to make a poll faster, so each gives up at
-//! `READY_WAKE_DEADLINE_MS` rather than the datastore's request timeout. A
+//! `READY_WAKE_DEADLINE` rather than the datastore's request timeout. A
 //! refused port fails at once and proves nothing about the deadline; a node
 //! that takes the command and says nothing is the case it exists for, and only
 //! the fake can hold one still.
@@ -14,7 +14,7 @@
 use std::time::{Duration, Instant};
 
 use afd_core::test_util::trace::Capture;
-use afd_core::timing::READY_WAKE_DEADLINE_MS;
+use afd_core::timing::READY_WAKE_DEADLINE;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::ready::{Partition, ReadyIndex};
@@ -68,7 +68,7 @@ async fn test_a_ring_nobody_answers_gives_up_at_the_deadline() {
 
     assert!(
         started.elapsed() < GAVE_UP_WITHIN,
-        "the ring waited {:?}, past the {READY_WAKE_DEADLINE_MS} ms deadline",
+        "the ring waited {:?}, past the {READY_WAKE_DEADLINE:?} deadline",
         started.elapsed()
     );
     let line = capture.only("ready_wake_ring_failed");
@@ -103,7 +103,7 @@ async fn test_a_rung_peek_nobody_answers_gives_up_at_the_deadline() {
     );
     let said = error.to_string();
     assert!(
-        said.contains("HRANDFIELD") && said.contains(&format!("{READY_WAKE_DEADLINE_MS}ms")),
+        said.contains("HRANDFIELD") && said.contains(&format!("{READY_WAKE_DEADLINE:?}")),
         "the timeout names its command and the deadline: {said}"
     );
 }

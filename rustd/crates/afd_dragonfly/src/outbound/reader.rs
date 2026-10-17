@@ -6,6 +6,8 @@
 //! a [`Dedicated`] one nothing else may hold. The two halves share the key,
 //! the group and the field names, and nothing else.
 
+use std::time::Duration;
+
 use redis::ToRedisArgs as _;
 use redis::streams::StreamReadOptions;
 
@@ -81,13 +83,13 @@ impl OutboundReader {
         Ok(delivery)
     }
 
-    /// The next undelivered entry, parking up to `block_ms` for one to arrive.
+    /// The next undelivered entry, parking up to `block` for one to arrive.
     ///
     /// The park is the point: a poll loop pays its interval in latency on
     /// every answer plus a command per interval forever. Here the server holds
     /// the read open and answers the instant an entry lands.
     ///
-    /// `block_ms` bounds it anyway, because a read that never returns is a
+    /// `block` bounds it anyway, because a read that never returns is a
     /// task that cannot be joined: the caller races this against its
     /// cancellation token, and dropping the future does NOT cancel the command
     /// server-side — Dragonfly may still assign an entry to this consumer after
@@ -96,8 +98,8 @@ impl OutboundReader {
     ///
     /// # Errors
     /// As [`Self::read_pending`].
-    pub async fn read_blocking(&mut self, block_ms: usize) -> Result<Option<OutboundDelivery>> {
-        self.read(NEW_ENTRIES, Some(block_ms)).await
+    pub async fn read_blocking(&mut self, block: Duration) -> Result<Option<OutboundDelivery>> {
+        self.read(NEW_ENTRIES, Some(block)).await
     }
 
     /// One `XREADGROUP`, built the way [`crate::streams::FleetStreams`] builds
@@ -110,12 +112,15 @@ impl OutboundReader {
     async fn read(
         &mut self,
         read_id: &str,
-        block_ms: Option<usize>,
+        block: Option<Duration>,
     ) -> Result<Option<OutboundDelivery>> {
         let mut options = StreamReadOptions::default()
             .group(OUTBOUND_CONSUMER_GROUP, &self.consumer)
             .count(1);
-        if let Some(millis) = block_ms {
+        if let Some(block) = block {
+            // `BLOCK` takes whole milliseconds; a park past `usize` saturates.
+            let millis =
+                usize::try_from(afd_core::clock::saturating_millis(block)).unwrap_or(usize::MAX);
             options = options.block(millis);
         }
 

@@ -6,8 +6,8 @@
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
-use jiff::Timestamp;
 use afd_crypto::entropy::Entropy;
+use jiff::Timestamp;
 
 use super::ReadyToken;
 

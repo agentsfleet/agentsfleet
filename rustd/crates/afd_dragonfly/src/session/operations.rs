@@ -6,8 +6,10 @@ use super::{
     SESSION_KEY_GLOB, SESSION_KEY_PREFIX, SESSION_TTL, SessionState, SessionStore, TAG_ABORTED,
     TAG_ALREADY_ABORTED, TAG_CONFLICT, TAG_CONSUMED, TAG_EXPIRED, TAG_INVALID_CODE, TAG_MISSING,
     TAG_NOT_APPROVED, TAG_NOT_OWNER, TAG_OK, TAG_RATE_LIMITED, TAG_REPLAY, TAG_SUCCESS,
-    VERIFY_AND_CONSUME, VerifyOutcome, VerifyPayload, error, session_key,
+    VERIFY_AND_CONSUME, VerifyOutcome, VerifyPayload, error, session_key, stamp,
 };
+
+use jiff::Timestamp;
 
 impl SessionStore {
     /// Binds session operations to a connection.
@@ -64,7 +66,7 @@ impl SessionStore {
         &self,
         session_id: &str,
         submitted_hmac_hex: &str,
-        now_ms: i64,
+        now: Timestamp,
         request_fingerprint_hex: &str,
     ) -> Result<VerifyOutcome> {
         let key = self.key_of(session_id);
@@ -72,9 +74,9 @@ impl SessionStore {
         invocation
             .key(&key)
             .arg(submitted_hmac_hex)
-            .arg(now_ms)
+            .arg(stamp::epoch_ms(now))
             .arg(request_fingerprint_hex)
-            .arg(CONSUME_REPLAY_WINDOW.as_millis())
+            .arg(afd_core::clock::saturating_millis(CONSUME_REPLAY_WINDOW))
             .arg(MAX_VERIFY_ATTEMPTS)
             .arg(SESSION_TTL.as_secs());
 
@@ -94,7 +96,7 @@ impl SessionStore {
     /// Returns a command error when the evaluation fails, and an
     /// unexpected-reply error when the script answers with a shape this client
     /// does not know.
-    pub async fn approve(&self, approval: &Approval<'_>, now_ms: i64) -> Result<ApproveOutcome> {
+    pub async fn approve(&self, approval: &Approval<'_>, now: Timestamp) -> Result<ApproveOutcome> {
         let key = self.key_of(approval.session_id);
         let mut invocation = APPROVE.prepare_invoke();
         invocation
@@ -104,7 +106,7 @@ impl SessionStore {
             .arg(approval.nonce)
             .arg(approval.code_hmac_hex)
             .arg(approval.approver)
-            .arg(now_ms)
+            .arg(stamp::epoch_ms(now))
             .arg(SESSION_TTL.as_secs());
 
         let reply: Vec<String> = self.redis.script(CMD_EVAL, &key, &invocation).await?;

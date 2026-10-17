@@ -5,6 +5,8 @@
 //! wrong and how a caller asks about it; this one is the seam every raise site
 //! in the crate goes through.
 
+use std::time::Duration;
+
 use super::{Error, ErrorKind};
 
 /// The reply codes pulled out of a failed command by name (RULE UFS).
@@ -61,8 +63,8 @@ pub(crate) fn wrong_type(command: &'static str, stream: &str, holds: &str) -> Er
 }
 
 /// A command that never answered inside its deadline.
-pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::Timeout { command, waited_ms })
+pub(crate) fn timed_out(command: &'static str, waited: Duration) -> Error {
+    Error::new(ErrorKind::Timeout { command, waited })
 }
 
 /// A datastore that could not be reached at all.
@@ -108,8 +110,8 @@ pub(crate) fn certificate_rejected(role: &'static str, source: redis::RedisError
 }
 
 /// A connection that did not finish inside its whole-operation budget.
-pub(crate) fn connect_timed_out(role: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::ConnectTimeout { role, waited_ms })
+pub(crate) fn connect_timed_out(role: &'static str, waited: Duration) -> Error {
+    Error::new(ErrorKind::ConnectTimeout { role, waited })
 }
 
 /// A reply whose shape the client does not recognise.

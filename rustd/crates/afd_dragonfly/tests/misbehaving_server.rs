@@ -248,7 +248,7 @@ async fn test_an_approve_reply_this_build_cannot_read_is_refused() {
     };
     let error = tokio::time::timeout(
         BUDGET,
-        SessionStore::new(redis).approve(&approval, 1_760_000_000_000),
+        SessionStore::new(redis).approve(&approval, jiff::Timestamp::constant(1_760_000_000, 0)),
     )
     .await
     .expect("the fake answers, so the approve must not hang")

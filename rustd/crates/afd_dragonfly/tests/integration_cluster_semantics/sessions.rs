@@ -30,10 +30,10 @@ const CONCURRENT_REDEMPTIONS: u16 = 100;
 
 /// The clock every session here is judged against, and the instants either
 /// side of one lifetime.
-const CREATED_AT_MS: i64 = 1_700_000_000_000;
-const APPROVED_AT_MS: i64 = 1_700_000_010_000;
-const EXPIRES_AT_MS: i64 = 1_700_000_300_000;
-const WHILE_LIVE_MS: i64 = 1_700_000_020_000;
+const CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
+const APPROVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_010, 0);
+const EXPIRES_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_300, 0);
+const WHILE_LIVE: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_020, 0);
 
 /// Bringing a key's expiry forward, so a five-minute lifetime can be proven in
 /// a test instead of waited out.
@@ -42,7 +42,7 @@ const CMD_PEXPIRE: &str = "PEXPIRE";
 /// The shortest expiry the server will take, and long enough after it that a
 /// reap which is lazy rather than eager has still happened by the time the
 /// redemption below asks.
-const IMMINENT_MS: i64 = 1;
+const IMMINENT: std::time::Duration = std::time::Duration::from_millis(1);
 const AFTER_THE_REAP: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// A session the dashboard has approved and the CLI has not yet redeemed.
@@ -57,14 +57,14 @@ fn approved_session(session_id: &str) -> SessionState {
         nonce: Some("nonce".to_owned()),
         verification_code_hmac_hex: Some(GOOD_HMAC.to_owned()),
         verification_attempts: 0,
-        created_at_ms: CREATED_AT_MS,
-        expires_at_ms: EXPIRES_AT_MS,
-        approved_at_ms: Some(APPROVED_AT_MS),
-        consumed_at_ms: None,
+        created_at: CREATED_AT,
+        expires_at: EXPIRES_AT,
+        approved_at: Some(APPROVED_AT),
+        consumed_at: None,
         aborted_reason: None,
         clerk_user_id: Some("user_1".to_owned()),
         consumed_client_fingerprint_hex: None,
-        consume_payload_expires_at_ms: None,
+        consume_payload_expires_at: None,
     }
 }
 
@@ -96,7 +96,7 @@ pub(super) async fn a_race_through_a_cold_cache_still_redeems_once(
         let fingerprint = format!("{FINGERPRINT}{index:04x}");
         tokio::spawn(async move {
             store
-                .verify_and_consume(&session_id, GOOD_HMAC, WHILE_LIVE_MS, &fingerprint)
+                .verify_and_consume(&session_id, GOOD_HMAC, WHILE_LIVE, &fingerprint)
                 .await
         })
     });
@@ -173,7 +173,8 @@ pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &Dra
     );
 
     let mut cmd = redis::cmd(CMD_PEXPIRE);
-    cmd.arg(&key).arg(IMMINENT_MS);
+    cmd.arg(&key)
+        .arg(afd_core::clock::saturating_millis(IMMINENT));
     let rescheduled: i64 = harness
         .redis
         .command(CMD_PEXPIRE, &key, &cmd)
@@ -183,7 +184,7 @@ pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &Dra
     tokio::time::sleep(AFTER_THE_REAP).await;
 
     let outcome = store
-        .verify_and_consume(&expiring, GOOD_HMAC, WHILE_LIVE_MS, FINGERPRINT)
+        .verify_and_consume(&expiring, GOOD_HMAC, WHILE_LIVE, FINGERPRINT)
         .await
         .expect("an expired session is an outcome, not an error class");
     assert_eq!(
@@ -196,7 +197,7 @@ pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &Dra
 
     let never = harness.name("never-created");
     let outcome = store
-        .verify_and_consume(&never, GOOD_HMAC, WHILE_LIVE_MS, FINGERPRINT)
+        .verify_and_consume(&never, GOOD_HMAC, WHILE_LIVE, FINGERPRINT)
         .await
         .expect("an unknown session is an outcome, not an error class");
     assert_eq!(

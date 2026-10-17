@@ -130,8 +130,8 @@ fn repairing(config: &DragonflyConfig, response_timeout: Duration) -> Result<Clu
     let mut builder = ClusterClientBuilder::new([config.url().to_owned()])
         .use_protocol(ProtocolVersion::RESP3)
         .retries(REDIRECT_RETRIES)
-        .min_retry_wait(RETRY_MIN_WAIT.as_millis().try_into().unwrap_or(u64::MAX))
-        .max_retry_wait(RETRY_MAX_WAIT.as_millis().try_into().unwrap_or(u64::MAX))
+        .min_retry_wait(afd_core::clock::saturating_millis(RETRY_MIN_WAIT))
+        .max_retry_wait(afd_core::clock::saturating_millis(RETRY_MAX_WAIT))
         .connection_timeout(CONNECT_ATTEMPT_TIMEOUT)
         .response_timeout(response_timeout);
     if let Some(path) = config.ca_cert_file().filter(|_| config.is_tls()) {
@@ -205,7 +205,7 @@ pub(crate) async fn connect(
         Ok(Err(source)) => Err(dial_failure(config, response_timeout, source).await),
         Err(_elapsed) => Err(error::connect_timed_out(
             config.role().tag(),
-            config.connect_timeout().as_millis(),
+            config.connect_timeout(),
         )),
     }
 }
@@ -232,7 +232,7 @@ pub(crate) async fn connect_with_pushes(
         Ok(Err(source)) => Err(dial_failure(config, response_timeout, source).await),
         Err(_elapsed) => Err(error::connect_timed_out(
             config.role().tag(),
-            config.connect_timeout().as_millis(),
+            config.connect_timeout(),
         )),
     }
 }

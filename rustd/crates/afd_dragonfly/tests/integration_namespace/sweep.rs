@@ -123,7 +123,7 @@ async fn write_values_and_session(redis: &Dragonfly, marker: &str, payload: &str
     };
     assert_eq!(
         store
-            .approve(&approval, state.created_at_ms)
+            .approve(&approval, state.created_at)
             .await
             .expect("approve"),
         ApproveOutcome::Approved
@@ -179,7 +179,7 @@ async fn write_outbound(
     );
     let mut reader = OutboundReader::new(connection, marker.to_owned());
     let delivery = reader
-        .read_blocking(10)
+        .read_blocking(std::time::Duration::from_millis(10))
         .await
         .expect("read outbound")
         .expect("delivery");
