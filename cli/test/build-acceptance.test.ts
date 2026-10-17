@@ -47,6 +47,8 @@ test.each([
   ["source-change", "Sources changed during build"], ["revision-change", "Revision changed during build"],
 ])("a %s cannot produce a manifest", async (mode, message) => {
   Bun.env.ACCEPTANCE_FIXTURE_MODE = mode;
+  // Keep the revision-change proof independent of available checkout history.
+  if (mode === "revision-change") await Bun.write(resolve(fixture.root, ".git/shallow"), `${sourceRevision(fixture.root)}\n`);
   await expect(runAcceptanceBuild(undefined, fixture.root)).rejects.toThrow(message);
   expect(await Bun.file(resolve(fixture.root, ".tmp/acceptance-build.json")).exists()).toBe(false);
 });

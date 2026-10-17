@@ -47,7 +47,11 @@ await Bun.write(output, binary === "agentsfleet-runner" ? new Uint8Array([0x7f,0
 if (mode === "source-change") await Bun.write(resolve(root, "cli/changed.ts"), "changed source");
 if (mode === "revision-change") {
   const env = Object.fromEntries(Object.entries(Bun.env).filter(([key]) => !key.startsWith("GIT_")));
-  const child = Bun.spawnSync(["git", "update-ref", "HEAD", "HEAD~1"], {cwd: root, env});
+  // Hosted checkouts can have no parent available; create a local child instead.
+  const commit = Bun.spawnSync(["git", "-c", "user.name=Build fixture", "-c", "user.email=build-fixture@example.test",
+    "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "Advance build fixture"], {cwd: root, env});
+  if (commit.exitCode) throw new Error("Cannot create fixture revision");
+  const child = Bun.spawnSync(["git", "update-ref", "HEAD", commit.stdout.toString().trim()], {cwd: root, env});
   if (child.exitCode) process.exit(9);
 }
 console.log(JSON.stringify({reason:"build-script-executed"}));
