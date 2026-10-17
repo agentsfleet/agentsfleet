@@ -72,8 +72,19 @@ Wire field names (API and runner protocol) are not renamed by these rules.
 | `vault` | Encrypted secrets |
 | `memory` | Fleet memory, behind its own database role |
 
-`audit` remains the migrator's own schema (`audit.schema_migrations`), created by
-`rustd/crates/afd_db/src/migrate/ledger.rs`, not by `schema/*.sql`.
+`audit` holds the migration ledger. SQLx's `Migrator` applies `schema/*.sql` from the explicit
+list in `rustd/crates/afd_db/src/migration.rs` (`migrate` feature only; `macros` stays off), keeps
+checksums so an edited applied slot is refused, and runs inside our bounded advisory lock.
+
+## Runtime SQL
+
+Every static statement lives in a `.sql` file beside the use case that runs it (for example
+`library/sql/list.sql`), loaded with `include_str!` and bound by a typed Rust function that states
+its parameters, authorization and locks. Rows decode into named `FromRow` types; `Json<T>` is for
+real JSON columns only. One integration test `PREPARE`s every `.sql` file against the rebuilt
+schema, so a stale table or column fails before merge. A statement that must be assembled at run
+time is named in its module and covered by its own test. Domain stores keep taking the caller's
+connection or transaction; there is no generic repository trait.
 
 ## identity
 
@@ -280,10 +291,10 @@ Settled by review on Oct 17, 2026: `runtime_model_ref` and `base_url` kept; `deg
 
 ## Review prompt (Codex — Aiwa CTO with Astra)
 
-Paste as-is. The reviewer reads source on `main`; this file's prose is a claim to check.
+Paste as-is. This file's prose is a claim to check against source.
 
 ```text
-Review docs/architecture/postgres_schemas.md in ~/Projects/agentsfleet: the target Postgres
+Review docs/architecture/postgres_schemas.md (branch feat/m229-postgres-schema-clean-slate): the target Postgres
 layout for a from-empty rebuild. Compare every table against today's schema/*.sql and the Rust
 that reads and writes it (rustd/crates/**). Be adversarial: find what breaks, not what reads well.
 

@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `docs/architecture/postgres_schemas.md` — the signed-off layout, every table's columns, the rules, the counter names and the deletion matrix; the slots are a transcription of it.
 2. `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — the previous from-empty rebuild: registry and test mechanics.
 3. `.orly/dispatch/write_sql.md` — SCHEMA GUARD, RULE STS, NSQ, SGR and ITF; the guard fires on every slot edit here.
-4. `rustd/crates/afd_db/src/migrate/mod.rs` — refuses an unknown ledger version but skips a known one; new slot numbers must never overlap old ones.
+4. `rustd/crates/afd_db/src/migrate/lock.rs` — the bounded advisory lock that survives the move to SQLx's `Migrator`; the rest of `migrate/` is replaced.
 5. `rustd/crates/afd_authoring/src/privacy.rs` — the draft-purge scrub every erasure path must now reach.
 
 ## Files Changed (blast radius)
@@ -57,14 +57,15 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | File | Action | Why |
 |------|--------|-----|
 | `schema/*.sql` (97 slots) | DELETE | Clean slate; slot history is not migrated |
-| `schema/*.sql` (one per table, versions from 1000) | CREATE | The signed-off design, ordered per table by foreign key |
-| `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | Registry equals the new slot set; overlap refusal test |
+| `schema/*.sql` (one per table) | CREATE | The signed-off design, ordered per table by foreign key |
+| `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | SQLx `Migrator` over the explicit slot list; bounded lock kept; old-ledger refusal; hand-rolled ledger deleted |
+| `rustd/crates/*/src/**/sql/*.sql` | CREATE | Every static runtime statement as a file beside its use case |
 | `rustd/crates/afd_db/src/pool/**` | EDIT | Statement and lock time limits on every pooled connection; migrate exempt |
 | `rustd/crates/*/src/**/*.rs` with a schema-qualified table name | EDIT | Queries and row structs follow new names; dropped columns lose their writers |
 | `rustd/crates/afd_authoring/src/privacy.rs`, `rustd/crates/afd_tenant/src/**` erasure paths | EDIT | Every deletion root scrubs dispatch text; money is not cascaded |
 | `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afr_supervisor/src/**` | EDIT | `deletion_generation` leaves the runner protocol and its report spool |
 | `rustd/crates/*/tests/**`, `rustd/crates/afd_db/src/test_util/**`, `rustd/crates/afd_bench/**` | EDIT | Fixtures and assertions use the new schema |
-| `rustd/Cargo.toml` | EDIT | Comment naming `core.fleet_events` |
+| `rustd/Cargo.toml` | EDIT | SQLx `migrate` feature on, `macros` stays off; comment naming `core.fleet_events` |
 | `public/openapi.json` | EDIT | Regenerated for the runner protocol removal |
 | `cli/src/**`, `ui/packages/app/**`, `scripts/**`, `playbooks/**`, `make/*.mk` | EDIT | Only where the inventory check finds a removed name |
 | `docs/AUTH.md`, `docs/AUTH_DEVICE_LOGIN.md`, `docs/architecture/*.md` | EDIT | Old table names replaced; `postgres_schemas.md` §Settled outcomes |
@@ -92,7 +93,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — same from-empty posture; this rebuild diverges by ordering slots per table, numbering them from 1000, and requiring an owner override because `VERSION` is past 0.30.0.
+- **Reference:** `docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md` — same from-empty posture; this rebuild diverges by ordering slots per table, moving to SQLx's `Migrator`, and requiring an owner override because `VERSION` is past 0.30.0.
 
 ## Sections (implementation slices)
 
@@ -105,13 +106,13 @@ The rules, the counter table and the deletion-matrix requirement land in `~/Proj
 
 ### §2 — Slots rebuilt from empty
 
-All 97 slots go. New slots are numbered from 1000, so any old ledger row is an unknown version and is refused. One slot per table, ordered by foreign key (a table follows everything it references, across schemas). Each cycle — `fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`, `approval_gates.active_grant_id` if `integration_grants` follows `fleets` — gets its foreign key in its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
+All 97 slots go. SQLx's `Migrator` applies the new ones from the explicit list (`with_migrations`; `migrate` feature only), with checksums, its ledger in `audit`, and our bounded advisory lock around it (`set_locking(false)`); migrate refuses to start while the old `audit.schema_migrations` table exists. One slot per table, ordered by foreign key (a table follows everything it references, across schemas). Each cycle — `fleets.head_revision_id`, `drafts.head_candidate_id`, `library_entries.head_revision_id`, `approval_gates.active_grant_id` if `integration_grants` follows `fleets` — gets its foreign key in its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`. **Implementation default:** `fleet.revisions.source_candidate_id` carries no foreign key, because candidates are swept after 30 days.
 
 - **Dimension 2.1** — migrate from empty yields exactly the documented tables and columns → Test `test_migrate_from_empty_builds_nine_owned_schemas`
 - **Dimension 2.2** — no index predicate, trigger, CHECK or DEFAULT carries a vocabulary literal; structural literals match the allowed list → Test `test_schema_objects_carry_no_vocabulary_literals`
 - **Dimension 2.3** — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and refuse UPDATE, and cascades still delete them → Test `test_immutable_tables_refuse_update`
 - **Dimension 2.4** — no table repeats its schema name; every foreign-key column ends `_id` and names its table or a stated role → Test `test_table_and_key_names_follow_rules`
-- **Dimension 2.5** — a ledger holding only old version numbers is refused with zero slots applied → Test `test_migrate_refuses_old_ledger`
+- **Dimension 2.5** — a database holding the old ledger table is refused with zero slots applied, and an applied slot whose file changed is refused by checksum → Test `test_migrate_refuses_old_ledger`
 
 ### §3 — Every reader and writer follows the new names
 
@@ -146,6 +147,7 @@ Every query is rewritten here, so three fixes land with it rather than touching 
 
 - **Dimension 7.1** — no whole-row JSON read remains in runtime source → Test `test_no_whole_row_json_reads`
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
+- **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
 - **Dimension 7.3** — a request waiting on a held wallet lock fails within the lock limit with a retryable error, and the pool serves the next request → Test `test_lock_wait_is_bounded`
 
 ## Interfaces
@@ -163,7 +165,8 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Stale ledger | Migrate runs against a database still holding old `audit.schema_migrations` rows | Every old row is an unknown version below 1000; migrate refuses before any slot, naming it |
+| Stale ledger | Migrate runs against a database still holding the old `audit.schema_migrations` table | Migrate refuses before any slot, naming the table |
+| Edited slot | An applied slot's file changes after release | SQLx checksum mismatch; migrate refuses, naming the version |
 | Old name survives | A query still names a removed table or column | Integration lane fails on the undefined relation; the rubric's inventory check reports it |
 | Cycle order | Head pointer written before its target in one transaction | Deferred foreign key checks at commit; an orphan pointer rolls back |
 | Wrong environment | Rebuild pointed at a database with real users | §5 row counts and owner confirmation stop it before DROP |
@@ -179,7 +182,8 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 1. No schema object carries a vocabulary literal — catalogue scan in `test_schema_objects_carry_no_vocabulary_literals`.
 2. Immutable tables cannot be updated — no UPDATE grant plus a refusing trigger; `test_immutable_tables_refuse_update`.
 3. The migration list equals the tracked slots — `rust-migration-list` in `make lint-all`.
-4. No old ledger migrates — every new version is ≥ 1000 and unknown versions are refused; `test_migrate_refuses_old_ledger`.
+4. No old ledger migrates and no applied slot changes silently — old-table refusal plus SQLx checksums; `test_migrate_refuses_old_ledger`.
+7. Every static statement prepares against the schema — `test_every_sql_file_prepares` in the integration lane.
 5. No money row has a foreign key to an erasable owner — catalogue assertion in `test_deletion_matrix_keeps_money`.
 6. Every pooled runtime connection carries both time limits — `SHOW lock_timeout` on a pooled connection in `test_lock_wait_is_bounded`.
 
@@ -199,7 +203,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 2.2 | integration | `test_schema_objects_carry_no_vocabulary_literals` | catalogue scan → only allowed structural literals; a seeded `'pending'` predicate fails the scan |
 | 2.3 | integration | `test_immutable_tables_refuse_update` | UPDATE on each append-only table → refused; parent DELETE still cascades; mutable tables all have `updated_at` |
 | 2.4 | integration | `test_table_and_key_names_follow_rules` | catalogue → no schema-prefixed table; foreign-key columns end `_id` and match a table or a listed role |
-| 2.5 | integration | `test_migrate_refuses_old_ledger` | ledger seeded with versions 100–955 → refusal naming the first; 0 slots applied |
+| 2.5 | integration | `test_migrate_refuses_old_ledger` | old `audit.schema_migrations` present → refusal, 0 slots applied; applied slot text changed → checksum refusal |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
 | 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
 | 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
@@ -213,6 +217,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
 | 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
+| 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
 | 7.3 | integration | `test_lock_wait_is_bounded` | wallet row held in another transaction → request fails under 3 s, retryable; next request succeeds |
 
 ## Acceptance Rubric (single scoring surface)
@@ -295,21 +300,21 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Sign-off rule** — > Indy (2026-10-17): "When you start on the spec changes I want you to get a signoff from indy on every pre and post dimension on the code abstraction and get signoff." — context: before each Dimension that shapes code abstraction, the implementing agent shows the planned shape and waits for sign-off; after it, shows the landed shape and waits again. Recorded per Dimension below this log.
 - **Runner upgrade** — > Indy (2026-10-17): "Well when we deploy, there is just 1 runner in dev, so its easy to restart. Currently there are no fleets and we start with clean db migration. So there is no issue here on coordinated upgrade to fear or think about." — context: `deletion_generation` removal needs no compatibility window.
 - **Data-access fold** — > Indy (2026-10-17): "I think fold these for Tier 3 1. First 2 2. Statement and lock time limits" — context: typed row reads, the one-query Library list and connection time limits join this PR (§7); the rest is its own milestone.
+- **Query checking and migrator** — > Indy (2026-10-17): "Signed off by Indy: Approved for this. 1. Query checking: C 2. Migrator: switching to SQLx Migrator" — context: §7.4 and §2.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
 
 ## Review prompt (Codex — Aiwa CTO with Astra)
 
-Paste as-is. The reviewer reads source on `main`; prose is a claim to check, never evidence.
+Paste as-is. Prose is a claim to check against source, never evidence.
 
 ```text
-Re-review docs/v2/pending/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md in
-~/Projects/agentsfleet with docs/architecture/postgres_schemas.md, against source on main. Your
-previous review's findings were applied or scoped out; check each fix, then look for new breaks.
-Attack with file:line evidence: slot order and cycle slots; old-ledger refusal; the deletion matrix
-(does any root still cascade money or leave dispatch text); every dropped column's last reader;
-§5's guard; the R2 inventory check's correctness; each §4 negative case.
-Output: findings table, most severe first — severity, section, evidence, what fails, smallest fix.
-Then: spec READY or BLOCKED, design SOUND or UNSOUND, with the P0s behind each. No praise.
+Re-review docs/v2/active/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md with
+docs/architecture/postgres_schemas.md, branch feat/m229-postgres-schema-clean-slate, against source.
+Check each earlier fix, then attack with file:line evidence: slot and cycle order; SQLx Migrator use
+and old-ledger refusal; the PREPARE-every-file test; the deletion matrix; every dropped column's last
+reader; §5's guard; the R2 inventory check; each §4 negative case.
+Output: findings table, most severe first (severity, section, evidence, what fails, smallest fix),
+then spec READY or BLOCKED and design SOUND or UNSOUND, naming the P0s. No praise.
 ```
