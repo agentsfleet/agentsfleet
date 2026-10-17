@@ -6,6 +6,7 @@ mod bounds;
 mod fixture;
 mod late_results;
 mod output_bounds;
+mod preamble;
 mod provider_failures;
 mod reasoning;
 mod reasoning_safety;

@@ -2,7 +2,7 @@
 
 use super::super::ModelCallInput;
 use super::PROPOSAL_ARGUMENT;
-use super::prompt::{SYSTEM, TOOL, tool};
+use super::prompt::{TOOL, tool};
 use crate::{
     Result,
     error::{ErrorKind, raise::stored},
@@ -27,7 +27,6 @@ pub(in crate::model) fn body(
     let schema = tool();
     let mut body = CompletionRequest::new(Message::user(String::new()))
         .model(model.model.as_ref())
-        .preamble(SYSTEM)
         .tools(vec![ToolDefinition {
             name,
             description: schema
