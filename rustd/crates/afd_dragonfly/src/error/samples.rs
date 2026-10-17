@@ -149,7 +149,7 @@ fn unmintable() -> (afd_crypto::error::Error, afd_core::error::Error) {
         .uuid_randomness()
         .expect_err("a mocked source told to fail refuses the draw");
     let unencodable = afd_core::id::Uuid7::encode(
-        afd_core::clock::UnixMillis::from_millis(-1),
+        jiff::Timestamp::constant(-1, 0),
         [0; afd_core::id::ENTROPY_LEN],
     )
     .expect_err("an instant before the epoch has no version-7 spelling");

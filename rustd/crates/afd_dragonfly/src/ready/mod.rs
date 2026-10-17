@@ -36,7 +36,7 @@
 pub mod doorbell;
 pub mod partition;
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 use afd_crypto::entropy::Entropy;
 use futures_util::future::try_join_all;
 
@@ -107,7 +107,7 @@ impl ReadyToken {
     /// # Errors
     /// Returns an unmintable error when `entropy` refuses the draw or `now`
     /// has no version-7 spelling.
-    pub fn mint(entropy: &Entropy, now: UnixMillis) -> Result<Self> {
+    pub fn mint(entropy: &Entropy, now: Timestamp) -> Result<Self> {
         let minted = entropy.uuid7(now)?;
         Ok(Self(minted.as_str().to_owned()))
     }
