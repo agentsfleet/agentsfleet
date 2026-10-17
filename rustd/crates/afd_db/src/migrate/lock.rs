@@ -30,6 +30,13 @@ use crate::error::{Error, ErrorKind, Result, query};
 
 /// The operations a failure names, one spelling each (RULE UFS).
 const OP_ACQUIRE: &str = "migrate.acquire_lock";
+
+/// Takes the migrate lock without waiting, answering whether it was free.
+const TRY_LOCK: &str = include_str!("sql/try_lock.sql");
+/// Releases the migrate lock this session holds.
+const UNLOCK: &str = include_str!("sql/unlock.sql");
+/// Asks whether the lock is free without keeping it past the transaction.
+const PROBE_LOCK: &str = include_str!("sql/probe_lock.sql");
 const OP_PROBE: &str = "migrate.probe_lock";
 
 /// The one key the schema migration lock is taken under, cluster-wide.
@@ -162,7 +169,7 @@ impl MigrationLock {
     pub async fn release(mut self) {
         let unlocked = self
             .connection
-            .execute(sqlx::query("SELECT pg_advisory_unlock($1)").bind(ADVISORY_KEY))
+            .execute(sqlx::query(UNLOCK).bind(ADVISORY_KEY))
             .await;
         if let Err(error) = unlocked {
             let error_code = error_code::INTERNAL_DB_QUERY.as_str();
@@ -177,7 +184,7 @@ impl MigrationLock {
 
 /// One poll for the lock on `connection`.
 async fn try_lock(connection: &mut PoolConnection<Postgres>) -> Result<(), Unheld> {
-    let acquired: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+    let acquired: bool = sqlx::query(TRY_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
@@ -214,7 +221,7 @@ fn exhausted(policy: RetryPolicy) -> Error {
 /// # Errors
 /// Returns a query error when the probe statement fails.
 pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Result<bool> {
-    sqlx::query("SELECT pg_try_advisory_xact_lock($1)")
+    sqlx::query(PROBE_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await

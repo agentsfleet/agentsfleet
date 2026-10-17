@@ -37,8 +37,8 @@ const OP_WRITE_LEDGER: &str = "migrate.write_ledger";
 
 /// Whether the ledger exists yet; `to_regclass` answers NULL for a missing table
 /// where a read would fail. A fresh database has none until the first run.
-const LEDGER_EXISTS: &str = "SELECT to_regclass('audit._sqlx_migrations') IS NOT NULL";
-const READ_LEDGER: &str = "SELECT version FROM audit._sqlx_migrations WHERE success";
+const LEDGER_EXISTS: &str = include_str!("sql/ledger_exists.sql");
+const READ_LEDGER: &str = include_str!("sql/read_ledger.sql");
 
 /// What a run did, as data the caller can assert on or log.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

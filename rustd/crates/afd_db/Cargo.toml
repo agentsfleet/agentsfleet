@@ -28,6 +28,9 @@ tracing-subscriber = { workspace = true, optional = true }
 # The wire codes a datastore failure answers.
 afd_core.workspace = true
 sqlx.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through it.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The migration lock's bounded poll: a constant schedule, no jitter.
 backon.workspace = true
 # Reads the connection string's query, so the TLS decision is taken from the

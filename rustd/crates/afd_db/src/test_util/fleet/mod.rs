@@ -1,7 +1,7 @@
-//! The `core.fleets` row a suite seeds, spelled once.
+//! The `fleet.fleets` row a suite seeds, spelled once.
 //!
 //! Most integration suites need a fleet to hang leases, events, grants or
-//! schedules from. Each used to write its own `INSERT INTO core.fleets` with
+//! schedules from. Each used to write its own `INSERT INTO` with
 //! positional binds the compiler cannot check, so dropping one column meant
 //! editing forty-odd suites by hand. They build a [`FleetSeed`] instead and the
 //! column list changes here alone: the shape Arrow's `util::data_gen` gives its
@@ -11,35 +11,27 @@
 //! above this crate, in `afd_state::sql`. This crate owns the table's columns,
 //! not the values the product compares against.
 
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
 
 use crate::{Result, error};
 
 /// Every column a seed may set. A column the caller leaves alone is bound to
-/// the value the table would default it to.
-const INSERT_FLEET: &str = "INSERT INTO core.fleets \
-     (id, workspace_id, tenant_id, name, config_json, status, required_tags, \
-      memory_reads_workspace, memory_publishes_workspace, resource_version, setup_version, \
-      created_at, updated_at) \
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::jsonb, $6, $7::text[], \
-      $8, $9, $10, $11, $12, $13)";
+/// the value a fresh fleet takes.
+const INSERT_FLEET: &str = include_str!("sql/insert.sql");
 
-/// [`INSERT_FLEET`] plus the setup revision the fleet selects, in one
-/// statement so no reader sees the fleet without its setup. The revision's
-/// number is the fleet's `setup_version` and its stamp the fleet's creation.
-const INSERT_FLEET_WITH_SETUP: &str = "WITH fleet AS (INSERT INTO core.fleets \
-     (id, workspace_id, tenant_id, name, config_json, status, required_tags, \
-      memory_reads_workspace, memory_publishes_workspace, resource_version, setup_version, \
-      created_at, updated_at, current_definition_revision_id) \
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::jsonb, $6, $7::text[], \
-      $8, $9, $10, $11, $12, $13, $14::uuid) RETURNING id) \
-     INSERT INTO core.fleet_definition_revisions \
-     (id, fleet_id, revision, definition, canonical_digest, policy_semantics, created_at, \
-      runtime_model_ref) \
-     SELECT $14::uuid, id, $11, $15::jsonb, $16, $17, $12, $18 FROM fleet";
+/// [`INSERT_FLEET`] plus the setup revision the fleet points at, in one
+/// statement so no reader sees the fleet without its setup. The revision is
+/// stamped with the fleet's creation. An unstamped seed takes the database's
+/// `now()`, the clock every lifecycle stamp comes from.
+const INSERT_FLEET_WITH_SETUP: &str = include_str!("sql/insert_with_setup.sql");
 
 /// The revision number a seeded setup takes when the seed names none.
 const FIRST_SETUP_VERSION: i64 = 1;
+
+/// The resource version a fleet is created at when the seed names none.
+const FIRST_RESOURCE_VERSION: i64 = 1;
 
 const CONTEXT: &str = "seed a fleet";
 
@@ -86,10 +78,6 @@ pub struct SetupRevision<'a> {
     pub model_ref: Option<&'a str>,
 }
 
-/// The config of a fleet whose config the test never reads. Structural, like
-/// the table's own `'{}'` tag default, not a vocabulary value.
-const EMPTY_CONFIG: &str = "{}";
-
 /// One fleet row, built from its identity and its status.
 #[derive(Debug, Clone)]
 #[must_use = "a seed writes nothing until `insert` runs"]
@@ -99,21 +87,20 @@ pub struct FleetSeed<'a> {
     tenant_id: &'a str,
     status: &'a str,
     name: &'a str,
-    config_json: &'a str,
     required_tags: &'a [&'a str],
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
     resource_version: Option<i64>,
     setup_version: Option<i64>,
-    created_at: i64,
-    updated_at: i64,
+    created_at: Option<Timestamp>,
+    updated_at: Option<Timestamp>,
     setup: Option<SetupRevision<'a>>,
 }
 
 impl<'a> FleetSeed<'a> {
     /// A fleet named after its own id, which keeps the name unique within its
-    /// workspace without the caller minting one. Empty config, no tags, no
-    /// memory grants, no setup counters, stamped at zero.
+    /// workspace without the caller minting one. No setup, no tags, no
+    /// memory grants, no setup counters, stamped by the database's `now()`.
     pub fn new(id: &'a str, workspace_id: &'a str, tenant_id: &'a str, status: &'a str) -> Self {
         Self {
             id,
@@ -121,14 +108,13 @@ impl<'a> FleetSeed<'a> {
             tenant_id,
             status,
             name: id,
-            config_json: EMPTY_CONFIG,
             required_tags: &[],
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             resource_version: None,
             setup_version: None,
-            created_at: 0,
-            updated_at: 0,
+            created_at: None,
+            updated_at: None,
             setup: None,
         }
     }
@@ -137,12 +123,6 @@ impl<'a> FleetSeed<'a> {
     /// fleets it tells apart by it.
     pub fn name(mut self, name: &'a str) -> Self {
         self.name = name;
-        self
-    }
-
-    /// The config the fleet carries, as JSON text.
-    pub fn config(mut self, json: &'a str) -> Self {
-        self.config_json = json;
         self
     }
 
@@ -159,7 +139,8 @@ impl<'a> FleetSeed<'a> {
         self
     }
 
-    /// The counters a saved fleet carries.
+    /// The counters a saved fleet carries: its resource version, and the
+    /// number of the setup revision [`FleetSeed::setup`] writes.
     pub fn versions(mut self, resource: i64, setup: i64) -> Self {
         self.resource_version = Some(resource);
         self.setup_version = Some(setup);
@@ -190,16 +171,17 @@ impl<'a> FleetSeed<'a> {
         })
     }
 
-    /// Stamps `created_at` and `updated_at` with the same instant.
-    pub fn at(mut self, millis: i64) -> Self {
-        self.created_at = millis;
-        self.updated_at = millis;
+    /// Stamps `created_at` and `updated_at` with the same instant, for a
+    /// suite that orders rows by when they were made.
+    pub fn at(mut self, instant: Timestamp) -> Self {
+        self.created_at = Some(instant);
+        self.updated_at = Some(instant);
         self
     }
 
     /// Restamps `updated_at` alone, for a fleet edited after it was created.
-    pub fn updated(mut self, millis: i64) -> Self {
-        self.updated_at = millis;
+    pub fn updated(mut self, instant: Timestamp) -> Self {
+        self.updated_at = Some(instant);
         self
     }
 
@@ -210,9 +192,6 @@ impl<'a> FleetSeed<'a> {
     /// duplicate name among them.
     pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<()> {
         let revision_id = super::mint_id();
-        let setup_version = self.setup.map_or(self.setup_version, |_| {
-            Some(self.setup_version.unwrap_or(FIRST_SETUP_VERSION))
-        });
         let statement = if self.setup.is_some() {
             INSERT_FLEET_WITH_SETUP
         } else {
@@ -223,18 +202,17 @@ impl<'a> FleetSeed<'a> {
             .bind(self.workspace_id)
             .bind(self.tenant_id)
             .bind(self.name)
-            .bind(self.config_json)
             .bind(self.status)
             .bind(self.required_tags)
             .bind(self.memory_reads_workspace)
             .bind(self.memory_publishes_workspace)
-            .bind(self.resource_version)
-            .bind(setup_version)
-            .bind(self.created_at)
-            .bind(self.updated_at);
+            .bind(self.resource_version.unwrap_or(FIRST_RESOURCE_VERSION))
+            .bind(self.created_at.map(Timestamp::to_sqlx))
+            .bind(self.updated_at.map(Timestamp::to_sqlx));
         if let Some(setup) = self.setup {
             query = query
                 .bind(revision_id)
+                .bind(self.setup_version.unwrap_or(FIRST_SETUP_VERSION))
                 .bind(setup.definition)
                 .bind(setup.digest)
                 .bind(setup.semantics)
