@@ -46,7 +46,8 @@ const identity = new TextEncoder().encode(Bun.env.AGENTSFLEET_BUILD_ID);
 await Bun.write(output, binary === "agentsfleet-runner" ? new Uint8Array([0x7f,0x45,0x4c,0x46,...identity]) : identity);
 if (mode === "source-change") await Bun.write(resolve(root, "cli/changed.ts"), "changed source");
 if (mode === "revision-change") {
-  const child = Bun.spawnSync(["git", "update-ref", "HEAD", "HEAD~1"], {cwd: root});
+  const env = Object.fromEntries(Object.entries(Bun.env).filter(([key]) => !key.startsWith("GIT_")));
+  const child = Bun.spawnSync(["git", "update-ref", "HEAD", "HEAD~1"], {cwd: root, env});
   if (child.exitCode) process.exit(9);
 }
 console.log(JSON.stringify({reason:"build-script-executed"}));
