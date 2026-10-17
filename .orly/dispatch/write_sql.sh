@@ -18,7 +18,7 @@
 # (retained) and the GREPTILE GATE enforces them by review until a leaf exists.
 # SCH's teardown-era forbidden-token floor (no ALTER/DROP/SELECT 1; in schema/*.sql) is
 # itself a build-the-check (TODO-CHECK) candidate; the teardown-vs-ALTER disposition
-# call above it stays JUDGMENT (which file to rm, which @embedFile, which migration index).
+# call above it stays JUDGMENT (which file to rm, which migration index).
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -30,7 +30,7 @@ dispatch_header
 dispatch_length_gate 350                                       # FLL — file ≤ 350
 
 # ── judgment gates (no script can decide; agent states verdict in chat) ──
-dispatch_judgment "SCH" "removing/altering a table? cat VERSION and compare field by field, not as a string — below 0.30.0 = full teardown (rm schema/NNN.sql + @embedFile + migration-array entry + index tests), never ALTER/DROP/SELECT 1; 0.30.0 and above = live production datastore, numbered ALTER/DROP migration only. print the SCHEMA GUARD block"
+dispatch_judgment "SCH" "removing/altering a table? cat VERSION and compare field by field, not as a string — below 0.30.0 = full teardown (rm schema/NNN.sql + migration-array entry + index tests), never ALTER/DROP/SELECT 1; 0.30.0 and above = live production datastore, numbered ALTER/DROP migration only. print the SCHEMA GUARD block"
 dispatch_judgment "ITF" "integration test touching a production table? seed via src/db/test_fixtures_<scope>.zig against the real schema — never CREATE TEMP TABLE mocking the production shape"
 
 dispatch_verdict
