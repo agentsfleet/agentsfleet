@@ -222,3 +222,32 @@ is dropped.
 - Runner protocol loses `deletion_generation` (lease payload, activity, model calls, renew, report).
 - The draft message response loses `operation_id`.
 - `agentsfleet tenant provider set` writes through `model.tenant_models`.
+
+## Review prompt (Codex — Aiwa CTO with Astra)
+
+Paste as-is. The reviewer reads source on `main`; this file's prose is a claim to check.
+
+```text
+Review docs/architecture/postgres_schemas.md in ~/Projects/agentsfleet: the target Postgres
+layout for a from-empty rebuild. Compare every table against today's schema/*.sql and the Rust
+that reads and writes it (rustd/crates/**). Be adversarial: find what breaks, not what reads well.
+
+Attack, with file:line evidence for every claim:
+1. Readers: for each listed column, name the code that reads it. Flag any column with no reader
+   (rule 7) and any dropped column that something still reads.
+2. Duplicates: flag any fact stored twice — a column that copies another table's column, a JSON
+   field that restates a column, a counter equal to another table's number (rule 5).
+3. Placement: flag any table whose owning product area is not its schema (rule 1), and any
+   cross-schema foreign key that crosses a stated boundary (runner identity, memory_runtime role).
+4. Literals and timestamps: flag any planned index, trigger or default that needs a string literal
+   (rule 3), and any time column outside created_at/updated_at that is not a deadline, a NULL
+   marker an index reads, or an instant the API returns (rule 4).
+5. Deletion: walk draft deletion, fleet purge, account erasure and Library card deletion. Flag
+   any cascade that loses money records or leaves private text behind.
+6. Names: flag any column breaking the counter and pointer table or the foreign-key rule (rule 2).
+7. The "Settled while implementing" list: for each item, say keep or drop from source now.
+
+Output: a table of findings, most severe first — severity (P0/P1/P2), table.column, evidence
+(file:line), what fails, the smallest fix. Then a verdict: SOUND, or UNSOUND with the P0s.
+No praise, no summary.
+```
