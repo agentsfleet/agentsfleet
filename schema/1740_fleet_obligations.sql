@@ -18,12 +18,12 @@ CREATE TABLE fleet.obligations (
     event_id        TEXT   NOT NULL,
     answer          TEXT   NOT NULL,
     receipt         TEXT,
-    delivered_at    BIGINT,
+    delivered_at    TIMESTAMPTZ(3),
     attempt_count   BIGINT NOT NULL,
-    abandoned_at    BIGINT,
+    abandoned_at    TIMESTAMPTZ(3),
     abandon_reason  TEXT,
-    created_at      BIGINT NOT NULL,
-    updated_at      BIGINT NOT NULL,
+    created_at      TIMESTAMPTZ(3) NOT NULL,
+    updated_at      TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_obligations_fleet_id_event_id UNIQUE (fleet_id, event_id),
     CONSTRAINT ck_obligations_abandon_both_or_neither
         CHECK ((abandoned_at IS NULL) = (abandon_reason IS NULL))

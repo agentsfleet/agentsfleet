@@ -15,9 +15,9 @@ CREATE TABLE authoring.dispatches (
     status              TEXT    NOT NULL,
     result              JSONB,
     usage               JSONB,
-    private_expires_at  BIGINT  NOT NULL,
-    created_at          BIGINT  NOT NULL,
-    updated_at          BIGINT  NOT NULL,
+    private_expires_at  TIMESTAMPTZ(3)  NOT NULL,
+    created_at          TIMESTAMPTZ(3)  NOT NULL,
+    updated_at          TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_dispatches_attempt_id_sequence UNIQUE (attempt_id, sequence)
 );
 

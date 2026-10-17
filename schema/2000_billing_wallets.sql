@@ -6,9 +6,9 @@
 CREATE TABLE billing.wallets (
     tenant_id      UUID PRIMARY KEY REFERENCES identity.tenants(id) ON DELETE CASCADE,
     balance_nanos  BIGINT NOT NULL,
-    exhausted_at   BIGINT,
-    created_at     BIGINT NOT NULL,
-    updated_at     BIGINT NOT NULL,
+    exhausted_at   TIMESTAMPTZ(3),
+    created_at     TIMESTAMPTZ(3) NOT NULL,
+    updated_at     TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT ck_wallets_balance_nanos_non_negative CHECK (balance_nanos >= 0)
 );
 

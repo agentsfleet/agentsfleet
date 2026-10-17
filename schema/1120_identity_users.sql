@@ -8,8 +8,8 @@ CREATE TABLE identity.users (
     oidc_subject  TEXT NOT NULL,
     email         TEXT NOT NULL,
     display_name  TEXT,
-    created_at    BIGINT NOT NULL,
-    updated_at    BIGINT NOT NULL
+    created_at    TIMESTAMPTZ(3) NOT NULL,
+    updated_at    TIMESTAMPTZ(3) NOT NULL
 );
 
 -- Sign-in resolves the subject to a user on every authenticated request.

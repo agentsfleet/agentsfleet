@@ -12,7 +12,7 @@ CREATE TABLE runner.events (
     event_type  TEXT   NOT NULL,
     metadata    JSONB  NOT NULL,
     dedup_key   BIGINT,
-    created_at  BIGINT NOT NULL
+    created_at  TIMESTAMPTZ(3) NOT NULL
 );
 
 CREATE UNIQUE INDEX uq_events_runner_id_dedup_key

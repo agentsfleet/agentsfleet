@@ -10,7 +10,7 @@ CREATE TABLE authoring.candidates (
     definition        JSONB  NOT NULL,
     canonical_digest  TEXT   NOT NULL,
     policy_semantics  TEXT   NOT NULL,
-    created_at        BIGINT NOT NULL,
+    created_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_candidates_draft_id_revision UNIQUE (draft_id, revision)
 );
 

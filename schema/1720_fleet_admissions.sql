@@ -20,14 +20,14 @@ CREATE TABLE fleet.admissions (
     actor             TEXT   NOT NULL,
     event_type        TEXT   NOT NULL,
     request_json      TEXT   NOT NULL,
-    event_created_at  BIGINT NOT NULL,
+    event_created_at  TIMESTAMPTZ(3) NOT NULL,
     reply_provider    TEXT,
     reply_address     TEXT,
     receipt           TEXT,
-    delivered_at      BIGINT,
+    delivered_at      TIMESTAMPTZ(3),
     replay_count      BIGINT NOT NULL,
-    created_at        BIGINT NOT NULL,
-    updated_at        BIGINT NOT NULL,
+    created_at        TIMESTAMPTZ(3) NOT NULL,
+    updated_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_admissions_producer_producer_key UNIQUE (producer, producer_key),
     CONSTRAINT ck_admissions_reply_both_or_neither
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL))

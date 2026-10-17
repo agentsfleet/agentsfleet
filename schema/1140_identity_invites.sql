@@ -16,13 +16,13 @@ CREATE TABLE identity.invites (
     status               TEXT NOT NULL,
     invited_by_user_id   UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     accepted_by_user_id  UUID REFERENCES identity.users(id) ON DELETE SET NULL,
-    expires_at           BIGINT NOT NULL,
-    resolved_at          BIGINT,
+    expires_at           TIMESTAMPTZ(3) NOT NULL,
+    resolved_at          TIMESTAMPTZ(3),
     email_status         TEXT,
     email_attempt_count  INTEGER NOT NULL,
-    email_sent_at        BIGINT,
-    created_at           BIGINT NOT NULL,
-    updated_at           BIGINT NOT NULL
+    email_sent_at        TIMESTAMPTZ(3),
+    created_at           TIMESTAMPTZ(3) NOT NULL,
+    updated_at           TIMESTAMPTZ(3) NOT NULL
 );
 
 -- One pending invite per address per tenant.

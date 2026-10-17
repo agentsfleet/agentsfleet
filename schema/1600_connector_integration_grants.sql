@@ -10,10 +10,10 @@ CREATE TABLE connector.integration_grants (
     service           TEXT   NOT NULL,
     status            TEXT   NOT NULL,
     requested_reason  TEXT   NOT NULL,
-    approved_at       BIGINT,
-    revoked_at        BIGINT,
-    created_at        BIGINT NOT NULL,
-    updated_at        BIGINT NOT NULL,
+    approved_at       TIMESTAMPTZ(3),
+    revoked_at        TIMESTAMPTZ(3),
+    created_at        TIMESTAMPTZ(3) NOT NULL,
+    updated_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_integration_grants_fleet_id_service UNIQUE (fleet_id, service)
 );
 

@@ -89,6 +89,7 @@ async fn test_migrate_parity_fresh_db() {
 
 mod edited;
 mod immutable;
+mod instants;
 mod literals;
 mod locking;
 mod names;

@@ -22,8 +22,8 @@ CREATE TABLE fleet.fleets (
     memory_reads_workspace      BOOLEAN NOT NULL,
     memory_publishes_workspace  BOOLEAN NOT NULL,
     resource_version            BIGINT  NOT NULL,
-    created_at                  BIGINT  NOT NULL,
-    updated_at                  BIGINT  NOT NULL,
+    created_at                  TIMESTAMPTZ(3)  NOT NULL,
+    updated_at                  TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_fleets_workspace_id_name UNIQUE (workspace_id, name),
     CONSTRAINT fk_fleets_workspace_tenant
         FOREIGN KEY (workspace_id, tenant_id)

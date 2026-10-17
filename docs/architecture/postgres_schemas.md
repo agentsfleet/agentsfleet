@@ -29,7 +29,10 @@ table has one obvious home and one obvious shape.
    privileged path is a grant, not a session setting (so `fleet.approval_gates` purges through a
    dedicated grant, replacing today's `fleet.allow_gate_purge` setting). The only literals left are
    the UUID version nibble `'7'`, `TG_OP` values, and exception text no caller matches on.
-4. **Timestamps.** Every table has `created_at`. Every table whose rows change has `updated_at`.
+4. **Timestamps.** Every instant is `TIMESTAMPTZ(3)`, and every instant column ends `_at`; no other
+   column is a timestamp. Rust holds them as `jiff::Timestamp` and the API emits RFC 3339 in UTC.
+   Statements write `created_at` and `updated_at` as `now()`; the clock rule for expiry checks is in
+   `.orly/docs/SCHEMA_CONVENTIONS.md` §Timestamps. Every table has `created_at`. Every table whose rows change has `updated_at`.
    Any other time column is one of: (a) a deadline, named `*expires_at`; (b) a NULL marker an index
    or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an
    accounting cursor billing reads (`runner.fleet_slots.last_metered_at`).

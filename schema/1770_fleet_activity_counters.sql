@@ -7,8 +7,8 @@ CREATE TABLE fleet.activity_counters (
     fleet_id           UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     event_count        BIGINT NOT NULL,
     budget_used_nanos  BIGINT NOT NULL,
-    created_at         BIGINT NOT NULL,
-    updated_at         BIGINT NOT NULL
+    created_at         TIMESTAMPTZ(3) NOT NULL,
+    updated_at         TIMESTAMPTZ(3) NOT NULL
 );
 
 -- SECURITY DEFINER with a pinned search_path: api_runtime inserts events but holds

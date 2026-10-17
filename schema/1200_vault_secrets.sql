@@ -26,8 +26,8 @@ CREATE TABLE vault.secrets (
     meta_provider      TEXT,
     meta_base_url      TEXT,
     meta_has_key       BOOLEAN,
-    created_at         BIGINT  NOT NULL,
-    updated_at         BIGINT  NOT NULL,
+    created_at         TIMESTAMPTZ(3)  NOT NULL,
+    updated_at         TIMESTAMPTZ(3)  NOT NULL,
     -- Every reader looks a secret up by (workspace_id, key_name); the btree's
     -- workspace prefix also serves the per-workspace list and the erasure cascade.
     CONSTRAINT uq_secrets_workspace_id_key_name UNIQUE (workspace_id, key_name)

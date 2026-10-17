@@ -22,9 +22,9 @@ CREATE TABLE billing.fleet_charges (
     cached_input_token_count  BIGINT,
     output_token_count        BIGINT,
     wall_ms                   BIGINT,
-    event_created_at          BIGINT NOT NULL,
-    created_at                BIGINT NOT NULL,
-    updated_at                BIGINT NOT NULL,
+    event_created_at          TIMESTAMPTZ(3) NOT NULL,
+    created_at                TIMESTAMPTZ(3) NOT NULL,
+    updated_at                TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_fleet_charges_event_id_charge_type_fleet_id
         UNIQUE (event_id, charge_type, fleet_id)
 );

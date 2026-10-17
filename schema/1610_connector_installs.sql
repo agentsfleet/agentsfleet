@@ -9,8 +9,8 @@ CREATE TABLE connector.installs (
     external_account_id  TEXT   NOT NULL,
     workspace_id         UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     scopes               TEXT[] NOT NULL,
-    created_at           BIGINT NOT NULL,
-    updated_at           BIGINT NOT NULL,
+    created_at           TIMESTAMPTZ(3) NOT NULL,
+    updated_at           TIMESTAMPTZ(3) NOT NULL,
     -- An outside account installs into one workspace at a time; webhooks resolve
     -- the workspace by this pair.
     CONSTRAINT uq_installs_provider_external_account_id UNIQUE (provider, external_account_id)

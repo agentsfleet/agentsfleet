@@ -9,7 +9,7 @@ CREATE TABLE billing.authoring_report_receipts (
     report_id          UUID   NOT NULL,
     accounting_digest  TEXT   NOT NULL,
     acknowledgement    JSONB  NOT NULL,
-    created_at         BIGINT NOT NULL,
+    created_at         TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_authoring_report_receipts_attempt_id_report_id UNIQUE (attempt_id, report_id)
 );
 

@@ -32,10 +32,10 @@ CREATE TABLE authoring.drafts (
     last_message_sequence       BIGINT NOT NULL,
     cancelled_through_sequence  BIGINT NOT NULL,
     resource_version            BIGINT NOT NULL,
-    closed_at                   BIGINT,
-    expires_at                  BIGINT,
-    created_at                  BIGINT NOT NULL,
-    updated_at                  BIGINT NOT NULL,
+    closed_at                   TIMESTAMPTZ(3),
+    expires_at                  TIMESTAMPTZ(3),
+    created_at                  TIMESTAMPTZ(3) NOT NULL,
+    updated_at                  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_drafts_workspace_tenant
         FOREIGN KEY (workspace_id, tenant_id)
         REFERENCES identity.workspaces (id, tenant_id) ON DELETE CASCADE,

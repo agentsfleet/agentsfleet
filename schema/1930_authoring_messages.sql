@@ -18,9 +18,9 @@ CREATE TABLE authoring.messages (
     answer_text      TEXT,
     candidate_id     UUID REFERENCES authoring.candidates(id) ON DELETE SET NULL,
     failure_reason   TEXT,
-    finished_at      BIGINT,
-    created_at       BIGINT NOT NULL,
-    updated_at       BIGINT NOT NULL,
+    finished_at      TIMESTAMPTZ(3),
+    created_at       TIMESTAMPTZ(3) NOT NULL,
+    updated_at       TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_messages_draft_id_sequence UNIQUE (draft_id, sequence)
 );
 

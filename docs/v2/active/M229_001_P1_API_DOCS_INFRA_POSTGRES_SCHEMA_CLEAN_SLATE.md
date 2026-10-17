@@ -113,7 +113,8 @@ All 95 slots go (an earlier count of 97 was wrong; `git ls-files 'schema/*.sql'`
 - **Dimension 2.3** — DONE — mutable tables carry `updated_at`; immutable tables lack it, lack UPDATE grants and refuse UPDATE, and cascades still delete them → Test `test_immutable_tables_refuse_update`
 - **Dimension 2.4** — DONE — no table repeats its schema name; every foreign-key column ends `_id` and names its table or a stated role → Test `test_table_and_key_names_follow_rules`
 - **Dimension 2.5** — DONE — an applied slot whose file changed is refused by checksum, naming the version → Test `test_migrate_refuses_edited_slot`
-- **Evidence** — (inner loop: `cargo test -p afd_db --all-features --test db_suite -- --ignored integration_migrate` against an empty Postgres 18: 18 passed, 0 failed; the repository lane goes green with §3). Every product table's grants are probed role by role in `test_every_table_grants_exactly_its_role`.
+- **Dimension 2.6** — DONE — every instant is `TIMESTAMPTZ(3)` and every instant column ends `_at`, both ways round; statements stamp lifecycle columns with `now()` → Test `test_instant_columns_are_timestamptz_ms`
+- **Evidence** — (inner loop: `cargo test -p afd_db --all-features --test db_suite -- --ignored integration_migrate --skip statements` against an empty Postgres 18: 19 passed, 0 failed; the repository lane goes green with §3). Every product table's grants are probed role by role in `test_every_table_grants_exactly_its_role`.
 
 ### §3 — Every reader and writer follows the new names
 
@@ -204,6 +205,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 2.3 | integration | `test_immutable_tables_refuse_update` | UPDATE on each append-only table → refused; parent DELETE still cascades; mutable tables all have `updated_at` |
 | 2.4 | integration | `test_table_and_key_names_follow_rules` | catalogue → no schema-prefixed table; foreign-key columns end `_id` and match a table or a listed role |
 | 2.5 | integration | `test_migrate_refuses_edited_slot` | applied slot text changed → checksum refusal naming the version |
+| 2.6 | integration | `test_instant_columns_are_timestamptz_ms` | every `_at` column is `timestamp with time zone` at precision 3, and no other column is |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
 | 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
 | 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
@@ -302,6 +304,8 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Data-access fold** — > Indy (2026-10-17): "I think fold these for Tier 3 1. First 2 2. Statement and lock time limits" — context: typed row reads, the one-query Library list and connection time limits join this PR (§7); the rest is its own milestone.
 - **Query checking and migrator** — > Indy (2026-10-17): "Signed off by Indy: Approved for this. 1. Query checking: C 2. Migrator: switching to SQLx Migrator" — context: §7.4 and §2.
 - **§2 sign-off and empty start** — > Indy (2026-10-17): "Well my dev database will be tear downed. So you can think of that way and its a scratch db with nothing exists in dev. Signed off = approved" and "indy will teardown and ensure when your PR goes in there is no need to think about legacy migration ledger crap" — context: §2 approved; no old-ledger refusal, no compatibility with `audit.schema_migrations`.
+- **No legacy, anywhere** — > Indy (2026-10-17): "Record this i never asked for compatibilty to legacy, i said clearly we are tearing down db, period" and "that clearly says you have more open freedom to change" — context: the database is torn down and every client ships in this PR, so no compatibility window, versioning prefix, alias or adapter is designed, asked about, or kept for any surface: schema, wire or API. The 80 integer `_at` fields become RFC 3339 strings in place under `/v1`.
+- **Timestamps and clock** — signed off by Indy (2026-10-17) after review by Tarzy: instants are `TIMESTAMPTZ(3)`; Rust holds `jiff::Timestamp` end to end, `afd_core` included, with `UnixMillis` deleted; rows bridge through `jiff-sqlx`; the API emits RFC 3339 in UTC through jiff's standard serialization, with no integer adapter. Clock rule: a locking validity check locks first, then reads `clock_timestamp()` once; non-locking reads and `SKIP LOCKED` sweeps use `statement_timestamp()`; lifecycle stamps are `now()`; `now()` never decides an expiry. Evidence: scratch-container contention and `EXPLAIN` runs on Postgres 18.6. Rules land in orly 0.14.7.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.

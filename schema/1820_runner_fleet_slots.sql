@@ -12,14 +12,14 @@ CREATE TABLE runner.fleet_slots (
     fleet_id                    UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     last_runner_id              UUID REFERENCES runner.runners(id) ON DELETE SET NULL,
     fencing_token               BIGINT NOT NULL,
-    lease_expires_at            BIGINT NOT NULL,
-    hold_expires_at             BIGINT,
+    lease_expires_at            TIMESTAMPTZ(3) NOT NULL,
+    hold_expires_at             TIMESTAMPTZ(3),
     metered_input_token_count   BIGINT NOT NULL,
     metered_cached_token_count  BIGINT NOT NULL,
     metered_output_token_count  BIGINT NOT NULL,
-    last_metered_at             BIGINT NOT NULL,
-    created_at                  BIGINT NOT NULL,
-    updated_at                  BIGINT NOT NULL
+    last_metered_at             TIMESTAMPTZ(3) NOT NULL,
+    created_at                  TIMESTAMPTZ(3) NOT NULL,
+    updated_at                  TIMESTAMPTZ(3) NOT NULL
 );
 
 -- A runner's held and leased fleets.

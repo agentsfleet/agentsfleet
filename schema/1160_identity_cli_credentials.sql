@@ -13,9 +13,9 @@ CREATE TABLE identity.cli_credentials (
     credential_prefix     TEXT NOT NULL,
     deployment            TEXT NOT NULL,
     created_from_address  TEXT NOT NULL,
-    revoked_at            BIGINT,
-    created_at            BIGINT NOT NULL,
-    updated_at            BIGINT NOT NULL,
+    revoked_at            TIMESTAMPTZ(3),
+    created_at            TIMESTAMPTZ(3) NOT NULL,
+    updated_at            TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_cli_credentials_credential_hash UNIQUE (credential_hash)
 );
 

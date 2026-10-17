@@ -9,8 +9,8 @@ CREATE TABLE authoring.answer_receipts (
     attempt_id     UUID   NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
     report_id      UUID   NOT NULL,
     answer_digest  TEXT   NOT NULL,
-    expires_at     BIGINT NOT NULL,
-    created_at     BIGINT NOT NULL,
+    expires_at     TIMESTAMPTZ(3) NOT NULL,
+    created_at     TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_answer_receipts_attempt_id_report_id UNIQUE (attempt_id, report_id)
 );
 

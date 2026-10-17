@@ -28,14 +28,14 @@ CREATE TABLE fleet.approval_gates (
     blast_radius      TEXT   NOT NULL,
     spend_count       BIGINT,
     spend_ceiling     BIGINT,
-    expires_at        BIGINT NOT NULL,
+    expires_at        TIMESTAMPTZ(3) NOT NULL,
     status            TEXT   NOT NULL,
-    resolved_at       BIGINT,
+    resolved_at       TIMESTAMPTZ(3),
     resolved_by       TEXT,
     resolved_by_name  TEXT,
     detail            TEXT   NOT NULL,
-    created_at        BIGINT NOT NULL,
-    updated_at        BIGINT NOT NULL
+    created_at        TIMESTAMPTZ(3) NOT NULL,
+    updated_at        TIMESTAMPTZ(3) NOT NULL
 );
 
 CREATE UNIQUE INDEX uq_approval_gates_active_grant_id ON fleet.approval_gates (active_grant_id);

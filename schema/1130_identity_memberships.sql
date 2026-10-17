@@ -7,7 +7,7 @@ CREATE TABLE identity.memberships (
     tenant_id   UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     role        TEXT NOT NULL,
-    created_at  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_memberships_tenant_id_user_id UNIQUE (tenant_id, user_id)
 );
 

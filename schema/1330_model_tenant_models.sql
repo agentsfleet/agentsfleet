@@ -12,8 +12,8 @@ CREATE TABLE model.tenant_models (
     tenant_id   UUID   NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     model_name  TEXT   NOT NULL,
     secret_ref  TEXT   NOT NULL,
-    created_at  BIGINT NOT NULL,
-    updated_at  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ(3) NOT NULL,
+    updated_at  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_tenant_models_tenant_id_model_name_secret_ref
         UNIQUE (tenant_id, model_name, secret_ref),
     CONSTRAINT uq_tenant_models_id_tenant_id UNIQUE (id, tenant_id)

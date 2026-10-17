@@ -14,7 +14,7 @@ CREATE TABLE authoring.library_revisions (
     definition        JSONB  NOT NULL,
     canonical_digest  TEXT   NOT NULL,
     policy_semantics  TEXT   NOT NULL,
-    created_at        BIGINT NOT NULL,
+    created_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_library_revisions_library_entry_id_revision UNIQUE (library_entry_id, revision)
 );
 

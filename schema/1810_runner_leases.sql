@@ -15,7 +15,7 @@ CREATE TABLE runner.leases (
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
     fleet_event_id              UUID    NOT NULL REFERENCES fleet.events(id) ON DELETE CASCADE,
-    event_created_at            BIGINT  NOT NULL,
+    event_created_at            TIMESTAMPTZ(3)  NOT NULL,
     receipt                     TEXT    NOT NULL,
     posture                     TEXT    NOT NULL,
     provider                    TEXT    NOT NULL,
@@ -24,11 +24,11 @@ CREATE TABLE runner.leases (
     metered_cached_token_count  BIGINT  NOT NULL,
     metered_output_token_count  BIGINT  NOT NULL,
     fencing_token               BIGINT  NOT NULL,
-    lease_expires_at            BIGINT  NOT NULL,
+    lease_expires_at            TIMESTAMPTZ(3)  NOT NULL,
     status                      TEXT    NOT NULL,
     posted_message_count        INTEGER NOT NULL,
-    created_at                  BIGINT  NOT NULL,
-    updated_at                  BIGINT  NOT NULL,
+    created_at                  TIMESTAMPTZ(3)  NOT NULL,
+    updated_at                  TIMESTAMPTZ(3)  NOT NULL,
     -- Proves the fleet's workspace and tenant, and cascades a purge.
     CONSTRAINT fk_leases_fleet_workspace_tenant
         FOREIGN KEY (fleet_id, workspace_id, tenant_id)

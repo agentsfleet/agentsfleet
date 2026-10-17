@@ -10,8 +10,8 @@ CREATE TABLE connector.channels (
     external_channel_id  TEXT   NOT NULL,
     fleet_id             UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     binding_type         TEXT   NOT NULL,
-    created_at           BIGINT NOT NULL,
-    updated_at           BIGINT NOT NULL,
+    created_at           TIMESTAMPTZ(3) NOT NULL,
+    updated_at           TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_channels_provider_external_account_id_external_channel_id
         UNIQUE (provider, external_account_id, external_channel_id)
 );
