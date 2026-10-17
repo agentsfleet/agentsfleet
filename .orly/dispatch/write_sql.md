@@ -56,7 +56,6 @@ The **Schema Table Removal Guard** card dissolves into this façade; its prose i
 **Triggers** — before any of these, run `cat VERSION` and print the guard output. `0.30.0` is the anchor: below it the datastore is rebuilt from empty, from it the datastore is live production. Compare the version field by field, never as a string — `0.29.0` is under the anchor and `0.30.0` is not, while a lexical compare puts `0.30.0` under `0.9.0` and reads the era backwards.
 
 - Creating, editing, or deleting any file under `schema/*.sql`.
-- Editing `schema/embed.zig` (any `@embedFile` constant).
 - Editing the canonical migration array in `rustd/crates/afd_db/src/migration.rs`.
 - Writing `DROP TABLE`, `ALTER TABLE`, or `SELECT 1;` into any SQL file.
 - Accepting a spec dimension prescribing a "DROP migration", "ALTER migration", or "version marker".
@@ -72,8 +71,7 @@ The era runs while `VERSION` is under `0.30.0`, and it ends there — the develo
 To remove a table:
 
 1. `rm schema/NNN_foo.sql`
-2. Remove `@embedFile` from `schema/embed.zig`
-3. Remove the entry from the migration array in `rustd/crates/afd_db/src/migration.rs` and update its registration tests.
+2. Remove the entry from the migration array in `rustd/crates/afd_db/src/migration.rs` and update its registration tests.
 
 **Forbidden:** `ALTER TABLE`, `DROP TABLE`, `SELECT 1;` markers, comment-only files, "keep file for slot numbering". Slot gaps are fine — the DB is wiped on rebuild.
 
@@ -90,11 +88,10 @@ The teardown path is closed. Every schema change assumes a live datastore holdin
 ```
 SCHEMA GUARD: VERSION=<v> (<0.30.0 ? teardown : migrate)
   rm:schema/<file>.sql
-  rm-embed:<const>
   rm-migration:v<N>
 ```
 
-Below `0.30.0`, all three rm- lines appear. From `0.30.0`, replace them with `migration:schema/<NNN>_<change>.sql`.
+Below `0.30.0`, both rm- lines appear. From `0.30.0`, replace them with `migration:schema/<NNN>_<change>.sql`.
 
 ## Companion SQL rules (retained in `.orly/docs/greptile-learnings/RULES.md`)
 
