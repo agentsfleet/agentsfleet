@@ -17,20 +17,29 @@ table has one obvious home and one obvious shape.
 
 1. **Placement.** A table lives in the schema of the product area that owns it. Its name is a
    plural noun that never repeats the schema name: `authoring.drafts`, not `authoring.authoring_drafts`.
-2. **Foreign keys** are named `<singular>_id`. A role prefix appears only when two keys point at the
-   same table (`invited_by_user_id`, `accepted_by_user_id`). A deliberately missing foreign key is
-   explained in the slot comment (money outlives text; a charge outlives a purged fleet).
-3. **Status** columns are named `status`; categories are `<thing>_type`. No string literal appears in
-   a schema object — index predicate, trigger, CHECK or DEFAULT (RULE STS). Where a predicate needs a
-   state, it reads a NULL marker column instead.
+   A singleton is named for its one row (`model.catalogue_version`) and says so in its slot.
+2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `draft_id`). A prefix
+   names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,
+   `source_workspace_id`, `last_runner_id`). A deliberately missing foreign key is explained in the
+   slot comment (money outlives an account; a charge outlives a purged fleet).
+3. **Status** columns are named `status`; categories are `<thing>_type`. No *vocabulary* literal (a
+   status, type or scope value) appears in an index predicate, trigger, CHECK or DEFAULT (RULE STS);
+   a predicate that needs a state reads a NULL marker column. Structural literals stay allowed: the
+   UUID version nibble `'7'`, `TG_OP` names, a named session setting, an exception message.
 4. **Timestamps.** Every table has `created_at`. Every table whose rows change has `updated_at`.
    Any other time column is one of: (a) a deadline, named `*expires_at`; (b) a NULL marker an index
-   or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry.
+   or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an
+   accounting cursor billing reads (`runner.fleet_slots.last_metered_at`).
 5. **One fact, one home.** No JSON blob copies a column; no counter restates another table's number.
+   Named exceptions, each with its consistency rule stated in the slot: an aggregate maintained under
+   the same lock or trigger as its source; a delivery snapshot that must outlive its source; a
+   non-secret projection of encrypted content; a scope copy a restricted role needs to filter alone.
 6. **Retry keys** (`operation_id` + request digest) live only in receipt tables.
-7. **Every column names its reader** before it is created.
+7. **Every column names its reader** before it is created. Accounting and audit records are exempt
+   when the slot names the export or verification that reads them.
 8. **A new table** carries a written answer to "why not a column, or an existing table".
-9. **Immutable tables** carry no `updated_at`, no UPDATE grant, and an append-only trigger.
+9. **Immutable tables** carry no `updated_at`, no UPDATE grant, and a trigger that refuses UPDATE.
+   DELETE stays governed by grants and the deletion matrix below, so cascades keep working.
 
 ### Counter and pointer names
 
@@ -84,7 +93,7 @@ Wire field names (API and runner protocol) are not renamed by these rules.
 | `memberships` | Person ↔ tenant with a role; a role change is delete + insert | `id, tenant_id, user_id, role, created_at` |
 | `invites` | Emailed offer to join a tenant | `id, tenant_id, email, role, status, invited_by_user_id, accepted_by_user_id, expires_at, resolved_at, email_status, email_attempt_count, email_sent_at, created_at, updated_at` |
 | `api_keys` | Tenant automation tokens, hash only; outlive the admin who made them | `id, tenant_id, name, description, key_hash, created_by_subject, revoked_at, created_at, updated_at` |
-| `cli_credentials` | One live CLI login per machine, hash only | `id, user_id, tenant_id, machine_name, credential_hash, credential_prefix, deployment, created_from_address, revoked_at, created_at, updated_at` |
+| `cli_credentials` | One live CLI login per machine, hash only | `id, user_id, tenant_id, machine_name, credential_hash, credential_prefix, deployment, created_from_address, revoked_at, created_at, updated_at` (metadata columns are in §Settled) |
 | `user_preferences` | Small dashboard settings per (user, workspace) | `id, user_id, workspace_id, name, value, created_at, updated_at` |
 
 `invites.resolved_at` is NULL while an invite is pending and is set on accept or revoke. The
@@ -107,21 +116,36 @@ Wire field names (API and runner protocol) are not renamed by these rules.
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `drafts` | One private setup chat | `id, workspace_id, tenant_id, user_id, title, status, tenant_model_id, head_candidate_id, source_fleet_revision_id, instance_name, fleet_id, library_revision_id, last_message_sequence, cancelled_through_sequence, resource_version, created_at, updated_at` |
-| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, created_at, updated_at` |
+| `drafts` | One private setup chat | `id, workspace_id, tenant_id, user_id, title, status, tenant_model_id, head_candidate_id, source_type, source_library_revision_id, source_fleet_revision_id, instance_name, fleet_id, library_revision_id, last_message_sequence, cancelled_through_sequence, resource_version, closed_at, expires_at, created_at, updated_at` |
+| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
 | `candidates` | A frozen numbered setup the model proposed | `id, draft_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
-| `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, input_token_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, created_at, updated_at` |
-| `dispatches` | One physical model call: intent before, result after | `id, attempt_id, sequence, request_digest, status, output_allowance, result, native_reply, usage, private_expires_at, created_at, updated_at` |
+| `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, created_at, updated_at` |
+| `dispatches` | One physical model call: intent before, result after | `id, attempt_id, sequence, request_digest, status, result, usage, private_expires_at, created_at, updated_at` |
 | `activity_receipts` | Replay proof for "runner posted a setup" | `id, attempt_id, sequence, request_digest, candidate_id, created_at` · append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | `id, draft_id, attempt_id, report_id, answer_digest, expires_at, created_at` · append-only |
 | `replay_receipts` | Every authoring retry key: create draft, send message, publish | `id, workspace_id, user_id, scope, operation_id, request_digest, resource_id, created_at` · append-only, swept at a fixed age |
 | `library_entries` | Gallery card; NULL tenant = platform card | `id, tenant_id, visibility, platform_slug, name, description, credential_reasons, head_revision_id, resource_version, created_at, updated_at` |
 | `library_revisions` | A frozen published version | `id, library_entry_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
 
-Closed drafts are swept when `status = closed AND updated_at` is older than 30 days; the sweep
-cascades messages, candidates and answer receipts and keeps attempts, dispatches (result scrubbed)
-and settlements. The setup JSON is copied onto each frozen revision table on purpose: a shared
-definitions table would turn draft deletion from a cascade into a reference-counted sweep.
+- **Model pointers.** `drafts.tenant_model_id` and `messages.tenant_model_id` are NULL for the
+  platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
+  keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
+- **Source and publication are separate facts.** `source_type` (blank, definition, library, fleet)
+  plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started;
+  `library_revision_id` records what it published. A draft can start from Library revision A and
+  publish revision B. All three references are `ON DELETE SET NULL`, so deleting a card or purging
+  a fleet never blocks on, or deletes, someone's private draft.
+- **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
+  field); the sweeper deletes past `expires_at`. The sweep cascades messages, candidates and answer
+  receipts and keeps attempts, dispatches (result scrubbed) and settlements.
+- **Retry window.** A replay receipt lives 24 hours from `created_at` (`REPLAY_TOMBSTONE_MS`). Inside
+  the window the same key and body return the first result, a different body is refused, and a key
+  whose resource was deleted returns Gone. After the window the key is new. The draft message API
+  still returns `operation_id`, joined from the receipt.
+- **Running totals.** `attempts.call_count` and `output_token_count` are aggregates maintained under
+  the attempt lock and read by admission and renewal (rule 5 exception); the input total had no reader.
+- The setup JSON is copied onto each frozen revision table on purpose: a shared definitions table
+  would turn draft deletion from a cascade into a reference-counted sweep.
 
 ## fleet
 
@@ -135,7 +159,7 @@ definitions table would turn draft deletion from a cascade into a reference-coun
 | Table | Purpose | Columns |
 |---|---|---|
 | `fleets` | The deployed agent | `id, workspace_id, tenant_id, name, status, head_revision_id, required_tags, setup_stream_ready, initial_start, memory_reads_workspace, memory_publishes_workspace, resource_version, created_at, updated_at` |
-| `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | `id, fleet_id, revision, definition, canonical_digest, policy_semantics, runtime_model_ref, review_digest, source_candidate_id, created_at` · append-only |
+| `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | `id, fleet_id, revision, definition, canonical_digest, policy_semantics, runtime_model_ref, review_digest, review_context, source_candidate_id, created_at` · append-only |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler | `id, fleet_id, source, provider_schedule_id, cron_expression, timezone, message, once, fire_at, recipe, desired_status, sync_status, resource_version, sync_token, sync_lease_expires_at, last_error, created_at, updated_at` |
 | `sessions` | Resume bookmark `{last_event_id, last_response}` | `fleet_id (PK), context_json, created_at, updated_at` |
 | `events` | One row per delivery into the fleet | `id, fleet_id, workspace_id, event_id, actor, event_type, status, request_json, response_text, tool_calls, token_count, wall_ms, failure_reason, failure_detail, resumes_event_id, created_at, updated_at` · `UNIQUE(fleet_id, event_id)` |
@@ -146,6 +170,10 @@ definitions table would turn draft deletion from a cascade into a reference-coun
 | `activity_counters` | Trigger-maintained dashboard totals | `fleet_id (PK), event_count, budget_used_nanos, created_at, updated_at` |
 
 The live setup is read from `revisions` only; `fleets` keeps no config copy.
+`revisions.review_context` is the frozen review subject (creator, source pin, instance name) that
+activation re-reviews against; a Library install has no draft and a swept draft cannot supply it.
+`revisions.runtime_model_ref` is the model resolved at Save or Apply, kept because a definition may
+omit its model and review then resolves the tenant default.
 
 ## runner
 
@@ -157,34 +185,41 @@ The live setup is read from `revisions` only; `fleets` keeps no config copy.
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, capability_reported_at, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_all_ok, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
-| `leases` | One fleet event handed to one runner | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count, metered_output_token_count, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
+| `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
+| `leases` | One fleet event handed to one runner | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count, metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
 | `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold | `fleet_id (PK), last_runner_id, fencing_token, lease_expires_at, hold_expires_at, metered_input_token_count, metered_cached_token_count, metered_output_token_count, last_metered_at, created_at, updated_at` |
 | `events` | Append-only runner history | `id, runner_id, event_type, metadata, dedup_key, created_at` · unique `(runner_id, dedup_key) WHERE dedup_key IS NOT NULL` |
 | `lifetime_counters` | Per-runner tallies | `runner_id (PK), acquired_count, succeeded_count, failed_count, expired_count, created_at, updated_at` |
 
 `sandbox_config` holds tier-specific knobs as JSON validated in the application:
 `{"extra_binds": [...]}` for namespace tiers today; microVM keys arrive with the tier that reads them.
+Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
+keeping "no self-test yet" distinct from "self-test failed". `leases.event_created_at` is the
+producer's instant billing uses, which the event row does not hold; the lease's `actor` and
+`event_type` come from a join to `fleet.events`, as reclaim already does.
 
 ## connector
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault | `id, provider, external_account_id, workspace_id, created_at, updated_at` |
-| `channels` | Slack channel → resident fleet; survives a reconnect so channel memory is kept | `id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at` · append-only |
+| `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault | `id, provider, external_account_id, workspace_id, scopes, created_at, updated_at` |
+| `channels` | Slack channel → resident fleet; rebinds when a team moves workspace | `id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at, updated_at` |
 | `integration_grants` | Whether a fleet may use a service; deny is stored as revoked | `id, fleet_id, service, status, requested_reason, approved_at, revoked_at, created_at, updated_at` |
 
 ## model
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, inference, created_at, updated_at` |
-| `catalogue_version` | Singleton edit counter read with every price | `id (=1), resource_version, updated_at` |
+| `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at` |
+| `catalogue_version` | Singleton edit counter read with every price | `id (=1), resource_version, created_at, updated_at` |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key | `provider (PK), source_workspace_id, active, platform_model_id, base_url, created_at, updated_at` |
 | `tenant_models` | A tenant's own models, each pointing at a vault key | `id, tenant_id, model_name, secret_ref, created_at, updated_at` |
 | `tenant_selections` | The tenant's default; NULL means platform default | `tenant_id (PK), tenant_model_id, created_at, updated_at` |
 
-`model_name` is the provider's name for a model and never a foreign key.
+`model_name` is the provider's name for a model and never a foreign key. `installs.scopes` is read
+by the setup review, which blocks a connection whose granted scopes fall short. `platform_defaults.base_url`
+is the custom endpoint the platform default calls. An `inference` column (endpoint, dialect, output
+limit) arrives only with the change that reads it.
 
 ## billing
 
@@ -195,7 +230,21 @@ The live setup is read from `revisions` only; `fleets` keeps no config copy.
 | `authoring_settlements` | Final charge for one chat turn; outlives the chat | `id, attempt_id, report_id, accounting_digest, outcome, failure_reason, usage, charged_nanos, created_at` · append-only |
 | `authoring_report_receipts` | Acknowledges an interim report without settling | `id, attempt_id, report_id, accounting_digest, acknowledgement, created_at` · append-only |
 
-`fleet_charges.fleet_id` carries no foreign key so a charge outlives a purged fleet.
+Money outlives every deletion: `fleet_charges` carries opaque `tenant_id`, `workspace_id` and
+`fleet_id` values with no foreign key; `authoring_settlements` hangs off `authoring.attempts`, which
+keeps its workspace, tenant and user identifiers without a foreign key. Erasing a fleet, workspace
+or account therefore never deletes a charge. The slots name the export that reads them (rule 7).
+
+## Deletion matrix
+
+| Root deleted | Goes with it | Stays | Scrubbed immediately |
+|---|---|---|---|
+| Draft (user delete or 30-day sweep) | messages, candidates, answer receipts | attempts, dispatches, settlements, receipts | `dispatches.result` of its attempts |
+| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` of their attempts |
+| Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
+| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot | charges; drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
+| Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` of its attempts |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` of its attempts |
 
 ## vault and memory
 
@@ -209,19 +258,25 @@ The live setup is read from `revisions` only; `fleets` keeps no config copy.
 Each is decided from source during M229 and reported back; a column whose reader cannot be found
 is dropped.
 
-- `authoring.attempts`: whether a reader needs the running token and call totals.
-- `fleet.fleets.setup_context.context`: rebuilt from the fleet and its draft, or a `revisions` column.
-- `fleet.revisions.runtime_model_ref`: whether it repeats the model inside `definition`.
-- `runner.leases.actor, event_type, event_created_at`: droppable if the event row exists at issue.
-- `runner.runners.degraded`: dropped once proven to add nothing to `degraded_reason`.
-- `runner.runners.selftest_all_ok`: dropped if derivable from `selftest_checks`.
-- `model.platform_defaults.base_url`: dropped if it equals `platform_models.inference` endpoint.
+- `identity.api_keys.description`, `identity.cli_credentials.credential_prefix`, `deployment`,
+  `created_from_address`: no stored-value reader found in review; kept only if an API response or
+  display reads them.
+- `identity.cli_credentials.tenant_id`: CLI authentication reads the user's tenant; dropped unless a
+  reader needs the credential's own copy.
+- `authoring.attempts.settled_nanos`: dropped unless a reader distinct from
+  `billing.authoring_settlements.charged_nanos` is found.
+
+Settled by review on Oct 17, 2026: `runtime_model_ref` and `base_url` kept; `degraded`,
+`selftest_all_ok`, `capability_reported_at`, `leases.last_metered_at`, `attempts.input_token_count`,
+`dispatches.output_allowance` dropped; `setup_context` replaced by `revisions.review_context`.
 
 ## Public interface changes
 
 - Runner protocol loses `deletion_generation` (lease payload, activity, model calls, renew, report).
-- The draft message response loses `operation_id`.
-- `agentsfleet tenant provider set` writes through `model.tenant_models`.
+  The one development runner restarts on the new release; no fleets exist when it does.
+- `agentsfleet tenant provider set` writes through `model.tenant_models`; its output is unchanged.
+- Closed-draft retention, the 24-hour retry window and Library-card deletion (history goes with the
+  card) are documented in the public docs.
 
 ## Review prompt (Codex — Aiwa CTO with Astra)
 
