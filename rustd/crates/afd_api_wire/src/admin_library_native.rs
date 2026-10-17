@@ -45,7 +45,8 @@ pub struct Item<R = serde_json::Value> {
     /// Whether new tenant discovery and installation are allowed.
     pub published: bool,
     /// Last metadata mutation, in Unix milliseconds.
-    pub updated_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
 }
 
 /// Staged and published platform metadata.

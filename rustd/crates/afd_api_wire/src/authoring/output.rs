@@ -51,10 +51,12 @@ pub struct Draft<D = Value, R = Value> {
     pub publication: Option<Publication>,
     /// Closing time in Unix milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub closed_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub closed_at: Option<jiff::Timestamp>,
     /// Private retention deadline in Unix milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub expires_at: Option<jiff::Timestamp>,
 }
 
 /// The exact reusable snapshot explicitly published by this creator.
@@ -110,10 +112,12 @@ pub struct DraftCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_fleet_id: Option<String>,
     /// Last mutation, Unix milliseconds.
-    pub updated_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
     /// Private retention deadline, Unix milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub expires_at: Option<jiff::Timestamp>,
 }
 
 /// One user or assistant role in a durable request sequence.
@@ -141,10 +145,12 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
     /// Acceptance time, Unix milliseconds.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// Terminal time, Unix milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub finished_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub finished_at: Option<jiff::Timestamp>,
 }
 
 /// Safe durable failure; callers cannot supply diagnostics or action links.

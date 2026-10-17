@@ -38,7 +38,7 @@ fn test_platform_key_success_shapes_never_reveal_key_material() {
             source_workspace_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02"),
             model: Some(Cow::Borrowed("claude-opus-5")),
             active: true,
-            updated_at: 1_725_000_000_000,
+            updated_at: jiff::Timestamp::constant(1_725_000_000, 0),
         }],
         request_id: Cow::Borrowed("req-keys"),
     };

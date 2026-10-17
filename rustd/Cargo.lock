@@ -274,6 +274,7 @@ dependencies = [
  "afd_validate",
  "afd_wire",
  "garde",
+ "jiff",
  "serde",
  "serde_json",
  "utoipa",

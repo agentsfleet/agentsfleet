@@ -64,8 +64,9 @@ pub struct PollSessionResponse<'a> {
     pub cli_public_key: Cow<'a, str>,
     /// What the credential will be called.
     pub token_name: Cow<'a, str>,
-    /// When the window closes, in milliseconds since the epoch.
-    pub expires_at_ms: i64,
+    /// When the window closes.
+    #[serde(with = "afd_wire::instant")]
+    pub expires_at: jiff::Timestamp,
 }
 
 /// `PATCH /v1/auth/sessions/{session_id}/approve` — a person clicked Approve.
