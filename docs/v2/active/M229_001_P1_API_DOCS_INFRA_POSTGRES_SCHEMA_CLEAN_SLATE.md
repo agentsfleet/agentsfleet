@@ -132,12 +132,6 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 - **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the runner and its report spool decode without it; the draft message response still carries `operation_id`, joined from the receipt → Test `test_runner_wire_drops_deletion_generation`
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
 
-### §5 — Databases rebuilt by a guarded one-shot procedure
-
-A procedure in the PR's Session Notes, run with the owner present, development first: confirm the target environment by name; count rows in `core.tenants`, `core.users`, `core.fleets` and `billing.tenant_wallet` and refuse to continue unless the owner confirms the counts are test data; stop `agentsfleetd` and the runner so nothing writes; drop the database including `audit`; deploy, letting the release command migrate; start the single runner on the same release. The procedure is retired once M224_001 launches; from then on only forward migrations exist.
-
-- **Dimension 5.1** — both databases report the new layout after rebuild → Test `test_deployed_databases_rebuilt` (manual)
-
 ### §6 — Docs
 
 - **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `test_docs_name_no_removed_table`
@@ -151,6 +145,12 @@ Every query is rewritten here, so three fixes land with it rather than touching 
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
 - **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
 - **Dimension 7.3** — a request waiting on a held wallet lock fails within the lock limit with a retryable error, and the pool serves the next request → Test `test_lock_wait_is_bounded`
+
+### §5 — Rebuilt from empty, proven locally, migrated on merge
+
+Runs after §6 and §7. The proof is local: the Docker lane's Postgres and Dragonfly are torn down to nothing, `agentsfleetd migrate` builds the schema from empty, and the full integration lane and a daemon-plus-runner smoke run pass against it. No hand procedure touches a deployed database. Development is torn down by the owner, and when the PR merges with this spec in `done/`, the release command migrates it from empty like any deploy.
+
+- **Dimension 5.1** — a torn-down local Docker lane migrates from empty and passes `make test-integration-rustd` and a daemon-plus-runner smoke run → Test `test_local_lane_rebuilt_from_empty` (manual, output in Session Notes)
 
 ## Interfaces
 
@@ -170,7 +170,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | Edited slot | An applied slot's file changes after release | SQLx checksum mismatch; migrate refuses, naming the version |
 | Old name survives | A query still names a removed table or column | Integration lane fails on the undefined relation; the rubric's inventory check reports it |
 | Cycle order | Head pointer written before its target in one transaction | Deferred foreign key checks at commit; an orphan pointer rolls back |
-| Wrong environment | Rebuild pointed at a database with real users | §5 row counts and owner confirmation stop it before DROP |
+| Wrong environment | A rebuild pointed at a database with real users | No step drops a deployed database: §5 tears down only the local lane, and deployed databases migrate forward on merge |
 | Production holds data | Rebuild attempted after M224_001 launched | Procedure retired; owner decides a forward migration |
 | Erasure loses money | A deletion root cascades into attempts, settlements or charges | No foreign key from money rows to an erasable owner; `test_deletion_matrix_keeps_money` fails |
 | Late 754 merge | Slots 956/957 land on `main` after this branch opens | Rebase folds them into the new slots; `rust-migration-list` fails until folded |
@@ -214,7 +214,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one row, selection points at it; reset → NULL row; another tenant's model id → refused |
 | 4.5 | unit | `test_runner_wire_drops_deletion_generation` | lease payload and report spool entry without the field → decode; message response → has `operation_id` |
 | 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
-| 5.1 | manual | `test_deployed_databases_rebuilt` | owner-present §5 run; `agentsfleetd migrate` output and a catalogue table count pasted in Session Notes |
+| 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
 | 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
 | 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
@@ -306,6 +306,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **§2 sign-off and empty start** — > Indy (2026-10-17): "Well my dev database will be tear downed. So you can think of that way and its a scratch db with nothing exists in dev. Signed off = approved" and "indy will teardown and ensure when your PR goes in there is no need to think about legacy migration ledger crap" — context: §2 approved; no old-ledger refusal, no compatibility with `audit.schema_migrations`.
 - **No legacy, anywhere** — > Indy (2026-10-17): "Record this i never asked for compatibilty to legacy, i said clearly we are tearing down db, period" and "that clearly says you have more open freedom to change" — context: the database is torn down and every client ships in this PR, so no compatibility window, versioning prefix, alias or adapter is designed, asked about, or kept for any surface: schema, wire or API. The 80 integer `_at` fields become RFC 3339 strings in place under `/v1`.
 - **Timestamps and clock** — signed off by Indy (2026-10-17) after review by Tarzy: instants are `TIMESTAMPTZ(3)`; Rust holds `jiff::Timestamp` end to end, `afd_core` included, with `UnixMillis` deleted; rows bridge through `jiff-sqlx`; the API emits RFC 3339 in UTC through jiff's standard serialization, with no integer adapter. Clock rule: a locking validity check locks first, then reads `clock_timestamp()` once; non-locking reads and `SKIP LOCKED` sweeps use `statement_timestamp()`; lifecycle stamps are `now()`; `now()` never decides an expiry. Evidence: scratch-container contention and `EXPLAIN` runs on Postgres 18.6. Rules land in orly 0.14.7.
+- **§5 order and shape** — > Indy (2026-10-18): "I think Dimension 5 must be started after 6 and 7. 5 must happen and get tested on the docker container locally, upon PR merged when the spec is moved to done as well the migration happens auto." — context: the owner-present procedure on deployed databases is replaced by a local from-empty proof; deployed databases migrate on merge.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
