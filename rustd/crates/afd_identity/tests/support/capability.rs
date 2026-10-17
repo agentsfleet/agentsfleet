@@ -16,7 +16,6 @@ use tokio::sync::Semaphore;
 
 pub(crate) const CLAIM: &str = "fleet:admin billing:read";
 pub(crate) const CALLERS: u32 = 100;
-const INITIAL_CLOCK_MS: i64 = 1_000_000;
 
 #[derive(Debug)]
 pub(crate) struct ClaimProvider {
@@ -56,9 +55,7 @@ pub(crate) fn subject() -> Subject {
 }
 
 pub(crate) fn resolver() -> (ProviderCapabilities<ClaimProvider>, Arc<FixedClock>) {
-    let clock = Arc::new(FixedClock::at(afd_core::clock::from_millis(
-        INITIAL_CLOCK_MS,
-    )));
+    let clock = Arc::new(FixedClock::at(super::CLOCK_ORIGIN));
     let source = ClaimProvider {
         answer: Mutex::new(Ok(CLAIM.to_owned())),
         calls: AtomicUsize::new(0),

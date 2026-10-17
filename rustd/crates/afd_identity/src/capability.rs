@@ -21,17 +21,17 @@ use afd_auth::capability::CapabilitySource;
 use afd_auth::error::Unavailable;
 use afd_auth::principal::Subject;
 use afd_auth::scope::{ScopeSet, parse_claim};
-use afd_core::clock::Clock;
+use afd_core::clock::{Clock, after};
 use jiff::Timestamp;
 
 /// How long a fetched claim is served without asking again.
-pub const DEFAULT_TTL_MS: i64 = 60 * 1_000;
+pub const DEFAULT_TTL: Duration = Duration::from_mins(1);
 
 /// How long a claim may be served after the provider stops answering.
 ///
 /// Past this a claim could contradict a revocation nobody can confirm, so the
 /// answer becomes an outage.
-pub const DEFAULT_STALE_CEILING_MS: i64 = 15 * 60 * 1_000;
+pub const DEFAULT_STALE_CEILING: Duration = Duration::from_mins(15);
 
 /// Distinct subjects held at once.
 ///
@@ -72,8 +72,8 @@ pub struct ProviderCapabilities<S> {
     clock: Arc<dyn Clock>,
     cache: moka::future::Cache<Box<str>, Cached>,
     stale: moka::future::Cache<Box<str>, Cached>,
-    ttl_ms: i64,
-    ceiling_ms: i64,
+    ttl: Duration,
+    ceiling: Duration,
 }
 
 // Hand-written rather than derived, and the difference is load-bearing.
@@ -90,8 +90,8 @@ impl<S> Clone for ProviderCapabilities<S> {
             clock: Arc::clone(&self.clock),
             cache: self.cache.clone(),
             stale: self.stale.clone(),
-            ttl_ms: self.ttl_ms,
-            ceiling_ms: self.ceiling_ms,
+            ttl: self.ttl,
+            ceiling: self.ceiling,
         }
     }
 }
@@ -100,18 +100,22 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
     /// Builds a resolver with the documented windows.
     #[must_use]
     pub fn new(source: S, clock: Arc<dyn Clock>) -> Self {
-        Self::with_windows(source, clock, DEFAULT_TTL_MS, DEFAULT_STALE_CEILING_MS)
+        Self::with_windows(source, clock, DEFAULT_TTL, DEFAULT_STALE_CEILING)
     }
 
     /// Builds a resolver with explicit windows, for tests and for an operator
     /// who has a reason.
     #[must_use]
-    pub fn with_windows(source: S, clock: Arc<dyn Clock>, ttl_ms: i64, ceiling_ms: i64) -> Self {
-        let ceiling = u64::try_from(ceiling_ms.max(0)).unwrap_or(u64::MAX);
+    pub fn with_windows(
+        source: S,
+        clock: Arc<dyn Clock>,
+        ttl: Duration,
+        ceiling: Duration,
+    ) -> Self {
         let cache = || {
             moka::future::Cache::builder()
                 .max_capacity(MAX_CACHED_SUBJECTS)
-                .time_to_live(Duration::from_millis(ceiling))
+                .time_to_live(ceiling)
                 .build()
         };
         Self {
@@ -119,8 +123,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
             clock,
             cache: cache(),
             stale: cache(),
-            ttl_ms,
-            ceiling_ms,
+            ttl,
+            ceiling,
         }
     }
 
@@ -136,7 +140,7 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
         let held = self.cache.get(&key).await;
 
         if let Some(entry) = held
-            && self.age(entry) <= self.ttl_ms
+            && self.within(entry, self.ttl)
         {
             return Ok(entry.scopes);
         }
@@ -144,7 +148,7 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
         self.cache
             .entry(key.clone())
             .and_compute_with(|entry| async move {
-                if entry.is_some_and(|entry| self.age(*entry.value()) > self.ttl_ms) {
+                if entry.is_some_and(|entry| !self.within(*entry.value(), self.ttl)) {
                     Op::Remove
                 } else {
                     Op::Nop
@@ -199,7 +203,7 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
         subject: &Subject,
         held: Option<Cached>,
     ) -> Result<ScopeSet, Unavailable> {
-        let Some(entry) = held.filter(|entry| self.age(*entry) <= self.ceiling_ms) else {
+        let Some(entry) = held.filter(|entry| self.within(*entry, self.ceiling)) else {
             let subject = subject.as_str().to_owned();
             tracing::error!(
                 subject,
@@ -209,19 +213,19 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
             return Err(Unavailable);
         };
         let subject = subject.as_str().to_owned();
-        let ceiling_ms = self.ceiling_ms;
+        let ceiling_secs = self.ceiling.as_secs();
         tracing::warn!(
             subject,
-            ceiling_ms,
+            ceiling_secs,
             event = "scopes_served_stale",
             "the provider is unreachable and the entry is within the ceiling"
         );
         Ok(entry.scopes)
     }
 
-    /// How old `entry` is, by the injected clock.
-    fn age(&self, entry: Cached) -> i64 {
-        afd_core::clock::millis_between(entry.fetched_at, self.clock.now())
+    /// Whether `entry` is no older than `span`, by the injected clock.
+    fn within(&self, entry: Cached, span: Duration) -> bool {
+        self.clock.now() <= after(entry.fetched_at, span)
     }
 }
 

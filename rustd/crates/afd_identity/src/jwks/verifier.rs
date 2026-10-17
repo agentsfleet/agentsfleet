@@ -20,7 +20,7 @@ use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 use afd_core::clock::Clock;
 
 use crate::error::Result;
-use crate::jwks::cache::{DEFAULT_TTL_MS, KeyCache};
+use crate::jwks::cache::{DEFAULT_TTL, KeyCache};
 use crate::jwks::claims::{CLAIM_TENANT_ID, Claims};
 use crate::jwks::key_set::SigningKey;
 use crate::jwks::source::KeySetSource;
@@ -40,7 +40,7 @@ pub struct VerifierConfig {
     /// (`docs/AUTH.md` §Per-microservice JWT templates).
     pub audience: Box<str>,
     /// How long a fetched key set is served without asking again.
-    pub ttl_ms: i64,
+    pub ttl: std::time::Duration,
 }
 
 impl VerifierConfig {
@@ -50,7 +50,7 @@ impl VerifierConfig {
         Self {
             issuer: issuer.into(),
             audience: audience.into(),
-            ttl_ms: DEFAULT_TTL_MS,
+            ttl: DEFAULT_TTL,
         }
     }
 }
@@ -69,7 +69,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
     #[must_use]
     pub fn new(source: S, config: VerifierConfig, clock: Arc<dyn Clock>) -> Self {
         Self {
-            cache: KeyCache::new(source, Arc::clone(&clock), config.ttl_ms),
+            cache: KeyCache::new(source, Arc::clone(&clock), config.ttl),
             clock,
             issuer: config.issuer,
             audience: config.audience,
@@ -126,7 +126,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
         // when "now" was.
         let now = self.clock.now().as_second();
         let exp = claims.exp.ok_or(VerifyError::MissingClaim)?;
-        // `exp` is seconds since the epoch; the clock reads milliseconds.
+        // `exp` is a JWT NumericDate, seconds since the epoch (RFC 7519 §2).
         // Compared in seconds, and the boundary is inclusive: a token expiring
         // exactly now is expired.
         if exp <= now {
