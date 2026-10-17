@@ -139,10 +139,7 @@ export default function ApiKeyList({
 function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="truncate text-body-sm font-medium">{k.key_name}</span>
-        <Badge variant={k.active ? "green" : "default"}>{k.active ? "Active" : "Revoked"}</Badge>
-      </div>
+      <span className="block truncate text-body-sm font-medium">{k.key_name}</span>
       <div className="sm:hidden"><KeyActivityCell k={k} /></div>
     </div>
   );
@@ -203,6 +200,11 @@ function buildColumns({
       hideOnMobile: true,
       cell: (k) => <KeyActivityCell k={k} />,
       sortable: true,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (k) => <Badge variant={k.active ? "green" : "default"}>{k.active ? "Active" : "Revoked"}</Badge>,
     },
     {
       key: "actions",
