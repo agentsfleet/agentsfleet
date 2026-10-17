@@ -39,7 +39,7 @@ else describe("chat refuses unsafe creation", () => {
     assertNoSecretLeak(result, context.token); return result;
   }
   it("requires a message for a new noninteractive conversation", async () => {
-    const result = await run(["--no-input"]);
+    const result = await run(["--no-input", "--model", await authoringModel(context)]);
     assert.equal(result.code, 4);
     assert.match(result.stderr, /message is required/i);
   });

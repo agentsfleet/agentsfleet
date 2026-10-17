@@ -4,6 +4,7 @@
 use super::super::{fixture::now, funnel::property, mint};
 use super::fixture::Case;
 use afd_authoring::{SavedFleet, types::Start};
+use afd_core::error_code;
 use afd_observability::Telemetry;
 
 const FINISHED: &str = "fleet_setup_finished";
@@ -70,9 +71,29 @@ async fn should_report_setup_cancelled_once_and_not_for_a_refused_kill() {
     let killed = kill(&c, &saved).await.expect("setup cancellation");
     assert_eq!(killed.status, KILLED);
     kill(&c, &saved).await.expect_err("a stale tag is refused");
-    kill(&c, &killed)
+    for status in [Some(KILLED), Some("active"), None] {
+        let refused = c
+            .creations
+            .patch(
+                c.base.access(),
+                &killed.id,
+                Some(&killed.etag),
+                status,
+                Some("renamed"),
+                now(),
+            )
+            .await
+            .expect_err("a killed fleet is a tombstone for every edit");
+        assert_eq!(refused.code(), error_code::AGENTSFLEET_NOT_FOUND);
+    }
+    let unchanged = c
+        .creations
+        .read(c.base.access(), &killed.id)
         .await
-        .expect_err("a killed fleet cannot be killed again");
+        .expect("tombstone remains readable");
+    assert_eq!(unchanged.status, KILLED);
+    assert_eq!(unchanged.name, killed.name);
+    assert_eq!(unchanged.etag, killed.etag);
     let cancelled = c.base.reported(CANCELLED);
     assert_eq!(cancelled.len(), 1, "one cancellation, refusals add nothing");
     about(&c, &cancelled[0], &saved);

@@ -36,7 +36,7 @@ export async function saveFleetViaUI(page: Page, name: string, auth: SaveAuth): 
   await review.getByRole("button", { name: "Update draft and review" }).click();
   // Review is fetched after the editor mutation, so Save always binds the displayed candidate.
   await review.getByRole("button", { name: "Save fleet", exact: true }).click();
-  await page.getByRole("link", { name: /open fleet/i }).first().click({ timeout: SAVE_TIMEOUT_MS });
+  await review.getByRole("link", { name: /open fleet/i }).click({ timeout: SAVE_TIMEOUT_MS });
   await expect(page).toHaveURL(/\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/, { timeout: SAVE_TIMEOUT_MS });
   const id = new URL(page.url()).pathname.split("/").pop();
   if (!id) throw new Error("Save returned no fleet identity");
