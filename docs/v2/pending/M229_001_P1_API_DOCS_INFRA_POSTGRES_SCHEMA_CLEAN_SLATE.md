@@ -261,7 +261,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 
 ## Out of Scope
 
-- The rest of data-access hardening (pool-saturation benchmark first, then chat-claim contention, live-set cache coalescing, compile-checked query macros, `dispatches.result` holding only private content) — its own milestone, per the owner's tiering of the review.
+- The pool-saturation benchmark, chat-claim contention and live-set cache coalescing — `M229_002`, which follows this workstream. Compile-checked query macros and `dispatches.result` holding only private content follow after that.
 - Narrowing `api_runtime` to per-schema runtime roles — its own milestone, as `300_vault_secrets.sql` and `700_tenant_wallet.sql` record.
 - A Firecracker or SPACE sandbox tier — `runners.sandbox_config` is ready for its keys.
 - Renaming wire fields to the new column names (`fence`, `call_index`, `activity_sequence`) — owner chose column names only.
