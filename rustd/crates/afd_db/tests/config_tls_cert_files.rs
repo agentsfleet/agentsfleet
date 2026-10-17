@@ -117,7 +117,7 @@ fn test_a_missing_cert_file_fails_at_resolve_naming_knob_param_and_path() {
     assert_eq!(io.kind(), std::io::ErrorKind::NotFound);
 }
 
-/// `SQLx` returns the plain socket before it constructs TLS for these modes, so
+/// `sqlx` returns the plain socket before it constructs TLS for these modes, so
 /// certificate parameters are inert and must not make a non-TLS URL fail.
 #[test]
 fn test_non_tls_modes_do_not_preflight_unused_certificate_files() {

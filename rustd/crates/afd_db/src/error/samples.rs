@@ -10,6 +10,11 @@ use super::{
 };
 use crate::config::DbRole;
 
+/// A slot the samples name: the first schema slot.
+const SAMPLE_SLOT: i64 = 1000;
+/// A slot no binary knows, for the schema-ahead sample.
+const SAMPLE_UNKNOWN_SLOT: i64 = 9999;
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument as the mocked entropy in
@@ -63,12 +68,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "query",
-            query("migrate.ensure_tables", sqlx::Error::PoolClosed),
+            query("migrate.read_ledger", sqlx::Error::PoolClosed),
         ),
         (
             "migration failed",
             Error::new(ErrorKind::MigrationFailed {
-                version: 100,
+                version: SAMPLE_SLOT,
                 source: sqlx::Error::PoolClosed,
             }),
         ),
@@ -78,7 +83,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "schema ahead",
-            Error::new(ErrorKind::MigrationSchemaAhead { found: 999 }),
+            Error::new(ErrorKind::MigrationSchemaAhead { found: SAMPLE_UNKNOWN_SLOT }),
+        ),
+        (
+            "slot edited",
+            Error::new(ErrorKind::MigrationEdited { version: SAMPLE_SLOT }),
+        ),
+        (
+            "migrator refused",
+            Error::new(ErrorKind::MigrationRefused {
+                source: sqlx::migrate::MigrateError::Dirty(SAMPLE_SLOT),
+            }),
         ),
     ]
 }

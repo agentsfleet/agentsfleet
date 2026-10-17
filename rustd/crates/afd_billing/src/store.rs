@@ -43,16 +43,6 @@ use afd_db::Db;
 /// No queue. Every money decision is Postgres alone — which is worth stating,
 /// because it is what lets the whole gate pass be proven against a database
 /// with no Dragonfly in the picture.
-///
-/// # Not `Ledger`
-///
-/// The obvious name is taken, and by something that is not money:
-/// [`afd_db::migrate::Ledger`] is the SCHEMA-MIGRATION ledger — applied
-/// versions and failure rows over `audit.schema_migrations`. Two types called
-/// `Ledger` in one workspace, one about migrations and one about a tenant's
-/// credit, is an ambiguous import and a reader's coin flip. `Accounts` says
-/// what this one does in the vocabulary the domain already uses: it resolves
-/// who pays, reads what they have, and records what they were charged.
 #[derive(Debug, Clone)]
 pub struct Accounts {
     database: Db,

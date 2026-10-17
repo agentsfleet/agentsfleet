@@ -56,7 +56,7 @@ case "$*" in
       shift
     done
     ;;
-  *schema_migrations*)
+  *_sqlx_migrations*)
     case "${DATABASE_URL:-}" in
       *"$NEXT_HOST"*) printf '%s\n' "${TARGET_LEDGER:-900}" ;;
       *) printf '900\n' ;;
@@ -153,7 +153,7 @@ test_copy_keeps_passwords_out_of_argv() {
     bad "copy forwards strings by name" "status=$status: $out"
   elif grep -q "$SECRET" "$calls"; then
     bad "copy forwards strings by name" "a password reached docker's argv"
-  elif ! grep -q -- '--exclude-table=audit.schema_migrations' "$calls"; then
+  elif ! grep -q -- '--exclude-table=audit._sqlx_migrations' "$calls"; then
     bad "copy forwards strings by name" "the ledger was not excluded: $(cat "$calls")"
   else
     ok "copy forwards strings by name and excludes the ledger"
