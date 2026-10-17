@@ -1,4 +1,6 @@
-use super::{ACQUIRE_TIMEOUT_MS_DEFAULT, min_connections_default, pool_size_default};
+use std::time::Duration;
+
+use super::{ACQUIRE_TIMEOUT_DEFAULT, min_connections_default, pool_size_default};
 
 /// The acquire budget covers opening a connection, not only waiting for one.
 ///
@@ -16,20 +18,20 @@ use super::{ACQUIRE_TIMEOUT_MS_DEFAULT, min_connections_default, pool_size_defau
 /// the failure exactly, so the test names it.
 #[test]
 fn test_the_acquire_budget_can_outlast_a_connection_handshake() {
-    /// The slowest establishment measured against a real deployment, in
-    /// milliseconds. A budget at or below this cannot open a connection.
-    const MEASURED_SLOW_HANDSHAKE_MS: u64 = 2_700;
+    /// The slowest establishment measured against a real deployment. A
+    /// budget at or below this cannot open a connection.
+    const MEASURED_SLOW_HANDSHAKE: Duration = Duration::from_millis(2_700);
 
     // Through `black_box` so the comparison survives as a comparison:
     // both sides are constants, and clippy rejects an assertion it can
     // fold away — correctly, since a folded assert proves nothing at run
     // time. The budget is read the way a caller reads it instead.
-    let budget = std::hint::black_box(ACQUIRE_TIMEOUT_MS_DEFAULT);
-    let handshake = std::hint::black_box(MEASURED_SLOW_HANDSHAKE_MS);
+    let budget = std::hint::black_box(ACQUIRE_TIMEOUT_DEFAULT);
+    let handshake = std::hint::black_box(MEASURED_SLOW_HANDSHAKE);
 
     assert!(
         budget > handshake,
-        "an acquire budget of {budget}ms cannot open a connection that takes {handshake}ms: \
+        "an acquire budget of {budget:?} cannot open a connection that takes {handshake:?}: \
          the pool would warm to zero and answer every request from empty"
     );
 }

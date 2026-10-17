@@ -105,7 +105,7 @@ fn test_defaults_match_the_documented_sizing() {
     // (2.7 s), because sqlx spends this one deadline on both the wait for a
     // free connection AND the handshake that opens a new one. A budget under
     // the handshake is a pool that never grows: it warms to zero and answers
-    // every request from empty. See `ACQUIRE_TIMEOUT_MS_DEFAULT`.
+    // every request from empty. See `ACQUIRE_TIMEOUT_DEFAULT`.
     assert_eq!(config.acquire_timeout(), Duration::from_millis(5_000));
     assert!(
         config.acquire_timeout() > Duration::from_millis(2_700),

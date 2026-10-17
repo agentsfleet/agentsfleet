@@ -14,15 +14,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
 use afd_core::error_code;
 use afd_db::Db;
 use afd_db::config::DbRole;
 
 use super::integration_pool_faults::fault_net::{FaultProxy, install_subscriber};
 use super::integration_pool_faults::lane::{
-    ACQUIRE_BUDGET_MS, config_through, lane_database, lane_target,
+    ACQUIRE_BUDGET, config_through, lane_database, lane_target,
 };
 
 /// A stall that a second attempt does not clear is answered as a stall, with
@@ -40,7 +38,7 @@ async fn test_a_stalled_acquire_is_retried_once_then_named() {
         .await
         .expect("the proxy relays, so the connect must succeed");
     proxy.swallow();
-    let budget = Duration::from_millis(ACQUIRE_BUDGET_MS);
+    let budget = ACQUIRE_BUDGET;
 
     let started = tokio::time::Instant::now();
     let error = db
@@ -95,7 +93,7 @@ async fn test_a_retry_that_finds_the_datastore_back_succeeds() {
         .await
         .expect("the proxy relays, so the connect must succeed");
     proxy.swallow();
-    let budget = Duration::from_millis(ACQUIRE_BUDGET_MS);
+    let budget = ACQUIRE_BUDGET;
 
     let started = tokio::time::Instant::now();
     let (acquired, ()) = tokio::join!(db.acquire(), async {

@@ -4,6 +4,8 @@
 //! the next kind; behind `test-util` because production builds have no use
 //! for a sampler.
 
+use std::time::Duration;
+
 use super::{
     Error, ErrorKind, acquire_stalled, classify_acquire, invalid_bool_knob, query,
     unreachable_datastore,
@@ -51,20 +53,24 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "pool capacity",
             Error::new(ErrorKind::PoolCapacity {
                 role: DbRole::Api.tag(),
-                waited_ms: 2_000,
+                waited: Duration::from_secs(2),
             }),
         ),
         (
             "datastore unreachable",
-            unreachable_datastore(DbRole::Default.tag(), 10_000),
+            unreachable_datastore(DbRole::Default.tag(), Duration::from_secs(10)),
         ),
         (
             "acquire stalled",
-            acquire_stalled(DbRole::Api.tag(), 2_000, 5, 20),
+            acquire_stalled(DbRole::Api.tag(), Duration::from_secs(2), 5, 20),
         ),
         (
             "datastore unavailable",
-            classify_acquire(DbRole::Default.tag(), 2_000, sqlx::Error::PoolClosed),
+            classify_acquire(
+                DbRole::Default.tag(),
+                Duration::from_secs(2),
+                sqlx::Error::PoolClosed,
+            ),
         ),
         (
             "query",
@@ -79,7 +85,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "lock unavailable",
-            Error::new(ErrorKind::MigrationLockUnavailable { waited_ms: 30_000 }),
+            Error::new(ErrorKind::MigrationLockUnavailable {
+                waited: Duration::from_secs(30),
+            }),
         ),
         (
             "schema ahead",

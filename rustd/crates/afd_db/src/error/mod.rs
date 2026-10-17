@@ -27,6 +27,8 @@
 //! the request in hand had no datastore either way; what it stops doing is
 //! calling a refusal an outage.
 
+use std::time::Duration;
+
 use afd_core::error_code::{self, ErrorCode};
 
 #[cfg(feature = "test-util")]
@@ -80,19 +82,25 @@ pub(crate) enum ErrorKind {
     #[error("{knob} must be true, false, 1 or 0")]
     InvalidBoolKnob { knob: &'static str },
 
-    #[error("waited {waited_ms}ms for a {role} connection and the pool had none")]
-    PoolCapacity { role: &'static str, waited_ms: u128 },
+    #[error("waited {waited:?} for a {role} connection and the pool had none")]
+    PoolCapacity {
+        role: &'static str,
+        waited: Duration,
+    },
 
-    #[error("the {role} datastore did not answer within {waited_ms}ms")]
-    DatastoreUnreachable { role: &'static str, waited_ms: u128 },
+    #[error("the {role} datastore did not answer within {waited:?}")]
+    DatastoreUnreachable {
+        role: &'static str,
+        waited: Duration,
+    },
 
     #[error(
-        "waited {waited_ms}ms for a {role} connection: the pool held {held} of {ceiling} and \
+        "waited {waited:?} for a {role} connection: the pool held {held} of {ceiling} and \
          could not open another"
     )]
     AcquireStalled {
         role: &'static str,
-        waited_ms: u128,
+        waited: Duration,
         held: u32,
         ceiling: u32,
     },
@@ -118,8 +126,8 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    #[error("the migration lock was held by another session for {waited_ms}ms")]
-    MigrationLockUnavailable { waited_ms: u128 },
+    #[error("the migration lock was held by another session for {waited:?}")]
+    MigrationLockUnavailable { waited: Duration },
 
     #[error("the ledger records version {found}, which this binary does not know")]
     MigrationSchemaAhead { found: i64 },
@@ -249,12 +257,12 @@ impl Error {
 ///
 /// `sqlx` reports the capacity case as `PoolTimedOut` and everything else —
 /// refused connection, DNS failure, TLS handshake, an authentication rejection
-/// — as itself. `waited_ms` is the configured acquire timeout rather than a
+/// — as itself. `waited` is the configured acquire timeout rather than a
 /// measured duration: it is what the operator set, which is the number they
 /// need when deciding whether to raise it.
-pub(crate) fn classify_acquire(role: &'static str, waited_ms: u128, source: sqlx::Error) -> Error {
+pub(crate) fn classify_acquire(role: &'static str, waited: Duration, source: sqlx::Error) -> Error {
     match source {
-        sqlx::Error::PoolTimedOut => Error::new(ErrorKind::PoolCapacity { role, waited_ms }),
+        sqlx::Error::PoolTimedOut => Error::new(ErrorKind::PoolCapacity { role, waited }),
         other => Error::new(ErrorKind::DatastoreUnavailable {
             role,
             source: other,
@@ -278,8 +286,8 @@ pub fn invalid_bool_knob(knob: &'static str) -> Error {
 ///
 /// The timeout path has no `sqlx::Error` of its own to carry — nothing came
 /// back — so the variant is built directly rather than classified.
-pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::DatastoreUnreachable { role, waited_ms })
+pub(crate) fn unreachable_datastore(role: &'static str, waited: Duration) -> Error {
+    Error::new(ErrorKind::DatastoreUnreachable { role, waited })
 }
 
 /// A pool below its ceiling that could not open a connection in time.
@@ -289,13 +297,13 @@ pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Erro
 /// evidence there is.
 pub(crate) fn acquire_stalled(
     role: &'static str,
-    waited_ms: u128,
+    waited: Duration,
     held: u32,
     ceiling: u32,
 ) -> Error {
     Error::new(ErrorKind::AcquireStalled {
         role,
-        waited_ms,
+        waited,
         held,
         ceiling,
     })
