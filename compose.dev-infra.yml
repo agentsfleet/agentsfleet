@@ -1,7 +1,7 @@
 # One infrastructure project per repository. local-dev.sh owns its snapshot.
 services:
   postgres:
-    image: mirror.gcr.io/library/postgres:18-alpine
+    image: mirror.gcr.io/library/postgres:19rc1-alpine
     environment:
       POSTGRES_USER: agentsfleet
       POSTGRES_PASSWORD: agentsfleet
