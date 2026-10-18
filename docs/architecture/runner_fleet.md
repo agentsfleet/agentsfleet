@@ -34,7 +34,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
 | Cancel latency | none: a running lease is never cancelled | the heartbeat answers `ok` and names no lease; kill and pause stop new leases only | §Steer, kill, pause |
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
-| Debit points | receive at issue, then the run per renewal | flat receive debit at lease issue; each `/renew` debits the run's slice and the report settles the last one | §Money gates |
+| Debit point | the run's usage, per renewal | the issued lease's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
 | Readiness index | sixteen `fleet:ready:{p}` hashes, a fleet's partition being CRC16 of its id modulo sixteen | field = fleet id, value = a minted UUIDv7 token; a hint, never the record; a poll reads one partition per rotation step, and one the readiness doorbell rang as well | §Datastore topology, [`datastore_scaling.md`](./datastore_scaling.md) |
 
@@ -538,7 +538,7 @@ A Fleet's config (model, tool allowlist, network policy, context budget, gate ru
 
 ## Money gates
 
-The gates and the receive debit run at lease issue, the run is metered on each `/renew` and settled at report, and an uncovered renewal is refused `UZ-RUN-012` ([billing_and_provider_keys.md](./billing_and_provider_keys.md) §"3. The two debit points").
+The gates run before the lease is issued and charge nothing; the issued lease's hold is reserved, each `/renew` and the report log the slice's usage for the biller to settle, and an uncovered renewal is refused `UZ-RUN-012` ([billing_and_provider_keys.md](./billing_and_provider_keys.md) §"3. One debit point: usage, settled through the biller").
 
 ## Datastore topology
 

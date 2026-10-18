@@ -278,7 +278,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → c
   │     (XREADGROUP >). A gets "PR opened"; the steer waits behind it      │
   │  1. INSERT fleet.events  status=received  + stamp delivered_at         │
   │  2. SPUBLISH fleet:{id}:activity {event_received}                      │
-  │  3. GATES: payer → balance → budget → receive debit → approval         │
+  │  3. GATES: payer → balance → budget → approval (nothing is charged)    │
   │     refused → status=gate_blocked, terminal, never reopened            │
   │  4. vault: secrets_map; the provider key apart (never in secrets_map); │
   │     ExecutionPolicy: tools, network.allow, per-host rules              │
@@ -349,7 +349,7 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"Steer flow end-to-end" (write
   │  ║     no  → UZ-RUN-005 (a stale runner), nothing changes     ║            │
   │  ║     yes → lease status = reported                          ║            │
   │  ║  7.  fleet.events  status=processed, response_text         ║ ← history  │
-  │  ║  9.  billing.fleet_charges  reconcile actual tokens        ║ ← money    │
+  │  ║  9.  billing.usage_lines  the final slice, priced          ║ ← money    │
   │  ║  10. fleet.sessions  UPSERT context_json                   ║ ← bookmark │
   │  ║  12. release the affinity slot (token-guarded)             ║ ← next job │
   │  ║  13. fleet.obligations INSERT (receipt and delivered_at    ║ ← ONLY when│
@@ -446,4 +446,4 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
  You  ◄─── the live tail shows every frame; A#2's answer arrives on the CLI's stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and billing one `billing.fleet_charges` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").

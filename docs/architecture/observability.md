@@ -692,7 +692,7 @@ ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
 only bound is the SDK's default of 2,000 series per stream: past it, new
 `(model, …)` combinations are folded into one `otel.metric.overflow` series, and
 their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.fleet_charges`. A provider with no
+Postgres query against `billing.usage_lines`. A provider with no
 well-known name **omits the attribute and keeps the measurement** on the
 `fleet.delivery` span, and the omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`

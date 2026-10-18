@@ -49,7 +49,7 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
                          d reclaim a dead holder's active lease? else XAUTOCLAIM/XREADGROUP 1
                          e INSERT fleet.events status=received (+ stamp admission delivered)
                          f SPUBLISH event_received bracket on fleet:{id}:activity
-                         g gates: payer → balance → budget → receive debit → approval
+                         g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
                          i INSERT runner.leases        status=active, fencing_token, expires  ← THE LEASE ROW

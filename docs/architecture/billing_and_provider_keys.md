@@ -6,7 +6,7 @@ How users pay for what they run, and how the runtime stays neutral between two c
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`agentsfleetd`) and the runner's supervisor, and the setup-time path lives in workspace chat, the reviewed setup and Save. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
-The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and reflects the cost difference (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
+The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); a run deducts credits for the usage it logs; when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per run. The **run** charge is posture-dispatched and reflects the cost difference (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
 > **Where the live values are.** The authenticated billing surface reports the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately do not quote dollar amounts because they go stale when a rate moves. For implementers: server-authoritative constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
 
@@ -20,11 +20,11 @@ Every row is extracted from the numbered sections below; the owner column names 
 |---|---|---|---|
 | Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.wallets.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
 | Postures | exactly 2, selected by the saved runtime reference | `platform-default` uses `platform`; an owner's model registration uses `self_managed`; both debit the owner's wallet | §1 |
-| Debit points | 2 per event | receive (`RECEIVE_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
-| Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
-| Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
-| Money writes per slice | 2, atomic | wallet debit + accumulated `stage` ledger row, inside the fenced renewal Common Table Expression (CTE), which also advances the two lease cursors | §3 |
-| Ledger keying | `UNIQUE (event_id, charge_type, fleet_id)` | one `receive` row + one accumulated `stage` row per event — two rows total, however many times the run renews | §3 |
+| Debit point | usage only | each renewal's and the report's slice is one usage line, settled through the `Biller` after commit; admission charges nothing | §3 |
+| Line charge | `⌈runtime⌉ + Σ ⌈tokens × rate⌉` | the `Rater`: run fee under both postures, each token category under platform, each rounded up on its own | §4.1 |
+| Short balance | `taken = LEAST(charged, balance)` | the rest is written off and logged (`billing_charge_written_off`); the wallet never goes negative | §3, §11 |
+| Lease writes per slice | fence, cursors, one usage line | `METER_LEASE` moves no money; the line is logged in the same transaction and settled after commit | §3 |
+| Line keying | `UNIQUE (work_type, work_id, seq)` | a retried renewal, report or sweeper pass settles each line once | §3, §11 |
 | Free usage | the starter grant only | a balance that drains, bounded by `balance_exhausted_at`; no promotional window and no mechanism for one | §2.3 |
 | Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
 | Budget gate | per-fleet, independent of the balance gate | `daily_nanos` rolling 24 h · `monthly_nanos` Coordinated Universal Time (UTC) calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
@@ -32,23 +32,23 @@ Every row is extracted from the numbered sections below; the owner column names 
 | `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or persisted rows; the runner lease is the machine-plane exception | §8.2 |
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_name, secret_ref)` | `model.tenant_models`, `UNIQUE (tenant_id, model_name, secret_ref)`; entries reference keys, never own material | §8.4 |
-| Rate lookup | one fresh read per charge | `LOAD_RATE_WITH_REVISION` returns the rate and its `model.catalogue_version` generation in one snapshot; there is no rate cache | §4.2, §10 |
-| Unknown model on platform | run-fee-only rates | never a default token rate: renew and settle charge the runtime and no tokens; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.2 |
+| Rate lookup | one fresh read per lease pass | `PriceBook::load` reads one model's dated tiers before the lease's transaction; there is no rate cache | §4.1, §10 |
+| Unknown model on platform | runtime charged, tokens unpriced | never a default token rate: the line counts its tokens in `unpriced_token_count`; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.1 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
-| Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
+| Posture switch | claim-time snapshot wins | posture resolved once, at gate time, and stored on the lease | §7 |
 | Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
-| Live dollar values | never in this doc | served by the authenticated billing surface; the rate constants are declared once, in `afd_billing` | preamble, §4.2 |
+| Live dollar values | never in this doc | served by the authenticated billing surface; the run fee is declared once, in `afd_billing` | preamble, §4.1 |
 
 ## Traps
 
 Each trap is enforced in its owner section; this list is the index.
 
 - Never quote dollar amounts in docs — they go stale the moment a rate moves (preamble).
-- Metering never stops, and nothing zeroes the money column any more — a metered slice charges what the catalogue prices (§2.3).
-- Never fold a catalogue read fault into "this model is not in the catalogue": the second is a value (run-fee-only rates), the first is an error (§4.2).
-- Renewal idempotency is the cumulative-token diff against the affinity cursor, not a slice number — a re-sent renewal charges ≈0 (§3).
-- The budget gate apportions each ledger row's accumulated total across `[created_at, updated_at]` — never stamps the whole total on one instant, which under-enforces exactly where the amounts are largest (§5.1).
+- Metering never stops, and nothing zeroes the money column — every slice is a usage line priced at what the catalogue publishes (§2.3).
+- Never fold a catalogue read fault into "this model is not in the catalogue": the second is a value (the line's tokens count as unpriced), the first is an error that holds a renewal's tokens for a later priced slice (§4.1).
+- A re-sent renewal measures about zero against the slot cursor, and a re-sent line settles once on `(work, seq)` — retries never charge twice (§3).
+- The budget gate counts each usage line in the window it was written in; a line is one renewal interval of usage, so a long run's spend lands where it was used (§5.1).
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
 - Model-registry entries reference vault keys — they never own credential material (§8.4).
@@ -71,14 +71,14 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Saved model settings select the endpoint and API | the curation allowlist supplies prices; it does not route inference | §9, §10 |
 | A provider is priced, or records why it never will be | "not yet priced" read as a queue nobody was working; 87 providers sat in it | §10 |
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
-| Incremental per-renewal metering replaced the one-shot estimate | drained credit equals runtime × rate + actual tokens; refund-on-actual superseded | §3, §13; M80_010 |
+| Usage is logged per renewal and settled after commit | a run and its usage commit together, money moves through the biller, and a crash between the two loses or doubles nothing | §3, §11 |
 | Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
 | One billing lifecycle behind `Arc<dyn Biller>` | fleet runs and setup chat disagreed on rounding, pricing and outages; a queue or third party must be able to bill | §11 |
 | Billing outages fail open, flippable at one construction site | early adoption favours the optimistic path; closing it is one line | §11 |
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
 | Registry consistency via activation-time upsert, not read-time self-heal | a read handler must not mutate rows to paper over a write-path violation | §8.4; M121 |
 | `fleet:` vault-name prefix removed repo-wide | it discriminated nothing; dead convention | §8.4 |
-| No rate cache | one statement reads the rate and its generation together, so a cache would save no read | §4.2, §10 |
+| No rate cache | one indexed read of one model's price book per lease pass, so a cache would save one read and add an eviction path | §4.1, §10 |
 | Stripe purchase flow deferred | v2.1; schema anticipates it | §13 |
 
 ---
@@ -144,226 +144,153 @@ When `balance_nanos` cannot cover the next event's estimated cost, the gate trip
 
 ### 2.3 Free usage is a balance, never a window
 
-**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else: a number that drains, bounded by `balance_exhausted_at` when it reaches zero. Pricing consults the model catalogue and the posture — never the clock. No rate resolver takes a time parameter, which is asserted rather than left to review.
+**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else: a number that drains, bounded by `exhausted_at` when it reaches zero. Pricing consults the model catalogue and the posture. The clock enters pricing in one way only: the price row is chosen by the instant of the request it prices (`model.platform_model_prices` is effective-dated, §4.1), clamped to the work's own window. No price is waived by date.
 
 This replaced a timestamp-gated window, and the reason is worth keeping. The cutoff was a per-tenant wallet column (`free_trial_ends_at`) that was nullable with no default, and null read as "open". Its only writer in the repository was a test fixture, so **every tenant held null and every metered stage priced to zero — stage billing never charged anyone.** The gate sat ahead of the catalogue lookup, so it also masked an uncatalogued model: a pair with no rate row resolved to zero instead of refusing.
 
 Three properties fall out of the removal, all load-bearing:
 
 - **The balance gate can refuse.** While the window was open, run charge was `0` for every posture, so the balance gate could never refuse anyone — `0 balance ≥ 0 charge` always covers. Both money checkpoints were effectively open for all tenants. They now bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
-- **An unpriceable model is charged its runtime only.** Platform posture with no catalogue row meters at run-fee-only rates (`rustd/crates/afd_billing/src/meter.rs`): nothing published a token price, so no token is charged. The lease-estimate gate admits, because an estimate is not a charge.
-- **A catalogue fault holds tokens at renewal.** A renewal that cannot read the catalogue charges the run fee and meters no tokens, so its token cursor stays put and the next priced renewal or the report charges them (`renew_tokens_held_for_pricing`, `rustd/crates/afd_fleet/src/lease/renew/mod.rs`). A report that cannot read it charges the final slice's runtime only (`report_rates_unverified_run_fee_only`), so tokens since the last priced slice go uncharged.
+- **An unpriceable model is charged its runtime only.** Platform posture with no price covering the request charges the run fee, and the line counts its tokens in `unpriced_token_count`, so nothing reads as free by accident. The lease-estimate gate admits, because an estimate is not a charge.
+- **A catalogue fault holds tokens at renewal.** A renewal that cannot read the catalogue meters no tokens, so the slot's token cursor stays put and the next priced renewal charges them (`lease_tokens_held_for_pricing`, `rustd/crates/afd_fleet/src/lease/usage.rs`). A report that cannot read it logs the final slice's tokens as unpriced, since no later slice can charge them.
 
-Metering itself is unchanged and never stopped: telemetry rows INSERT with posture and token counts regardless of what is charged. What changed is that `credit_deducted_nanos` now carries the catalogue's number instead of zero.
+Every slice is logged with its posture and token counts whatever it is charged, and its `charged_nanos` carries the catalogue's number.
 
 How free usage is presented is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). The balance read carries no `free_trial` member (API reference › Tenant balance).
 
 ### 2.4 Plan tiers
 
-There are no plan tiers in the cost function. `debit_receive` and `slice_charge` in §4 take no plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_nanos`, or volume discounts on per-event rates — but not as a branch inside the charge functions.
+There are no plan tiers in the cost function. The `Rater` in §4 takes no plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_nanos`, or volume discounts on per-event rates — but not as a branch inside the charge functions.
 
 ---
 
-## 3. The two debit points
+## 3. One debit point: usage, settled through the biller
 
-Every event is charged at two points, in this order. Both land in `billing.fleet_charges`; only the run charge moves `billing.wallets.balance_nanos`, because the receive charge is `RECEIVE_NANOS` (zero today) and writes its ledger row alone (`rustd/crates/afd_billing/src/charge.rs`):
+A fleet run is charged for what it uses, and only that: no event costs anything to receive. The run's usage is logged inside the lease's own transactions and the money moves afterwards, through the `Biller` every product path holds (§11).
 
-> **The run debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta as **two money writes** (wallet and ledger), both inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none; `FOR UPDATE` on the lease+slot serialises same-lease renewals so a retry-in-flight charges ≈0). §4.2 is the charge function.
->
 > ```
 >  ONE event → the fleet runs in a sandbox, renewing as it works:
->    t0 ─renew─ renew ─renew─ … ─report(settle)─►   each tick meters the slice since the last:
->      slice = run_fee + token_cost
->        run_fee    = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000   (both postures, ms-precision)
->        token_cost = Δin·r_in + Δcached·r_cache + Δout·r_out              (platform only)
+>    issue ─renew─ renew ─renew─ … ─report─►   each step measures the slice since the last:
+>      slice = runtime since the slot cursor + token deltas since the cursor
+>      line  = Rater(slice)   run fee (both postures) + tokens (platform), each category rounded UP
 >
->    charged = LEAST(slice, balance)   the actual debit; == slice unless this slice exhausts the wallet
->    TWO guard-gated money writes per slice (atomic in the renewal CTE, which
->    also advances the lease and affinity cursors in the same statement):
->      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative (= −charged)
->      ② LEDGER     fleet_charges 'stage' row(event_id) += charged / Δtokens / Δt  per-EVENT total (Usage tab),
->                   updated_at := now                                         the span the budget gate apportions over
->
->    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
->    dormant fleet: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
->    idempotent: cumulative-token diff vs the lease cursor → a fail-safe retry charges ≈0
+>    inside the lease's transaction (fenced; a lost or capped pass writes nothing):
+>      ① move the deadlines or flip the lease to reported, advance the slot cursor
+>      ② log the slice as one billing.usage_lines row (work = the lease, seq = its next number)
+>    after commit, through Arc<dyn Biller>:
+>      issue  → reserve(floor)               the lease's first hold
+>      renew  → reserve(spent + floor), settle(line)
+>      report → settle(line), release(Completed | Failed)
+>    sweeper:billing settles any line left unsettled and releases holds of leases that ended
 > ```
 
-| # | Debit | When | Amount | Posture-dependent? |
-|---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT fleet.events (status='received')` and the gate passes | `debit_receive` records `RECEIVE_NANOS` | No today — both postures use the same `RECEIVE_NANOS` constant. The charge keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
-| 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `slice_charge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model library (§10). self-managed: the run fee only (tokens recorded, not charged). |
+| Step | What moves | Where |
+|---|---|---|
+| Admit | nothing; the balance and budget gates read (§5) | `rustd/crates/afd_fleet/src/lease/admit/mod.rs` |
+| Issue | the lease's first hold, at the floor the balance gate admitted against | `rustd/crates/afd_fleet/src/lease/money.rs` |
+| Renew | the hold is raised to the lease's spend so far plus one floor; the slice is logged, then settled | `rustd/crates/afd_fleet/src/lease/renew/mod.rs`, `coverage.rs` |
+| Report | the final slice is logged in the report's transaction, settled after commit, and the hold released | `rustd/crates/afd_fleet/src/lease/report/mod.rs`, `settle.rs` |
+| Sweep | lines that committed without a settlement, and holds of leases that ended | `rustd/crates/afd_fleet/src/lease/billing_sweep.rs`, `afd_billing::ledger::resettle` |
 
-Why two debit points and not one:
+**Measuring a slice.** `METER_LEASE` (`rustd/crates/afd_fleet/src/lease/sql/meter_lease.sql`) keeps its fence, its two deadlines, its slot cursor and its lifetime tally, and moves no money. It answers the slice: the runtime since the slot's `last_metered_at`, the token deltas against the slot's `metered_*` cursors, the instant, who pays and what the line names. The runner still reports cumulative counts, so a re-sent renewal diffs to about zero, and `FOR UPDATE OF l, a` serialises every pass on one lease. The cursors stay until runners report each provider request (billing run 4).
 
-- **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero after general availability without re-plumbing.
-- **Run captures the cost of running the fleet's turn.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
+**Logging the line.** The lease path prices the slice through the `Rater` and logs it with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A slice that measured nothing logs nothing. Its line number is the count of lines the lease has logged, read under the lease's row lock, so two passes never take one number (`rustd/crates/afd_fleet/tests/integration_lease_billing_races.rs`).
 
-**Ledger rows (M80_010).** `billing.fleet_charges` is keyed `(event_id, charge_type, fleet_id)` (`schema/2010_billing_fleet_charges.sql`): one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type, fleet_id)` constraint updates that fleet's `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
+**Settling.** After commit the lease path calls `settle`; a failure is logged (`lease_settle_deferred`) and the sweeper settles the line within its grace of two minutes. `settle` keys on `(work, seq)`, so a retry never charges twice. A balance that cannot cover a line gives what it has and writes off the rest (§11).
 
-**Tenant cost history.** `GET /v1/tenants/me/billing/charges` reads runtime ledger rows and `billing.authoring_settlements` together, newest first. Setup costs use the settlement's actual `charged_nanos`, including paid failed attempts. Reservations awaiting accounting add no history row.
+**Charges history.** `GET /v1/tenants/me/billing/charges` reads fleet usage lines (`charge_type: stage`, one row per line) and `billing.authoring_settlements` together, newest first, each source cut to the page by its own `(tenant_id, created_at, id)` index before any join. Both sources use one descending `(created_at, id)` cursor. Reading history never changes the wallet.
 
-Both sources use one descending `(created_at, id)` cursor, with native UUID comparison before wire casts. Each branch filters by tenant. Reading history never changes the wallet.
+Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response. Setup costs remain visible after private chat deletion because settlements join content-free attempts; without a retained public fleet link, `fleet_id` and `fleet_name` are null. A fleet line keeps the fleet's identifier and the name it had when the line was written, through the fleet's deletion; a line for a fleet already purged names it by its identifier.
 
-Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
-
-Setup costs remain visible after private chat deletion because settlements join content-free attempts. Without a retained public fleet link, `fleet_id` and `fleet_name` are null. Runtime rows retain their existing fleet identity and name snapshot.
-
-The dashboard labels these records **Setup chat**, using **Fleet setup** when no fleet link exists. The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor. Runtime rows group by fleet and event within that page; setup rows group by attempt.
-
-A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, recorded in `M155_001` under *Payload offload and the durable stream*.
-
-**Run metering — three layers.** The run debit follows the real run, not a one-shot estimate.
-
-On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts. The server charges the **delta** since the lease's last-metered cursor: `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms precision), plus the per-token cost of the token delta on the platform posture. It then applies two money writes atomically inside M80_006's fenced renewal CTE, advancing both cursors in the same statement:
-
-1. debit the **wallet** `balance_nanos`, clamped at 0;
-2. accumulate the per-event `stage` **ledger** row, stamping `updated_at`.
-
-The per-event slice number is gone with the breakdown table that needed it, and so is the `meter_slice_seq` counter on the affinity slot. Nothing was lost: slice numbering never provided idempotency. That comes from the **cumulative-token diff against the affinity cursor** — a re-sent renewal reports the same cumulatives, computes a zero delta, and charges ≈0 — and ordering comes from the `FOR UPDATE OF l, a` that serialises renewals of one lease.
-
-Ledger ② records `charged = LEAST(slice, balance)` — the actual debit — so the audit row equals the wallet drain even on the slice that exhausts the wallet. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. That settle is **fused into the report claim**: the lease's `active→reported` flip and the final-slice charge ride one fenced CTE under `FOR UPDATE OF l, a`, so a reclaim racing the report cannot strand the final slice on the `MAX_RUNTIME` cap path.
-
-Properties: same-lease renewals are serialised (`FOR UPDATE` on lease+slot), so a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency). A negative Δ clamps to 0 and never credits. The wallet debit is `GREATEST(0, …)` and never goes negative. A balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`; the run terminates). A lost or fenced-out renewal writes neither.
+The dashboard labels setup records **Setup chat**, using **Fleet setup** when no fleet link exists. The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor.
 
 ---
 
-## 4. The receive charge and the stage charge
-
-Two charge paths, both in `rustd/crates/afd_billing`. Both take `posture`. Neither takes plan. Receive is posture-independent in the current rate table; the signature keeps `posture` so a future ratchet can re-introduce asymmetry without a fn-shape change.
+## 4. The run charge
 
 ### 4.0 Worked examples up front
 
-Two events for John, taken at different points in his journey, drive the worked examples below. Both run against Kimi K3 — only the posture differs:
+Two events for John, taken at different points in his journey, drive the examples below. Both run against Kimi K3; only the posture differs:
 
-- **John on platform-managed.** A typical webhook event under `mode=platform`: 800 input tokens / 1040 output tokens against `accounts/fireworks/models/kimi-k3`. agentsfleet holds the Fireworks key; we pay Fireworks for the tokens and bill John at the retail rate from the model library plus orchestration overhead.
-- **John on self-managed.** Same workload, `mode=self_managed`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k3`. John holds the Fireworks key; he pays Fireworks directly. agentsfleet bills the flat orchestration overhead, no token markup.
+- **John on platform-managed.** A webhook event under `mode=platform`: 800 input tokens and 1040 output tokens against `accounts/fireworks/models/kimi-k3`. agentsfleet holds the Fireworks key; we pay Fireworks for the tokens and bill John at the catalogue's rate plus the run fee.
+- **John on self-managed.** The same workload under `mode=self_managed`. John holds the Fireworks key and pays Fireworks directly. agentsfleet bills the run fee only.
 
-### 4.1 Receive charge
+### 4.1 The Rater
 
-Function shape:
-
-```rust
-pub enum Posture { Platform, SelfManaged }
-
-/// What receiving one event costs, under either posture.
-pub const RECEIVE_NANOS: Nanos = Nanos(0);
-
-/// Records that charge. `posture` rides the ledger row rather than the amount.
-pub async fn debit_receive(&self, charged: Charged<'_>, now: Timestamp) -> Result<Nanos>
-```
-
-Receive is a single named constant, `RECEIVE_NANOS`, defined in `rustd/crates/afd_billing/src/nanos.rs`. Both postures currently resolve to the same value; the `posture` stays on the charge so a future ratchet can re-introduce asymmetry without touching callers. The shape is what matters: posture-aware, plan-independent, plumbed through the lease path. Live value lives in the source — read it there; pin tests lock it.
-
-### 4.2 Run charge
-
-Function shape:
-
-Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out; the cumulative→delta subtraction happens in the renewal CTE, so this function never sees cumulative counts:
+`afd_billing::price::Rater` prices every usage line, whichever product logged it:
 
 ```rust
-// Rate resolution is one statement, LOAD_RATE_WITH_REVISION, against
-// §10's composite key: provider ("anthropic", "fireworks", …) and model
-// ("accounts/fireworks/models/kimi-k3", "kimi-k3", …).
-//
-// self_managed prices with NO statement at all
-// (`Posture::rates_without_catalogue`). Only the platform branch consults the
-// catalogue (`Accounts::catalogue_rates`), reading the rate and its generation
-// in one snapshot. No clock is involved at any point.
-// An uncatalogued model is an OPERATIONAL state, not a programmer bug: an
-// admin can DELETE a rate row while a tenant still names that model. This
-// used to panic, which aborted the whole replica for one fleet's stale
-// model, on every replica that picked the fleet up. It is reported so
-// each caller takes its own documented posture — see §2.3.
-let rates: SliceRates = ...;                // uncatalogued → run-fee-only rates (§2.3)
-
-// ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
-// 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
-// real runtime × rate — never under-bill across N renewals).
-pub const fn slice_charge(
-    rates:               SliceRates,
-    elapsed_ms:          i64,  // active wall time of the slice
-    input_tokens:        i64,  // per-slice token deltas (CTE-computed max(0, cumulative − metered))
-    cached_input_tokens: i64,
-    output_tokens:       i64,
-) -> Nanos
+let book = PriceBook::load(executor, provider, model).await?;   // every dated tier of one model
+let rated: RatedLine = Rater::new(&book, posture, window).rate(&line)?;
+// RatedLine { usage, price: Option<Uuid7>, charged: Nanos, unpriced_tokens: u64 }
 ```
 
-One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `rustd/crates/afd_billing/src/nanos.rs`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model library (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
+- **Runtime** is charged under both postures at `RUN_NANOS_PER_SEC` (`rustd/crates/afd_billing/src/nanos.rs`), from the line's `runtime_ms`.
+- **Tokens** are charged under platform only, each category (input, cache read, the three cache-write classes, output) at its rate per million and **rounded up on its own** (Indy, 2026-10-19), so the platform never under-bills and over-bills by at most one nano per category per line.
+- **The price row** is chosen by the line's instant, clamped to the work's window so a runner cannot backdate a request into a cheaper range, and by the request's whole prompt for context tiers. A fleet slice sums every request since the last renewal, so the lease path prices it at the **base tier** (`PriceBook::into_base_tiers`): a tier chosen from a sum would overcharge. Per-request tiers arrive with per-request lines (billing run 4).
+- **Nothing is ever free by accident.** A category whose rate is unpublished, or a request no range covers, counts in `unpriced_tokens` and charges nothing, visibly.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That difference is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is spelled once, in `nanos.rs`, so a bump has nowhere else to miss. It was carried in `app/lib/types.ts` and `cli/src/constants/billing.ts` as well until neither file turned out to have an importer: the daemon charges the fee and serves the result, and a client renders what it was served. A pin test read both TypeScript files to hold the three copies equal; deleting the copies retired the test with them.
+The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS` and `ESTIMATE_FLOOR_OUTPUT_TOKENS` through the same Rater at the issue instant, with no runtime. A self-managed run costs nothing at issue and reads no catalogue. A model with no price covering the instant is `Estimate::Unpriceable`, and the gate admits against a floor of zero, because an estimate is not a charge.
 
-Rates come from `model.platform_models`, read fresh on every charge. `SELECT_PLATFORM_MODEL_PRICES` (`rustd/crates/afd_billing/src/sql/mod.rs`) is one lookup on the `(provider, model_name)` unique index: one round trip, and no rate held anywhere that could be older than the catalogue.
+**There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows; the lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
 
-**There is no rate cache.** A cache would need `model.catalogue_version` stored beside every entry to stay coherent, and would save only one indexed read while adding a version check and an eviction path (`rustd/crates/afd_billing/src/store.rs`, "Why there is no rate cache"). M143 §2.2 shipped a generation-checked rate cache, since removed, and its rule still holds: a charge path never reads "no entry" as "this model is not in the catalogue". "Not catalogued" is a database answer.
+**A catalogue that cannot be read** holds a renewal's tokens: the pass meters zero token counts, so the slot cursor stays where the last priced slice left it and a later priced slice charges them (`lease_tokens_held_for_pricing`, `rustd/crates/afd_fleet/src/lease/usage.rs`). A report has no later slice, so it logs the run's tokens as unpriced on its final line.
 
-Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit (`rustd/crates/afd_admin/src/model.rs`). The rows and the generation describing them therefore become visible together.
+### 4.2 What an event costs — by shape, not by number
 
-A model with no catalogue row meters at run-fee-only rates under platform: not a panic, and never a default token rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 UZ-PROVIDER-004`) and when a setup's runtime model is selected — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
+A worked example with hardcoded dollar amounts goes stale the moment a rate moves. The cost shape a caller can reason about instead, summed over the run's lines:
 
-That is an operational state, not a programmer bug, which is why this path used to panic and does not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. Run-fee-only lets every caller go on instead: renew and settle charge the runtime and no tokens, and the lease-estimate gate admits, because an estimate is not a charge.
-
-### 4.3 What an event costs — by shape, not by number
-
-A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet — under M80_010 the run is summed across the run's `/renew` slices (Σ over slices), each slice metered on its own deltas:
-
-**Platform posture, single event (M80_010):**
+**Platform posture:**
 
 ```
-total_nanos = RECEIVE_NANOS                            // receive
-            + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC            // run fee
-                       + (Δinput  × rate.input_nanos_per_mtok)        / 1_000_000
-                       + (Δcached × rate.cached_input_nanos_per_mtok) / 1_000_000
-                       + (Δoutput × rate.output_nanos_per_mtok)       / 1_000_000 ]
+total_nanos = Σ_lines [ ⌈runtime_ms × RUN_NANOS_PER_SEC / 1000⌉
+                      + ⌈Δinput  × rate.input_nanos_per_mtok        / 1_000_000⌉
+                      + ⌈Δcached × rate.cached_input_nanos_per_mtok / 1_000_000⌉
+                      + ⌈Δoutput × rate.output_nanos_per_mtok       / 1_000_000⌉ ]
 ```
 
-The token component dominates a token-heavy run; the run fee dominates a long, quiet one. `rate` is the active model's `model.platform_models` row (§10).
-
-**Self-managed posture, single event (M80_010):**
+**Self-managed posture:**
 
 ```
-total_nanos = RECEIVE_NANOS                            // receive
-            + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC ]         // run fee only, no token math
+total_nanos = Σ_lines ⌈runtime_ms × RUN_NANOS_PER_SEC / 1000⌉        // run fee only
 ```
 
-`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `RECEIVE_NANOS`); platform additionally layers the three-tier token cost. Where the live dollar amounts are served is in the preamble; implementers read the constants in `rustd/crates/afd_billing/src/nanos.rs` and the model library (GET /v1/models) for the per-token rates.
+The token component dominates a token-heavy run; the run fee dominates a long, quiet one. `rate` is the `model.platform_model_prices` row in effect at the line's instant (§10). Live dollar amounts are served, never written here.
 
 ---
 
 ## 5. The balance gate — code path
 
-`money_gates` (on the lease path, `rustd/crates/afd_fleet/src/lease/admit/mod.rs`) runs the payer, balance and fleet-budget gates, then the receive debit. The run is metered on each `/renew` and settled at report (§3). Single code path for both postures.
+`money_gates` (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`) runs the payer, balance and fleet-budget gates and charges nothing. The lease's hold is placed once it is issued, and its usage is charged as it runs (§3).
 
 ```mermaid
 flowchart TD
     A([Lease poll: readiness peek, claim, stream read]) --> B[INSERT fleet_events status=received]
     B --> C[Resolve saved runtime model and posture<br/>Providers::resolve_reference]
-    C --> D[Estimate event cost:<br/>receive + run floor]
-    D --> E{balance_nanos<br/>≥ estimate?}
+    C --> D[Estimate the run's floor<br/>Accounts::estimate through the Rater]
+    D --> E{balance − open holds<br/>≥ floor?}
     E -->|no| Block[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
     E -->|yes| BG{fleet budget<br/>gates::fleet_budget}
     BG -->|breach| BB[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=budget_breach]
     BB --> X1
-    BG -->|ok| F[DEBIT RECEIVE<br/>debit_receive<br/>ledger row charge_type=receive]
-    F --> G[Approval gate]
+    BG -->|ok| G[Approval gate]
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
-    H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner runs the agent loop]
-    J --> Renew[Runner /renew ticks<br/>meter slice Δ → wallet + ledger §3]
+    H --> J[Issue lease, then reserve its first hold]
+    J --> Renew[Runner /renew ticks<br/>raise the hold, log and settle the slice §3]
     Renew --> K[Runner reports result]
-    K --> L[UPDATE fleet.events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
+    K --> L[UPDATE fleet.events SET status=processed<br/>log the final slice, release affinity<br/>then settle and release the hold]
     L --> X2([XACK])
 ```
 
-> **The run debit is metered across the run, not deducted once at issue.** Lease issue runs the *entry gate* (a one-shot coverage check), the receive deduct, and the approval gate — but **no run debit**. The run is charged as a per-slice Δ-debit on the runner's `/renew` ticks plus a settle at report (§3). The receive deduct and the entry gate are unchanged.
-
 Properties:
 
-- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the balance cannot cover that estimate, the event is rejected at the gate. The estimate is a deliberately small floor (`ESTIMATE_FLOOR_INPUT_TOKENS`, `ESTIMATE_FLOOR_OUTPUT_TOKENS` in `rustd/crates/afd_billing/src/nanos.rs`), because the runner does not know its token counts at lease time.
-- **Receive charge at issue + incremental run metering.** The receive charge is one `billing.fleet_charges` row, written by a single statement at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each accumulated slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
-- **A balance crossing zero mid-run ends the run.** The renewal that empties the wallet charges what is left (`LEAST(slice, balance)`); the next renewal is refused with `UZ-RUN-012` (§3).
-- **Concurrent events on near-zero balance.** Two events can pass the gate together on a balance that covers one. We accept that rather than serialise all events behind a row lock. Their renewals drain the same wallet, and the wallet write clamps at zero (`GREATEST(0, …)`; `schema/2000_billing_wallets.sql` also checks `balance_nanos >= 0`), so the balance never goes negative. The next renewal and the next gate both refuse.
+- **The balance is what the biller says is available.** The gate reads `Biller::balance` and covers the floor from the balance less every other open hold, so runs already in flight count against it. A tenant with no wallet row is admitted, as an operator gap rather than a refusal; its usage still settles, with the whole charge written off and logged.
+- **The floor is small on purpose.** The runner does not know its token counts at lease time, so the floor is `ESTIMATE_FLOOR_INPUT_TOKENS` and `ESTIMATE_FLOOR_OUTPUT_TOKENS` at the issue instant.
+- **A balance crossing zero mid-run ends the run.** Each renewal raises the hold to the lease's spend so far plus one floor; the biller answers `Short` when the balance less other holds cannot cover it, and the renewal is refused with `UZ-RUN-012`.
+- **Concurrent events on a near-zero balance.** The gate reads without a lock, so two events can pass it together on a balance that covers one. Their holds are placed under the tenant's wallet row lock, so they never promise more than the balance; the second one placed answers `Short`, its lease runs unheld, and its first renewal refuses it. The wallet never goes negative (`schema/2000_billing_wallets.sql` checks `balance_nanos >= 0`).
+- **An outage admits.** Under `OutagePolicy::Open` a reservation the biller cannot answer comes back `Unconfirmed` and the run continues; its lines settle when the biller is back (§11).
 
 ### 5.1 The per-fleet budget gate — a second, independent ceiling
 
@@ -373,25 +300,19 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 | | Balance gate | Budget gate |
 |---|---|---|
-| Scope | tenant (`billing.wallets.balance_nanos`) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
-| Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
+| Scope | tenant (`billing.wallets.balance_nanos` less open holds) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
+| Question | "can this tenant afford one more run?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
-| Source of truth | wallet balance | `billing.fleet_charges.charged_nanos`, apportioned across each row's `[created_at, updated_at]` span by its overlap with the window (`rustd/crates/afd_billing/src/sql/select_budget_drain.sql`) |
+| Source of truth | `Biller::balance` | the fleet's `billing.usage_lines`, summed by `afd_billing::limits::fleet_spend` |
 
-**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance` and **before the receive debit** (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`), so a refused event is never charged. The fleet's parsed config is already in hand, so the check costs one indexed aggregate and no extra lookup. Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`rustd/crates/afd_fleet/src/lease/coverage.rs`, `rustd/crates/afd_fleet/src/lease/sql/fleet.rs`) — applying a revision that lowers a runaway fleet's `daily_nanos` therefore bites at its next tick, not only at its next run.
+**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the lease is issued (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`). Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`rustd/crates/afd_fleet/src/lease/coverage.rs`) — applying a revision that lowers a runaway fleet's `daily_nanos` bites at its next tick, not only at its next run.
 
-**Windows.** `daily_nanos` is a **rolling 24 hours** (`updated_at >= now() − 24 h`); `monthly_nanos` is the **UTC calendar month** (`month_floor` in `rustd/crates/afd_billing/src/sql/select_budget_drain.sql`). The row filter keys on `updated_at` — when a run stopped charging — which is exact where the retired table's filter was a heuristic: it had to widen the scan by `MAX_RUNTIME` to catch slices whose run began before the floor. Both floors come from one `now()` in the same statement, so the two windows can never straddle a tick. `monthly_nanos` is optional — absent means no monthly ceiling.
+**Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**, both opened from one `now()` in the same statement (`rustd/crates/afd_billing/src/limits/select_fleet_spend.sql`), so the two windows can never straddle a tick. A line counts in a window when it was written inside it; each line is one slice of at most one renewal interval, so a long run's spend lands in the window it was used in. The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe pins that (`rustd/crates/afd_fleet/tests/integration_ledger_reads.rs`). `monthly_nanos` is optional — absent means no monthly ceiling.
 
-**Spend means credit *drained*,** not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
+**Spend means what the fleet's usage cost.** A line the balance could not fully cover still counts at its price: the ceiling bounds what a fleet uses, and the write-off is the balance gate's concern. The setup chat that authored a fleet does not count against its budget; whether it should is open (§11).
 
-**Timed by drain, not by run start.** The problem this solves outlived the table that first solved it. A run's stage row accumulates in place across renewals, so a single stored instant describes the whole run — and attributing a 12-hour run's spend to its start ages that spend out of a rolling 24-hour window up to 12 hours early, or slips it across a month boundary entirely. Under-enforcement, precisely on the long runaway a budget exists to stop.
-
-The first fix stored per-slice rows in `fleet.metering_periods` and summed them by each slice's own `created_at`. That table is gone: it wrote a row roughly every twenty seconds of every run, which is the growth the schema rebuild removed. The property survives without it. `billing.fleet_charges` carries `updated_at` alongside `created_at`, so the accumulated total describes a *span* rather than an instant, and the gate apportions it across `[created_at, updated_at]` by overlap with the window being enforced. A run straddling the window boundary contributes the fraction that actually fell inside it.
-
-The slice-by-slice audit trail is a separate concern from enforcement, and it is not in Postgres — the charge-slice breakdown shipped as `M155_001` and that spec is its record.
-
-**Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
+**Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of usage before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 
 **Failure posture, deliberately asymmetric.** Three distinct "no verdict" causes, three different answers:
 
@@ -403,7 +324,7 @@ The slice-by-slice audit trail is a separate concern from enforcement, and it is
 
 The stored budget is parsed by the same `FleetConfig` parser that accepted it at ingest (`afd_fleet_runtime::config::policy::Budget`), so the ceiling that admits a run and the ceiling that kills it are one number.
 
-**The gate consumes what the catalogue prices.** A fleet accrues `credit_deducted_nanos` from its first metered slice, so the budget is spent against real rates rather than against zero. This is a change: while the promotional window existed, every charge was zero, so no budget was ever consumed and neither gate could refuse anyone (§2.3).
+**The fleet list reads a counter, not a sum.** `fleet.activity_counters.budget_used_nanos` is kept by a trigger on `billing.usage_lines` (`schema/2040_billing_usage_lines.sql`), so the fleet list stays one indexed counter read per fleet with no per-row aggregate.
 
 ---
 
@@ -473,7 +394,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 - User-facing HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/secrets` metadata list (§8.3), and any other JSON a user sees. The authenticated runner lease is the machine-plane exception described above.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
 - The fleet's tool context — placeholders are substituted at send time by the runner's egress guard, outside the sandbox; the provider key is on a different path entirely (the runner's provider client uses it for the inference call only, never via `secrets_map`).
-- Persisted event rows — `fleet.events`, `billing.fleet_charges`, anything else under `core.*` or `billing.*`.
+- Persisted event rows — `fleet.events`, `billing.usage_lines`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
 
 The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `afd_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/afd_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
@@ -542,15 +463,15 @@ The curated identities and prices are declared in `scripts/model-library-allowli
 Properties:
 
 - **Reading the catalogue requires an authenticated tenant.** The dashboard fetches through a token-minting Server Action. The command-line interface resolves context caps server-side through provider selection.
-- **The response carries no global rate block.** The run and receive constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; the daemon charges, and a client renders what it is served.
+- **The response carries no global rate block.** The run fee is declared once, in `rustd/crates/afd_billing/src/nanos.rs`; the daemon charges, and a client renders what it is served.
 - **Consumed per-session, not cached at the edge.** The dashboard fetches the library once per session; the payload is small and the read is no longer a Content Delivery Network (CDN) concern.
-- **Runtime admission resolves the saved model reference.** Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read per charge, with their generation (§4.2).
+- **Runtime admission resolves the saved model reference.** Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read once per lease pass, as one price book (§4.1).
 
 ---
 
 ## 11. One billing lifecycle behind a `Biller` trait
 
-Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed: fleet runs (`afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together) and setup chat (its own reservation maths, debit and settlement SQL inside `afd_authoring`). They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. An expired fleet lease never billed its last slice.
+Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed: fleet runs (`afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together) and setup chat (its own reservation maths, debit and settlement SQL inside `afd_authoring`). They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. Fleet runs bill through it now (§3); setup chat moves onto it in billing run 3, and runners report one line per provider request in billing run 4.
 
 ```
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
@@ -572,24 +493,30 @@ Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two mo
 |---|---|---|
 | `reserve(&Reservation) -> Hold` | admission, each renewal, each setup-chat model call; raises an existing hold | the work |
 | `settle(&Settlement) -> Receipt` | renewal, report, and the sweeper | `(work, seq)` |
-| `release(&WorkKey, Release)` | report, failure, expiry (`Expired { runtime }` bills the last slice) | the work |
+| `release(&WorkKey, Release)` | report, failure, and the sweeper for a lease that ended unreported | the work |
 | `balance(&Account) -> Balance` | the tenant billing page | read only |
 
 `WorkKey` is `FleetLease(id)` or `AuthoringAttempt(id)`, so the two products share one vocabulary. `reserve` answers in its type: `Hold::Held { ceiling, captured }`, `Short { available, asked }`, `Closed` (the work was already released) or `Unconfirmed` (the biller could not answer and the outage policy admitted the work). A `Settlement` carries each line's raw usage and the daemon's price for it: a biller that prices for itself may ignore our price; `LedgerBiller` charges it. Wrapping is composition: a biller that also copies every call to a queue is one more implementation holding two.
 
 **Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`: the tier from the request's whole prompt (uncached input, cache reads and cache writes together), the date range from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate. Self-managed work charges runtime only. Each token category rounds **up** per line, so the platform never under-bills and over-bills by at most one nano per category per request.
 
-**Outage policy.** `WithOutagePolicy<B>` wraps any biller; under `OutagePolicy::Open`, a `reserve` the biller cannot answer comes back `Unconfirmed`, the work is admitted, and its lines settle when the biller is back. Only `reserve` reads the policy: a failed `settle` or `release` leaves the lines logged and unsettled for the sweeper under either policy. An outage is a pool that cannot hand out a connection or a statement whose connection was lost mid-flight (a reset socket, a failover, a `08xxx` or `57P01`–`57P03` answer), as `afd_db::error::is_connection_lost` decides; a constraint, syntax or decode failure is a defect and is refused under either policy. It is chosen once, where `agentsfleetd` constructs the biller, so flipping to `Closed` is a one-line change there. We start open because early adoption favours the optimistic path (Indy, 2026-10-19). Revisit when unpaid outage exposure is measurable, or before any third-party biller goes live; a remote biller should carry an exposure cap.
+**Outage policy.** `WithOutagePolicy<B>` wraps any biller; under `OutagePolicy::Open`, a `reserve` the biller cannot answer comes back `Unconfirmed`, the work is admitted, and its lines settle when the biller is back. Only `reserve` reads the policy: a failed `settle` or `release` leaves the lines logged and unsettled for the sweeper under either policy. An outage is a pool that cannot hand out a connection or a statement whose connection was lost mid-flight (a reset socket, a failover, a `08xxx` or `57P01`–`57P03` answer), as `afd_db::error::is_connection_lost` decides. Contention is decided the same way: every `LedgerBiller` transaction sets `lock_timeout` (2 s) and `statement_timeout` (5 s) with `set_config(.., true)`, per transaction rather than as connection startup options a transaction-pooling bouncer refuses, and a wait past them (`55P03`, `57014`) is the datastore answering "not now" — not a lost connection, but a biller with no answer (`Error::is_unanswered`). A constraint, syntax or decode failure is a defect and is refused under either policy. It is chosen once, where `agentsfleetd` constructs the biller, so flipping to `Closed` is a one-line change there. We start open because early adoption favours the optimistic path (Indy, 2026-10-19). Revisit when unpaid outage exposure is measurable, or before any third-party biller goes live; a remote biller should carry an exposure cap.
 
-**The built-in biller.** `afd_billing::ledger::LedgerBiller` locks the payer's wallet row first in every operation (wallet, then holds, then lines), so concurrent holds can never promise more than the balance it reads. `reserve` raises a hold only if the balance, less every other open hold's uncaptured remainder, covers what the work has not yet captured. `settle` writes the settlement's lines itself (`ON CONFLICT (work_type, work_id, seq) DO NOTHING`) and charges only lines still unsettled, so it and the sweeper are idempotent whether or not the work's transaction logged them first. A balance that cannot cover a settlement is clamped at zero: the `Receipt` carries `charged` (what the lines cost), `taken` (what the balance gave, the amount the hold captures) and `written_off` (the difference), and a positive write-off logs `billing_charge_written_off`. Whether a short balance should instead go negative is an open decision for Indy; `release` charges whatever the work left unsettled, then closes the hold. The work's own transaction writes its lines with `afd_billing::ledger::log_lines`. A runtime-only expiry line is logged and settled by the caller before `release(Expired { runtime })`.
+**The built-in biller.** `afd_billing::ledger::LedgerBiller` locks the payer's wallet row first in every operation (wallet, then holds, then lines), so concurrent holds can never promise more than the balance it reads. `reserve` raises a hold only if the balance, less every other open hold's uncaptured remainder, covers what the work has not yet captured. `settle` writes the settlement's lines itself (`ON CONFLICT (work_type, work_id, seq) DO NOTHING`) and charges only lines still unsettled, so it and the sweeper are idempotent whether or not the work's transaction logged them first. A balance that cannot cover a settlement is clamped at zero: the `Receipt` carries `charged` (what the lines cost), `taken` (what the balance gave, the amount the hold captures) and `written_off` (the difference), and a positive write-off logs `billing_charge_written_off`. Whether a short balance should instead go negative is an open decision for Indy. The debit is the only writer of `exhausted_at` on the money path: it sets it when a charge empties the balance and clears it when a charge leaves credit, so a tenant topped up after running dry reads as exhausted only until its next charge. A tenant with no wallet row settles with nothing taken and the whole charge written off, so its lines never sit unsettled. `release` charges whatever the work left unsettled, then closes the hold. The work's own transaction writes its lines with `afd_billing::ledger::log_lines`.
+
+**Known ceiling.** `reserve` sums every other open hold of the tenant under its wallet lock. The design audit measured 2,432 open holds for its hottest tenant at 3–6 ms per reservation; that stands until tests show worse. A running `held_nanos` column on the wallet is the later move, if it is ever needed.
+
+**An expired lease's last slice.** A lease that ends unreported has its hold released by the sweeper (`Expired`), and the runtime since its last renewal is measured by the next lease on the same fleet, from the slot's cursor. A fleet that is never leased again does not bill that last slice; billing it at expiry needs the per-request lines of billing run 4.
 
 **Pricing in code.** `afd_billing::price::PriceBook::load` reads one model's tiers; `Rater::new(&book, posture, window).rate(&line)` answers a `RatedLine { usage, price, charged, unpriced_tokens }`. A category whose rate is unpublished, or a request no range covers, counts in `unpriced_tokens` and charges nothing for those tokens, visibly rather than silently.
 
 **Tests every biller runs.** `afd_billing::biller::conformance::every_check` (test-util) runs against `LedgerBiller` on a live database and against `RecordingBiller`, the in-memory double domain tests use.
 
-**Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so fleet budgets count every line, setup chat included.
+**Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller moves the money. It counts the fleet's own lines; setup-chat lines name no fleet, and whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**Removed:** `Accounts`' money statements, the pricing and debit inside the lease metering statement, the lease `metered_*` cursors, setup chat's coverage maths, `debit.sql` and settlement SQL, the duplicated rounding, `billing.fleet_charges`, `billing.authoring_settlements`, and the union read behind the charges page.
+**Sweeper and metrics.** `sweeper:billing` runs every 30 seconds: it settles every line older than two minutes that never settled (`afd_billing::ledger::resettle`), and releases the hold of every lease that ended at least that long ago (`afd_fleet::lease::billing_sweep`). `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and is the one place the `agentsfleet_billing_*` families and `agentsfleet.billing.credit.consumed` are recorded (`docs/metrics.census.tsv`); the sweeper publishes the unsettled and held gauges.
+
+**Removed from the fleet path:** `Accounts`' money statements, the receive charge, the pricing and debit inside the lease metering statement, the base-tier-only price read, `slice_charge` and its round-down rule. Fleet runs write no `billing.fleet_charges` row; the table and its trigger go with billing run 4, which also moves the event-history cost joins onto usage lines and retires the lease `metered_*` cursors once runners report each request. Setup chat's coverage maths, `debit.sql`, settlement SQL and `billing.authoring_settlements` go with billing run 3, which also retires the union read behind the charges page.
 
 ## 13. Open questions deferred to v2.1+ and v3
 
