@@ -7,13 +7,13 @@ const rates = {
   output_nanos_per_mtok: nanosSchema.optional(),
 };
 export const tenantModelEntrySchema = z.object({
-  id: z.string(), model_id: z.string(), display_name: z.string().nullable(), secret_ref: z.string(),
+  id: z.string(), model_id: z.string(), display_name: z.string().nullable().optional(), secret_ref: z.string(),
   provider: z.string().optional(), kind: z.enum(SECRET_KIND), base_url: z.string().optional(),
   has_key: z.boolean(), context_cap_tokens: z.uint32().optional(), ...rates,
   active: z.boolean(), created_at: instantSchema,
 });
 export const tenantPlatformDefaultSchema = z.object({
-  provider: z.string(), model: z.string(), display_name: z.string().nullable(), context_cap_tokens: z.uint32(), ...rates,
+  provider: z.string(), model: z.string(), display_name: z.string().nullable().optional(), context_cap_tokens: z.uint32(), ...rates,
 });
 export const tenantModelPageSchema = z.object({
   models: z.array(tenantModelEntrySchema), total: z.number().int().nonnegative().nullable(), next_cursor: z.string().nullable(),

@@ -137,3 +137,21 @@ it("retains int64 price digits and nullable labels from the registry", async () 
   const { listTenantModelEntries } = await import("./tenant_model_entries");
   expect((await listTenantModelEntries("token")).platform_default).toMatchObject({ display_name: null, input_nanos_per_mtok: "9223372036854775807" });
 });
+
+it("accepts omitted catalogue labels without inventing a name for an uncatalogued model", async () => {
+  fetchMock.mockResolvedValue(jsonResponse({
+    models: [{ ...ENTRY, display_name: undefined }], total: null, next_cursor: null,
+    platform_default_available: true, platform_default: { provider: "custom", model: "m1", context_cap_tokens: 1 },
+  }));
+  const { listTenantModelEntries } = await import("./tenant_model_entries");
+  const result = await listTenantModelEntries("token");
+  expect(result.models[0]).not.toHaveProperty("display_name");
+  expect(result.platform_default).not.toHaveProperty("display_name");
+});
+it.each([1, true, {}])("rejects a malformed registry label %j", async (display_name) => {
+  fetchMock.mockResolvedValue(jsonResponse({
+    models: [{ ...ENTRY, display_name }], total: null, next_cursor: null, platform_default_available: false,
+  }));
+  const { listTenantModelEntries } = await import("./tenant_model_entries");
+  await expect(listTenantModelEntries("token")).rejects.toThrow();
+});
