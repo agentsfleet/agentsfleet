@@ -129,7 +129,7 @@ async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
 }
 
 /// A migrator whose connection dies at the transaction it is about to open
-/// reports the `BEGIN` that failed, not a migration that did.
+/// reports a failed bookkeeping statement, not a migration that did.
 ///
 /// The distinction is the whole point of the branch. Nothing has been applied
 /// and nothing has failed to apply — the connection went away between the
@@ -173,7 +173,7 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
         "no migration ran, so none may be reported as failed: {error}"
     );
     assert!(
-        error.to_string().contains("migrate.begin_tx"),
+        error.to_string().contains("migrate.bookkeeping"),
         "the failure must name the operation that produced it: {error}"
     );
 

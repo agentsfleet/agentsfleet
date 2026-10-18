@@ -30,9 +30,11 @@ use crate::pool::Db;
 const LEDGER_SCHEMA: &str = "audit";
 const LEDGER_TABLE: &str = "audit._sqlx_migrations";
 
-/// The operations a ledger failure names (RULE UFS).
+/// The operation a failed ledger read names (RULE UFS).
 const OP_READ_LEDGER: &str = "migrate.read_ledger";
-const OP_WRITE_LEDGER: &str = "migrate.write_ledger";
+/// sqlx reports its own statements (the ledger schema and table, `BEGIN`, the
+/// ledger row, `COMMIT`) as one error, so the label cannot name which failed.
+const OP_BOOKKEEPING: &str = "migrate.bookkeeping";
 
 /// Whether the ledger exists yet; `to_regclass` answers NULL for a missing table
 /// where a read would fail. A fresh database has none until the first run.
@@ -167,11 +169,11 @@ fn refusal(source: MigrateError) -> Error {
             tracing::error!(version, error_code, event = "migration_failed");
             ErrorKind::MigrationFailed { version, source }
         }
-        // A ledger statement failed rather than a slot: the slot's transaction
-        // rolled back with it, so this is a query error, not a failed slot.
+        // One of sqlx's own statements failed rather than a slot: no slot ran
+        // to completion, so this is a query error, not a failed slot.
         MigrateError::Execute(source) => {
-            tracing::error!(error = %source, error_code, event = "migrate_ledger_failed");
-            return query(OP_WRITE_LEDGER, source);
+            tracing::error!(error = %source, error_code, event = "migrate_bookkeeping_failed");
+            return query(OP_BOOKKEEPING, source);
         }
         MigrateError::VersionMismatch(version) => {
             tracing::error!(version, error_code, event = "migrate_refused_slot_edited");
