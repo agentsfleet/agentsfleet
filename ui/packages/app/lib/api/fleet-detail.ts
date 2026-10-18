@@ -11,7 +11,7 @@ const DecimalSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
 // exceed Number.MAX_SAFE_INTEGER and must survive rendering without rounding.
 const CounterSchema = DecimalSchema.transform((value) => BigInt(value));
 export const FleetSummarySchema = z.object({
-  id: z.string(), name: z.string(), status: z.string(),
+  id: z.string(), name: z.string(), description: z.string().min(1).nullable(), status: z.string(),
   created_at: Instant, updated_at: Instant,
   triggers: z.array(FleetTriggerSchema).optional(),
   events_processed: CounterSchema, budget_used_nanos: nanosSchema.transform((value) => BigInt(value)),

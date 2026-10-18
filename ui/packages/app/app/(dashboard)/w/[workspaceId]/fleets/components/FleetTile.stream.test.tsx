@@ -35,6 +35,7 @@ function fleetAt(index: number): Fleet {
   return {
     id: `fleet_${index}`,
     name: `fleet ${index}`,
+    description: null,
     status: "active",
     created_at: "1970-01-01T00:00:00Z",
     updated_at: "1970-01-01T00:00:00Z",
