@@ -1,5 +1,6 @@
 //! Reports use real dispatch receipts and wallet rows, independently of private text.
 
+mod billing;
 mod failure_facts;
 mod replay;
 mod uncertainty;

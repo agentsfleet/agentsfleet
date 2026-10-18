@@ -3,5 +3,5 @@ SELECT sequence,
        (usage->>'output_tokens')::bigint AS output_tokens,
        created_at
   FROM authoring.dispatches
- WHERE attempt_id = $1::uuid AND status = $2
+ WHERE attempt_id = $1::uuid AND usage->>'knowledge' = $2
  ORDER BY sequence
