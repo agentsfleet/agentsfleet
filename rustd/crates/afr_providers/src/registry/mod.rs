@@ -49,6 +49,10 @@ pub enum Wire {
     Responses,
     /// `OpenAI`-compatible chat completions.
     Chat,
+    /// Google's native `GenerateContent` API.
+    Gemini,
+    /// Ollama's native chat API.
+    Ollama,
 }
 
 impl Wire {
@@ -56,7 +60,10 @@ impl Wire {
     /// Responses take one as content, chat completions take text alone.
     #[must_use]
     pub const fn carries_images(self) -> bool {
-        matches!(self, Self::Messages | Self::Responses)
+        matches!(
+            self,
+            Self::Messages | Self::Responses | Self::Gemini | Self::Ollama
+        )
     }
 }
 
@@ -192,5 +199,7 @@ fn chat_base(mut url: Url) -> Url {
     url
 }
 
+#[cfg(test)]
+mod native_tests;
 #[cfg(test)]
 mod tests;
