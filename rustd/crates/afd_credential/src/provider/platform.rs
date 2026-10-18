@@ -1,11 +1,12 @@
 //! The platform strategy: the key is ours, and the default is read live.
 //!
 //! Everything about the resolution comes from the active
-//! `core.platform_provider_defaults` row — provider, model, context ceiling and
-//! endpoint — and NOT from the tenant's own `tenant_model_selection` snapshot,
-//! even when that snapshot exists and says `platform`. That is what makes an
-//! admin repointing the default in the dashboard take effect on the next lease
-//! for every platform-mode tenant, with no redeploy and no per-tenant write.
+//! `model.platform_defaults` row and the catalogue model it points at —
+//! provider, model, context ceiling and endpoint — and NOT from anything on the
+//! tenant's own selection row, which under this posture points at nothing.
+//! That is what makes an admin repointing the default in the dashboard take
+//! effect on the next lease for every platform-mode tenant, with no redeploy
+//! and no per-tenant write.
 //!
 //! The vault key name is the PROVIDER: `resolvePlatformDefault` passes
 //! `plk.provider` as the key it loads from the admin workspace, so one

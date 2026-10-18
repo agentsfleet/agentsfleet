@@ -3,22 +3,26 @@
     reason = "the success arm is the fixture precondition"
 )]
 
+use jiff::Timestamp;
 use zeroize::Zeroizing;
 
-use super::{Minted, Outcome, Retry};
+use super::{Minted, NEVER_EXPIRES, Outcome, Retry};
+
+/// The expiry the success fixture carries.
+const EXPIRES: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 #[test]
 fn only_a_success_can_expose_a_minted_token() {
     let success = Outcome::Ok(Minted {
         token: Zeroizing::new("secret-token".to_owned()),
-        expires_at_ms: 42,
+        expires_at: EXPIRES,
         rotated_refresh_token: Some(Zeroizing::new("new-refresh".to_owned())),
     });
     let minted = success
         .minted()
         .expect("the success carries its credential");
     assert_eq!(minted.token.as_str(), "secret-token");
-    assert_eq!(minted.expires_at_ms, 42);
+    assert_eq!(minted.expires_at, EXPIRES);
     assert!(format!("{minted:?}").contains("rotated: true"));
     assert!(!format!("{minted:?}").contains("secret-token"));
 
@@ -31,4 +35,9 @@ fn only_a_success_can_expose_a_minted_token() {
     ] {
         assert!(refusal.minted().is_none());
     }
+}
+
+#[test]
+fn never_expires_is_the_last_whole_millisecond_jiff_holds() {
+    assert_eq!(NEVER_EXPIRES, afd_core::clock::whole_millis(Timestamp::MAX));
 }

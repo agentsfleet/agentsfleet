@@ -21,6 +21,7 @@ use std::time::Duration;
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::{Access, Reach, RepositoryBinding};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
@@ -30,10 +31,10 @@ use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::secrets::connector::{Connector, Registry};
 
 /// The instant every decision here is measured from.
-const NOW_MS: i64 = 1_760_000_000_000;
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
-/// An hour past [`NOW_MS`] — comfortably outside the re-mint skew.
-const IN_AN_HOUR_MS: i64 = NOW_MS + 3_600_000;
+/// An hour past [`NOW`] — comfortably outside the re-mint skew.
+const IN_AN_HOUR: Timestamp = Timestamp::constant(1_760_003_600, 0);
 
 /// The panic a malformed fixture identifier earns.
 ///
@@ -134,7 +135,7 @@ impl Exchanger for Counting {
             match &self.answer {
                 Answer::Token { rotates } => Outcome::Ok(Minted {
                     token: Zeroizing::new(MINTED_ACCESS_TOKEN.to_owned()),
-                    expires_at_ms: IN_AN_HOUR_MS,
+                    expires_at: IN_AN_HOUR,
                     rotated_refresh_token: rotates
                         .then(|| Zeroizing::new(ROTATED_REFRESH_TOKEN.to_owned())),
                 }),
@@ -164,7 +165,7 @@ fn ask<'a>(
         workspace_id,
         handle,
         binding,
-        now_ms: NOW_MS,
+        now: NOW,
     }
 }
 

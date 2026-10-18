@@ -4,9 +4,9 @@ mod resolve;
 mod sql;
 
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _, postgres::PgRow};
+use sqlx::PgConnection;
 
-use super::PLATFORM_MODEL_REF;
+use super::{OPENAI_COMPATIBLE, PLATFORM_MODEL_REF};
 use crate::error::{Result, query};
 
 const CONTEXT: &str = "resolve explicit runtime model";
@@ -26,6 +26,31 @@ pub struct RuntimeModel {
     pub resolution_version: String,
 }
 
+/// One [`sql::ENTRY`] or [`sql::PLATFORM`] row, by the names both give.
+#[derive(Debug, sqlx::FromRow)]
+struct RuntimeRow {
+    provider: String,
+    model: String,
+    context_cap_tokens: i32,
+    resolution_version: String,
+    workspace_id: String,
+    key_name: String,
+    endpoint: Option<String>,
+}
+
+impl RuntimeRow {
+    /// The non-secret selection, as read for `reference`.
+    fn metadata(&self, reference: &str) -> RuntimeModel {
+        RuntimeModel {
+            reference: reference.to_owned(),
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            context_cap_tokens: u32::try_from(self.context_cap_tokens).unwrap_or_default(),
+            resolution_version: self.resolution_version.clone(),
+        }
+    }
+}
+
 /// Reads one owner reference with the same provider rules runtime resolution uses.
 ///
 /// # Errors
@@ -35,47 +60,31 @@ pub async fn runtime_model(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<RuntimeModel>> {
-    read(connection, owner, reference)
+    Ok(read(connection, owner, reference)
         .await?
-        .as_ref()
-        .map(|row| metadata(row, reference))
-        .transpose()
+        .map(|row| row.metadata(reference)))
 }
 
+/// The row for `reference`, or nothing when it is absent or its provider and
+/// endpoint do not pair.
 async fn read(
     connection: &mut PgConnection,
     owner: &Uuid7,
     reference: &str,
-) -> Result<Option<PgRow>> {
+) -> Result<Option<RuntimeRow>> {
     let statement = if reference == PLATFORM_MODEL_REF {
         sql::PLATFORM
     } else {
         sql::ENTRY
     };
-    let row = sqlx::query(statement)
+    let row = sqlx::query_as::<_, RuntimeRow>(statement)
         .bind(owner.as_str())
         .bind(reference)
+        .bind(OPENAI_COMPATIBLE)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    let Some(row) = row else {
-        return Ok(None);
-    };
-    let provider: String = row.try_get(0).map_err(query(CONTEXT))?;
-    let endpoint: Option<String> = row.try_get(6).map_err(query(CONTEXT))?;
-    if super::validate_endpoint_pair(&provider, endpoint.as_deref()).is_err() {
-        return Ok(None);
-    }
-    Ok(Some(row))
-}
-
-fn metadata(row: &PgRow, reference: &str) -> Result<RuntimeModel> {
-    let cap: i32 = row.try_get(2).map_err(query(CONTEXT))?;
-    Ok(RuntimeModel {
-        reference: reference.to_owned(),
-        provider: row.try_get(0).map_err(query(CONTEXT))?,
-        model: row.try_get(1).map_err(query(CONTEXT))?,
-        context_cap_tokens: u32::try_from(cap).unwrap_or_default(),
-        resolution_version: row.try_get(3).map_err(query(CONTEXT))?,
-    })
+    Ok(row.filter(|row| {
+        super::validate_endpoint_pair(&row.provider, row.endpoint.as_deref()).is_ok()
+    }))
 }

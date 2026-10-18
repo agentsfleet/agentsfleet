@@ -3,7 +3,7 @@
 //! Its siblings next door grade the write verbs, each of which answers from one
 //! row. This grades the composition instead: six independent reads folded into
 //! one page, where every interesting property is a relationship BETWEEN them.
-//! Which row is active is a selection and an entry agreeing; what a row costs is
+//! Which row is active is the selection's pointer naming it; what a row costs is
 //! a catalogue row reached through the credential's provider; whether a later
 //! page exists is a row fetched and deliberately not served. None of those is
 //! visible from any single read, and none is reachable over an unreachable pool,
@@ -11,7 +11,7 @@
 //!
 //! # Every name is unique per test, and that is not incidental
 //!
-//! `core.model_library` and `core.platform_provider_defaults` carry no tenant
+//! `model.platform_models` and `model.platform_defaults` carry no tenant
 //! column, and this lane shares one database across every test in it. A fixed
 //! model id or provider name is therefore a row shared with every sibling —
 //! the defect the activation suite already paid for once. Each test below mints
@@ -19,15 +19,10 @@
 
 use std::sync::Arc;
 
-use afd_billing::Posture;
-use afd_core::clock::UnixMillis;
-use afd_credential::provider::{Added, Providers, Selection};
+use afd_credential::provider::{Added, Entry, Providers, RegistryPage, RegistryRow};
 use afd_crypto::entropy::Entropy;
 
-use super::Fixture;
-
-/// The instant every write here is stamped with.
-pub(super) const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+use super::{Fixture, NOW};
 
 /// The vault key name the entries below hang off.
 pub(super) const CREDENTIAL: &str = "a-paged-provider-key";
@@ -81,11 +76,7 @@ pub(super) async fn label_kind(fixture: &Fixture, name: &str, kind: &str) {
 }
 
 /// Registers `model` on the fixture credential and answers the stored entry.
-pub(super) async fn add(
-    store: &Providers,
-    fixture: &Fixture,
-    model: &str,
-) -> afd_credential::provider::Entry {
+pub(super) async fn add(store: &Providers, fixture: &Fixture, model: &str) -> Entry {
     let Added::Stored(entry) = store
         .add_entry(&fixture.tenant, model, CREDENTIAL, NOW)
         .await
@@ -96,14 +87,29 @@ pub(super) async fn add(
     entry
 }
 
+/// Registers a model `provider` catalogues on the fixture credential.
+async fn catalogued(store: &Providers, fixture: &Fixture, provider: &str) -> Entry {
+    let model = unique_model();
+    fixture.seed_catalogue(provider, &model, CAP).await;
+    add(store, fixture, &model).await
+}
+
+/// The row `entry` is listed as on `page`.
+fn row_for<'page>(page: &'page RegistryPage, entry: &Entry) -> &'page RegistryRow {
+    page.rows
+        .iter()
+        .find(|row| row.entry.id == entry.id)
+        .expect("the entry is on the page")
+}
+
 /// A row carries the vault's labels, the catalogue's price, and the selection's
 /// verdict on whether the tenant is running on it.
 ///
 /// The three come from three different reads, and the row is the only place
 /// they meet. `active` is the sharpest of them: there is no `active` column, so
-/// a page that got it right did so by matching `(secret_ref, model_id)` against
-/// the selection — and the second entry proves it discriminates rather than
-/// flagging everything it finds.
+/// a page that got it right did so by comparing the selection's pointer with
+/// each row's id — and the second entry, on the SAME credential, proves it
+/// discriminates rather than flagging everything it finds.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
@@ -115,27 +121,12 @@ async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
     label_kind(&fixture, CREDENTIAL, afd_vault::Kind::ProviderKey.as_str()).await;
     let store = providers(&fixture);
 
-    let running_on = unique_model();
-    let spare = unique_model();
-    fixture.seed_catalogue(&provider, &running_on, CAP).await;
-    fixture.seed_catalogue(&provider, &spare, CAP).await;
-    let active = add(&store, &fixture, &running_on).await;
-    let idle = add(&store, &fixture, &spare).await;
+    let active = catalogued(&store, &fixture, &provider).await;
+    let idle = catalogued(&store, &fixture, &provider).await;
 
-    store
-        .upsert(
-            &fixture.tenant,
-            &Selection {
-                posture: Posture::SelfManaged,
-                provider: provider.clone().into_boxed_str(),
-                model: running_on.clone().into_boxed_str(),
-                context_cap_tokens: 128_000,
-                secret_ref: Some(CREDENTIAL.into()),
-            },
-            NOW,
-        )
-        .await
-        .expect("the selection writes");
+    fixture
+        .point_selection_at(&fixture.tenant, &active.id)
+        .await;
 
     let page = store
         .registry_page(&fixture.tenant, 25, None)
@@ -143,18 +134,10 @@ async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
         .expect("the page reads");
 
     assert_eq!(page.rows.len(), 2, "both entries are this tenant's");
-    let flagged = page
-        .rows
-        .iter()
-        .find(|row| row.entry.id == active.id)
-        .expect("the active entry is on the page");
-    let unflagged = page
-        .rows
-        .iter()
-        .find(|row| row.entry.id == idle.id)
-        .expect("the idle entry is on the page");
+    let flagged = row_for(&page, &active);
+    let unflagged = row_for(&page, &idle);
 
-    assert!(flagged.active, "the selection names this entry's pair");
+    assert!(flagged.active, "the selection points at this entry");
     assert!(
         !unflagged.active,
         "a second entry on the SAME credential is not what the tenant runs on"

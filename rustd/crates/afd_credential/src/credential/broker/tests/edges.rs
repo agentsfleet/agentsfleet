@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use super::{Answer, Counting, IN_AN_HOUR_MS, INTEGRATION, NOW_MS, ask, broker, stored, workspace};
+use super::{Answer, Counting, IN_AN_HOUR, INTEGRATION, NOW, ask, broker, stored, workspace};
 use crate::credential::broker::{Ask, Exchanger as _, Vendors};
-use crate::credential::outcome::{Outcome, Retry};
+use crate::credential::outcome::{NEVER_EXPIRES, Outcome, Retry};
 use crate::credential::platform::{GithubApp, OauthApp, Platform};
 use crate::secrets::connector::{Connectors as _, Registry};
 
@@ -33,7 +33,7 @@ fn a_stored_handle_hands_back_what_it_holds_and_refuses_when_it_holds_nothing() 
     let held = stored(&json!({INTEGRATION: "static", "token": "ghp_stored"}));
     let minted = held.minted().expect("a static handle carries its token");
     assert_eq!(minted.token.as_str(), "ghp_stored");
-    assert_eq!(minted.expires_at_ms, i64::MAX);
+    assert_eq!(minted.expires_at, NEVER_EXPIRES);
     assert!(minted.rotated_refresh_token.is_none());
 
     assert!(matches!(
@@ -42,15 +42,20 @@ fn a_stored_handle_hands_back_what_it_holds_and_refuses_when_it_holds_nothing() 
     ));
 }
 
-#[tokio::test]
+/// A client no exchange here dials: every one is refused, or served from the
+/// stored handle, before transport.
 #[expect(
     clippy::disallowed_methods,
     reason = "every exchange here is refused before dialling, so the client never sends a request"
 )]
-async fn vendor_dispatch_degrades_only_the_connector_it_cannot_serve() {
+fn undialled_client() -> reqwest::Client {
+    reqwest::Client::new()
+}
+
+#[tokio::test]
+async fn an_unconfigured_platform_degrades_only_the_connectors_it_cannot_serve() {
     let registry = Registry;
-    let client = reqwest::Client::new();
-    let empty = Vendors::new(Platform::empty(), client.clone());
+    let empty = Vendors::new(Platform::empty(), undialled_client());
     let workspace = workspace();
 
     for name in ["github", "zoho"] {
@@ -64,6 +69,30 @@ async fn vendor_dispatch_degrades_only_the_connector_it_cannot_serve() {
         ));
     }
 
+    // A static handle needs no platform app, so an empty platform still serves it.
+    let static_connector = registry.resolve("static").expect("static resolves");
+    let static_handle = json!({INTEGRATION: "static", "token": "held"});
+    assert!(
+        empty
+            .exchange(
+                static_connector,
+                Ask {
+                    workspace_id: &workspace,
+                    handle: &static_handle,
+                    binding: None,
+                    now: NOW,
+                },
+            )
+            .await
+            .minted()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn a_configured_platform_dispatches_each_connector_to_its_own_vendor() {
+    let registry = Registry;
+    let workspace = workspace();
     let configured = Platform::empty()
         .with_github(GithubApp {
             app_id: 7,
@@ -76,7 +105,8 @@ async fn vendor_dispatch_degrades_only_the_connector_it_cannot_serve() {
                 client_secret: "secret".to_owned().into(),
             },
         );
-    let vendors = Vendors::new(configured, client);
+    let vendors = Vendors::new(configured, undialled_client());
+
     let github = registry.resolve("github").expect("GitHub resolves");
     let github_handle = json!({INTEGRATION: "github", "installation_id": 7});
     let binding = super::binding(afd_fleet_runtime::config::Access::Read);
@@ -95,24 +125,6 @@ async fn vendor_dispatch_degrades_only_the_connector_it_cannot_serve() {
             .await,
         Outcome::ReconnectRequired
     ));
-
-    let static_connector = registry.resolve("static").expect("static resolves");
-    let static_handle = json!({INTEGRATION: "static", "token": "held"});
-    assert!(
-        empty
-            .exchange(
-                static_connector,
-                Ask {
-                    workspace_id: &workspace,
-                    handle: &static_handle,
-                    binding: None,
-                    now_ms: NOW_MS,
-                },
-            )
-            .await
-            .minted()
-            .is_some()
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -124,7 +136,7 @@ async fn a_cached_token_inside_the_expiry_skew_is_reminted() {
 
     broker.mint(ask(&workspace, &handle, None)).await;
     let mut expired = ask(&workspace, &handle, None);
-    expired.now_ms = IN_AN_HOUR_MS;
+    expired.now = IN_AN_HOUR;
     broker.mint(expired).await;
 
     assert_eq!(vendor.calls(), 2, "the stale cache entry was served");

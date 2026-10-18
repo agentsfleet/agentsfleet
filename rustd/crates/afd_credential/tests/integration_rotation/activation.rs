@@ -1,5 +1,6 @@
 //! The activation ladder against real rows: what it refuses, and what it holds
-//! under a concurrent delete.
+//! under a concurrent delete. The ceiling an applied activation reports is
+//! graded in `activation_ceiling.rs`, over the fixtures defined here.
 //!
 //! Every refusal below is an [`Activation`] VALUE rather than an error, so the
 //! assertions read as a truth table over one verb rather than as a matrix of
@@ -15,24 +16,20 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_credential::provider::{Activation, OPENAI_COMPATIBLE, Providers, Rejection};
 use afd_crypto::entropy::Entropy;
 
-use super::Fixture;
-
-/// The instant every activation here is stamped with.
-const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+use super::{Fixture, NOW};
 
 /// A model nothing catalogues — and, for the refusals that fire before the
 /// catalogue is consulted, a model whose name can never matter.
 const UNCATALOGUED: &str = "gpt-imaginary";
 
 /// The provider the catalogued row is published under.
-const NAMED_PROVIDER: &str = "openai";
+pub(super) const NAMED_PROVIDER: &str = "openai";
 
 /// The store under test, over the fixture's pool and key.
-fn providers(fixture: &Fixture) -> Providers {
+pub(super) fn providers(fixture: &Fixture) -> Providers {
     Providers::new(
         fixture.database.clone(),
         Arc::clone(&fixture.kek),
@@ -42,52 +39,37 @@ fn providers(fixture: &Fixture) -> Providers {
 
 /// A model id this test alone catalogues.
 ///
-/// `core.model_library` is keyed `(provider, model_id)` with no tenant column,
-/// and the whole lane shares ONE live database — so a model id shared across
+/// `model.platform_models` is keyed `(provider, model_name)` with no tenant
+/// column, and the whole lane shares ONE live database — so a model shared across
 /// tests is a ROW shared across tests, and [`catalogue`]'s `DO NOTHING` makes
 /// whichever test seeds first the author of every other test's ceiling. The
 /// first full run of this lane proved it: the `-1` seed below landed first and
 /// two sibling tests read their ceiling as the clamp's 0.
-fn unique_model() -> String {
+pub(super) fn unique_model() -> String {
     format!("gpt-fixture-{}", afd_db::test_util::mint_id())
 }
 
 /// Publishes one catalogue row, which is what the named arm's gate requires.
-async fn catalogue(fixture: &Fixture, provider: &str, model: &str, cap: i32) {
-    let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "INSERT INTO core.model_library \
-           (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-            cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-         VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, 1, 1) \
-         ON CONFLICT (provider, model_id) DO NOTHING",
-    )
-    .bind(afd_db::test_util::mint_id())
-    .bind(model)
-    .bind(provider)
-    .bind(cap)
-    .execute(&mut *connection)
-    .await
-    .expect("the catalogue row seeds");
+pub(super) async fn catalogue(fixture: &Fixture, provider: &str, model: &str, cap: i32) {
+    fixture.seed_catalogue(provider, model, cap).await;
 }
 
 /// How many rows each side of the activation wrote.
-async fn written(fixture: &Fixture) -> (i64, i64) {
+pub(super) async fn written(fixture: &Fixture) -> (i64, i64) {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     let selections: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM core.tenant_model_selection WHERE tenant_id = $1::uuid",
+        "SELECT count(*) FROM model.tenant_selections WHERE tenant_id = $1::uuid",
     )
     .bind(fixture.tenant.as_str())
     .fetch_one(&mut *connection)
     .await
     .expect("the selection count reads");
-    let entries: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM core.tenant_model_entries WHERE tenant_id = $1::uuid",
-    )
-    .bind(fixture.tenant.as_str())
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the entry count reads");
+    let entries: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM model.tenant_models WHERE tenant_id = $1::uuid")
+            .bind(fixture.tenant.as_str())
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the entry count reads");
     (selections, entries)
 }
 
@@ -159,105 +141,6 @@ async fn an_uncatalogued_model_writes_neither_the_entry_nor_the_selection() {
         written(&fixture).await,
         (0, 0),
         "the entry insert must roll back with the refused write"
-    );
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
-    let fixture = Fixture::create().await;
-    let model = unique_model();
-    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
-    fixture
-        .seed_with_shape(
-            "tenant-key",
-            br#"{"provider":"openai","api_key":"sk-live"}"#,
-            Some(NAMED_PROVIDER),
-            Some(true),
-        )
-        .await;
-
-    let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
-        .await
-        .expect("a catalogued activation applies");
-
-    let Activation::Applied(stored) = outcome else {
-        panic!("a catalogued model activates: {outcome:?}");
-    };
-    // The ceiling comes from the CATALOGUE, never from the request — a client
-    // cannot widen its own context window by asking.
-    assert_eq!(stored.context_cap_tokens, 200_000);
-    // The provider comes from the decrypted credential, never from the caller.
-    assert_eq!(&*stored.provider, NAMED_PROVIDER);
-    assert_eq!(stored.secret_ref.as_deref(), Some("tenant-key"));
-    assert_eq!(written(&fixture).await, (1, 1));
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_negative_catalogue_ceiling_is_stored_as_zero() {
-    // core.model_library.context_cap_tokens is INTEGER NOT NULL with no
-    // nonnegative CHECK — bounds live in the application (RULE STS) — so a
-    // negative ceiling is a row the schema permits. The activation statement
-    // clamps it with GREATEST(…, 0), so a -1 catalogue row stores as 0, the
-    // unknown/auto sentinel, rather than as a negative ceiling.
-    let fixture = Fixture::create().await;
-    let model = unique_model();
-    catalogue(&fixture, NAMED_PROVIDER, &model, -1).await;
-    fixture
-        .seed_with_shape(
-            "tenant-key",
-            br#"{"provider":"openai","api_key":"sk-live"}"#,
-            Some(NAMED_PROVIDER),
-            Some(true),
-        )
-        .await;
-
-    let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
-        .await
-        .expect("a catalogued model activates whatever its ceiling reads");
-
-    let Activation::Applied(stored) = outcome else {
-        panic!("the row is catalogued, so the gate passes: {outcome:?}");
-    };
-    assert_eq!(
-        stored.context_cap_tokens, 0,
-        "a negative catalogue ceiling stores as the sentinel, not as itself"
-    );
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
-    // The one asymmetry: a user-hosted endpoint's model is absent from the
-    // platform catalogue by design, so the gate passes and the ceiling is the
-    // smallest any provider publishes for that model.
-    let fixture = Fixture::create().await;
-    let model = unique_model();
-    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
-    catalogue(&fixture, "anthropic", &model, 120_000).await;
-    fixture
-        .seed_with_shape(
-            "my-gateway",
-            br#"{"provider":"openai-compatible","base_url":"https://llm.example.com"}"#,
-            Some("openai-compatible"),
-            Some(false),
-        )
-        .await;
-
-    let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "my-gateway", Some(&model), NOW)
-        .await
-        .expect("a keyless compatible endpoint activates");
-
-    let Activation::Applied(stored) = outcome else {
-        panic!("a compatible endpoint needs no catalogue row of its own: {outcome:?}");
-    };
-    assert_eq!(
-        stored.context_cap_tokens, 120_000,
-        "a context window is a property of the model, and the smallest published wins"
     );
 }
 

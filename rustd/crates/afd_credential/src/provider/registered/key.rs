@@ -4,9 +4,9 @@ use afd_core::id::Uuid7;
 use afd_crypto::{aad::Aad, secret::SecretString};
 use afd_vault::StoredEnvelope;
 use serde::Deserialize;
-use sqlx::{FromRow as _, PgConnection, Row as _};
+use sqlx::PgConnection;
 
-use super::{CONTEXT, RegisteredModel, metadata, read};
+use super::{CONTEXT, RegisteredModel, read};
 use crate::{
     error::{Result, provider_malformed, query, vault_open},
     provider::{Providers, credential},
@@ -38,22 +38,20 @@ impl Providers {
         let Some(row) = read(connection, owner, &pinned.reference).await? else {
             return Ok(None);
         };
-        if metadata(&row, &pinned.reference)? != *pinned {
+        if row.metadata(&pinned.reference) != *pinned {
             return Ok(None);
         }
-        let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
-        let name: String = row.try_get(7).map_err(query(CONTEXT))?;
-        let row = sqlx::query(sql::SELECT_SECRET)
+        let (workspace, name) = (row.workspace_id, row.key_name);
+        let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?;
-        let Some(row) = row else {
+        let Some(stored) = stored else {
             return Ok(None);
         };
-        let body = StoredEnvelope::from_row(&row)
-            .map_err(query(CONTEXT))?
+        let body = stored
             .into_envelope()
             .map_err(vault_open)?
             .open(self.vault_key(), &Aad::new(&workspace, &name))

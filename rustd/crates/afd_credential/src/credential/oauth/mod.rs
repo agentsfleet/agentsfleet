@@ -28,9 +28,11 @@
 //! the servers a Zoho callback writes and a handle naming any other refuses
 //! the mint before anything is sent.
 
-use afd_core::credential::FIELD_REFRESH_TOKEN;
 use std::time::Duration;
 
+use afd_core::clock::after;
+use afd_core::credential::FIELD_REFRESH_TOKEN;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroizing;
@@ -151,7 +153,7 @@ pub struct Refresh<'a> {
     /// broker's connection pool and timeout are one decision made once.
     pub http: &'a reqwest::Client,
     /// The instant the token's expiry is measured from.
-    pub now_ms: i64,
+    pub now: Timestamp,
 }
 
 /// Exchanges the handle's refresh token for a fresh access token.
@@ -205,18 +207,18 @@ pub async fn mint(refresh: Refresh<'_>) -> Outcome {
         return Outcome::MintFailed(Retry::Transient);
     };
 
-    answer(status, &body, refresh_token, refresh.now_ms)
+    answer(status, &body, refresh_token, refresh.now)
 }
 
 /// The outcome the provider's answer decides, by its status and its body.
 ///
 /// A body that does not parse is malformed on a success status, and simply
 /// uninformative on a failure one — where the status still classifies.
-fn answer(status: reqwest::StatusCode, body: &[u8], posted: &str, now_ms: i64) -> Outcome {
+fn answer(status: reqwest::StatusCode, body: &[u8], posted: &str, now: Timestamp) -> Outcome {
     let answered = serde_json::from_slice::<Answered>(body).ok();
     if status.is_success() {
         answered.map_or(Outcome::MintFailed(Retry::Permanent), |answered| {
-            granted(&answered, posted, now_ms)
+            granted(&answered, posted, now)
         })
     } else {
         classify(status, answered.as_ref())
@@ -227,7 +229,7 @@ fn answer(status: reqwest::StatusCode, body: &[u8], posted: &str, now_ms: i64) -
 ///
 /// A success status with no `access_token` is a malformed body, not a mint: the
 /// one field this exchange exists to obtain is the one that must be there.
-fn granted(answered: &Answered, posted: &str, now_ms: i64) -> Outcome {
+fn granted(answered: &Answered, posted: &str, now: Timestamp) -> Outcome {
     let Some(token) = answered.access_token.as_deref() else {
         return Outcome::MintFailed(Retry::Permanent);
     };
@@ -242,13 +244,12 @@ fn granted(answered: &Answered, posted: &str, now_ms: i64) -> Outcome {
             lifetime
         }
     };
-    // Saturating, and never saturated: both arms above bound the lifetime by
-    // `MAX_ACCESS_TTL`, ten years, whose milliseconds sit far inside `i64`.
-    let lifetime_ms = i64::try_from(lifetime.as_millis()).unwrap_or(i64::MAX);
-
     Outcome::Ok(Minted {
         token: Zeroizing::new(token.to_owned()),
-        expires_at_ms: now_ms.saturating_add(lifetime_ms),
+        // Whole milliseconds, the precision the wire carries, so a provider's
+        // fractional `expires_in` leaves the broker caching the same instant
+        // the runner reads.
+        expires_at: afd_core::clock::whole_millis(after(now, lifetime)),
         rotated_refresh_token: rotated(answered, posted),
     })
 }

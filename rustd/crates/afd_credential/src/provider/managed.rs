@@ -26,7 +26,7 @@ use serde::Deserialize;
 
 use crate::error::{Result, provider_malformed};
 use crate::provider::resolved::Resolved;
-use crate::provider::selection::Selection;
+use crate::provider::selection::OwnModel;
 use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
@@ -39,9 +39,6 @@ pub(super) const FIELD_PROVIDER: &str = "provider";
 
 /// The credential field a named provider cannot proceed without.
 const FIELD_API_KEY: &str = "api_key";
-
-/// The selection column that says WHICH vault row to open.
-const FIELD_SECRET_REF: &str = "secret_ref";
 
 /// A tenant's own provider credential, as the vault row holds it.
 ///
@@ -73,10 +70,8 @@ pub(super) struct Credential {
 /// Resolution through a tenant's own stored credential.
 #[derive(Debug)]
 pub(super) struct SelfManaged {
-    /// What the tenant activated: the model and the ceiling.
-    selection: Selection,
-    /// The vault row's name, lifted out of the selection's nullable column.
-    secret_ref: Box<str>,
+    /// What the tenant activated: the model, the ceiling and the key's name.
+    own: OwnModel,
     /// The workspace holding it.
     workspace_id: Uuid7,
 }
@@ -84,25 +79,11 @@ pub(super) struct SelfManaged {
 impl SelfManaged {
     /// The strategy for a self-managed selection in `workspace_id`.
     ///
-    /// The nullable `secret_ref` column is narrowed HERE, once, so nothing
-    /// downstream carries an `Option` it would have to justify unwrapping: a
-    /// `SelfManaged` that exists names a row. That is parse-don't-validate
-    /// applied to a column the schema lets be null for a posture that cannot
-    /// use it.
-    ///
-    /// # Errors
-    /// Reports a self-managed row whose `secret_ref` is null — a selection
-    /// pointing at no credential, which is permanent.
-    pub(super) fn prepare(selection: Selection, workspace_id: Uuid7) -> Result<Strategy> {
-        let secret_ref = selection
-            .secret_ref
-            .clone()
-            .ok_or_else(|| provider_malformed(FIELD_SECRET_REF))?;
-        Ok(Box::new(Self {
-            selection,
-            secret_ref,
-            workspace_id,
-        }))
+    /// Infallible: an [`OwnModel`] always names a vault row, because the
+    /// selection is a pointer at a registry entry and every entry carries its
+    /// credential's name.
+    pub(super) fn prepare(own: OwnModel, workspace_id: Uuid7) -> Strategy {
+        Box::new(Self { own, workspace_id })
     }
 }
 
@@ -110,7 +91,7 @@ impl Resolution for SelfManaged {
     fn key(&self) -> KeyRef<'_> {
         KeyRef {
             workspace_id: &self.workspace_id,
-            name: &self.secret_ref,
+            name: &self.own.secret_ref,
         }
     }
 
@@ -126,8 +107,8 @@ impl Resolution for SelfManaged {
         Ok(Resolved::new(
             Posture::SelfManaged,
             vetted.provider,
-            self.selection.model.clone(),
-            self.selection.context_cap_tokens,
+            self.own.model.clone(),
+            self.own.context_cap_tokens,
             vetted.dialled,
             api_key,
         ))
@@ -157,7 +138,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::SelfManaged;
-    use crate::provider::selection::Selection;
+    use crate::provider::selection::OwnModel;
     use afd_billing::Posture;
     use afd_core::id::Uuid7;
 
@@ -165,18 +146,19 @@ mod tests {
         Uuid7::parse("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b").expect("a canonical v7 identifier")
     }
 
-    fn selection() -> Selection {
-        Selection {
-            posture: Posture::SelfManaged,
-            provider: "anthropic".into(),
+    fn own() -> OwnModel {
+        OwnModel {
+            tenant_model_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-cd0000000002")
+                .expect("a canonical v7 identifier"),
             model: "claude-opus-5".into(),
+            secret_ref: "my-anthropic-key".into(),
+            provider: Some("anthropic".into()),
             context_cap_tokens: 200_000,
-            secret_ref: Some("my-anthropic-key".into()),
         }
     }
 
     fn strategy() -> crate::provider::Strategy {
-        SelfManaged::prepare(selection(), workspace()).expect("a selection naming a row")
+        SelfManaged::prepare(own(), workspace())
     }
 
     #[test]
@@ -186,18 +168,6 @@ mod tests {
 
         assert_eq!(key.workspace_id, &workspace());
         assert_eq!(key.name, "my-anthropic-key");
-    }
-
-    #[test]
-    fn a_selection_naming_no_credential_is_a_permanent_refusal() {
-        let orphan = Selection {
-            secret_ref: None,
-            ..selection()
-        };
-        let refused = SelfManaged::prepare(orphan, workspace())
-            .expect_err("a null secret_ref cannot resolve");
-
-        assert!(refused.is_config_permanent());
     }
 
     #[test]

@@ -84,7 +84,7 @@ async fn a_limit_below_the_row_count_resumes_strictly_after_the_last_row_served(
 ///
 /// # Why this seeds nothing
 ///
-/// `core.platform_provider_defaults` has no tenant column and the read is
+/// `model.platform_defaults` has no tenant column and the read is
 /// `WHERE active = true ... LIMIT 1`, so "the active default" is a fact about
 /// the whole deployment. This lane shares one database and its suites run in
 /// PARALLEL — `afd_tenant`, `afd_fleet` and `agentsfleetd` each publish an

@@ -7,6 +7,7 @@ use std::io::{Read as _, Write as _};
 use std::net::TcpListener;
 use std::thread;
 
+use jiff::Timestamp;
 use serde_json::json;
 use zeroize::Zeroizing;
 
@@ -14,7 +15,7 @@ use super::super::{Refresh, mint};
 use crate::credential::outcome::{Outcome, Retry};
 use crate::credential::platform::OauthApp;
 
-const NOW_MS: i64 = 1_760_000_000_000;
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 fn serve(status: &str, body: &[u8], advertised_len: usize) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("fixture server binds");
@@ -50,7 +51,7 @@ async fn exchange(url: &str) -> Outcome {
         handle: &json!({"refresh_token": "old-refresh"}),
         token_url: url,
         http: &reqwest::Client::new(),
-        now_ms: NOW_MS,
+        now: NOW,
     })
     .await
 }
@@ -62,7 +63,7 @@ async fn a_complete_success_response_becomes_the_minted_credential() {
     let minted = outcome.minted().expect("a complete response mints");
 
     assert_eq!(minted.token.as_str(), "fresh");
-    assert_eq!(minted.expires_at_ms, NOW_MS + 60_000);
+    assert_eq!(minted.expires_at, Timestamp::constant(1_760_000_060, 0));
     assert_eq!(
         minted.rotated_refresh_token.as_deref().map(String::as_str),
         Some("replacement")

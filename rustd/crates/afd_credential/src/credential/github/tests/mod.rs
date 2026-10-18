@@ -1,9 +1,9 @@
 //! The overreach checks, against responses GitHub actually shapes.
 //!
 //! Every case here is a RESPONSE, because the response is what the check reads.
-//! Nothing in this file opens a socket: the exchange is `octocrab`'s and is not
-//! what these prove — what they prove is that a token which came back wider
-//! than the declaration is thrown away rather than delivered.
+//! Nothing in this file opens a socket: the exchange is `super::api`'s, and
+//! `transport` proves it. What these prove is that a token which came back
+//! wider than the declaration is thrown away rather than delivered.
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -13,6 +13,7 @@
 )]
 
 use afd_fleet_runtime::config::{Access, Reach, RepositoryBinding};
+use jiff::Timestamp;
 use serde_json::json;
 
 use super::{
@@ -163,9 +164,9 @@ fn test_a_token_reaching_more_repositories_than_declared_is_refused() {
 
 #[test]
 fn test_an_unmodelled_permission_above_read_is_refused() {
-    // The case `octocrab::models::InstallationPermissions` cannot express: it
-    // has no `administration` field, so deserialising through it would DROP
-    // this and the token would be delivered carrying admin write. The open map
+    // The case a typed permission model cannot express: with no
+    // `administration` field, deserialising through it would DROP this and the
+    // token would be delivered carrying admin write. The open map
     // is what makes it visible.
     let binding = binding(Access::Read);
     let request = scoped(&binding);
@@ -285,12 +286,14 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
     };
     let usable_handle = json!({"installation_id": 42});
     let repository = binding(Access::Read);
+    let http = unused_client();
 
     let absent_installation = mint(Exchange {
         app: &app,
         handle: &json!({}),
         binding: Some(&repository),
-        now_ms: 1,
+        http: &http,
+        now: Timestamp::UNIX_EPOCH,
     })
     .await;
     assert!(matches!(absent_installation, Outcome::ReconnectRequired));
@@ -299,7 +302,8 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
         app: &app,
         handle: &usable_handle,
         binding: None,
-        now_ms: 1,
+        http: &http,
+        now: Timestamp::UNIX_EPOCH,
     })
     .await;
     assert!(matches!(
@@ -311,12 +315,24 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
         app: &app,
         handle: &usable_handle,
         binding: Some(&repository),
-        now_ms: 1,
+        http: &http,
+        now: Timestamp::UNIX_EPOCH,
     })
     .await;
     assert!(matches!(bad_key, Outcome::MintFailed(Retry::Permanent)));
 }
 
+/// A client no mint here reaches: each refuses before transport.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client never dials; every mint it backs refuses before transport"
+)]
+fn unused_client() -> reqwest::Client {
+    reqwest::Client::new()
+}
+
+mod fake_github;
 mod request;
+mod signed;
 mod transport;
 mod unrequested;

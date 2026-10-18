@@ -52,6 +52,7 @@ pub mod entries;
 mod managed;
 mod platform;
 mod registered;
+mod reset;
 mod resolved;
 mod runtime;
 mod secret_kind;
@@ -59,7 +60,6 @@ mod selection;
 pub mod sql;
 mod ssrf;
 mod store;
-mod upsert;
 mod vetted;
 mod wire;
 
@@ -70,7 +70,6 @@ use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
 use crate::vault::KeyRef;
-use afd_billing::Posture;
 
 pub use self::activate::Activation;
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
@@ -82,7 +81,7 @@ pub use self::registered::{PLATFORM_MODEL_REF, RegisteredModel, registered_model
 pub use self::resolved::{Dialled, Resolved};
 pub use self::runtime::{RuntimeModel, runtime_model};
 pub use self::secret_kind::SecretKind;
-pub use self::selection::{PlatformDefault, Selection};
+pub use self::selection::{OwnModel, PlatformDefault, Selection};
 pub use self::store::Providers;
 pub use self::wire::Wire;
 
@@ -172,13 +171,13 @@ impl Providers {
 
     /// Which of the two ways `tenant_id` resolves.
     ///
-    /// A tenant with NO selection row and a tenant with an explicit `platform`
-    /// row take the same arm. The explicit row exists so the dashboard
-    /// can tell "never configured" from "explicitly reset", which is a display
+    /// A tenant with NO selection row and a tenant whose row points at nothing
+    /// take the same arm. The explicit row exists so the dashboard can tell
+    /// "never configured" from "explicitly reset", which is a display
     /// distinction and not a resolution one.
     async fn strategy(&self, tenant_id: &Uuid7) -> Result<Strategy> {
         match self.selection(tenant_id).await? {
-            Some(row) if row.posture == Posture::SelfManaged => {
+            Some(Selection::SelfManaged(own)) => {
                 let workspace = self
                     .primary_workspace(tenant_id)
                     .await?
@@ -186,9 +185,11 @@ impl Providers {
                     // invariant — signup creates the primary workspace — and it
                     // is permanent, because nothing later creates one.
                     .ok_or_else(provider_no_workspace)?;
-                managed::SelfManaged::prepare(row, workspace)
+                Ok(managed::SelfManaged::prepare(own, workspace))
             }
-            _platform => platform::Platform::prepare(self.platform_default().await?),
+            Some(Selection::Platform) | None => {
+                platform::Platform::prepare(self.platform_default().await?)
+            }
         }
     }
 }

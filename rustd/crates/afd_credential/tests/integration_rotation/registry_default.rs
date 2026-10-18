@@ -1,6 +1,6 @@
-//! The platform default as the registry reads it: the reset's copy of it into
-//! a tenant's explicit platform row, and the view a tenant that never
-//! configured a provider is composed from.
+//! The platform default as the registry reads it: the reset to a tenant's
+//! explicit platform row, and the view a tenant that never configured a
+//! provider is composed from.
 //!
 //! Split from `registry.rs` by concern: those are the entry verbs, decided by
 //! a tenant's own rows; these are decided by a deployment-wide row no tenant
@@ -9,22 +9,23 @@
 //! # What stays ungraded, and why it is not an oversight
 //!
 //! The reset's `UZ-PROVIDER-009` refusal fires when NO platform default is
-//! active, and `core.platform_provider_defaults` carries no tenant column —
+//! active, and `model.platform_defaults` carries no tenant column —
 //! `active = true` is a fact about the whole deployment. This lane shares one
 //! database across every test in it, so a case asserting that table is empty
 //! would be asserting something a sibling test can falsify by seeding its own
-//! default. What is graded below is the half that IS per-tenant: that an active
-//! default is read and copied verbatim into the tenant's explicit platform row.
+//! default. What is graded below is the half that IS per-tenant: that a reset
+//! writes the tenant an explicit row pointing at nothing, and that an active
+//! default is there to render beside it.
 
 use afd_billing::Posture;
 use afd_credential::provider::Selection;
 
 use super::Fixture;
-use super::registry::{NOW, providers, unique_model};
+use super::registry::{providers, unique_model};
 
 /// A provider name for the platform default this suite publishes.
 ///
-/// `core.platform_provider_defaults` is keyed BY provider, so seeding under a
+/// `model.platform_defaults` is keyed BY provider, so seeding under a
 /// name a sibling test also uses would rewrite that test's row instead of
 /// adding one. Unique per run, and dropped again before teardown.
 fn unique_provider() -> String {
@@ -33,7 +34,7 @@ fn unique_provider() -> String {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_reset_writes_an_explicit_platform_row_copied_from_the_live_default() {
+async fn a_reset_writes_an_explicit_platform_row_pointing_at_nothing() {
     let fixture = Fixture::create().await;
     let provider = unique_provider();
     let model = unique_model();
@@ -43,43 +44,36 @@ async fn a_reset_writes_an_explicit_platform_row_copied_from_the_live_default() 
         .await;
     let store = providers(&fixture);
 
-    let default = store
-        .platform_default()
-        .await
-        .expect("the default reads")
-        .expect("this test seeded an active row");
+    assert!(
+        store
+            .platform_default()
+            .await
+            .expect("the default reads")
+            .is_some(),
+        "this test seeded an active row"
+    );
 
-    // What the reset verb does with it: an EXPLICIT platform row for the
-    // tenant, rather than deleting theirs — which is what lets a dashboard tell
-    // "reset on purpose" from "never configured".
+    // What the reset verb does: an EXPLICIT platform row for the tenant,
+    // rather than deleting theirs — which is what lets a dashboard tell "reset
+    // on purpose" from "never configured". The row names no model of its own:
+    // the platform default is read live on every resolution.
     store
-        .upsert(
-            &fixture.tenant,
-            &Selection {
-                posture: Posture::Platform,
-                provider: default.provider.clone(),
-                model: default.model.clone(),
-                context_cap_tokens: default.context_cap_tokens,
-                secret_ref: None,
-            },
-            NOW,
-        )
+        .reset(&fixture.tenant)
         .await
         .expect("the platform selection writes");
+    // Twice, because a reset of a reset is the same row, not a conflict.
+    store
+        .reset(&fixture.tenant)
+        .await
+        .expect("a repeated reset is idempotent");
 
     let written = store
         .selection(&fixture.tenant)
         .await
         .expect("the selection reads")
         .expect("the reset wrote a row rather than removing one");
-    assert_eq!(written.posture, Posture::Platform);
-    assert_eq!(written.provider, default.provider);
-    assert_eq!(written.model, default.model);
-    assert_eq!(written.context_cap_tokens, default.context_cap_tokens);
-    assert!(
-        written.secret_ref.is_none(),
-        "a platform row names no credential of the tenant's"
-    );
+    assert_eq!(written, Selection::Platform);
+    assert_eq!(written.posture(), Posture::Platform);
 
     drop(platform_default);
     fixture.cleanup().await;

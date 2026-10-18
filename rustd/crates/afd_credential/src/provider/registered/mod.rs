@@ -7,7 +7,7 @@ mod key;
 mod sql;
 
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _, postgres::PgRow};
+use sqlx::PgConnection;
 
 use crate::error::{Result, query};
 
@@ -36,6 +36,35 @@ pub struct RegisteredModel {
     pub platform_managed: bool,
 }
 
+/// One [`sql::ENTRY`] or [`sql::PLATFORM`] row, by the names both give.
+#[derive(Debug, sqlx::FromRow)]
+struct RegisteredRow {
+    provider: String,
+    model: String,
+    context_window_tokens: i32,
+    input_nanos_per_million: i64,
+    output_nanos_per_million: i64,
+    resolution_version: String,
+    workspace_id: String,
+    key_name: String,
+}
+
+impl RegisteredRow {
+    /// The non-secret facts, as selected by `reference`.
+    fn metadata(&self, reference: &str) -> RegisteredModel {
+        RegisteredModel {
+            reference: reference.into(),
+            provider: self.provider.as_str().into(),
+            model: self.model.as_str().into(),
+            context_window_tokens: self.context_window_tokens,
+            input_nanos_per_million: self.input_nanos_per_million,
+            output_nanos_per_million: self.output_nanos_per_million,
+            resolution_version: self.resolution_version.as_str().into(),
+            platform_managed: reference == PLATFORM_MODEL_REF,
+        }
+    }
+}
+
 /// Resolves exactly `reference` for the workspace owner, without fallback.
 ///
 /// # Errors
@@ -46,42 +75,27 @@ pub async fn registered_model(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<RegisteredModel>> {
-    read(connection, owner, reference)
+    Ok(read(connection, owner, reference)
         .await?
-        .as_ref()
-        .map(|row| metadata(row, reference))
-        .transpose()
+        .map(|row| row.metadata(reference)))
 }
 
 async fn read(
     connection: &mut PgConnection,
     owner: &Uuid7,
     reference: &str,
-) -> Result<Option<PgRow>> {
+) -> Result<Option<RegisteredRow>> {
     let statement = if reference == PLATFORM_MODEL_REF {
         sql::PLATFORM
     } else {
         sql::ENTRY
     };
-    sqlx::query(statement)
+    sqlx::query_as::<_, RegisteredRow>(statement)
         .bind(owner.as_str())
         .bind(reference)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))
-}
-
-fn metadata(row: &PgRow, reference: &str) -> Result<RegisteredModel> {
-    Ok(RegisteredModel {
-        reference: reference.into(),
-        provider: row.try_get(0).map_err(query(CONTEXT))?,
-        model: row.try_get(1).map_err(query(CONTEXT))?,
-        context_window_tokens: row.try_get(2).map_err(query(CONTEXT))?,
-        input_nanos_per_million: row.try_get(3).map_err(query(CONTEXT))?,
-        output_nanos_per_million: row.try_get(4).map_err(query(CONTEXT))?,
-        resolution_version: row.try_get(5).map_err(query(CONTEXT))?,
-        platform_managed: reference == PLATFORM_MODEL_REF,
-    })
 }
 
 #[cfg(test)]

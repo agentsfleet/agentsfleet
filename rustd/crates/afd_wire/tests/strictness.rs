@@ -232,7 +232,7 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
         ),
         (
             "mint",
-            r#"{"token":"t","expires_at_ms":1,"future":1}"#.to_owned(),
+            r#"{"token":"t","expires_at":"1970-01-01T00:00:00.001Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<MintCredentialResponse<'_>>(b).is_ok(),
         ),
         ("activity", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
