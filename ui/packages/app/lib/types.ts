@@ -185,15 +185,15 @@ export type TenantBillingChargesResponse = {
   items: Array<{
     id: string;
     tenant_id: string;
-    workspace_id: string | null;
-    /** Survives the fleet's deletion (slot 915) — the callsign derives from
-     * it, so a purged fleet's charges can still name themselves. Never null:
-     * slot 916 made the column `NOT NULL` as part of the accumulate arbiter,
-     * so the absent case it once documented is a row no database holds. */
+    /** Survives the workspace's deletion: the charge keeps the identifier. */
+    workspace_id: string;
+    /** Survives the fleet's deletion, so a purged fleet's charges can still
+     * name themselves; the callsign derives from it. */
     fleet_id: string;
-    /** The fleet's name when the charge was written — a snapshot, so a later
-     * rename never reaches it. `null` on pre-slot-915 charges. */
-    fleet_name: string | null;
+    /** The fleet's name when the charge was written, a snapshot a later
+     * rename never reaches. A fleet purged before its charge landed leaves
+     * `fleet_id` here instead; `capturedFleetName` tells the two apart. */
+    fleet_name: string;
     event_id: string;
     charge_type: ChargeType;
     posture: ProviderMode;

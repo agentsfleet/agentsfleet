@@ -19,28 +19,22 @@ use serde_json::Value;
 
 use crate::tenant_shape_parity::{TEXT, WHEN, assert_shape, keys_of};
 
-/// A charge names its fleet as a string, and the fields that stayed optional
-/// still spell absence as null.
+/// A charge names its workspace, its fleet and that fleet's name as strings,
+/// and only the settlement fields still spell absence as null.
 ///
-/// `assert_shape` pins the key SET, which cannot see this: re-widening
-/// `fleet_id` to `Option` emits the very same keys, and a fixture passing
-/// `Some(...)` would keep compiling. What changes is the VALUE — `"fixture"`
-/// becomes `null` the moment a row lacks one — so the type is pinned where the
-/// difference shows.
-///
-/// Slot 916 made `billing.usage_ledger.fleet_id` `NOT NULL` as part of the
-/// accumulate arbiter, so a charge that cannot say which fleet paid is a row
-/// the ledger will not hold. The two neighbours are the control: they are
-/// seeded absent and MUST still emit null, which is this suite's stated
-/// divergence and not something the narrowing was allowed to take with it.
+/// `assert_shape` pins the key SET, which cannot see this: re-widening any of
+/// the three to `Option` emits the very same keys. What changes is the VALUE,
+/// so the type is pinned where the difference shows. All three columns are
+/// `NOT NULL` in `billing.fleet_charges`; the token counts and wall time are
+/// the control, seeded absent, and MUST still emit null.
 #[test]
-fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
+fn a_charge_names_its_owners_and_spells_only_settlement_null() {
     let emitted = serde_json::to_value(ChargeSummary {
         id: Cow::Borrowed(TEXT),
         tenant_id: Cow::Borrowed(TEXT),
-        workspace_id: None,
+        workspace_id: Cow::Borrowed(TEXT),
         fleet_id: Cow::Borrowed(TEXT),
-        fleet_name: None,
+        fleet_name: Cow::Borrowed(TEXT),
         event_id: Cow::Borrowed(TEXT),
         charge_type: Cow::Borrowed(TEXT),
         posture: Cow::Borrowed(TEXT),
@@ -53,12 +47,14 @@ fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
     })
     .expect("a wire shape serialises");
 
-    assert_eq!(
-        emitted.get("fleet_id"),
-        Some(&Value::String(TEXT.to_owned())),
-        "a charge always names the fleet that paid for it"
-    );
-    for absent in ["workspace_id", "fleet_name"] {
+    for named in ["workspace_id", "fleet_id", "fleet_name"] {
+        assert_eq!(
+            emitted.get(named),
+            Some(&Value::String(TEXT.to_owned())),
+            "{named} is always present on a charge"
+        );
+    }
+    for absent in ["token_count_input", "token_count_output", "wall_ms"] {
         assert_eq!(
             emitted.get(absent),
             Some(&Value::Null),
@@ -73,9 +69,9 @@ fn a_charge_row_carries_its_whole_provenance() {
         &ChargeSummary {
             id: Cow::Borrowed(TEXT),
             tenant_id: Cow::Borrowed(TEXT),
-            workspace_id: Some(Cow::Borrowed(TEXT)),
+            workspace_id: Cow::Borrowed(TEXT),
             fleet_id: Cow::Borrowed(TEXT),
-            fleet_name: Some(Cow::Borrowed(TEXT)),
+            fleet_name: Cow::Borrowed(TEXT),
             event_id: Cow::Borrowed(TEXT),
             charge_type: Cow::Borrowed(TEXT),
             posture: Cow::Borrowed(TEXT),

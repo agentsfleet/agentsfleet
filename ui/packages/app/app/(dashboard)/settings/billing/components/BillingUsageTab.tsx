@@ -11,6 +11,7 @@ import {
 } from "@agentsfleet/design-system";
 import { AgentLabel } from "@/components/domain/AgentLabel";
 import {
+  capturedFleetName,
   chargeAgentLabel,
   displayModelName,
   describeCharge,
@@ -43,7 +44,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     cell: (c) => (
       <AgentLabel
         fleetId={c.fleet_id}
-        fleetName={c.fleet_name}
+        fleetName={capturedFleetName(c)}
         className="text-foreground"
       />
     ),

@@ -19,7 +19,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
-    fleet_name: null,
+    fleet_name: "z_1",
     event_id: "evt_1",
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
@@ -103,12 +103,13 @@ describe("charge identity", () => {
     );
   });
 
-  // A pre-slot-915 charge whose fleet is still alive: no stored name, but the
-  // identifier was never nulled, so it reads exactly as it did before.
-  it("is unchanged for a charge that predates the stored name", () => {
-    expect(chargeAgentLabel(charge({ fleet_name: null }))).toMatch(
-      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
-    );
+  // A fleet purged before its charge landed: the server stores the fleet's own
+  // identifier as the name, and the label shows the callsign alone rather
+  // than that identifier.
+  it("shows the callsign alone when the charge captured no name", () => {
+    const label = chargeAgentLabel(charge({ fleet_id: "z_1", fleet_name: "z_1" }));
+    expect(label).toMatch(/^AGENT [A-Z]+-[0-9A-F]{4}$/);
+    expect(label).not.toContain("z_1");
   });
 });
 

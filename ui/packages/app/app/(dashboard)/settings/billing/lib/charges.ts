@@ -49,7 +49,17 @@ export function formatChargeAmount(nanos: number): string {
  * table by something the operator cannot see.
  */
 export function chargeAgentLabel(row: ChargeRow): string {
-  return agentDisplayName(row.fleet_id, row.fleet_name);
+  return agentDisplayName(row.fleet_id, capturedFleetName(row));
+}
+
+/**
+ * The name a charge captured, or null when it captured none. A fleet purged
+ * before its charge landed leaves its own identifier in `fleet_name` (the
+ * server's fallback, so the money still lands), and printing that would put a
+ * raw identifier where a name belongs.
+ */
+export function capturedFleetName(row: ChargeRow): string | null {
+  return row.fleet_name === row.fleet_id ? null : row.fleet_name;
 }
 
 /** Strip the provider namespace and separators without changing model casing. */

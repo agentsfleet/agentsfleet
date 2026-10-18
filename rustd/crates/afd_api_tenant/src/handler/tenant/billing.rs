@@ -175,9 +175,9 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
     ChargeSummary {
         id: Cow::Borrowed(&row.id),
         tenant_id: Cow::Borrowed(&row.tenant_id),
-        workspace_id: Some(Cow::Borrowed(&row.workspace_id)),
+        workspace_id: Cow::Borrowed(&row.workspace_id),
         fleet_id: Cow::Borrowed(&row.fleet_id),
-        fleet_name: Some(Cow::Borrowed(&row.fleet_name)),
+        fleet_name: Cow::Borrowed(&row.fleet_name),
         event_id: Cow::Borrowed(&row.event_id),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
