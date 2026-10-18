@@ -190,7 +190,7 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 ### §8 UI follow-up — user-reported fixes
 
 These user-reported fixes extend the application and design-system scope under `ui/packages/**` and this tracking section.
-Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed rows name their commits; application unit tests and coverage await Claude's checks.
+Backend requests remain in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md). Completed rows name their commits. App lint passes; app unit tests pass 398 files / 3740 tests and design-system unit tests pass 62 files / 497 tests. Fresh coverage remains outstanding.
 
 | Report | Required result | Progress / evidence |
 |---|---|---|
@@ -202,11 +202,11 @@ Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed
 | 4 | Remove Review Setup; save directly with current setup validation. | `2ead62453`: inline setup and direct Save / Save changes. |
 | 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | Correct source is revision-bound; saved purpose and Advanced settings removal implemented; awaiting checks. |
 | 6 | Combine Setup and Trigger; show triggers and schedules read-only. | `aa88f485f`: combined under Setup. Simplified to a schedule summary; next-run fields requested from server. |
-| 7 | Use the shared table row hover on runner leases. | Pending. |
-| 8 | Retain lease history and prevent missing Open fleet destinations. | UI checking pending; retained history and authorized destinations requested from server. |
-| 9 | Rename runner lease Outcome to Status. | Pending. |
-| 10 | Move lease inspection beneath its fleet label; remove the chevron column. | Pending. |
-| 11 | Keep Status / Created placement and row hover consistent across tables. | Pending. |
+| 7 | Use the shared table row hover on runner leases. | `414571be3`: shared hover and keyboard focus. |
+| 8 | Retain lease history and prevent missing Open fleet destinations. | `414571be3`: typed availability check; retained history and explicit destinations remain requested from server. |
+| 9 | Rename runner lease Outcome to Status. | `414571be3`: Status column and regression tests. |
+| 10 | Move lease inspection beneath its fleet label; remove the chevron column. | `414571be3`: View lease beneath the agent label. |
+| 11 | Keep Status / Created placement and row hover consistent across tables. | `414571be3`: shared hover; lease Created precedes Duration and Status, matching workspace Activity. |
 | 12 | Rename This workspace to Workspace; explain library visibility. | `4662cda2a`: scope explanation and Workspace label. |
 | 13 | Add a New fleet action to the empty workspace library. | `4662cda2a`. |
 | 14 | Show the full Secrets search focus border on the first click. | `492e115f6`: shared inset focus ring and focus border; browser regression written. |
