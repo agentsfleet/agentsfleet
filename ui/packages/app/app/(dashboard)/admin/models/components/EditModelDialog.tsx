@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  ActionForm,
+  Alert,
   Button,
   Dialog,
   DialogContent,
@@ -43,6 +45,7 @@ export default function EditModelDialog({
     const v = schema.parse(values);
     const rates: ModelRatesInput = modelSettings(v);
     startTransition(async () => {
+      try {
       const r = await updateAdminModelAction(model.id, rates);
       if (!r.ok) {
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "update the model" }));
@@ -50,14 +53,15 @@ export default function EditModelDialog({
       }
       // The PATCH returns {id, updated}; the row's new shape is its identity plus
       // the edited rates — hand that to the parent so the table updates in place.
-      onUpdated({ ...model, ...rates });
+      onUpdated({ ...model, ...rates, inference: rates.inference ?? model.inference });
       onOpenChange(false);
+      } catch { setApiError("Could not update the model. Your entries are retained; try again."); }
     });
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-wide">
         <DialogHeader>
           <DialogTitle>Edit model</DialogTitle>
           <DialogDescription>
@@ -65,18 +69,18 @@ export default function EditModelDialog({
             Credentials stay in the workspace vault. Provider and model identify this row.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-md">
           {([["Provider", model.provider], ["Model", model.model_id]] as const).map(([label, value]) => (
-            <div key={label} className="space-y-1.5">
+            <div key={label} className="space-y-xs">
               <span className="text-sm font-medium">{label}</span>
               <Input value={value} disabled aria-label={`${label} (locked)`} />
             </div>
           ))}
         </div>
         <Form {...form}>
-          <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4">
+          <ActionForm noValidate onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-lg">
             <ModelSettingsFields />
-            {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+            {apiError ? <Alert variant="destructive">{apiError}</Alert> : null}
             <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
               <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
                 Cancel
@@ -86,7 +90,7 @@ export default function EditModelDialog({
                 Save changes
               </Button>
             </DialogFooter>
-          </form>
+          </ActionForm>
         </Form>
       </DialogContent>
     </Dialog>

@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -26,9 +27,10 @@ const model = (id: string, provider: string, advanced = false) => ({
   display_name: id,
   advanced,
   context_cap_tokens: 1,
-  input_nanos_per_mtok: 1,
-  cached_input_nanos_per_mtok: 1,
-  output_nanos_per_mtok: 1,
+  input_nanos_per_mtok: "1",
+  cached_input_nanos_per_mtok: "1",
+  output_nanos_per_mtok: "1",
+  context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
 });
 
 const okLibrary = (models: ReturnType<typeof model>[]) => ({

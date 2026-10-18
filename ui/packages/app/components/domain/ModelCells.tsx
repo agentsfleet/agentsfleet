@@ -58,7 +58,7 @@ export function ModelName({
   trailing,
 }: {
   modelId: string;
-  displayName?: string;
+  displayName?: string | null;
   /** A fixed name width, so what follows the name lines up down the table. */
   trimmed?: boolean;
   /** Marks the row as a platform admin's, which a tenant admin cannot edit. */

@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
+  ActionForm,
+  Alert,
   Button,
   Dialog,
   DialogContent,
@@ -63,6 +65,7 @@ export default function AddModelDialog({
     setApiError(null);
     const v = schema.parse(values);
     startTransition(async () => {
+      try {
       const r = await createAdminModelAction({
         provider: v.provider,
         model_id: v.model_id,
@@ -74,6 +77,7 @@ export default function AddModelDialog({
       }
       onCreated(r.data);
       handleOpenChange(false);
+      } catch { setApiError("Could not create the model. Your entries are retained; try again."); }
     });
   }
 
@@ -85,7 +89,7 @@ export default function AddModelDialog({
           Create model library
         </TooltipButton>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-wide">
         <DialogHeader>
           <DialogTitle>Create model library</DialogTitle>
           <DialogDescription>
@@ -93,7 +97,7 @@ export default function AddModelDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4">
+          <ActionForm noValidate onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-lg">
             <FormField control={form.control} name="provider" render={({ field }) => (
               <FormItem>
                 <FormLabel>Provider</FormLabel>
@@ -110,7 +114,7 @@ export default function AddModelDialog({
               </FormItem>
             )} />
             <ModelSettingsFields />
-            {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+            {apiError ? <Alert variant="destructive">{apiError}</Alert> : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -125,7 +129,7 @@ export default function AddModelDialog({
                 Create
               </TooltipButton>
             </DialogFooter>
-          </form>
+          </ActionForm>
         </Form>
       </DialogContent>
     </Dialog>

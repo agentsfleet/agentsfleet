@@ -43,6 +43,7 @@ function entry(active = false): TenantModelEntry {
   return {
     id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
     model_id: MODEL_ID,
+    display_name: null,
     secret_ref: SECRET_REF,
     provider: PROVIDER,
     kind: MODEL_KIND.providerKey,

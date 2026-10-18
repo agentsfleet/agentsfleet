@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { Secret } from "@/lib/api/secrets";
@@ -47,7 +48,7 @@ describe("AddModelEntryDialog — unified form shape", () => {
 
   it("lists the library's providers plus the OpenAI-compatible option pinned last", async () => {
     catalogueState.models = [
-      { id: "claude-sonnet-5", display_name: "Sonnet 5", advanced: false, provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+      { id: "claude-sonnet-5", display_name: "Sonnet 5", advanced: false, provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: "0", cached_input_nanos_per_mtok: "0", output_nanos_per_mtok: "0", context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [] },
     ];
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");

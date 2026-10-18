@@ -26,7 +26,7 @@ const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
 function makeEntry(overrides: Partial<TenantModelEntry> = {}): TenantModelEntry {
   return {
     id: "mdl_1",
-    model_id: "gpt-4o",
+    model_id: "gpt-4o", display_name: null,
     secret_ref: "pioneer",
     provider: "openai",
     kind: "provider_key",
