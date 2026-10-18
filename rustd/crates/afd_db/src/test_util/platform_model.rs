@@ -72,7 +72,9 @@ impl<'a> ModelSeed<'a> {
         self
     }
 
-    /// Upserts one identity and its epoch-start base quote atomically.
+    /// Upserts one identity and its epoch-start base quote atomically. The
+    /// quote's row id is minted here, as every seed mints its own; a quote
+    /// that already exists keeps its id.
     ///
     /// # Errors
     /// Preserves a failed statement's `SQLx` source through the database error.
@@ -87,6 +89,7 @@ impl<'a> ModelSeed<'a> {
             .bind(self.output)
             .bind(self.verified_at.map(Timestamp::to_sqlx))
             .bind(self.inference)
+            .bind(super::mint_id())
             .execute(executor)
             .await
             .map_err(|source| error::query(CONTEXT, source))?;
