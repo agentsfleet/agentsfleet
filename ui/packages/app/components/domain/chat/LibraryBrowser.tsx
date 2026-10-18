@@ -3,7 +3,10 @@
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
 import { useCallback, useEffect, useState } from "react";
-import { Button, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
+import Link from "next/link";
+import { LibraryIcon, PlusIcon } from "lucide-react";
+import { workspacePath } from "@/lib/workspace-routes";
+import { Button, EmptyState, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
@@ -60,7 +63,7 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
     {!page && !error ? <Spinner label="Loading published setups" /> : null}
     <LibraryChoices page={page} workspace={workspace} owned={owned} onRemoved={() => { setSelected(null); setCursor(null); setAttempt((value) => value + 1); }}
       onInspect={(card) => { setEntry(null); setSelected(card); setRevision(undefined); setError(null); setInspectionAttempt((value) => value + 1); }} />
-    {!error && page && !page.items.length ? <LibraryEmpty paged={!!(cursor || page.next_cursor)} owned={owned} /> : null}
+    {!error && page && !page.items.length ? <LibraryEmpty workspace={workspace} paged={!!(cursor || page.next_cursor)} owned={owned} /> : null}
     {cursor ? <Button variant="outline" onClick={() => { setCursor(null); setSelected(null); }}>First page</Button> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
     {selected ? <LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /> : null}
@@ -70,16 +73,20 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
 }
 
 function LibraryScope({owned, onChange}: {owned: boolean; onChange: (owned: boolean) => void}) {
-  return <Tabs value={owned ? "workspace" : "all"} onValueChange={(value) => onChange(value === "workspace")}>
-    <TabsList aria-label="Fleet library scope"><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="workspace">This workspace</TabsTrigger></TabsList>
-  </Tabs>;
+  const scope = {workspace: "workspace", all: "all"} as const;
+  return <div className="space-y-md"><Tabs value={owned ? scope.workspace : scope.all} onValueChange={(value) => onChange(value === scope.workspace)}>
+    <TabsList aria-label="Fleet library scope"><TabsTrigger value={scope.all}>All</TabsTrigger><TabsTrigger value={scope.workspace}>Workspace</TabsTrigger></TabsList>
+  </Tabs><p className="text-sm text-muted-foreground">{owned
+    ? "Setups published by your account, available in this workspace."
+    : "Platform setups and setups published by your account. Private setups from other accounts are never included."}</p></div>;
 }
 
-function LibraryEmpty({paged, owned}: {paged: boolean; owned: boolean}) {
+function LibraryEmpty({workspace, paged, owned}: {workspace: string; paged: boolean; owned: boolean}) {
   const copy = paged ? "No published setups on this page. Check another page or change the library scope."
-    : owned ? "No setups have been published by this workspace. Create a setup in chat, review it, then publish it to the Fleet library."
-    : "No published setups are available yet. Create a setup in chat, review it, then publish it to the Fleet library.";
-  return <p className="text-sm text-muted-foreground">{copy}</p>;
+    : owned ? "No setups have been published by this workspace. Start a fleet setup chat, then save or publish your setup."
+    : "No published setups are available yet. Start a fleet setup chat, then save or publish your setup.";
+  return <EmptyState icon={<LibraryIcon size={28} />} title="Build your next fleet" description={copy}
+    action={<Button asChild variant="secondary"><Link href={workspacePath(workspace, "fleets/new")}><PlusIcon size={16} aria-hidden="true" />New fleet</Link></Button>} />;
 }
 
 function LibraryChoices({page, workspace, owned, onRemoved, onInspect}: {page: Page | null; workspace: string; owned: boolean; onRemoved: () => void; onInspect: (card: LibraryCard) => void}) {
