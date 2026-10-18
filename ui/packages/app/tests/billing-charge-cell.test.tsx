@@ -52,6 +52,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     fleet_id: "z_1",
     fleet_name: null,
     event_id: "evt_1",
+    authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
     model: "kimi-k2.6",

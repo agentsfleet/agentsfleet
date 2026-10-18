@@ -19,7 +19,7 @@ import {
 } from "./helpers-billing-effect.ts";
 
 describe("billingShowEffectFromArgs — request shape and validation", () => {
-  test("GETs balance + charges with default limit=10 → charges limit=20", async () => {
+  test("GETs balance + charges with the requested raw-page limit", async () => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
       limit: undefined,
@@ -43,11 +43,11 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     const exit = await runWith(program);
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.httpCalls.sort()).toEqual(
-      [BILLING_PATH, `${CHARGES_PATH_PREFIX}?limit=20`].sort(),
+      [BILLING_PATH, `${CHARGES_PATH_PREFIX}?limit=10`].sort(),
     );
   });
 
-  test("--limit 5 charges path uses limit=10 (limit*2)", async () => {
+  test("--limit 5 reads five charge records", async () => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
       limit: "5",
@@ -69,7 +69,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
       Effect.provide(outputLayer(rec)),
     );
     await runWith(program);
-    expect(rec.httpCalls).toContain(`${CHARGES_PATH_PREFIX}?limit=10`);
+    expect(rec.httpCalls).toContain(`${CHARGES_PATH_PREFIX}?limit=5`);
   });
 
   test("rejects --limit 0 with ValidationError", async () => {
@@ -190,7 +190,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     );
     await runWith(program);
     expect(rec.stdout.join("\n")).toMatch(/Tenant balance: {4}\$4\.71/);
-    expect(rec.stdout.join("\n")).toMatch(/No billable events recorded yet\./);
+    expect(rec.stdout.join("\n")).toMatch(/No billable activity recorded yet\./);
     expect(rec.stdout.join("\n")).toMatch(/Out of credits\? See /);
   });
 

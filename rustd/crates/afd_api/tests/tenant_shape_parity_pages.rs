@@ -19,29 +19,18 @@ use serde_json::Value;
 
 use crate::tenant_shape_parity::{TEXT, WHEN, assert_shape, keys_of};
 
-/// A charge names its fleet as a string, and the fields that stayed optional
-/// still spell absence as null.
-///
-/// `assert_shape` pins the key SET, which cannot see this: re-widening
-/// `fleet_id` to `Option` emits the very same keys, and a fixture passing
-/// `Some(...)` would keep compiling. What changes is the VALUE — `"fixture"`
-/// becomes `null` the moment a row lacks one — so the type is pinned where the
-/// difference shows.
-///
-/// Slot 916 made `billing.usage_ledger.fleet_id` `NOT NULL` as part of the
-/// accumulate arbiter, so a charge that cannot say which fleet paid is a row
-/// the ledger will not hold. The two neighbours are the control: they are
-/// seeded absent and MUST still emit null, which is this suite's stated
-/// divergence and not something the narrowing was allowed to take with it.
+/// Runtime charges retain their fleet identity. Optional metadata and absent
+/// setup-attempt identity still serialize as explicit nulls.
 #[test]
 fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
     let emitted = serde_json::to_value(ChargeSummary {
         id: Cow::Borrowed(TEXT),
         tenant_id: Cow::Borrowed(TEXT),
         workspace_id: None,
-        fleet_id: Cow::Borrowed(TEXT),
+        fleet_id: Some(Cow::Borrowed(TEXT)),
         fleet_name: None,
-        event_id: Cow::Borrowed(TEXT),
+        event_id: Some(Cow::Borrowed(TEXT)),
+        authoring_attempt_id: None,
         charge_type: Cow::Borrowed(TEXT),
         posture: Cow::Borrowed(TEXT),
         model: Cow::Borrowed(TEXT),
@@ -58,7 +47,7 @@ fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
         Some(&Value::String(TEXT.to_owned())),
         "a charge always names the fleet that paid for it"
     );
-    for absent in ["workspace_id", "fleet_name"] {
+    for absent in ["workspace_id", "fleet_name", "authoring_attempt_id"] {
         assert_eq!(
             emitted.get(absent),
             Some(&Value::Null),
@@ -74,9 +63,10 @@ fn a_charge_row_carries_its_whole_provenance() {
             id: Cow::Borrowed(TEXT),
             tenant_id: Cow::Borrowed(TEXT),
             workspace_id: Some(Cow::Borrowed(TEXT)),
-            fleet_id: Cow::Borrowed(TEXT),
+            fleet_id: Some(Cow::Borrowed(TEXT)),
             fleet_name: Some(Cow::Borrowed(TEXT)),
-            event_id: Cow::Borrowed(TEXT),
+            event_id: Some(Cow::Borrowed(TEXT)),
+            authoring_attempt_id: None,
             charge_type: Cow::Borrowed(TEXT),
             posture: Cow::Borrowed(TEXT),
             model: Cow::Borrowed(TEXT),
@@ -94,6 +84,7 @@ fn a_charge_row_carries_its_whole_provenance() {
             "fleet_id",
             "fleet_name",
             "event_id",
+            "authoring_attempt_id",
             "charge_type",
             "posture",
             "model",

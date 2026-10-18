@@ -18,6 +18,9 @@ use serde_json::Value;
 
 use self::harness::{Fleet, exchange, items, json_body, send, send_with_headers};
 
+#[path = "tenant_money/authoring.rs"]
+mod authoring;
+
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;
 
@@ -137,8 +140,8 @@ async fn assert_charges_page_through(router: &axum::Router, fixture: &Fixture) {
     let (status, next) = exchange(router, Method::GET, &resumed, token, "").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(items(&next).len(), 1);
-    // The resumed page runs a SECOND select list, maintained by hand beside
-    // its twin. Asserting only the first page leaves that one unproven.
+    // The resumed page applies the cursor boundary to the shared projection.
+    // Asserting only the first page leaves that boundary unproven.
     assert_charge_names_its_fleet(first_item(&next));
 }
 

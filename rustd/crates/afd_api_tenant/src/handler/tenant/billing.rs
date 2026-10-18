@@ -89,7 +89,7 @@ pub(crate) async fn snapshot<D: Services>(
     operation_id = "get_tenant_billing_charges",
     summary = "List tenant charges",
     description = concat!(
-        "Returns charge records with the newest record first. Use `limit` and ",
+        "Returns fleet-run and settled setup-chat costs with the newest record first. Use `limit` and ",
         "`cursor` to read more records. ",
     ),
     params(
@@ -175,9 +175,10 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         id: Cow::Borrowed(&row.id),
         tenant_id: Cow::Borrowed(&row.tenant_id),
         workspace_id: row.workspace_id.as_deref().map(Cow::Borrowed),
-        fleet_id: Cow::Borrowed(&row.fleet_id),
+        fleet_id: row.fleet_id.as_deref().map(Cow::Borrowed),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
-        event_id: Cow::Borrowed(&row.event_id),
+        event_id: row.event_id.as_deref().map(Cow::Borrowed),
+        authoring_attempt_id: row.authoring_attempt_id.as_deref().map(Cow::Borrowed),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
         model: Cow::Borrowed(&row.model),
