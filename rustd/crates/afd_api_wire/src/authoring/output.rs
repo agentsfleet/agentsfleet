@@ -111,13 +111,19 @@ pub struct DraftCard {
     /// Related fleet, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_fleet_id: Option<String>,
-    /// Last mutation, Unix milliseconds.
+    /// Last mutation.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
-    /// Private retention deadline, Unix milliseconds.
+    /// Private retention deadline.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "afd_wire::instant::option", default)]
     pub expires_at: Option<jiff::Timestamp>,
+    /// The current candidate's revision; null before the chat proposes one.
+    pub candidate_revision: Option<i64>,
+    /// The saved fleet's current setup revision; null while no fleet is saved.
+    pub setup_revision: Option<i64>,
+    /// The Library revision this chat published; null until it publishes.
+    pub publication_revision: Option<i64>,
 }
 
 /// One user or assistant role in a durable request sequence.
