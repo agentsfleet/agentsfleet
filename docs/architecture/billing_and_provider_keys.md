@@ -73,6 +73,8 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
 | Incremental per-renewal metering replaced the one-shot estimate | drained credit equals runtime × rate + actual tokens; refund-on-actual superseded | §3, §13; M80_010 |
 | Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
+| One billing lifecycle behind `Arc<dyn Biller>` | fleet runs and setup chat disagreed on rounding, pricing and outages; a queue or third party must be able to bill | §11 |
+| Billing outages fail open, flippable at one construction site | early adoption favours the optimistic path; closing it is one line | §11 |
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
 | Registry consistency via activation-time upsert, not read-time self-heal | a read handler must not mutate rows to paper over a write-path violation | §8.4; M121 |
 | `fleet:` vault-name prefix removed repo-wide | it discriminated nothing; dead convention | §8.4 |
@@ -82,6 +84,8 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 ---
 
 ## Authoring admission and settlement
+
+> **Being replaced by §11** (2026-10-19). Setup chat moves onto the shared `Biller` lifecycle: holds replace the reservation rule below, `billing.usage_lines` replaces its settlement row, and outages fail open. The lock order and stop races below still hold until that lands.
 
 Active implementation requirements; billing proofs remain pending.
 
@@ -543,6 +547,43 @@ Properties:
 - **Runtime admission resolves the saved model reference.** Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read per charge, with their generation (§4.2).
 
 ---
+
+## 11. One billing lifecycle behind a `Biller` trait
+
+Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed: fleet runs (`afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together) and setup chat (its own reservation maths, debit and settlement SQL inside `afd_authoring`). They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. An expired fleet lease never billed its last slice.
+
+```
+ work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
+ (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
+  request;         cached_read,         prompt size, price by `at`,   unique (work, seq); the charges page reads it
+  setup chat       cache_write,         posture, one rounding rule              │ after commit, and the sweeper's retry
+  makes its own)   cache_write_5m,                                              ▼
+                   cache_write_1h,                               Arc<dyn Biller>   reserve / settle / release / balance
+                   output, runtime}                              ├─ LedgerBiller: billing.wallets + billing.holds (built in)
+                                                                 ├─ a queue biller (later)
+                                                                 └─ a third-party metering API (later)
+```
+
+**Two layers, on purpose.** The usage log records what happened and what it costs. It is always ours and always written in the same transaction as the work it describes, so a run and its usage commit or roll back together. The `Biller` moves money: holds before work, charges after it. It runs after commit because a queue or a third party can never join our transaction. `settle` is idempotent on `(work, seq)`, and a sweeper re-sends lines that committed without a settlement, so a crash between the two layers neither loses nor doubles a charge. Holds cover the gap between the two.
+
+**The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`, the shape `afd_authoring`'s provider `Transport` already uses.
+
+| Method | When | Idempotent on |
+|---|---|---|
+| `reserve(&Reservation) -> Hold` | admission, each renewal, each setup-chat model call; raises an existing hold | the work |
+| `settle(&Settlement) -> Receipt` | renewal, report, and the sweeper | `(work, seq)` |
+| `release(&WorkKey, Release)` | report, failure, expiry (`Expired { runtime }` bills the last slice) | the work |
+| `balance(&Account) -> Balance` | the tenant billing page | read only |
+
+`WorkKey` is `FleetLease(id)` or `AuthoringAttempt(id)`, so the two products share one vocabulary. A `Settlement` carries each line's raw usage and the daemon's price for it: a biller that prices for itself may ignore our price; `LedgerBiller` charges it. Wrapping is composition: a biller that also copies every call to a queue is one more implementation holding two.
+
+**Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`: the tier from the request's whole prompt (uncached input, cache reads and cache writes together), the date range from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate. Self-managed work charges runtime only. Each token category rounds **up** per line, so the platform never under-bills and over-bills by at most one nano per category per request.
+
+**Outage policy.** `OutagePolicy::Open`: when the biller cannot answer, the work is admitted and its lines settle when the biller is back. It is chosen once, where `agentsfleetd` constructs the biller, so flipping to `Closed` is a one-line change there. We start open because early adoption favours the optimistic path (Indy, 2026-10-19). Revisit when unpaid outage exposure is measurable, or before any third-party biller goes live; a remote biller should carry an exposure cap.
+
+**Budgets** are a separate `afd_billing::limits` reader over `billing.usage_lines`, so fleet budgets count every line, setup chat included.
+
+**Removed:** `Accounts`' money statements, the pricing and debit inside the lease metering statement, the lease `metered_*` cursors, setup chat's coverage maths, `debit.sql` and settlement SQL, the duplicated rounding, `billing.fleet_charges`, `billing.authoring_settlements`, and the union read behind the charges page.
 
 ## 13. Open questions deferred to v2.1+ and v3
 
