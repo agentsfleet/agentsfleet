@@ -7,7 +7,7 @@ use crate::{
     candidate,
     error::{ErrorKind, raise::query},
     message, model, replay, sql,
-    types::{Accepted, CreateDraft, Created, EDITING, Source, SourcePin},
+    types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, Source, SourcePin},
 };
 use afd_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
 use afd_fleet_runtime::Definition;
@@ -172,6 +172,26 @@ impl Drafts {
     }
 }
 
+/// The title a new chat starts with: the first line of its first request,
+/// else of what its source describes, else [`DEFAULT_TITLE`].
+///
+/// Set once, at creation; a title the person edits later is theirs and nothing
+/// here touches it again.
+fn initial_title(message: Option<&str>, source: Option<&Definition>) -> String {
+    message
+        .and_then(first_line)
+        .or_else(|| source.map(Definition::description).and_then(first_line))
+        .map_or_else(
+            || DEFAULT_TITLE.to_owned(),
+            |line| line.chars().take(MAX_TITLE_CHARS).collect(),
+        )
+}
+
+/// The first line of `text` with words in it, trimmed.
+fn first_line(text: &str) -> Option<&str> {
+    text.lines().map(str::trim).find(|line| !line.is_empty())
+}
+
 struct New<'a> {
     access: Access<'a>,
     person: &'a Person,
@@ -197,7 +217,10 @@ async fn write_draft(
         .bind(new.access.workspace.as_str())
         .bind(new.person.owner.as_str())
         .bind(new.person.id.as_str())
-        .bind(DEFAULT_TITLE)
+        .bind(initial_title(
+            new.request.message.as_deref(),
+            captured.definition.as_ref(),
+        ))
         .bind(EDITING)
         .bind(model::tenant_model(&new.request.authoring_model_ref))
         .bind(pin.source_type())
@@ -210,4 +233,58 @@ async fn write_draft(
         .await
         .map_err(query(CONTEXT))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::panic,
+    reason = "fixed test fixtures fail loudly when their contract changes"
+)]
+mod tests {
+    use afd_fleet_runtime::Definition;
+
+    use super::{DEFAULT_TITLE, MAX_TITLE_CHARS, initial_title};
+
+    /// A source setup describing itself as `description`.
+    fn source(description: &str) -> Definition {
+        let json = serde_json::json!({
+            "schema_version": 1,
+            "description": description,
+            "instructions_md": "Run.",
+            "config": {"name": "fixture", "x-agentsfleet": {
+                "triggers": [], "tools": [], "budget": {"daily_nanos": "1000000000"}
+            }},
+        });
+        Definition::parse(&json.to_string())
+            .unwrap_or_else(|error| panic!("the fixture setup parses: {error:?}"))
+    }
+
+    #[test]
+    fn a_new_chat_is_titled_by_its_request_then_its_source_then_the_default() {
+        let described = source("Reviews pull requests.\nSecond line.");
+        for (message, from, expected) in [
+            (
+                Some("  Triage my inbox\nthen reply"),
+                Some(&described),
+                "Triage my inbox",
+            ),
+            (Some("\n   \n"), Some(&described), "Reviews pull requests."),
+            (None, Some(&described), "Reviews pull requests."),
+            (None, None, DEFAULT_TITLE),
+            (Some(""), None, DEFAULT_TITLE),
+        ] {
+            assert_eq!(initial_title(message, from), expected, "from {message:?}");
+        }
+    }
+
+    #[test]
+    fn a_long_first_line_is_cut_to_the_title_cap_at_a_character() {
+        let long = "é".repeat(MAX_TITLE_CHARS + 5);
+        let title = initial_title(Some(&long), None);
+        assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
+        assert!(
+            title.chars().all(|letter| letter == 'é'),
+            "never split inside a character"
+        );
+    }
 }

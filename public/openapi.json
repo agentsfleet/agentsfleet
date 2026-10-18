@@ -10425,6 +10425,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Case-insensitive search of your chat titles and message text, 1..200 characters after trimming. Bound into the cursor.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
