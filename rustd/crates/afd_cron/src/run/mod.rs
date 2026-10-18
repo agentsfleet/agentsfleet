@@ -40,8 +40,26 @@ pub(crate) fn upcoming(schedule: &Schedule, now: Timestamp) -> (RunState, Option
 /// expression that does not read is a defect to see, not one to hide.
 #[must_use]
 pub(crate) fn describe(cron: &str, timezone: &str) -> String {
-    let words = CronExpr::parse(cron).map_or_else(|_| cron.to_owned(), |parsed| parsed.describe());
+    let words = CronExpr::parse(cron).map_or_else(
+        |_| cron.to_owned(),
+        |parsed| past_midnight(cron, parsed.describe()),
+    );
     format!("{words} ({timezone})")
+}
+
+/// The parser's words, with the minute it drops in the midnight hour put back.
+///
+/// `philiprehberger-cron-parser` 0.3.0 hard-codes "12:00 AM" for hour 0
+/// whatever the minute, so `30 0 * * *` would read as midnight. Every other hour
+/// formats its minute; this restores the one it loses, and only when the
+/// expression's minute field is a single value.
+fn past_midnight(cron: &str, words: String) -> String {
+    match cron.split_whitespace().next().map(str::parse::<u8>) {
+        Some(Ok(minute)) if minute > 0 => {
+            words.replacen("At 12:00 AM", &format!("At 12:{minute:02} AM"), 1)
+        }
+        _ => words,
+    }
 }
 
 /// The next instant a registered schedule fires after `now`.
