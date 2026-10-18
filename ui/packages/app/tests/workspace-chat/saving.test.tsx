@@ -18,11 +18,12 @@ async function converse(): Promise<void> {
   await screen.findByText("Your setup is ready.");
 }
 
-async function review() {
-  fireEvent.click(screen.getByRole("button", {name: "Review setup"}));
-  const dialog = await screen.findByRole("dialog", {name: "Review fleet setup"});
-  await within(dialog).findByRole("button", {name: "Save fleet"});
-  return dialog;
+async function setup() {
+  const region = await screen.findByRole("region", {name: "Fleet setup"});
+  await within(region).findByRole("button", {name: "Save fleet"});
+  expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  return region;
 }
 
 describe("private chat Save", () => {
@@ -38,12 +39,12 @@ describe("private chat Save", () => {
     expect(fixture.writes()).toHaveLength(1);
     expect(fixture.writes()[0]?.body).toMatchObject({message: CHAT_EXAMPLES[0]});
   });
-  it("sends ordinary text and saves only after explicit review without publishing", async () => {
+  it("sends ordinary text and saves directly from the setup summary without publishing", async () => {
     await converse();
     const message = fixture.writes()[0];
     expect(message?.body).toMatchObject({message: "Investigate failures", source: {kind: "blank"}});
     expect(fixture.saveAttempts).toBe(0);
-    const dialog = await review();
+    const dialog = await setup();
     fireEvent.click(within(dialog).getByRole("button", {name: "Save fleet"}));
     await screen.findAllByText("repairer is ready");
     expect(fixture.saveAttempts).toBe(1);
@@ -56,7 +57,7 @@ describe("private chat Save", () => {
   it("retries an uncertain Save with the original key and body", async () => {
     fixture.failSave = true;
     await converse();
-    const dialog = await review();
+    const dialog = await setup();
     fireEvent.click(within(dialog).getByRole("button", {name: "Save fleet"}));
     await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
@@ -69,21 +70,22 @@ describe("private chat Save", () => {
 
   it("publishes explicitly without creating a running fleet", async () => {
     await converse();
-    const dialog = await review();
-    fireEvent.click(within(dialog).getByRole("button", {name: "Publish new entry"}));
+    const dialog = await setup();
+    fireEvent.click(within(dialog).getByRole("button", {name: "Publish to Fleet library"}));
+    fireEvent.click(await within(dialog).findByRole("button", {name: "Publish new entry"}));
     await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(1));
     expect(fixture.saveAttempts).toBe(0);
     expect(fixture.writes().find((call) => call.path.endsWith("/fleet-libraries"))?.body).toMatchObject({label: "repairer"});
   });
 
-  it("shows proposed instructions and returns from the editor after a reviewed update", async () => {
+  it("shows proposed instructions and returns from the editor after an instructions update", async () => {
     await converse();
-    const dialog = await review();
-    expect(within(dialog).getByRole("region", {name: "Reviewed instructions"}).textContent).toContain("Investigate failures.");
+    const dialog = await setup();
+    expect(within(dialog).getByRole("region", {name: "Setup instructions"}).textContent).toContain("Investigate failures.");
     expect(dialog.className).toContain("ph-no-capture"); expect(dialog.className).toContain("ph-no-record");
-    expect(within(dialog).getByText(/Your conversation stays private/)).not.toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", {name: "Edit setup"}));
-    fireEvent.click(within(dialog).getByRole("button", {name: "Update draft and review"}));
+
+    fireEvent.click(within(dialog).getByRole("button", {name: "Edit instructions"}));
+    fireEvent.click(within(dialog).getByRole("button", {name: "Update instructions"}));
     await within(dialog).findByRole("button", {name: "Save fleet"});
     expect(within(dialog).queryByLabelText("Runtime config")).toBeNull();
     expect(fixture.saveAttempts).toBe(0);
@@ -95,6 +97,6 @@ describe("private chat Save", () => {
     fixture.messages = [];
     view.rerender(<WorkspaceChat account="account-two" workspace={WORKSPACE} />);
     await waitFor(() => expect(screen.queryByText("Your setup is ready.")).toBeNull());
-    expect(screen.getByText("What should your fleet do?")).not.toBeNull();
+    expect(await screen.findByText("What should your fleet do?")).not.toBeNull();
   });
 });

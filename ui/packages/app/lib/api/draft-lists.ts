@@ -1,7 +1,7 @@
 // Model choices and private chats hold one bounded page; the next loads only when asked.
 
 import type { z } from "zod";
-import type { DraftCard, WorkspaceModel } from "./draft-types";
+import type { Draft, DraftCard, WorkspaceModel } from "./draft-types";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
 import { setupRequest } from "./draft-request";
 import { DRAFT_LIST, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
@@ -13,6 +13,7 @@ const RESOURCE = {models: "models", drafts: "drafts"} as const;
 
 export class DraftLists {
   readonly #base: string;
+  readonly #removed = new Set<string>();
   readonly #loading = new Map<DraftList, Promise<DraftListsView | null>>();
   #models: readonly WorkspaceModel[] = [];
   #cards: readonly DraftCard[] = [];
@@ -27,8 +28,20 @@ export class DraftLists {
   }
 
   clear(): void {
-    this.#generation += 1; this.#loading.clear();
+    this.#generation += 1; this.#loading.clear(); this.#removed.clear();
     this.#models = []; this.#cards = []; this.#modelCursor = null; this.#cardCursor = null;
+  }
+
+  remove(id: string): DraftListsView {
+    this.#removed.add(id);
+    this.#cards = this.#cards.filter((card) => card.id !== id);
+    return this.view;
+  }
+
+  updateDraft(draft: Draft): DraftListsView {
+    this.#cards = this.#cards.map((card) => card.id === draft.id
+      ? {...card, title: draft.title, state: draft.state, etag: draft.etag, linked_fleet_id: draft.linked_fleet_id ?? null} : card);
+    return this.view;
   }
 
   async open(signal: AbortSignal): Promise<DraftListsView> {
@@ -64,7 +77,7 @@ export class DraftLists {
       } else {
         const page = await this.#cardPage(cursor, signal);
         if (generation !== this.#generation) return null;
-        this.#cards = appendNew(this.#cards, page.items, (card) => card.id); this.#cardCursor = page.next_cursor;
+        this.#cards = appendNew(this.#cards, page.items.filter((card) => !this.#removed.has(card.id)), (card) => card.id); this.#cardCursor = page.next_cursor;
       }
       return this.view;
     } catch (cause) {

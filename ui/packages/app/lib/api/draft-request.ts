@@ -91,3 +91,9 @@ async function boundedJson(response: Response, signal: AbortSignal): Promise<unk
     return JSON.parse(text + decoder.decode());
   } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
 }
+
+export type DeleteDraft = (id: string, signal: AbortSignal) => Promise<void>;
+
+export async function deleteDraft(base: string, id: string, signal: AbortSignal): Promise<void> {
+  await setupRequest({path: `${base}/drafts/${encodeURIComponent(id)}`, method: REQUEST_METHOD.delete}, z.null(), signal);
+}

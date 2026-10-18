@@ -2,14 +2,14 @@
 
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@agentsfleet/design-system";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@agentsfleet/design-system";
 import { isRunning } from "@/lib/api/draft-types";
 import { DRAFT_LIST } from "@/lib/api/draft-list-types";
 import { DraftLoadMore, LOAD_MORE_COPY } from "./DraftLoadMore";
 
 const ignore = (): void => undefined;
 
-export function ChatToolbar({ client, view, onReview }: { client: DraftClient; view: DraftView; onReview: () => void }) {
+export function ChatToolbar({ client, view }: { client: DraftClient; view: DraftView }) {
   "use memo";
   const locked = view.busy || view.pending || view.inaccessible || view.messages.some(isRunning);
   const models = view.models.filter((model) => model.eligibility.authoring);
@@ -19,6 +19,5 @@ export function ChatToolbar({ client, view, onReview }: { client: DraftClient; v
       <SelectContent>{models.map((model) => <SelectItem key={model.ref} value={model.ref}>{model.label}</SelectItem>)}</SelectContent>
     </Select>
     {view.moreModels && !view.inaccessible ? <DraftLoadMore copy={LOAD_MORE_COPY.models} onLoad={() => client.loadMore(DRAFT_LIST.models)} /> : null}
-    {view.draft?.candidate || view.preview ? <Button variant="secondary" size="sm" disabled={locked} onClick={onReview}>Review setup</Button> : null}
   </div>;
 }

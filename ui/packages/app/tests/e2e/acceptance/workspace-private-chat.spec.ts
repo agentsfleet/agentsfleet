@@ -22,7 +22,7 @@ import { createFixtureDraft, createImprovementDraft, deleteFixtureDraft, readFix
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, reviewButton, reviewDialog, savedSetup,
+  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupSummary, savedSetup,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -70,24 +70,19 @@ async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draf
   await page.goto(workspaceHref(workspaceId, NEW_FLEET));
   await historyEntry(page, draftId).click();
   await expect(page).toHaveURL(new RegExp(`\\?draft=${draftId}$`));
-  await expect(reviewButton(page)).toBeVisible();
+  await expect(setupSummary(page)).toBeVisible();
   await page.reload();
-  await expect(reviewButton(page)).toBeVisible();
+  await expect(setupSummary(page)).toBeVisible();
 }
 
-// Review opens and closes from the keyboard; Save binds the displayed review and shows the saved result.
+// Save is reachable from the keyboard directly in the setup summary.
 async function saveFromTheKeyboard(page: Page, name: string): Promise<void> {
-  const dialog = reviewDialog(page);
-  await reviewButton(page).focus();
-  await page.keyboard.press("Enter");
-  await expect(dialog).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await reviewButton(page).press("Enter");
-  const save = dialog.getByRole("button", { name: CHAT_COPY.save, exact: true });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const save = saveSetupButton(page);
   await expect(save).toBeEnabled();
+  await save.focus();
   await save.press("Enter");
-  await expect(savedSetup(dialog)).toContainText(name, { timeout: SETUP_TIMEOUT_MS });
+  await expect(savedSetup(page)).toContainText(name, {timeout: SETUP_TIMEOUT_MS});
 }
 
 // A reload rebuilds the saved result from the server, and its link opens the fleet it saved.
@@ -111,13 +106,12 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
   const draft = await createImprovementDraft(FIXTURE_KEY.regular, workspaceId, before);
   await openDraft(page, workspaceId, draft.id);
-  await reviewButton(page).click();
-  const dialog = reviewDialog(page);
+  const dialog = setupSummary(page);
   await dialog.getByRole("button", { name: CHAT_COPY.editSetup, exact: true }).click();
   await dialog.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
-  await dialog.getByRole("button", { name: CHAT_COPY.updateReview }).click();
+  await dialog.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
   await dialog.getByRole("button", { name: CHAT_COPY.apply }).click();
-  await expect(dialog.getByText(CHAT_COPY.applied)).toBeVisible({ timeout: SETUP_TIMEOUT_MS });
+  await expect(page.getByText(CHAT_COPY.applied)).toBeVisible({ timeout: SETUP_TIMEOUT_MS });
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
   return draft.id;

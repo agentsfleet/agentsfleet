@@ -1,6 +1,6 @@
 import { Profiler, useSyncExternalStore } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
@@ -10,7 +10,7 @@ import { Button } from "@agentsfleet/design-system";
 
 const { identity } = vi.hoisted(() => ({ identity: { userId: "reader" } }));
 vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => identity }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({replace: vi.fn()}) }));
 const client = new DraftClient({ account: "account", workspace: WORKSPACE, subject: "reader" });
 const fresh = vi.spyOn(client, "fresh").mockImplementation(() => {});
 const initial: DraftView = { ...client.getSnapshot(), draft: DRAFT, listStatus: "ready" };
@@ -164,4 +164,31 @@ it("loads the next chat page on demand and makes its title searchable", async ()
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(fetcher).toHaveBeenCalledTimes(3);
   } finally { cleanup(); current.dispose(); fetcher.mockRestore(); }
+});
+
+it("keeps the selected second chat in place and exposes its setup version", () => {
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null};
+  render(tree({...initial, cards: [{...card, id: NEXT_DRAFT_ID, title: "First setup"}, card]}));
+  expect(screen.getAllByRole("link").map((link) => link.getAttribute("aria-label"))).toEqual(["First setup", DRAFT.title]);
+  expect(screen.getByRole("link", {name: DRAFT.title}).getAttribute("aria-describedby")).toBe(`${DRAFT.id}-state`);
+  expect(screen.getByText("Setup ready · Setup v1")).toBeTruthy();
+});
+
+it("requires confirmation and keeps a chat available after a refused deletion", async () => {
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(response({user_message: "Finish the current request first"}, 409));
+  try {
+    render(tree(initial));
+    fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
+    const dialog = screen.getByRole("alertdialog", {name: "Delete setup chat?"});
+    expect(dialog.textContent).toContain("Saved fleets and published library versions stay available");
+    fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
+    expect(fetcher).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
+    await screen.findByText("Finish the current request first");
+    expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+    fetcher.mockResolvedValueOnce(response(null, 204));
+    fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
+    await waitFor(() => expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull());
+  } finally {fetcher.mockRestore();}
 });
