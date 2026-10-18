@@ -90,8 +90,11 @@ jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
 tokio.workspace = true
-# The thread-scoped recorder `integration_fire.rs` reads the fire's log line
-# back through.
+# The `tracing` capture `integration_fire.rs` reads the fire's log line back
+# through.
+afd_core = { workspace = true, features = ["test-util"] }
+# Unused since integration_fire.rs moved to Capture; dropped with the next
+# Cargo.lock change, which another branch of work holds open right now.
 tracing-subscriber.workspace = true
 
 [lints]
