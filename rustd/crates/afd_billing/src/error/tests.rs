@@ -31,8 +31,8 @@ fn query_and_row_failures_keep_the_context_only_their_raiser_knows() {
     assert!(query.source().is_some());
 
     let source = Uuid7::parse("not-an-id").expect_err("fixture identifier is malformed");
-    let row = row_malformed("billing.usage_ledger", "tenant_id")(source);
+    let row = row_malformed("billing.usage_lines", "tenant_id")(source);
     assert_eq!(row.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(row.to_string().contains("billing.usage_ledger.tenant_id"));
+    assert!(row.to_string().contains("billing.usage_lines.tenant_id"));
     assert!(row.source().is_some());
 }

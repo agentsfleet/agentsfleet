@@ -5,7 +5,7 @@
     reason = "live-schema test preconditions fail loudly"
 )]
 
-use afd_billing::sql::{CHARGE_TYPE_AUTHORING, posture};
+use afd_billing::sql::{CHARGE_TYPE_AUTHORING, charge, posture, work};
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, DbRole, Migrator};
 use jiff_sqlx::ToSqlx as _;
@@ -68,6 +68,8 @@ async fn explain(db: &Db, tenant: &str, boundary: Option<i64>) -> Value {
         .bind(CHARGE_TYPE_AUTHORING)
         .bind(posture::PLATFORM)
         .bind(posture::SELF_MANAGED)
+        .bind(work::FLEET_LEASE)
+        .bind(charge::STAGE)
         .fetch_one(&mut *db.acquire().await.unwrap())
         .await
         .unwrap()

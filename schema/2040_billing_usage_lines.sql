@@ -57,6 +57,12 @@ CREATE INDEX idx_usage_lines_tenant_id_created_at_id
 -- The fleet budget's day and month sums.
 CREATE INDEX idx_usage_lines_fleet_id_created_at
     ON billing.usage_lines (fleet_id, created_at) WHERE fleet_id IS NOT NULL;
+-- An event's cost on the history reads: one index-only probe per event row,
+-- summed without visiting the table (measured 183 ms down to 5 ms on a
+-- two-million-line seed in the design audit).
+CREATE INDEX idx_usage_lines_fleet_id_event_id
+    ON billing.usage_lines (fleet_id, event_id) INCLUDE (charged_nanos)
+    WHERE fleet_id IS NOT NULL;
 -- The sweeper: lines committed whose settlement never landed.
 CREATE INDEX idx_usage_lines_created_at_unsettled
     ON billing.usage_lines (created_at) WHERE settled_at IS NULL;
