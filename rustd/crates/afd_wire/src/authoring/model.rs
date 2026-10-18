@@ -86,9 +86,6 @@ pub struct ModelCall<D = Value, C = Value, I = Value> {
     /// Current attempt fence.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub fence: String,
-    /// Current private-text generation.
-    #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
-    pub deletion_generation: String,
     /// Fresh `UUIDv7` for this physical call.
     #[garde(length(bytes, min = 36, max = 36))]
     pub dispatch_id: String,

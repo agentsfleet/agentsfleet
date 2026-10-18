@@ -26,7 +26,7 @@ A common tagged claim returns fleet runtime or bounded authoring work. Fleet run
 
 ## Private content and report retention
 
-DELETE draft returns 204 after the daemon transaction fences every attempt, removes private text/candidates, writes a content-free deletion generation/tombstone, and makes further private reads404. It does not delete the shared fleet or billing records. Remove the private transcript from server-rendered/browser caches and close its stream. The target stores no unsent text in browser local storage; in-memory text is scoped to account/workspace/subject and cleared on logout/revocation/delete.
+DELETE draft returns 204 after the daemon transaction fences every attempt, removes private text/candidates, writes a content-free tombstone, and makes further private reads404. It does not delete the shared fleet or billing records. Remove the private transcript from server-rendered/browser caches and close its stream. The target stores no unsent text in browser local storage; in-memory text is scoped to account/workspace/subject and cleared on logout/revocation/delete.
 
 | Copy | Owner / removal | Disclosed residual bound |
 |---|---|---|

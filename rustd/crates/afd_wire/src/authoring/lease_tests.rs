@@ -23,7 +23,7 @@ const MODEL: &str = "model";
 fn wire() -> Value {
     json!({
         "lease_id": "lease-1", "attempt_id": "attempt-1", "draft_id": "draft-1",
-        "sequence": "1", "fence": "1", "deletion_generation": "0",
+        "sequence": "1", "fence": "1",
         EXPIRES_AT: EXPIRES, "deadline": ATTEMPT_ENDS,
         MODEL: {"ref":"owned", "provider":"openai", MODEL:"gpt-4.1",
             "tokenizer":"o200k_base", "pricing":{"input_nanos_per_million":"1",
@@ -85,4 +85,23 @@ fn a_lease_prints_its_identity_and_never_its_capability_or_conversation() {
         "{printed}"
     );
     assert!(!printed.contains(TEXT), "{printed}");
+}
+
+/// The runner protocol no longer carries a deletion generation (spec
+/// Dimension 4.5): a lease decodes without one and never writes one, and a
+/// renewal that still sends one is refused rather than silently accepted.
+#[test]
+fn test_runner_wire_drops_deletion_generation() {
+    let written = serde_json::to_value(lease()).expect("a lease writes");
+    assert!(
+        written.get("deletion_generation").is_none(),
+        "{written}"
+    );
+    let usage = json!({"knowledge": "known", "calls": 0, "runtime_ms": 0});
+    serde_json::from_value::<crate::authoring::Renew>(json!({"fence": "1", "usage": usage}))
+        .expect("a renewal without a generation decodes");
+    serde_json::from_value::<crate::authoring::Renew>(
+        json!({"fence": "1", "deletion_generation": "0", "usage": usage}),
+    )
+    .expect_err("a renewal still carrying a generation is refused");
 }

@@ -181,7 +181,6 @@ fn accounting(lease: &Claimed) -> Report {
     Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: mint_id(),
             outcome: Outcome::Completed,
             failure_reason: None,

@@ -65,9 +65,6 @@ pub struct ActivityRequest<D = Value, C = Value, I = Value> {
     /// Current attempt fence.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub fence: String,
-    /// Generation whose private text the lease may update.
-    #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
-    pub deletion_generation: String,
     /// Accepted user-message sequence.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub sequence: String,

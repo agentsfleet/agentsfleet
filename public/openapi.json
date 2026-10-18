@@ -17217,16 +17217,11 @@
         "description": "Shared accounting fields; the answer is deliberately absent.",
         "required": [
           "fence",
-          "deletion_generation",
           "report_id",
           "outcome",
           "usage"
         ],
         "properties": {
-          "deletion_generation": {
-            "type": "string",
-            "description": "Decimal generation originally issued with the attempt."
-          },
           "failure_reason": {
             "oneOf": [
               {
@@ -17945,7 +17940,6 @@
         "description": "One contiguous, replay-safe activity submission.",
         "required": [
           "fence",
-          "deletion_generation",
           "sequence",
           "activity_sequence",
           "event"
@@ -17954,10 +17948,6 @@
           "activity_sequence": {
             "type": "string",
             "description": "Contiguous activity number, beginning at one."
-          },
-          "deletion_generation": {
-            "type": "string",
-            "description": "Generation whose private text the lease may update."
           },
           "event": {
             "$ref": "#/components/schemas/ActivityEvent_Value_Value_Value",
@@ -21854,7 +21844,6 @@
           "draft_id",
           "sequence",
           "fence",
-          "deletion_generation",
           "expires_at",
           "deadline",
           "model",
@@ -21878,10 +21867,6 @@
             "type": "string",
             "format": "date-time",
             "description": "Original attempt deadline; renewal cannot extend it."
-          },
-          "deletion_generation": {
-            "type": "string",
-            "description": "Decimal private deletion generation."
           },
           "draft_id": {
             "type": "string",
@@ -22700,7 +22685,6 @@
           "capability_token",
           "attempt_id",
           "fence",
-          "deletion_generation",
           "dispatch_id",
           "call_index",
           "request"
@@ -22719,10 +22703,6 @@
           "capability_token": {
             "type": "string",
             "description": "Random 256-bit base64url lease capability; never logged or spooled."
-          },
-          "deletion_generation": {
-            "type": "string",
-            "description": "Current private-text generation."
           },
           "dispatch_id": {
             "type": "string",
@@ -24382,14 +24362,9 @@
         "description": "Own-lease renewal with cumulative observations.",
         "required": [
           "fence",
-          "deletion_generation",
           "usage"
         ],
         "properties": {
-          "deletion_generation": {
-            "type": "string",
-            "description": "Decimal private deletion generation."
-          },
           "fence": {
             "type": "string",
             "description": "Decimal current fence."

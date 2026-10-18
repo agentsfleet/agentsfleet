@@ -17,7 +17,6 @@ SET lease_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1::u
 fn request() -> Renew {
     Renew {
         fence: "1".into(),
-        deletion_generation: "0".into(),
         usage: Meter {
             knowledge: Knowledge::Known,
             calls: 0,

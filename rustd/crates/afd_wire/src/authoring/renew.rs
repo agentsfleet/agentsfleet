@@ -11,9 +11,6 @@ pub struct Renew {
     /// Decimal current fence.
     #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
     pub fence: String,
-    /// Decimal private deletion generation.
-    #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
-    pub deletion_generation: String,
     /// Monotone cumulative observations, verified by the daemon.
     #[garde(dive)]
     pub usage: super::Meter,

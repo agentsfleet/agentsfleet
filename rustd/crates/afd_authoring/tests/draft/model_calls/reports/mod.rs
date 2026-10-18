@@ -14,7 +14,6 @@ fn report() -> Report {
     Report::Terminal {
         accounting: Accounting {
             fence: "1".into(),
-            deletion_generation: "0".into(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,

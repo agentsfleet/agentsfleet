@@ -68,7 +68,6 @@ pub(super) fn finished(lease: &Claimed) -> Report {
     Report::Terminal {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,

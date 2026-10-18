@@ -34,7 +34,6 @@ pub(super) fn build(
         draft_id: hint.id.to_string(),
         sequence: selected.sequence.to_string(),
         fence: FENCE.to_string(),
-        deletion_generation: crate::lease::guard::DELETION_GENERATION.to_string(),
         expires_at: placement.until,
         deadline: placement.deadline,
         model: selected_model(model),

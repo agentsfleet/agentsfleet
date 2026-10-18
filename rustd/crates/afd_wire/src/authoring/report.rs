@@ -47,9 +47,6 @@ pub struct Accounting {
     /// Decimal fence originally issued with the attempt.
     #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
     pub fence: String,
-    /// Decimal generation originally issued with the attempt.
-    #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
-    pub deletion_generation: String,
     /// Stable UUID version 7 report identity, never a content digest.
     #[garde(length(bytes, min = 36, max = 36))]
     pub report_id: String,

@@ -195,7 +195,6 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
         attempt_id: "01924f4e-0000-7000-8000-00000000fee7".into(),
         dispatch_id: "01924f4e-0000-7000-8000-00000000fee8".into(),
         fence: "7".into(),
-        deletion_generation: "9".into(),
         call_index: 2,
         request: ModelRequest {
             messages: vec![ModelMessage::User {

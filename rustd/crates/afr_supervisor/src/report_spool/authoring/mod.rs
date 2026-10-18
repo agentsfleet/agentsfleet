@@ -129,7 +129,6 @@ impl Spool {
                 lease_id: lease.to_string(),
                 attempt_id: attempt.to_string(),
                 report_id: settlement.accounting.report_id,
-                generation: settlement.accounting.deletion_generation,
                 first_written_at: now,
                 expires_at: afd_core::clock::after(now, PRIVATE_TTL),
             };

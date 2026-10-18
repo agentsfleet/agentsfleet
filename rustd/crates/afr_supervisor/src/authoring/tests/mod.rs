@@ -28,7 +28,7 @@ const ATTEMPT_ENDS: &str = "1970-01-01T00:05:00Z";
 fn lease() -> Lease<Value> {
     serde_json::from_value(json!({
         "lease_id": LEASE, "attempt_id": ATTEMPT, "draft_id": LEASE,
-        "sequence": "1", "fence": "1", "deletion_generation": "0",
+        "sequence": "1", "fence": "1",
         "expires_at": GRANTED_UNTIL, "deadline": ATTEMPT_ENDS,
         "model": {"ref":"owned", "provider":"openai", "model":"gpt-4.1",
             "pricing":{"input_nanos_per_million":"1",

@@ -161,7 +161,6 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
         capability_token: lease.model_access.token.clone(),
         attempt_id: lease.attempt_id.clone(),
         fence: lease.fence.clone(),
-        deletion_generation: lease.deletion_generation.clone(),
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
@@ -193,7 +192,6 @@ async fn settle(f: &super::Fixture, lease: &Claimed) -> afd_wire::authoring::Rep
     let report = Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,

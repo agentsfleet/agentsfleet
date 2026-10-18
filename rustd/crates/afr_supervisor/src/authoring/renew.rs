@@ -30,7 +30,6 @@ pub(super) async fn keep(
         }
         let request = Renew {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             usage: observed.snapshot()?,
         };
         let response =

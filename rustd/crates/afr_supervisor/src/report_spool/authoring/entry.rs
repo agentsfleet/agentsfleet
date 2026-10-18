@@ -20,7 +20,6 @@ pub(super) struct Metadata {
     pub(super) lease_id: String,
     pub(super) attempt_id: String,
     pub(super) report_id: String,
-    pub(super) generation: String,
     #[serde(with = "afd_wire::instant")]
     pub(super) first_written_at: Timestamp,
     #[serde(with = "afd_wire::instant")]
@@ -58,7 +57,6 @@ fn valid(
         || accounting.lease_id != metadata.lease_id
         || accounting.attempt_id != metadata.attempt_id
         || accounting.accounting.report_id != metadata.report_id
-        || accounting.accounting.deletion_generation != metadata.generation
         || metadata.expires_at != afd_core::clock::after(metadata.first_written_at, PRIVATE_TTL)
         || now < metadata.first_written_at
         || now >= metadata.expires_at

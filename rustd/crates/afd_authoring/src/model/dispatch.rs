@@ -153,7 +153,6 @@ impl ModelCalls {
         let digest = replay::digest(&(
             &request.attempt_id,
             &request.fence,
-            &request.deletion_generation,
             &request.dispatch_id,
             request.call_index,
             &request.request,
