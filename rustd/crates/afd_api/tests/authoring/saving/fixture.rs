@@ -2,10 +2,7 @@
 
 use super::super::{fixture::Fixture, json_body, mint, send, send_with_headers};
 use afd_auth::Scope;
-use afd_core::{
-    clock,
-    env::{EnvSource as _, ProcessEnv},
-};
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{
     Dragonfly, FleetStreams, ReadyIndex,
     config::{DragonflyConfig, DragonflyRole},
@@ -99,8 +96,8 @@ impl Case {
     }
 
     pub(super) async fn fund(&self) {
-        sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'http-save',$2,$2)")
-            .bind(self.base.tenant.as_str()).bind(clock::now().as_millis()).bind(crate::authoring::FUNDED_NANOS)
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
+            .bind(self.base.tenant.as_str()).bind(crate::authoring::FUNDED_NANOS)
             .execute(&mut *self.base.db.acquire().await.expect("wallet connection")).await.expect("fund wallet");
     }
 

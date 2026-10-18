@@ -32,7 +32,6 @@
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
 /// reads these field names, so `afd_wire` owns them.
 use afd_api_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
-use afd_core::clock::UnixMillis;
 use afd_core::spelling::to_spelling;
 use octocrab::models::webhook_events::payload::{
     PullRequestWebhookEventAction, WorkflowRunWebhookEventAction,
@@ -138,10 +137,9 @@ pub(crate) fn classify(
     policy: Policy,
     event: &str,
     body: &[u8],
-    received_at: UnixMillis,
+    received_at: jiff::Timestamp,
 ) -> Result<Ingest, serde_json::Error> {
     let delivery = WebhookEvent::try_from_header_and_body(event, body)?;
-    let stamp = receipt_stamp(received_at);
     // Read once from the COMMON half, before any per-event match: both digests
     // carry it and both policies refuse without it.
     let Some(repository) = delivery
@@ -153,8 +151,10 @@ pub(crate) fn classify(
     };
 
     Ok(match delivery.specific {
-        WebhookEventPayload::WorkflowRun(run) => workflow_run(&run, &repository, &stamp),
-        WebhookEventPayload::PullRequest(pull) => pull_request(policy, &pull, &repository, &stamp),
+        WebhookEventPayload::WorkflowRun(run) => workflow_run(&run, &repository, received_at),
+        WebhookEventPayload::PullRequest(pull) => {
+            pull_request(policy, &pull, &repository, received_at)
+        }
         _ => Ingest::Unsupported,
     })
 }
@@ -163,7 +163,7 @@ pub(crate) fn classify(
 fn workflow_run(
     payload: &octocrab::models::webhook_events::payload::WorkflowRunWebhookEventPayload,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
     if payload.action != WorkflowRunWebhookEventAction::Completed {
         return Ingest::Ignore(REASON_NON_COMPLETED_ACTION);
@@ -190,7 +190,7 @@ fn workflow_run(
         run_id: run.id,
         head_branch: run.head_branch.as_str().into(),
         workflow_name: run.name.as_str().into(),
-        received_at: received_at.into(),
+        received_at,
     };
     encoded(&digest)
 }
@@ -200,7 +200,7 @@ fn pull_request(
     policy: Policy,
     payload: &octocrab::models::webhook_events::payload::PullRequestWebhookEventPayload,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
     let pull = &payload.pull_request;
     let head_ref = pull.head.ref_field.as_str();
@@ -217,7 +217,7 @@ fn pull_request(
 fn pull_request_digest(
     payload: &octocrab::models::webhook_events::payload::PullRequestWebhookEventPayload,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
     let pull = &payload.pull_request;
     // Both words are taken from the same `serde` attribute that PARSED them,
@@ -252,7 +252,7 @@ fn pull_request_digest(
         head_ref: pull.head.ref_field.as_str().into(),
         base_ref: pull.base.ref_field.as_str().into(),
         head_sha: pull.head.sha.as_str().into(),
-        received_at: received_at.into(),
+        received_at,
     };
     encoded(&digest)
 }
@@ -283,17 +283,6 @@ fn is_repair_branch(reference: &str) -> bool {
 /// The digest, encoded, or the ignore a body that will not encode earns.
 fn encoded<T: Serialize>(digest: &T) -> Ingest {
     serde_json::to_string(digest).map_or(Ingest::Ignore(REASON_MISSING_REPOSITORY), Ingest::Accept)
-}
-
-/// The receipt stamp a digest carries, as RFC 3339 with a `Z` and no fraction.
-///
-/// Formatted by `jiff`. A timestamp this daemon cannot represent falls back to
-/// the epoch rather than failing a delivery over a clock.
-fn receipt_stamp(received_at: UnixMillis) -> String {
-    jiff::Timestamp::from_second(received_at.as_seconds())
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string()
 }
 
 #[cfg(test)]

@@ -171,7 +171,7 @@ fn serialize(page: &LibraryPage, provider: Option<&str>, limit: u32) -> Vec<u8> 
             }))
         });
     let response = CatalogueResponse {
-        version: Cow::Owned(version_stamp(page.max_updated_ms)),
+        version: Cow::Owned(version_stamp(page.max_updated)),
         models: page.models.iter().map(model).collect(),
         // Never counted — the key stays, as the guidelines require.
         total: None,
@@ -231,67 +231,52 @@ fn respond(headers: &HeaderMap, body: Vec<u8>) -> Response {
 }
 
 /// The catalogue's version stamp: the newest row's change date, `YYYY-MM-DD`
-/// UTC. An empty catalogue yields 0 → `1970-01-01`, a valid not-yet-
-/// provisioned state rather than an error. Values outside Jiff's supported
-/// calendar range retain their numeric timestamp as the version stamp.
-fn version_stamp(max_updated_ms: i64) -> String {
-    jiff::Timestamp::from_millisecond(max_updated_ms.max(0)).map_or_else(
-        |_outside_calendar| max_updated_ms.to_string(),
-        |timestamp| {
-            timestamp
-                .to_zoned(jiff::tz::TimeZone::UTC)
-                .date()
-                .to_string()
-        },
-    )
+/// UTC. An empty catalogue reads as the epoch, `1970-01-01`, a valid
+/// not-yet-provisioned state rather than an error.
+fn version_stamp(max_updated: Option<jiff::Timestamp>) -> String {
+    let newest = max_updated.map_or(jiff::Timestamp::UNIX_EPOCH, |at| {
+        at.max(jiff::Timestamp::UNIX_EPOCH)
+    });
+    newest.to_zoned(jiff::tz::TimeZone::UTC).date().to_string()
 }
 
 mod input;
 
 #[cfg(test)]
 mod tests {
+    use jiff::Timestamp;
+
     use super::version_stamp;
 
-    // Jiff 0.2.35's millisecond constructor caps at MAX seconds * 1000,
-    // excluding the final 999 milliseconds that Timestamp::MAX represents.
-    const LAST_CONSTRUCTIBLE_MS: i64 = 253_402_207_200_000;
-
     #[test]
-    fn the_version_stamp_renders_epoch_ms_as_a_utc_date() {
-        // Midnight UTC on 2025-04-29, in epoch milliseconds.
-        assert_eq!(version_stamp(1_745_884_800_000), "2025-04-29");
+    fn the_version_stamp_renders_the_newest_change_as_a_utc_date() {
+        // Midnight UTC on 2025-04-29.
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(1_745_884_800, 0))),
+            "2025-04-29"
+        );
     }
 
     #[test]
     fn an_empty_or_pre_epoch_catalogue_clamps_to_the_epoch_date() {
-        assert_eq!(version_stamp(0), "1970-01-01");
-        assert_eq!(version_stamp(-1), "1970-01-01");
+        assert_eq!(version_stamp(None), "1970-01-01");
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(-1, 0))),
+            "1970-01-01"
+        );
     }
 
     #[test]
     fn a_leap_day_survives_the_civil_arithmetic() {
         // 2024-02-29 00:00 UTC — the branchy corner of any date algorithm.
-        assert_eq!(version_stamp(1_709_164_800_000), "2024-02-29");
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(1_709_164_800, 0))),
+            "2024-02-29"
+        );
     }
 
     #[test]
-    fn the_last_supported_millisecond_still_renders_a_utc_date() {
-        assert_eq!(version_stamp(LAST_CONSTRUCTIBLE_MS), "9999-12-30");
-    }
-
-    #[test]
-    fn timestamps_beyond_the_calendar_range_keep_their_numeric_value() {
-        for millis in [
-            LAST_CONSTRUCTIBLE_MS + 1,
-            jiff::Timestamp::MAX.as_millisecond(),
-            i64::MAX,
-        ] {
-            assert_eq!(version_stamp(millis), millis.to_string());
-        }
-    }
-
-    #[test]
-    fn the_most_negative_timestamp_clamps_before_calendar_conversion() {
-        assert_eq!(version_stamp(i64::MIN), "1970-01-01");
+    fn the_last_instant_jiff_holds_still_renders_a_utc_date() {
+        assert_eq!(version_stamp(Some(Timestamp::MAX)), "9999-12-30");
     }
 }

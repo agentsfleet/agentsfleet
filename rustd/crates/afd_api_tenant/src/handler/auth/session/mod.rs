@@ -130,7 +130,7 @@ pub(crate) async fn poll<D: Services>(
             status: Cow::Borrowed(status_name(waiting.status)),
             cli_public_key: Cow::Owned(waiting.cli_public_key),
             token_name: Cow::Owned(waiting.token_name),
-            expires_at_ms: waiting.expires_at_ms,
+            expires_at: waiting.expires_at,
         })
         .into_response(),
         Err(error) => refuse(&error, EVENT_POLL),

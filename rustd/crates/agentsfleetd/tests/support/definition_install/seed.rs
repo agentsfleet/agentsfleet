@@ -3,13 +3,14 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
+use afd_db::test_util::{InstallSeed, TenantSeed, WorkspaceSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
+use jiff::Timestamp;
 
-use crate::e2e::{GOOD_KEK, unique_ids};
+use crate::e2e::GOOD_KEK;
 
 /// The GitHub connection handle a workspace holds: the App installation the
 /// broker mints for. Its ids are never dialled; [`MintedToken`] answers.
@@ -35,32 +36,33 @@ pub(super) async fn seed_workspace(
     booted: &agentsfleetd::serve::Booted,
     workspace: &str,
     tenant: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) {
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, 'definition-tenant', $2, $2) ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(tenant)
-    .bind(now.as_millis())
-    .execute(&mut *connection)
-    .await
-    .expect("the tenant row must insert");
-    sqlx::query(
-        "INSERT INTO core.workspaces (id, tenant_id, name, created_at)
-         VALUES ($1::uuid, $2::uuid, 'definition-workspace', $3) ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(workspace)
-    .bind(tenant)
-    .bind(now.as_millis())
-    .execute(&mut *connection)
-    .await
-    .expect("the workspace row must insert");
+    let seeded: bool = sqlx::query_scalar(crate::e2e_seed::WORKSPACE_EXISTS)
+        .bind(workspace)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the workspace probe must run");
+    if seeded {
+        return;
+    }
+    TenantSeed::new(tenant)
+        .name("definition-tenant")
+        .at(now)
+        .insert(&mut *connection)
+        .await
+        .expect("the tenant row must insert");
+    WorkspaceSeed::new(workspace, tenant)
+        .name("definition-workspace")
+        .at(now)
+        .insert(&mut *connection)
+        .await
+        .expect("the workspace row must insert");
 }
 
 /// The routing row the GitHub connect flow lands beside its handle.
@@ -68,25 +70,20 @@ pub(super) async fn seed_install(
     booted: &agentsfleetd::serve::Booted,
     workspace: &str,
     installation: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) {
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.connector_installs
-           (id, provider, external_account_id, workspace_id, installed_by, scopes,
-            created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4::uuid, '', '{}', $5, $5)",
+    InstallSeed::new(
+        afd_connector::Provider::GitHub.id(),
+        installation,
+        workspace,
     )
-    .bind(unique_ids().0)
-    .bind(afd_connector::Provider::GitHub.id())
-    .bind(installation)
-    .bind(workspace)
-    .bind(now.as_millis())
-    .execute(&mut *connection)
+    .at(now)
+    .insert(&mut *connection)
     .await
     .expect("the routing row must insert");
 }
@@ -98,7 +95,7 @@ pub(crate) async fn seal(
     workspace: &Uuid7,
     name: &str,
     body: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) {
     let kek = Arc::new(Kek::from_hex(GOOD_KEK).expect("the lane key is well formed"));
     let raw = serde_json::value::RawValue::from_string(body.to_owned()).expect("a JSON body");

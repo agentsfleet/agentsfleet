@@ -171,7 +171,7 @@ pub(crate) async fn create<D: Services>(
 
     let created = services
         .workspace_directory()
-        .create(&tenant, chosen, person.subject().as_str(), services.now())
+        .create(&tenant, chosen, services.now())
         .await
         .map_err(Refusal::conflict_or_at(
             EVENT_CREATE,

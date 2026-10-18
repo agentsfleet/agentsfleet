@@ -82,19 +82,23 @@ impl Case {
 
     pub(super) async fn install(&self, team: &str, scopes: &[&str]) -> Uuid7 {
         let id = mint();
-        sqlx::query("INSERT INTO core.connector_installs(id,provider,external_account_id,workspace_id,installed_by,scopes,created_at,updated_at) VALUES($1::uuid,'slack',$2,$3::uuid,$4,$5,$6,$6)")
-            .bind(id.as_str()).bind(team).bind(self.base.workspace.as_str())
-            .bind(self.base.owner.as_str()).bind(scopes).bind(clock::now().as_millis())
+        sqlx::query("INSERT INTO connector.installs(id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES($1::uuid,'slack',$2,$3::uuid,$4,now(),now())")
+            .bind(id.as_str()).bind(team).bind(self.base.workspace.as_str()).bind(scopes)
             .execute(&mut *self.base.db.acquire().await.expect("install connection"))
             .await.expect("seed routing install");
         id
     }
 
     pub(super) async fn scopes(&self, id: &Uuid7, scopes: &[&str]) {
-        let changed = sqlx::query("UPDATE core.connector_installs SET scopes=$2 WHERE id=$1::uuid AND workspace_id=$3::uuid")
-            .bind(id.as_str()).bind(scopes).bind(self.base.workspace.as_str())
-            .execute(&mut *self.base.db.acquire().await.expect("scope connection"))
-            .await.expect("change owned install scopes");
+        let changed = sqlx::query(
+            "UPDATE connector.installs SET scopes=$2 WHERE id=$1::uuid AND workspace_id=$3::uuid",
+        )
+        .bind(id.as_str())
+        .bind(scopes)
+        .bind(self.base.workspace.as_str())
+        .execute(&mut *self.base.db.acquire().await.expect("scope connection"))
+        .await
+        .expect("change owned install scopes");
         assert_eq!(changed.rows_affected(), 1);
     }
 

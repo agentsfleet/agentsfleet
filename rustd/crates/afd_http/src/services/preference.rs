@@ -14,10 +14,10 @@
 //! is a read like any other, and `Ok(None)` is the caller's cue to refuse
 //! rather than to invent a user row.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_tenant::Result as TenantResult;
 use afd_tenant::preference::{Pref, PrefKey, Preferences, Signals};
+use jiff::Timestamp;
 
 /// Everything the preference and onboarding routes act through.
 pub trait WorkspacePreferences: Send + Sync + std::fmt::Debug + 'static {
@@ -53,7 +53,7 @@ pub trait WorkspacePreferences: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = TenantResult<()>> + Send;
 
     /// The five derivable onboarding signals for this workspace.
@@ -90,7 +90,7 @@ impl WorkspacePreferences for Preferences {
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = TenantResult<()>> + Send {
         Self::upsert(self, user, workspace, key, value, now)
     }

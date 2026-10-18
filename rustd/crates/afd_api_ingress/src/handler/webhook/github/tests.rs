@@ -12,8 +12,6 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::clock::UnixMillis;
-
 use super::{Ingest, Policy, classify};
 
 /// The header GitHub names a workflow run in.
@@ -25,7 +23,7 @@ const EVENT_PULL_REQUEST: &str = "pull_request";
 /// A fixed receipt instant, so a digest is byte-comparable across runs.
 ///
 /// 2026-08-26T12:00:00Z.
-const RECEIVED_AT: UnixMillis = UnixMillis::from_millis(1_787_745_600_000);
+const RECEIVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_787_745_600, 0);
 
 /// A failed run — the delivery that wakes a fleet.
 const RUN_FAILURE: &str =

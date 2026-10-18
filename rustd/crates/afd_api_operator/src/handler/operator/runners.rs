@@ -53,7 +53,7 @@ pub(crate) async fn list<D: Services>(
     };
     match services
         .runners()
-        .list_runners(page.cursor.as_ref(), page.limit, services.now())
+        .list_runners(page.cursor.as_ref(), page.limit)
         .await
     {
         Ok(rows) => Json(RunnersResponse {
@@ -102,11 +102,7 @@ pub(crate) async fn detail<D: Services>(
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services
-        .runners()
-        .runner_detail(&runner, services.now())
-        .await
-    {
+    match services.runners().runner_detail(&runner).await {
         Ok(row) => Json(detail_payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT_DETAIL),
     }
@@ -117,7 +113,7 @@ fn item(row: &StoredItem) -> RunnerItem<'static> {
         id: Cow::Owned(row.id().to_string()),
         host_id: Cow::Owned(row.host_id().to_owned()),
         sandbox_tier: Cow::Owned(row.sandbox_tier().to_owned()),
-        admin_state: row.admin_state(),
+        status: row.status(),
         liveness: row.liveness(),
         labels: row.labels().iter().cloned().map(Cow::Owned).collect(),
         last_seen_at: row.last_seen_at(),

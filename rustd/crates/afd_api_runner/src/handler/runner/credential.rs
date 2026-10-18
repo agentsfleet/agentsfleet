@@ -99,7 +99,7 @@ pub(crate) async fn handle<D: Services>(
         // when this borrow ends.
         Ok(minted) => Json(MintCredentialResponse {
             token: minted.token.as_str().into(),
-            expires_at_ms: minted.expires_at_ms,
+            expires_at: minted.expires_at,
         })
         .into_response(),
         // Every refusal carries its own registry code and sentence. The one

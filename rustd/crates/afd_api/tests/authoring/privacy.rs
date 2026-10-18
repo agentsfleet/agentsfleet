@@ -5,7 +5,6 @@ use afd_auth::{
     Scope, credential::Presented, directory::Digest, principal::Subject, scope::ScopeSet,
 };
 use afd_core::{
-    clock,
     error_code::{AUTHORING_CURSOR, AUTHORING_NOT_FOUND},
     id::Uuid7,
 };
@@ -16,16 +15,16 @@ use serde_json::{Value, json};
 /// A joined member of the owner's account, in an account of their own.
 const MEMBER: &str = "\
 WITH tenant AS (
- INSERT INTO core.tenants(id,name,created_at,updated_at) VALUES ($1::uuid,'authoring-member',$5,$5)
+ INSERT INTO identity.tenants(id,name,created_at,updated_at) VALUES ($1::uuid,'authoring-member',now(),now())
 ), person AS (
- INSERT INTO core.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
- VALUES ($2::uuid,$1::uuid,$2,$2,$5,$5)
+ INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
+ VALUES ($2::uuid,$1::uuid,$2,$2,now(),now())
 ), joined AS (
- INSERT INTO core.memberships(id,tenant_id,user_id,role,created_at)
- SELECT $6::uuid,$7::uuid,$2::uuid,'member',$5
+ INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
+ SELECT $5::uuid,$6::uuid,$2::uuid,'member',now()
 )
-INSERT INTO core.api_keys(id,tenant_id,key_name,description,key_hash,created_by,active,created_at,updated_at)
-VALUES ($3::uuid,$1::uuid,'member','',$4,$2,true,$5,$5)";
+INSERT INTO identity.api_keys(id,tenant_id,name,description,key_hash,created_by_subject,created_at,updated_at)
+VALUES ($3::uuid,$1::uuid,'member','',$4,$2,now(),now())";
 
 struct Member {
     id: Uuid7,
@@ -42,7 +41,6 @@ async fn member(f: &mut Fixture) -> Member {
         .bind(id.as_str())
         .bind(mint().as_str())
         .bind(digest.as_str())
-        .bind(clock::now().as_millis())
         .bind(mint().as_str())
         .bind(f.tenant.as_str())
         .execute(&mut *f.db.acquire().await.expect("seed connection"))

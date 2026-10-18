@@ -96,7 +96,7 @@ impl Fixture {
                 &self.admin,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         // Named in the message rather than left to `expect`: this seals two

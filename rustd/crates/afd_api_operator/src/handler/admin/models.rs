@@ -110,15 +110,15 @@ pub(crate) async fn create<D: Services>(
         Ok(request) => request,
         Err(detail) => return reject(error_code::INVALID_REQUEST, detail),
     };
-    let input = ModelInput::new(
-        request.provider.into_owned(),
-        request.model_id.into_owned(),
-        store_rates(request.rates),
-    );
-    match services.models().create(&input, services.now()).await {
+    let input = ModelInput {
+        provider: request.provider.into_owned(),
+        model_name: request.model_id.into_owned(),
+        rates: store_rates(request.rates),
+    };
+    match services.models().create(input, services.now()).await {
         Ok(CreateModel::Created(model)) => {
             let actor_id = identity.subject();
-            let model_id = model.id().as_str();
+            let model_id = model.id.as_str();
             tracing::info!(actor_id, model_id, event = "admin_model_created",);
             (
                 StatusCode::CREATED,
@@ -175,7 +175,7 @@ pub(crate) async fn update<D: Services>(
         Ok(rates) => rates,
         Err(detail) => return reject(error_code::INVALID_REQUEST, detail),
     };
-    match services.models().update(&id, rates, services.now()).await {
+    match services.models().update(&id, rates).await {
         Ok(true) => {
             let actor_id = identity.subject();
             let model_id = id.as_str();
@@ -226,7 +226,7 @@ pub(crate) async fn delete<D: Services>(
         Ok(id) => id,
         Err(refused) => return refused.into_response(),
     };
-    match services.models().delete(&id, services.now()).await {
+    match services.models().delete(&id).await {
         Ok(DeleteModel::Deleted) => {
             let actor_id = identity.subject();
             let model_id = id.as_str();
@@ -277,26 +277,26 @@ const BOUNDS: Sentences = Sentences::new(
     DETAIL_RATES_NONNEGATIVE,
 );
 
-fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
-    afd_admin::ModelRates::new(
-        rates.context_cap_tokens,
-        rates.input_nanos_per_mtok,
-        rates.cached_input_nanos_per_mtok,
-        rates.output_nanos_per_mtok,
-    )
+const fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
+    afd_admin::ModelRates {
+        context_cap_tokens: rates.context_cap_tokens,
+        input_nanos_per_mtok: rates.input_nanos_per_mtok,
+        cached_input_nanos_per_mtok: rates.cached_input_nanos_per_mtok,
+        output_nanos_per_mtok: rates.output_nanos_per_mtok,
+    }
 }
 
 fn item(model: &Model) -> AdminModelItem<'static> {
-    let rates = model.rates();
+    let rates = &model.rates;
     AdminModelItem {
-        id: Cow::Owned(model.id().to_string()),
-        provider: Cow::Owned(model.provider().to_owned()),
-        model_id: Cow::Owned(model.model_id().to_owned()),
+        id: Cow::Owned(model.id.to_string()),
+        provider: Cow::Owned(model.provider.clone()),
+        model_id: Cow::Owned(model.model_name.clone()),
         rates: ModelRates {
-            context_cap_tokens: rates.context_cap_tokens(),
-            input_nanos_per_mtok: rates.input_nanos_per_mtok(),
-            cached_input_nanos_per_mtok: rates.cached_input_nanos_per_mtok(),
-            output_nanos_per_mtok: rates.output_nanos_per_mtok(),
+            context_cap_tokens: rates.context_cap_tokens,
+            input_nanos_per_mtok: rates.input_nanos_per_mtok,
+            cached_input_nanos_per_mtok: rates.cached_input_nanos_per_mtok,
+            output_nanos_per_mtok: rates.output_nanos_per_mtok,
         },
     }
 }

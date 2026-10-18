@@ -13,7 +13,7 @@ fn page_query_accepts_defaults_and_composite_cursors() {
 
     let mut params = HashMap::new();
     params.insert(QUERY_LIMIT.to_owned(), "100".to_owned());
-    let cursor = "1725000000000:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+    let cursor = "2024-08-30T06:40:00Z:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
     params.insert(QUERY_STARTING_AFTER.to_owned(), cursor.to_owned());
     let parsed = page(&params).expect("the boundary is canonical");
     assert_eq!(parsed.limit, 100);
@@ -72,7 +72,7 @@ fn lease_query_parses_independent_filters_and_refuses_each_bad_dimension() {
 
 #[test]
 fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
-    let cursor = "1725000000000:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+    let cursor = "2024-08-30T06:40:00Z:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
     let params = HashMap::from([
         (QUERY_LIMIT.to_owned(), "2".to_owned()),
         (QUERY_STARTING_AFTER.to_owned(), cursor.to_owned()),
@@ -80,8 +80,8 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
             QUERY_EVENT_TYPE.to_owned(),
             "runner_online,runner_offline".to_owned(),
         ),
-        (QUERY_SINCE.to_owned(), "10".to_owned()),
-        (QUERY_UNTIL.to_owned(), "20".to_owned()),
+        (QUERY_SINCE.to_owned(), "2024-08-30T06:40:10Z".to_owned()),
+        (QUERY_UNTIL.to_owned(), "2024-08-30T06:40:20.5Z".to_owned()),
     ]);
     let parsed = events(&params).expect("the event query is valid");
     assert_eq!(parsed.limit, 2);
@@ -94,6 +94,8 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
         (QUERY_EVENT_TYPE, "runner_online,", DETAIL_BAD_EVENTS),
         (QUERY_EVENT_TYPE, "not_an_event", DETAIL_BAD_EVENTS),
         (QUERY_SINCE, "yesterday", DETAIL_BAD_EVENTS),
+        (QUERY_SINCE, "1725000010000", DETAIL_BAD_EVENTS),
+        (QUERY_UNTIL, "2024-08-30T06:40:20.0001Z", DETAIL_BAD_EVENTS),
     ] {
         assert_eq!(
             events(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
@@ -102,8 +104,8 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
     }
     assert_eq!(
         events(&HashMap::from([
-            (QUERY_SINCE.to_owned(), "21".to_owned()),
-            (QUERY_UNTIL.to_owned(), "20".to_owned()),
+            (QUERY_SINCE.to_owned(), "2024-08-30T06:40:21Z".to_owned()),
+            (QUERY_UNTIL.to_owned(), "2024-08-30T06:40:20Z".to_owned()),
         ]))
         .err(),
         Some(DETAIL_BAD_EVENTS)

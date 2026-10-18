@@ -250,7 +250,7 @@ impl Holder {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("ownership-fleet")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await

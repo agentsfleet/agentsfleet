@@ -33,7 +33,7 @@ pub(super) fn page_response<'page>(
     let next_cursor = page.more.then(|| page.rows.last()).flatten().map(|last| {
         Cow::Owned(
             Cursor::Timestamp {
-                at_ms: last.created_at_ms,
+                at: last.created_at,
                 id: last.id.clone(),
             }
             .to_string(),
@@ -72,7 +72,7 @@ fn summary<'row>(
     Ok(WorkspaceSummary {
         id: Cow::Borrowed(&row.id),
         name: row.name.as_deref().map(Cow::Borrowed),
-        created_at: row.created_at_ms,
+        created_at: row.created_at,
         account: WorkspaceAccount {
             tenant_id: Cow::Borrowed(account.tenant.as_str()),
             owner_name: Cow::Borrowed(&account.owner_name),
@@ -133,7 +133,7 @@ mod tests {
             rows: vec![WorkspaceRow {
                 id: WORKSPACE.to_owned(),
                 name: None,
-                created_at_ms: 1,
+                created_at: jiff::Timestamp::UNIX_EPOCH,
                 tenant_id: Uuid7::parse(STRANGER).expect("the fixture identifier is UUIDv7"),
             }],
             more: false,

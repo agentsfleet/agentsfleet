@@ -9,12 +9,12 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_ingress::slack::KIND_RESIDENT;
 use afd_memory::Memories;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 
 use super::resident_bound::{resident_document, resident_name};
 use super::*;
@@ -208,7 +208,7 @@ async fn a_fact_captured_in_one_channel_stays_there(
         visibility: afd_wire::memory::Visibility::Fleet,
     };
     memories
-        .capture(channel, &[fact], UnixMillis::from_millis(1_700_000_000_000))
+        .capture(channel, &[fact], Timestamp::constant(1_700_000_000, 0))
         .await
         .expect("the resident captures a fact");
 

@@ -175,8 +175,9 @@ async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &
     assert_eq!(renewed.status().as_u16(), 200);
     assert!(
         field(&json(renewed).await, "lease_expires_at")
-            .as_i64()
-            .is_some_and(|expires| expires > run.seeded_at.as_millis()),
+            .as_str()
+            .and_then(|expires| expires.parse::<jiff::Timestamp>().ok())
+            .is_some_and(|expires| expires > run.seeded_at),
         "renewal returns the live deadline the datastore advanced"
     );
 }

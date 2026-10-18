@@ -80,7 +80,7 @@ pub(crate) async fn handle<D: Services>(
         .await
     {
         Ok(expires_at) => Json(RenewResponse {
-            lease_expires_at: expires_at.as_millis(),
+            lease_expires_at: expires_at,
         })
         .into_response(),
         Err(error) => refuse(&error, EVENT),

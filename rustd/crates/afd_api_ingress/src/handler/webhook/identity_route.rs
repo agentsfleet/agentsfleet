@@ -148,7 +148,7 @@ pub(crate) async fn receive<D: Services>(
         signature: header(&headers, svix::SIGNATURE_HEADER).unwrap_or_default(),
     };
 
-    match svix::verify_at(&secret, presented, &body, services.now().as_seconds()) {
+    match svix::verify_at(&secret, presented, &body, services.now().as_second()) {
         Verdict::Verified => {}
         Verdict::Refused(refusal) => {
             if let Some(reason) = signup_failure(refusal) {

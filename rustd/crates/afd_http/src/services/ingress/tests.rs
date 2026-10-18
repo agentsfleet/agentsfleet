@@ -6,7 +6,6 @@
 use std::sync::Arc;
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
@@ -16,6 +15,7 @@ use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, Resident};
 use afd_ingress::{Binding, Delivery, Ingress, Surface};
 use afd_vault::Vault;
+use jiff::Timestamp;
 
 use super::WebhookIngress;
 
@@ -195,7 +195,7 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
     let (fleet, workspace) = (fleet(), workspace());
     let channel: ChannelId = "C0123456789".parse().expect("the channel is well formed");
     let resident = Resident::for_channel("TSEAM", &channel).expect("the resident is named");
-    let now = UnixMillis::from_millis(1);
+    let now = Timestamp::UNIX_EPOCH;
 
     assert!(refused(
         &WebhookIngress::mention_subscribers(&ingress, &workspace, "slack", &channel).await

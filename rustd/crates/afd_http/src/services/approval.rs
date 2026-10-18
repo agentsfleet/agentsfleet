@@ -13,7 +13,6 @@
 use afd_approval::{
     Cursor, Decision, Filter, GateRow, Inbox, Resolution, Result as ApprovalResult,
 };
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 /// Everything the approval routes act through.
@@ -53,7 +52,6 @@ pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {
         by: &str,
         detail: &str,
         fleet: Option<&str>,
-        now: UnixMillis,
     ) -> impl Future<Output = ApprovalResult<Resolution>> + Send;
 }
 
@@ -84,8 +82,7 @@ impl WorkspaceApprovals for Inbox {
         by: &str,
         detail: &str,
         fleet: Option<&str>,
-        now: UnixMillis,
     ) -> impl Future<Output = ApprovalResult<Resolution>> + Send {
-        Self::resolve(self, action, outcome, by, detail, fleet, now)
+        Self::resolve(self, action, outcome, by, detail, fleet)
     }
 }

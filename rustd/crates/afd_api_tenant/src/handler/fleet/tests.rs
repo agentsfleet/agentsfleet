@@ -18,6 +18,9 @@ fn fleet_id() -> Uuid7 {
         .unwrap_or_else(|error| panic!("fixture id is canonical: {error}"))
 }
 
+/// When the fixture fleet was made.
+const CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 42_000_000);
+
 #[test]
 fn a_page_cursor_names_the_last_returned_row() {
     let id = fleet_id().to_string();
@@ -26,8 +29,8 @@ fn a_page_cursor_names_the_last_returned_row() {
             id: id.clone(),
             name: "reviewer".to_owned(),
             status: FleetStatus::Active,
-            created_at_ms: 42,
-            updated_at_ms: 43,
+            created_at: CREATED_AT,
+            updated_at: CREATED_AT,
             triggers: None,
             events_processed: 7,
             budget_used_nanos: 11,
@@ -42,6 +45,6 @@ fn a_page_cursor_names_the_last_returned_row() {
     let parsed = parse_cursor(response.next_cursor.as_deref())
         .unwrap_or_else(|error| panic!("emitted cursor parses: {error:?}"))
         .unwrap_or_else(|| panic!("a page with more rows emits a cursor"));
-    assert_eq!(parsed.created_at_ms, 42);
+    assert_eq!(parsed.created_at, CREATED_AT);
     assert_eq!(parsed.id.as_str(), id);
 }

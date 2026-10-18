@@ -3,10 +3,10 @@
 //! The guard is proved on the write's own transaction (`afd_cron`'s
 //! `store::guarded`), and only a write that landed is reconciled.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Reconciled, Refused, Result as CronResult};
 use afd_db::Precondition;
+use jiff::Timestamp;
 
 use super::SchedulePlane;
 
@@ -16,7 +16,7 @@ impl SchedulePlane {
         &self,
         workspace: &Uuid7,
         new: NewSchedule<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> CronResult<Result<Reconciled, Refused>> {
         let token = self.token(now)?;
@@ -26,7 +26,7 @@ impl SchedulePlane {
             .await?
         {
             Err(refused) => Ok(Err(refused)),
-            Ok(created) => Ok(Ok(self.service.reconcile(&created, &token, now).await?)),
+            Ok(created) => Ok(Ok(self.service.reconcile(&created, &token).await?)),
         }
     }
 
@@ -36,19 +36,19 @@ impl SchedulePlane {
         fleet: &Uuid7,
         schedule: &Uuid7,
         change: Change<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> CronResult<Result<Option<Reconciled>, Refused>> {
         let token = self.token(now)?;
         let held = match self
             .store()
-            .claim_change_guarded(fleet, schedule, change, &token, now, guard)
+            .claim_change_guarded(fleet, schedule, change, &token, guard)
             .await?
         {
             Err(refused) => return Ok(Err(refused)),
             Ok(None) => return Ok(Ok(None)),
             Ok(Some(held)) => held,
         };
-        Ok(Ok(Some(self.service.reconcile(&held, &token, now).await?)))
+        Ok(Ok(Some(self.service.reconcile(&held, &token).await?)))
     }
 }

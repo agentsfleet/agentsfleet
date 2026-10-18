@@ -15,7 +15,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 use jiff::Timestamp;
 
-use super::{CURSOR_SEPARATOR, TEXT_FORM_PREFIX};
+use super::{CURSOR_SEPARATOR, INSTANT_END, TEXT_FORM_PREFIX};
+use crate::clock::whole_millis;
 
 /// Which direction a keyset seek walks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,9 +99,13 @@ impl Cursor {
             let value = String::from_utf8(decoded).map_err(|_utf8| InvalidCursor)?;
             return Self::of_text(value, id);
         }
-        let millis = head.parse().map_err(|_digits| InvalidCursor)?;
-        let at = Timestamp::from_millisecond(millis).map_err(|_out_of_range| InvalidCursor)?;
-        Self::of_timestamp(at, rest)
+        let end = raw.find(INSTANT_END).ok_or(InvalidCursor)?;
+        let (instant, id) = (&raw[..=end], &raw[end + INSTANT_END.len()..]);
+        let at: Timestamp = instant.parse().map_err(|_not_an_instant| InvalidCursor)?;
+        if whole_millis(at) != at {
+            return Err(InvalidCursor);
+        }
+        Self::of_timestamp(at, id)
     }
 
     /// A timestamp-boundary cursor, refusing an empty identifier.
@@ -130,11 +135,8 @@ impl Display for Cursor {
     /// Writes the form the other binary reads. See the module note.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            // Whole milliseconds, the precision every stored instant has.
-            Self::Timestamp { at, id } => {
-                let millis = at.as_millisecond();
-                write!(f, "{millis}{CURSOR_SEPARATOR}{id}")
-            }
+            // RFC 3339 in UTC, as the API serializes an instant.
+            Self::Timestamp { at, id } => write!(f, "{at}{CURSOR_SEPARATOR}{id}"),
             Self::Text { value, id } => {
                 let encoded = BASE64.encode(value.as_bytes());
                 write!(

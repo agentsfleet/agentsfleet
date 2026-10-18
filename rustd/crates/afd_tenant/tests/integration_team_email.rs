@@ -44,16 +44,21 @@ async fn an_email_attempt_is_counted_named_and_recorded_while_latest() {
         .await
         .expect("the invite is still pending");
     assert_eq!(second.attempt, 2);
-    for (attempt, status) in [
-        (second.attempt, EmailStatus::Sent),
-        (first.attempt, EmailStatus::Failed),
-    ] {
-        let recorded = fixture.team.record_email(&invite, attempt, status);
-        recorded.await.expect("a result is answered, stale or not");
-    }
+    let stamped = fixture
+        .team
+        .record_email(&invite, second.attempt, EmailStatus::Sent)
+        .await
+        .expect("the latest attempt's result is recorded");
+    let stale = fixture
+        .team
+        .record_email(&invite, first.attempt, EmailStatus::Failed)
+        .await
+        .expect("a stale result is answered, not refused");
+    assert_eq!(stale, None, "a stale attempt records nothing");
     let (status, sent_at) = email_record(&fixture, &invite).await;
     assert_eq!(status, EmailStatus::Sent, "the stale failure did not land");
     assert!(sent_at.is_some(), "the delivery is stamped");
+    assert_eq!(sent_at, stamped, "the answer is the stored stamp");
 
     nothing_counts_but_the_pending_invite_of_its_own_account(&fixture, &invite).await;
     fixture.cleanup().await;

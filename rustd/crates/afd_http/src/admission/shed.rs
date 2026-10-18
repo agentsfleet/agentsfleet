@@ -7,11 +7,12 @@
 //! the limit was and when it resets. That is the whole of what a client can act
 //! on, and it is exactly what `response` writes.
 
-use afd_core::clock::{self, UnixMillis};
+use afd_core::clock;
 use afd_core::error_code;
 use axum::extract::Request;
 use axum::response::{IntoResponse, Response};
 use http::{HeaderName, HeaderValue, header};
+use jiff::Timestamp;
 
 use super::Admission;
 use crate::envelope::ProblemResponse;
@@ -86,9 +87,8 @@ pub(super) fn response(admission: &Admission, request: &Request) -> Response {
 ///
 /// Pure, taking the instant rather than reading the clock, which is what
 /// `afd_core::clock` asks callers to do wherever the decision can be handed a
-/// value. Signed and saturating: `respondBackpressureShed` casts its sum to
-/// `u64`, so a host whose clock is set before 1970 wraps there into a reset
-/// time roughly 584 billion years away.
-fn reset_epoch_seconds(now: UnixMillis) -> i64 {
-    now.as_seconds().saturating_add(RETRY_AFTER_SECONDS)
+/// value. Signed and saturating, so a host whose clock is set before 1970
+/// answers a past reset time rather than wrapping.
+fn reset_epoch_seconds(now: Timestamp) -> i64 {
+    now.as_second().saturating_add(RETRY_AFTER_SECONDS)
 }

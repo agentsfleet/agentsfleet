@@ -247,7 +247,7 @@ pub(crate) async fn replace<D: Services>(
 
     services
         .secrets()
-        .replace(&owned.workspace, &name, &secret, services.now())
+        .replace(&owned.workspace, &name, &secret)
         .await
         .map_err(Refusal::at(EVENT_REPLACE))?;
 

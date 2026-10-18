@@ -13,9 +13,8 @@ use std::sync::Arc;
 #[cfg(feature = "openapi")]
 use afd_api_wire::tenant_provider::TenantProviderResponse;
 use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderRequest};
-use afd_billing::Posture;
 use afd_core::error_code;
-use afd_credential::provider::{Activation, Selection};
+use afd_credential::provider::Activation;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -29,15 +28,15 @@ use crate::services::{Services, TenantProviders as _};
 use super::{
     DETAIL_MALFORMED_BODY, DETAIL_MODEL_NOT_IN_CATALOGUE, DETAIL_NO_PRIMARY_WORKSPACE,
     DETAIL_PLATFORM_KEY_MISSING, DETAIL_SECRET_DATA_MALFORMED, DETAIL_SECRET_NOT_FOUND,
-    DETAIL_SECRET_REF_REQUIRED, EVENT_APPLY, EVENT_RESET, EVENT_TENANT, from_selection,
+    DETAIL_SECRET_REF_REQUIRED, EVENT_APPLY, EVENT_RESET, EVENT_TENANT, from_default, from_own,
 };
 
 /// `DELETE /v1/tenants/me/provider` — back to the platform default, explicitly.
 ///
-/// Writes an explicit platform row rather than deleting the tenant's, so the
-/// dashboard can tell "explicitly reset" from "never configured". The written
-/// provider/model/cap are copied from the live default at reset time, so a
-/// default repointed later is not reflected by this row's view.
+/// Points the tenant's row at the platform default rather than deleting it, so
+/// the dashboard can tell "explicitly reset" from "never configured". The
+/// view follows the live default, so a default repointed later is what the
+/// tenant then runs on.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/tenants/me/provider",
@@ -45,8 +44,8 @@ use super::{
     operation_id = "delete_tenant_provider",
     summary = "Reset tenant LLM provider to platform default",
     description = concat!(
-        "Equivalent to `PUT {mode: \"platform\"}`. Writes the explicit ",
-        "mode=platform row so the dashboard can distinguish \"never ",
+        "Equivalent to `PUT {mode: \"platform\"}`. Writes an explicit ",
+        "platform selection so the dashboard can distinguish \"never ",
         "configured\" from \"explicitly reset\". ",
     ),
     responses(
@@ -77,21 +76,14 @@ pub(crate) async fn reset<D: Services>(
             )
         })?;
 
-    let written = Selection {
-        posture: Posture::Platform,
-        provider: default.provider.clone(),
-        model: default.model.clone(),
-        context_cap_tokens: default.context_cap_tokens,
-        secret_ref: None,
-    };
     store
-        .upsert(&tenant, &written, services.now())
+        .reset(&tenant)
         .await
         .map_err(Refusal::at(EVENT_RESET))?;
 
     // The default row exists — the refusal above is what proves it — so the
     // availability flag is true by construction, not by a second read.
-    Ok(Json(from_selection(&written, true)).into_response())
+    Ok(Json(from_default(&default, true)).into_response())
 }
 
 /// `PUT /v1/tenants/me/provider` — choose the platform default or your own key.
@@ -208,5 +200,5 @@ pub(crate) async fn apply<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_APPLY))?
         .is_some();
-    Ok(Json(from_selection(&written, available)).into_response())
+    Ok(Json(from_own(&written, available)).into_response())
 }

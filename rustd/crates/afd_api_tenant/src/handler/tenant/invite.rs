@@ -152,7 +152,7 @@ pub(crate) async fn list<D: Services>(
 ) -> Result<Response, Refusal> {
     let invites = services
         .team()
-        .invitations(owner.tenant(), services.now())
+        .invitations(owner.tenant())
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
     let dashboard = services.dashboard();
@@ -197,7 +197,7 @@ pub(crate) async fn revoke<D: Services>(
 ) -> Result<Response, Refusal> {
     services
         .team()
-        .revoke_invitation(owner.tenant(), invite.id(), services.now())
+        .revoke_invitation(owner.tenant(), invite.id())
         .await
         .map_err(refusal_at(EVENT_REVOKE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -231,7 +231,7 @@ pub(crate) async fn waiting<D: Services>(
     let me = me(&*services, identity.person()).await?;
     let waiting = services
         .team()
-        .waiting_for(&me.email, services.now())
+        .waiting_for(&me.email)
         .await
         .map_err(Refusal::at(EVENT_WAITING))?;
     Ok(Json(one_page(waiting.iter().map(waiting_invite).collect())).into_response())
@@ -321,6 +321,6 @@ fn waiting_invite(waiting: &Waiting) -> WaitingInvite<'_> {
             tenant_id: Cow::Borrowed(waiting.tenant.as_str()),
             owner_name: Cow::Borrowed(&waiting.owner_name),
         },
-        expires_at: waiting.expires_at_ms,
+        expires_at: waiting.expires_at,
     }
 }

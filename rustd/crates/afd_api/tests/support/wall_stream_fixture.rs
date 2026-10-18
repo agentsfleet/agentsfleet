@@ -178,7 +178,7 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("streamed")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
@@ -195,7 +195,7 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("streamed-second")
-        .at(2)
+        .at(jiff::Timestamp::constant(0, 2_000_000))
         .native_setup()
         .insert(&mut *connection)
         .await

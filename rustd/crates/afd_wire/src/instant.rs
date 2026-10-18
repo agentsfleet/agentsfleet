@@ -40,7 +40,14 @@ pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Timesta
 }
 
 /// The instant `text` names, held to millisecond precision.
-fn parse(text: &str) -> Result<Timestamp, Cow<'static, str>> {
+///
+/// What a query parameter naming an instant parses through, so a query and a
+/// body refuse the same strings.
+///
+/// # Errors
+/// A string that is not an RFC 3339 instant with an offset, or one that
+/// carries a fraction of a millisecond.
+pub fn parse(text: &str) -> Result<Timestamp, Cow<'static, str>> {
     let at: Timestamp = text
         .parse()
         .map_err(|error: jiff::Error| Cow::Owned(error.to_string()))?;

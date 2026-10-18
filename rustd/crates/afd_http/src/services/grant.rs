@@ -13,7 +13,6 @@
 //! distinguishable at the edge, where they are two different refusals.
 
 use afd_approval::{GrantRow, IntegrationGrants, Result as ApprovalResult, Revocation};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 /// Everything the integration-grant routes act through.
@@ -39,7 +38,6 @@ pub trait FleetGrants: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleet: &Uuid7,
         grant: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = ApprovalResult<Revocation>> + Send;
 }
 
@@ -58,8 +56,7 @@ impl FleetGrants for IntegrationGrants {
         workspace: &Uuid7,
         fleet: &Uuid7,
         grant: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = ApprovalResult<Revocation>> + Send {
-        Self::revoke(self, workspace, fleet, grant, now)
+        Self::revoke(self, workspace, fleet, grant)
     }
 }

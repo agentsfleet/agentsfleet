@@ -98,7 +98,7 @@ pub(crate) async fn list<D: Services>(
     let fleet = parse_fleet_id(&fleet_id)?;
     let view = read.view();
     let after = read.after.as_ref().map(|boundary| After {
-        created_at_ms: boundary.created_at_ms,
+        created_at: boundary.created_at,
         key: &boundary.key,
         fleet: &boundary.fleet,
     });
@@ -207,7 +207,7 @@ fn next_cursor(entries: &[Record], limit: i64) -> Option<String> {
     let full = usize::try_from(limit).is_ok_and(|asked| entries.len() == asked);
     full.then(|| entries.last()).flatten().map(|last| {
         Cursor::Timestamp {
-            at_ms: last.created_at_ms,
+            at: last.created_at,
             id: row_id(&last.fleet, &last.key),
         }
         .to_string()
@@ -224,7 +224,7 @@ fn item(entry: &Record) -> MemoryEntry<'_> {
         key: Cow::Borrowed(&entry.key),
         content: Cow::Borrowed(&entry.content),
         category: Cow::Borrowed(&entry.category),
-        updated_at: entry.updated_at_ms,
+        updated_at: entry.updated_at,
         visibility: entry.visibility,
         writer_fleet_id: Cow::Borrowed(entry.fleet.as_str()),
     }

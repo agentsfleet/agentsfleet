@@ -107,7 +107,7 @@ fn spawn_latecomer_bind(
                 &team,
                 &channel,
                 &loser,
-                afd_core::clock::UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await
     })

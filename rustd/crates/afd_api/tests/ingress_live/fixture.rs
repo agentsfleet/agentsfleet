@@ -8,16 +8,17 @@
 //!
 //! This fixture is the other half. The router is the production one over a live
 //! Postgres and a live Dragonfly, so a delivery here resolves its binding out of
-//! `core.fleets`, opens its secret out of `vault.secrets`, and lands its claim
+//! `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its claim
 //! in the queue exactly as the daemon does it.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FIXTURE_SETUP_MODEL_REF, FleetSeed, SetupRevision, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
+use afd_fleet_runtime::test_util::FixtureSetup;
+use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -55,7 +56,7 @@ pub(super) enum Runnable {
 }
 
 impl Runnable {
-    /// The `core.fleets.status` value this state stores as.
+    /// The `fleet.fleets.status` value this state stores as.
     const fn stored(self) -> &'static str {
         match self {
             Self::Active => "active",
@@ -133,27 +134,20 @@ impl Fixture {
     /// at all — a fleet whose document declares no webhook trigger is
     /// `Ok(None)` and answers `UZ-WH-001`, which is a different test.
     async fn seed_rows(&self, runnable: Runnable) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Ingress live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'ingress-live', $3, 1) \
-             ) \
-             INSERT INTO core.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'ingress-live@example.test', 1, 1)",
+        sign_up(
+            &self.database,
+            &Signup {
+                tenant: &self.tenant,
+                user: &self.user,
+                subject: &self.subject,
+                email: "ingress-live@example.test",
+                name: "ingress-live",
+                display_name: None,
+                workspace: self.workspace.as_str(),
+            },
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant, workspace and person seed");
-        let config = document();
+        .await;
+        let setup = FixtureSetup::new(&document());
         FleetSeed::new(
             self.fleet.as_str(),
             self.workspace.as_str(),
@@ -161,10 +155,13 @@ impl Fixture {
             runnable.stored(),
         )
         .name("ingress-live-fleet")
-        .config(&config)
-        .at(1)
-        .native_setup()
-        .insert(&mut *connection)
+        .unplaced_setup(SetupRevision {
+            definition: &setup.definition,
+            digest: &setup.digest,
+            semantics: setup.semantics(),
+            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
+        })
+        .insert(&mut *self.database.acquire().await.expect("an API connection"))
         .await
         .expect("the fleet seeds");
     }
@@ -182,7 +179,7 @@ impl Fixture {
                 &self.workspace,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture credential seals: {sealed:?}");
@@ -198,7 +195,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed credential cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

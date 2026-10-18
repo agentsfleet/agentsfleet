@@ -193,7 +193,11 @@ async fn a_continuation_this_walk_did_not_issue_is_refused() {
 /// own request being wrong.
 #[tokio::test]
 async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() {
-    let issued = "MTcwMDAwMDAwMDAwMDoxNzAwMDAwMDAwMDAwLTA";
+    let issued = afd_events::Cursor::after(
+        jiff::Timestamp::constant(1_700_000_000, 0),
+        "01924f4e-0000-7000-8000-00000000fee7",
+    )
+    .encode();
     for query in [
         "",
         "limit=1",

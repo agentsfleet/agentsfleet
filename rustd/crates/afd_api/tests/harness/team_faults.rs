@@ -13,7 +13,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -22,6 +21,7 @@ use afd_tenant::team::{
     Accepted, EmailAttempt, EmailStatus, Invitation, Invitee, Member, NewInvite, Removal, Team,
     Waiting,
 };
+use jiff::Timestamp;
 
 use super::readiness::unreachable_pool;
 
@@ -123,7 +123,7 @@ impl TenantTeam for HarnessTeam {
     fn invite(
         &self,
         new: &NewInvite<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Invitation>> + Send {
         TenantTeam::invite(self.store_for(TeamStep::Invite), new, now)
     }
@@ -132,7 +132,6 @@ impl TenantTeam for HarnessTeam {
         &self,
         tenant: &Uuid7,
         invite: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Option<EmailAttempt>>> + Send {
         let gone = self.breaks(TeamStep::BeginEmailGone);
         let store = self.store_for(TeamStep::BeginEmail);
@@ -140,7 +139,7 @@ impl TenantTeam for HarnessTeam {
             if gone {
                 return Ok(None);
             }
-            TenantTeam::begin_email(store, tenant, invite, now).await
+            TenantTeam::begin_email(store, tenant, invite).await
         }
     }
 
@@ -149,47 +148,42 @@ impl TenantTeam for HarnessTeam {
         invite: &Uuid7,
         attempt: i32,
         status: EmailStatus,
-        now: UnixMillis,
-    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Timestamp>>> + Send {
         TenantTeam::record_email(
             self.store_for(TeamStep::RecordEmail),
             invite,
             attempt,
             status,
-            now,
         )
     }
 
     fn invitations(
         &self,
         tenant: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Vec<Invitation>>> + Send {
-        TenantTeam::invitations(&self.live, tenant, now)
+        TenantTeam::invitations(&self.live, tenant)
     }
 
     fn revoke_invitation(
         &self,
         tenant: &Uuid7,
         invite: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
-        TenantTeam::revoke_invitation(&self.live, tenant, invite, now)
+        TenantTeam::revoke_invitation(&self.live, tenant, invite)
     }
 
     fn waiting_for(
         &self,
         email: &str,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Vec<Waiting>>> + Send {
-        TenantTeam::waiting_for(&self.live, email, now)
+        TenantTeam::waiting_for(&self.live, email)
     }
 
     fn accept(
         &self,
         invite: &Uuid7,
         invitee: &Invitee<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Accepted>> + Send {
         TenantTeam::accept(&self.live, invite, invitee, now)
     }

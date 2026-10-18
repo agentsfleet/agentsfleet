@@ -52,6 +52,7 @@ pub struct RunnerSeed<'a> {
     degraded_reason: Option<&'a str>,
     last_seen_at: Option<Timestamp>,
     created_at: Option<Timestamp>,
+    token_hash: Option<&'a str>,
 }
 
 impl<'a> RunnerSeed<'a> {
@@ -68,7 +69,15 @@ impl<'a> RunnerSeed<'a> {
             degraded_reason: None,
             last_seen_at: None,
             created_at: None,
+            token_hash: None,
         }
+    }
+
+    /// The digest of the token the runner presents, for a suite that
+    /// authenticates as it.
+    pub const fn token_hash(mut self, digest: &'a str) -> Self {
+        self.token_hash = Some(digest);
+        self
     }
 
     /// The worker ceiling the runner is assigned.
@@ -120,6 +129,7 @@ impl<'a> RunnerSeed<'a> {
             .bind(self.last_seen_at.map(Timestamp::to_sqlx))
             .bind(FIRST_LEASE_VERSION)
             .bind(self.created_at.map(Timestamp::to_sqlx))
+            .bind(self.token_hash)
             .execute(executor)
             .await
             .map_err(|source| error::query(CONTEXT, source))?;
@@ -152,7 +162,7 @@ mod tests {
             .max();
 
         // pin test: literal is the contract
-        assert_eq!(highest, Some(11), "{INSERT_RUNNER}");
+        assert_eq!(highest, Some(12), "{INSERT_RUNNER}");
     }
 
     #[test]

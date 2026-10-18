@@ -23,7 +23,6 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::Ceiling;
 use afd_events::{
@@ -114,8 +113,8 @@ impl Listing {
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused, in the order above.
-    pub(super) fn parse(query: &str, now: UnixMillis) -> Result<Self, Refusal> {
-        Params::read(query)?.resolve(now)
+    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
+        Params::read(query)?.resolve()
     }
 }
 
@@ -135,14 +134,14 @@ impl WorkspaceListing {
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused.
-    pub(super) fn parse(query: &str, now: UnixMillis) -> Result<Self, Refusal> {
+    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
         let params = Params::read(query)?;
         let fleet = params
             .fleet_id
             .map(|raw| parse_id(raw, DETAIL_FLEET_ID))
             .transpose()?;
         Ok(Self {
-            listing: params.resolve(now)?,
+            listing: params.resolve()?,
             fleet,
         })
     }
@@ -205,12 +204,12 @@ impl<'q> Params<'q> {
         Ok(params)
     }
 
-    /// The window against `now`, the pattern, and the decoded cursor.
-    fn resolve(self, now: UnixMillis) -> Result<Listing, Refusal> {
+    /// The window, the pattern, and the decoded cursor.
+    fn resolve(self) -> Result<Listing, Refusal> {
         let since = self
             .since
             .as_deref()
-            .map(|raw| parse_since(raw, now))
+            .map(parse_since)
             .transpose()
             .map_err(|_unreadable| Refusal::malformed(DETAIL_SINCE))?;
         let cursor = self

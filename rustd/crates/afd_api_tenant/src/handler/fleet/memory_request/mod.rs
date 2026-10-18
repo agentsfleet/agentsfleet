@@ -119,7 +119,7 @@ impl Lens {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Boundary {
     /// The boundary row's creation instant.
-    pub(super) created_at_ms: i64,
+    pub(super) created_at: jiff::Timestamp,
     /// Its writer, which breaks a tie between two fleets' entries under one
     /// key.
     pub(super) fleet: Uuid7,
@@ -244,8 +244,8 @@ fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
         // one: this walk keys on `(created_at, key, fleet)`, and a
         // text-boundary cursor names a sort it does not have.
         let resumed = match Cursor::parse(raw) {
-            Ok(Cursor::Timestamp { at_ms, id }) => row(&id).map(|(fleet, key)| Boundary {
-                created_at_ms: at_ms,
+            Ok(Cursor::Timestamp { at, id }) => row(&id).map(|(fleet, key)| Boundary {
+                created_at: at,
                 fleet,
                 key: key.to_owned(),
             }),

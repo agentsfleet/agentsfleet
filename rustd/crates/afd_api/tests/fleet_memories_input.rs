@@ -181,10 +181,11 @@ async fn a_continuation_this_walk_did_not_issue_is_refused() {
     for token in [
         "not-a-cursor",
         "abc:key",
-        "1700000000000:",
-        // A row half naming no writer, the form issued before the writer
-        // joined the keyset.
-        "1700000000000:goal:current",
+        "2023-11-14T22:13:20Z:",
+        // A row half naming no writer, so it names no one row.
+        "2023-11-14T22:13:20Z:goal:current",
+        // An instant in epoch digits, which no cursor carries.
+        "1700000000000:01924f4e-0000-7000-8000-00000000fee7:goal:current",
         "s:cHJvZA:019abc",
     ] {
         let response = reading(&listing(&format!("starting_after={token}"))).await;
@@ -227,7 +228,7 @@ async fn a_well_formed_listing_reaches_the_store_and_reports_the_outage() {
         "category=core",
         "query=monday",
         "query=hello+world",
-        &format!("starting_after=1700000000000:{FLEET}:goal:current"),
+        &format!("starting_after=2023-11-14T22:13:20Z:{FLEET}:goal:current"),
     ] {
         let response = reading(&listing(query)).await;
         assert_eq!(

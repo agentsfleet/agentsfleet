@@ -158,7 +158,6 @@ pub(crate) async fn receive<D: Services>(
             BY_SLACK_WEBHOOK,
             webhook::REASON_APPROVAL_WEBHOOK,
             Some(fleet.as_str()),
-            services.now(),
         )
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;

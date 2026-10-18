@@ -7,13 +7,13 @@
 
 use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_ingress::slack::{
     BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
 };
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
+use jiff::Timestamp;
 
 use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
 
@@ -151,7 +151,7 @@ impl WebhookIngress for HarnessIngress {
         team: &str,
         channel: &ChannelId,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> IngressResult<Uuid7> {
         match self {
             Self::Unreachable(ingress) => {
@@ -174,7 +174,7 @@ impl WebhookIngress for HarnessIngress {
         }
     }
 
-    async fn owe_notice(&self, owed: NoticeOwed<'_>, now: UnixMillis) -> IngressResult<bool> {
+    async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> IngressResult<bool> {
         match self {
             Self::Unreachable(ingress) => ingress.owe_notice(owed, now).await,
             Self::Scripted(_) => Ok(true),
@@ -258,7 +258,7 @@ fn answer(id: String, replayed: bool) -> Admitted {
             id,
             digest: String::new(),
             fleet: String::new(),
-            created_at: 0,
+            created_at: Timestamp::UNIX_EPOCH,
         },
     }
 }

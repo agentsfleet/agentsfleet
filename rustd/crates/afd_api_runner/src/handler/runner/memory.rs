@@ -84,11 +84,7 @@ pub(crate) async fn hydrate<D: Services>(
         Ok(fleet) => fleet,
         Err(refused) => return refused.into_response(),
     };
-    match services
-        .leases()
-        .hydrate(runner.id(), &fleet, services.now())
-        .await
-    {
+    match services.leases().hydrate(runner.id(), &fleet).await {
         Ok(hydrated) => Json(hydrated).into_response(),
         Err(error) => Refusal::conflict_or_at(EVENT_HYDRATE, conflict_state)(error).into_response(),
     }
@@ -143,7 +139,7 @@ pub(crate) async fn recall<D: Services>(
     }
     match services
         .leases()
-        .recall(runner.id(), &fleet, &request, services.now())
+        .recall(runner.id(), &fleet, &request)
         .await
     {
         Ok(recalled) => Json(recalled).into_response(),

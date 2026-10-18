@@ -126,7 +126,7 @@ pub(crate) async fn workspace_list<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
-    let asked = WorkspaceListing::parse(&query.unwrap_or_default(), services.now())?;
+    let asked = WorkspaceListing::parse(&query.unwrap_or_default())?;
     let page = services
         .events()
         .page_for_workspace(
@@ -174,7 +174,7 @@ pub(crate) async fn fleet_list<D: Services>(
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet(&fleet_id)?;
-    let asked = Listing::parse(&query.unwrap_or_default(), services.now())?;
+    let asked = Listing::parse(&query.unwrap_or_default())?;
     let page = services
         .events()
         .page_for_fleet(

@@ -103,18 +103,18 @@ pub(crate) async fn set<D: Services>(
     let provider = request.provider.into_owned();
     let model = request.model.into_owned();
     let workspace = request.source_workspace_id;
-    let input = PlatformKeyInput::new(
-        provider.clone(),
-        workspace.clone(),
-        model.clone(),
-        request.base_url.map(Cow::into_owned),
-    );
-    match services.platform_keys().set(&input, services.now()).await {
+    let input = PlatformKeyInput {
+        provider: provider.clone(),
+        source_workspace_id: workspace.clone(),
+        model: model.clone(),
+        base_url: request.base_url.map(Cow::into_owned),
+    };
+    match services.platform_keys().set(input).await {
         Ok(SetPlatformKey::Set(key)) => {
             tracing::info!(
                 actor_id = identity.subject(),
-                provider = key.provider(),
-                model = key.model(),
+                provider = key.provider.as_str(),
+                model = key.model.as_deref(),
                 event = "admin_platform_default_set",
             );
             Json(PlatformKeySetResponse {
@@ -171,11 +171,7 @@ pub(crate) async fn deactivate<D: Services>(
         return reject(error_code::INVALID_REQUEST, BOUNDS.pick(&report));
     }
     let provider = segment.provider;
-    match services
-        .platform_keys()
-        .deactivate(&provider, services.now())
-        .await
-    {
+    match services.platform_keys().deactivate(&provider).await {
         Ok(_existed) => {
             tracing::info!(
                 actor_id = identity.subject(),
@@ -257,11 +253,11 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
 
 fn item(key: &PlatformKey) -> PlatformKeyItem<'static> {
     PlatformKeyItem {
-        provider: Cow::Owned(key.provider().to_owned()),
-        source_workspace_id: Cow::Owned(key.source_workspace_id().to_string()),
-        model: key.model().map(|model| Cow::Owned(model.to_owned())),
-        active: key.is_active(),
-        updated_at: key.updated_at().as_millis(),
+        provider: Cow::Owned(key.provider.clone()),
+        source_workspace_id: Cow::Owned(key.source_workspace_id.to_string()),
+        model: key.model.clone().map(Cow::Owned),
+        active: key.active,
+        updated_at: key.updated_at,
     }
 }
 

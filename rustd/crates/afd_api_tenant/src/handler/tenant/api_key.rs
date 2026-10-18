@@ -198,7 +198,7 @@ pub(crate) async fn revoke<D: Services>(
 
     let revoked = services
         .api_keys()
-        .revoke(&tenant, &key, intent, services.now())
+        .revoke(&tenant, &key, intent)
         .await
         .map_err(Refusal::at(EVENT_REVOKE))?;
     Ok(Json(revoked_response(&revoked)).into_response())
@@ -263,7 +263,7 @@ fn revealed_response(revealed: &Revealed) -> Response {
             id: Cow::Borrowed(revealed.id.as_str()),
             key_name: Cow::Borrowed(&revealed.name),
             key: Cow::Borrowed(revealed.credential.expose()),
-            created_at: revealed.created_at_ms,
+            created_at: revealed.created_at,
         }),
     )
         .into_response()
@@ -276,7 +276,7 @@ fn revoked_response(revoked: &Revoked) -> RevokedApiKeyResponse<'_> {
         // Always false, and stated rather than read back: the statement only
         // answers `changed = TRUE` for a row it moved to inactive.
         active: false,
-        revoked_at: revoked.revoked_at_ms,
+        revoked_at: revoked.revoked_at,
     }
 }
 
@@ -310,8 +310,8 @@ fn summary(key: &KeyRow) -> ApiKeySummary<'_> {
     ApiKeySummary {
         id: Cow::Borrowed(&key.id),
         key_name: Cow::Borrowed(&key.name),
-        active: key.active,
-        created_at: key.created_at_ms,
-        revoked_at: key.revoked_at_ms,
+        active: key.active(),
+        created_at: key.created_at,
+        revoked_at: key.revoked_at,
     }
 }

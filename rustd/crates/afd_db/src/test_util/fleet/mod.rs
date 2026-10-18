@@ -159,16 +159,22 @@ impl<'a> FleetSeed<'a> {
     /// triggers, no tools, a budget, on the platform model. A seed that named
     /// no tags takes [`UNPLACED`], so no runner from another suite is handed
     /// its work.
-    pub fn native_setup(mut self) -> Self {
-        if self.required_tags.is_empty() {
-            self.required_tags = UNPLACED;
-        }
-        self.setup(SetupRevision {
+    pub fn native_setup(self) -> Self {
+        self.unplaced_setup(SetupRevision {
             definition: FIXTURE_SETUP_DEFINITION,
             digest: FIXTURE_SETUP_DIGEST,
             semantics: FIXTURE_SETUP_SEMANTICS,
             model_ref: Some(FIXTURE_SETUP_MODEL_REF),
         })
+    }
+
+    /// [`FleetSeed::setup`] for a suite's own setup, taking [`UNPLACED`] when
+    /// the seed named no tags, as [`FleetSeed::native_setup`] does.
+    pub fn unplaced_setup(mut self, revision: SetupRevision<'a>) -> Self {
+        if self.required_tags.is_empty() {
+            self.required_tags = UNPLACED;
+        }
+        self.setup(revision)
     }
 
     /// Stamps `created_at` and `updated_at` with the same instant, for a

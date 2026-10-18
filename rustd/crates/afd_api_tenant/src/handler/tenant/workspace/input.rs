@@ -55,7 +55,7 @@ pub(super) fn requested_limit(raw: Option<&str>) -> Result<u32, Refusal> {
 
 /// The decoded boundary, or the refusal a foreign token earns.
 ///
-/// The workspace walk's cursor is the `{created_at_ms}:{id}` form with a
+/// The workspace walk's cursor is the `{created_at}:{id}` form with a
 /// workspace identifier in its second half — the text-sort form and a
 /// non-identifier id are both tokens some OTHER list issued, refused here the
 /// way `isSupportedWorkspaceId` refuses them.
@@ -70,15 +70,12 @@ pub(super) fn parse_cursor(raw: Option<Cow<'_, str>>) -> Result<Option<After>, R
     }
     let id = Uuid7::parse(cursor.id())
         .map_err(|_not_workspace| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
-    let Cursor::Timestamp { at_ms, .. } = cursor else {
+    let Cursor::Timestamp { at, .. } = cursor else {
         // The kind was just checked; stated as unreachable rather than left
         // for a refactor to make reachable silently.
         return Err(Refusal::malformed(DETAIL_INVALID_CURSOR));
     };
-    Ok(Some(After {
-        created_at_ms: at_ms,
-        id,
-    }))
+    Ok(Some(After { created_at: at, id }))
 }
 
 /// The exact-name filter, or the refusal an unusable one earns.

@@ -31,7 +31,7 @@ pub(super) fn referenced_detail(entries: u32) -> String {
 pub(super) fn summary(held: &SecretSummary) -> afd_api_wire::secret::SecretSummary<'_> {
     afd_api_wire::secret::SecretSummary {
         name: Cow::Borrowed(&held.name),
-        created_at: held.created_at_ms,
+        created_at: held.created_at,
         kind: held.kind().as_str(),
         provider: held.provider().map(Cow::Borrowed),
         base_url: held.base_url().map(Cow::Borrowed),

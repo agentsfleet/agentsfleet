@@ -9,13 +9,13 @@
 use std::borrow::Cow;
 
 use afd_auth::scope::ScopeSet;
-use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
+use jiff::Timestamp;
 
 use crate::harness::{Fleet, json_body, send};
 
@@ -23,7 +23,7 @@ use crate::harness::{Fleet, json_body, send};
 const SUBJECT: &str = "fixture:runner-heartbeat";
 
 /// When the runner enrols.
-const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// A beat listing a fleet this runner never held is answered with that fleet
 /// to release: the reply carries what the store decided the host lets go of.

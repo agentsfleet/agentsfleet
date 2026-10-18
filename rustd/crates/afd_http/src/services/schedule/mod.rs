@@ -13,7 +13,6 @@
 //! the CRUD half does. A second trait would mean a second stub in every suite
 //! that arranges either.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{
     Change, EditRequest, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused,
@@ -21,15 +20,20 @@ use afd_cron::{
 };
 use afd_crypto::entropy::Entropy;
 use afd_db::Precondition;
+use jiff::Timestamp;
 
 /// Everything the schedules surface and the fire ingress act through.
 pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
     /// Conditionally edits intent and reconciles the fence claimed by that edit.
+    /// `now` mints the fence token.
     ///
     /// # Errors
     /// Preserves hidden, stale, invalid and sync-held refusals from the store.
-    fn edit(&self, request: EditRequest<'_>)
-    -> impl Future<Output = CronResult<Reconciled>> + Send;
+    fn edit(
+        &self,
+        request: EditRequest<'_>,
+        now: Timestamp,
+    ) -> impl Future<Output = CronResult<Reconciled>> + Send;
 
     /// This fleet's schedules, oldest first.
     ///
@@ -71,7 +75,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         new: NewSchedule<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send;
 
     /// Applies a change and pushes the result upstream.
@@ -87,7 +91,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         fleet: &Uuid7,
         schedule: &Uuid7,
         change: Change<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
     /// [`Self::create`] for a fleet, under the lease `guard` proves on the
@@ -100,7 +104,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         new: NewSchedule<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send;
 
@@ -115,7 +119,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         fleet: &Uuid7,
         schedule: &Uuid7,
         change: Change<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send;
 
@@ -130,7 +134,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleet: &Uuid7,
         schedule: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
     /// What a signed fire resolves to.
@@ -159,7 +163,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CronResult<Fired>> + Send;
 
     /// Marks `fleet`'s `schedule` in `workspace` for deletion and removes it
@@ -176,7 +180,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleet: &Uuid7,
         schedule: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CronResult<()>> + Send;
 }
 
@@ -218,7 +222,7 @@ impl SchedulePlane {
     /// Minted per attempt and never reused: the token is what a finalize proves
     /// this caller still holds the row with, so one that outlived its attempt
     /// would let a stale finalize land on a row another syncer had taken.
-    fn token(&self, now: UnixMillis) -> CronResult<Uuid7> {
+    fn token(&self, now: Timestamp) -> CronResult<Uuid7> {
         Ok(self.entropy.uuid7(now)?)
     }
 

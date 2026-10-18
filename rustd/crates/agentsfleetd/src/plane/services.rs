@@ -19,7 +19,6 @@ use afd_api::{Services, TenantSurface};
 use crate::identity::SignupWriteback;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
-use afd_core::clock::UnixMillis;
 use afd_credential::provider::Providers;
 use afd_events::History;
 use afd_fleet::lease::Plane;
@@ -36,6 +35,7 @@ use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_vault::Vault as SecretVault;
+use jiff::Timestamp;
 
 use super::{Authenticator, ServingPlane};
 
@@ -204,7 +204,7 @@ impl Services for ServingPlane {
     /// instant as a parameter, which is exactly what a handler does with this.
     /// A test drives its own instant by implementing `Services` itself, so the
     /// seam a fixed clock would provide already exists one level up.
-    fn now(&self) -> UnixMillis {
+    fn now(&self) -> Timestamp {
         afd_core::clock::now()
     }
 }

@@ -94,11 +94,11 @@ async fn detail_of(response: axum::response::Response) -> String {
 /// A cursor token for this page, as the handler mints one.
 ///
 /// Spelled here rather than imported: the payload's field ORDER is the wire
-/// contract, and a test that built it through the handler's own type would pass
+/// format, and a test that built it through the handler's own type would pass
 /// even if that order changed under it.
 fn token(tenant: &str, limit: u32) -> String {
     let json = format!(
-        "{{\"v\":2,\"created_at\":1744000000000,\
+        "{{\"v\":2,\"created_at\":\"2025-04-07T04:26:40Z\",\
 \"id\":\"0195b4ba-8d3a-7f13-8abc-cd0000000002\",\
 \"tenant_uuid\":\"{tenant}\",\"limit\":{limit}}}"
     );

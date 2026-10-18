@@ -154,12 +154,14 @@ async fn the_limit_cap_is_inside_the_range() {
 
 #[tokio::test]
 async fn a_cursor_from_any_other_list_is_refused() {
-    // Not a token, a text-sort token, and a timestamp token whose second half
-    // is no workspace identifier — each is some OTHER list's cursor here.
+    // Not a token, a text-sort token, a timestamp token whose second half is
+    // no workspace identifier, and an instant in epoch digits — none is this
+    // list's cursor.
     for foreign in [
         "!!not-a-token",
         "s:YWJj:01924f4e-0000-7000-8000-00000000beef",
-        "1712924400000:not-a-uuid",
+        "2024-04-12T12:20:00Z:not-a-uuid",
+        "1712924400000:01924f4e-0000-7000-8000-00000000beef",
     ] {
         let path = format!("{WORKSPACES}?starting_after={foreign}");
         let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
@@ -175,7 +177,7 @@ async fn a_cursor_from_any_other_list_is_refused() {
 #[tokio::test]
 async fn a_workspace_cursor_is_accepted() {
     let path = format!(
-        "{WORKSPACES}?starting_after=1712924400000:{}",
+        "{WORKSPACES}?starting_after=2024-04-12T12:20:00Z:{}",
         harness::OWNED_WORKSPACE
     );
     let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;

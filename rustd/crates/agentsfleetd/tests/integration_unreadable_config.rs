@@ -65,8 +65,7 @@ async fn seed_unreadable_fleet(run: &Scenario) -> String {
     let fleet = format!("{}00f0", &run.fleet[..run.fleet.len() - 4]);
     FleetSeed::new(&fleet, &run.workspace, &run.tenant, FLEET_STATUS_ACTIVE)
         .name("e2e-unreadable-fleet")
-        .config(UNREADABLE_CONFIG)
-        .at(run.seeded_at.as_millis())
+        .at(run.seeded_at)
         .setup(SetupRevision {
             definition: UNREADABLE_CONFIG,
             digest: UNREADABLE_DIGEST,
