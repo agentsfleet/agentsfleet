@@ -27,6 +27,7 @@ mod replay;
 mod review;
 mod seed;
 mod switching;
+mod window;
 
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;

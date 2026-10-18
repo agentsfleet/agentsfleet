@@ -3,10 +3,7 @@
 use crate::{
     Access, Drafts, Result, access,
     draft::{read, word},
-    error::{
-        ErrorKind,
-        raise::{absent, query},
-    },
+    error::{ErrorKind, raise::query},
     lease::meter::Metered,
     model::dispatch_status,
     replay, sql,
@@ -25,7 +22,7 @@ const CURSOR_RESOURCE: &str = "draft-messages-sequence-role";
 #[derive(sqlx::FromRow)]
 struct Stored {
     sequence: i64,
-    operation_id: Option<String>,
+    operation_id: String,
     status: String,
     user_text: String,
     answer_text: Option<String>,
@@ -97,15 +94,10 @@ impl Drafts {
 
 fn project(stored: Stored) -> Result<Message> {
     let user = stored.ordinal == 0;
-    // Every accepted message files its retry key in the same transaction.
-    let operation = stored
-        .operation_id
-        .as_deref()
-        .ok_or_else(|| absent("operation_id"))?;
     let state: MessageState = word(&stored.status)?;
     Ok(Message {
         sequence: stored.sequence.to_string(),
-        operation_id: Uuid7::parse(operation)?,
+        operation_id: Uuid7::parse(&stored.operation_id)?,
         role: if user { USER } else { ASSISTANT },
         state,
         text: if user {

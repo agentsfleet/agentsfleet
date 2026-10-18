@@ -20,5 +20,3 @@ pub const ENVELOPE_BYTES_MAX: usize = 128 * 1024;
 pub const PROGRESS_BYTES_MAX: usize = 4 * 1024;
 /// Decimal counters fit the positive signed database integer range.
 pub const DECIMAL_BYTES_MAX: usize = 19;
-/// Content-free accepted-operation identities survive resource purge for one day.
-pub const REPLAY_TOMBSTONE_MS: i64 = 24 * 60 * 60 * 1000;

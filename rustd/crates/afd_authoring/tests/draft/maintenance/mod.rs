@@ -1,6 +1,7 @@
 //! Recovery uses real expiry, receipts, replay tombstones and private rows.
 
 mod interruption;
+mod receipts;
 mod retention;
 
 use super::{
