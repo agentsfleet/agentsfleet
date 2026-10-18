@@ -110,7 +110,11 @@ const scheduleRow = {
   message: "summarize",
   status: "active",
   sync: "synced",
+  description: "At 9:00 AM (Asia/Kolkata)",
+  run_state: "scheduled",
+  next_run_at: "2026-11-01T03:30:00Z",
   created_at: SCHEDULE_CREATED_AT,
+  updated_at: SCHEDULE_CREATED_AT,
 };
 
 describe("schedule create/list/update/delete/sync effects", () => {

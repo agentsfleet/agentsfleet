@@ -213,7 +213,7 @@ describe("fleet_schedule floor arms", () => {
     const paths: string[] = [];
     const exit = await runWith(
       scheduleListEffectFromArgs(VALID_ID, { workspaceId: VALID_ID_2 }),
-      { cap, http: httpLayerReturning({ items: [] }, paths) },
+      { cap, http: httpLayerReturning({ schedules: [] }, paths) },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(paths[0]).toContain(VALID_ID_2);
@@ -243,7 +243,7 @@ describe("fleet_schedule floor arms", () => {
     const cap = newCapture();
     const exit = await runWith(
       scheduleListEffectFromArgs(VALID_ID, {}),
-      { cap, http: httpLayerReturning({ items: [] }, []) },
+      { cap, http: httpLayerReturning({ schedules: [] }, []) },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(cap.infos.join("\n")).toContain("No schedules for this Fleet.");

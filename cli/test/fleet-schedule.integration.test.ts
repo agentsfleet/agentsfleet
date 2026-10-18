@@ -19,6 +19,11 @@ const row = {
   message: "summarize",
   status: "active",
   sync: "synced",
+  description: "At 9:00 AM (Asia/Kolkata)",
+  run_state: "scheduled",
+  next_run_at: "2026-11-01T03:30:00Z",
+  created_at: "2026-10-01T00:00:00Z",
+  updated_at: "2026-10-01T00:00:00Z",
 };
 
 describe("schedule commands", () => {
