@@ -22,7 +22,7 @@
 //!
 //! # Why no pass count is ever asserted
 //!
-//! `SELECT_UNRECEIPTED` and `SELECT_UNDELIVERED_FLEETS` carry no fleet
+//! `CLAIM_UNRECEIPTED` and `SELECT_UNDELIVERED_FLEETS` carry no fleet
 //! predicate — both sweepers are deployment-wide by design — so a sibling
 //! suite's deferred row is scanned, and sometimes repaired, by a pass this file
 //! starts. `Replayed::scanned` and `Reconciled::voided` are therefore other

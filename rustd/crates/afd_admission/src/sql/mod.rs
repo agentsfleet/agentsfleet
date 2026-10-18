@@ -88,36 +88,60 @@ pub const SELECT_REPLY_DESTINATION: &str = include_str!("select_reply_destinatio
 /// `$1` id, `$2` receipt.
 pub(crate) const RECORD_RECEIPT: &str = include_str!("record_receipt.sql");
 
-/// One producer key, locked without waiting behind a sibling confirmation.
+/// One producer key's row, claimed for a confirmation when it still owes an
+/// append and nobody else holds it.
 ///
-/// `$1` producer, `$2` producer key.
-pub(crate) const CONFIRM_ADMISSION: &str = include_str!("confirm_admission.sql");
+/// One statement, committed on its own: the claim is a stamp, not a lock, so
+/// no transaction stays open while the append crosses the network. `claimed`
+/// is false when the row already carries a receipt or a sibling's claim has
+/// not expired; the caller tells the two apart by `receipt`.
+///
+/// `$1` producer, `$2` producer key, `$3` the claim's span, as an interval.
+pub(crate) const CLAIM_ADMISSION: &str = include_str!("claim_admission.sql");
 
-/// The admitted rows that never got a receipt, oldest first, locked for this
-/// pass.
+/// Claims the admitted rows that never got a receipt, oldest first, for one
+/// replay pass, and answers them.
 ///
-/// `FOR UPDATE SKIP LOCKED` because every replica runs the sweeper:
-/// concurrent passes take disjoint batches instead of both re-appending one
-/// row. The age cutoff keeps a pass from racing an admission still in
-/// flight — an inserter that is about to append — and rides the partial
-/// index on `receipt IS NULL`. It is measured on the database's clock, the one
+/// Every replica runs the sweeper, so concurrent passes must take disjoint
+/// batches. `FOR UPDATE SKIP LOCKED` keeps two statements from picking one row
+/// in the same instant; the `replay_claim_expires_at` stamp keeps the row out
+/// of every later pass until this one records its receipt or the claim
+/// lapses. The statement commits on its own, so no row lock is held while
+/// the pass appends — a slow queue costs this pass its time, never another
+/// replica a pooled connection or a lock. A pass that dies mid-batch leaves
+/// claims that lapse after `$3`, and the rows are replayed then.
+///
+/// The age cutoff keeps a pass from racing an admission still in flight — an
+/// inserter that is about to append — and rides the partial index on
+/// `receipt IS NULL`. Every instant is the database's clock, the one
 /// `created_at` was stamped by.
 ///
-/// `$1` the minimum age, as an interval, `$2` the batch limit.
-pub(crate) const SELECT_UNRECEIPTED: &str = include_str!("select_unreceipted.sql");
+/// `$1` the minimum age, as an interval, `$2` the batch limit, `$3` the
+/// claim's span, as an interval.
+pub(crate) const CLAIM_UNRECEIPTED: &str = include_str!("claim_unreceipted.sql");
 
-/// Record the receipt a replay's append answered with.
+/// Record the receipts one pass's appends answered with, in one statement,
+/// and clear their claims.
 ///
-/// The row is locked by [`SELECT_UNRECEIPTED`] in the same transaction, so
-/// no guard on the receipt is needed for correctness; it is kept so a row
-/// that somehow carries one is left alone rather than overwritten.
+/// Guarded on the receipt still being absent: an inserter that recorded its
+/// own receipt while the pass appended keeps it, and its row is missing from
+/// the answer, which is how the pass learns its own entry is the extra one.
 ///
-/// Returns the row's replay count AFTER the increment, so the sweeper can say
-/// which rows keep coming back — a row on its fifth pass is poison, not
+/// Returns each row's replay count AFTER the increment, so the sweeper can
+/// say which rows keep coming back — a row on its fifth pass is poison, not
 /// throughput, and the count is the only place that shows it.
 ///
-/// `$1` id, `$2` receipt.
-pub(crate) const RECORD_REPLAY_RECEIPT: &str = include_str!("record_replay_receipt.sql");
+/// `$1` ids, `$2` receipts, paired by position.
+pub(crate) const RECORD_REPLAY_RECEIPTS: &str = include_str!("record_replay_receipts.sql");
+
+/// Clear claims a pass took and did not turn into receipts — the rows the
+/// queue never reached, and rows an inserter receipted first.
+///
+/// Releasing rather than waiting for the claim to lapse lets the next pass
+/// retry a refused row at its own cadence.
+///
+/// `$1` ids.
+pub(crate) const RELEASE_REPLAY_CLAIMS: &str = include_str!("release_replay_claims.sql");
 
 /// How many rows await a receipt, and how long the oldest has waited.
 ///
@@ -192,9 +216,8 @@ pub(crate) const SELECT_UNDELIVERED_FLEETS: &str = include_str!("select_undelive
 /// its data is gone, and each of these rows has to be asked about in turn
 /// because a rebuilt stream may already hold NEW entries that are alive.
 ///
-/// A plain read, where the replay scan takes `FOR UPDATE SKIP LOCKED`: this
-/// pass asks the datastore about every row it read, so a lock taken here would
-/// be held across a round trip per row. [`VOID_LOST_RECEIPT`] carries the
+/// A plain read: this pass asks the datastore about every row it read, so a
+/// lock taken here would be held across a round trip per row. [`VOID_LOST_RECEIPT`] carries the
 /// guarantee instead, by pinning the receipt it was told about.
 ///
 /// # Why this one needs a cursor too
@@ -216,7 +239,7 @@ pub(crate) const SELECT_UNDELIVERED_ON_FLEET: &str =
 /// Forget a receipt whose entry the datastore no longer holds.
 ///
 /// The whole of the repair: the row goes back to `receipt IS NULL`, the state
-/// [`SELECT_UNRECEIPTED`] already scans, so the replay sweeper re-appends it
+/// [`CLAIM_UNRECEIPTED`] already scans, so the replay sweeper re-appends it
 /// and marks the fleet ready with no second append path to keep correct.
 ///
 /// Guarded on the row still carrying THE receipt the caller probed and still

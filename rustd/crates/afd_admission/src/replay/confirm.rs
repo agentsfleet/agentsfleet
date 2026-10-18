@@ -1,8 +1,8 @@
 //! Initial-run acceptance requires a committed receipt for the original admission.
 
-use sqlx::Connection as _;
-
 use crate::{Admissions, Producer, Result, error::query, replay::row::Confirmable, sql};
+
+use super::{CLAIM_SPAN, pass};
 
 const CONTEXT: &str = "confirm one admitted event";
 
@@ -18,25 +18,41 @@ pub struct Confirmation {
 impl Admissions {
     /// Repairs at most one saved admission and confirms its durable queue receipt.
     ///
-    /// The saved payload is authoritative. A concurrent repair may hold the row;
-    /// absence in that case means the caller must keep its initial run pending.
+    /// The saved payload is authoritative. The row is claimed the way a replay
+    /// pass claims it, so the append runs with no transaction open; a row a
+    /// replay pass or a sibling confirmation holds answers `None`, and the
+    /// caller must keep its initial run pending and ask again.
     ///
     /// # Errors
     /// Reports an unavailable ledger. An append refusal keeps the admission pending.
     pub async fn confirm(&self, producer: Producer, key: &str) -> Result<Option<Confirmation>> {
-        let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let row = sqlx::query_as::<_, Confirmable>(sql::CONFIRM_ADMISSION)
+        let row: Option<Confirmable> = sqlx::query_as(sql::CLAIM_ADMISSION)
             .bind(producer.as_str())
             .bind(key)
-            .fetch_optional(&mut *tx)
+            .bind(CLAIM_SPAN)
+            .fetch_optional(&mut *self.database.acquire().await?)
             .await
             .map_err(query(CONTEXT))?;
-        let Some(Confirmable { pending, receipt }) = row else {
+        let Some(Confirmable {
+            pending,
+            receipt,
+            claimed,
+        }) = row
+        else {
             return Ok(None);
         };
-        let accepted = receipt.is_some() || self.append_pending(&pending, &mut tx).await?;
-        tx.commit().await.map_err(query(CONTEXT))?;
+        let accepted = match (receipt, claimed) {
+            (Some(_), _) => true,
+            (None, false) => return Ok(None),
+            (None, true) => {
+                let drained = pass::drain(std::slice::from_ref(&pending), |pending| {
+                    self.append_pending(pending)
+                })
+                .await;
+                self.record_replays(&drained).await?;
+                !drained.appended.is_empty()
+            }
+        };
         if accepted {
             self.mark_ready(&pending.fleet_id).await;
         }
