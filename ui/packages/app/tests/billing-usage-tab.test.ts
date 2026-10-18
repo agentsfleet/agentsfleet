@@ -52,6 +52,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     fleet_id: "z_1",
     fleet_name: null,
     event_id: "evt_1",
+    authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
     model: "kimi-k2.6",
@@ -71,6 +72,17 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
+  it("shows a settled setup charge before a saved fleet exists", () => {
+    render(React.createElement(BillingUsageTab, {
+      initialCharges: [charge({ fleet_id: null, event_id: null, authoring_attempt_id: "attempt-1", charge_type: CHARGE_TYPE.authoring })],
+      initialCursor: null, pageSize: 25,
+    }));
+    expect(screen.getByText("Fleet setup")).toBeTruthy();
+    expect(screen.getByText("Setup chat · 1,860 tokens · 820 in · 1,040 out")).toBeTruthy();
+    expect(screen.getByText("−$0.001")).toBeTruthy();
+    expect(screen.queryByText("DELETED AGENT")).toBeNull();
+  });
+
   it("renders the empty-state when there are no charges and no cursor", () => {
     render(
       React.createElement(BillingUsageTab, {
@@ -113,7 +125,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       screen.getByText("Run · 1,860 tokens · 820 in · 1,040 out"),
     ).toBeTruthy();
     // date column renders the formatted timestamp
-    expect(screen.getByText(/\d{4} · \d{2}:\d{2}/)).toBeTruthy();
+    expect(screen.getByText(/\d{4} · \d{2}:\d{2}/, { selector: "td > time" })).toBeTruthy();
   });
 
   it("renders a zero debit without a negative sign", () => {
