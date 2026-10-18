@@ -1,6 +1,7 @@
 //! Priced model catalogue CRUD, each edit bumping the catalogue version in the
 //! same transaction.
 
+use afd_core::catalogue::{Metadata, Price};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -22,18 +23,16 @@ const MODEL_TABLE: &str = "model.platform_models";
 /// The foreign key a platform default holds on the model it serves.
 const PLATFORM_MODEL_FK: &str = "platform_defaults_platform_model_id_fkey";
 
-/// A model's mutable cap and prices, bounded by the handler's garde rules
-/// before they reach this crate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::FromRow)]
-pub struct ModelRates {
-    /// Maximum model context.
-    pub context_cap_tokens: i32,
-    /// Input-token nanos per million tokens.
-    pub input_nanos_per_mtok: i64,
-    /// Cached-input nanos per million tokens.
-    pub cached_input_nanos_per_mtok: i64,
-    /// Output-token nanos per million tokens.
-    pub output_nanos_per_mtok: i64,
+/// One replacement, validated by the HTTP handler's garde input types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelUpdate {
+    /// Labels, verified context and advanced-selection flag.
+    pub metadata: Metadata,
+    /// Complete set of prompt tiers and date ranges, with price evidence.
+    pub prices: Vec<Price>,
+    /// Non-secret transport settings. On create, absent files an unconfigured
+    /// model; on update, absent keeps the saved settings.
+    pub inference: Option<ModelInference>,
 }
 
 /// A model to file. `(provider, model_name)` is immutable afterward.
@@ -43,10 +42,8 @@ pub struct ModelInput {
     pub provider: String,
     /// The provider's name for the model.
     pub model_name: String,
-    /// Cap and prices.
-    pub rates: ModelRates,
-    /// Non-secret transport settings, absent until an administrator saves them.
-    pub inference: Option<ModelInference>,
+    /// Identity evidence, complete price set and inference settings.
+    pub details: ModelUpdate,
 }
 
 /// One priced model row.
@@ -58,10 +55,8 @@ pub struct Model {
     pub provider: String,
     /// The provider's name for the model.
     pub model_name: String,
-    /// Cap and prices.
-    pub rates: ModelRates,
-    /// Non-secret transport settings, absent until an administrator saves them.
-    pub inference: Option<ModelInference>,
+    /// Identity evidence, complete price set and inference settings.
+    pub details: ModelUpdate,
 }
 
 /// A `model.platform_models` row by name, before its id is parsed.
@@ -70,8 +65,8 @@ struct ModelRow {
     id: String,
     provider: String,
     model_name: String,
-    #[sqlx(flatten)]
-    rates: ModelRates,
+    metadata: Json<Metadata>,
+    prices: Json<Vec<Price>>,
     inference: Option<Json<ModelInference>>,
 }
 
@@ -81,8 +76,11 @@ impl ModelRow {
             id: Uuid7::parse(&self.id).map_err(row(MODEL_TABLE, "id"))?,
             provider: self.provider,
             model_name: self.model_name,
-            rates: self.rates,
-            inference: self.inference.map(|settings| settings.0),
+            details: ModelUpdate {
+                metadata: self.metadata.0,
+                prices: self.prices.0,
+                inference: self.inference.map(|settings| settings.0),
+            },
         })
     }
 }
@@ -142,52 +140,46 @@ impl Models {
     /// Refuses inference settings that cannot route within the model's
     /// context; reports entropy, identifier, or transaction failures.
     pub async fn create(&self, input: ModelInput, now: Timestamp) -> Result<CreateModel> {
-        validate(input.inference.as_ref(), input.rates)?;
+        validate(input.details.inference.as_ref(), &input.details.metadata)?;
         let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
         bump(&mut transaction, CONTEXT_CREATE).await?;
-        let rates = input.rates;
+        let metadata = &input.details.metadata;
         let done = sqlx::query(sql::INSERT_PLATFORM_MODEL)
             .bind(id.as_str())
             .bind(&input.provider)
             .bind(&input.model_name)
-            .bind(rates.context_cap_tokens)
-            .bind(rates.input_nanos_per_mtok)
-            .bind(rates.cached_input_nanos_per_mtok)
-            .bind(rates.output_nanos_per_mtok)
-            .bind(input.inference.as_ref().map(Json))
+            .bind(Json(metadata))
+            .bind(input.details.inference.as_ref().map(Json))
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_CREATE))?;
         if done.rows_affected() == 0 {
             return Ok(CreateModel::Duplicate);
         }
+        write_prices(&mut transaction, &id, &input.details.prices, CONTEXT_CREATE).await?;
         transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
         Ok(CreateModel::Created(Model {
             id,
             provider: input.provider,
             model_name: input.model_name,
-            rates,
-            inference: input.inference,
+            details: input.details,
         }))
     }
 
-    /// Replaces the cap and prices, and the inference settings when `inference`
-    /// carries new ones, and advances the version atomically.
+    /// Replaces identity evidence and all prices, and the inference settings
+    /// when `details.inference` carries new ones, advancing one version
+    /// atomically.
     ///
     /// The settings that will stand, new or kept, are validated against the new
-    /// cap, so a smaller context cannot strand a saved output limit above it.
+    /// context cap, so a smaller context cannot strand a saved output limit
+    /// above it.
     ///
     /// # Errors
     /// Refuses settings that cannot route within the cap; reports transaction
     /// failures. `Ok(false)` means no such row.
-    pub async fn update(
-        &self,
-        id: &Uuid7,
-        rates: ModelRates,
-        inference: Option<&ModelInference>,
-    ) -> Result<bool> {
+    pub async fn update(&self, id: &Uuid7, details: ModelUpdate) -> Result<bool> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPDATE))?;
         bump(&mut transaction, CONTEXT_UPDATE).await?;
@@ -201,22 +193,23 @@ impl Models {
             return Ok(false);
         };
         validate(
-            inference.or(current.as_ref().map(|settings| &settings.0)),
-            rates,
+            details
+                .inference
+                .as_ref()
+                .or(current.as_ref().map(|settings| &settings.0)),
+            &details.metadata,
         )?;
         let done = sqlx::query(sql::UPDATE_PLATFORM_MODEL)
             .bind(id.as_str())
-            .bind(rates.context_cap_tokens)
-            .bind(rates.input_nanos_per_mtok)
-            .bind(rates.cached_input_nanos_per_mtok)
-            .bind(rates.output_nanos_per_mtok)
-            .bind(inference.map(Json))
+            .bind(Json(&details.metadata))
+            .bind(details.inference.as_ref().map(Json))
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_UPDATE))?;
         if done.rows_affected() == 0 {
             return Ok(false);
         }
+        write_prices(&mut transaction, id, &details.prices, CONTEXT_UPDATE).await?;
         transaction.commit().await.map_err(query(CONTEXT_UPDATE))?;
         Ok(true)
     }
@@ -249,11 +242,33 @@ impl Models {
 
 /// Proves saved settings route: a supported API, a safe HTTPS base and an output
 /// limit inside the model's context. Absent settings are an unconfigured model.
-fn validate(inference: Option<&ModelInference>, rates: ModelRates) -> Result<()> {
+fn validate(inference: Option<&ModelInference>, metadata: &Metadata) -> Result<()> {
     if let Some(inference) = inference {
-        let context = u32::try_from(rates.context_cap_tokens).unwrap_or_default();
+        let context = u32::try_from(metadata.context_cap_tokens).unwrap_or_default();
         afd_inference::Configured::new(inference, context)?;
     }
+    Ok(())
+}
+
+/// Retains stable price identifiers and removes only ranges absent from the replacement.
+async fn write_prices(
+    connection: &mut PgConnection,
+    id: &Uuid7,
+    prices: &[Price],
+    context: &'static str,
+) -> Result<()> {
+    sqlx::query(sql::UPSERT_PLATFORM_MODEL_PRICES)
+        .bind(id.as_str())
+        .bind(Json(prices))
+        .execute(&mut *connection)
+        .await
+        .map_err(query(context))?;
+    sqlx::query(sql::DELETE_PLATFORM_MODEL_PRICES)
+        .bind(id.as_str())
+        .bind(Json(prices))
+        .execute(connection)
+        .await
+        .map_err(query(context))?;
     Ok(())
 }
 

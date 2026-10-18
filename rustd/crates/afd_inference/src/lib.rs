@@ -12,7 +12,7 @@ pub use logs::log_filter;
 use afd_wire::inference::{InferenceApi, ModelInference};
 use garde::Validate as _;
 use rig_core::completion::CompletionRequest;
-use rig_core::providers::{anthropic, openai};
+use rig_core::providers::{anthropic, gemini, ollama, openai};
 use rig_core::wire::{Encoded, Mode, Operation as _};
 use rig_core::{
     DynModel,
@@ -39,6 +39,8 @@ enum Dialect {
     Chat(&'static openai::wire::Dialect),
     Responses(&'static openai::wire::Dialect),
     Messages(anthropic::wire::Dialect),
+    Gemini,
+    Ollama,
 }
 
 impl<'a> Configured<'a> {
@@ -92,6 +94,13 @@ impl<'a> Configured<'a> {
                     )
                     .ok_or(ErrorKind::Dialect)?,
             ),
+            // The native APIs have no dialect table: a saved one is a mistake
+            // the caller must hear about rather than one silently ignored.
+            InferenceApi::Gemini | InferenceApi::Ollama if settings.dialect.is_some() => {
+                return Err(ErrorKind::Dialect.into());
+            }
+            InferenceApi::Gemini => Dialect::Gemini,
+            InferenceApi::Ollama => Dialect::Ollama,
         };
         Ok(Self {
             settings,
@@ -134,6 +143,8 @@ impl<'a> Configured<'a> {
                 tools(&self.openai(dialect, model, ""), model)
             }
             Dialect::Messages(dialect) => tools(&self.messages(dialect, model, ""), model),
+            Dialect::Gemini => tools(&self.gemini(model, ""), model),
+            Dialect::Ollama => tools(&self.ollama(model, ""), model),
         }
     }
 
@@ -142,7 +153,9 @@ impl<'a> Configured<'a> {
     pub fn with_transport<T>(&self, model: &str, key: &str, transport: T) -> DynModel<Completion>
     where
         T: rig_core::driver::Transport<openai::wire::OpenAiWire>
-            + rig_core::driver::Transport<anthropic::wire::Messages>,
+            + rig_core::driver::Transport<anthropic::wire::Messages>
+            + rig_core::driver::Transport<gemini::completion::GenerateContent>
+            + rig_core::driver::Transport<ollama::Chat>,
     {
         match self.dialect {
             Dialect::Chat(dialect) | Dialect::Responses(dialect) => {
@@ -151,6 +164,8 @@ impl<'a> Configured<'a> {
             Dialect::Messages(dialect) => {
                 rig_core::Model::new(self.messages(dialect, model, key), transport).erase()
             }
+            Dialect::Gemini => rig_core::Model::new(self.gemini(model, key), transport).erase(),
+            Dialect::Ollama => rig_core::Model::new(self.ollama(model, key), transport).erase(),
         }
     }
 
@@ -168,7 +183,21 @@ impl<'a> Configured<'a> {
                 encode(&self.openai(dialect, model, ""), request, mode)
             }
             Dialect::Messages(dialect) => encode(&self.messages(dialect, model, ""), request, mode),
+            Dialect::Gemini => encode(&self.gemini(model, ""), request, mode),
+            Dialect::Ollama => encode(&self.ollama(model, ""), request, mode),
         }
+    }
+
+    fn gemini(&self, model: &str, key: &str) -> gemini::completion::GenerateContent {
+        let provider = gemini::GeminiConfig::new(key).with_base_url(&self.settings.base_url);
+        gemini::completion::GenerateContent::new(provider, model)
+    }
+
+    fn ollama(&self, model: &str, key: &str) -> ollama::Chat {
+        let provider = ollama::wire::OllamaConfig::new()
+            .with_base_url(&self.settings.base_url)
+            .with_api_key(key);
+        ollama::Chat::new(provider, model)
     }
 
     fn openai(

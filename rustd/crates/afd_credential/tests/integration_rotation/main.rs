@@ -16,7 +16,7 @@ use afd_crypto::envelope::{Envelope, Sealer};
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{DefaultSeed, PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{DefaultSeed, ModelSeed, PlatformDefault, TestDatabase, mint_id};
 use jiff::Timestamp;
 
 mod activation;
@@ -153,26 +153,14 @@ impl Fixture {
         .expect("the projection columns seed");
     }
 
-    /// Publishes one catalogue row, which the default below points at:
-    /// `platform_defaults.platform_model_id` references `platform_models`, so a
-    /// default can only name a model the catalogue carries — the schema's own
-    /// way of saying an unpriced default is not a default.
+    /// Publishes synthetic identity evidence and a zero-priced test quote.
     async fn seed_catalogue(&self, provider: &str, model: &str, cap: i32) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO model.platform_models \
-               (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, \
-                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, now(), now()) \
-             ON CONFLICT (provider, model_name) DO NOTHING",
-        )
-        .bind(mint_id())
-        .bind(model)
-        .bind(provider)
-        .bind(cap)
-        .execute(&mut *connection)
-        .await
-        .expect("the catalogue row seeds");
+        ModelSeed::new(&mint_id(), provider, model, cap)
+            .verified_at(NOW)
+            .insert(&mut *connection)
+            .await
+            .expect("the catalogue row seeds");
     }
 
     /// Publishes one ACTIVE platform default, for the reset's copy path, and

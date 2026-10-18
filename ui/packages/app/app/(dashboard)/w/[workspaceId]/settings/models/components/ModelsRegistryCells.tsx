@@ -7,9 +7,10 @@ import {
   IconAction,
 } from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { type LibraryModel } from "@/lib/api/model-library-types";
+import { OLLAMA_PROVIDER, type LibraryModel } from "@/lib/api/model-library-types";
 import {
   EMPTY_VALUE,
+  PRICE_UNKNOWN,
   formatContextTokens,
   formatRatesPerMtok,
   type RateFields,
@@ -27,10 +28,7 @@ export type RegistryRow = { kind: "default" } | { kind: "entry"; entry: TenantMo
 const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 const RATES_UNAVAILABLE = "Rates unavailable";
 const NUMERIC_CELL_CLASS = "font-mono text-mono leading-mono tabular-nums text-muted-foreground";
-// Self-managed rows are billed by the tenant's own provider account — token
-// rates apply only under platform-managed posture (schema/003_model_library.sql).
-// "Rates unavailable" reads as "we tried and failed"; the truth is "this does not
-// apply to you", and a dollar figure here would imply agentsfleet is charging it.
+// Self-managed rows use the tenant's provider account.
 const RATES_NOT_APPLICABLE = "Billed by provider";
 
 export function rowKey(row: RegistryRow): string {
@@ -44,12 +42,12 @@ export function ModelCell({
   row: RegistryRow;
   platformDefault: TenantPlatformDefault | null;
 }) {
-  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} />;
+  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} displayName={row.entry.display_name} />;
   // The lock is the whole statement: this row is the platform default and a
   // tenant admin cannot edit it. With no default configured the lock stands
   // alone; the actions column says why.
   if (!platformDefault) return <PlatformManagedMark />;
-  return <ModelName modelId={platformDefault.model} managedByPlatform />;
+  return <ModelName modelId={platformDefault.model} displayName={platformDefault.display_name} managedByPlatform />;
 }
 
 export function ProviderCell({
@@ -141,6 +139,7 @@ export function RatesCell({
 }) {
   const identity = identityFor(row, platformDefault);
   if (!identity) return <span className={NUMERIC_CELL_CLASS}>{EMPTY_VALUE}</span>;
+  if (identity.provider === OLLAMA_PROVIDER) return <span className={NUMERIC_CELL_CLASS}>{PRICE_UNKNOWN}</span>;
   const rate = identity.rate ?? libraryRateFor(libraryModels, identity.provider, identity.model);
   // A tenant entry is self-managed by definition — the platform row is the only
   // platform-managed one — so an unpriced entry is "not applicable", not a miss.

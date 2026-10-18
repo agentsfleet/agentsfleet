@@ -49,9 +49,9 @@ case "\$1" in
 esac
 exit 0
 STUB
-  cat >"$dir/bin/node" <<STUB
+  cat >"$dir/bin/bun" <<STUB
 #!/usr/bin/env bash
-echo "node \$*" >>"$dir/node.log"
+echo "bun \$*" >>"$dir/bun.log"
 exit 0
 STUB
   cat >"$dir/bin/psql" <<STUB
@@ -60,7 +60,7 @@ echo "psql \$*" >>"$dir/psql.log"
 printf '$rows\n'
 exit 0
 STUB
-  chmod +x "$dir/bin/op" "$dir/bin/node" "$dir/bin/psql"
+  chmod +x "$dir/bin/op" "$dir/bin/bun" "$dir/bin/psql"
   printf '%s' "$dir"
 }
 
@@ -152,9 +152,9 @@ test_diff_arm_writes_nothing() {
   run_gate "$dir" ACTION=diff ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1
   # The seed script must be invoked WITHOUT --apply, and the apply step's
   # confirmation prompt must never appear.
-  if [ ! -f "$dir/node.log" ]; then
+  if [ ! -f "$dir/bun.log" ]; then
     bad "$name" "the diff step did not run the seed script"
-  elif grep -q -- "--apply" "$dir/node.log"; then
+  elif grep -q -- "--apply" "$dir/bun.log"; then
     bad "$name" "the diff arm invoked the seed script with --apply"
   else
     ok "$name"
@@ -196,7 +196,7 @@ test_verify_fails_on_empty_catalogue() {
   out="$(run_step "$empty" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 || true)"
   if run_step "$empty" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
     bad "$name" "verify passed against a catalogue reporting 0 rows"
-  elif ! grep -q '0 rows' <<<"$out"; then
+  elif ! grep -q '0 currently priced rows' <<<"$out"; then
     bad "$name" "verify failed but did not name the row count it found"
   elif run_step "$populated" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
     ok "$name"
@@ -224,10 +224,23 @@ test_apply_aborts_on_confirmation_mismatch() {
   run_step "$match" 02_apply.sh ENV=prod ALLOW_VAULT_READS=1 \
     ALLOW_MODEL_CATALOGUE_WRITES=1 <<<"prod" >/dev/null 2>&1
 
-  if [ -f "$mismatch/node.log" ] && grep -q -- "--apply" "$mismatch/node.log"; then
+  if [ -f "$mismatch/bun.log" ] && grep -q -- "--apply" "$mismatch/bun.log"; then
     bad "$name" "the catalogue was written despite a confirmation mismatch"
-  elif [ ! -f "$match/node.log" ] || ! grep -q -- "--apply" "$match/node.log"; then
+  elif [ ! -f "$match/bun.log" ] || ! grep -q -- "--apply" "$match/bun.log"; then
     bad "$name" "a MATCHING confirmation did not write either — the refusal proves nothing"
+  else
+    ok "$name"
+  fi
+}
+
+test_verify_keeps_database_url_out_of_process_arguments() {
+  local name="verify_keeps_database_url_out_of_process_arguments"
+  local dir
+  dir="$(make_sandbox "$name")"
+  if ! run_step "$dir" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
+    bad "$name" "verification did not reach psql"
+  elif grep -q 'postgres://' "$dir/psql.log"; then
+    bad "$name" "the connection URL entered psql's process arguments"
   else
     ok "$name"
   fi
@@ -241,6 +254,7 @@ test_diff_arm_writes_nothing
 test_scripts_print_no_credentials
 test_verify_fails_on_empty_catalogue
 test_apply_aborts_on_confirmation_mismatch
+test_verify_keeps_database_url_out_of_process_arguments
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

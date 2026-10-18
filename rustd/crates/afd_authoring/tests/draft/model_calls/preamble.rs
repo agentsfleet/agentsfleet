@@ -16,6 +16,8 @@ async fn every_configured_api_receives_system_instructions_before_user_context()
         InferenceApi::Chat,
         InferenceApi::Responses,
         InferenceApi::Messages,
+        InferenceApi::Gemini,
+        InferenceApi::Ollama,
     ] {
         let f = Fixture::create().await;
         let settings = ModelInference {
@@ -53,12 +55,13 @@ fn assert_sent_instructions(provider: &Provider, api: InferenceApi) {
 
 pub(super) fn assert_instructions(body: &Value, api: InferenceApi) {
     let system = match api {
-        InferenceApi::Chat => {
+        InferenceApi::Chat | InferenceApi::Ollama => {
             assert_eq!(body.pointer("/messages/0/role"), Some(&json!("system")));
             body.pointer("/messages/0/content")
         }
         InferenceApi::Responses => body.get("instructions"),
         InferenceApi::Messages => body.get("system"),
+        InferenceApi::Gemini => body.get("systemInstruction"),
     }
     .expect("daemon system instructions");
     let text = serde_json::to_string(system).expect("encoded instructions");
@@ -84,6 +87,14 @@ fn response(api: InferenceApi) -> Value {
             "id":"local-message", "type":"message", "role":"assistant", "model":"configured",
             "content":[{"type":"text","text":"Ready"}], "stop_reason":"end_turn", "stop_sequence":null,
             "usage":{"input_tokens":1,"output_tokens":1}
+        }),
+        InferenceApi::Gemini => json!({
+            "candidates":[{"content":{"role":"model","parts":[{"text":"Ready"}]},"finishReason":"STOP"}],
+            "usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}
+        }),
+        InferenceApi::Ollama => json!({
+            "model":"configured", "message":{"role":"assistant","content":"Ready"},
+            "done":true, "done_reason":"stop", "prompt_eval_count":1, "eval_count":1
         }),
     }
 }

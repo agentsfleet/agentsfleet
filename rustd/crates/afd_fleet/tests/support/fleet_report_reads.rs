@@ -13,6 +13,11 @@
 )]
 
 use crate::support::Fixtures;
+use afd_db::test_util::ModelSeed;
+
+/// The fixture model routes through Anthropic Messages.
+const MESSAGES_INFERENCE: &str =
+    r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":8192}"#;
 
 /// Gives a tenant a balance, or resets the one it has.
 const UPSERT_WALLET: &str = "\
@@ -20,18 +25,6 @@ INSERT INTO billing.wallets (tenant_id, balance_nanos, exhausted_at, created_at,
 VALUES ($1::uuid, $2, NULL, now(), now())
 ON CONFLICT (tenant_id) DO UPDATE
   SET balance_nanos = EXCLUDED.balance_nanos, updated_at = now()";
-
-/// Gives `(provider, model)` its catalogue rates, or resets them.
-const UPSERT_PLATFORM_MODEL: &str = "\
-INSERT INTO model.platform_models
-  (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok,
-   cached_input_nanos_per_mtok, output_nanos_per_mtok, inference, created_at, updated_at)
-VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, now(), now())
-ON CONFLICT (provider, model_name) DO UPDATE
-  SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-      cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
-      output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-      updated_at = now()";
 
 /// The catalogue row a seeded rate is written under.
 ///
@@ -81,23 +74,21 @@ impl Fixtures {
     /// test naming the credits refusal seeds past it.
     pub(crate) async fn seed_model_rate(&self, provider: &str, model: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(UPSERT_PLATFORM_MODEL)
-            .bind(FIXTURE_MODEL_ROW)
-            .bind(model)
-            .bind(provider)
-            .bind(FIXTURE_CONTEXT_CAP_TOKENS)
-            .bind(FIXTURE_INPUT_NANOS_PER_MTOK)
-            .bind(FIXTURE_CACHED_INPUT_NANOS_PER_MTOK)
-            .bind(FIXTURE_OUTPUT_NANOS_PER_MTOK)
-            .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
-                api: afd_wire::inference::InferenceApi::Messages,
-                base_url: "https://api.anthropic.com/v1".into(),
-                dialect: None,
-                max_output_tokens: 8192,
-            }))
-            .execute(&mut *connection)
-            .await
-            .expect("the catalogue seed must run");
+        ModelSeed::new(
+            FIXTURE_MODEL_ROW,
+            provider,
+            model,
+            FIXTURE_CONTEXT_CAP_TOKENS,
+        )
+        .rates(
+            FIXTURE_INPUT_NANOS_PER_MTOK,
+            FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
+            FIXTURE_OUTPUT_NANOS_PER_MTOK,
+        )
+        .inference(MESSAGES_INFERENCE)
+        .insert(&mut *connection)
+        .await
+        .expect("the catalogue seed must run");
     }
 
     /// A tenant's current balance, or `None` when it has no wallet row.

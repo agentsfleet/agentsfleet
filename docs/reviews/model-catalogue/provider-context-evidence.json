@@ -1,0 +1,50 @@
+[
+  {
+    "source_url": "https://api.fireworks.ai/v1/accounts/fireworks/models/glm-5p3-flash",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "name": "accounts/fireworks/models/glm-5p3-flash",
+      "contextLength": 1048576
+    }
+  },
+  {
+    "source_url": "https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "name": "accounts/fireworks/models/kimi-k3",
+      "contextLength": 1048576
+    }
+  },
+  {
+    "source_url": "https://api.fireworks.ai/v1/accounts/fireworks/models/deepseek-v4p1-flash",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "name": "accounts/fireworks/models/deepseek-v4p1-flash",
+      "contextLength": 1048576
+    }
+  },
+  {
+    "source_url": "https://openrouter.ai/api/v1/models#google/gemini-4-argon",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "id": "google/gemini-4-argon",
+      "context_length": 1048576
+    }
+  },
+  {
+    "source_url": "https://openrouter.ai/api/v1/models#meta/muse-wonder",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "id": "meta/muse-wonder",
+      "context_length": 1048576
+    }
+  },
+  {
+    "source_url": "https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902",
+    "verified_at": "2026-10-18T13:32:07Z",
+    "response": {
+      "id": "qwen/qwen3.8-max-0902",
+      "context_length": 1000000
+    }
+  }
+]

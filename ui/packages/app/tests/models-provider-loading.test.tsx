@@ -25,6 +25,7 @@ const props = {
 };
 const model: LibraryModel = {
   id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000,
+  display_name: "Sonnet 5", advanced: false,
   input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0,
 };
 

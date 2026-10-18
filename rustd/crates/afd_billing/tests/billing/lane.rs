@@ -21,7 +21,9 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
+use afd_db::test_util::{
+    FleetSeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7,
+};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -46,13 +48,6 @@ INSERT INTO billing.fleet_charges
   (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, model,
    charged_nanos, event_created_at, created_at, updated_at)
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $11, $12)";
-
-/// Writes one priced catalogue row.
-const INSERT_PLATFORM_MODEL: &str = "\
-INSERT INTO model.platform_models
-  (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok,
-   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
-VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, now(), now())";
 
 /// The context window a seeded catalogue row declares; nothing here reads it.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -169,15 +164,9 @@ impl Lane {
     /// Files a model in the catalogue at three prices, answering its name.
     pub(crate) async fn priced_model(&self, input: i64, cached: i64, output: i64) -> String {
         let model = mint_id();
-        sqlx::query(INSERT_PLATFORM_MODEL)
-            .bind(mint_id())
-            .bind(&model)
-            .bind(PROVIDER)
-            .bind(CONTEXT_CAP_TOKENS)
-            .bind(input)
-            .bind(cached)
-            .bind(output)
-            .execute(&mut *self.pool.acquire().await.expect("the lane answers"))
+        ModelSeed::new(&mint_id(), PROVIDER, &model, CONTEXT_CAP_TOKENS)
+            .rates(input, cached, output)
+            .insert(&mut *self.pool.acquire().await.expect("the lane answers"))
             .await
             .expect("filing a catalogue row");
         model

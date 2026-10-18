@@ -61,14 +61,15 @@ impl Scene {
             .expect("the workspace seed");
         sqlx::query(
             "INSERT INTO model.platform_models \
-               (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, \
-                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4, 1, 1, 1, now(), now())",
+               (id, model_name, provider, display_name, context_cap_tokens, context_source_url, \
+                context_verified_at, advanced, created_at, updated_at) \
+             VALUES ($1::uuid, $2, $3, $2, $4, $5, now(), false, now(), now())",
         )
         .bind(&scene.model_row)
         .bind(MODEL)
         .bind(&scene.provider)
         .bind(CAP)
+        .bind("https://example.test/models/guard")
         .execute(&mut *connection)
         .await
         .expect("the catalogue row seeds");

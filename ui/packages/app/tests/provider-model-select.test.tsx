@@ -14,7 +14,7 @@ import {
 // useModelCatalogue, mocked here so every branch is deterministic.
 
 const { catalogueState } = vi.hoisted(() => ({
-  catalogueState: { models: [] as LibraryModel[], status: "ready" as CatalogueStatus, preload: vi.fn() },
+  catalogueState: { models: [] as LibraryModel[], status: "ready" as CatalogueStatus, preload: vi.fn(), preloadAdvanced: vi.fn() },
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
@@ -28,9 +28,11 @@ vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/model
 
 import ProviderModelSelect from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect";
 
-const cap = (id: string, provider: string): LibraryModel => ({
+const cap = (id: string, provider: string, displayName = id): LibraryModel => ({
   id,
   provider,
+  display_name: displayName,
+  advanced: false,
   context_cap_tokens: 1,
   input_nanos_per_mtok: 1,
   cached_input_nanos_per_mtok: 1,
@@ -45,6 +47,31 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("ProviderModelSelect", () => {
+  it.each(["gpt-6.1-sol", "gpt-5.6-terra"])("requests advanced entries explicitly and hides them again for %s", (model) => {
+    const terra = { ...cap("gpt-5.6-terra", "openai", "GPT-5.6 Terra"), advanced: true };
+    catalogueState.models = [cap("gpt-6.1-sol", "openai"), terra];
+    const onModelChange = vi.fn();
+    render(<ProviderModelSelect id="advanced-model" provider="openai" model={model} onModelChange={onModelChange} />);
+    expect(screen.queryByRole("option", { name: /Terra/ })).toBeNull();
+    const toggle = screen.getByRole("switch", { name: "Show advanced models" });
+    fireEvent.click(toggle);
+    expect(catalogueState.preloadAdvanced).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("option", { name: /Terra/ })).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("option", { name: /Terra/ })).toBeNull();
+    if (model === terra.id) expect(onModelChange).toHaveBeenCalledWith("");
+    else expect(onModelChange).not.toHaveBeenCalled();
+  });
+
+  it("offers a retry when the requested advanced catalogue fails", () => {
+    catalogueState.status = CATALOGUE_STATUS.error;
+    render(<ProviderModelSelect id="advanced-error" model="" onModelChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Show advanced models" }));
+    expect(screen.getByRole("alert").textContent).toContain("Could not load advanced models.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(catalogueState.preloadAdvanced).toHaveBeenCalledTimes(2);
+  });
+
   it("holds a stable, disabled select while the catalogue is in flight", () => {
     // The catalogue loads on dialog-open intent, so a cold open renders this
     // state for the round-trip. It must NOT be the free-text input: swapping
@@ -85,7 +112,7 @@ describe("ProviderModelSelect", () => {
   });
 
   it("a picked model reads as one truncating line, and each option lists its id under the name", () => {
-    catalogueState.models = [cap("claude-sonnet-5", "anthropic"), cap("openai/gpt-5-mini", "openai")];
+    catalogueState.models = [cap("claude-sonnet-5", "anthropic", "Sonnet 5"), cap("openai/gpt-5-mini", "openai", "GPT-5 Mini")];
     render(React.createElement(ProviderModelSelect, { id: "m", model: "claude-sonnet-5", onModelChange: vi.fn() }));
 
     const value = document.querySelector("[data-select-value]");
@@ -105,8 +132,8 @@ describe("ProviderModelSelect", () => {
     expect(screen.getByText("o1")).toBeTruthy();
   });
 
-  it("falls back to the static known-models list before free text when the catalogue has no rows for the provider", () => {
-    catalogueState.models = []; // empty catalogue — provider isn't priced yet
+  it("does not invent model suggestions when the catalogue has no rows for the provider", () => {
+    catalogueState.models = [];
     render(
       React.createElement(ProviderModelSelect, {
         id: "m",
@@ -115,11 +142,11 @@ describe("ProviderModelSelect", () => {
         onModelChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("claude-sonnet-5-5")).toBeTruthy();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByText("claude-sonnet-5-5")).toBeNull();
+    expect(screen.getByRole("textbox")).toBeTruthy();
   });
 
-  it("still degrades to free text when the provider is in neither the catalogue nor the static list (regression)", () => {
+  it("allows an exact custom identifier for a provider absent from the catalogue", () => {
     catalogueState.models = [];
     const onModelChange = vi.fn();
     render(

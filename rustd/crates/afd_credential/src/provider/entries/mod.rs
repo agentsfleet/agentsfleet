@@ -37,6 +37,7 @@ mod page;
 pub mod sql;
 mod write;
 
+use afd_core::catalogue::Metadata;
 use afd_core::id::Uuid7;
 use afd_vault::Descriptor;
 use jiff::Timestamp;
@@ -95,13 +96,15 @@ impl EntryRow {
 /// What the catalogue charges for one `(provider, model)` pair, for display.
 ///
 /// Not `afd_tenant`'s catalogue row and not the billing meter's slice rates —
-/// neither is reachable from this crate, and neither is this: it carries the
-/// row's neither identity nor version, because a registry row SHOWS a price and
-/// never quotes one. A rate the catalogue does not carry is `None` at the call site
+/// neither is reachable from this crate. This projection carries catalogue
+/// display/context evidence and a current base quote, without its row id or
+/// version. A rate the catalogue does not carry is `None` at the call site
 /// rather than a zero here — a blank cell and a free model must not render the
 /// same way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogueRate {
+    /// Verified catalogue identity and display label for the exact route.
+    pub metadata: Metadata,
     /// The context window the price is quoted for.
     pub context_cap_tokens: u32,
     /// The input rate, in nanos per million tokens.

@@ -5,6 +5,7 @@ import { SETTINGS_DEFAULTS, modelSettings, settingsSchema, valuesFromModel } fro
 
 const MODEL: AdminModel = {
   id: "model", provider: "workspace-provider", model_id: "workspace/model-next",
+  display_name: "Workspace model", advanced: false,
   // pin test: literal is the contract
   context_cap_tokens: 100000, input_nanos_per_mtok: 500000000,
   cached_input_nanos_per_mtok: 125000000, output_nanos_per_mtok: 2000000000,

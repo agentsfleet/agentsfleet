@@ -1,6 +1,6 @@
 // Authenticated platform-admin client for the model library + platform default.
 // Distinct from model_library.ts (the tenant-facing catalogue reader): these
-// routes are platform-admin-gated and mutate core.model_library / core.platform_provider_defaults.
+// routes are platform-admin-gated and manage model.platform_models and its prices.
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
@@ -21,6 +21,8 @@ export interface AdminModel {
   id: string;
   provider: string;
   model_id: string;
+  display_name: string;
+  advanced: boolean;
   context_cap_tokens: number;
   input_nanos_per_mtok: number;
   cached_input_nanos_per_mtok: number;
@@ -52,7 +54,7 @@ export interface PlatformDefaultInput {
   base_url?: string;
 }
 
-// A row of core.platform_provider_defaults as the admin GET returns it. Never
+// A platform provider default as the admin GET returns it. Never
 // carries key material. `model` is the priced (provider, model_id) the default
 // resolves to — non-null on the active row, NULL once a provider is stood down.
 export interface PlatformKey {

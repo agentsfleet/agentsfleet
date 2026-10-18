@@ -73,7 +73,7 @@ impl DefaultSeed<'_> {
             .bind(self.context_cap_tokens)
             .bind(jiff_sqlx::ToSqlx::to_sqlx(self.created_at))
             .bind(super::mint_id())
-            .bind(super::model::FIXTURE_INFERENCE)
+            .bind(super::platform_model::FIXTURE_INFERENCE)
             .fetch_optional(executor)
             .await
             .map_err(|source| crate::error::query(CLAIM_CONTEXT, source))?;
@@ -150,7 +150,7 @@ impl PlatformDefault {
             .bind(seed.context_cap_tokens)
             .bind(jiff_sqlx::ToSqlx::to_sqlx(seed.created_at))
             .bind(super::mint_id())
-            .bind(super::model::FIXTURE_INFERENCE)
+            .bind(super::platform_model::FIXTURE_INFERENCE)
             .fetch_optional(&mut *connection)
             .await
             .unwrap_or_else(|failure| panic!("the platform default seed must run: {failure}"));

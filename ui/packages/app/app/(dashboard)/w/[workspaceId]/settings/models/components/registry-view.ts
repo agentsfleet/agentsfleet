@@ -6,7 +6,7 @@
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import { providerLabel, type LibraryModel } from "@/lib/api/model-library-types";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
-import { compareModelIds, type RateFields } from "@/lib/models/display";
+import { compareModels, type RateFields } from "@/lib/models/display";
 
 /** The columns the table sorts, matching the model library's set. */
 const SORT_KEYS = ["model", "provider", "context", "rates"] as const;
@@ -49,7 +49,7 @@ export function compareEntries(
 ): number {
   switch (key) {
     case "model":
-      return compareModelIds(a.model_id, b.model_id);
+      return compareModels(a, b);
     case "provider":
       return labelOf(a.provider).localeCompare(labelOf(b.provider));
     case "context":

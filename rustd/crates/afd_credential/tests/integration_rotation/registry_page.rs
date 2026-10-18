@@ -151,13 +151,23 @@ async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
     assert_eq!(held.provider(), Some(provider.as_str()));
     assert!(held.has_key, "the seeded projection says a key is stored");
 
-    let rate = flagged
+    assert_catalogue_evidence(flagged);
+
+    fixture.cleanup().await;
+}
+
+fn assert_catalogue_evidence(row: &RegistryRow) {
+    let rate = row
         .rate
         .as_ref()
         .expect("a catalogue row exists for this provider and model");
     assert_eq!(rate.context_cap_tokens, u32::try_from(CAP).unwrap_or(0));
-
-    fixture.cleanup().await;
+    assert_eq!(&rate.metadata.display_name, row.entry.model_name.as_ref());
+    assert_eq!(rate.metadata.context_verified_at, super::NOW);
+    assert_eq!(
+        rate.metadata.context_source_url,
+        "https://fixtures.agentsfleet.net/models"
+    );
 }
 
 /// An entry naming a credential the vault no longer holds still lists, degraded

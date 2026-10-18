@@ -134,6 +134,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("1200_vault_secrets.sql"),
     // 13xx model catalogue and tenant models
     migration!("1300_model_platform_models.sql"),
+    migration!("1305_model_platform_model_prices.sql"),
     migration!("1310_model_catalogue_version.sql"),
     migration!("1320_model_platform_defaults.sql"),
     migration!("1330_model_tenant_models.sql"),
