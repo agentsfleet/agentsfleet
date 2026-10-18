@@ -30,7 +30,8 @@ use crate::seed::MODEL;
 
 use self::report_seed::{Held, held};
 
-/// Dimension 2.2. A missing fleet row costs the charge nothing but its name.
+/// Dimension 2.2. A missing fleet row costs the charge nothing; its name falls
+/// back to the fleet's identifier.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_m201_charge_survives_unreadable_fleet_row() {
@@ -74,9 +75,10 @@ async fn test_m201_charge_survives_unreadable_fleet_row() {
          the callsign from"
     );
     assert_eq!(
-        name, None,
-        "an unreadable fleet must leave the name NULL — anything else is a \
-         fabricated name a reader cannot tell from a captured one"
+        name,
+        Some(held.fleet.clone()),
+        "an unreadable fleet leaves its identifier as the name, which a reader \
+         tells from a captured name because it equals `fleet_id` on the row"
     );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;

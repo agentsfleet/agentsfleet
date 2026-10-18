@@ -106,10 +106,10 @@ pub const SELECT_BUDGET_DRAIN: &str = include_str!("select_budget_drain.sql");
 /// It takes no parameter of its own — the subselect reads it from the fleet
 /// `$4` already names. That is the difference between a snapshot and a claim: a
 /// caller cannot pass a name that disagrees with the identifier beside it, and
-/// no request field reaches this column. The column is `NOT NULL`, so a fleet
-/// row purged before the charge lands refuses the insert, and the caller's
-/// retry posture applies. A charge only follows a lease on a live fleet, so
-/// that refusal needs a purge racing an admission.
+/// no request field reaches this column. A fleet row purged before the charge
+/// lands leaves the fleet's own identifier as the name, so the money still
+/// lands and a reader tells it from a captured name by comparing it with
+/// `fleet_id` on the same row.
 pub const INSERT_FLEET_CHARGE: &str = include_str!("insert_fleet_charge.sql");
 
 /// A platform model's three per-token prices.

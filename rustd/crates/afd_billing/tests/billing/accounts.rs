@@ -156,7 +156,7 @@ async fn should_record_one_receive_row_per_event_with_the_fleet_name() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_refuse_a_charge_for_a_fleet_that_has_no_row() {
+async fn should_charge_a_fleet_that_has_no_row_under_its_identifier() {
     let lane = Lane::create().await;
     let missing = mint_uuid7();
     let event = mint_uuid7();
@@ -170,10 +170,23 @@ async fn should_refuse_a_charge_for_a_fleet_that_has_no_row() {
         event_created_at: EVENT_CREATED_AT,
     };
 
-    let refused = lane.accounts.debit_receive(charged, NOW).await;
-    assert!(
-        refused.is_err(),
-        "fleet_name is NOT NULL, so a purged fleet refuses the row"
+    lane.accounts
+        .debit_receive(charged, NOW)
+        .await
+        .expect("a purged fleet never costs the charge");
+
+    let rows = lane
+        .billing
+        .charges(&lane.tenant, CHARGES_LIMIT_DEFAULT, None)
+        .await
+        .expect("answers");
+    let [row] = <&[_; 1]>::try_from(rows.as_slice()).expect("one charge row");
+    assert_eq!(row.fleet_id, missing.as_str());
+    assert_eq!(
+        row.fleet_name,
+        missing.as_str(),
+        "the name falls back to the fleet's identifier, which a reader tells \
+         from a captured name because it equals fleet_id"
     );
 }
 
