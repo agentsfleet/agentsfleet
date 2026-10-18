@@ -3,7 +3,14 @@
 --
 -- `event_created_at` is the producer's instant billing uses, which the event row
 -- does not hold; the lease's actor and event type come from a join to
--- `fleet.events`. `posture`, `provider`, `model` and the `metered_*` counts are
+-- `fleet.events` while that row exists.
+--
+-- No foreign key to `fleet.fleets` or `fleet.events`: a settled lease is runner
+-- history and outlives a fleet purge or an event's retention, for its own 30-day
+-- window (deletion matrix: Fleet). `fleet_id`, `workspace_id`, `tenant_id` and
+-- `fleet_event_id` are opaque values once their rows go. The insert proves them
+-- against the fleet and its event in the same statement, and a purge deletes the
+-- fleet's ACTIVE leases itself, so no live lease ever names a missing fleet. `posture`, `provider`, `model` and the `metered_*` counts are
 -- what renewal charges against. `receipt` is the producer's receipt the runner
 -- echoes back; `posted_message_count` bounds the messages a lease may post.
 
@@ -14,7 +21,7 @@ CREATE TABLE runner.leases (
     fleet_id                    UUID    NOT NULL,
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
-    fleet_event_id              UUID    NOT NULL REFERENCES fleet.events(id) ON DELETE CASCADE,
+    fleet_event_id              UUID    NOT NULL,
     event_created_at            TIMESTAMPTZ(3)  NOT NULL,
     receipt                     TEXT    NOT NULL,
     posture                     TEXT    NOT NULL,
@@ -28,11 +35,7 @@ CREATE TABLE runner.leases (
     status                      TEXT    NOT NULL,
     posted_message_count        INTEGER NOT NULL,
     created_at                  TIMESTAMPTZ(3)  NOT NULL,
-    updated_at                  TIMESTAMPTZ(3)  NOT NULL,
-    -- Proves the fleet's workspace and tenant, and cascades a purge.
-    CONSTRAINT fk_leases_fleet_workspace_tenant
-        FOREIGN KEY (fleet_id, workspace_id, tenant_id)
-        REFERENCES fleet.fleets (id, workspace_id, tenant_id) ON DELETE CASCADE
+    updated_at                  TIMESTAMPTZ(3)  NOT NULL
 );
 
 CREATE INDEX idx_leases_fleet_event_id_fencing_token

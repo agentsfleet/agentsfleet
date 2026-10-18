@@ -19,6 +19,9 @@ WITH held AS (
          $11, h.lease_expires_at, $13, 0, now(), now()
   FROM held h
   JOIN fleet.events e ON e.fleet_id = $3::uuid AND e.event_id = $6
+  -- The scope proof runner.leases holds no foreign key for: a workspace or
+  -- tenant that is not the fleet's writes no lease, so the caller issues none.
+  JOIN fleet.fleets f ON f.id = $3::uuid AND f.workspace_id = $4::uuid AND f.tenant_id = $5::uuid
   RETURNING id, runner_id, fleet_id, fleet_event_id
 ), audit AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)

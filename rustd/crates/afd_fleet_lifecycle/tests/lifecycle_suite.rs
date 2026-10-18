@@ -11,6 +11,7 @@ mod support;
 
 mod integration_fleet_page;
 mod integration_fleet_purpose;
+mod integration_purge_leases;
 mod integration_purge_ledger_identity;
 mod integration_purge_privileges;
 mod integration_purge_refusals;

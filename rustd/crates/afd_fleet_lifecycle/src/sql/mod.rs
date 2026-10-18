@@ -63,8 +63,16 @@ pub(crate) const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
 /// `RETURNING id::text` is what lets the caller tell "already gone" from "still
 /// running, refused" without a second read. Every child row cascades from
 /// this one (deletion matrix: Fleet), approval gates included: their table
-/// grants no DELETE, and the cascade runs as the table owner.
+/// grants no DELETE, and the cascade runs as the table owner. Runner leases are
+/// the exception: [`DELETE_ACTIVE_LEASES`] runs first, and settled ones stay.
 pub(crate) const DELETE_FLEET_IN_STATUS: &str = include_str!("delete_fleet_in_status.sql");
+
+/// Deletes one fleet's live leases inside its purge.
+///
+/// `$1` fleet · `$2` the live lease status. `runner.leases` holds no foreign key
+/// to the fleet, so a settled lease outlives the purge for its own retention
+/// window; a live one would name a fleet that no longer exists, and goes here.
+pub(crate) const DELETE_ACTIVE_LEASES: &str = include_str!("delete_active_leases.sql");
 
 /// Every fleet identifier in one workspace.
 ///

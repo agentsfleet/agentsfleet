@@ -201,7 +201,7 @@ omit its model and review then resolves the tenant default.
 ## runner
 
 ```
- runners ◀── leases ──▶ fleet.events (fleet_event_id)
+ runners ◀── leases ··▶ fleet.events (fleet_event_id), fleet.fleets (fleet_id): opaque, no FK
          ◀── events, lifetime_counters (1:1)
  fleet_slots (1 per fleet) ──▶ runners (last_runner_id), fleet.fleets
 ```
@@ -209,7 +209,7 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Columns |
 |---|---|---|
 | `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
-| `leases` | One fleet event handed to one runner | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count, metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
+| `leases` | One fleet event handed to one runner. No foreign key to the fleet or its event: a settled lease outlives a purge as runner history; the insert proves fleet, workspace and tenant in the same statement | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count, metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
 | `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold | `fleet_id (PK), last_runner_id, fencing_token, lease_expires_at, hold_expires_at, metered_input_token_count, metered_cached_token_count, metered_output_token_count, last_metered_at, created_at, updated_at` |
 | `events` | Append-only runner history | `id, runner_id, event_type, metadata, last_seen_at, created_at` · unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies | `runner_id (PK), acquired_count, succeeded_count, failed_count, expired_count, created_at, updated_at` |
@@ -268,7 +268,7 @@ or account therefore never deletes a charge. The slots name the export that read
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts | attempts, dispatches, settlements, receipts | `dispatches.result` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` of their attempts |
 | Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
-| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot | charges; drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
+| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases | charges; settled runner leases, for their own 30-day window (fleet and event shown as deleted); drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` of its attempts |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` of its attempts |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |

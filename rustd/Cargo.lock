@@ -671,6 +671,7 @@ dependencies = [
  "afd_db",
  "afd_dragonfly",
  "afd_observability",
+ "afd_state",
  "jiff",
  "jiff-sqlx",
  "moka",

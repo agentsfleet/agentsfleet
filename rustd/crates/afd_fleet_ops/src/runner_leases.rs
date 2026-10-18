@@ -2,7 +2,9 @@
 
 use std::borrow::Cow;
 
-use afd_api_wire::operator::{LeaseKind, LeaseOutcome, RunnerLeaseItem, RunnerLeasesResponse};
+use afd_api_wire::operator::{
+    LeaseDestination, LeaseKind, LeaseOutcome, RunnerLeaseItem, RunnerLeasesResponse,
+};
 use afd_core::event::status::{FLEET_ERROR, PROCESSED};
 use afd_core::id::Uuid7;
 use afd_db::Db;
@@ -31,13 +33,15 @@ impl RunnerLeaseHistory {
         Self { database }
     }
 
-    /// Lists a filtered page and its filtered total.
+    /// Lists a filtered page and its filtered total, with each lease's
+    /// destination as `viewer` (the tenant the caller acts in) may open it.
     ///
     /// # Errors
     /// Reports a missing runner, a cursor outside this filtered stream, a row
     /// this projection cannot decode, or an unavailable datastore.
     pub async fn list(
         &self,
+        viewer: &Uuid7,
         runner: &Uuid7,
         workspace: Option<&Uuid7>,
         fleet: Option<&str>,
@@ -82,7 +86,7 @@ impl RunnerLeaseHistory {
             .await
             .map_err(query(CONTEXT_PAGE))?
             .into_iter()
-            .map(LeaseRow::into_item)
+            .map(|row| row.into_item(viewer))
             .collect::<Vec<_>>();
         let next_cursor = (items.len() == limit as usize)
             .then(|| items.last().map(|item| item.id.clone()))
@@ -101,11 +105,13 @@ impl RunnerLeaseHistory {
 struct LeaseRow {
     id: String,
     fleet_id: String,
-    fleet_name: String,
+    fleet_name: Option<String>,
+    fleet_exists: bool,
     workspace_id: String,
+    tenant_id: String,
     event_id: String,
-    event_type: String,
-    actor: String,
+    event_type: Option<String>,
+    actor: Option<String>,
     lease_status: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     lease_expires_at: Timestamp,
@@ -118,7 +124,7 @@ struct LeaseRow {
     metered_input_token_count: i64,
     metered_cached_token_count: i64,
     metered_output_token_count: i64,
-    event_status: String,
+    event_status: Option<String>,
     failure_reason: Option<String>,
     failure_detail: Option<String>,
     wall_ms: Option<i64>,
@@ -126,17 +132,18 @@ struct LeaseRow {
 }
 
 impl LeaseRow {
-    /// The row as the operator API reads it.
-    fn into_item(self) -> RunnerLeaseItem<'static> {
+    /// The row as the operator API reads it, for `viewer`.
+    fn into_item(self, viewer: &Uuid7) -> RunnerLeaseItem<'static> {
         RunnerLeaseItem {
-            outcome: outcome(&self.lease_status, Some(self.event_status.as_str())),
+            outcome: outcome(&self.lease_status, self.event_status.as_deref()),
+            destination: destination(self.fleet_exists, &self.tenant_id, viewer),
             id: Cow::Owned(self.id),
             fleet_id: Cow::Owned(self.fleet_id),
-            fleet_name: Some(Cow::Owned(self.fleet_name)),
+            fleet_name: self.fleet_name.map(Cow::Owned),
             workspace_id: Cow::Owned(self.workspace_id),
             event_id: Cow::Owned(self.event_id),
-            event_type: Cow::Owned(self.event_type),
-            actor: Cow::Owned(self.actor),
+            event_type: self.event_type.map(Cow::Owned),
+            actor: self.actor.map(Cow::Owned),
             failure_label: self.failure_reason.map(Cow::Owned),
             failure_detail: self.failure_detail.map(Cow::Owned),
             kind: if self.is_reclaim {
@@ -155,6 +162,18 @@ impl LeaseRow {
             lease_expires_at: self.lease_expires_at,
             created_at: self.created_at,
         }
+    }
+}
+
+/// Where an operator can go from a lease: its fleet, if it still exists and
+/// sits in the account the operator is acting in. A name proves neither.
+fn destination(fleet_exists: bool, owner: &str, viewer: &Uuid7) -> LeaseDestination {
+    if !fleet_exists {
+        LeaseDestination::FleetDeleted
+    } else if owner == viewer.as_str() {
+        LeaseDestination::Available
+    } else {
+        LeaseDestination::NotPermitted
     }
 }
 
@@ -196,6 +215,29 @@ mod tests {
         );
         assert_eq!(outcome(LEASE_STATUS_REPORTED, None), LeaseOutcome::Unknown);
         assert_eq!(outcome("mystery", None), LeaseOutcome::Unknown);
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic,
+        reason = "a fixed fixture id fails loudly when it is not canonical"
+    )]
+    fn a_destination_needs_a_live_fleet_in_the_viewers_own_account() {
+        let viewer = Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
+            .unwrap_or_else(|error| panic!("fixture id is canonical: {error}"));
+        let other = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011";
+        for (exists, owner, expected) in [
+            (true, viewer.as_str(), LeaseDestination::Available),
+            (true, other, LeaseDestination::NotPermitted),
+            (false, viewer.as_str(), LeaseDestination::FleetDeleted),
+            (false, other, LeaseDestination::FleetDeleted),
+        ] {
+            assert_eq!(
+                destination(exists, owner, &viewer),
+                expected,
+                "fleet present: {exists}, owned by {owner}"
+            );
+        }
     }
 
     #[test]
