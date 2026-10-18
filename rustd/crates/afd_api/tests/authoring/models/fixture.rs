@@ -89,7 +89,7 @@ impl Model {
     }
 
     pub(super) async fn receipts(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.authoring_dispatches d JOIN fleet.authoring_attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches d JOIN authoring.attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1::uuid")
             .bind(&self.running.draft).fetch_one(&mut *self.running.f.db.acquire().await.expect("receipt read")).await.expect("durable receipt count")
     }
 }

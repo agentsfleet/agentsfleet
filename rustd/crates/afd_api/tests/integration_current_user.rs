@@ -53,7 +53,7 @@ const CURRENT_USER: &str = "/v1/users/me";
 
 /// What this suite's person is named before its own identifier is appended.
 ///
-/// A prefix rather than a fixed subject: `core.users.oidc_subject` is unique
+/// A prefix rather than a fixed subject: `identity.users.oidc_subject` is unique
 /// deployment-wide, so a fixture spelling it once would collide with its own
 /// leftovers the moment a run failed before cleanup.
 const SUBJECT_PREFIX: &str = "user_live_current_user_";
@@ -196,20 +196,20 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $7, 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, $7, now(), now()) \
              ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'current-user', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'current-user', now()) \
              ), person AS ( \
-               INSERT INTO core.users \
+               INSERT INTO identity.users \
                  (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, $8, $9, 1, 1) \
+               VALUES ($4::uuid, $1::uuid, $3, $8, $9, now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -228,7 +228,7 @@ impl Fixture {
     /// Returns the person to having never set a display name.
     async fn clear_display_name(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE core.users SET display_name = NULL WHERE id = $1::uuid")
+        sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1::uuid")
             .bind(&self.user)
             .execute(&mut *connection)
             .await
@@ -238,10 +238,10 @@ impl Fixture {
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         for statement in [
-            "DELETE FROM core.api_keys WHERE tenant_id = $1::uuid",
-            "DELETE FROM core.users WHERE tenant_id = $1::uuid",
-            "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
-            "DELETE FROM core.tenants WHERE id = $1::uuid",
+            "DELETE FROM identity.api_keys WHERE tenant_id = $1::uuid",
+            "DELETE FROM identity.users WHERE tenant_id = $1::uuid",
+            "DELETE FROM identity.workspaces WHERE tenant_id = $1::uuid",
+            "DELETE FROM identity.tenants WHERE id = $1::uuid",
         ] {
             sqlx::query(statement)
                 .bind(&self.tenant)

@@ -57,7 +57,7 @@ async fn invoke(model: &Model) -> Response {
 /// How many candidates the draft holds.
 async fn candidate_count(model: &Model) -> i64 {
     let r = &model.running;
-    sqlx::query_scalar("SELECT count(*) FROM core.authoring_candidates WHERE draft_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1::uuid")
         .bind(&r.draft)
         .fetch_one(&mut *r.f.db.acquire().await.expect("candidate read"))
         .await

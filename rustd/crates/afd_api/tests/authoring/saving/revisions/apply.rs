@@ -51,14 +51,14 @@ async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_
 
 /// The instructions revision 1 still stores, read straight from the table.
 async fn original_instructions(fleet: &Fleet) -> String {
-    sqlx::query_scalar("SELECT definition->>'instructions_md' FROM core.fleet_definition_revisions WHERE fleet_id=$1::uuid AND revision=1")
+    sqlx::query_scalar("SELECT definition->>'instructions_md' FROM fleet.revisions WHERE fleet_id=$1::uuid AND revision=1")
         .bind(fleet.saved["id"].as_str().expect("fleet ID")).fetch_one(&mut *fleet.case.base.db.acquire().await.expect("old setup connection"))
         .await.expect("immutable original setup")
 }
 
 /// How many Library rows the fleet's tenant owns.
 async fn library_count(fleet: &Fleet) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM core.fleet_libraries WHERE tenant_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM authoring.library_entries WHERE tenant_id=$1::uuid")
         .bind(fleet.case.base.tenant.as_str())
         .fetch_one(
             &mut *fleet

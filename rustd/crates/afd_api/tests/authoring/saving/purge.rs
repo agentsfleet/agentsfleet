@@ -79,7 +79,7 @@ async fn assert_delete_refusals(case: &Case, item: &str, stale: &str, current: &
 async fn assert_retained_identity(case: &Case, key: &afd_core::id::Uuid7) {
     let mut connection = case.base.db.acquire().await.expect("purge inspection");
     let remaining: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM core.fleets WHERE workspace_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
             .bind(case.base.workspace.as_str())
             .fetch_one(&mut *connection)
             .await

@@ -45,9 +45,10 @@ fn asking() -> String {
 pub(super) async fn bind(fixture: &Fixture, fleet: &Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query(
-        "INSERT INTO core.connector_channels \
-           (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, 1)",
+        "INSERT INTO connector.channels \
+           (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, \
+            created_at, updated_at) \
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, now(), now())",
     )
     .bind(mint_id())
     .bind(PROVIDER.id())
@@ -65,7 +66,7 @@ async fn bound(fixture: &Fixture) -> (String, String) {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_as(
         "SELECT c.fleet_id::text, f.workspace_id::text \
-         FROM core.connector_channels c JOIN core.fleets f ON f.id = c.fleet_id \
+         FROM connector.channels c JOIN fleet.fleets f ON f.id = c.fleet_id \
          WHERE c.provider = $1 AND c.external_account_id = $2 AND c.external_channel_id = $3",
     )
     .bind(PROVIDER.id())
@@ -243,7 +244,7 @@ async fn a_fleet_holding_the_residents_name_is_never_adopted() {
     assert_eq!(fixture.admissions().await, 0, "the squatter runs nothing");
     let mut connection = fixture.database().acquire().await.expect("a connection");
     let bindings: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM core.connector_channels \
+        "SELECT COUNT(*) FROM connector.channels \
          WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3",
     )
     .bind(PROVIDER.id())

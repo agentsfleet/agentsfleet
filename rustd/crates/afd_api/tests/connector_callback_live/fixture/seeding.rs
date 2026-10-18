@@ -28,21 +28,21 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector callback live', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Connector callback live', now(), now()) \
              ), workspaces AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connected', $3, 1), \
-                      ($4::uuid, $1::uuid, 'platform-admin', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'connected', now()), \
+                      ($4::uuid, $1::uuid, 'platform-admin', now()) \
              ), person AS ( \
-               INSERT INTO core.users \
+               INSERT INTO identity.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, $3, 'connector-live@example.test', 1, 1) \
+               VALUES ($5::uuid, $1::uuid, $3, 'connector-live@example.test', now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, 'fixture', '', $7, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($6::uuid, $1::uuid, 'fixture', '', $7, $3, now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -63,14 +63,14 @@ impl Fixture {
             Digest::of(&Presented::new(&self.bystander_token).expect("the token is valid"));
         sqlx::query(
             "WITH person AS ( \
-               INSERT INTO core.users \
+               INSERT INTO identity.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($1::uuid, $2::uuid, $3, 'connector-bystander@example.test', 1, 1) \
+               VALUES ($1::uuid, $2::uuid, $3, 'connector-bystander@example.test', now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($4::uuid, $2::uuid, 'bystander', '', $5, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($4::uuid, $2::uuid, 'bystander', '', $5, $3, now(), now())",
         )
         .bind(&self.bystander_user)
         .bind(&self.tenant)
@@ -140,16 +140,13 @@ impl Fixture {
     /// while a runner opened the wrong one.
     pub(crate) async fn secret_names(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
+        sqlx::query_scalar(
             "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
         )
         .bind(self.workspace.as_str())
         .fetch_all(&mut *connection)
         .await
         .expect("the workspace's secret names read")
-        .iter()
-        .map(|row| row.get("key_name"))
-        .collect()
     }
 
     pub(crate) async fn cleanup(self) {
@@ -167,13 +164,13 @@ impl Fixture {
             // rather than on this fixture, so a row left behind is one the
             // next test on this shared lane meets as "held elsewhere" — which
             // is the product working and the fixture leaking.
-            sqlx::query("DELETE FROM core.connector_installs WHERE workspace_id = $1::uuid")
+            sqlx::query("DELETE FROM connector.installs WHERE workspace_id = $1::uuid")
                 .bind(workspace.as_str())
                 .execute(&mut *transaction)
                 .await
                 .expect("the fixture's routing rows clean up");
         }
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

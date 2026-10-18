@@ -113,12 +113,12 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'CLI lifecycle', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'CLI lifecycle', now(), now()) \
              ) \
-             INSERT INTO core.users \
+             INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, $3, 'cli-live@example.test', 1, 1)",
+             VALUES ($2::uuid, $1::uuid, $3, 'cli-live@example.test', now(), now())",
         )
         .bind(&self.tenant)
         .bind(&self.user)
@@ -131,7 +131,7 @@ impl Fixture {
     async fn assert_replaced(&self, first: &str, replacement: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let rows: Vec<(String, Option<i64>)> = sqlx::query_as(
-            "SELECT id::text, revoked_at FROM core.cli_credentials \
+            "SELECT id::text, revoked_at FROM identity.cli_credentials \
              WHERE user_id = $1::uuid AND machine_name = $2 ORDER BY created_at, id",
         )
         .bind(&self.user)
@@ -155,7 +155,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

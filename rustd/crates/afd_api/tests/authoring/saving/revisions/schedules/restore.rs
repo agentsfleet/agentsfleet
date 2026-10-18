@@ -54,7 +54,7 @@ async fn pause_with_instance_intent(scheduled: &Scheduled) -> Value {
 /// `source_key`. Inheritance must keep its own identity so a subsequent Apply
 /// does not allocate a new row.
 async fn record_registered_identity(scheduled: &Scheduled, id: &str) {
-    sqlx::query("UPDATE core.fleet_schedules SET source_key=$2 WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.schedules SET provider_schedule_id=$2 WHERE id=$1::uuid")
         .bind(id)
         .bind(format!("fleet-schedule-{id}"))
         .execute(

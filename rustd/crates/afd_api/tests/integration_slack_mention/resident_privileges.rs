@@ -50,7 +50,6 @@ async fn a_moved_teams_binding_is_repointed_as_api_runtime() {
         .bind(CHANNEL)
         .bind(resident.as_str())
         .bind(KIND_RESIDENT)
-        .bind(1_i64)
         .bind(fixture.workspace().as_str())
         .fetch_optional(&mut *transaction)
         .await

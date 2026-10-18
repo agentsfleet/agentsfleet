@@ -9,7 +9,7 @@ use axum::{Router, response::Response};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-const ADMISSIONS: &str = "SELECT count(*) FROM core.fleet_admissions WHERE fleet_id=$1::uuid";
+const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid";
 /// The first run every Save-and-run case asks for.
 const RUN_NOW: &str = "Investigate the failed build.";
 
@@ -108,7 +108,7 @@ async fn a_refused_receipt_keeps_the_first_run_pending_through_reload_until_one_
     let (path, fleet) = retained(&case, key.as_str(), &request).await;
     let refusal = Refusal::install(
         &case.base.owner_url(),
-        "core.fleet_admissions",
+        "fleet.admissions",
         "receipt",
         &fleet,
         &format!("NEW.fleet_id='{fleet}'::uuid AND NEW.receipt IS NOT NULL"),

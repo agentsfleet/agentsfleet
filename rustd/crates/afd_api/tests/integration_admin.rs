@@ -11,7 +11,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{ModelSeed, PlatformDefault, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
@@ -270,16 +270,16 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Platform catalogue', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Platform catalogue', now(), now()) \
              ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($5::uuid, $1::uuid, 'platform-default', $4, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($5::uuid, $1::uuid, 'platform-default', now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, 'platform', '', $3, $4, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($2::uuid, $1::uuid, 'platform', '', $3, $4, now(), now())",
         )
         .bind(&self.tenant)
         .bind(&self.key)
@@ -289,34 +289,32 @@ impl Fixture {
         .execute(&mut *connection)
         .await
         .expect("the platform credential seeds");
-        sqlx::query(
-            "INSERT INTO core.model_library \
-               (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, 1)",
+        ModelSeed::new(
+            &self.platform_model_row,
+            &self.provider,
+            &self.platform_model,
+            200_000,
         )
-        .bind(&self.platform_model_row)
-        .bind(&self.platform_model)
-        .bind(&self.provider)
-        .execute(&mut *connection)
+        .rates(5, 1, 25)
+        .insert(&mut *connection)
         .await
         .expect("the platform-default model seeds");
     }
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.platform_provider_defaults WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_defaults WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await
             .expect("the platform default cleanup runs");
-        sqlx::query("DELETE FROM core.model_library WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
             .bind(&self.platform_model_row)
             .execute(&mut *connection)
             .await
             .expect("the platform model cleanup runs");
 
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

@@ -104,15 +104,15 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector events live', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Connector events live', now(), now()) \
              ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'platform-admin', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'platform-admin', now()) \
              ) \
-             INSERT INTO core.users \
+             INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'events-live@example.test', 1, 1)",
+             VALUES ($4::uuid, $1::uuid, $3, 'events-live@example.test', now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.admin.as_str())
@@ -150,8 +150,8 @@ impl Fixture {
     pub(super) async fn fleet_events(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM core.fleet_events e \
-             JOIN core.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
+            "SELECT COUNT(*) FROM fleet.events e \
+             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
         )
         .bind(&self.tenant)
         .fetch_one(&mut *connection)
@@ -169,7 +169,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed app bag cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

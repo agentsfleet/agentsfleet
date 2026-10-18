@@ -61,7 +61,7 @@ async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &str) {
         .acquire()
         .await
         .expect("purge inspection");
-    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM core.fleets WHERE id=$1::uuid")
+    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE id=$1::uuid")
         .bind(fleet.saved["id"].as_str().expect("fleet ID"))
         .fetch_one(&mut *connection)
         .await
