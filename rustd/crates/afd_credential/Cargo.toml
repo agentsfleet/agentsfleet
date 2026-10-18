@@ -21,6 +21,7 @@ workspace = true
 # vocabulary, read here to decide which credential to dial with.
 afd_billing.workspace = true
 afd_core.workspace = true
+afd_inference.workspace = true
 # Opening a sealed handle.
 afd_crypto.workspace = true
 # The key-less half of the secret store. The registry page renders provider,
@@ -53,7 +54,7 @@ sha2.workspace = true
 zeroize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["json"] }
 thiserror.workspace = true
 tracing.workspace = true
 url.workspace = true

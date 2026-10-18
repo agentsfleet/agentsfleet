@@ -2,9 +2,9 @@
 //!
 //! # Why this module cannot move money
 //!
-//! Every drain of `balance_nanos` is a writable CTE on the lease plane — the
-//! renew and settle statements — and the one inflow is the signup starter
-//! grant. This module holds neither; it is the read side those movements are
+//! Runtime renewals and reports, plus setup settlement, debit the wallet.
+//! Signup bootstrap adds the starter grant. This module holds none of those
+//! writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so
 //! it is stated where somebody adding a write will read it.
@@ -90,12 +90,18 @@ impl Billing {
         let query = match boundary {
             None => sqlx::query_as(sql::SELECT_TENANT_CHARGES_FIRST)
                 .bind(tenant.as_str())
-                .bind(i64::from(limit)),
+                .bind(i64::from(limit))
+                .bind(sql::CHARGE_TYPE_AUTHORING)
+                .bind(sql::posture::PLATFORM)
+                .bind(sql::posture::SELF_MANAGED),
             Some(after) => sqlx::query_as(sql::SELECT_TENANT_CHARGES_AFTER)
                 .bind(tenant.as_str())
                 .bind(after.created_at.to_sqlx())
                 .bind(after.id.as_str())
-                .bind(i64::from(limit)),
+                .bind(i64::from(limit))
+                .bind(sql::CHARGE_TYPE_AUTHORING)
+                .bind(sql::posture::PLATFORM)
+                .bind(sql::posture::SELF_MANAGED),
         };
         query
             .fetch_all(connection.as_mut())
@@ -104,31 +110,34 @@ impl Billing {
     }
 }
 
-/// One `billing.fleet_charges` row, as the charges response shows it.
+/// One fleet charge or setup settlement, as the charges response shows it.
 ///
 /// Decoded by name through `FromRow`, so each field is its column's name.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct ChargeRow {
-    /// The charge row's identifier.
+    /// The charge's or settlement's identifier.
     pub id: String,
     /// Whose charge it is.
     pub tenant_id: String,
-    /// The workspace it was incurred in. No foreign key, so it outlives the
-    /// workspace.
+    /// The workspace it was incurred in. No foreign key on either source, so
+    /// it outlives the workspace.
     pub workspace_id: String,
-    /// The fleet it was incurred by, and it OUTLIVES that fleet.
-    ///
-    /// No foreign key and part of the accumulate arbiter. The dashboard
-    /// derives a fleet's callsign from this value, so a purged fleet's charges
-    /// still name themselves.
-    pub fleet_id: String,
-    /// That fleet's name as it stood when the charge was written. A snapshot,
-    /// so a later rename never reaches it. A fleet purged before the charge
-    /// landed leaves its identifier here, equal to `fleet_id`.
-    pub fleet_name: String,
-    /// The event that triggered the work.
-    pub event_id: String,
-    /// `receive` or `stage`: the two halves of one event's cost.
+    /// The fleet it was incurred by. A fleet charge always names it, and the
+    /// name OUTLIVES the fleet: no foreign key, so a purged fleet's charges
+    /// still name themselves. A setup settlement names the fleet its draft was
+    /// saved as, and nothing while the draft has none.
+    pub fleet_id: Option<String>,
+    /// That fleet's name. A fleet charge's is a snapshot taken when it was
+    /// written, so a later rename never reaches it, and a fleet purged before
+    /// the charge landed leaves its identifier here, equal to `fleet_id`. A
+    /// setup settlement's is the saved fleet's current name.
+    pub fleet_name: Option<String>,
+    /// The event that triggered the work; a setup chat has none.
+    pub event_id: Option<String>,
+    /// The setup attempt a settlement paid for; a fleet charge has none.
+    pub authoring_attempt_id: Option<String>,
+    /// `receive` or `stage`, the two halves of one event's cost, or
+    /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,

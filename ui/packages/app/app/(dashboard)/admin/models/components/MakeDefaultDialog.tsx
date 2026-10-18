@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import {
+  Alert,
+  AlertDescription,
   Button,
   Dialog,
   DialogContent,
@@ -22,12 +24,7 @@ import { setPlatformDefaultAction } from "../actions";
 
 const LABEL = "block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5";
 
-// Minimal "make this row the platform default" dialog: provider + model are the
-// row's known identity, so it collects ONLY the provider API key (plus a base URL
-// for the openai-compatible provider). Reuses setPlatformDefaultAction — the key
-// is written to the acting admin's vault server-side and never echoed back, which
-// is why a re-set always re-enters it. Mounted only while a row is targeted
-// (parent keys it by id), so it opens clean each time.
+// The row owns provider configuration; this dialog collects only its credential.
 export default function MakeDefaultDialog({
   model,
   onOpenChange,
@@ -38,16 +35,12 @@ export default function MakeDefaultDialog({
   onDone: () => void;
 }) {
   const isCustom = model.provider === OPENAI_COMPATIBLE_PROVIDER;
+  const keyId = useId();
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // Trim before gating + sending: a whitespace-only key would otherwise pass
-  // `!== ""` and store an unusable credential, and a base URL pasted with
-  // surrounding spaces would pass here but fail backend URL validation.
   const trimmedApiKey = apiKey.trim();
-  const trimmedBaseUrl = baseUrl.trim();
-  const canSave = trimmedApiKey !== "" && (!isCustom || trimmedBaseUrl !== "");
+  const canSave = trimmedApiKey !== "" && !!model.inference;
 
   function save() {
     setApiError(null);
@@ -56,7 +49,7 @@ export default function MakeDefaultDialog({
         provider: model.provider,
         model: model.model_id,
         api_key: trimmedApiKey,
-        base_url: isCustom ? trimmedBaseUrl : undefined,
+        base_url: isCustom ? model.inference?.base_url : undefined,
       });
       if (!r.ok) {
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "set the platform default" }));
@@ -86,10 +79,11 @@ export default function MakeDefaultDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {!model.inference ? <Alert><AlertDescription>Edit this model to configure its inference API, URL and output limit before making it the default.</AlertDescription></Alert> : null}
           <div>
-            <label className={LABEL} htmlFor="md-key">API key</label>
+            <label className={LABEL} htmlFor={keyId}>API key</label>
             <Input
-              id="md-key"
+              id={keyId}
               type="password"
               autoComplete="off"
               placeholder="stored in your workspace vault; never shown again"
@@ -98,18 +92,7 @@ export default function MakeDefaultDialog({
             />
           </div>
 
-          {isCustom ? (
-            <div>
-              <label className={LABEL} htmlFor="md-base-url">Base URL</label>
-              <Input
-                id="md-base-url"
-                placeholder="https://…/v1"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">Required for an OpenAI-compatible endpoint (https only).</p>
-            </div>
-          ) : null}
+          {model.inference ? <p className="break-all text-sm text-muted-foreground">Inference URL: {model.inference.base_url}</p> : null}
 
           {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
         </div>

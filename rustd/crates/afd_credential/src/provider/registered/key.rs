@@ -35,13 +35,13 @@ impl Providers {
         owner: &Uuid7,
         pinned: &RegisteredModel,
     ) -> Result<Option<SecretString>> {
-        let Some(row) = read(connection, owner, &pinned.reference).await? else {
+        let Some(registration) = read(connection, owner, &pinned.reference).await? else {
             return Ok(None);
         };
-        if row.metadata(&pinned.reference) != *pinned {
+        if registration.model != *pinned {
             return Ok(None);
         }
-        let (workspace, name) = (row.workspace_id, row.key_name);
+        let (workspace, name) = (registration.workspace_id, registration.key_name);
         let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)

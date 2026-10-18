@@ -14,7 +14,7 @@ WITH configured AS (
       JOIN vault.secrets s ON s.workspace_id = w.id AND s.key_name = e.secret_ref
      WHERE e.tenant_id = $1::uuid
     UNION ALL
-    (SELECT $2::text, p.provider, m.model_name, p.base_url, s.meta_has_key
+    (SELECT $2::text, p.provider, m.model_name, s.meta_base_url, s.meta_has_key
        FROM model.platform_defaults p
        JOIN model.platform_models m ON m.id = p.platform_model_id
        JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
@@ -25,16 +25,15 @@ WITH configured AS (
 SELECT c.reference, c.provider, c.model, c.base_url, c.has_key,
        m.context_cap_tokens AS context,
        m.input_nanos_per_mtok AS input,
-       m.output_nanos_per_mtok AS output
+       m.output_nanos_per_mtok AS output,
+       m.inference
   FROM configured c
   JOIN LATERAL (
-        SELECT context_cap_tokens, input_nanos_per_mtok, output_nanos_per_mtok
+        SELECT context_cap_tokens, input_nanos_per_mtok, output_nanos_per_mtok, inference
           FROM model.platform_models
-         WHERE model_name = c.model AND (provider = c.provider OR c.provider = $5)
-         ORDER BY provider
-         LIMIT 1
+         WHERE model_name = c.model AND provider = c.provider
        ) m ON true
- WHERE (c.has_key OR c.provider = $5)
+ WHERE c.has_key
    AND m.context_cap_tokens > 0 AND m.input_nanos_per_mtok >= 0 AND m.output_nanos_per_mtok >= 0
    AND ($3::text IS NULL OR c.reference > $3)
  ORDER BY c.reference

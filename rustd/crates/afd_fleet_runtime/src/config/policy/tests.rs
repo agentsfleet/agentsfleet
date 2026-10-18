@@ -25,7 +25,7 @@ fn context(threshold: f32) -> raw::Context {
         context_cap_tokens: None,
         tool_window: None,
         memory_checkpoint_every: None,
-        stage_chunk_threshold: Some(threshold),
+        stage_chunk_threshold: Some(f64::from(threshold)),
         extra: Map::new(),
     }
 }
@@ -41,7 +41,7 @@ fn test_stage_chunk_threshold_is_a_finite_fraction() {
         assert!(context(value).validate().is_ok(), "{value} was refused");
     }
 
-    // Through the document: `1e39` is past `f32`'s range and arrives as +∞.
+    // Through the document: `1e39` is parsed at JSON precision before bounds.
     // Each is the bound's refusal, the one the network allow-lists beside it
     // answer, and never a type error.
     for spelled in [1e39, -1e39, 1.5] {

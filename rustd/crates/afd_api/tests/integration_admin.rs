@@ -17,6 +17,8 @@ use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
 const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
 const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":6,"cached_input_nanos_per_mtok":2,"output_nanos_per_mtok":30}"#;
+#[path = "integration_admin/model_refusals.rs"]
+mod model_refusals;
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn platform_models_and_keys_complete_real_http_lifecycles() {
@@ -56,6 +58,7 @@ async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
         Some(true)
     );
     let listed = send(router, Method::GET, collection, Some(&fixture.token), "").await;
+    model_refusals::in_use(router, fixture).await;
     assert_eq!(listed.status(), StatusCode::OK);
     assert!(contains_provider(
         &json_body(listed).await,
@@ -145,6 +148,7 @@ async fn exercise_models(router: &axum::Router, token: &str) {
     assert_eq!(updated.status(), StatusCode::OK);
 
     a_deleted_model_is_gone(router, token, &id).await;
+    model_refusals::missing(router, token, &id).await;
 }
 
 /// The model is created and answers its id; the same model again conflicts.
@@ -238,8 +242,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         let first = mint_id().replace('-', "");
         let second = mint_id().replace('-', "");
-        let suffix = mint_id().replace('-', "");
-        let provider = format!("live{}", &suffix[..8]);
+        let provider = mint_id().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),

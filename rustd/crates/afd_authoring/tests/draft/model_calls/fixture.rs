@@ -24,6 +24,7 @@ pub(super) struct Provider {
     pub(super) entered: Semaphore,
     pub(super) release: Semaphore,
     pub(super) blocked: bool,
+    pub(super) status: u16,
     pub(super) response: Value,
 }
 
@@ -34,6 +35,7 @@ impl Provider {
             entered: Semaphore::new(0),
             release: Semaphore::new(0),
             blocked: false,
+            status: 200,
             response: json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"private answer"}]}],"usage":{"input_tokens":1,"output_tokens":1}}),
         }
     }
@@ -69,13 +71,17 @@ impl Transport for Provider {
                 .forget();
         }
         Ok(ProviderResponse {
-            status: 200,
+            status: self.status,
             body: serde_json::to_vec(&self.response).expect("provider response JSON"),
         })
     }
 }
 
-pub(super) async fn calls(f: &Fixture, attempt: &Attempt, provider: Arc<Provider>) -> ModelCalls {
+pub(super) async fn calls<T: Transport + 'static>(
+    f: &Fixture,
+    attempt: &Attempt,
+    provider: Arc<T>,
+) -> ModelCalls {
     let mut connection = f.connection().await;
     sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
         .bind(f.tenant.as_str()).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");

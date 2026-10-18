@@ -37,10 +37,10 @@ export type EventsListProps = {
 
 // One label names the surface everywhere: the table caption here and the
 // landmark region in events/page.tsx — never re-spelled.
-export const WORKSPACE_EVENTS_LABEL = "Workspace events";
-export const FLEET_EVENTS_LABEL = "Fleet events";
+export const WORKSPACE_EVENTS_LABEL = "Workspace activity";
+export const FLEET_EVENTS_LABEL = "Fleet activity";
 
-const EVENTS_EMPTY_TITLE = "No events yet";
+const EVENTS_EMPTY_TITLE = "No activity yet";
 const EVENTS_EMPTY_DESCRIPTION = "Fleet activity appears here.";
 // An unknown figure renders a dash — never a fabricated zero.
 const VALUE_UNKNOWN = "—";
@@ -128,7 +128,6 @@ function createEventColumns(
     {
       key: "status",
       header: "Status",
-      hideOnMobile: true,
       sortValue: (row) => row.status,
       cell: (row) => (
         <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
@@ -164,6 +163,7 @@ function createEventColumns(
     {
       key: "actor",
       header: "Actor",
+      hideOnMobile: true,
       sortValue: (row) => senderLabelFor(row.actor),
       cell: (row) => senderLabelFor(row.actor),
     },

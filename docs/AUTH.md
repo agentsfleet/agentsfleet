@@ -562,7 +562,7 @@ sequenceDiagram
 
 The seven token-minting proxy routes (per-fleet and workspace `events` + `events/stream`, the per-fleet event detail `events/{eventId}`, one tool call in full `events/{eventId}/tool-calls/{callId}`, and the steer `POST messages`) live under `/live/*`, deliberately OUTSIDE the `/backend/:path*` rewrite: on Vercel the edge router let the rewrite shadow same-prefix filesystem route handlers, sending EventSource requests cookie-only to the API (401 `UZ-AUTH-002`). A prefix the rewrite cannot match makes the routing unambiguous on every platform. `tests/stream-proxy-routing.test.ts` checks that no proxy URL starts with a rewrite prefix and that each has a handler on disk.
 
-Each route mints through `credential()` (`ui/packages/app/lib/auth/credential.ts`), the one place the dashboard resolves a bearer, the same way a Server Action does. The four JSON reads share `lib/api/live-json-proxy.ts`, so their dot-segment guard, bearer minting and error passthrough live once. The two streams share only the response helpers in `lib/api/event-stream-proxy.ts`; each stream route still writes its own 401 and upstream-error answers. The chat's steer and detail read moved here from Server Actions because Next runs a tab's actions one at a time, so a hung steer held every later read and steer behind it; a `fetch` to a route runs concurrently and aborts. The steer route is the one `POST`, and a Route Handler has no origin check of its own, so it refuses (403) an `Origin` that is absent, `null` or not this app's host (first `X-Forwarded-Host`, else `Host`, else the request URL's host) — the rule Next applies to Server Actions. It also refuses a non-JSON content type (415) and a body past the longest legal steer (413), and answers a request with no session 401 `UZ-AUTH-401`. The browser's `postSteer` fetches with `redirect: "manual"` and reads the middleware's signed-out redirect as that same 401, so the notice offers Sign in.
+Each route mints through `credential()` (`ui/packages/app/lib/auth/credential.ts`), the one place the dashboard resolves a bearer, the same way a Server Action does. The four JSON reads share `lib/api/live-json-proxy.ts`, so their dot-segment guard, bearer minting and error passthrough live once. The two streams share the upstream fetch and response helpers in `lib/api/event-stream-proxy.ts`; each stream route still checks the session before opening its upstream connection. All three stream proxies, including private setup, bound the handshake to 30 seconds and rotate the body at 240 seconds from request start. Rotation ends cleanly and aborts upstream; the existing clients reconnect and refresh durable data. Cancellation, failure and ordinary completion release readers and timers. The chat's steer and detail read moved here from Server Actions because Next runs a tab's actions one at a time, so a hung steer held every later read and steer behind it; a `fetch` to a route runs concurrently and aborts. The steer route is the one `POST`, and a Route Handler has no origin check of its own, so it refuses (403) an `Origin` that is absent, `null` or not this app's host (first `X-Forwarded-Host`, else `Host`, else the request URL's host) — the rule Next applies to Server Actions. It also refuses a non-JSON content type (415) and a body past the longest legal steer (413), and answers a request with no session 401 `UZ-AUTH-401`. The browser's `postSteer` fetches with `redirect: "manual"` and reads the middleware's signed-out redirect as that same 401, so the notice offers Sign in.
 
 
 ```mermaid
@@ -722,7 +722,7 @@ It also means a Postgres outage fails runner auth immediately rather than being 
 
 A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves it per lease (`Providers::resolve`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
+The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
 ### The token never enters the sandboxed child
 
@@ -735,15 +735,23 @@ The same placement model carries the resolved **LLM provider key** (M80_009): `a
 A fleet's setup is a typed Definition authored in chat and stored as an
 immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
 Its configuration names the credentials the fleet needs, by name only: a setup
-cannot carry a secret value, and nothing in authoring reads the workspace vault.
+cannot carry a secret value. The setup model never receives those runtime secrets.
 Publishing a setup to the Library and saving a fleet from one are ordinary
 `Guard::Bearer` routes. There is no upload or import route.
 
 The setup review is where credential presence matters: it reports each named
 credential and why the setup needs it (`rustd/crates/afd_authoring/src/review/credentials/`).
-Secret bytes still resolve just-in-time at lease, inside `agentsfleetd`, and
-ride only the runner lease envelope described above. Capability comes only from
-the server-built `ExecutionPolicy` and workspace credential grants.
+Named runtime secret values resolve at lease time inside `agentsfleetd` and
+ride the runner lease envelope described above. Capability comes from the
+server-built `ExecutionPolicy` and workspace credential grants.
+
+The authoring model's inference credential has a separate path.
+Before each scoped dispatch, `agentsfleetd` checks the selected model against
+the admitted snapshot and opens only that model's vault credential.
+The daemon commits dispatch intent before sending the provider request
+(`afd_authoring/src/model/dispatch.rs`, `afd_credential/src/provider/registered/key.rs`).
+The inference key stays in the daemon. The authoring runner receives a scoped
+capability, and neither the browser nor sandbox receives the key.
 
 ## Backend validation (the common path)
 
@@ -892,7 +900,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, access_token, expires_at_ms, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` / `{configured, connected}` flags, never key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`) | secret except public identifiers (`app_id`, `app_slug`, `client_id`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (the workspace `PLATFORM_ADMIN_WORKSPACE_ID` names) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · auth logs |
-| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/wire.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
+| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
 
 ### The one place a pepper touches disk, and why
@@ -926,8 +934,11 @@ include `sid`, so a template token cannot double as the token
 Clerk's session-token claim customization ends the split. The session token now
 carries `aud`, `metadata.tenant_id`, and a `scopes` claim, so one JWT satisfies
 `clerkMiddleware()` and the audience check together. The dashboard mints it with
-`getToken()` and no template argument, then sends it to the same
-`/backend/:path*` same-origin rewrite as before.
+server-side `credential()` and no template argument. Server Components,
+Server Actions and authenticated `/live/*` handlers attach it to backend calls.
+Workspace setup requests carry the browser's same-origin cookie to the narrow
+setup proxy; the proxy resolves the backend bearer on the server. The
+command-line approval page has the separate handoff described below.
 
 Operator setup for the Clerk configuration is in
 `playbooks/founding/03_priming_infra/001_playbook.md`, step "Configure Clerk claims". The `aud` value must
@@ -969,10 +980,12 @@ Customize session token** and reset to default. The next minted token has no
 refresh. Re-apply the claims to restore. No `agentsfleetd` or schema state is
 involved.
 
-**The Backend-for-Frontend is deferred.** Routing dashboard reads through
-`/api/*` handlers so the browser holds no token at all is the eventual shape, not
-scheduled work. [`architecture/web_app.md`](./architecture/web_app.md) carries the
-reasoning and the condition for building it.
+**Workspace setup uses a narrow Backend-for-Frontend.** The `/live/*` setup
+handler authenticates allowed routes and checks write origins. Other dashboard
+reads and mutations use Server Components and Server Actions. A common boundary
+for every dashboard route remains future work alongside scoped capability
+tokens; [`architecture/web_app.md`](./architecture/web_app.md) describes the
+current boundary and the remaining browser protections.
 
 ## What's not in this doc (yet)
 

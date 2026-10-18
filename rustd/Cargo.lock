@@ -45,11 +45,13 @@ dependencies = [
 
 [[package]]
 name = "afd_admin"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "afd_inference",
+ "afd_wire",
  "jiff",
  "jiff-sqlx",
  "sqlx",
@@ -59,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "afd_admission"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -82,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -146,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_ingress"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_approval",
@@ -179,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_operator"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admin",
  "afd_api_wire",
@@ -203,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_runner"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_authoring",
@@ -229,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_tenant"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_approval",
@@ -274,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_wire"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_fleet_runtime",
  "afd_validate",
@@ -288,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "afd_approval"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -310,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "afd_auth"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -322,7 +324,7 @@ dependencies = [
 
 [[package]]
 name = "afd_authoring"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_approval",
@@ -336,6 +338,7 @@ dependencies = [
  "afd_dragonfly",
  "afd_fleet_runtime",
  "afd_identity",
+ "afd_inference",
  "afd_observability",
  "afd_runner",
  "afd_validate",
@@ -344,18 +347,20 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "const_format",
+ "futures-util",
  "garde",
  "hex",
+ "http",
  "jiff",
  "jiff-sqlx",
  "reqwest",
+ "rig-core",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
  "subtle",
  "thiserror",
- "tiktoken-rs",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -363,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "afd_bench"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_approval",
@@ -400,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "afd_billing"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -410,6 +415,7 @@ dependencies = [
  "garde",
  "jiff",
  "jiff-sqlx",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tokio",
@@ -418,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "afd_connector"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -443,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "afd_core"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_validate",
  "base64 0.23.1",
@@ -462,13 +468,14 @@ dependencies = [
 
 [[package]]
 name = "afd_credential"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_billing",
  "afd_core",
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_inference",
  "afd_vault",
  "afd_webhook",
  "afd_wire",
@@ -493,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "afd_cron"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -525,7 +532,7 @@ dependencies = [
 
 [[package]]
 name = "afd_crypto"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "aes-gcm",
  "afd_core",
@@ -543,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "afd_db"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "backon",
@@ -559,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "afd_dragonfly"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -583,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "afd_events"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -609,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -652,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_lifecycle"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -671,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_ops"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -686,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_runtime"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_db",
@@ -705,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "afd_gate"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_billing",
@@ -732,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "afd_http"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -780,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "afd_identity"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -801,8 +808,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_inference"
+version = "0.62.1"
+dependencies = [
+ "afd_core",
+ "afd_wire",
+ "bytes",
+ "garde",
+ "http",
+ "rig-core",
+ "serde_json",
+ "thiserror",
+ "tiktoken-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "afd_ingress"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -828,7 +854,7 @@ dependencies = [
 
 [[package]]
 name = "afd_mail"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -847,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "afd_memory"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -866,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "afd_observability"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -887,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "afd_otlp"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -902,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "afd_outbound"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_connector",
  "afd_core",
@@ -929,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "afd_runner"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -959,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "afd_sse"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -976,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "afd_state"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_auth",
@@ -990,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "afd_tenant"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -1020,14 +1046,14 @@ dependencies = [
 
 [[package]]
 name = "afd_validate"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "garde",
 ]
 
 [[package]]
 name = "afd_vault"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -1045,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "afd_webhook"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -1055,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "afd_wire"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_fleet_runtime",
  "afd_validate",
@@ -1070,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "afr_agent"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1082,10 +1108,12 @@ dependencies = [
  "afr_secrets",
  "afr_telemetry",
  "afr_tools",
+ "aho-corasick",
  "async-trait",
  "bytes",
  "futures-util",
  "jiff",
+ "memmap2",
  "serde",
  "serde_json",
  "thiserror",
@@ -1096,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "afr_egress"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1115,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "afr_executor"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "async-trait",
@@ -1137,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "afr_memory"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1152,9 +1180,11 @@ dependencies = [
 
 [[package]]
 name = "afr_providers"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
+ "afd_identity",
+ "afd_inference",
  "afd_wire",
  "afr_agent",
  "afr_egress",
@@ -1169,22 +1199,24 @@ dependencies = [
  "futures-util",
  "http",
  "httpdate",
+ "rcgen",
  "reqwest",
  "rig-core",
+ "rustls",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
 [[package]]
 name = "afr_sandbox"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_validate",
@@ -1238,7 +1270,7 @@ dependencies = [
 
 [[package]]
 name = "afr_secrets"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1250,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "afr_supervisor"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -1289,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "afr_telemetry"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1298,8 +1330,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "serde",
- "serde_json",
+ "rig-core",
  "thiserror",
  "tokio",
  "tracing",
@@ -1309,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "afr_tools"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_validate",
@@ -1336,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "agentsfleet_runner"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1362,7 +1393,7 @@ dependencies = [
 
 [[package]]
 name = "agentsfleetd"
-version = "0.61.0"
+version = "0.62.1"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -1385,6 +1416,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_gate",
  "afd_identity",
+ "afd_inference",
  "afd_ingress",
  "afd_mail",
  "afd_memory",
@@ -1826,6 +1858,9 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "block-buffer"
@@ -6464,7 +6499,9 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx-core",
+ "sqlx-mysql",
  "sqlx-postgres",
+ "sqlx-sqlite",
  "syn 2.0.119",
  "tokio",
  "url",
@@ -6488,6 +6525,7 @@ dependencies = [
  "generic-array",
  "log",
  "percent-encoding",
+ "serde",
  "sha1",
  "sha2 0.11.1",
  "sqlx-core",
@@ -6547,6 +6585,7 @@ dependencies = [
  "libsqlite3-sys",
  "log",
  "percent-encoding",
+ "serde",
  "sqlx-core",
  "thiserror",
  "tracing",

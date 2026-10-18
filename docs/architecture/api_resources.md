@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-10-14
-product_version: 0.60.0
+verified: 2026-10-18
+product_version: 0.62.1
 executable: false
 ---
 
@@ -46,7 +46,7 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 - JSON requests reject unknown fields. Omit absent optional success fields. Page envelopes always include `items`, `total:null`, and `next_cursor` (null on the last page).
 - Money, message sequences, candidate revisions, setup revisions, and fences use decimal strings. Times retain the repository's UTC Unix-millisecond JSON integers under REST guide §4. Narrow caps/limits use safe JSON integers.
 - Lists accept `limit` and `starting_after` using `afd_core::paging::Cursor` (`rustd/crates/afd_core/src/paging/mod.rs:30`, `paging/cursor.rs:26`). General lists default 50/max 100; draft messages default 20/max 25. Cursors bind resource, creator, ordering, filters, and limit; no cross-subject cursor reuse.
-- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
+- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag. Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
 - Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Library create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
 - Collection creation keys are scoped by actor + workspace + operation type + parent collection. Member message/revision keys are scoped by workspace + operation type + resource, with the accepting actor bound in the receipt. Hash the normalized input. Same key/body/actor replays the same accepted resource or message; changed body or actor reuse on a member resource conflicts. Authorization runs before replay. Keep content-free identity/digest receipts while their resource exists and a 24-hour tombstone after purge. Tombstone replay returns 410; after its disclosed expiry, the key is no longer protected.
 - `If-Match` missing →428; stale →412 with current `etag`; state blocks mutation →409 with `current_state`. Check preconditions before external side effects. A recognized idempotent replay recovers the already accepted resource despite a now-stale original tag, after authorization and key/body checks; it performs no second mutation.
@@ -137,7 +137,7 @@ An unresolved provider obligation takes precedence over a retry action. Stop/del
 
 GET D has a complete review only when a candidate exists. Queue acceptance can succeed before wallet admission: balance/model failure becomes a visible failed message rather than silent queued work. Draft creation with a first message atomically records both or neither.
 
-Send atomically captures the draft's selected authoring model reference; admission pins its resolved provider, tokenizer, and prices. Earlier admitted turns keep their pins. Idle PATCH can replace a disabled model and survives reload. Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; an authoring-model-only change leaves its definition/digest unchanged.
+Send atomically captures the draft's selected authoring model reference; admission pins its resolved provider, inference settings, context window, and prices. Earlier admitted turns keep their pins. Idle PATCH can replace a disabled model and survives reload. Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; an authoring-model-only change leaves its definition/digest unchanged.
 
 ### Changed person routes: 7
 
@@ -145,7 +145,7 @@ Send atomically captures the draft's selected authoring model reference; admissi
 |---|---|---|---|---|
 | C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
-| C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY |
+| C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; a killed fleet returns 404 `UZ-AGT-009` after write preconditions pass |
 | C4 | POST F/messages | `{message,operation_id}`; operation_id required UUIDv7; no header key | 202 existing `{status:"accepted",event_id,replayed}`; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/fleet-libraries | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; library:write | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
@@ -179,10 +179,10 @@ Existing route identities are at `rustd/crates/afd_http/src/route/runner.rs:36�
 ```text
 {kind:"fleet", ...existing fleet lease payload}
 {kind:"authoring",lease_id,attempt_id,draft_id,sequence,fence,deletion_generation,
- expires_at,model:{ref,provider,model,tokenizer,pricing},
+ expires_at,model:{ref,provider,model,pricing},
  model_access:{token,expires_at,invocation_path},candidate?:Candidate,
  messages[],limits:{input_per_call:32768,
- output_per_turn:8192,max_calls:8,wall_seconds:300,provider_timeout_seconds:30}}
+ output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:30}}
 ```
 
 Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only. The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
@@ -204,14 +204,16 @@ Reports also accept `{kind:"accounting",fence,deletion_generation,report_id,outc
 
 ### Scoped model invocation
 
-`ModelCall={capability_token,attempt_id,fence,deletion_generation,dispatch_id,call_index,request:{messages:ModelMessage[],max_output_tokens}}`. `dispatch_id` is UUIDv7; `call_index` is a contiguous integer 1..8. `ModelMessage` is `{role:"user",text}`, `{role:"assistant",text,proposal_calls:[{id,proposal:Proposal}]}`, or `{role:"tool",call_id,text}`. Text is untrusted context; only the fixed proposal tool is callable. The daemon adds pinned system instructions/tool schema. Provider continuation data stays in daemon receipts and is bound to this attempt; the runner receives no opaque provider credentials. The 128 KiB envelope and tokenizer/window checks bound the assembled request. Reject provider/model/host/key/header/system/tool-schema override fields.
+`ModelCall={capability_token,attempt_id,fence,deletion_generation,dispatch_id,call_index,request:{messages:ModelMessage[],max_output_tokens}}`. `dispatch_id` is UUIDv7; `call_index` is a contiguous integer 1..8. `ModelMessage` is `{role:"user",text}`, `{role:"assistant",text,proposal_calls:[{id,proposal:Proposal}]}`, or `{role:"tool",call_id,text}`. Text is untrusted context; only the fixed proposal tool is callable. The daemon adds pinned system instructions/tool schema. The 128 KiB envelope and tokenizer/window checks bound the assembled request. Reject provider/model/host/key/header/system/tool-schema override fields.
+
+Native provider replies stay in `authoring.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers. Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
 
 `ModelResult={dispatch_id,call_index,replayed,text,proposal_calls:[{id,proposal:Proposal}],usage:{knowledge,input_tokens?,output_tokens?,provider_cost_nanos?},cut}`. `cut:true` means incomplete proposals cannot run. Responses fit 128 KiB and the remaining output-token allowance. A proposal result is untrusted until `/activity` commits it. No separate model-call read route or raw provider response exists.
 
 1. Admission creates a random 256-bit token, stores its hash, and binds it to runner, owner, draft, sequence, attempt, fence, generation, and pinned model. Issue it only in the lease over the authenticated daemon transport. Never log or spool it.
 2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation/deletion generation, and unexpired lease using authoritative database time. Capability expiry follows the lease and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
 3. Under wallet → subject → attempt locks, reserve the next physical dispatch and its output allowance, then commit its request digest/identity before calling the provider. No network request holds these locks. Concurrent different dispatches and an unfinished dispatch replay return STATE without another provider call.
-4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires a daemon-reachable approved transport, reliable tokenizer/usage semantics, and pinned prices. Apply the existing outbound address guard; reject private/custom destinations the daemon cannot safely reach. Authoring transport disables redirects and every automatic provider/SDK retry. Each new physical dispatch consumes one index and the shared input/output/time budget; ordinary runtime transport stays separate.
+4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires a credentialed configured model, a daemon-reachable approved transport, a valid saved context/output bound, and pinned prices. Known tokenizers count assembled input; unknown model names use one token per UTF-8 byte as a conservative input reservation. Apply the existing outbound address guard; reject private/custom destinations the daemon cannot safely reach. Authoring transport disables redirects and every automatic provider/SDK retry. Each new physical dispatch consumes one index and the shared input/output/time budget; ordinary runtime transport stays separate.
 5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY. A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 

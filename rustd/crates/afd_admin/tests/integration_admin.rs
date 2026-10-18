@@ -56,7 +56,7 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
 
     assert!(
         lane.models
-            .update(&model.id, RAISED)
+            .update(&model.id, RAISED, None)
             .await
             .expect("updates")
     );
@@ -69,7 +69,7 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
     assert!(
         !lane
             .models
-            .update(&mint_uuid7(), RAISED)
+            .update(&mint_uuid7(), RAISED, None)
             .await
             .expect("a typed outcome"),
         "an unknown id updates nothing"
@@ -205,6 +205,7 @@ impl Lane {
             provider: self.provider.clone(),
             model_name: self.model_name.clone(),
             rates: RATES,
+            inference: None,
         }
     }
 

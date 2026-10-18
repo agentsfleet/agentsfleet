@@ -121,6 +121,12 @@ async fn write(
         .bind(serde_json::to_string(usage).map_err(stored)?)
         .bind(dispatch_status::PENDING)
         .bind(dispatch_status::UNKNOWN)
+        // The native reply is kept only beside a result it can replay.
+        .bind(if result.is_some() {
+            decoded.and_then(|value| value.continuation.as_ref())
+        } else {
+            None
+        })
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

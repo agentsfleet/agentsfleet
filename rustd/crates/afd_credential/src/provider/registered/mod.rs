@@ -7,13 +7,24 @@ mod key;
 mod sql;
 
 use afd_core::id::Uuid7;
+use afd_wire::inference::ModelInference;
 use sqlx::PgConnection;
+use sqlx::types::Json;
 
 use crate::error::{Result, query};
 
 /// Stable reference to the deployment's currently configured platform default.
 pub const PLATFORM_MODEL_REF: &str = "platform-default";
-const CONTEXT: &str = "resolve registered owner model";
+pub(super) const CONTEXT: &str = "resolve registered owner model";
+
+/// A reference that routes: its non-secret facts, the credential that calls it,
+/// and the host its saved settings dial.
+pub(super) struct Registration {
+    pub(super) model: RegisteredModel,
+    pub(super) workspace_id: String,
+    pub(super) key_name: String,
+    pub(super) inference_host: Box<str>,
+}
 
 /// Non-secret facts selected by an explicit reference.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -24,6 +35,11 @@ pub struct RegisteredModel {
     pub provider: Box<str>,
     /// Provider model identifier, never supplied separately by a runner.
     pub model: Box<str>,
+    /// Optional endpoint restriction carried by the credential.
+    #[serde(default)]
+    pub base_url: Option<Box<str>>,
+    /// Persisted non-secret settings, pinned by the catalogue generation.
+    pub inference: Option<ModelInference>,
     /// Priced catalogue context window.
     pub context_window_tokens: i32,
     /// Fresh input nanos per million tokens.
@@ -47,6 +63,8 @@ struct RegisteredRow {
     resolution_version: String,
     workspace_id: String,
     key_name: String,
+    base_url: Option<String>,
+    inference: Option<Json<ModelInference>>,
 }
 
 impl RegisteredRow {
@@ -56,6 +74,8 @@ impl RegisteredRow {
             reference: reference.into(),
             provider: self.provider.as_str().into(),
             model: self.model.as_str().into(),
+            base_url: self.base_url.as_deref().map(Into::into),
+            inference: self.inference.as_ref().map(|settings| settings.0.clone()),
             context_window_tokens: self.context_window_tokens,
             input_nanos_per_million: self.input_nanos_per_million,
             output_nanos_per_million: self.output_nanos_per_million,
@@ -68,8 +88,9 @@ impl RegisteredRow {
 /// Resolves exactly `reference` for the workspace owner, without fallback.
 ///
 /// # Errors
-/// Reports a failed statement; missing credentials, entries and prices
-/// answer `None`. The reference is opaque even when today's entries use UUIDs.
+/// Reports a failed statement; missing credentials, entries, prices and
+/// inference settings answer `None`. The reference is opaque even when today's
+/// entries use UUIDs.
 pub async fn registered_model(
     connection: &mut PgConnection,
     owner: &Uuid7,
@@ -77,25 +98,47 @@ pub async fn registered_model(
 ) -> Result<Option<RegisteredModel>> {
     Ok(read(connection, owner, reference)
         .await?
-        .map(|row| row.metadata(reference)))
+        .map(|registration| registration.model))
 }
 
-async fn read(
+/// The routable registration for `reference`, or nothing when the row is
+/// absent, carries no saved settings, or its settings do not route within the
+/// model's context and the credential's endpoint.
+pub(super) async fn read(
     connection: &mut PgConnection,
     owner: &Uuid7,
     reference: &str,
-) -> Result<Option<RegisteredRow>> {
+) -> Result<Option<Registration>> {
     let statement = if reference == PLATFORM_MODEL_REF {
         sql::PLATFORM
     } else {
         sql::ENTRY
     };
-    sqlx::query_as::<_, RegisteredRow>(statement)
+    let row = sqlx::query_as::<_, RegisteredRow>(statement)
         .bind(owner.as_str())
         .bind(reference)
         .fetch_optional(connection)
         .await
-        .map_err(query(CONTEXT))
+        .map_err(query(CONTEXT))?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let model = row.metadata(reference);
+    let Some(inference) = &model.inference else {
+        return Ok(None);
+    };
+    let context = u32::try_from(model.context_window_tokens).unwrap_or_default();
+    let route = match afd_inference::Configured::new(inference, context) {
+        Ok(route) if route.accepts_endpoint(model.base_url.as_deref()) => route,
+        _ => return Ok(None),
+    };
+    let inference_host = route.into_host();
+    Ok(Some(Registration {
+        model,
+        workspace_id: row.workspace_id,
+        key_name: row.key_name,
+        inference_host,
+    }))
 }
 
 #[cfg(test)]

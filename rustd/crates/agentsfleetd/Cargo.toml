@@ -43,6 +43,7 @@ test-util = [
 openapi = ["afd_api/openapi"]
 
 [dependencies]
+afd_inference.workspace = true
 afd_admin.workspace = true
 # The one admission ledger every producer in this process shares.
 afd_admission.workspace = true

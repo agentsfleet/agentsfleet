@@ -1,7 +1,10 @@
 //! Renewal and dispatch observe expiry after actual database lock waits.
 
+mod authorization;
 mod expiry;
+mod invalid_usage;
 mod lock_wait;
+mod suppressed_write;
 
 use super::super::{attempt::Attempt, fixture::Fixture};
 use afd_wire::authoring::{Knowledge, Meter, Renew};

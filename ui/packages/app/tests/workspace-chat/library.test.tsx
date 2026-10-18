@@ -13,6 +13,52 @@ const PROPS = {workspace: WORKSPACE, onSelect: vi.fn()};
 const EMPTY_HISTORY = {items: [], next_cursor: null};
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
+it.each([false, true])("returns to the first page without changing library scope (owned=%s)", async (owned) => {
+  const firstPageLabel = "First page";
+  const nextPageLabel = "Next page";
+  const fetcher = vi.fn(async (input: string) => {
+    const url = new URL(input, "https://app.test");
+    const later = url.searchParams.has("starting_after");
+    return response({items: later ? [] : [LIBRARY_CARD], next_cursor: later ? null : "later"});
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<LibraryBrowser {...PROPS} />);
+  const scope = screen.getByRole("tab", {name: owned ? "This workspace" : "All"});
+  if (owned) fireEvent.mouseDown(scope);
+  await screen.findByText(LIBRARY_CARD.name);
+  expect(screen.queryByRole("button", {name: firstPageLabel})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: nextPageLabel}));
+  await waitFor(() => expect(screen.queryByText(LIBRARY_CARD.name)).toBeNull());
+  fireEvent.click(screen.getByRole("button", {name: firstPageLabel}));
+  await screen.findByText(LIBRARY_CARD.name);
+  const last = fetcher.mock.calls.at(-1)?.[0];
+  if (!last) throw new Error("Expected a library page request");
+  const url = new URL(last, "https://app.test");
+  expect(url.pathname.endsWith("/owned")).toBe(owned);
+  expect(url.searchParams.has("starting_after")).toBe(false);
+  expect(scope.getAttribute("aria-selected")).toBe("true");
+  expect(screen.queryByRole("button", {name: firstPageLabel})).toBeNull();
+  expect(screen.getByRole("button", {name: nextPageLabel})).toBeTruthy();
+});
+
+it("keeps empty later pages distinct and resets the cursor when changing tabs", async () => {
+  const fetcher = vi.fn(async (input: string) => {
+    const url = new URL(input, "https://app.test");
+    const owned = url.pathname.endsWith("/owned");
+    return response({ items: [], next_cursor: owned || url.searchParams.has("starting_after") ? null : "later" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<LibraryBrowser {...PROPS} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Next page"}));
+  await waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(input, "https://app.test").searchParams.get("starting_after") === "later")).toBe(true));
+  await screen.findByText("No published setups on this page. Check another page or change the library scope.");
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
+  await screen.findByText(/No setups have been published by this workspace/);
+  expect(screen.getByRole("tab", {name: "This workspace"}).getAttribute("aria-selected")).toBe("true");
+  const last = fetcher.mock.calls.at(-1)?.[0];
+  expect(last && new URL(last, "https://app.test").searchParams.has("starting_after")).toBe(false);
+});
+
 it("opens a new private chat pinned to the inspected Library revision", async () => {
   vi.stubGlobal("fetch", vi.fn(async (input: string) => {
     const path = new URL(input, "https://app.test").pathname;
@@ -29,11 +75,11 @@ it("shows loading until the list proves it is empty", async () => {
   const list = Promise.withResolvers<Response>();
   vi.stubGlobal("fetch", vi.fn(() => list.promise));
   render(<LibraryBrowser {...PROPS} />);
-  expect(screen.getByText("Loading recipes")).not.toBeNull();
-  expect(screen.queryByText(/No recipes on this page/)).toBeNull();
+  expect(screen.getByText("Loading published setups")).not.toBeNull();
+  expect(screen.queryByText(/No (published setups are available yet|setups have been published by this workspace)/)).toBeNull();
   await act(async () => list.resolve(response({items: [], next_cursor: null})));
-  await screen.findByText(/No recipes on this page/);
-  expect(screen.queryByText("Loading recipes")).toBeNull();
+  await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
+  expect(screen.queryByText("Loading published setups")).toBeNull();
 });
 
 it("recovers a failed list without closing or reopening the Library", async () => {
@@ -53,8 +99,8 @@ it.each([404, 503, 200])("keeps a refused or incompatible library read separate 
   render(<LibraryBrowser {...PROPS} />);
   await screen.findByText("Fleet library is unavailable right now");
   expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("unavailable-state");
-  expect(screen.queryByText(/No recipes on this page/)).toBeNull();
-  expect(screen.queryByText(/This recipe is no longer available/)).toBeNull();
+  expect(screen.queryByText(/No (published setups are available yet|setups have been published by this workspace)/)).toBeNull();
+  expect(screen.queryByText(/This published setup is no longer available/)).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Retry Library"}));
   await screen.findByText(LIBRARY_CARD.name);
   expect(screen.queryByRole("alert")).toBeNull();
@@ -125,7 +171,7 @@ it("confirms owned recipe removal and keeps a refused recipe visible", async () 
   render(<LibraryBrowser {...PROPS} />);
   await screen.findByText(LIBRARY_CARD.name);
   expect(screen.queryByRole("button", {name: "Remove from this workspace"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Workspace recipes"}));
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
   fireEvent.click(await screen.findByRole("button", {name: "Remove from this workspace"}));
   expect(removeEntry).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
@@ -188,13 +234,13 @@ it("retains a removal failure inside the dialog and removes the row after succes
   vi.stubGlobal("fetch", vi.fn(async () => response({items: removed ? [] : [{...LIBRARY_CARD, visibility: "tenant"}], next_cursor: null})));
   render(<LibraryBrowser {...PROPS} />);
   await screen.findByText(LIBRARY_CARD.name);
-  fireEvent.click(screen.getByRole("button", {name: "Workspace recipes"}));
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
   fireEvent.click(await screen.findByRole("button", {name: "Remove from this workspace"}));
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
   await screen.findByText("Removal could not be confirmed. Refresh the Library before trying again.");
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
-  await screen.findByText(/No recipes on this page/);
+  await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
   expect(screen.queryByRole("alertdialog")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "All recipes"}));
-  await screen.findByText(/No recipes on this page/);
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "All"}));
+  await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
 });

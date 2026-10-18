@@ -3,7 +3,7 @@ import { Link, Route, Routes, ScrollRestoration, useLocation } from "react-route
 import { BrandMark, Button, Nav } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { APP_SIGN_IN_URL, APP_SIGN_UP_URL, DOCS_URL, GITHUB_URL } from "./config";
+import { PUBLIC_ACCESS_URL, DOCS_URL, GITHUB_URL } from "./config";
 import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
@@ -62,8 +62,8 @@ function PrimaryNavigation() {
       <Link to="/#how-it-works" className={NAV_LINK_CLASS} onClick={() => trackNavigationClicked({ source: "header_nav_product", surface: "header", target: "example" })}>
         Product
       </Link>
-      <a href={APP_SIGN_UP_URL} target="_blank" rel="noopener noreferrer" className={NAV_LINK_CLASS}
-        onClick={() => trackSignupStarted({ source: "header_early_access", surface: "header", mode: "humans" })}>Get started</a>
+      <a href={PUBLIC_ACCESS_URL} target="_blank" rel="noopener noreferrer" className={NAV_LINK_CLASS}
+        onClick={() => trackSignupStarted({ source: "header_early_access", surface: "header", mode: "humans" })}>Early access</a>
       <a
         href={DOCS_URL}
         target="_blank"
@@ -85,7 +85,7 @@ function DashboardAction() {
   return (
     <Button wrap asChild variant="outline" className="min-h-11" data-testid="header-install-cta">
       <a
-        href={APP_SIGN_IN_URL}
+        href={PUBLIC_ACCESS_URL}
         target="_blank"
         rel="noopener noreferrer"
         onClick={() =>
@@ -96,7 +96,7 @@ function DashboardAction() {
           })
         }
       >
-        Sign in ↗
+        Join waitlist ↗
       </a>
     </Button>
   );

@@ -5,37 +5,27 @@ use std::collections::BTreeSet;
 use afr_tools::catalog::PUBLISHED;
 
 use super::{
-    FrameDrop, Names, OTHER, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome,
+    FrameDrop, OTHER, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome,
     TurnOutcome,
 };
 
-/// A registered provider keeps the registry's name, including the ones
-/// OpenTelemetry spells otherwise; an alias is the name it selects; a
-/// `custom:` endpoint, or anything the registry does not ship, is `_other`.
+/// Persisted names cannot grow metric cardinality or expose custom endpoint names.
 #[test]
-fn a_provider_is_its_registry_name_or_other() {
-    for (configured, label) in [
-        ("anthropic", "anthropic"),
-        ("mistral", "mistral"),
-        ("xai", "xai"),
-        ("grok", "xai"),
-        ("moonshot-cn", "moonshot"),
-        ("kimi", "moonshot-intl"),
-        ("custom:https://models.example.com/v1", OTHER),
-        ("our-internal-gateway", OTHER),
-    ] {
-        assert_eq!(Provider::of(configured).as_str(), label, "`{configured}`");
+fn a_provider_is_an_sdk_vendor_or_other() {
+    let vendors: BTreeSet<_> = rig_core::providers::registry::ProviderId::all()
+        .map(|id| id.vendor())
+        .collect();
+    for vendor in &vendors {
+        assert_eq!(Provider::of(vendor).as_str(), *vendor);
     }
-    // Every shipped entry, and `_other`: the ceiling is sized to this.
-    assert_eq!(Provider::count(), 43);
-}
-
-/// A table that will not parse names no provider, so every label is `_other`
-/// rather than a value no census declared.
-#[test]
-fn an_unreadable_table_names_no_provider() {
-    let names = Names::read("not json");
-    assert!(names.canonical.is_empty() && names.selects.is_empty());
+    for name in [
+        "",
+        "custom:https://models.example.com/v1",
+        "private-provider-123",
+    ] {
+        assert_eq!(Provider::of(name).as_str(), OTHER);
+    }
+    assert_eq!(Provider::count(), vendors.len() + 1);
 }
 
 /// A tool the catalog publishes keeps its name; a made-up one is `_other`.

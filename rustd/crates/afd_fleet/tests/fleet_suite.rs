@@ -74,6 +74,8 @@ mod integration_lease_issue;
 mod integration_lease_plan;
 #[path = "integration_lease_ready.rs"]
 mod integration_lease_ready;
+#[path = "integration_lease_retention.rs"]
+mod integration_lease_retention;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
 #[path = "integration_lease_verbs.rs"]

@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-10-15
+**Direction:** Clear Signal · **Updated:** 2026-10-18
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -9,14 +9,33 @@ The website gallery demonstrates the components.
 ## Intent
 
 Make work, evidence, and next actions easy to recognize.
-Keep the mint identity. Use compact controls, confident type, flat surfaces, and precise alignment.
+Keep the approved charcoal, warm-white, and mint identity. Use compact controls, confident type, layered surfaces, and precise alignment.
 The interface should feel bold, simple, and colorful enough to distinguish actions and outcomes at a glance.
 Brightness comes from foreground contrast, mint action surfaces, and visible semantic accents.
+Make the experience visually rich through composition, purposeful motion, and clear surface depth within the existing palette.
 Reduce padding and repetition before reducing readable text. Avoid oversized controls and empty panels.
 
 The memorable impression is an active fleet whose work you can follow.
 Marketing explains outcomes with product examples.
 The app prioritizes the current task and the next useful action.
+
+### Evolving the direction
+
+This document records current design choices. Update it when a better interaction or an explicit owner decision changes those choices.
+The 2026-10-18 direction preserves the branding, fonts, and colors approved in Pull Request (PR) #752 and the M227 workstreams.
+Modernization changes hierarchy, composition, surface treatment, and motion within that identity.
+
+Gradients and animation are permitted design tools. Generic review preferences must not veto a deliberate, reviewed use.
+Derive decorative light from existing color tokens. Keep reading surfaces readable, and retain usable boundaries without decoration.
+Prefer one coherent visual treatment across a route family over isolated effects on individual cards.
+
+| Surface | Visual emphasis | Interaction |
+|---|---|---|
+| New Fleet | Centered prompt, signal mark, focused composer | Gentle entrance and clear focus light |
+| Fleet workspace | Clear section navigation, visible outcomes, strong headings | Brief section arrival; stable transcript while typing |
+| Lists and catalogs | Strong identity column, readable status, aligned actions | Responsive hover and focus; stable rows during refresh |
+| Settings | Named sections, grouped controls, visible save feedback | Disclose detail near the control that needs it |
+| Evidence and configuration | Readable summary with complete details available | Accessible disclosure and bounded scrolling |
 
 ## Typography
 
@@ -55,6 +74,7 @@ The 13px step serves compact sans labels, table headings, and technical mono val
 Use 14px for supporting descriptions, operational status lines, and relative times such as “2 hours ago.”
 Reserve monospace for exact values whose character alignment helps comparison.
 App page titles use the shared 28px semibold `PageTitle`; do not restyle individual page headings.
+Both fleet entrances use this title style.
 
 ## Color
 
@@ -82,7 +102,8 @@ Test both themes with axe-core in the rendered browser and the shared token cont
 Include badges with tinted backgrounds; a foreground passing on the page can still fail inside a badge.
 Inspect incomplete browser results manually when overlays or pseudo-elements prevent a background measurement.
 Contrast ratios measure readability, not perceived brightness on every display.
-Keep the dark canvas quiet and lift cards enough to distinguish content groups without glow.
+Keep the dark canvas readable and lift working surfaces enough to distinguish content groups.
+Use mint light to emphasize an entrance or focused composer, rather than outlining every panel with glow.
 
 Separate brand actions from status.
 Mint identifies primary actions, links, selected navigation, and live signals.
@@ -100,9 +121,9 @@ the wordmark. It identifies the product without implying live execution. Use
 
 ## Surfaces and layout
 
-- Keep reading surfaces solid. Restrained mint light may frame the brand mark and active composer; it must not sit behind body text or reduce contrast.
-- Use soft glow and layered light to mark the chat entrance and input focus. Keep their intensity low in both themes and preserve a clear border without the light.
-- Borders define panels. Shadows are reserved for dialogs, menus, and other floating surfaces.
+- Keep reading surfaces solid. Decorative light may frame a hero or working surface without reducing text contrast.
+- Use soft glow and layered light to mark the chat entrance and input focus. Preserve a clear border without the light.
+- Use borders, surface contrast, and shared elevation roles to establish depth. Floating surfaces remain clearly above the page.
 - Use 6px, 8px, and 12px radii for small details, controls, and panels.
 - Circular shapes are reserved for avatars and status dots.
 - Use the shared 4px spacing scale.
@@ -111,6 +132,7 @@ the wordmark. It identifies the product without implying live execution. Use
 
 App layouts use consistent navigation, page titles, section headings, and action positions.
 PageLayout owns section spacing. PageHeader owns the title and description.
+PageHeader separates the route introduction from its working area with a fine divider and readable supporting copy.
 SectionHeader places an action beside the working area it affects.
 Descriptions sit below titles and wrap naturally.
 Page headers and their actions wrap on narrow screens.
@@ -130,7 +152,7 @@ Keep narrow-screen reading order meaningful without relying on visual placement.
 | Input and textarea | Compact sans fields with strong resting boundary; explicit mono only for code or technical data |
 | Navigation | Readable sans labels, clear selected state, consistent icon size |
 | Tabs | Shared underline style for both route and local tabs |
-| Card | Flat surface, fine border, one clear heading |
+| Card | Solid surface, fine border, one clear heading; interactive cards lift and reveal a mint boundary on hover or focus |
 | Table | Sans names and descriptions; mono identifiers; aligned numeric values |
 | Badge | Short semibold label, compact line height, visible semantic tint and border |
 | Dialog | Clear title, focused first action, keyboard dismissal when safe |
@@ -142,6 +164,9 @@ Keep narrow-screen reading order meaningful without relying on visual placement.
 Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
+Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
+Use Activity for the workspace feed and fleet section. Individual records remain events; existing event URLs retain their meaning.
+In fleet Setup, explain what the fleet does and label its saved instructions separately from product guidance. Use **Edit fleet** for the action that opens a private setup chat, with review before applying changes. Keep version details and raw configuration inside **Advanced settings**.
 
 ### Compact density
 
@@ -150,6 +175,9 @@ Coarse pointers retain a minimum 44px interactive target. Visible density must n
 Use 13px form labels and badges, 14px control labels and supporting text, and the existing 15px body scale. Smaller components do not mean tiny type.
 Place related controls in one wrapping row where practical. Keep dialogs focused on the current decision and disclose advanced configuration through the shared Accordion.
 Use shared Button, Input, Select, Label, Badge, and StatusPill variants for these decisions. Pages must not recreate their appearance with local class overrides.
+Use `Card interactive` only when the surface opens a destination. Static information panels keep their resting treatment.
+Primary controls press briefly; interactive cards lift by one small spacing step and move their Open cue toward the destination.
+These effects use shared styles in `interactions.css`. Reduced motion retains color and focus feedback without movement.
 
 ### Tables and record dates
 
@@ -164,6 +192,7 @@ Record lists place the timestamp after the record identity and before Actions.
 Secrets and API Keys fold creation metadata beneath Name on narrow screens, keeping Actions visible.
 The separate Created column returns at the small-screen breakpoint.
 Event and runner activity feeds keep their primary timestamp before metrics and status columns; the Runs repeat count closes the event row.
+Narrow activity tables retain Status and Inspect. Secondary actor and metric columns may hide before the outcome does.
 A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
@@ -228,6 +257,8 @@ Interface eyebrows use sans. Apply mono to the technical value itself, never its
 navigation, explanatory prose, or whole table. Keep route labels and recovery actions sans.
 
 `.orly/audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
+Its current flat-fill enforcement still rejects CSS gradients. A future gradient implementation requires a separately authorized, aligned enforcement change.
+This implementation uses layered token surfaces and light without changing that audit.
 Component tests verify defaults and state behavior.
 No app page or component overrides the font of a shared interface primitive, whether
 through an aliased import or a named class.
@@ -237,8 +268,19 @@ cannot determine whether arbitrary prose is a technical value; that remains a re
 
 ## Motion
 
-Use brief color transitions for hover, focus, and selection. Chat entrance elements may settle gently into place; composer focus may ease into a soft mint glow.
-Keep conversation rows and controls stable while typing. Avoid moving whole pages or shifting neighboring content on hover.
+Make movement explain arrival, focus, selection, and disclosure. A finished interface should feel fluid when the person moves through it.
+
+| Interaction | Shared timing | Treatment |
+|---|---|---|
+| Hover and press | Snap, 120 ms | Color, boundary and a small press response |
+| Page and fleet-section arrival | Fade, 240 ms | Opacity and a small upward settle |
+| Chat entrance and interactive cards | Fade, 240 ms | Gentle settle, card lift and composer focus light |
+| Disclosure | Shared Accordion timing | Height follows the revealed content |
+
+Use shared `PageLayout` for page arrivals and the shared entrance class for fleet sections.
+Animate opacity and transforms for entrance effects. End without a retained transform so fixed dialogs keep their viewport positioning.
+Avoid JavaScript animation loops, animated blur, and continuous decorative movement across large surfaces.
+Keep conversation rows and controls stable while typing. Hover must not shift neighboring content or resize a target.
 The live indicator may pulse only when the underlying entity is live.
 Reduced motion leaves a static, readable state without dimming the content.
 Terminal demonstrations may reveal lines when their final content remains available without animation.
@@ -250,10 +292,10 @@ Explain a fleet once, after the job is clear. Keep docs, source, and sign-in acc
 Use the shared charcoal, warm off-white, and mint identity.
 `ui/packages/design-system/src/tokens.css` owns the palette across website and app.
 
-The user authorized a website-only motion and gradient exception on 2026-10-13.
+The user authorized website motion and gradients on 2026-10-13, then extended the design freedom across the app on 2026-10-18.
 An original, low-contrast dithered signal field may use an SVG gradient mask and a
 brief entrance animation behind the hero. It cannot intercept input or carry essential information.
-Foreground surfaces stay solid and readable. Do not add glossy shading or glowing controls.
+Foreground surfaces stay readable. Use the shared palette and purposeful depth when choosing decorative treatments.
 
 The conversation types a problem, refines setup, shows a reviewed save, and continues into scheduled work.
 Save creates an independent fleet from the reviewed setup. It does not publish to the Library.
@@ -271,6 +313,12 @@ Distinguish loading, unavailable history, a successful empty list, and no matchi
 Keep every accepted message and persisted assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 Show the current instructions, runtime model, required access, budget, and readiness before the person saves a fleet or publishes to the Library. Keep review and correction available throughout a long conversation. Never imply that publication rereads or summarizes the transcript: it stores the selected candidate unchanged. The transcript remains private and is not included in the Library revision.
+Explain that review compares the proposed task, triggers, and access with the setup chat. Opening review creates no fleet and requests no run.
+After saving, use **Fleet saved** and show setup status separately from first-run status. Accepted work can still be running.
+**Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready. **Save and run now** requires a first message.
+Keep unfinished checks, schedule registration warnings, and retry actions visible. Collapse successful setup checks and keep raw access details secondary.
+The saved result shares the conversation's scroll area so **Open fleet** remains reachable on narrow screens and short windows.
+Review dialogs use the shared viewport height limit and scroll within it.
 The current authoring context has a bounded model window. If it cannot fit, show the recorded failure and recovery action; do not silently discard earlier messages or imply that automatic compaction exists.
 These boundaries follow the [model instructions](../rustd/crates/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
 
@@ -347,6 +395,9 @@ Use the development-only `/_design-system` gallery as the visual reference. Prod
 Keep token mappings, accessible contrast, and meaningful component behavior covered.
 Complete the owned implementation before running focused behavioral checks.
 Run full repository unit and integration suites immediately before the PR, as directed by the user.
+Record browser evidence for every reachable route family, including empty, error, populated, and selected states where available.
+Check narrow-screen overflow, keyboard access, reduced motion, layout shifts, and interaction delays before approving visual changes.
+Remove unused styles after checking source references. Shared components own reusable styles; app styles cover app-specific composition.
 
 ## Scope
 
@@ -388,6 +439,5 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-10-15 | Native setup, explicit Library publication, and accessible conversation playback | Save creates a fleet; publishing an immutable Library version is separate. File-based authoring is removed. Website and app retain the approved shared identity, with keyboard focus and reading position preserved during conversation inspection. |
 | 2026-10-15 | Compact controls, stronger typography, and clearer color | User authorized a modern, bold, simple, more colorful system with smaller components. Shared controls use a 36px desktop rhythm, semibold labels, mint-tinted secondary actions, and clearer semantic badge borders; coarse-pointer targets remain 44px. |
 
-The flat-fill rule is enforced by `.orly/audits/design-tokens.sh` across production CSS and TypeScript sources. The website signal field uses the explicitly scoped SVG mask above; no CSS gradient exception or audit relaxation is needed.
-
 | 2026-10-15 | Shared table hierarchy and Runner navigation | Live visual approval covers sentence-case table headings, readable rows, shared pagination, dialogs, Runner cards and controls, and workspace Activity placement. Table colors, spacing, and elevations remain shared tokens. |
+| 2026-10-18 | Fluid, visually rich app surfaces within the approved identity | Indy authorized modernizing this guidance, deliberate gradients and motion, and an app-wide browser review. Branding, font families, and the PR #752 / M227 palette stay unchanged. Shared components own visual behavior; app widgets own product composition. |

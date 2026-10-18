@@ -1,20 +1,46 @@
 import Link from "next/link";
-import { Badge, Button, DashboardPanel, DashboardPanelTitle } from "@agentsfleet/design-system";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Badge, Button, DashboardPanelTitle, Section, Terminal } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import type { FleetDetail } from "@/lib/types";
 import { FleetMarkdownDynamic } from "@/components/domain/FleetMarkdownDynamic";
 
+const SETUP_COPY = {
+  region: "Fleet setup",
+  title: "What this fleet does",
+  description: "These are the saved instructions your fleet follows.",
+  edit: "Edit fleet",
+  editHint: "Opens a private setup chat. Review changes before applying them.",
+  instructions: "Saved instructions",
+  advanced: "Advanced settings",
+  configuration: "Saved configuration",
+  version: "Saved version",
+  updateHint: "Updates apply to new work. Work already running keeps its current instructions.",
+} as const;
+
 export function SetupPanel({workspaceId, fleet}: {workspaceId: string; fleet: FleetDetail}) {
   const query = new URLSearchParams({fleet: fleet.id, setup_revision: fleet.setup_revision});
-  return <DashboardPanel className="space-y-lg">
-    <div className="flex flex-wrap items-center justify-between gap-md">
-      <div className="space-y-xs"><DashboardPanelTitle>Fleet setup</DashboardPanelTitle>
-        <p className="text-sm text-muted-foreground">Revision {fleet.setup_revision}. Running work keeps the revision it started with.</p></div>
-      <Button asChild><Link href={`${workspacePath(workspaceId, "fleets/new")}?${query}`}>Improve in private chat</Link></Button>
+  return <Section aria-label={SETUP_COPY.region} className="gap-xl">
+    <div className="space-y-md">
+      <div className="space-y-sm"><DashboardPanelTitle>{SETUP_COPY.title}</DashboardPanelTitle>
+        <p className="text-sm text-muted-foreground">{SETUP_COPY.description}</p></div>
+      <div className="flex flex-wrap items-center gap-md">
+        <Button asChild size="lg"><Link href={`${workspacePath(workspaceId, "fleets/new")}?${query}`}>{SETUP_COPY.edit}</Link></Button>
+        <p className="max-w-form text-sm text-muted-foreground">{SETUP_COPY.editHint}</p>
+      </div>
     </div>
     {fleet.needs_re_review ? <Badge variant="amber">Review current access before resuming</Badge> : null}
-    <div className="space-y-sm"><h2 className="font-medium">Instructions</h2><FleetMarkdownDynamic>{fleet.definition.instructions_md}</FleetMarkdownDynamic></div>
-    <div className="space-y-sm"><h2 className="font-medium">Runtime configuration</h2>
-      <pre className="max-h-96 overflow-auto rounded-md bg-muted p-md text-xs">{JSON.stringify(fleet.definition.config, null, 2)}</pre></div>
-  </DashboardPanel>;
+    <Section aria-label={SETUP_COPY.instructions} className="gap-sm border-l-2 border-primary/30 pl-lg">
+      <h3 className="text-label font-semibold text-muted-foreground">{SETUP_COPY.instructions}</h3>
+      <FleetMarkdownDynamic>{fleet.definition.instructions_md}</FleetMarkdownDynamic>
+    </Section>
+    <Accordion type="single" collapsible>
+      <AccordionItem value="configuration">
+        <AccordionTrigger>{SETUP_COPY.advanced}</AccordionTrigger>
+        <AccordionContent><div className="space-y-md">
+          <p className="text-sm text-muted-foreground">{SETUP_COPY.version} {fleet.setup_revision}. {SETUP_COPY.updateHint}</p>
+          <Terminal label={SETUP_COPY.configuration} className="max-h-96 overflow-auto">{JSON.stringify(fleet.definition.config, null, 2)}</Terminal>
+        </div></AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  </Section>;
 }

@@ -3,30 +3,16 @@
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall};
 use garde::Validate as _;
+use rig_core::{
+    completion::{CompletionResponse, FinishReason},
+    message::{AssistantContent, ToolCall},
+};
 use serde::Deserialize;
-use serde_json::Value;
 
 use super::super::{ModelCallInput, ModelCallResult, budget};
-use super::{
-    KEY_CALL_ID, KEY_CONTENT, KEY_TYPE, KIND_FUNCTION_CALL, ProviderResponse, prompt::TOOL,
-};
+use super::prompt::TOOL;
 use crate::{Result, error::ErrorKind};
 
-/// A content part the model declined in; its text is the refusal, kept as text.
-const KIND_REFUSAL: &str = "refusal";
-
-#[derive(Deserialize)]
-struct Envelope {
-    status: String,
-    #[serde(default)]
-    output: Vec<Value>,
-    usage: Option<Usage>,
-}
-#[derive(Deserialize)]
-struct Usage {
-    input_tokens: i64,
-    output_tokens: i64,
-}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Arguments {
@@ -35,63 +21,93 @@ struct Arguments {
 
 pub(in crate::model) struct Decoded {
     pub(in crate::model) result: Option<ModelCallResult>,
+    pub(in crate::model) continuation: Option<serde_json::Value>,
     pub(in crate::model) usage: ModelUsage,
     pub(in crate::model) output: i64,
 }
 
 pub(in crate::model) fn decode(
-    response: &ProviderResponse,
+    status: u16,
+    response: &CompletionResponse,
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
+    output_limit: u32,
 ) -> Result<Decoded> {
-    if response.body.len() > ENVELOPE_BYTES_MAX {
-        return Err(ErrorKind::Unknown.into());
-    }
-    let envelope: Envelope =
-        serde_json::from_slice(&response.body).map_err(|_untrusted| ErrorKind::Unknown)?;
-    let usage = envelope.usage.as_ref().ok_or(ErrorKind::Unknown)?;
-    if usage.input_tokens < 0
-        || usage.input_tokens > budget::INPUT_PER_CALL
-        || usage.output_tokens < 0
-        || usage.output_tokens > i64::from(request.request.max_output_tokens)
+    let (known, output) = usage(response, model, output_limit)?;
+    // Rig names an incomplete response without a reason as an error. It still
+    // reports authoritative usage; return a cut turn with no executable tools.
+    let incomplete = matches!(response.finish_reason(), Some(FinishReason::Other(reason)) if reason == "incomplete");
+    let result = if (200..300).contains(&status)
+        && (response.error.is_none() || incomplete)
+        && response.aborted.is_none()
     {
-        return Err(ErrorKind::Unknown.into());
-    }
-    let cost = budget::cost(model, usage.input_tokens, usage.output_tokens)?;
-    let known = ModelUsage::Known {
-        input_tokens: usage.input_tokens.cast_unsigned(),
-        output_tokens: usage.output_tokens.cast_unsigned(),
-        provider_cost_nanos: cost.to_string(),
-    };
-    let result = if (200..300).contains(&response.status) && envelope.status != "failed" {
-        // Invalid private output is a known-usage provider failure. Keep its
-        // accounting even when no text/proposal can be returned.
-        content(&envelope, request, known.clone()).ok()
+        // Invalid private output retains known usage without executable tools.
+        content(response, request, known.clone())
+            .and_then(|result| {
+                let continuation = super::super::continuation::save(response, request, &result)?;
+                Ok((result, continuation))
+            })
+            .ok()
     } else {
         None
     };
+    let (result, continuation) = result.map_or((None, None), |(result, continuation)| {
+        (Some(result), continuation)
+    });
     Ok(Decoded {
         result,
+        continuation,
         usage: known,
-        output: usage.output_tokens,
+        output,
     })
 }
 
+fn usage(
+    response: &CompletionResponse,
+    model: &RegisteredModel,
+    output_limit: u32,
+) -> Result<(ModelUsage, i64)> {
+    let input = response
+        .usage
+        .input_tokens
+        .and_then(|value| i64::try_from(value).ok())
+        .ok_or(ErrorKind::Unknown)?;
+    let output = response
+        .usage
+        .output_tokens
+        .and_then(|value| i64::try_from(value).ok())
+        .ok_or(ErrorKind::Unknown)?;
+    if input > budget::INPUT_PER_CALL
+        || output > i64::from(output_limit)
+        || input + output > i64::from(model.context_window_tokens)
+    {
+        return Err(ErrorKind::Unknown.into());
+    }
+    let cost = budget::cost(model, input, output)?;
+    let known = ModelUsage::Known {
+        input_tokens: input.cast_unsigned(),
+        output_tokens: output.cast_unsigned(),
+        provider_cost_nanos: cost.to_string(),
+    };
+    Ok((known, output))
+}
+
 fn content(
-    envelope: &Envelope,
+    response: &CompletionResponse,
     request: &garde::Valid<ModelCallInput>,
     usage: ModelUsage,
 ) -> Result<ModelCallResult> {
-    let cut = envelope.status != "completed";
+    let cut = !matches!(
+        response.finish_reason(),
+        Some(FinishReason::Stop | FinishReason::ToolCalls)
+    );
     let mut text = String::new();
     let mut proposal_calls = Vec::new();
-    for item in &envelope.output {
-        match item.get(KEY_TYPE).and_then(Value::as_str) {
-            Some("message") => {
-                append_text(item, &mut text)?;
-            }
-            Some(KIND_FUNCTION_CALL) if !cut => proposal_calls.push(proposal(item)?),
-            Some(KIND_FUNCTION_CALL) => {}
+    for item in &response.choice {
+        match item {
+            AssistantContent::Text(part) => text.push_str(&part.text),
+            AssistantContent::ToolCall(call) if !cut => proposal_calls.push(proposal(call)?),
+            AssistantContent::ToolCall(_) | AssistantContent::Reasoning(_) => {}
             _unexpected => return Err(ErrorKind::Provider.into()),
         }
     }
@@ -109,11 +125,12 @@ fn content(
         .map_err(|_untrusted| ErrorKind::Provider)?
         .len()
         > ENVELOPE_BYTES_MAX
-        || result.text.contains('\0')
-        || result.proposal_calls.len() > 8
     {
         return Err(ErrorKind::Provider.into());
     }
+    result
+        .validate()
+        .map_err(|_untrusted| ErrorKind::Provider)?;
     Ok(result)
 }
 
@@ -139,28 +156,8 @@ fn unique_calls(
     Ok(())
 }
 
-fn append_text(item: &Value, text: &mut String) -> Result<()> {
-    let content = item
-        .get(KEY_CONTENT)
-        .and_then(Value::as_array)
-        .ok_or(ErrorKind::Provider)?;
-    for part in content {
-        let kind = part.get(KEY_TYPE).and_then(Value::as_str);
-        if !matches!(kind, Some("output_text" | KIND_REFUSAL)) {
-            return Err(ErrorKind::Provider.into());
-        }
-        let content = part
-            .get("text")
-            .or_else(|| part.get(KIND_REFUSAL))
-            .and_then(Value::as_str)
-            .ok_or(ErrorKind::Provider)?;
-        text.push_str(content);
-    }
-    Ok(())
-}
-
 fn proposal(
-    item: &Value,
+    item: &ToolCall,
 ) -> Result<
     ProposalCall<
         afd_fleet_runtime::Definition,
@@ -168,19 +165,14 @@ fn proposal(
         afd_fleet_runtime::definition::InstructionEdit,
     >,
 > {
-    if item.get("name").and_then(Value::as_str) != Some(TOOL) {
+    if item.function.name.as_str() != TOOL || item.function.invalid_arguments.is_some() {
         return Err(ErrorKind::Provider.into());
     }
-    let id = item
-        .get(KEY_CALL_ID)
-        .and_then(Value::as_str)
-        .ok_or(ErrorKind::Provider)?;
-    let raw = item
-        .get("arguments")
-        .and_then(Value::as_str)
-        .ok_or(ErrorKind::Provider)?;
+    // A locally generated SDK id is not a provider acknowledgement.
+    let id = item.id.provider().ok_or(ErrorKind::Provider)?.as_str();
     let arguments: Arguments =
-        serde_json::from_str(raw).map_err(|_untrusted| ErrorKind::Provider)?;
+        serde_json::from_value(serde_json::Value::Object(item.function.arguments.clone()))
+            .map_err(|_untrusted| ErrorKind::Provider)?;
     let proposal =
         serde_json::from_str(&arguments.proposal_json).map_err(|_untrusted| ErrorKind::Provider)?;
     let call = ProposalCall {

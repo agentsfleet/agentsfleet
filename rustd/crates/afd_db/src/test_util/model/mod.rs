@@ -19,6 +19,12 @@ const INSERT_PLATFORM_MODEL: &str = include_str!("sql/insert_platform_model.sql"
 /// Removes one row by the id its seed answered.
 const DELETE_PLATFORM_MODEL: &str = include_str!("sql/delete_platform_model.sql");
 
+/// The inference settings every seeded platform model carries, so a seeded
+/// model routes: without saved settings the registered read finds no route.
+/// The output limit stays under the smallest context a suite seeds.
+pub(super) const FIXTURE_INFERENCE: &str =
+    r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":1024}"#;
+
 const CONTEXT_INSERT: &str = "seed a platform model";
 const CONTEXT_DELETE: &str = "remove a platform model";
 
@@ -87,6 +93,7 @@ impl<'a> PlatformModelSeed<'a> {
             .bind(self.prices.cached_input_nanos_per_mtok)
             .bind(self.prices.output_nanos_per_mtok)
             .bind(self.created_at.map(Timestamp::to_sqlx))
+            .bind(FIXTURE_INFERENCE)
             .execute(executor)
             .await
             .map_err(|source| error::query(CONTEXT_INSERT, source))?;

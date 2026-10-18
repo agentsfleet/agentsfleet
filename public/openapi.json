@@ -887,8 +887,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Update a catalogue row's caps and rates",
-        "description": "Rates-only change; `provider` and `model_id` are the row identity and are immutable on this endpoint. The rate cache is repopulated on success. Requires the `model:admin` scope. ",
+        "summary": "Update model settings and rates",
+        "description": "Updates rates and optional inference settings; `provider` and `model_id` are the row identity and are immutable on this endpoint. The rate cache is repopulated on success. Requires the `model:admin` scope. ",
         "operationId": "update_admin_model",
         "parameters": [
           {
@@ -905,7 +905,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelRates"
+                "$ref": "#/components/schemas/AdminModelPatch"
               }
             }
           },
@@ -7075,7 +7075,7 @@
           "Billing"
         ],
         "summary": "List tenant charges",
-        "description": "Returns charge records with the newest record first. Use `limit` and `cursor` to read more records. ",
+        "description": "Returns fleet-run and settled setup-chat costs with the newest record first. Use `limit` and `cursor` to read more records. ",
         "operationId": "get_tenant_billing_charges",
         "parameters": [
           {
@@ -17383,6 +17383,17 @@
               "model_id"
             ],
             "properties": {
+              "inference": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Explicit inference settings; omitted rows remain unavailable for inference."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "model_id": {
                 "type": "string",
                 "description": "Provider-native model identity."
@@ -17435,6 +17446,17 @@
                 "type": "string",
                 "description": "Opaque `UUIDv7` row identity."
               },
+              "inference": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Non-secret settings used by setup chat and runtime leases."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "model_id": {
                 "type": "string",
                 "description": "Provider-native model identity."
@@ -17447,6 +17469,31 @@
           }
         ],
         "description": "One priced model row in the admin list."
+      },
+      "AdminModelPatch": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ModelRates",
+            "description": "Existing rate fields remain flattened on the wire."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "inference": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ModelInference",
+                    "description": "Omission preserves the current inference settings."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Mutable model rates and optional replacement inference settings."
       },
       "AdminModelUpdated": {
         "type": "object",
@@ -18289,14 +18336,11 @@
       },
       "ChargeSummary": {
         "type": "object",
-        "description": "One ledger row as the charges list shows it.\n\nField order is wire order — the struct is serialized straight to JSON, so\nthe row IS the wire shape.",
+        "description": "One runtime charge or settled setup-chat cost.\n\nField order is wire order — the struct is serialized straight to JSON, so\nthe row IS the wire shape.",
         "required": [
           "id",
           "tenant_id",
           "workspace_id",
-          "fleet_id",
-          "fleet_name",
-          "event_id",
           "charge_type",
           "posture",
           "model",
@@ -18304,9 +18348,16 @@
           "recorded_at"
         ],
         "properties": {
+          "authoring_attempt_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The setup attempt, or `null` for a fleet run. Identifies the charge\nwithout exposing the chat's content or depending on its retention."
+          },
           "charge_type": {
             "type": "string",
-            "description": "`receive` or `stage` — the two halves of one event's cost."
+            "description": "`receive`, `stage`, or `authoring` (a settled setup-chat attempt)."
           },
           "credit_deducted_nanos": {
             "type": "integer",
@@ -18314,24 +18365,33 @@
             "description": "What this row drained, in nanos."
           },
           "event_id": {
-            "type": "string",
-            "description": "The event that triggered the work."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The event that triggered the work, or `null` for a setup chat."
           },
           "fleet_id": {
-            "type": "string",
-            "description": "The fleet it was incurred by, kept the same way through the fleet's\ndeletion.\n\nThe dashboard derives the fleet's callsign from this value, so a charge\ncan always say what it paid for."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fleet it was incurred by. A fleet run's charge always names it,\nthrough the fleet's deletion; the dashboard derives the callsign from\nit. A setup chat names the fleet its draft was saved as, or `null`\nwhile the draft has none."
           },
           "fleet_name": {
-            "type": "string",
-            "description": "That fleet's name as it stood when the charge was written.\n\nA snapshot rather than a live lookup. Renaming a fleet does not reach\ncharges already written, because a ledger records what was true when the\nmoney moved. A fleet purged before its charge landed leaves its own\nidentifier here. When this value equals `fleet_id`, the charge captured\nno name."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "That fleet's name. A fleet run's charge keeps the name captured when it\nwas written, so a later rename never reaches it. A fleet purged before\nits charge landed leaves its own identifier here. When this value equals\n`fleet_id`, the charge captured no name. A setup chat shows the saved\nfleet's current name, or `null` without one."
           },
           "id": {
             "type": "string",
-            "description": "The ledger row's identifier."
+            "description": "The runtime ledger row's or setup settlement's identifier."
           },
           "model": {
             "type": "string",
-            "description": "The model the stage ran against."
+            "description": "The model used by the run or setup chat."
           },
           "posture": {
             "type": "string",
@@ -18352,7 +18412,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Tokens in, on stage rows that have settled."
+            "description": "Recorded input tokens for a run or settled setup chat."
           },
           "token_count_output": {
             "type": [
@@ -18368,7 +18428,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "How long the stage ran."
+            "description": "Recorded runtime in milliseconds."
           },
           "workspace_id": {
             "type": "string",
@@ -18459,7 +18519,7 @@
           "context_cap_tokens": {
             "type": "integer",
             "format": "int32",
-            "description": "The active model's context cap in tokens, or zero when unresolved.",
+            "description": "The fleet's operating context cap, or zero when unresolved.",
             "minimum": 0
           },
           "memory_checkpoint_every": {
@@ -19032,7 +19092,6 @@
                 "provider",
                 "model",
                 "context_window_tokens",
-                "max_output_tokens",
                 "eligibility",
                 "pricing"
               ],
@@ -19051,9 +19110,12 @@
                   "description": "Display label."
                 },
                 "max_output_tokens": {
-                  "type": "integer",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
                   "format": "int64",
-                  "description": "Deployment output ceiling."
+                  "description": "Saved output ceiling; omitted while inference settings are unconfigured."
                 },
                 "model": {
                   "type": "string",
@@ -19288,7 +19350,7 @@
               "number",
               "null"
             ],
-            "format": "float",
+            "format": "double",
             "description": "The fraction of the context, from 0 to 1, at which a stage splits into chunks.\nZero means the runner chooses.",
             "maximum": 1,
             "minimum": 0
@@ -20474,6 +20536,17 @@
             },
             "description": "Per-host request boundaries."
           },
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Saved model inference settings, required for runtime provider connections."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "inference_host": {
             "type": "string",
             "description": "Inference host to dial."
@@ -20484,6 +20557,12 @@
               "$ref": "#/components/schemas/Mintable"
             },
             "description": "Credentials the run may mint on demand."
+          },
+          "model_context_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Saved physical model context, independent of the fleet's operating cap.\nZero is unresolved and cannot authorize a provider connection.",
+            "minimum": 0
           },
           "network_policy": {
             "$ref": "#/components/schemas/NetworkPolicy",
@@ -21219,6 +21298,15 @@
             "description": "Which rule dropped it."
           }
         }
+      },
+      "InferenceApi": {
+        "type": "string",
+        "description": "The provider API rig uses for this configured model.",
+        "enum": [
+          "chat",
+          "responses",
+          "messages"
+        ]
       },
       "InviteEmailResponse": {
         "type": "object",
@@ -22526,6 +22614,39 @@
             "description": "The vault key name backing it."
           }
         }
+      },
+      "ModelInference": {
+        "type": "object",
+        "description": "Admin-owned model settings; credentials remain separate vault references.",
+        "required": [
+          "api",
+          "base_url",
+          "max_output_tokens"
+        ],
+        "properties": {
+          "api": {
+            "$ref": "#/components/schemas/InferenceApi",
+            "description": "Explicit provider API; never inferred from a model identifier."
+          },
+          "base_url": {
+            "type": "string",
+            "description": "HTTPS provider base. Host safety is proven by the credential service."
+          },
+          "dialect": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registered rig dialect, or absent for a plain compatible gateway."
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Model's configured maximum completion length, including reasoning.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "ModelMessage_Value_Value_Value": {
         "oneOf": [
@@ -25509,7 +25630,6 @@
           "ref",
           "provider",
           "model",
-          "tokenizer",
           "pricing"
         ],
         "properties": {
@@ -25528,10 +25648,6 @@
           "ref": {
             "type": "string",
             "description": "Explicit owner registry reference."
-          },
-          "tokenizer": {
-            "type": "string",
-            "description": "Local tokenizer family pinned by the admitted model."
           }
         }
       },
@@ -26795,7 +26911,6 @@
           "provider",
           "model",
           "context_window_tokens",
-          "max_output_tokens",
           "eligibility",
           "pricing"
         ],
@@ -26814,9 +26929,12 @@
             "description": "Display label."
           },
           "max_output_tokens": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Deployment output ceiling."
+            "description": "Saved output ceiling; omitted while inference settings are unconfigured."
           },
           "model": {
             "type": "string",

@@ -52,6 +52,8 @@ tracing.workspace = true
 test-util = []
 
 [dev-dependencies]
+aho-corasick.workspace = true
+memmap2.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read a failure arm's log line through.

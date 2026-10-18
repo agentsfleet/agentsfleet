@@ -66,9 +66,11 @@ export async function readBuildResponse(url: string, token?: string): Promise<{ 
 }
 
 export async function readAppBuild(url: string): Promise<string | null> {
+  const bypass = process.env.VERCEL_BYPASS_SECRET;
   const response = await fetch(url, {
     method: "HEAD", signal: AbortSignal.timeout(READ_TIMEOUT_MS), cache: "no-store", redirect: "manual",
+    headers: bypass ? {"x-vercel-protection-bypass": bypass} : undefined,
   });
-  if (response.status >= 500) throw new Error("App build observation failed");
+  if (response.status >= 400) throw new Error(`App build observation failed: ${response.status}`);
   return response.headers.get("x-agentsfleet-build");
 }

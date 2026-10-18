@@ -141,7 +141,7 @@ describe("placeholder pages", () => {
     );
     expect(m).toContain("Workspace activity"); // PageTitle in the shell
     expect(m).toContain("data-skeleton"); // Skeleton fallback
-    expect(m).not.toContain("Workspace events"); // data not yet resolved
+    expect(m).not.toContain("No activity yet"); // data not yet resolved
   });
 
   it("EventsData returns null when the token is missing", async () => {
@@ -151,7 +151,7 @@ describe("placeholder pages", () => {
     expect(await EventsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
-  it("events page renders Workspace events section with EventsList", async () => {
+  it("events page renders Workspace activity section with EventsList", async () => {
     // M118: EventsData reads `workspaceId` from the route param (its prop); the
     // no-workspace `notFound()` is gone (the `[workspaceId]` layout guards it).
     mockAuth({ token: "token_abc" });

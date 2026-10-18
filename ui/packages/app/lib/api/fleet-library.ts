@@ -1,5 +1,6 @@
 import { request, requestWithEtag } from "./client";
 import { PublishedSchema } from "./draft-types";
+import { matchesResourceEtag } from "./etag";
 import { PlatformEntriesSchema, PlatformEntrySchema, type PlatformPatch, type StagePlatform } from "./platform-library-types";
 
 const PLATFORM_PATH = "/v1/admin/fleet-libraries";
@@ -25,7 +26,7 @@ export async function patchPlatformFleetLibraryEntry(id: string, body: PlatformP
     method: "PATCH", body: JSON.stringify(body), headers: {"If-Match": ifMatch},
   }, token);
   const entry = PlatformEntrySchema.parse(response.data);
-  if (entry.etag !== response.etag) throw new Error("Platform Library body and response ETag disagree");
+  if (!matchesResourceEtag(entry.etag, response.etag)) throw new Error("Platform Library body and response ETag disagree");
   return entry;
 }
 

@@ -10,7 +10,7 @@ executable: false
 
 ## What it is
 
-A proposed definition wraps existing validated fleet configuration with instructions and a schema version. It introduces no second policy schema. Implementation is pending under [M227](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md).
+A proposed definition wraps existing validated fleet configuration with instructions and a schema version. It introduces no second policy schema. Implementation is pending under [M227](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md).
 
 ```text
 private draft --> validated candidate --> human review

@@ -7,10 +7,11 @@
     "ui/packages/design-system"
   ],
   "devDependencies": {
-    "zod": "^4.6.5"
+    "vercel": "64.5.0",
+    "zod": "^4.6.7"
   },
   "overrides": {
-    "playwright-core": "1.64.0"
+    "playwright-core": "1.64.1"
   },
   "version": "0.28.2"
 }

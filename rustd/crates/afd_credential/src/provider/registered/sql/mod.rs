@@ -12,7 +12,9 @@
 //! between a model reference and the metadata fields beside it. The catalogue's
 //! `resource_version` rides along, so a repriced model is a new generation.
 
-/// One tenant registry entry, priced, with its credential still a usable key.
+/// One tenant registry entry, priced, with its credential still a usable key,
+/// the credential's endpoint restriction and the model's saved inference
+/// settings. Whether those settings route is decided in Rust, not here.
 ///
 /// `$1` owner, `$2` opaque reference. Comparing the UUID as text rejects an
 /// unknown opaque reference as absence without attempting an unsafe UUID cast.

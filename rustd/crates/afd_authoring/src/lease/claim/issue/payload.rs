@@ -37,7 +37,7 @@ pub(super) fn build(
         deletion_generation: crate::lease::guard::DELETION_GENERATION.to_string(),
         expires_at: placement.until,
         deadline: placement.deadline,
-        model: selected_model(model)?,
+        model: selected_model(model),
         model_access: ModelAccess {
             token: placement.token.clone(),
             expires_at: placement.until,
@@ -48,7 +48,7 @@ pub(super) fn build(
         messages: context.messages,
         limits: Limits {
             input_per_call: budget::INPUT_PER_CALL,
-            output_per_turn: budget::OUTPUT_PER_TURN,
+            output_per_turn: budget::output_limit(model),
             max_calls: budget::MAX_CALLS,
             wall_seconds: seconds(budget::WALL),
             provider_timeout_seconds: seconds(budget::PROVIDER_TIMEOUT),
@@ -66,17 +66,15 @@ fn seconds(span: std::time::Duration) -> i64 {
     i64::try_from(span.as_secs()).unwrap_or(i64::MAX)
 }
 
-fn selected_model(model: &RegisteredModel) -> Result<SelectedModel> {
-    let tokenizer = tiktoken_rs::tokenizer::get_tokenizer(&model.model).ok_or(ErrorKind::Model)?;
-    Ok(SelectedModel {
+fn selected_model(model: &RegisteredModel) -> SelectedModel {
+    SelectedModel {
         reference: model.reference.to_string(),
         provider: model.provider.to_string(),
         model: model.model.to_string(),
-        tokenizer: format!("{tokenizer:?}"),
         pricing: Pricing {
             input_nanos_per_million: model.input_nanos_per_million.to_string(),
             output_nanos_per_million: model.output_nanos_per_million.to_string(),
             runtime_nanos_per_second: afd_billing::RUN_NANOS_PER_SEC.to_string(),
         },
-    })
+    }
 }

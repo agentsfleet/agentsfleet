@@ -26,10 +26,13 @@ const HOLD_WALLET: &str =
     "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE";
 /// The linked draft row activation closes while it holds the fleet row.
 const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR NO KEY UPDATE";
-/// One backend waiting on any of the given holders while running a statement
-/// that starts with the given text.
-const WAITER: &str = "SELECT pid FROM pg_stat_activity \
-WHERE pg_blocking_pids(pid) && $1::int[] AND starts_with(query,$2) ORDER BY pid LIMIT 1";
+/// One backend waiting directly or transitively on a holder while running a
+/// statement that starts with the given text. Fixture table locks may intervene.
+const WAITER: &str = "WITH RECURSIVE blocked(pid) AS ( \
+SELECT unnest($1::int[]) UNION \
+SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid=ANY(pg_blocking_pids(a.pid))) \
+SELECT pid FROM pg_stat_activity WHERE pid IN (SELECT pid FROM blocked) \
+AND NOT (pid=ANY($1::int[])) AND starts_with(query,$2) ORDER BY pid LIMIT 1";
 /// Where activation waits when the wallet row is held: past every unlocked check.
 const AT_WALLET: &str = "SELECT balance_nanos FROM billing.wallets";
 /// Where activation waits when its draft row is held: holding the fleet row it
@@ -195,6 +198,40 @@ async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
     Arc::into_inner(c).expect("tasks joined").cleanup().await;
 }
 
+/// A fixture trigger removal can queue this table lock between activation and
+/// Kill. Force that ordering so lock observation must follow the whole chain.
+async fn kill_after_table_lock(
+    c: &Arc<Case>,
+    fleet: &Uuid7,
+    tag: String,
+    activating: i32,
+) -> JoinHandle<Result<SavedFleet>> {
+    let mut table = PgConnection::connect(&c.base.owner_url())
+        .await
+        .expect("table holder connects");
+    sqlx::query("BEGIN")
+        .execute(&mut table)
+        .await
+        .expect("table transaction");
+    let queued = tokio::spawn(async move {
+        sqlx::query("LOCK TABLE fleet.fleets IN ACCESS EXCLUSIVE MODE")
+            .execute(&mut table)
+            .await
+            .expect("queued table lock");
+        sqlx::query("COMMIT")
+            .execute(&mut table)
+            .await
+            .expect("release table lock");
+    });
+    blocked(c, &[activating], "LOCK TABLE").await;
+    let killing = kill(c, fleet, tag);
+    tokio::spawn(async move {
+        let result = killing.await.expect("Kill task");
+        queued.await.expect("table lock task");
+        result
+    })
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
@@ -209,7 +246,7 @@ async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
     let linked = Hold::take(&c.base.owner_url(), HOLD_DRAFT, draft.as_str()).await;
     let activation = activate(&c, key, request);
     let activating = blocked(&c, &[linked.pid], AT_CLOSE).await;
-    let kill = kill(&c, &fleet, tag);
+    let kill = kill_after_table_lock(&c, &fleet, tag, activating).await;
     blocked(&c, &[activating], AT_LOCK).await;
     linked.release().await;
     let activated = bounded("activation commits", activation)

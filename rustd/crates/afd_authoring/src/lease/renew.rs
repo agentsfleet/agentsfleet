@@ -33,7 +33,8 @@ impl Drafts {
         }
         let guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
         let mut owed = Owed::default();
-        let verified = match available(&mut tx, &guarded, &request).await {
+        let (verified, remaining_output_tokens) = match available(&mut tx, &guarded, &request).await
+        {
             Ok(verified) => verified,
             Err(error) if failure::record(&mut tx, &guarded.attempt, &error, &mut owed).await? => {
                 tx.commit().await.map_err(query(CONTEXT))?;
@@ -56,10 +57,7 @@ impl Drafts {
         Ok(Renewed {
             expires_at: until,
             stop_requested: false,
-            remaining_output_tokens: u64::try_from(
-                budget::OUTPUT_PER_TURN - guarded.attempt.output_token_count,
-            )
-            .map_err(|_negative| ErrorKind::Token)?,
+            remaining_output_tokens,
             model_access_expires_at: until,
         })
     }
@@ -69,10 +67,14 @@ async fn available(
     connection: &mut sqlx::PgConnection,
     guarded: &guard::Guarded,
     request: &garde::Valid<Renew>,
-) -> Result<meter::Verified> {
+) -> Result<(meter::Verified, u64)> {
     guard::current_model(connection, guarded).await?;
     let observed = garde::Unvalidated::new(request.usage.clone()).validate()?;
     let verified = meter::verify(connection, &guarded.attempt, &observed, guarded.now).await?;
     budget::coverage(connection, &guarded.attempt).await?;
-    Ok(verified)
+    let remaining = u64::try_from(
+        budget::output_limit(&guarded.attempt.model_snapshot) - guarded.attempt.output_token_count,
+    )
+    .map_err(|_negative| ErrorKind::Token)?;
+    Ok((verified, remaining))
 }

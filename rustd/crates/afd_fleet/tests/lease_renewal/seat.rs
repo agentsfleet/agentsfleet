@@ -23,8 +23,8 @@ INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at
 VALUES($1::uuid,$2::uuid,$1,$1,now(),now())";
 const MODEL: &str = "\
 INSERT INTO model.platform_models(id,model_name,provider,context_cap_tokens,input_nanos_per_mtok,
-cached_input_nanos_per_mtok,output_nanos_per_mtok,created_at,updated_at)
-VALUES($1::uuid,$2,$3,128000,$4,$4,$4,now(),now())";
+cached_input_nanos_per_mtok,output_nanos_per_mtok,inference,created_at,updated_at)
+VALUES($1::uuid,$2,$3,128000,$4,$4,$4,$5,now(),now())";
 const ENTRY: &str = "\
 INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at)
 VALUES($1::uuid,$2::uuid,$3,$4,now(),now())";
@@ -75,6 +75,12 @@ impl Seat {
             .bind(&model)
             .bind(PROVIDER)
             .bind(NANOS_PER_USD)
+            .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
+                api: afd_wire::inference::InferenceApi::Responses,
+                base_url: "https://models.example.com/v1".into(),
+                dialect: None,
+                max_output_tokens: 8192,
+            }))
             .execute(&mut *connection)
             .await
             .expect("an isolated priced model");

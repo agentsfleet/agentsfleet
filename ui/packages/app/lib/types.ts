@@ -112,15 +112,13 @@ export const SECRET_FIELD = {
 // flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
 export const HTTPS_SCHEME_PREFIX = "https://" as const;
 
-// Mirrors `charge::RECEIVE` / `charge::STAGE` in rustd/crates/afd_billing/src/sql.rs — every
-// metered event yields up to two rows, one per charge_type. Use this rather
-// than typing "receive" / "stage" inline so a future rename catches every
-// callsite via the type.
-export type ChargeType = "receive" | "stage";
+// Runtime event costs and settled setup attempts share the tenant cost history.
+export type ChargeType = "receive" | "stage" | "authoring";
 
 export const CHARGE_TYPE = {
   receive: "receive" as ChargeType,
   stage: "stage" as ChargeType,
+  authoring: "authoring" as ChargeType,
 } as const;
 
 export type TenantProvider = {
@@ -187,14 +185,17 @@ export type TenantBillingChargesResponse = {
     tenant_id: string;
     /** Survives the workspace's deletion: the charge keeps the identifier. */
     workspace_id: string;
-    /** Survives the fleet's deletion, so a purged fleet's charges can still
-     * name themselves; the callsign derives from it. */
-    fleet_id: string;
-    /** The fleet's name when the charge was written, a snapshot a later
-     * rename never reaches. A fleet purged before its charge landed leaves
-     * `fleet_id` here instead; `capturedFleetName` tells the two apart. */
-    fleet_name: string;
-    event_id: string;
+    /** A fleet run's identity survives the fleet's deletion, so its charges
+     * still name themselves; the callsign derives from it. A setup chat uses
+     * its draft's saved fleet, or null while the draft has none. */
+    fleet_id: string | null;
+    /** A fleet run's name when the charge was written, a snapshot a later
+     * rename never reaches; a fleet purged before its charge landed leaves
+     * `fleet_id` here instead, and `capturedFleetName` tells the two apart.
+     * A setup chat shows the saved fleet's current name, or null. */
+    fleet_name: string | null;
+    event_id: string | null;
+    authoring_attempt_id: string | null;
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;

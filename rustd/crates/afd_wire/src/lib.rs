@@ -55,6 +55,7 @@ pub mod activity;
 pub mod authoring;
 pub mod credentials;
 pub mod event;
+pub mod inference;
 pub mod instant;
 pub mod lease;
 pub mod memory;

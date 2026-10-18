@@ -8,6 +8,23 @@ use sha2::{Digest as _, Sha256};
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
+async fn a_model_output_ceiling_can_equal_its_context_without_excluding_every_message() {
+    let f = funded(1).await;
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=32768,inference=jsonb_set(inference,'{max_output_tokens}','32768') WHERE id=$1::uuid")
+        .bind(f.catalogue.first().expect("owned model").as_str()).execute(&mut *f.connection().await).await.expect("configured model ceilings");
+    let draft = queue(&f, "Investigate").await;
+    let lease = claim(&f, &draft)
+        .await
+        .expect("the input leaves room for a completion");
+    assert_eq!(
+        lease.limits.output_per_turn, 32_768,
+        "the persisted turn ceiling remains authoritative"
+    );
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
 async fn lease_pins_oldest_message_model_candidate_and_only_hashes_its_capability() {
     let f = funded(2).await;
     let draft = queue(&f, "First private question").await;

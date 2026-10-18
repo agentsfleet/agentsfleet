@@ -14,6 +14,7 @@ categories.workspace = true
 
 [dependencies]
 afd_core.workspace = true
+afd_inference.workspace = true
 afd_billing.workspace = true
 afd_identity.workspace = true
 afd_crypto.workspace = true
@@ -44,19 +45,24 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 reqwest.workspace = true
+rig-core.workspace = true
+http.workspace = true
+futures-util.workspace = true
 subtle.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tiktoken-rs.workspace = true
 tokio = { workspace = true, features = ["net", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]
+afd_runner = { workspace = true, features = ["test-util"] }
+afd_approval = { workspace = true, features = ["test-util"] }
+afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_observability = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
 # Counts the statements sqlx reports, for the one-statement Library page proof.
 tracing-subscriber = { workspace = true, features = ["registry"] }
 

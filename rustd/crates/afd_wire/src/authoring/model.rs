@@ -65,7 +65,7 @@ pub struct ModelRequest<D = Value, C = Value, I = Value> {
     #[garde(length(min = 1, max = 256), dive)]
     pub messages: Vec<ModelMessage<D, C, I>>,
     /// Also capped against the attempt's remaining output allowance.
-    #[garde(range(min = 1, max = 8192))]
+    #[garde(range(min = 1))]
     pub max_output_tokens: u32,
 }
 
@@ -121,7 +121,7 @@ pub enum ModelUsage {
         #[garde(range(max = 32768))]
         input_tokens: u64,
         /// Includes reasoning and other nonvisible output tokens.
-        #[garde(range(max = 8192))]
+        #[garde(range(max = u64::from(u32::MAX)))]
         output_tokens: u64,
         /// Rounded per physical dispatch, as a decimal nanos string.
         #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]

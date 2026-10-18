@@ -44,7 +44,7 @@ async fn should_walk_charges_newest_first_and_resume_strictly_after_the_cursor()
     let [newest, last] = <&[_; 2]>::try_from(first_page.as_slice()).expect("a two-row page");
     assert_eq!(newest.created_at, THIRD);
     assert_eq!(newest.workspace_id, lane.workspace.as_str());
-    assert_eq!(newest.fleet_id, lane.fleet.as_str());
+    assert_eq!(newest.fleet_id.as_deref(), Some(lane.fleet.as_str()));
 
     let token = cursor::render(last.created_at, &last.id);
     let boundary = cursor::parse(&token).expect("a token this daemon issued");

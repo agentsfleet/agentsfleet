@@ -21,7 +21,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { documentIsMarked, markDocument } from "./fixtures/soft-navigation";
 
 const NAV_TIMEOUT_MS = 15_000;
@@ -50,9 +50,9 @@ test.describe("reload + back-nav mid-session", () => {
 
     // 2. Client-side nav away through the sidebar, and back through history.
     await markDocument(page);
-    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Events" }).click();
+    await openSettingsDestination(page, "Activity");
     await expect(page).toHaveURL(workspaceUrlPattern("events"));
-    await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
 
     await page.goBack();
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));

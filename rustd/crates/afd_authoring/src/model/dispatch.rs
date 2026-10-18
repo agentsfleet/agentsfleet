@@ -2,13 +2,15 @@
 
 use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
-use sqlx::{Connection as _, PgConnection};
+use jiff::Timestamp;
+use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::time::Instant;
 
 use super::{
-    ModelCallInput, ModelCallResult, ProviderRequest, Transport, budget, capability,
-    dispatch_status, prepare, provider, receipt, sql,
+    ModelCallInput, ModelCallResult, Transport, budget, capability, dispatch_status, prepare,
+    provider, receipt, sql,
 };
 use crate::{
     Drafts, Error, Result,
@@ -30,8 +32,44 @@ pub struct ModelCalls {
 
 pub(super) struct Intent {
     pub(super) attempt: guard::Attempt,
-    pub(super) outbound: ProviderRequest,
+    pub(super) outbound: provider::Outbound,
     pub(super) authorized_at: Instant,
+    pub(super) output_limit: u32,
+}
+
+impl Intent {
+    fn new(
+        attempt: guard::Attempt,
+        key: afd_crypto::secret::SecretString,
+        prepared: prepare::Prepared,
+        now: Timestamp,
+        authorized_at: Instant,
+    ) -> Result<Self> {
+        let remaining = attempt
+            .expires_at
+            .duration_since(now)
+            .try_into()
+            .unwrap_or(Duration::ZERO);
+        let outbound = provider::Outbound {
+            key,
+            body: prepared.body,
+            timeout: remaining.min(budget::PROVIDER_TIMEOUT),
+            inference: attempt
+                .model_snapshot
+                .inference
+                .clone()
+                .ok_or(ErrorKind::Model)?,
+            model: attempt.model_snapshot.model.clone(),
+            context_tokens: u32::try_from(attempt.model_snapshot.context_window_tokens)
+                .map_err(|_invalid| ErrorKind::Model)?,
+        };
+        Ok(Self {
+            outbound,
+            attempt,
+            authorized_at,
+            output_limit: prepared.output_limit,
+        })
+    }
 }
 
 pub(super) enum Decision {
@@ -75,15 +113,23 @@ impl ModelCalls {
             attempt,
             mut outbound,
             authorized_at,
+            output_limit,
         } = *intent;
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
         let decoded = if outbound.timeout.is_zero() {
             Err(ErrorKind::Unknown.into())
         } else {
-            self.transport
-                .send(outbound)
+            provider::complete(outbound, Arc::clone(&self.transport))
                 .await
-                .and_then(|response| provider::decode(&response, &request, &attempt.model_snapshot))
+                .and_then(|(status, response)| {
+                    provider::decode(
+                        status,
+                        &response,
+                        &request,
+                        &attempt.model_snapshot,
+                        output_limit,
+                    )
+                })
         };
         receipt::finish(
             &self.drafts,
@@ -147,27 +193,27 @@ impl ModelCalls {
 
     async fn next(
         &self,
-        connection: &mut PgConnection,
+        connection: &mut Transaction<'_, Postgres>,
         guarded: guard::Guarded,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         digest: &str,
     ) -> Result<Decision> {
-        if guarded.attempt.usage_unknown {
-            return Err(ErrorKind::Unknown.into());
-        }
         if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {
             return Err(ErrorKind::Replay.into());
         }
         if i64::from(request.request.max_output_tokens)
-            > budget::OUTPUT_PER_TURN - guarded.attempt.output_token_count
+            > budget::output_limit(&guarded.attempt.model_snapshot)
+                - guarded.attempt.output_token_count
         {
             return Err(ErrorKind::Token.into());
         }
         budget::coverage(connection, &guarded.attempt).await?;
-        let body = prepare::body(request, &guarded.attempt.model_snapshot)?;
+        let continuations =
+            super::continuation::read(connection, &guarded.attempt, request, guarded.now).await?;
+        let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
         let key = self
             .providers
             .registered_key(
@@ -180,21 +226,13 @@ impl ModelCalls {
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
         insert(connection, request, &guarded.attempt, digest).await?;
-        let remaining = guarded
-            .attempt
-            .expires_at
-            .duration_since(now)
-            .try_into()
-            .unwrap_or(std::time::Duration::ZERO);
-        Ok(Decision::Send(Box::new(Intent {
-            attempt: guarded.attempt,
-            outbound: ProviderRequest {
-                key,
-                body,
-                timeout: remaining.min(budget::PROVIDER_TIMEOUT),
-            },
+        Ok(Decision::Send(Box::new(Intent::new(
+            guarded.attempt,
+            key,
+            prepared,
+            now,
             authorized_at,
-        })))
+        )?)))
     }
 }
 

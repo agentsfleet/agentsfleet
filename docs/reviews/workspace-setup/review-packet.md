@@ -35,7 +35,7 @@ Chief Technology Officer (CTO) AIWA reviewers should assess one consistent desig
 |11|[ASCII flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)|Sixteen complete journey/failure panels.|
 |12|[Layouts/options](../../designs/workspace-chat-options.md)|Navigation, drawers, models, review, Save, mobile, recovery.|
 |13|[Approved interface](../../designs/chat-within-a-workspace.md)|Visual direction and necessary copy changes.|
-|14|[Owning M227_001 spec](../../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)|Sections, failure assumptions, proof mapping and final gates.|
+|14|[Owning M227_001 spec](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)|Sections, failure assumptions, proof mapping and final gates.|
 |15|[Folded M227_002 spec](../../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md)|Carried website/PostHog/branding in the same PR.|
 |16|[Exact file inventory](file-inventory.md)|Whole-repo rename hits, planned files, historical exceptions, carried batch.|
 |17|[Public handoff](public-changes.md)|Separate docs-repo branch and approved guide amendment.|

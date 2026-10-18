@@ -50,12 +50,26 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) async fn create() -> Self {
-        let lane = TestDatabase::shared();
+        Self::in_lane(TestDatabase::shared()).await
+    }
+
+    pub(super) async fn isolated() -> Self {
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("isolated platform schema");
+        migrator.close().await;
+        Self::in_lane(lane).await
+    }
+
+    async fn in_lane(lane: TestDatabase) -> Self {
         let db = lane.open(DbRole::Api, &[]).await;
         let (analytics, recorded) = RECORDING.clone();
         let mut fixture = Self {
-            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics),
-            recorded,
+            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics.clone()),
+            recorded: recorded.clone(),
             db,
             cleanup: OwnedRows::new(&lane),
             lane,
@@ -170,6 +184,12 @@ impl Fixture {
         self.cleanup.record(
             "DELETE FROM fleet.fleets WHERE tenant_id=$1::uuid",
             self.tenant.as_str(),
+        );
+        // A platform default holds its source workspace without a cascade, so
+        // it goes before the tenant whose workspace it names.
+        self.cleanup.record(
+            "DELETE FROM model.platform_defaults WHERE source_workspace_id=$1::uuid",
+            self.workspace.as_str(),
         );
         for tenant in [&self.tenant, &self.member_tenant] {
             self.cleanup.record(

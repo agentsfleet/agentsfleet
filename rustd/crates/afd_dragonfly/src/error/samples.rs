@@ -55,10 +55,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "unreachable",
-            Error::new(ErrorKind::Unreachable {
-                role: ROLE,
-                source: Box::new(refusal(REFUSED)),
-            }),
+            classify(
+                APPEND,
+                STREAM,
+                redis::RedisError::from((
+                    redis::ErrorKind::ClusterConnectionNotFound,
+                    "No connections found",
+                )),
+            ),
         ),
         (
             "certificate rejected",

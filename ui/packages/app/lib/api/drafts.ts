@@ -7,7 +7,7 @@ import { z as schema } from "zod";
 import { DraftOperation } from "./draft-operation";
 import { DraftHistory } from "./draft-history";
 import { DraftLists } from "./draft-lists";
-import { DRAFT_LIST_STATUS, type DraftList } from "./draft-list-types";
+import { DRAFT_LIST_STATUS, defaultChatModel, type DraftList } from "./draft-list-types";
 import { EMPTY_DRAFT_VIEW as EMPTY, type DraftIdentity, type DraftView, type DrawerEdit } from "./draft-state";
 import { drawerPatch } from "./draft-edits";
 import { sourcePreview } from "./draft-source";
@@ -58,7 +58,7 @@ export class DraftClient {
       this.#update({listStatus: DRAFT_LIST_STATUS.loading});
       try {
         const lists = await this.#lists.open(this.#owner.signal);
-        this.#update({...lists, listStatus: DRAFT_LIST_STATUS.ready, model: lists.models.find((model) => model.eligibility.authoring)?.ref ?? ""});
+        this.#update({...lists, listStatus: DRAFT_LIST_STATUS.ready, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)});
       } catch (cause) {
         this.#update({listStatus: DRAFT_LIST_STATUS.unavailable});
         throw cause;
@@ -69,7 +69,7 @@ export class DraftClient {
   /** The next page of models or chats. A failed page is the caller's to show inline; lost access clears every list. */
   async loadMore(list: DraftList): Promise<void> {
     if (this.#snapshot.inaccessible) return;
-    try { const lists = await this.#lists.more(list, this.#owner.signal); if (lists) this.#update(lists); } catch (cause) {
+    try { const lists = await this.#lists.more(list, this.#owner.signal); if (lists) this.#update({...lists, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)}); } catch (cause) {
       if (!this.#owner.signal.aborted && losesAccess(cause)) this.#failed(cause, true);
       throw cause;
     }

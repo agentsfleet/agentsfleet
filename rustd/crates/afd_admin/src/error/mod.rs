@@ -17,6 +17,11 @@ afd_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 enum ErrorKind {
+    #[error("model inference settings are invalid")]
+    Inference {
+        #[source]
+        source: afd_inference::Error,
+    },
     #[error("the datastore backing platform administration would not answer")]
     Datastore {
         #[source]
@@ -47,6 +52,7 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
+            ErrorKind::Inference { .. } => error_code::INVALID_REQUEST,
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
@@ -57,6 +63,9 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
+            ErrorKind::Inference { .. } => {
+                "Inference settings must specify a supported API, safe HTTPS base URL and output limit within the model context"
+            }
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } => "Internal operation failed",
@@ -71,6 +80,7 @@ impl Error {
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
+    afd_inference::Error => Inference,
     afd_db::Error => Datastore,
     afd_crypto::error::Error => Entropy,
 );

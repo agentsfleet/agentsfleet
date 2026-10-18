@@ -2,6 +2,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
+import { StreamLifetime } from "@/lib/api/stream-lifetime";
 import { matchSetupRoute, SETUP_METHOD } from "./path";
 import { boundedBody, JSON_MEDIA_TYPE, sameOrigin } from "./body";
 import { SETUP_PROXY_DETAIL, setupProblem, setupResponse } from "./response";
@@ -16,9 +17,8 @@ export async function proxySetup(request: Request, context: Context): Promise<Re
   if (!route) return setupProblem(404, SETUP_PROXY_DETAIL.unavailable);
   const writing = request.method !== SETUP_METHOD.get;
   if (writing && !sameOrigin(request)) return setupProblem(403, SETUP_PROXY_DETAIL.origin);
-  const connection = new AbortController();
-  const connectionTimer = route.stream ? setTimeout(() => connection.abort(), REQUEST_TIMEOUT_MS) : undefined;
-  const signal = AbortSignal.any([request.signal, route.stream ? connection.signal : AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
+  let lifetime: StreamLifetime | undefined;
+  const signal = route.stream ? request.signal : AbortSignal.any([request.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
   try {
     let body: Uint8Array<ArrayBuffer> | undefined;
     if (writing && request.method !== SETUP_METHOD.delete && !route.bodyless) {
@@ -37,12 +37,15 @@ export async function proxySetup(request: Request, context: Context): Promise<Re
       const value = request.headers.get(name);
       if (value !== null) headers.set(name, value);
     }
+    lifetime = route.stream ? new StreamLifetime(request.signal) : undefined;
     const upstream = await fetch(target(request, workspaceId, setupPath, route.query), {
-      method: request.method, headers, signal, cache: "no-store", redirect: "error", ...(body ? {body} : {}),
+      method: request.method, headers, signal: lifetime?.signal ?? signal, cache: "no-store", redirect: "error", ...(body ? {body} : {}),
     });
-    return setupResponse(upstream, route.stream);
-  } catch { return setupProblem(502, SETUP_PROXY_DETAIL.unconfirmed); }
-  finally { clearTimeout(connectionTimer); }
+    return setupResponse(upstream, route.stream, lifetime ? lifetime.wrap(upstream.body) : upstream.body);
+  } catch {
+    lifetime?.dispose();
+    return setupProblem(502, SETUP_PROXY_DETAIL.unconfirmed);
+  }
 }
 
 function target(request: Request, workspace: string, parts: readonly string[], keys: readonly string[]): string {

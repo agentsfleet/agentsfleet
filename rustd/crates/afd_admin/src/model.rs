@@ -5,7 +5,9 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_foreign_key;
+use afd_wire::inference::ModelInference;
 use jiff::Timestamp;
+use sqlx::types::Json;
 use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query, row};
@@ -43,6 +45,8 @@ pub struct ModelInput {
     pub model_name: String,
     /// Cap and prices.
     pub rates: ModelRates,
+    /// Non-secret transport settings, absent until an administrator saves them.
+    pub inference: Option<ModelInference>,
 }
 
 /// One priced model row.
@@ -56,6 +60,8 @@ pub struct Model {
     pub model_name: String,
     /// Cap and prices.
     pub rates: ModelRates,
+    /// Non-secret transport settings, absent until an administrator saves them.
+    pub inference: Option<ModelInference>,
 }
 
 /// A `model.platform_models` row by name, before its id is parsed.
@@ -66,6 +72,7 @@ struct ModelRow {
     model_name: String,
     #[sqlx(flatten)]
     rates: ModelRates,
+    inference: Option<Json<ModelInference>>,
 }
 
 impl ModelRow {
@@ -75,6 +82,7 @@ impl ModelRow {
             provider: self.provider,
             model_name: self.model_name,
             rates: self.rates,
+            inference: self.inference.map(|settings| settings.0),
         })
     }
 }
@@ -131,8 +139,10 @@ impl Models {
     /// `now` mints the row's `UUIDv7`; the row's stamps are the database's.
     ///
     /// # Errors
-    /// Reports entropy, identifier, or transaction failures.
+    /// Refuses inference settings that cannot route within the model's
+    /// context; reports entropy, identifier, or transaction failures.
     pub async fn create(&self, input: ModelInput, now: Timestamp) -> Result<CreateModel> {
+        validate(input.inference.as_ref(), input.rates)?;
         let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
@@ -146,6 +156,7 @@ impl Models {
             .bind(rates.input_nanos_per_mtok)
             .bind(rates.cached_input_nanos_per_mtok)
             .bind(rates.output_nanos_per_mtok)
+            .bind(input.inference.as_ref().map(Json))
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_CREATE))?;
@@ -158,23 +169,48 @@ impl Models {
             provider: input.provider,
             model_name: input.model_name,
             rates,
+            inference: input.inference,
         }))
     }
 
-    /// Replaces the cap and prices and advances the version atomically.
+    /// Replaces the cap and prices, and the inference settings when `inference`
+    /// carries new ones, and advances the version atomically.
+    ///
+    /// The settings that will stand, new or kept, are validated against the new
+    /// cap, so a smaller context cannot strand a saved output limit above it.
     ///
     /// # Errors
-    /// Reports transaction failures. `Ok(false)` means no such row.
-    pub async fn update(&self, id: &Uuid7, rates: ModelRates) -> Result<bool> {
+    /// Refuses settings that cannot route within the cap; reports transaction
+    /// failures. `Ok(false)` means no such row.
+    pub async fn update(
+        &self,
+        id: &Uuid7,
+        rates: ModelRates,
+        inference: Option<&ModelInference>,
+    ) -> Result<bool> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPDATE))?;
         bump(&mut transaction, CONTEXT_UPDATE).await?;
+        let current: Option<Option<Json<ModelInference>>> =
+            sqlx::query_scalar(sql::SELECT_PLATFORM_MODEL_INFERENCE)
+                .bind(id.as_str())
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(query(CONTEXT_UPDATE))?;
+        let Some(current) = current else {
+            return Ok(false);
+        };
+        validate(
+            inference.or(current.as_ref().map(|settings| &settings.0)),
+            rates,
+        )?;
         let done = sqlx::query(sql::UPDATE_PLATFORM_MODEL)
             .bind(id.as_str())
             .bind(rates.context_cap_tokens)
             .bind(rates.input_nanos_per_mtok)
             .bind(rates.cached_input_nanos_per_mtok)
             .bind(rates.output_nanos_per_mtok)
+            .bind(inference.map(Json))
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_UPDATE))?;
@@ -209,6 +245,16 @@ impl Models {
         transaction.commit().await.map_err(query(CONTEXT_DELETE))?;
         Ok(DeleteModel::Deleted)
     }
+}
+
+/// Proves saved settings route: a supported API, a safe HTTPS base and an output
+/// limit inside the model's context. Absent settings are an unconfigured model.
+fn validate(inference: Option<&ModelInference>, rates: ModelRates) -> Result<()> {
+    if let Some(inference) = inference {
+        let context = u32::try_from(rates.context_cap_tokens).unwrap_or_default();
+        afd_inference::Configured::new(inference, context)?;
+    }
+    Ok(())
 }
 
 /// Advances the catalogue version, taking the row lock that serializes edits.

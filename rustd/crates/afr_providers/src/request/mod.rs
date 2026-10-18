@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use rig_core::completion::{
-    AssistantMessage, CacheRetention, CompletionRequest, ProviderToolDefinition, ToolDefinition,
+    CacheRetention, CompletionRequest, ProviderToolDefinition, ToolDefinition,
 };
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
@@ -20,7 +20,9 @@ use rig_core::message::{
 use crate::error::{Result, raise};
 use crate::image_input::{self, ImageInput};
 use crate::provider::{Call, Hosted, Message, Request};
-use crate::registry::Wire;
+use afd_wire::inference::InferenceApi as Wire;
+
+mod replay;
 
 /// Anthropic's server-side web search, as its tool spec names it.
 const WEB_SEARCH_MESSAGES: &str = "web_search_20250305";
@@ -41,7 +43,8 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .iter()
         .map(|spec| {
             Ok(ToolDefinition {
-                name: ToolName::new(spec.name).map_err(raise::nameless_tool)?,
+                name: ToolName::new(spec.name)
+                    .map_err(|source| raise::unnamed(spec.name, source))?,
                 description: spec.description.to_owned(),
                 parameters: spec.parameters.clone(),
             })
@@ -54,16 +57,14 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
-    match wire {
-        // Messages keeps the top-level breakpoint the provider moves along the
-        // conversation, beside the markers on its static prefix.
-        Wire::Messages => built = built.cache(CacheRetention::Short),
-        Wire::Responses => {
-            built.additional_params =
-                Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
-        }
-        // The Chat wire's gateways refuse a field they do not know.
-        Wire::Chat => {}
+    // Responses only: Messages caches by its markers, and the Chat wire's
+    // gateways refuse a field they do not know.
+    if wire == Wire::Responses {
+        built.additional_params =
+            Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
+    }
+    if wire == Wire::Messages {
+        built = built.cache(CacheRetention::Short);
     }
     Ok(built
         .model(request.model)
@@ -106,10 +107,9 @@ impl<'a> Conversation<'a> {
                     calls,
                     replay,
                 } => {
-                    let content = self.assistant(text, calls, &replay.content)?;
-                    if !content.is_empty() {
-                        let turn =
-                            AssistantMessage::new(content).with_origin(replay.origin.clone());
+                    let content = self.assistant(text, calls)?;
+                    let turn = replay::restore(&replay.0, text, content);
+                    if !turn.content.is_empty() {
                         history.push(RigMessage::Assistant(turn));
                     }
                 }
@@ -128,13 +128,8 @@ impl<'a> Conversation<'a> {
 
     /// An assistant turn: the reasoning handed back first, then the text, then
     /// each call under the id its result echoes.
-    fn assistant(
-        &mut self,
-        text: &str,
-        calls: &'a [Call],
-        replay: &[AssistantContent],
-    ) -> Result<Vec<AssistantContent>> {
-        let mut content = replay.to_vec();
+    fn assistant(&mut self, text: &str, calls: &'a [Call]) -> Result<Vec<AssistantContent>> {
+        let mut content = Vec::new();
         if !text.is_empty() {
             content.push(AssistantContent::text(text.to_owned()));
         }

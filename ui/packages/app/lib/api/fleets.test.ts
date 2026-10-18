@@ -64,6 +64,16 @@ function answer(value: unknown = detail, etag: string = ETAG) {
 }
 
 describe("native fleet detail", () => {
+  it("keeps the body version for writes when compression weakens the response tag", async () => {
+    fetchMock.mockResolvedValue(answer(detail, `W/${ETAG}`));
+    const {getFleet, setFleetStatus} = await import("./fleets");
+    const observed = await getFleet(WORKSPACE, FLEET_ID, "tok");
+    expect(observed.etag).toBe(ETAG);
+    fetchMock.mockResolvedValue(answer({...detail, status: "stopped"}));
+    const stopped = await setFleetStatus(WORKSPACE, FLEET_ID, "stopped", observed.etag, "tok");
+    expect(stopped.status).toBe("stopped");
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.headers).toMatchObject({"If-Match": ETAG});
+  });
   it("preserves exact nanos and independent permissions and derives triggers from native setup", async () => {
     fetchMock.mockResolvedValue(answer());
     const {getFleet} = await import("./fleets");
@@ -92,8 +102,14 @@ describe("native fleet detail", () => {
     const {getFleet, FLEET_ETAG_REQUIRED} = await import("./fleets");
     await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow(FLEET_ETAG_REQUIRED);
   });
-  it("refuses mismatched body and header versions", async () => {
-    fetchMock.mockResolvedValue(answer(detail, '\"other\"'));
+  it.each(['\"other\"', 'W/\"other\"', `W/W/${ETAG}`])("refuses mismatched body and header versions %s", async (etag) => {
+    fetchMock.mockResolvedValue(answer(detail, etag));
+    const {getFleet} = await import("./fleets");
+    await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow("disagree");
+  });
+  it("does not promote a weak resource tag into a conditional-write version", async () => {
+    const etag = `W/${ETAG}`;
+    fetchMock.mockResolvedValue(answer({...detail, etag}, etag));
     const {getFleet} = await import("./fleets");
     await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow("disagree");
   });

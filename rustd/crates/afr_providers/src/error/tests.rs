@@ -155,12 +155,30 @@ const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 fn should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted() {
     let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
     let blocked = raise::blocked_endpoint(&endpoint);
-    let unhosted = raise::unhosted("bedrock");
 
     assert_eq!(blocked.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(blocked.failure_class(), None);
-    assert_eq!(blocked.blocked_endpoint(), Some(endpoint.as_str()));
     assert_eq!(blocked.unhosted_provider(), None);
-    assert_eq!(unhosted.blocked_endpoint(), None);
     assert!(blocked.detail().contains(&endpoint));
+}
+
+// Value: protects=client construction failures keep their typed cause and internal-failure classification;
+// fails_when=a builder error is swallowed or reported as a retryable provider connection loss;
+// why_new=normal connector construction cannot trigger a deterministic builder refusal;
+// seam=the real reqwest builder; no_claim=provider network failure.
+#[test]
+fn should_preserve_a_client_builder_refusal_without_calling_it_transport_loss() {
+    let source = afd_identity::direct(std::time::Duration::from_secs(1))
+        .user_agent("\n")
+        .build()
+        .unwrap_err();
+    let refused = raise::client(source);
+    assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(refused.failure_class(), None);
+    assert!(
+        std::error::Error::source(&refused)
+            .unwrap()
+            .downcast_ref::<reqwest::Error>()
+            .is_some()
+    );
 }

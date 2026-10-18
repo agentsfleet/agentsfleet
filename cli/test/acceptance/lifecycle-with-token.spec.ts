@@ -157,21 +157,22 @@ if (!isLive) {
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
         // End-to-end: the real server reads these from fleet.activity_counters,
         // and the CLI surfaces them in the list row that backs
-        // `agentsfleet status`. A freshly-installed fleet may have 0 of each,
-        // so the test asserts only that the fields exist and are numeric.
+        // `agentsfleet status`. A freshly-installed fleet may have zero of
+        // each; decimal strings preserve counters beyond the safe integer
+        // limit. The fixture refuses missing or malformed values.
         const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
         assert.equal(
           typeof payload.events_processed,
-          "number",
-          `events_processed missing/not-number: ${JSON.stringify(payload)}`,
+          "string",
+          `events_processed missing/not-decimal: ${JSON.stringify(payload)}`,
         );
         assert.equal(
           typeof payload.budget_used_nanos,
-          "number",
-          `budget_used_nanos missing/not-number: ${JSON.stringify(payload)}`,
+          "string",
+          `budget_used_nanos missing/not-decimal: ${JSON.stringify(payload)}`,
         );
-        assert.ok((payload.events_processed as number) >= 0);
-        assert.ok((payload.budget_used_nanos as number) >= 0);
+        assert.ok(BigInt(payload.events_processed) >= 0n);
+        assert.ok(BigInt(payload.budget_used_nanos) >= 0n);
       });
 
       it("logs --json returns a parseable envelope", async () => {
