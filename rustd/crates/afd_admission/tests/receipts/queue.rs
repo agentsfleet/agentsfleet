@@ -119,21 +119,28 @@ pub(crate) async fn replay_against(
     rules: &[(&str, Reply)],
 ) -> Vec<HashMap<String, String>> {
     let (_server, admissions) = over_fake(lane, rules).await;
+    // No minimum age, so every committed row is old enough.
+    let (replayed, events) = recording(admissions.replay(Duration::ZERO, REPLAY_LIMIT)).await;
+    let _replayed = replayed
+        .expect("a queue that will not take an append is the pass's outcome, not its error");
+    events
+}
+
+/// Runs `work` on this thread with every event it logs recorded, and answers
+/// both. Concurrent futures joined inside `work` log to the same record.
+pub(super) async fn recording<F: Future>(work: F) -> (F::Output, Vec<HashMap<String, String>>) {
     let events = Arc::new(Mutex::new(Vec::new()));
-    {
+    let output = {
         let _scoped = tracing::subscriber::set_default(
             tracing_subscriber::registry().with(Recorder(Arc::clone(&events))),
         );
-        // No minimum age, so every committed row is old enough.
-        let _replayed = admissions
-            .replay(Duration::ZERO, REPLAY_LIMIT)
-            .await
-            .expect("a queue that will not take an append is the pass's outcome, not its error");
-    }
-    events
+        work.await
+    };
+    let events = events
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .clone()
+        .clone();
+    (output, events)
 }
 
 /// Rows one replay reaches, so the shared lane's other rows cannot crowd out this one's.

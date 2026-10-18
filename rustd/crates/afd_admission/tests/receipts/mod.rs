@@ -1,5 +1,6 @@
 //! Durable receipts and recovery are exercised through real ledger statements.
 
+mod claims;
 mod confirmation;
 mod failures;
 mod lane;

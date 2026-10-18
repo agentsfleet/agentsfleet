@@ -7,6 +7,9 @@
 -- `event_created_at` is the producer's instant billing charges against.
 -- `reply_provider` and `reply_address` are the delivery snapshot (rule 5
 -- exception): where the answer goes, frozen because the source may change.
+-- `replay_claim_expires_at` is a replay pass's claim on an unreceipted row: the
+-- pass commits the stamp, appends with no transaction open, then records the
+-- receipt and clears it. A claim a dead pass left lapses at this instant.
 
 CREATE TABLE fleet.admissions (
     id                UUID PRIMARY KEY,
@@ -26,6 +29,7 @@ CREATE TABLE fleet.admissions (
     receipt           TEXT,
     delivered_at      TIMESTAMPTZ(3),
     replay_count      BIGINT NOT NULL,
+    replay_claim_expires_at TIMESTAMPTZ(3),
     created_at        TIMESTAMPTZ(3) NOT NULL,
     updated_at        TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_admissions_producer_producer_key UNIQUE (producer, producer_key),
