@@ -22,6 +22,21 @@ use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
 use crate::error::Result;
 use crate::fixture::RunPrefix;
 
+/// The fleet ids a run's prefix names.
+const SELECT_FLEET_IDS: &str = include_str!("sql/select_fleet_ids.sql");
+
+/// A run's runners, by the prefix in their host id.
+const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
+
+/// A run's fleets; their revisions, events and slots go with them.
+const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
+
+/// A run's workspaces; their sealed secrets go with them.
+const DELETE_WORKSPACES: &str = include_str!("sql/delete_workspaces.sql");
+
+/// A run's tenants; their wallets go with them.
+const DELETE_TENANTS: &str = include_str!("sql/delete_tenants.sql");
+
 /// Matches every name a run prefixed.
 fn like(prefix: &RunPrefix) -> String {
     format!("{}%", prefix.as_str())
@@ -44,15 +59,13 @@ pub async fn everything(database: &Db, queue: &Dragonfly, prefix: &RunPrefix) ->
 /// The fleet ids this run created, read before the rows go.
 async fn fleet_ids(database: &Db, pattern: &str) -> Result<Vec<String>> {
     let mut connection = database.acquire().await?;
-    Ok(
-        sqlx::query("SELECT id::text FROM core.fleets WHERE name LIKE $1")
-            .bind(pattern)
-            .fetch_all(&mut *connection)
-            .await?
-            .iter()
-            .filter_map(|row| row.try_get::<String, _>(0).ok())
-            .collect(),
-    )
+    Ok(sqlx::query(SELECT_FLEET_IDS)
+        .bind(pattern)
+        .fetch_all(&mut *connection)
+        .await?
+        .iter()
+        .filter_map(|row| row.try_get::<String, _>(0).ok())
+        .collect())
 }
 
 /// Drop each fleet's stream and its readiness mark.
@@ -78,10 +91,10 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     // Runners carry the prefix in `host_id` rather than a name: enrolment owns
     // that row's shape and there is no name column to put it in.
     for statement in [
-        "DELETE FROM fleet.runners WHERE host_id LIKE $1",
-        "DELETE FROM core.fleets WHERE name LIKE $1",
-        "DELETE FROM core.workspaces WHERE name LIKE $1",
-        "DELETE FROM core.tenants WHERE name LIKE $1",
+        DELETE_RUNNERS,
+        DELETE_FLEETS,
+        DELETE_WORKSPACES,
+        DELETE_TENANTS,
     ] {
         removed += sqlx::query(statement)
             .bind(pattern)

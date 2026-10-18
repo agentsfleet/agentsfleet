@@ -5,7 +5,7 @@
 //! real prices, so it seeds its row first with a [`PlatformModelSeed`] and the
 //! default then names that row as it stands. The row is deployment-wide, keyed
 //! by provider and model name, so the suite that wrote it removes it by the id
-//! [`PlatformModelSeed::insert`] answered.
+//! it seeded the row under.
 
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -38,6 +38,7 @@ pub struct Prices {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct PlatformModelSeed<'a> {
+    id: &'a str,
     provider: &'a str,
     model_name: &'a str,
     context_cap_tokens: i32,
@@ -46,14 +47,17 @@ pub struct PlatformModelSeed<'a> {
 }
 
 impl<'a> PlatformModelSeed<'a> {
-    /// `model_name` under `provider`, with its context ceiling and prices.
+    /// `model_name` under `provider` as row `id`, with its context ceiling and
+    /// prices.
     pub const fn new(
+        id: &'a str,
         provider: &'a str,
         model_name: &'a str,
         context_cap_tokens: i32,
         prices: Prices,
     ) -> Self {
         Self {
+            id,
             provider,
             model_name,
             context_cap_tokens,
@@ -68,14 +72,14 @@ impl<'a> PlatformModelSeed<'a> {
         self
     }
 
-    /// Writes the row under a freshly minted id and answers that id.
+    /// Writes the row.
     ///
     /// # Errors
     /// [`crate::Error`] when the insert fails, a model the catalogue already
     /// carries under this provider among them.
-    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<String> {
-        sqlx::query_scalar(INSERT_PLATFORM_MODEL)
-            .bind(super::mint_id())
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<()> {
+        sqlx::query(INSERT_PLATFORM_MODEL)
+            .bind(self.id)
             .bind(self.model_name)
             .bind(self.provider)
             .bind(self.context_cap_tokens)
@@ -83,9 +87,10 @@ impl<'a> PlatformModelSeed<'a> {
             .bind(self.prices.cached_input_nanos_per_mtok)
             .bind(self.prices.output_nanos_per_mtok)
             .bind(self.created_at.map(Timestamp::to_sqlx))
-            .fetch_one(executor)
+            .execute(executor)
             .await
-            .map_err(|source| error::query(CONTEXT_INSERT, source))
+            .map_err(|source| error::query(CONTEXT_INSERT, source))?;
+        Ok(())
     }
 
     /// Removes the row `id` names. A row already gone is not an error.
@@ -115,15 +120,15 @@ mod tests {
 
     #[test]
     fn a_seed_stamps_nothing_until_the_suite_backdates_it() {
-        let seed = PlatformModelSeed::new("provider", "model", 8, PRICES);
+        let seed = PlatformModelSeed::new("row", "provider", "model", 8, PRICES);
 
         assert_eq!((seed.prices, seed.created_at), (PRICES, None));
     }
 
     #[test]
-    fn the_seed_answers_the_id_it_minted() {
+    fn the_seed_writes_the_catalogue_table_by_its_schema() {
         assert!(
-            INSERT_PLATFORM_MODEL.contains("RETURNING id"),
+            INSERT_PLATFORM_MODEL.starts_with("INSERT INTO model.platform_models"),
             "{INSERT_PLATFORM_MODEL}"
         );
     }

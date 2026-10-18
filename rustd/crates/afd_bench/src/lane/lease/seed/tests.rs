@@ -16,7 +16,7 @@ fn test_an_identifier_passes_the_schemas_version_check() {
         groups
             .get(2)
             .is_some_and(|version| version.starts_with('7')),
-        "the character after the second dash must be 7 or `core.fleets` refuses the row: {id}"
+        "the character after the second dash must be 7 or `fleet.fleets` refuses the row: {id}"
     );
     assert!(id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
 }

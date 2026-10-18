@@ -2,9 +2,11 @@
 //! release that removes them.
 //!
 //! A platform-posture tenant — every tenant the drain seeds — resolves its
-//! provider through the one active `core.platform_provider_defaults` row, the
+//! provider through the one active `model.platform_defaults` row, the
 //! catalogue row it names, and the credential sealed in its source workspace.
-//! So the drain stages all three, under a key minted for the run.
+//! So the drain stages all three, under a key minted for the run: the priced
+//! row and the default through `afd_db`'s shared seeds, the credential through
+//! the vault's own write path.
 //!
 //! # The only rows the prefix sweep cannot find
 //!
@@ -14,21 +16,22 @@
 //! before the prefix sweep runs. The sealed credential sits in a drain
 //! workspace and leaves with it.
 
-use afd_crypto::aad::Aad;
+use std::sync::Arc;
+
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
+use afd_db::test_util::{DefaultSeed, PlatformModelSeed, Prices};
+use afd_vault::{SecretBody, SecretName, Vault};
+use serde_json::value::RawValue;
 
 use super::stage::INDEX_BASE;
 use crate::datastores::Datastores;
-use crate::error::{ErrorKind, Result};
+use crate::error::{ErrorKind, Result, seed_refused};
 use crate::lane::lease::seed::{self, SEEDED_AT};
 
 /// Identifier kind for the catalogue row, apart from the seed's three.
 const KIND_MODEL: u32 = 4;
-
-/// Identifier kind for the sealed platform credential.
-const KIND_SECRET: u32 = 5;
 
 /// The provider the platform default names. A real one, because the policy
 /// build derives the run's egress from it.
@@ -45,11 +48,11 @@ const CREDENTIAL_BODY: &str = r#"{"api_key":"bench-not-a-credential"}"#;
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
 
 /// Catalogue prices, Anthropic-shaped so the estimate floor prices above zero.
-const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
-/// As [`INPUT_NANOS_PER_MTOK`], for cached input.
-const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
-/// As [`INPUT_NANOS_PER_MTOK`], for output.
-const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
+const PRICES: Prices = Prices {
+    input_nanos_per_mtok: 3_000_000_000,
+    cached_input_nanos_per_mtok: 300_000_000,
+    output_nanos_per_mtok: 15_000_000_000,
+};
 
 /// A key minted for this run alone, so nothing it seals opens anywhere else.
 ///
@@ -67,87 +70,49 @@ pub(super) fn minted_kek() -> Result<Kek> {
 ///
 /// # Errors
 ///
-/// Whatever Postgres refused, a credential that would not seal, and
+/// Whatever Postgres refused, a credential the vault would not store, and
 /// `PlatformDefaultHeld` when another run holds the default.
-pub(super) async fn stage(stores: &Datastores, kek: &Kek) -> Result<()> {
+pub(super) async fn stage(stores: &Datastores, kek: &Arc<Kek>) -> Result<()> {
     let workspace = source_workspace();
     let mut connection = stores.database.acquire().await?;
-    sqlx::query(
-        "INSERT INTO core.model_library \
-           (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-            cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8) \
-         ON CONFLICT (provider, model_id) DO NOTHING",
-    )
-    .bind(model_row())
-    .bind(MODEL)
-    .bind(PROVIDER)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(INPUT_NANOS_PER_MTOK)
-    .bind(CACHED_INPUT_NANOS_PER_MTOK)
-    .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(SEEDED_AT)
-    .execute(&mut *connection)
-    .await?;
-    seal_credential(&mut connection, kek, &workspace).await?;
-    claim_default(&mut connection, &workspace).await
+    PlatformModelSeed::new(&model_row(), PROVIDER, MODEL, CONTEXT_CAP_TOKENS, PRICES)
+        .at(SEEDED_AT)
+        .insert(&mut *connection)
+        .await
+        .map_err(seed_refused)?;
+    drop(connection);
+    seal_credential(stores, kek, &workspace).await?;
+    let mut connection = stores.database.acquire().await?;
+    let claimed = DefaultSeed {
+        provider: PROVIDER,
+        source_workspace_id: &workspace,
+        model: MODEL,
+        context_cap_tokens: CONTEXT_CAP_TOKENS,
+        created_at: SEEDED_AT,
+    }
+    .claim(&mut *connection)
+    .await
+    .map_err(seed_refused)?;
+    if !claimed {
+        return Err(ErrorKind::PlatformDefaultHeld { provider: PROVIDER }.into());
+    }
+    Ok(())
 }
 
 /// Seal the credential into `workspace`'s vault under the name resolution
 /// opens it by — the provider's.
-async fn seal_credential(
-    connection: &mut sqlx::PgConnection,
-    kek: &Kek,
-    workspace: &str,
-) -> Result<()> {
-    let sealed = Sealer::new().seal(
-        kek,
-        &Aad::new(workspace, PROVIDER),
-        CREDENTIAL_BODY.as_bytes(),
-    )?;
-    sqlx::query(
-        "INSERT INTO vault.secrets \
-           (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, \
-            dek_tag, nonce, ciphertext, tag, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)",
-    )
-    .bind(seed::identifier(KIND_SECRET, INDEX_BASE))
-    .bind(workspace)
-    .bind(PROVIDER)
-    .bind(sealed.kek_version())
-    .bind(sealed.wrapped_dek())
-    .bind(sealed.dek_nonce().as_slice())
-    .bind(sealed.dek_tag().as_slice())
-    .bind(sealed.payload_nonce().as_slice())
-    .bind(sealed.payload_ciphertext())
-    .bind(sealed.payload_tag().as_slice())
-    .bind(SEEDED_AT)
-    .execute(connection)
-    .await?;
-    Ok(())
-}
-
-/// Make this run's credential the platform default, refusing to take one
-/// another run holds.
-async fn claim_default(connection: &mut sqlx::PgConnection, workspace: &str) -> Result<()> {
-    let claimed = sqlx::query(
-        "INSERT INTO core.platform_provider_defaults \
-           (provider, source_workspace_id, active, model, context_cap_tokens, \
-            created_at, updated_at) \
-         VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
-         ON CONFLICT (provider) DO NOTHING",
-    )
-    .bind(PROVIDER)
-    .bind(workspace)
-    .bind(MODEL)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(SEEDED_AT)
-    .execute(connection)
-    .await?
-    .rows_affected();
-    if claimed == 0 {
-        return Err(ErrorKind::PlatformDefaultHeld { provider: PROVIDER }.into());
-    }
+async fn seal_credential(stores: &Datastores, kek: &Arc<Kek>, workspace: &str) -> Result<()> {
+    let body = RawValue::from_string(CREDENTIAL_BODY.to_owned())
+        .map_err(|source| ErrorKind::CredentialMalformed { source })?;
+    let workspace = Uuid7::parse(workspace)?;
+    Vault::new(stores.database.clone(), Arc::clone(kek), Entropy::new())
+        .create(
+            &workspace,
+            &SecretName::parse(PROVIDER)?,
+            &SecretBody::parse(&body)?,
+            SEEDED_AT,
+        )
+        .await?;
     Ok(())
 }
 
@@ -162,18 +127,12 @@ async fn claim_default(connection: &mut sqlx::PgConnection, workspace: &str) -> 
 /// Whatever Postgres refused.
 pub(super) async fn release(stores: &Datastores) -> Result<()> {
     let mut connection = stores.database.acquire().await?;
-    sqlx::query(
-        "DELETE FROM core.platform_provider_defaults \
-         WHERE provider = $1 AND source_workspace_id = $2::uuid",
-    )
-    .bind(PROVIDER)
-    .bind(source_workspace())
-    .execute(&mut *connection)
-    .await?;
-    sqlx::query("DELETE FROM core.model_library WHERE id = $1::uuid")
-        .bind(model_row())
-        .execute(&mut *connection)
-        .await?;
+    DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace())
+        .await
+        .map_err(seed_refused)?;
+    PlatformModelSeed::remove(&mut *connection, &model_row())
+        .await
+        .map_err(seed_refused)?;
     Ok(())
 }
 
