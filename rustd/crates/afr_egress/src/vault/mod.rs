@@ -12,8 +12,9 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::time::Duration;
 
-use afd_core::clock::Clock;
+use afd_core::clock::{self, Clock};
 use afr_secrets::{FIELD_TOKEN, Scrub, Secret};
 
 use crate::admission::Admission;
@@ -23,7 +24,7 @@ use crate::placeholder::{self, SecretRef};
 
 /// How long before its expiry a minted token is minted again, so a request
 /// never leaves carrying a token the daemon is about to stop honouring.
-const REFRESH_MARGIN_MILLIS: i64 = 30_000;
+const REFRESH_MARGIN: Duration = Duration::from_secs(30);
 
 /// The event a mint logs under.
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
@@ -94,14 +95,11 @@ impl<'run> Vault<'run> {
 
     /// Makes sure a fresh token for `name` is held, minting one if not.
     async fn hold(&mut self, name: &str, integration: &str) -> Result<()> {
-        let now = self
-            .clock
-            .now()
-            .saturating_add_millis(REFRESH_MARGIN_MILLIS);
+        let needed_until = clock::after(self.clock.now(), REFRESH_MARGIN);
         if self
             .minted
             .get(name)
-            .is_some_and(|held| now < held.expires_at())
+            .is_some_and(|held| needed_until < held.expires_at())
         {
             return Ok(());
         }
@@ -118,10 +116,10 @@ impl<'run> Vault<'run> {
                 .map(|(held, token)| (format!("{held}.{FIELD_TOKEN}"), token)),
         )
         .map_err(raise::unmaskable)?;
-        let expires_at_ms = minted.expires_at().as_millis();
+        let expires_at = minted.expires_at();
         let lease_id = self.lease_id;
         let event = EVENT_CREDENTIAL_MINTED;
-        tracing::info!(lease_id, integration, expires_at_ms, event);
+        tracing::info!(lease_id, integration, %expires_at, event);
         if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
             self.retired.push((name.to_owned(), replaced));
         }

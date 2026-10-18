@@ -13,8 +13,9 @@ use std::fmt;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::Duration;
 
-use afd_core::clock::{Clock, FixedClock, SystemClock, UnixMillis};
+use afd_core::clock::{self, Clock, FixedClock, SystemClock};
 use afd_core::error_code::{self, ErrorCode};
 use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use afr_secrets::Secret;
@@ -35,7 +36,7 @@ const NEVER: &str = "this suite mints no credential";
 /// refused would carry it.
 const MINT_REFUSED: ErrorCode = error_code::GH_MINT_FAILED;
 
-/// A mint answering one token that lives `lifetime_millis` from `clock`'s
+/// A mint answering one token that lives `lifetime` from `clock`'s
 /// reading, or refusing every time.
 #[derive(Debug)]
 pub struct CountingMint {
@@ -50,19 +51,19 @@ enum Answer {
     /// suite tells a re-minted token from the one it replaced.
     Token {
         token: Secret,
-        lifetime_millis: i64,
+        lifetime: Duration,
     },
     Refused(String),
 }
 
 impl CountingMint {
-    /// A mint answering `token`, valid for `lifetime_millis` from `clock`.
+    /// A mint answering `token`, valid for `lifetime` from `clock`.
     #[must_use]
-    pub fn answering(token: &str, lifetime_millis: i64, clock: FixedClock) -> Self {
+    pub fn answering(token: &str, lifetime: Duration, clock: FixedClock) -> Self {
         Self::with(
             Answer::Token {
                 token: Secret::new(token.to_owned()),
-                lifetime_millis,
+                lifetime,
             },
             clock,
         )
@@ -78,7 +79,7 @@ impl CountingMint {
     /// that wants to prove no mint happened reads [`CountingMint::asked`].
     #[must_use]
     pub fn never() -> Self {
-        Self::refusing(NEVER, FixedClock::at(UnixMillis::EPOCH))
+        Self::refusing(NEVER, FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
     }
 
     const fn with(answer: Answer, clock: FixedClock) -> Self {
@@ -101,10 +102,7 @@ impl Mint for CountingMint {
     async fn mint(&self, _integration: &str) -> Result<Minted> {
         let asked = self.asked.fetch_add(1, Ordering::SeqCst) + 1;
         match &self.answer {
-            Answer::Token {
-                token,
-                lifetime_millis,
-            } => {
+            Answer::Token { token, lifetime } => {
                 let value = if asked == 1 {
                     token.expose().to_owned()
                 } else {
@@ -112,7 +110,7 @@ impl Mint for CountingMint {
                 };
                 Ok(Minted::new(
                     Secret::new(value),
-                    self.clock.now().saturating_add_millis(*lifetime_millis),
+                    clock::after(self.clock.now(), *lifetime),
                 ))
             }
             Answer::Refused(detail) => Err(Error::mint_refused(MINT_REFUSED, detail.clone())),
