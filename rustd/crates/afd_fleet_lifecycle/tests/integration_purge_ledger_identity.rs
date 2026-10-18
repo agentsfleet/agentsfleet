@@ -1,17 +1,15 @@
 //! What a hard purge erases, and the one thing it must now leave behind.
 //!
-//! `billing.usage_ledger` has always outlived the fleet it charges — the wallet
-//! was already debited and the reconciliation between the two must still add
-//! up. What it did not outlive was any way to say WHICH fleet: `fleet_id` was a
-//! foreign key with `ON DELETE SET NULL`, so the purge nulled the only column
-//! that answered the question and the billing surface rendered a real charge as
-//! a deleted one.
+//! `billing.fleet_charges` outlives the fleet it charges — the wallet was
+//! already debited and the reconciliation between the two must still add up.
+//! It must also still say WHICH fleet: `fleet_id` carries no foreign key, so a
+//! purge cannot null it, and `fleet_name` is captured at charge time, so the
+//! billing surface never renders a real charge as a deleted one.
 //!
 //! Proven against live Postgres rather than by reading the slot, because the
 //! claim is about what the SERVER does when a parent row goes: a statement-shape
-//! test cannot tell a dropped constraint from one the migration missed. That
-//! distinction is the whole slot — `DROP CONSTRAINT IF EXISTS` on a guessed name
-//! reports success while the `SET NULL` is still armed.
+//! test cannot tell a column with no referential action from one that grew a
+//! `SET NULL` or a `CASCADE` in a later slot.
 //!
 //! The second test is the other half, and the more important one: an erasure
 //! this spec RELAXES must be shown not to have relaxed anything else. Memory,
@@ -26,7 +24,6 @@
 )]
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
 
 use crate::support::{Lane, mint};
 
@@ -50,10 +47,10 @@ const MODEL: &str = "claude-opus-5";
 /// Every table a purge empties, with the rows
 /// [`seed_everything_the_purge_destroys`] gives it.
 pub(crate) const SEEDED: [(&str, i64); 4] = [
-    ("memory.memory_entries", 1),
-    ("core.fleet_approval_gates", 2),
-    ("core.integration_grants", 1),
-    ("core.fleet_sessions", 1),
+    ("memory.entries", 1),
+    ("fleet.approval_gates", 2),
+    ("connector.integration_grants", 1),
+    ("fleet.sessions", 1),
 ];
 
 /// Writes one charge against a fleet, capturing the name the way the daemon does.
@@ -64,12 +61,13 @@ pub(crate) const SEEDED: [(&str, i64); 4] = [
 async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
     let row = mint();
     sqlx::query(
-        "INSERT INTO billing.usage_ledger
-           (id, tenant_id, workspace_id, fleet_id, event_id,
-            charge_type, posture, model,
-            event_created_at, created_at, last_charged_at, fleet_name)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $9, $9,
-                 (SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid))",
+        "INSERT INTO billing.fleet_charges
+           (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+            charge_type, posture, model, charged_nanos,
+            event_created_at, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
+                 (SELECT f.name FROM fleet.fleets f WHERE f.id = $4::uuid),
+                 $5, $6, $7, $8, 0, now(), now(), now())",
     )
     .bind(row.as_str())
     .bind(lane.tenant.as_str())
@@ -79,7 +77,6 @@ async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
     .bind(CHARGE_TYPE)
     .bind(POSTURE)
     .bind(MODEL)
-    .bind(Lane::now().as_millis())
     .execute(&mut *lane.connection().await)
     .await
     .expect("the ledger must accept a charge");
@@ -88,7 +85,7 @@ async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
 
 /// Gives the fleet the name its charges should record.
 async fn rename(lane: &Lane, fleet: &Uuid7, name: &str) {
-    sqlx::query("UPDATE core.fleets SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET name = $2 WHERE id = $1::uuid")
         .bind(fleet.as_str())
         .bind(name)
         .execute(&mut *lane.connection().await)
@@ -96,19 +93,22 @@ async fn rename(lane: &Lane, fleet: &Uuid7, name: &str) {
         .expect("the fleet row must accept a rename");
 }
 
-/// The identifier and the name a ledger row still carries, if the row is there.
-async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<(Option<String>, Option<String>)> {
-    sqlx::query("SELECT fleet_id::text, fleet_name FROM billing.usage_ledger WHERE id = $1::uuid")
-        .bind(row.as_str())
-        .fetch_optional(&mut *lane.connection().await)
-        .await
-        .expect("reading the ledger row")
-        .map(|found| {
-            (
-                found.try_get(0).expect("fleet_id decodes as text"),
-                found.try_get(1).expect("fleet_name decodes as text"),
-            )
-        })
+/// The identifier and the name a ledger row still carries.
+#[derive(Debug, sqlx::FromRow)]
+struct ChargedAs {
+    fleet_id: String,
+    fleet_name: String,
+}
+
+/// The identity a ledger row still carries, if the row is there.
+async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
+    sqlx::query_as(
+        "SELECT fleet_id::text, fleet_name FROM billing.fleet_charges WHERE id = $1::uuid",
+    )
+    .bind(row.as_str())
+    .fetch_optional(&mut *lane.connection().await)
+    .await
+    .expect("reading the ledger row")
 }
 
 /// Rows left in one table for one fleet.
@@ -118,13 +118,11 @@ pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
     let statement = sqlx::AssertSqlSafe(format!(
         "SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"
     ));
-    sqlx::query(statement)
+    sqlx::query_scalar(statement)
         .bind(fleet.as_str())
         .fetch_one(&mut *lane.connection().await)
         .await
         .expect("counting a fleet's rows")
-        .try_get::<i64, _>(0)
-        .expect("a count is a bigint")
 }
 
 /// Gives the fleet one row in every table the purge is responsible for.
@@ -133,43 +131,39 @@ pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
 /// that opened its entitlement for the first and lost it for the second would
 /// leave exactly one behind — and a single-row fixture cannot see that.
 pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
-    let at = Lane::now().as_millis();
     let mut connection = lane.connection().await;
 
     sqlx::query(
-        "INSERT INTO memory.memory_entries
-           (id, key, content, category, fleet_id, workspace_id, created_at, updated_at)
-         SELECT $1::uuid, 'note', 'remembered', 'fact', id, workspace_id, $3, $3
-         FROM core.fleets WHERE id = $2::uuid",
+        "INSERT INTO memory.entries
+           (id, key, content, category, workspace_visible, fleet_id, workspace_id,
+            created_at, updated_at)
+         SELECT $1::uuid, 'note', 'remembered', 'fact', false, id, workspace_id, now(), now()
+         FROM fleet.fleets WHERE id = $2::uuid",
     )
     .bind(mint().as_str())
     .bind(fleet.as_str())
-    .bind(at)
     .execute(&mut *connection)
     .await
     .expect("seeding a memory entry");
 
-    seed_approval_gates(&mut connection, lane, fleet, at).await;
+    seed_approval_gates(&mut connection, lane, fleet).await;
 
     sqlx::query(
-        "INSERT INTO core.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at)
-         VALUES ($1::uuid, $2::uuid, 'github', 'requested', 'fixture', $3)",
+        "INSERT INTO connector.integration_grants
+           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, 'github', 'requested', 'fixture', now(), now())",
     )
     .bind(mint().as_str())
     .bind(fleet.as_str())
-    .bind(at)
     .execute(&mut *connection)
     .await
     .expect("seeding an integration grant");
 
     sqlx::query(
-        "INSERT INTO core.fleet_sessions
-           (fleet_id, checkpoint_at, created_at, updated_at)
-         VALUES ($1::uuid, $2, $2, $2)",
+        "INSERT INTO fleet.sessions (fleet_id, context_json, created_at, updated_at)
+         VALUES ($1::uuid, '{}'::jsonb, now(), now())",
     )
     .bind(fleet.as_str())
-    .bind(at)
     .execute(&mut *connection)
     .await
     .expect("seeding a session");
@@ -177,27 +171,21 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
 
 /// Two pending approval gates on the fleet — see
 /// [`seed_everything_the_purge_destroys`] for why two.
-async fn seed_approval_gates(
-    connection: &mut sqlx::PgConnection,
-    lane: &Lane,
-    fleet: &Uuid7,
-    at: i64,
-) {
+async fn seed_approval_gates(connection: &mut sqlx::PgConnection, lane: &Lane, fleet: &Uuid7) {
     for action in ["deploy", "rollback"] {
         sqlx::query(
-            "INSERT INTO core.fleet_approval_gates
+            "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-                resolved_by, status, detail, created_at)
+                gate_type, proposed_action, evidence, blast_radius, expires_at,
+                status, detail, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'shell', $4,
-                     'confirm', $4, '{}'::jsonb, 'workspace', $5,
-                     '', 'pending', '', $5)",
+                     'confirm', $4, '{}'::jsonb, 'workspace', now() + interval '1 hour',
+                     'pending', '', now(), now())",
         )
         .bind(mint().as_str())
         .bind(fleet.as_str())
         .bind(lane.workspace.as_str())
         .bind(action)
-        .bind(at)
         .execute(&mut *connection)
         .await
         .expect("seeding an approval gate");
@@ -230,18 +218,17 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
          survives a purge"
     );
 
-    let (identifier, name) = ledger_identity(&lane, &row)
+    let charged = ledger_identity(&lane, &row)
         .await
         .expect("the charge must outlive the fleet it charged");
     assert_eq!(
-        identifier.as_deref(),
-        Some(fleet.as_str()),
-        "the purge nulled fleet_id — the foreign key's ON DELETE SET NULL is \
-         still armed, so slot 915 did not find the constraint it drops"
+        charged.fleet_id,
+        fleet.as_str(),
+        "the purge nulled fleet_id — a referential action on \
+         billing.fleet_charges.fleet_id is armed, which schema/2010 must not grow"
     );
     assert_eq!(
-        name.as_deref(),
-        Some(CHARGED_AS),
+        charged.fleet_name, CHARGED_AS,
         "the captured name did not survive the fleet row it was copied from"
     );
 
@@ -250,9 +237,8 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
 
 /// Dimension 1.4. Relaxing one erasure relaxed no other.
 ///
-/// The risk this spec carries: `fleet_id` is retained by REMOVING a referential
-/// action, and the tempting way to write that migration reaches for the wrong
-/// constraint or drops a cascade beside it. Counting the four children after a
+/// The risk this carries: `fleet_id` is retained by declaring NO referential
+/// action, and the tempting way to write that slot drops a cascade beside it. Counting the four children after a
 /// purge is the only assertion that cannot be satisfied by a diff that looks
 /// right.
 ///

@@ -23,17 +23,16 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed};
 use afd_db::{Db, PoolConfig};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_lifecycle::Fleets;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 /// The environment knob naming the lane's Dragonfly.
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -57,7 +56,10 @@ const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 /// The instant every fixture row is stamped with.
-pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
+pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
+
+/// The name the lane's tenant and workspace carry.
+const FIXTURE_NAME: &str = "fixture";
 
 /// The fixture WRITES, in a file of their own.
 ///
@@ -84,11 +86,26 @@ impl Lane {
     /// Dragonfly side has always relied on: keys namespaced by identifiers only
     /// this test can name.
     pub(crate) async fn create() -> Self {
-        let database = TestDatabase::shared();
-        let pool = database.open(DbRole::Api, &[]).await;
         let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
             .await
             .expect("the lane's Dragonfly must be reachable");
+        Self::over(queue).await
+    }
+
+    /// The lane's database with a Dragonfly nobody answers on.
+    ///
+    /// For the proofs that are settled in Postgres before a purge reaches the
+    /// queue — a refused purge never forgets a stream — so they run wherever the
+    /// lane's Postgres does. The lazy manager opens no socket until asked.
+    pub(crate) async fn without_queue() -> Self {
+        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned());
+        Self::over(Dragonfly::unreachable(&config).expect("a lazy manager opens no socket")).await
+    }
+
+    /// Seeds a tenant and one workspace and builds the store over `queue`.
+    async fn over(queue: Dragonfly) -> Self {
+        let database = TestDatabase::shared();
+        let pool = database.open(DbRole::Api, &[]).await;
         let fleets = Fleets::new(pool.clone(), queue.clone());
 
         let lane = Self {
@@ -125,52 +142,44 @@ impl Lane {
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
         let workspace = mint();
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5)",
-        )
-        .bind(workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind("second")
-        .bind("fixture")
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a second workspace");
+        WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+            .name("second")
+            .at(NOW)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a second workspace");
         workspace
     }
 
-    /// How many rows `core.fleets` holds for one workspace.
+    /// How many rows `fleet.fleets` holds for one workspace.
     ///
     /// The orphan check: after a purge this must be what it was before, and a
     /// response assertion alone cannot say that.
     pub(crate) async fn fleet_count(&self, workspace: &Uuid7) -> i64 {
-        sqlx::query("SELECT count(*) FROM core.fleets WHERE workspace_id = $1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id = $1::uuid")
             .bind(workspace.as_str())
             .fetch_one(&mut *self.connection().await)
             .await
             .expect("counting fleets")
-            .try_get::<i64, _>(0)
-            .expect("a count is a bigint")
     }
 
     /// One column of one fleet row, as text, or `None` when the row is gone.
     pub(crate) async fn fleet_column(&self, fleet: &Uuid7, column: &str) -> Option<String> {
         // The column name is a literal from this suite, never input.
         let statement = sqlx::AssertSqlSafe(format!(
-            "SELECT {column}::text FROM core.fleets WHERE id = $1::uuid"
+            "SELECT {column}::text FROM fleet.fleets WHERE id = $1::uuid"
         ));
-        sqlx::query(statement)
+        sqlx::query_scalar::<_, Option<String>>(statement)
             .bind(fleet.as_str())
             .fetch_optional(&mut *self.connection().await)
             .await
             .expect("reading a fleet column")
-            .and_then(|row| row.try_get::<Option<String>, _>(0).ok().flatten())
+            .flatten()
     }
 
     /// The instant this suite stamps writes with.
-    pub(crate) const fn now() -> UnixMillis {
-        UnixMillis::from_millis(NOW_MS)
+    pub(crate) const fn now() -> Timestamp {
+        NOW
     }
 
     /// Drops the database. Dragonfly keys are namespaced per fleet and age out.
@@ -189,26 +198,18 @@ impl Lane {
     /// Seeds the tenant and the workspace every fixture fleet lands in.
     async fn seed_tenant_and_workspace(&self) {
         let mut connection = self.connection().await;
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'fixture', $2, $2)",
-        )
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a tenant");
-
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'fixture', 'fixture', $3)",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
+        TenantSeed::new(self.tenant.as_str())
+            .name(FIXTURE_NAME)
+            .at(NOW)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+            .name(FIXTURE_NAME)
+            .at(NOW)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
     }
 }
 

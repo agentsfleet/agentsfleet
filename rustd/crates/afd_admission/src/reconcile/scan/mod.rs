@@ -14,9 +14,9 @@
 //! to the OTHER datastore, and the rows a lock here would hold are the ones a
 //! live producer recording its own receipt waits behind.
 
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::EventId;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use super::progress::RowKey;
 use super::{CONTEXT_RECONCILE, Unfinished};
@@ -33,6 +33,45 @@ pub(super) struct Candidate {
     pub(super) key: RowKey,
 }
 
+/// One row of [`sql::SELECT_UNDELIVERED_FLEETS`].
+#[derive(sqlx::FromRow)]
+struct HeadRow {
+    fleet_id: String,
+    receipt: String,
+}
+
+/// One row of [`sql::SELECT_UNDELIVERED_ON_FLEET`].
+#[derive(sqlx::FromRow)]
+struct CandidateRow {
+    id: String,
+    receipt: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    sequence: i64,
+}
+
+impl From<HeadRow> for Unfinished {
+    fn from(row: HeadRow) -> Self {
+        Self {
+            fleet_id: row.fleet_id,
+            receipt: EventId::of(&row.receipt),
+        }
+    }
+}
+
+impl From<CandidateRow> for Candidate {
+    fn from(row: CandidateRow) -> Self {
+        Self {
+            id: row.id,
+            receipt: EventId::of(&row.receipt),
+            key: RowKey {
+                created_at: row.created_at,
+                sequence: row.sequence,
+            },
+        }
+    }
+}
+
 impl Admissions {
     /// One row per fleet that holds undelivered work: its oldest such row,
     /// starting after `after`.
@@ -42,30 +81,16 @@ impl Admissions {
         after: &str,
     ) -> Result<Vec<Unfinished>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_UNDELIVERED_FLEETS)
+        sqlx::query_as::<_, HeadRow>(sql::SELECT_UNDELIVERED_FLEETS)
             .bind(fleets)
             .bind(after)
             .fetch_all(&mut *connection)
             .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-        rows.iter()
-            .map(|row| {
-                Ok(Unfinished {
-                    fleet_id: row.try_get(0).map_err(query(CONTEXT_RECONCILE))?,
-                    receipt: EventId::of(
-                        &row.try_get::<String, _>(1)
-                            .map_err(query(CONTEXT_RECONCILE))?,
-                    ),
-                })
-            })
-            .collect()
+            .map(|rows| rows.into_iter().map(Unfinished::from).collect())
+            .map_err(query(CONTEXT_RECONCILE))
     }
 
-    /// One fleet's receipted-but-undelivered rows after `after`, read and
-    /// released.
-    ///
-    /// Collected rather than streamed so the connection is back in the pool
-    /// before the first probe, which is the whole point of the shape.
+    /// Up to `rows` of one fleet's undelivered admissions, after `after`.
     pub(super) async fn undelivered_on(
         &self,
         fleet_id: &str,
@@ -73,40 +98,22 @@ impl Admissions {
         after: RowKey,
     ) -> Result<Vec<Candidate>> {
         let mut connection = self.database.acquire().await?;
-        let unfinished = sqlx::query(sql::SELECT_UNDELIVERED_ON_FLEET)
+        sqlx::query_as::<_, CandidateRow>(sql::SELECT_UNDELIVERED_ON_FLEET)
             .bind(fleet_id)
             .bind(rows)
-            .bind(after.created_at)
-            .bind(after.seq)
+            .bind(after.created_at.to_sqlx())
+            .bind(after.sequence)
             .fetch_all(&mut *connection)
             .await
-            .map_err(query(CONTEXT_RECONCILE))?;
-        unfinished
-            .iter()
-            .map(|row| {
-                let id: String = row.try_get(0).map_err(query(CONTEXT_RECONCILE))?;
-                let receipt: String = row.try_get(1).map_err(query(CONTEXT_RECONCILE))?;
-                let created_at: i64 = row.try_get(2).map_err(query(CONTEXT_RECONCILE))?;
-                let seq: i64 = row.try_get(3).map_err(query(CONTEXT_RECONCILE))?;
-                Ok(Candidate {
-                    id,
-                    receipt: EventId::of(&receipt),
-                    key: RowKey { created_at, seq },
-                })
-            })
-            .collect()
+            .map(|found| found.into_iter().map(Candidate::from).collect())
+            .map_err(query(CONTEXT_RECONCILE))
     }
 
-    /// Forgets one row's receipt, answering whether this statement did it.
-    ///
-    /// Zero is not a failure: it means the row no longer carries the receipt
-    /// this pass probed, so somebody else already repaired it or a delivery
-    /// landed first.
-    pub(super) async fn void(&self, id: &str, receipt: &str, now: UnixMillis) -> Result<u64> {
+    /// Forgets `receipt` on row `id`, if the row still carries it undelivered.
+    pub(super) async fn void(&self, id: &str, receipt: &str) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         let voided = sqlx::query(sql::VOID_LOST_RECEIPT)
             .bind(id)
-            .bind(now.as_millis())
             .bind(receipt)
             .execute(&mut *connection)
             .await

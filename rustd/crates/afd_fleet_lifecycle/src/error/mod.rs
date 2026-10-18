@@ -57,7 +57,7 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    #[error("core.fleets.{column} holds {stored}, which this build does not know")]
+    #[error("fleet.fleets.{column} holds {stored}, which this build does not know")]
     RowMalformed {
         column: &'static str,
         /// The stored bytes, so the log names what a newer daemon wrote.

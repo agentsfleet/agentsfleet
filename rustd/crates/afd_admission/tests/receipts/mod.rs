@@ -3,5 +3,7 @@
 mod confirmation;
 mod failures;
 mod lane;
+mod ledger;
+mod lookups;
 mod queue;
 mod staging;

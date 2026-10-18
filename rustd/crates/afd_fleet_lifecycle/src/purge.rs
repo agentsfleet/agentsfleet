@@ -8,27 +8,25 @@
 //! it, and a one-step delete puts an irreversible loss one mis-typed identifier
 //! away.
 //!
-//! # What survives, and why
+//! # What goes, and what stays
 //!
-//! `core.fleet_events`, `core.integration_grants` and `memory.memory_entries`
-//! cascade from the fleet row. The approval gates and sessions do not, so they
-//! are deleted here, in the same transaction as the parent.
+//! Every child row cascades from the fleet row (deletion matrix: Fleet), so the
+//! purge runs one DELETE and no statement on any child. That includes the
+//! approval gates, whose table grants `api_runtime` no DELETE at all: a gate
+//! goes only by this cascade, which runs as the table owner, so no session
+//! setting has to open a guard. It includes memory too, which `api_runtime`
+//! reaches only by assuming `memory_runtime`; the cascade needs no such step,
+//! and `the_purge_itself_runs_as_api_runtime` proves both through a pool that
+//! holds `api_runtime` alone.
 //!
-//! # The memory rows go with the fleet row
-//!
-//! `fk_memory_entries_fleet_id` is `ON DELETE CASCADE` (schema/820), so the
-//! parent delete takes the fleet's memory and this crate runs no statement on
-//! memory at all; every one lives in `afd_memory`. `api_runtime` reaches memory
-//! directly only by assuming `memory_runtime` (schema/110), and the cascade
-//! needs no such step: `the_purge_itself_runs_as_api_runtime` purges a fleet
-//! holding memory through a pool with only `api_runtime`, and counts none left.
-//!
-//! `billing.usage_ledger` survives deliberately, and since schema/915 it
-//! survives WITH its attribution: `fleet_id` is no longer a foreign key, so a
-//! charge the wallet was already debited for outlives the fleet still naming
-//! which fleet it paid for, beside the `fleet_name` captured when the money
-//! moved. Erasing one would falsify the reconciliation between the ledger and
-//! the wallet, and no role here holds `DELETE` on that table anyway.
+//! `billing.fleet_charges` survives deliberately, WITH its attribution:
+//! `fleet_id` is no foreign key, so a charge the wallet was already debited for
+//! outlives the fleet still naming which fleet it paid for, beside the
+//! `fleet_name` captured when the money moved. Erasing one would falsify the
+//! reconciliation between the charges and the wallet. A setup retry key in
+//! `authoring.replay_receipts` survives too: it carries no foreign key, so a
+//! late retry finds its resource gone rather than creating it again (slot
+//! 1980).
 //!
 //! # The Dragonfly stream is best-effort, after the commit
 //!
@@ -46,9 +44,6 @@ use crate::{FleetStatus, Fleets, sql};
 /// The contexts a failed statement on this path reports under.
 const CONTEXT_PROBE: &str = "read fleet status before purge";
 const CONTEXT_BEGIN: &str = "open fleet purge transaction";
-const CONTEXT_CHILDREN: &str = "purge fleet child rows";
-/// The context the append-only opt-in reports a failed statement under.
-const CONTEXT_ALLOW_PURGE: &str = "permit gate rows to be purged";
 const CONTEXT_PARENT: &str = "purge fleet row";
 const CONTEXT_COMMIT: &str = "commit fleet purge";
 
@@ -71,13 +66,8 @@ impl Fleets {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_BEGIN))?;
-        sqlx::query(sql::purge::ALLOW_GATE_PURGE)
-            .execute(&mut *transaction)
-            .await
-            .map_err(error::query(CONTEXT_ALLOW_PURGE))?;
         guard(&mut transaction, workspace, fleet, expected).await?;
-        purge_children(&mut transaction, fleet.as_str()).await?;
-        let purged = sqlx::query(sql::DELETE_FLEET_IN_STATUS)
+        let purged = sqlx::query_scalar::<_, String>(sql::DELETE_FLEET_IN_STATUS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
             .bind(FleetStatus::Killed.as_str())
@@ -117,49 +107,36 @@ impl Fleets {
     }
 }
 
-/// The row lock covers the tag, status, retained receipts and child deletion.
+/// Locks the row and checks the tag and the status under the lock, so no
+/// concurrent edit lands between the check and the delete.
 async fn guard(
     connection: &mut sqlx::PgConnection,
     workspace: &Uuid7,
     fleet: &Uuid7,
     expected: &str,
 ) -> Result<()> {
-    let row: Option<(String, i64)> = sqlx::query_as(sql::purge::LOCK)
+    let locked = sqlx::query_as::<_, LockedFleet>(sql::LOCK_FLEET)
         .bind(fleet.as_str())
         .bind(workspace.as_str())
         .fetch_optional(connection)
         .await
-        .map_err(error::query(CONTEXT_PROBE))?;
-    let (status, version) = row.ok_or(ErrorKind::NotFound)?;
-    let current = afd_core::etag::versioned(fleet, version);
+        .map_err(error::query(CONTEXT_PROBE))?
+        .ok_or(ErrorKind::NotFound)?;
+    let current = afd_core::etag::versioned(fleet, locked.resource_version);
     if expected != current {
         return Err(error::source_stale(current));
     }
-    if FleetStatus::parse(&status) != Some(FleetStatus::Killed) {
+    if FleetStatus::parse(&locked.status) != Some(FleetStatus::Killed) {
         return Err(ErrorKind::MustKillFirst.into());
     }
     Ok(())
 }
 
-/// Deletes the child rows no foreign key cascades.
-///
-/// Every statement shares [`CONTEXT_CHILDREN`], so a refusal names the purge
-/// step, which is the level an operator reads at.
-async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Result<()> {
-    sqlx::query(sql::purge::TOMBSTONE_SETUP)
-        .bind(fleet)
-        .bind(afd_wire::authoring::REPLAY_TOMBSTONE_MS)
-        .execute(&mut *connection)
-        .await
-        .map_err(error::query(CONTEXT_CHILDREN))?;
-    for &statement in sql::purge::PURGE_CHILDREN {
-        sqlx::query(statement)
-            .bind(fleet)
-            .execute(&mut *connection)
-            .await
-            .map_err(error::query(CONTEXT_CHILDREN))?;
-    }
-    Ok(())
+/// The row [`sql::LOCK_FLEET`] holds while the tag is compared.
+#[derive(Debug, sqlx::FromRow)]
+struct LockedFleet {
+    status: String,
+    resource_version: i64,
 }
 
 /// Logs a best-effort cleanup that did not happen.

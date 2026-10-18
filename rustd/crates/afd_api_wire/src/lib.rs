@@ -35,7 +35,6 @@ pub mod operator;
 pub mod preference;
 mod redact;
 pub mod schedule;
-pub mod schema;
 pub mod secret;
 pub mod tail;
 pub mod team;

@@ -10,7 +10,8 @@
 //! one row per page. A client following this cursor stops on the last page.
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::error::{self, Result};
 use crate::{FleetStatus, Fleets, sql};
@@ -20,9 +21,6 @@ const CONTEXT_PAGE: &str = "list workspace fleets";
 
 /// What the ingress check was doing, for the operator's log line.
 const CONTEXT_INGRESS: &str = "read a fleet's ingress status";
-
-/// The context a row this daemon cannot read reports under.
-const CONTEXT_ROW: &str = "read fleet row";
 
 /// The column a status this build does not know is reported against.
 const COLUMN_STATUS: &str = "status";
@@ -58,10 +56,10 @@ pub struct FleetRow {
     /// Where it stands in its life.
     pub status: FleetStatus,
     /// When it was installed; the walk's sort key.
-    pub created_at_ms: i64,
+    pub created_at: Timestamp,
     /// When it last changed. Doubles as the config revision a PATCH echoes.
-    pub updated_at_ms: i64,
-    /// What may wake it, projected from the stored configuration.
+    pub updated_at: Timestamp,
+    /// What may wake it, projected from the head revision's configuration.
     pub triggers: Option<Triggers>,
     /// Lifetime event count, from the maintained counter row.
     pub events_processed: i64,
@@ -86,7 +84,7 @@ pub struct FleetPage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct After {
     /// The boundary row's `created_at`.
-    pub created_at_ms: i64,
+    pub created_at: Timestamp,
     /// The boundary row's identifier, breaking ties inside one millisecond.
     pub id: Uuid7,
 }
@@ -111,32 +109,22 @@ impl Fleets {
         // guess from a full page.
         let fetch = i64::from(limit).saturating_add(1);
         let mut connection = self.database.acquire().await?;
-        let query = match after {
-            None => sqlx::query(sql::SELECT_FLEET_PAGE_FIRST)
-                .bind(workspace.as_str())
-                .bind(fetch),
-            Some(boundary) => sqlx::query(sql::SELECT_FLEET_PAGE_AFTER)
-                .bind(workspace.as_str())
-                .bind(boundary.created_at_ms)
-                .bind(boundary.id.as_str())
-                .bind(fetch),
-        };
-        let fetched = query
+        let mut rows = sqlx::query_as::<_, PageRow>(sql::SELECT_FLEET_PAGE)
+            .bind(workspace.as_str())
+            .bind(fetch)
+            .bind(after.map(|boundary| boundary.created_at.to_sqlx()))
+            .bind(after.map(|boundary| boundary.id.as_str()))
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_PAGE))?;
-
-        let mut rows = fetched
-            .iter()
-            .map(read_row)
-            .collect::<Result<Vec<FleetRow>>>()?;
+            .map_err(error::query(CONTEXT_PAGE))?
+            .into_iter()
+            .map(FleetRow::try_from)
+            .collect::<Result<Vec<_>>>()?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         Ok(FleetPage { rows, more })
     }
 
-    /// One fleet of `workspace`, whole.
-    ///
     /// Whether this fleet will take new work, without reading what it is.
     ///
     /// `Result<Option<_>>`: a fleet this workspace does not hold is an ANSWER
@@ -144,8 +132,7 @@ impl Fleets {
     /// failure. Collapsing them would make an outage look like a deleted fleet.
     ///
     /// Narrow on purpose: deciding whether a message may be posted needs the
-    /// status and nothing the setup holds. The statement is the one the
-    /// purge's pre-flight already runs.
+    /// status and nothing the setup holds.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a status this build
@@ -156,42 +143,53 @@ impl Fleets {
         fleet: &Uuid7,
     ) -> Result<Option<FleetStatus>> {
         let mut connection = self.database.acquire().await?;
-        let found = sqlx::query(sql::SELECT_FLEET_STATUS)
+        sqlx::query_scalar::<_, String>(sql::SELECT_FLEET_STATUS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_INGRESS))?;
-        found.as_ref().map(|row| status_at(row, 0)).transpose()
+            .map_err(error::query(CONTEXT_INGRESS))?
+            .map(|status| parse_status(&status))
+            .transpose()
     }
 }
 
-/// Reads one page row, indexed against [`sql::SELECT_FLEET_PAGE_FIRST`].
-fn read_row(row: &sqlx::postgres::PgRow) -> Result<FleetRow> {
-    let unreadable = error::query(CONTEXT_ROW);
-    Ok(FleetRow {
-        id: row.try_get(0).map_err(&unreadable)?,
-        name: row.try_get(1).map_err(&unreadable)?,
-        status: status_at(row, 2)?,
-        created_at_ms: row.try_get(3).map_err(&unreadable)?,
-        updated_at_ms: row.try_get(4).map_err(&unreadable)?,
-        triggers: triggers_at(row, 5)?,
-        events_processed: row.try_get(6).map_err(&unreadable)?,
-        budget_used_nanos: row.try_get(7).map_err(&unreadable)?,
-    })
+/// One page row, by the names [`sql::SELECT_FLEET_PAGE`] gives its columns.
+#[derive(Debug, sqlx::FromRow)]
+struct PageRow {
+    id: String,
+    name: String,
+    status: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+    triggers: Option<String>,
+    event_count: i64,
+    budget_used_nanos: i64,
 }
 
-/// The status in column `at`, refusing a spelling this build does not know.
-///
-/// A row written by a newer daemon is an unreadable row and says so, rather
-/// than defaulting to something this build would then act on.
-fn status_at(row: &sqlx::postgres::PgRow, at: usize) -> Result<FleetStatus> {
-    let raw: String = row.try_get(at).map_err(error::query(CONTEXT_ROW))?;
-    FleetStatus::parse(&raw).ok_or_else(|| error::row_malformed(COLUMN_STATUS, &raw))
+impl TryFrom<PageRow> for FleetRow {
+    type Error = crate::Error;
+
+    /// Refuses a status this build does not know: a row written by a newer
+    /// daemon is an unreadable row and says so, rather than defaulting to
+    /// something this build would then act on.
+    fn try_from(row: PageRow) -> Result<Self> {
+        Ok(Self {
+            status: parse_status(&row.status)?,
+            id: row.id,
+            name: row.name,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            triggers: row.triggers.map(|text| Triggers(text.into_boxed_str())),
+            events_processed: row.event_count,
+            budget_used_nanos: row.budget_used_nanos,
+        })
+    }
 }
 
-/// The trigger projection in column `at`, absent where the column holds none.
-fn triggers_at(row: &sqlx::postgres::PgRow, at: usize) -> Result<Option<Triggers>> {
-    let raw: Option<String> = row.try_get(at).map_err(error::query(CONTEXT_ROW))?;
-    Ok(raw.map(|text| Triggers(text.into_boxed_str())))
+/// A stored status, refusing a spelling this build does not know.
+fn parse_status(raw: &str) -> Result<FleetStatus> {
+    FleetStatus::parse(raw).ok_or_else(|| error::row_malformed(COLUMN_STATUS, raw))
 }

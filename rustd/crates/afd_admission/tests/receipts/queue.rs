@@ -124,10 +124,9 @@ pub(crate) async fn replay_against(
         let _scoped = tracing::subscriber::set_default(
             tracing_subscriber::registry().with(Recorder(Arc::clone(&events))),
         );
-        // Past every row the lane holds, so this fleet's is old enough.
-        let after_every_row = afd_core::clock::now().saturating_add_millis(REPLAY_AHEAD_MS);
+        // No minimum age, so every committed row is old enough.
         let _replayed = admissions
-            .replay(after_every_row, Duration::ZERO, REPLAY_LIMIT)
+            .replay(Duration::ZERO, REPLAY_LIMIT)
             .await
             .expect("a queue that will not take an append is the pass's outcome, not its error");
     }
@@ -136,9 +135,6 @@ pub(crate) async fn replay_against(
         .unwrap_or_else(PoisonError::into_inner)
         .clone()
 }
-
-/// How far past now a replay reads, so a row admitted a moment ago qualifies.
-const REPLAY_AHEAD_MS: i64 = 60_000;
 
 /// Rows one replay reaches, so the shared lane's other rows cannot crowd out this one's.
 const REPLAY_LIMIT: i64 = 10_000;

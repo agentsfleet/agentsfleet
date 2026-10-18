@@ -28,12 +28,6 @@ enum ErrorKind {
         #[source]
         source: sqlx::Error,
     },
-    #[error("a runner lease row holds an unreadable {column}")]
-    Row {
-        column: &'static str,
-        #[source]
-        source: sqlx::Error,
-    },
     #[error("no runner matches the operator-supplied id")]
     RunnerNotFound,
     #[error("the lease cursor is outside the filtered runner history")]
@@ -46,7 +40,7 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
             ErrorKind::CursorInvalid => error_code::INVALID_REQUEST,
         }
@@ -57,7 +51,7 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
+            ErrorKind::Query { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::RunnerNotFound => "Runner not found",
             ErrorKind::CursorInvalid => super::runner_leases::DETAIL_BAD_CURSOR,
         }
@@ -74,10 +68,6 @@ afd_core::error_lifts!(Error, ErrorKind: afd_db::Error => Datastore);
 
 pub(super) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::from(ErrorKind::Query { context, source })
-}
-
-pub(super) fn row(column: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::from(ErrorKind::Row { column, source })
 }
 
 pub(super) fn runner_not_found() -> Error {
