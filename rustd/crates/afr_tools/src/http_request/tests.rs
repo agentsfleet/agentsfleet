@@ -149,7 +149,7 @@ async fn test_mintable_credential_minted_once() {
     }
     assert_eq!(run.mint.asked(), 1);
 
-    run.clock.advance_millis(HOUR);
+    run.clock.advance(HOUR);
     let output = call(tool.as_ref(), &lease, read).await;
     assert_eq!(output.error_code, None);
     assert_eq!(run.mint.asked(), 2);

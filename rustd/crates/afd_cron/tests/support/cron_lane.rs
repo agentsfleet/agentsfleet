@@ -1,6 +1,6 @@
 //! The lane's Postgres, and the row chain a schedule hangs from.
 //!
-//! `core.fleet_schedules.fleet_id` references `core.fleets`, which references a
+//! `fleet.schedules.fleet_id` references `fleet.fleets`, which references a
 //! workspace and a tenant, so no schedule test can seed a single row without
 //! first seeding all three. That chain lives here rather than in each suite,
 //! because getting it wrong fails with a constraint violation naming a table
@@ -29,19 +29,20 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use jiff::Timestamp;
 
-/// The instant the seeded rows are stamped with.
-const SEED_MS: i64 = 1_760_000_000_000;
+/// The instant the seeded rows are stamped with, and the one a create mints
+/// its id from. Postgres stamps the schedules themselves.
+const SEED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";
@@ -97,9 +98,9 @@ impl CronLane {
         Uuid7::parse(&mint_id()).expect("a minted token is canonical")
     }
 
-    /// The instant every case measures leases against.
-    pub(crate) const fn now() -> UnixMillis {
-        UnixMillis::from_millis(SEED_MS)
+    /// The instant a create mints its schedule id from.
+    pub(crate) const fn now() -> Timestamp {
+        SEED_AT
     }
 
     /// Creates one schedule on this lane's fleet, expecting it to be admitted.
@@ -123,7 +124,7 @@ impl CronLane {
         let token = Self::token();
         let created = self.create_with(source_key, cron, &token).await;
         self.store
-            .finalize_synced(&created, &token, None, Self::now())
+            .finalize_synced(&created, &token, None)
             .await
             .expect("the lane's Postgres must answer")
             .expect("the creator's own finalize must land")
@@ -163,7 +164,7 @@ impl CronLane {
                 NewSchedule {
                     fleet: &fleet,
                     source: Source::Api,
-                    source_key: Some(source_key),
+                    provider_schedule_id: Some(source_key),
                     cron,
                     timezone: "UTC",
                     message: "run the nightly repair",
@@ -217,25 +218,46 @@ impl CronLane {
 
     /// Pushes a claim's lease into the past, as an abandoned syncer leaves it.
     ///
-    /// A test cannot wait out `SYNC_LEASE_MS` — thirty seconds per case would
-    /// be the slowest suite in the lane — and sleeping would prove only that
-    /// the clock advances. Moving the stored deadline is the same state a died
-    /// syncer leaves behind, reached in one statement.
+    /// A test cannot wait out `SYNC_LEASE` — thirty seconds per case would be
+    /// the slowest suite in the lane — and sleeping would prove only that the
+    /// clock advances. Moving the stored deadline a millisecond behind the
+    /// database's clock is the same state a died syncer leaves behind, reached
+    /// in one statement.
     pub(crate) async fn expire_lease(&self, schedule: &Uuid7) {
         let mut connection = self.connection().await;
-        sqlx::query("UPDATE core.fleet_schedules SET sync_lease_until = $2 WHERE id = $1::uuid")
-            .bind(schedule.as_str())
-            .bind(SEED_MS - 1)
-            .execute(&mut *connection)
-            .await
-            .expect("expiring a lease");
+        sqlx::query(
+            "UPDATE fleet.schedules \
+             SET sync_lease_expires_at = clock_timestamp() - interval '1 millisecond' \
+             WHERE id = $1::uuid",
+        )
+        .bind(schedule.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("expiring a lease");
+    }
+
+    /// Moves a `once` schedule's instant to a minute before the row's last
+    /// stamp, as a sync that ran past its minute sees it.
+    ///
+    /// Relative to the row's own `updated_at` rather than to a wall clock, so
+    /// the case is decided by the same comparison the reconciler makes.
+    pub(crate) async fn backdate_fire_at(&self, schedule: &Uuid7) {
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "UPDATE fleet.schedules SET fire_at = updated_at - interval '1 minute' \
+             WHERE id = $1::uuid",
+        )
+        .bind(schedule.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("backdating a fire instant");
     }
 
     /// The rows this lane's fleet currently holds.
     pub(crate) async fn count(&self) -> i64 {
         let mut connection = self.connection().await;
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid",
+            "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid",
         )
         .bind(self.fleet.as_str())
         .fetch_one(&mut *connection)
@@ -245,35 +267,24 @@ impl CronLane {
 
     async fn seed_fleet(&self) {
         let mut connection = self.connection().await;
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at)
-             VALUES ($1::uuid, 'cron-fixture', $2, $2)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.tenant.as_str())
-        .bind(SEED_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a tenant");
+        TenantSeed::new(&self.tenant)
+            .name("cron-fixture")
+            .at(SEED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
 
-        // The NAME carries the id: `uq_workspaces_tenant_id_name` is unique per
-        // tenant, and a constant name would collide where `ON CONFLICT (id)`
-        // cannot see it.
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-             VALUES ($1::uuid, $2::uuid, $1::text, 'cron-fixture', $3)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(SEED_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
+        // Named after its own id: `uq_workspaces_tenant_id_name` is unique per
+        // tenant, and a constant name would collide.
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .at(SEED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
 
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
             .name("cron-fixture-fleet")
-            .at(SEED_MS)
+            .at(SEED_AT)
             .native_setup()
             .insert(&mut *connection)
             .await

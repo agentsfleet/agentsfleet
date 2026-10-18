@@ -5,7 +5,7 @@ use crate::{
     DesiredStatus, Refused, Result, Schedule,
     error::{self, ErrorKind},
 };
-use sqlx::{FromRow as _, PgConnection};
+use sqlx::PgConnection;
 
 const CONTEXT: &str = "lock a schedule edit";
 
@@ -13,7 +13,7 @@ pub(super) async fn lock(
     connection: &mut PgConnection,
     request: &EditRequest<'_>,
 ) -> Result<Schedule> {
-    let owned: Option<String> = sqlx::query_scalar(sql::LOCK)
+    let owned: Option<String> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
         .bind(request.fleet.as_str())
         .bind(request.workspace.as_str())
         .fetch_optional(&mut *connection)
@@ -25,7 +25,7 @@ pub(super) async fn lock(
         }
         .into());
     }
-    let row = sqlx::query(crate::sql::LOCK_ONE)
+    let row = sqlx::query_as::<_, Schedule>(crate::sql::LOCK_ONE)
         .bind(request.schedule.as_str())
         .bind(request.fleet.as_str())
         .fetch_optional(&mut *connection)
@@ -34,7 +34,6 @@ pub(super) async fn lock(
         .ok_or(ErrorKind::Refused {
             refusal: Refused::NoSuchFleet,
         })?;
-    let row = Schedule::from_row(&row).map_err(error::query(CONTEXT))?;
     check_tag(&row, request.expected)?;
     available(connection, request, &row).await?;
     Ok(row)

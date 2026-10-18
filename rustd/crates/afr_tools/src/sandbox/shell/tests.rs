@@ -13,9 +13,7 @@ use super::Shell;
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
-use crate::sandbox::oneshot::{
-    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX,
-};
+use crate::sandbox::oneshot::{EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
 
@@ -54,10 +52,7 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     );
     let spawn = only_spawn(&executor);
     assert_eq!(spawn.argv(), ["/bin/sh", "-c", "echo hi; exit 3"]);
-    assert_eq!(
-        spawn.time_limit(),
-        Some(Duration::from_millis(TIMEOUT_MS_DEFAULT))
-    );
+    assert_eq!(spawn.time_limit(), Some(TIMEOUT_DEFAULT));
     assert!(!spawn.on_terminal(), "a command runs on pipes");
     assert_eq!(spawn.working_directory(), None, "in the workspace root");
     let environment = spawn.environment();
@@ -109,10 +104,7 @@ async fn should_hold_the_timeout_the_model_names_under_the_ceiling() {
     let limits: Vec<_> = executor.spawned().iter().map(Spawn::time_limit).collect();
     assert_eq!(
         limits,
-        [
-            Some(Duration::from_millis(1_500)),
-            Some(Duration::from_millis(TIMEOUT_MS_MAX)),
-        ]
+        [Some(Duration::from_millis(1_500)), Some(TIMEOUT_MAX),]
     );
 }
 

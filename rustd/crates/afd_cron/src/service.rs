@@ -19,7 +19,7 @@
 //!
 //! # What happens when the fence is lost mid-push
 //!
-//! Nothing, on purpose. A finalize whose generation or token no longer matches
+//! Nothing, on purpose. A finalize whose version or token no longer matches
 //! updates no row and answers [`Reconciled::Superseded`]. Another syncer took
 //! the schedule while this one was talking upstream, and its state is the newer
 //! one — overwriting it with this attempt's outcome would resurrect a change
@@ -32,7 +32,6 @@
 //! the row marked synced. A stall between that read and the request still
 //! races; per-revision upstream ids are what close it.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 use crate::error::Result;
@@ -93,18 +92,13 @@ impl Schedules {
     /// Reports a datastore that would not answer or a row this build cannot
     /// read. A scheduler that refused is NOT an error here: it is recorded on
     /// the row and answered as [`Reconciled::Failed`] — see the module note.
-    pub async fn reconcile(
-        &self,
-        held: &Schedule,
-        token: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Reconciled> {
+    pub async fn reconcile(&self, held: &Schedule, token: &Uuid7) -> Result<Reconciled> {
         // As late as the row can be read; see the module note on a lost fence.
         if !self.store.holds_fence(held, token).await? {
             log_overtaken(held);
             return Ok(Reconciled::Superseded);
         }
-        let missed = missed(held, now);
+        let missed = missed(held);
         let pushed = match held.desired_status {
             // A paused schedule is REMOVED upstream rather than left registered
             // and ignored here. Leaving it would keep the scheduler calling a
@@ -149,7 +143,6 @@ impl Schedules {
                         .as_ref()
                         .map(|key| key.schedule_id.as_str())
                         .or_else(|| unregistered_key(held)),
-                    now,
                 )
                 .await?
                 .map_or(Reconciled::Superseded, Reconciled::Synced)),
@@ -158,7 +151,7 @@ impl Schedules {
                 // this string is read back out of the row by an operator and by
                 // the dashboard, and an upstream payload could carry anything.
                 let reason = refused.detail();
-                let recorded = self.store.finalize_failed(held, token, reason, now).await?;
+                let recorded = self.store.finalize_failed(held, token, reason).await?;
                 Ok(recorded.map_or(Reconciled::Superseded, Reconciled::Failed))
             }
         }
@@ -176,15 +169,18 @@ impl Schedules {
     }
 }
 
-/// A `once` schedule not registered upstream, synced after the instant it
+/// A `once` schedule not registered upstream, claimed after the instant it
 /// was set for.
 ///
-/// Its expression has no year, so registering it now would fire it a year
-/// late. One `QStash` already holds is left alone: its callback may still be on
-/// the way, and retiring the row would drop that run. A row with no instant,
-/// from before slot 931, keeps registering.
-fn missed(held: &Schedule, now: UnixMillis) -> bool {
-    held.once && never_registered(held) && held.fire_at.is_some_and(|at| at <= now.as_millis())
+/// Judged against `updated_at`, the instant Postgres stamped the claim this
+/// reconcile holds: the push follows that claim by one round trip, which is
+/// nothing at a minute's resolution, and it keeps the decision on the clock
+/// the row's instants were written by. Its expression has no year, so
+/// registering it now would fire it a year late. One `QStash` already holds is
+/// left alone: its callback may still be on the way, and retiring the row would
+/// drop that run. A row with no instant keeps registering.
+fn missed(held: &Schedule) -> bool {
+    held.once && never_registered(held) && held.fire_at.is_some_and(|at| at <= held.updated_at)
 }
 
 /// Whether `QStash` holds no registration of this schedule.
@@ -194,7 +190,7 @@ fn missed(held: &Schedule, now: UnixMillis) -> bool {
 /// and a one-off goes back to its own id when a pause removes it
 /// ([`unregistered_key`]); a `once` schedule is only ever a fleet's.
 fn never_registered(held: &Schedule) -> bool {
-    held.source_key == held.schedule_id.as_str()
+    held.provider_schedule_id == held.schedule_id.as_str()
 }
 
 /// The key a one-off goes back to once a pause has removed it upstream: its

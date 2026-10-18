@@ -38,6 +38,9 @@ const_format.workspace = true
 # Resolving a zone name against the system timezone database, so a schedule
 # carrying one the scheduler would reject is refused here instead.
 jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: a row's stamps decode through it
+# and a one-off's fire instant binds through it.
+jiff-sqlx.workspace = true
 # The constant-time comparison a body claim is checked with — the same
 # primitive `afd_crypto::mac` compares a tag through (RULE CTM).
 subtle.workspace = true

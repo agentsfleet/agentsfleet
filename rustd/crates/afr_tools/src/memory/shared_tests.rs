@@ -24,7 +24,7 @@ fn published() -> Vec<SharedMemory<'static>> {
         category: Cow::Borrowed("core"),
         writer_fleet_id: Cow::Borrowed("01990000-0000-7000-8000-0000000000c3"),
         writer_fleet_name: Cow::Borrowed(WRITER),
-        updated_at: 1_760_000_000_000,
+        updated_at: jiff::Timestamp::constant(1_760_000_000, 0),
     }]
 }
 
