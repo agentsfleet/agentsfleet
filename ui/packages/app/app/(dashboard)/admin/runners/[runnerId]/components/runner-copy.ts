@@ -109,3 +109,4 @@ export const REVIEW_TOKENS_LABEL = "Tokens metered";
 export const REVIEW_EVENT_LABEL = "Fleet event";
 export const OPEN_FLEET_LABEL = "Open fleet";
 export const VIEW_LEASE_LABEL = "View lease";
+export const LEASE_EVENT_UNAVAILABLE = "Event history unavailable";

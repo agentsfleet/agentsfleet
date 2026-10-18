@@ -33,6 +33,7 @@ export function lease(overrides: Partial<RunnerLease>): RunnerLease {
     id: `lease-${Math.random().toString(36).slice(2)}`,
     fleet_id: "fleet-1",
     fleet_name: "Search Services",
+    destination: "available",
     workspace_id: "ws-1",
     event_id: "evt-1",
     event_type: "index_build",

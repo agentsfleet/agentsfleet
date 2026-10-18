@@ -22,7 +22,9 @@ export const FleetListSchema = z.object({
 export type NativeFleetSummary = z.infer<typeof FleetSummarySchema>;
 
 export const FleetDetailSchema = FleetSchema.extend({
-  schedules: z.array(ScheduleSchema.extend({timezone: z.string(), status: z.string()})),
+  schedules: z.array(ScheduleSchema.extend({
+    timezone: z.string(), status: z.string(), description: z.string().min(1), run_state: z.string(), next_run_at: Instant.nullable(),
+  })),
   definition: DefinitionSchema.extend({config: ConfigSchema.passthrough()}),
   created_at: Instant, updated_at: Instant,
   policy_semantics: z.string(), needs_re_review: z.boolean(),

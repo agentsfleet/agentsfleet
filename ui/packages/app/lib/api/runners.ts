@@ -1,10 +1,10 @@
 import { request } from "./client";
+import { RunnerLeasesSchema, type RunnerLeaseResponse } from "./runner-leases";
+export type { RunnerLease, RunnerLeaseResponse } from "./runner-leases";
 
 import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE } from "./runners-types";
 import type {
   AssignedPolicy,
-  LeaseKind,
-  LeaseOutcome,
   RunnerAdminAction,
   RunnerAdminState,
   RunnerEventType,
@@ -121,36 +121,6 @@ export interface RunnerDetail extends RunnerListItem {
   selftest: SelftestReport | null;
 }
 
-export interface RunnerLease {
-  id: string;
-  fleet_id: string;
-  fleet_name: string | null;
-  workspace_id: string;
-  event_id: string;
-  event_type: string;
-  actor: string;
-  outcome: LeaseOutcome;
-  failure_label: string | null;
-  failure_detail: string | null;
-  kind: LeaseKind;
-  fencing_token: number;
-  provider: string;
-  model: string;
-  posture: string;
-  metered_input_tokens: number;
-  metered_cached_tokens: number;
-  metered_output_tokens: number;
-  wall_ms: number | null;
-  lease_expires_at: string;
-  created_at: string;
-}
-
-export interface RunnerLeaseResponse {
-  items: RunnerLease[];
-  total: number | null;
-  next_cursor: string | null;
-}
-
 /** The mint response — `runner_token` is the raw `agt_r`, returned exactly once. */
 export interface CreatedRunner {
   runner_id: string;
@@ -253,11 +223,11 @@ export async function listRunnerLeases(
   if (params.workspace_id) qs.set(QUERY_WORKSPACE_ID, params.workspace_id);
   if (params.fleet) qs.set(QUERY_FLEET, params.fleet);
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
-  return request<RunnerLeaseResponse>(
+  return RunnerLeasesSchema.parse(await request<unknown>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/leases${suffix}`,
     { method: "GET" },
     token,
-  );
+  ));
 }
 
 export async function createRunner(

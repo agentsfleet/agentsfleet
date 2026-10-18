@@ -22,6 +22,7 @@ import {
   REVIEW_MODEL_LABEL,
   REVIEW_OUTCOME_LABEL,
   REVIEW_PROVIDER_LABEL,
+  LEASE_EVENT_UNAVAILABLE,
   UNKNOWN_OUTCOME_SENTENCE,
 } from "./runner-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
@@ -50,7 +51,7 @@ export function ReviewLease({
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
               <DialogDescription className="break-words font-sans">
-                {agentDisplayName(lease.fleet_id)} · {lease.event_type}
+                {agentDisplayName(lease.fleet_id)} · {lease.event_type ?? LEASE_EVENT_UNAVAILABLE}
               </DialogDescription>
             </DialogHeader>
             <DescriptionList className="font-sans text-body-sm tabular-nums">
@@ -59,7 +60,7 @@ export function ReviewLease({
               <LeaseFact label={REVIEW_MODEL_LABEL}><span title={lease.model}>{modelLabel(lease.model)}</span></LeaseFact>
               <LeaseFact label={REVIEW_EXPIRES_LABEL}><Time value={new Date(lease.lease_expires_at)} format="relative" /></LeaseFact>
             </DescriptionList>
-            <LeaseFleetDestination key={`${lease.workspace_id}:${lease.fleet_id}`} workspaceId={lease.workspace_id} fleetId={lease.fleet_id} />
+            <LeaseFleetDestination workspaceId={lease.workspace_id} fleetId={lease.fleet_id} destination={lease.destination} />
             <LeaseDiagnostics lease={lease} />
           </>
         ) : null}

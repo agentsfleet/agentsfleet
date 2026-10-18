@@ -93,6 +93,10 @@ export const LEASE_KIND = {
 
 export type LeaseKind = (typeof LEASE_KIND)[keyof typeof LEASE_KIND];
 
+/** LeaseDestination in afd_api_wire: the server checks existence and the acting account. */
+export const LEASE_DESTINATION = {available: "available", fleetDeleted: "fleet_deleted", notPermitted: "not_permitted"} as const;
+export type LeaseDestination = (typeof LEASE_DESTINATION)[keyof typeof LEASE_DESTINATION];
+
 /**
  * Split the free-form labels field (comma-separated) into a deduped, validated
  * set. Returns the first offending label as an error so the form can surface it;
