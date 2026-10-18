@@ -162,3 +162,17 @@ async fn a_lost_slot_ends_a_running_turn_and_reports_its_usage_unknown() {
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["failure_reason"], "provider_usage_unknown");
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_turn_that_reaches_its_attempt_end_reports_timed_out() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => Answer::Stall,
+        Verb::AuthoringRenew => renewed(false),
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let ends = lease_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
+    let (_, report) = run(&mut rig, ends).await;
+    assert_eq!(report["outcome"], "timed_out");
+    assert_eq!(report["failure_reason"], "attempt_timed_out");
+}
