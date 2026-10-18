@@ -130,7 +130,7 @@ The knob is declared in `preflight/knobs.rs` and read through `afd_core::env`. I
 
 `docs/architecture/scaling.md` §Tuneup knobs gains the `OUTBOUND_PROXY_URL` row: what it routes, what it never routes, that `HTTPS_PROXY` is ignored, and that credentials in the URL refuse boot. `docs/architecture/runner_fleet.md` §Traps gains one line separating this daemon-side proxy from the runner sandbox's egress, which keeps "no forward proxy". The changelog entry and the docs-repo page land on `chore/m222-outbound-proxy-changelog` in `~/Projects/docs`.
 
-- **Dimension 4.1** — The knob row exists and names both routed surfaces → Test `the_scaling_doc_names_the_proxy_knob`
+- **Dimension 4.1** — The knob row exists and names the scheduler as the routed surface → Test `the_scaling_doc_names_the_proxy_knob`
 - **Dimension 4.2** — The runner trap line distinguishes the daemon proxy → Test `the_runner_trap_separates_the_daemon_proxy`
 
 ## Interfaces
