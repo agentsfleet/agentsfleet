@@ -203,7 +203,6 @@
   --table-row-alternate: color-mix(in srgb, var(--surface-1) 55%, var(--bg));
   --table-row-hover: color-mix(in srgb, var(--pulse) 7%, var(--surface-1));
   --table-divider: color-mix(in srgb, var(--border) 55%, var(--surface-1));
-  --table-row-indicator: inset 3px 0 0 var(--pulse);
 }
 
 @keyframes wake-pulse {

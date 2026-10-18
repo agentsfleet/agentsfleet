@@ -96,3 +96,13 @@ describe("DataTable focus and cell identity", () => {
     expect(screen.getByRole("button", { name: "Edit item" })).toBe(opener);
   });
 });
+
+
+it.each([false, true])("keeps shared row hover and keyboard focus for clickable=%s", (clickable) => {
+  render(<DataTable rows={ROWS} rowKey={(row) => row.id} onRowClick={clickable ? vi.fn() : undefined}
+    columns={[{key: "name", header: "Name", cell: (row) => row.name}]} />);
+  const row = screen.getAllByRole("row")[1];
+  expect(row).toHaveClass("hover:bg-table-row-hover", "focus-within:bg-table-row-hover");
+  expect(row?.className).not.toContain("shadow-table-indicator");
+  if (clickable) expect(row).toHaveClass("focus-visible:ring-inset", "focus-visible:ring-ring");
+});

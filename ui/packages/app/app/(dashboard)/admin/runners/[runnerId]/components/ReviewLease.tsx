@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import {
   Badge,
-  Button,
   DescriptionList,
   Dialog,
   DialogContent,
@@ -15,11 +13,9 @@ import {
 import { type RunnerLease } from "@/lib/api/runners";
 import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { failureSentenceFor } from "@/lib/events/event-summary";
-import { workspacePath } from "@/lib/workspace-routes";
 import {
   EXPIRED_ROW_DETAIL,
   EXPIRED_ROW_SENTENCE,
-  OPEN_FLEET_LABEL,
   OUTCOME_LABELS,
   REVIEW_EXPIRES_LABEL,
   REVIEW_LEASE_TITLE,
@@ -30,6 +26,7 @@ import {
 } from "./runner-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
+import { LeaseFleetDestination } from "./LeaseFleetDestination";
 import { LeaseDiagnostics, LeaseFact } from "./LeaseDiagnostics";
 import { modelLabel } from "@/lib/models/display";
 import { providerLabel } from "@/lib/api/model-library-types";
@@ -53,7 +50,7 @@ export function ReviewLease({
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
               <DialogDescription className="break-words font-sans">
-                {lease.fleet_name ?? agentDisplayName(lease.fleet_id)} · {lease.event_type}
+                {agentDisplayName(lease.fleet_id)} · {lease.event_type}
               </DialogDescription>
             </DialogHeader>
             <DescriptionList className="font-sans text-body-sm tabular-nums">
@@ -62,9 +59,7 @@ export function ReviewLease({
               <LeaseFact label={REVIEW_MODEL_LABEL}><span title={lease.model}>{modelLabel(lease.model)}</span></LeaseFact>
               <LeaseFact label={REVIEW_EXPIRES_LABEL}><Time value={new Date(lease.lease_expires_at)} format="relative" /></LeaseFact>
             </DescriptionList>
-            {lease.fleet_name !== null ? <Button asChild variant="outline" className="w-full sm:w-auto">
-              <Link href={workspacePath(lease.workspace_id, `fleets/${lease.fleet_id}`)}>{OPEN_FLEET_LABEL} →</Link>
-            </Button> : null}
+            <LeaseFleetDestination key={`${lease.workspace_id}:${lease.fleet_id}`} workspaceId={lease.workspace_id} fleetId={lease.fleet_id} />
             <LeaseDiagnostics lease={lease} />
           </>
         ) : null}

@@ -3,9 +3,10 @@
 import { TIME_LABEL } from "@/lib/time-labels";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { LayoutListIcon } from "lucide-react";
+import { ArrowRightIcon, LayoutListIcon } from "lucide-react";
 import {
   Badge,
+  Button,
   type BadgeVariant,
   DataTable,
   type DataTableColumn,
@@ -33,6 +34,7 @@ import {
   OUTCOME_LABELS,
   UNKNOWN_OUTCOME_SENTENCE,
   WORKSPACE_LABEL,
+  VIEW_LEASE_LABEL,
 } from "./runner-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
@@ -44,9 +46,8 @@ const SETTLED_OUTCOME_VARIANT: Partial<Record<RunnerLease["outcome"], BadgeVaria
 };
 
 // The Leases landing view: the standard DataTable over the keyset lease read,
-// live leases ordered first within the fetched page, every failed row reading
-// the shared plain-English sentence — never the raw tag — and every row
-// opening Review lease. The page itself is fetched by the Server Component
+// live leases ordered first within the fetched page and an explicit
+// inspection action beneath each fleet label. The page itself is fetched by the Server Component
 // for the cursor — and workspace filter — the URL names; this table only
 // renders, pages and re-filters it.
 export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse; pageSize: number }) {
@@ -67,14 +68,11 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       {
         key: "fleet", primary: true,
         header: "Fleet",
-        // The agent by callsign, as every other agent column names one — and
-        // the same whether or not the fleet still exists, because the callsign
-        // is derived from the id rather than read from a row that may be gone.
-        // The id stays on the title, the way a person's subject does behind
-        // their name; the fleet's given name is Review lease's to show.
         cell: (lease) => (
-          <span className="truncate text-sm" title={lease.fleet_id}>
-            {agentDisplayName(lease.fleet_id)}
+          <span className="flex min-w-0 flex-col items-start gap-xs">
+            <span className="truncate text-sm" title={lease.fleet_id}>{agentDisplayName(lease.fleet_id)}</span>
+            <Button variant="ghost" size="sm" aria-label={`${VIEW_LEASE_LABEL} for ${agentDisplayName(lease.fleet_id)}`}
+              onClick={() => setSelected(lease)}>{VIEW_LEASE_LABEL}<ArrowRightIcon size={14} aria-hidden="true" /></Button>
           </span>
         ),
       },
@@ -97,7 +95,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       {
         key: "time",
         header: TIME_LABEL.created,
-        sortValue: (lease) => lease.created_at,
+        sortValue: (lease) => Date.parse(lease.created_at),
         cell: (lease) => (
           <Time
             value={new Date(lease.created_at)}
@@ -119,7 +117,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       },
       {
         key: "outcome",
-        header: "Outcome",
+        header: "Status",
         cell: (lease) => <OutcomeCell lease={lease} />,
       },
     ],
@@ -136,7 +134,6 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         columns={columns}
         rows={rows}
         rowKey={(lease) => lease.id}
-        onRowClick={(lease) => setSelected(lease)}
         pagination={{
           kind: PAGINATION_KIND.page,
           page: feed.page,
@@ -162,9 +159,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
   );
 }
 
-// The workspace id opens the workspace's fleet wall. It stops propagation — a
-// click on the row itself means "review this lease", and this is not that.
-// Narrowing the feed is the filter bar's job, not the row's.
+// The workspace link opens the fleet list; the separate action inspects the lease.
 function WorkspaceCell({ lease }: { lease: RunnerLease }) {
   return (
     <span className="flex min-w-0 items-center gap-md">
@@ -172,7 +167,6 @@ function WorkspaceCell({ lease }: { lease: RunnerLease }) {
         className="truncate font-mono text-mono leading-mono text-pulse no-underline"
         href={workspacePath(lease.workspace_id, DEFAULT_WORKSPACE_SUBPATH)}
         title={lease.workspace_id}
-        onClick={(event) => event.stopPropagation()}
       >
         {shortWorkspaceId(lease.workspace_id)}
       </Link>
