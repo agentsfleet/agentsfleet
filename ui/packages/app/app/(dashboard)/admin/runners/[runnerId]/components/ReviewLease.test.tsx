@@ -19,6 +19,7 @@ const BASE: RunnerLease = {
   id: "01J2X7NCS8T63ZP0000000000",
   fleet_id: FLEET_ID,
   fleet_name: "Search Services",
+  destination: "available",
   workspace_id: WORKSPACE,
   event_id: "evt_01J2X7NBQ4M91KD",
   event_type: "index_build",
@@ -81,13 +82,13 @@ it("ReviewLease > test_review_lease_never_renders_request_payload", () => {
   }
 });
 
-it("ReviewLease > suppresses the Fleet link when the fleet is gone", async () => {
-  fetchMock.mockResolvedValueOnce(response({}, 404));
-  render(<ReviewLease lease={{ ...BASE, fleet_name: null }} onOpenChange={vi.fn()} />, {
+it("ReviewLease > suppresses the Fleet link when the recorded destination is deleted", () => {
+  render(<ReviewLease lease={{ ...BASE, fleet_name: null, destination: "fleet_deleted" }} onOpenChange={vi.fn()} />, {
     wrapper: TooltipProvider,
   });
-  expect(await screen.findByText(/This fleet is no longer available/)).toBeTruthy();
+  expect(screen.getByText("This fleet was deleted. Its lease history is retained.")).toBeTruthy();
   expect(screen.queryByRole("link", {name: /Open fleet/})).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 it("ReviewLease > keeps an unknown billing posture visible in secondary details", () => {

@@ -5,42 +5,42 @@
 
 This request log belongs to the existing schema clean-slate milestone.
 
-### Private setup-chat search and titles — open
+### Private setup-chat search and titles — server landed; application reader in progress
 
 - Endpoint: `GET /v1/workspaces/{workspace_id}/drafts`.
 - Field: creator-scoped `q` query matching chat title and message text, with the query included in cursor binding.
-- Why: the current endpoint supports only state and linked-fleet filters. The sidebar can search loaded titles, but cannot truthfully offer search across all conversations.
+- Server: `1b084cd67` adds creator-only title and turn-text search. The trimmed query is 1..200 characters and is bound into its cursor. Application consumption remains required.
 - Screen: Fleet setup chats in the sidebar.
 - Endpoint: `POST /v1/workspaces/{workspace_id}/drafts` and its list/read responses.
 - Field: initialize `title` from the first user request or the selected fleet/Library description instead of the constant `New fleet`. Preserve explicit title edits.
-- Why: old and new conversations need meaningful persisted titles without fetching each transcript or trying a title mutation while authoring is running.
+- Server: `1b084cd67` initializes the title from the first request or source description and preserves explicit edits. No transcript fetch or title mutation is needed in the sidebar.
 - Screen: Fleet setup chats and the private chat heading.
 
-### Setup-chat revision and publication summaries — open
+### Setup-chat revision and publication summaries — server landed; application reader in progress
 
 - Endpoint: `GET /v1/workspaces/{workspace_id}/drafts`.
 - Fields: current candidate revision, saved fleet setup revision, and publication revision when present.
-- Why: state and linked fleet identity already support In progress / Saving / Saved labels. Revision and publication indicators for other chats require summary fields; only the open draft currently supplies these facts.
+- Server: `1aeb6ffb7` sends nullable integer `candidate_revision`, `setup_revision`, and `publication_revision`. The sidebar reader and state labels remain to be verified.
 - Screen: Fleet setup chats in the sidebar.
 
-### Historical runner leases and valid fleet destinations — open
+### Historical runner leases and valid destinations — application unit proof complete
 
-- Endpoint: `GET /v1/fleets/runners/{runner_id}/leases`.
-- Fields: explicit fleet existence/navigation availability and the fleet kind when the lease belongs to a private setup conversation rather than a user fleet.
-- Why: the current projection inner-joins `fleet.fleets` and `fleet.events`, so deleting a probe fleet can remove its lease from the list. A non-null name does not establish that the signed-in operator can open the tenant fleet screen. The reported setup/probe lease opens a missing fleet page.
-- Requested behavior: retain lease history within the server's retention window when the related fleet/event disappears, and expose an authorized destination or an explicit unavailable state. Do not infer this from a fleet-name prefix.
-- Screens: Runner → Leases and Review lease → Open fleet.
+- Server: `bff5ec896` retains settled leases for thirty days and sends `destination`: `available`, `fleet_deleted`, or `not_permitted`.
+- Event type and actor are explicitly nullable after event deletion. These are fleet leases; setup conversations are not served by this route.
+- Application: validate the page before rendering. Keep retained callsigns and unavailable work readable. Only `available` links the fleet or workspace; other states explain why the fleet cannot open.
+- Performance: the lease dialog uses the authoritative destination and makes no additional availability request.
+- Proof: `make test-unit-app` passes 404 files / 3802 tests, and `make lint-app` passes. Focused schedule and lease checks pass 39 tests across six files. Native source rereview is clean after removing the unavailable workspace link.
 
-### Saved schedule summary — open
+### Saved schedule summary — application unit proof complete
 
-- Endpoint: `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}` and `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules`.
-- Fields: a human-readable schedule description and nullable `next_run_at`, calculated by the server from the registered schedule and its timezone.
-- Why: Setup should answer whether a schedule is set and when it will run. The browser must not calculate a misleading time for paused, unregistered, or stopped schedules.
-- Behavior: distinguish no schedule, paused, activation pending, and next run unavailable. Keep execution history in Fleet Chat and Activity.
-- Screen: the small Schedule summary within Fleet Setup.
-- Dependency cleanup: the UI removed `cron-parser` from its package manifest. Claude owns the root `bun.lock`; refresh it with the next dependency update.
+- Server: `9deadc1c3` supplies required `description`, `run_state`, and always-sent nullable `next_run_at` in every schedule view.
+- Application: Setup shows the server description and the recorded next time. Paused, activation pending, unavailable and unknown states never promise a stale run.
+- The existing no-schedule and requested-but-unregistered explanations remain distinct. Execution history stays in Fleet Chat and Activity.
+- Proof: `make test-unit-app` and `make lint-app` pass as recorded above. Malformed or missing summary fields fail the typed read. No browser cron parser or polling loop remains.
+- Follow-up: command-line interface (CLI) schedule output is being aligned with the same fields. Claude is fixing the server's midnight wording quirk.
+- Dependency cleanup: `cron-parser` is removed from the app manifest. Claude owns the root `bun.lock` refresh.
 
-The UI continues with explicit loaded-title search, available setup state, and safe destination checking while these requests are open.
+All five requested server additions have landed. Sidebar search and revision consumption, final coverage, and size verification remain in progress.
 
 ### Saved fleet purpose on lists — verified in server and application
 
