@@ -55,7 +55,6 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"6. The credit-exhausted user experience" |
 | What free usage does a new tenant get? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"2.3 Free usage is a balance, never a window" |
 | Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary" |
-| Why does provider activation lock three tables, and what deletes that? | [`tenant_provider_v2.md`](./tenant_provider_v2.md) |
 | How does a per-fleet budget cap work? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate — a second, independent ceiling" |
 | Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read" |
 | How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §"§8.0 The wedge surface", §"§8.2.1 Cold-machine bootstrap (run once per machine)" |
@@ -134,7 +133,6 @@ After that, dip into whichever of these matches the change you're making:
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
 | 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
-| 🔑 [`tenant_provider_v2.md`](./tenant_provider_v2.md) | Provider activation: today's cost and the plan. |
 | 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install the reviewer; follow one Pull Request (PR). |
 | 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deploy toward a draft PR. |
 | 💬 [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) | Rung-0 Slack bot: a per-channel resident fleet. |
