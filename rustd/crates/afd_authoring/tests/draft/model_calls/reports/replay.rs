@@ -31,6 +31,11 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
         before - 100,
         "one millisecond of runtime, provider billed by owner key"
     );
+    assert_eq!(
+        super::billing::ledger(&f, &a).await,
+        (2, 2, false),
+        "the dispatch and runtime lines logged and settled once; the hold released"
+    );
     assert_eq!(counts(&f, &a).await, (1, 1, 1));
     let text = messages(&f, &a)
         .await

@@ -1,5 +1,6 @@
 //! A settled setup chat's usage lines: one per provider request the daemon
-//! dispatched and knows the usage of, plus the attempt's runtime.
+//! dispatched and knows the usage of (completed, or failed with usage the
+//! provider still billed), plus the attempt's runtime.
 //!
 //! Every line is priced by the one [`Rater`] fleet runs use (billing §11): a
 //! request by its whole-prompt tier at the instant it was dispatched, the
@@ -28,7 +29,8 @@ use crate::{
 /// start at 1 (`call_count + 1`), so 0 can never collide with a request's line.
 const RUNTIME_SEQ: u32 = 0;
 
-/// `$1` attempt, `$2` the known dispatch status.
+/// `$1` attempt, `$2` the knowledge of a receipt with authoritative figures:
+/// a completed dispatch, or a failed one the provider still billed.
 const KNOWN_DISPATCHES: &str = include_str!("sql/known_dispatches.sql");
 
 /// One known dispatch, by column name.
