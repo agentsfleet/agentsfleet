@@ -1,6 +1,6 @@
 WITH model AS (
-    INSERT INTO model.platform_models (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
-    VALUES ($6::uuid, $3, $1, $4, 0, 0, 0, $5, $5)
+    INSERT INTO model.platform_models (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, inference, created_at, updated_at)
+    VALUES ($6::uuid, $3, $1, $4, 0, 0, 0, $7::jsonb, $5, $5)
     ON CONFLICT (provider, model_name) DO UPDATE SET model_name = EXCLUDED.model_name
     RETURNING id
 )

@@ -13,7 +13,6 @@ use crate::{
 };
 
 pub(crate) const INPUT_PER_CALL: i64 = 32_768;
-pub(crate) const OUTPUT_PER_TURN: i64 = 8_192;
 pub(crate) const MAX_CALLS: i64 = 8;
 pub(crate) const PROVIDER_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long a provider's private result outlives its dispatch.
@@ -50,6 +49,13 @@ pub(crate) async fn reserved(
         .map_err(query(context))
 }
 
+pub(crate) fn output_limit(model: &RegisteredModel) -> i64 {
+    model
+        .inference
+        .as_ref()
+        .map_or(0, |settings| i64::from(settings.max_output_tokens))
+}
+
 pub(crate) fn cost(model: &RegisteredModel, input: i64, output: i64) -> Result<i64> {
     ceil(input, model.input_nanos_per_million)?
         .checked_add(ceil(output, model.output_nanos_per_million)?)
@@ -67,7 +73,7 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
     let input = ceil(INPUT_PER_CALL, model.input_nanos_per_million)?
         .checked_mul(MAX_CALLS)
         .ok_or(ErrorKind::Balance)?;
-    let output = ceil(OUTPUT_PER_TURN, model.output_nanos_per_million)?
+    let output = ceil(output_limit(model), model.output_nanos_per_million)?
         .checked_add(MAX_CALLS - 1)
         .ok_or(ErrorKind::Balance)?;
     runtime
@@ -77,9 +83,6 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
 }
 
 fn ceil(tokens: i64, rate: i64) -> Result<i64> {
-    if tokens < 0 || rate < 0 {
-        return Err(ErrorKind::Balance.into());
-    }
     let numerator = i128::from(tokens) * i128::from(rate);
     i64::try_from((numerator + MILLION - 1) / MILLION)
         .map_err(|_overflow| ErrorKind::Balance.into())

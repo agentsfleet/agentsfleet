@@ -26,8 +26,8 @@ for (const width of [320, 375, 768, 1440]) {
     await expect(page.getByRole("region", { name: "Sample evidence" })).toContainText(BROWSER_TIMEOUT_DEFAULT);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByRole("button", { name: "Close evidence" }).click();
-    await page.getByRole("link", { name: "Create fleet", exact: true }).focus();
-    await expect(page.getByRole("link", { name: "Create fleet", exact: true })).toBeFocused();
+    await page.getByTestId("how-it-works").getByRole("link", { name: "Join waitlist", exact: true }).focus();
+    await expect(page.getByTestId("how-it-works").getByRole("link", { name: "Join waitlist", exact: true })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }

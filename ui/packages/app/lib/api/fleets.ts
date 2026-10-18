@@ -2,6 +2,7 @@ import { request, requestWithEtag, requestWithRetry } from "./client";
 import type { RetryOptions } from "./retry";
 import type { SteerAccepted, SteerRequest } from "./fleets-types";
 import { FleetDetailSchema, FleetListSchema } from "./fleet-detail";
+import { matchesResourceEtag } from "./etag";
 import { QUERY_STARTING_AFTER } from "./runners";
 import type {
   Fleet,
@@ -55,8 +56,8 @@ export async function getFleet(
   );
   const tag = requireFleetEtag(etag);
   const fleet = FleetDetailSchema.parse(data);
-  if (fleet.etag !== tag) throw new Error("Fleet body and response ETag disagree");
-  return { fleet, etag: tag };
+  if (!matchesResourceEtag(fleet.etag, tag)) throw new Error("Fleet body and response ETag disagree");
+  return { fleet, etag: fleet.etag };
 }
 
 export type FleetStatusSettable = "active" | "stopped" | "killed";

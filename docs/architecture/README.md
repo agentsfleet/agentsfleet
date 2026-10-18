@@ -89,7 +89,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What should Claude Agent Aiwa challenge before agreement? | [`docs/reviews/workspace-setup/claude-review-prompt.md`](../reviews/workspace-setup/claude-review-prompt.md) |
 | What prompt should ChatGPT use as CTO AIWA? | [`docs/reviews/workspace-setup/chatgpt-review-prompt.md`](../reviews/workspace-setup/chatgpt-review-prompt.md) |
 | Which owner decisions and source answers govern the cutover? | [Decision ledger](../reviews/workspace-setup/decisions.md) and [source findings](../reviews/workspace-setup/source-findings.md) |
-| What specs make this one product PR? | [M227_001](../v2/active/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) and [folded M227_002](../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) |
+| What specs make this one product PR? | [M227_001](../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) and [folded M227_002](../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) |
 | Which public changes need a documentation branch? | [Public handoff](../reviews/workspace-setup/public-changes.md) |
 | Which test root owns my component? | [`testing.md`](./testing.md) §"Component ownership" |
 | When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §"Review rubric" |

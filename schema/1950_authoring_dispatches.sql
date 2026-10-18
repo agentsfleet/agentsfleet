@@ -5,6 +5,11 @@
 -- `result` is private model output, scrubbed (set NULL) at `private_expires_at`
 -- and at once on every erasure root (deletion matrix); the expiry index reads it.
 -- `usage` is what settlement charges. Rows stay with their attempt.
+--
+-- `native_reply` is the provider's own assistant message for replay, bound to the
+-- attempt, dispatch and conversation digest. It is daemon-private: it carries no
+-- credential, never reaches a runner, and shares `result`'s byte limit, scrub and
+-- expiry.
 
 CREATE TABLE authoring.dispatches (
     id                  UUID PRIMARY KEY,
@@ -15,14 +20,16 @@ CREATE TABLE authoring.dispatches (
     status              TEXT    NOT NULL,
     result              JSONB,
     usage               JSONB,
+    native_reply        JSONB,
     private_expires_at  TIMESTAMPTZ(3)  NOT NULL,
     created_at          TIMESTAMPTZ(3)  NOT NULL,
     updated_at          TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_dispatches_attempt_id_sequence UNIQUE (attempt_id, sequence)
 );
 
--- The scrub sweep over results still held.
+-- The scrub sweep over private output still held.
 CREATE INDEX idx_dispatches_private_expires_at_id
-    ON authoring.dispatches (private_expires_at, id) WHERE result IS NOT NULL;
+    ON authoring.dispatches (private_expires_at, id)
+    WHERE result IS NOT NULL OR native_reply IS NOT NULL;
 
 GRANT SELECT, INSERT, UPDATE ON authoring.dispatches TO api_runtime;

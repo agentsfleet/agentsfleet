@@ -3,6 +3,7 @@ import { request } from "./client";
 import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE } from "./runners-types";
 import type {
   AssignedPolicy,
+  LeaseKind,
   LeaseOutcome,
   RunnerAdminAction,
   RunnerAdminState,
@@ -123,17 +124,6 @@ export interface RunnerDetail extends RunnerListItem {
    * differently from "tested and reported no checks". */
   selftest: SelftestReport | null;
 }
-
-/** True when a verdict describes an assignment the runner no longer carries.
- * The result is then history, not a statement about how this runner is
- * configured now, and the page must say so (Dimension 1.3). */
-
-export const LEASE_KIND = {
-  fresh: "fresh",
-  reclaim: "reclaim",
-} as const;
-
-export type LeaseKind = (typeof LEASE_KIND)[keyof typeof LEASE_KIND];
 
 export interface RunnerLease {
   id: string;

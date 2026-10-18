@@ -99,8 +99,10 @@ impl Creations {
 const STOPPED: &str = "stopped";
 
 fn transition(row: &Stored, requested: Option<&str>) -> Result<()> {
-    if row.status == KILLED
-        || requested.is_some_and(|status| !matches!(status, ACTIVE | KILLED | STOPPED))
+    if row.status == KILLED {
+        return Err(ErrorKind::FleetMissing.into());
+    }
+    if requested.is_some_and(|status| !matches!(status, ACTIVE | KILLED | STOPPED))
         || (row.status == INSTALLING && requested == Some(STOPPED))
     {
         return Err(ErrorKind::State {

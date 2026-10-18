@@ -31,9 +31,7 @@ async fn deletion_before_reply_cannot_restore_private_dispatch_content() {
 async fn late_reply(delete: bool) {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    let mut stub = Provider::known();
-    stub.blocked = true;
-    let provider = Arc::new(stub);
+    let provider = Arc::new(blocked_proposal());
     let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
@@ -60,13 +58,25 @@ async fn late_reply(delete: bool) {
             error_code::AUTHORING_FENCE
         }
     );
-    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
+    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
         .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("late accounting receipt");
     assert_eq!(saved, (true, "known".into()));
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     assert_eq!(f.counts().await, if delete { (0, 0, 0) } else { (1, 0, 1) });
     assert_eq!(provider.count(), 1);
     f.cleanup().await;
+}
+
+fn blocked_proposal() -> Provider {
+    let mut stub = Provider::known();
+    let proposal = serde_json::json!({"kind":"initialize","definition":super::super::definition()});
+    stub.response.as_object_mut().expect("response object").insert("output".into(), serde_json::json!([
+        {"type":"reasoning","id":"rs_private","summary":[],"encrypted_content":"opaque-private-reasoning"},
+        {"type":"function_call","id":"fc_private","call_id":"call_proposal","name":"propose_setup",
+         "arguments":serde_json::json!({"proposal_json":proposal.to_string()}).to_string()}
+    ]));
+    stub.blocked = true;
+    stub
 }
 
 async fn mutate(f: &Fixture, attempt: &Attempt, delete: bool) {

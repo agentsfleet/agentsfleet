@@ -6,6 +6,7 @@
     reason = "test fixtures fail loudly"
 )]
 
+mod context;
 mod execution;
 mod failures;
 mod renewal;
@@ -30,7 +31,7 @@ fn lease() -> Lease<Value> {
         "sequence": "1", "fence": "1", "deletion_generation": "0",
         "expires_at": GRANTED_UNTIL, "deadline": ATTEMPT_ENDS,
         "model": {"ref":"owned", "provider":"openai", "model":"gpt-4.1",
-            "tokenizer":"o200k_base", "pricing":{"input_nanos_per_million":"1",
+            "pricing":{"input_nanos_per_million":"1",
                 "output_nanos_per_million":"1", "runtime_nanos_per_second":"1"}},
         "model_access":{"token":"a".repeat(43),"expires_at":GRANTED_UNTIL,
             "invocation_path":"https://untrusted.invalid/never-follow-this"},

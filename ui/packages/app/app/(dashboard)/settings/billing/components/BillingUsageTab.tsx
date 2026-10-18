@@ -36,22 +36,15 @@ export type BillingUsageTabProps = {
 
 const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
-    // Which fleet spent it leads the ledger. Fleet and model shared one column
-    // and one header; they are two different questions and now two columns.
     key: "fleet", primary: true,
     header: "Fleet",
     sortValue: (c) => chargeAgentLabel(c),
-    cell: (c) => (
-      <AgentLabel
-        fleetId={c.fleet_id}
-        fleetName={capturedFleetName(c)}
-        className="text-foreground"
-      />
-    ),
+    cell: (c) => <ChargeIdentityCell charge={c} />,
   },
   {
     key: "model",
     header: "Model",
+    hideOnMobile: true,
     sortValue: (c) => displayModelName(c.model),
     cell: (c) => (
       <span className="text-muted-foreground">{displayModelName(c.model)}</span>
@@ -60,6 +53,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "activity",
     header: "Activity",
+    hideOnMobile: true,
     sortValue: (c) => describeCharge(c),
     cell: (c) => (
       <span className="text-muted-foreground">{describeCharge(c)}</span>
@@ -68,6 +62,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "created",
     header: TIME_LABEL.created,
+    hideOnMobile: true,
     sortValue: (c) => c.recorded_at,
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
@@ -87,7 +82,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     sortValue: (c) => -c.credit_deducted_nanos,
     cell: (c) => (
       <span
-        className="font-mono tabular-nums text-destructive data-[zero=true]:text-muted-foreground"
+        className="whitespace-nowrap font-mono tabular-nums text-destructive data-[zero=true]:text-muted-foreground"
         data-zero={c.credit_deducted_nanos === 0 ? "true" : undefined}
       >
         {formatChargeAmount(c.credit_deducted_nanos)}
@@ -95,6 +90,16 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     ),
   },
 ];
+
+function ChargeIdentityCell({ charge }: { charge: ChargeRow }) {
+  return <div className="space-y-xs sm:space-y-0">
+    <AgentLabel fleetId={charge.fleet_id} fleetName={charge.fleet_id === null ? chargeAgentLabel(charge) : capturedFleetName(charge)} className="text-foreground" />
+    <div className="space-y-xs text-label text-muted-foreground sm:hidden">
+      <p>{displayModelName(charge.model)} · {describeCharge(charge)}</p>
+      <Time value={new Date(charge.recorded_at)} label={formatChargeTimestamp(charge.recorded_at)} />
+    </div>
+  </div>;
+}
 
 export default function BillingUsageTab({
   initialCharges,
@@ -119,7 +124,7 @@ export default function BillingUsageTab({
           <EmptyState
             icon={<ActivityIcon size={28} />}
             title="No charges yet"
-            description="Charges appear once fleets run."
+            description="Charges appear as setup chats settle and fleets run."
           />
         }
         pagination={{

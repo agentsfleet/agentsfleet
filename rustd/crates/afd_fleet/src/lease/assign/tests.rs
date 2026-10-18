@@ -112,8 +112,8 @@ async fn a_held_fleets_unreadable_readiness_leaves_the_poll_its_partition()
     );
     assert_eq!(
         skipped.field("cause_error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
-        "the refused command's own code rides `cause_error_code`"
+        Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+        "the unavailable datastore's own code rides `cause_error_code`"
     );
     assert_ne!(
         store.cursor().advance(),

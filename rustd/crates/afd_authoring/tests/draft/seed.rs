@@ -62,12 +62,16 @@ pub(super) async fn credential(f: &Fixture) {
 }
 
 pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
-    let model = format!("gpt-4o-{catalogue}");
+    let model = format!("workspace-model-{catalogue}");
     sqlx::query("INSERT INTO model.platform_models(id,model_name,provider,context_cap_tokens, \
-        input_nanos_per_mtok,cached_input_nanos_per_mtok,output_nanos_per_mtok,created_at,updated_at) \
-        VALUES($1::uuid,$2,'openai',128000,$3,$4,$5,now(),now())")
+        input_nanos_per_mtok,cached_input_nanos_per_mtok,output_nanos_per_mtok,inference,created_at,updated_at) \
+        VALUES($1::uuid,$2,'openai',128000,$3,$4,$5,$6,now(),now())")
         .bind(catalogue.as_str()).bind(&model)
         .bind(INPUT_NANOS_PER_MTOK).bind(CACHED_INPUT_NANOS_PER_MTOK).bind(OUTPUT_NANOS_PER_MTOK)
+        .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
+            api: afd_wire::inference::InferenceApi::Responses,
+            base_url: "https://models.example.com/v1".into(), dialect: None, max_output_tokens: 8192,
+        }))
         .execute(&mut *f.connection().await).await.expect("seed isolated priced model");
     sqlx::query(
         "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \

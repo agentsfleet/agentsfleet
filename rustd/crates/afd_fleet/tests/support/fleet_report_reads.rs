@@ -25,8 +25,8 @@ ON CONFLICT (tenant_id) DO UPDATE
 const UPSERT_PLATFORM_MODEL: &str = "\
 INSERT INTO model.platform_models
   (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok,
-   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
-VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, now(), now())
+   cached_input_nanos_per_mtok, output_nanos_per_mtok, inference, created_at, updated_at)
+VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, now(), now())
 ON CONFLICT (provider, model_name) DO UPDATE
   SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
       cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
@@ -89,6 +89,12 @@ impl Fixtures {
             .bind(FIXTURE_INPUT_NANOS_PER_MTOK)
             .bind(FIXTURE_CACHED_INPUT_NANOS_PER_MTOK)
             .bind(FIXTURE_OUTPUT_NANOS_PER_MTOK)
+            .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
+                api: afd_wire::inference::InferenceApi::Messages,
+                base_url: "https://api.anthropic.com/v1".into(),
+                dialect: None,
+                max_output_tokens: 8192,
+            }))
             .execute(&mut *connection)
             .await
             .expect("the catalogue seed must run");

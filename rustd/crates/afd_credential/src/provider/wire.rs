@@ -1,24 +1,6 @@
-//! What a resolved provider tells the engine to dial.
-//!
-//! Separate from [`Resolved`](super::Resolved) because it answers a different
-//! question. That type is what the resolution DECIDED — a posture, a model, a
-//! key, an endpoint. This is how the decision is spelled on the wire, and the
-//! spelling has one rule that is not obvious from the value.
-//!
-//! # A custom endpoint is never announced under its raw provider name
-//!
-//! The engine classifies on the provider STRING. `openai-compatible` paired
-//! with a URL maps to no documented provider at all — an undefined route — so a
-//! custom endpoint is announced as `custom:<url>`, which classifies as a
-//! compatible provider and honours the override.
-//!
-//! [`Resolved::wire`] builds the prefixed name and the URL in one place, and
-//! `format!` does not fail, so the undefined pairing is unrepresentable rather
-//! than defended against.
+//! Selected model identity and validated endpoint travel together on the lease.
 
 use std::borrow::Cow;
-
-use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 
 use super::resolved::Resolved;
 
@@ -37,30 +19,20 @@ pub struct Wire<'a> {
 }
 
 impl Resolved {
-    /// The provider triple this resolution puts on the wire.
-    ///
-    /// All three come out together, which is what makes the module note's rule
-    /// structural: a caller that set `base_url` and forgot the prefix would
-    /// produce the undefined pairing, and there is no such caller.
+    /// Preserves model identity while carrying the endpoint admitted by credential resolution.
     #[must_use]
     pub fn wire(&self) -> Wire<'_> {
-        self.endpoint.as_ref().map_or_else(
-            || Wire {
-                provider: Cow::Borrowed(&self.provider),
-                base_url: None,
-                // A named provider dials a built-in host, so the allowlist has
-                // nothing extra to admit, and the field stays empty.
-                inference_host: "",
-            },
-            |dialled| Wire {
-                provider: Cow::Owned(format!(
-                    "{CUSTOM_PROVIDER_PREFIX}{base}",
-                    base = dialled.base_url
-                )),
-                base_url: Some(&dialled.base_url),
-                inference_host: &dialled.inference_host,
-            },
-        )
+        Wire {
+            provider: Cow::Borrowed(&self.provider),
+            base_url: self
+                .endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.base_url.as_ref()),
+            inference_host: self
+                .endpoint
+                .as_ref()
+                .map_or("", |endpoint| endpoint.inference_host.as_ref()),
+        }
     }
 }
 
@@ -103,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn a_custom_endpoint_is_announced_under_the_custom_prefix() {
+    fn a_configured_endpoint_preserves_the_selected_provider_name() {
         // The undefined route this exists to prevent: `openai-compatible`
         // paired with a URL classifies as no documented provider at all.
         let custom = resolved(Some(Dialled {
@@ -112,13 +84,13 @@ mod tests {
         }));
         let wire = custom.wire();
 
-        assert_eq!(wire.provider, "custom:https://vllm.corp/v1");
+        assert_eq!(wire.provider, "openai-compatible");
         assert_eq!(wire.base_url, Some("https://vllm.corp/v1"));
         assert_eq!(wire.inference_host, "vllm.corp");
     }
 
     #[test]
-    fn the_url_and_the_prefixed_name_can_never_disagree() {
+    fn configured_urls_do_not_replace_provider_identity() {
         // One function produces all three, so a URL paired with an unprefixed
         // name is unrepresentable. Asserted as the relationship rather than the
         // literal.
@@ -134,8 +106,7 @@ mod tests {
             let wire = wire.wire();
 
             assert_eq!(wire.base_url, Some(url));
-            assert!(wire.provider.ends_with(url), "{}", wire.provider);
-            assert!(wire.provider.starts_with("custom:"), "{}", wire.provider);
+            assert_eq!(wire.provider, "openai-compatible");
         }
     }
 

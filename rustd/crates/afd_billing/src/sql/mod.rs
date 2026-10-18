@@ -151,20 +151,30 @@ pub mod posture {
     pub const SELF_MANAGED: &str = "self_managed";
 }
 
+/// The charges page's spelling for a setup chat's settlement, beside the two
+/// [`charge`] types a fleet run writes. Never stored: it names the source.
+pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
+
 /// The tenant's first charges page: newest first, no boundary.
 ///
-/// `fleet_charges.id` is table-qualified in the ORDER BY because the select
-/// list emits `id::text`, which names an OUTPUT column `id`. A bare `ORDER BY
-/// … id` resolves against the output list first and sorts by the text cast, an
-/// ordering no index supplies. `cached_input_token_count` is not selected: the
-/// charges response does not carry it.
+/// Two sources debit the one wallet, so the page reads both: a fleet run's
+/// `billing.fleet_charges` and a setup chat's `billing.authoring_settlements`.
+/// Each is cut to the page size by its own `(tenant_id, created_at, id)` index
+/// in a `MATERIALIZED` CTE BEFORE any join, so the draft and fleet detail joins
+/// touch at most one page per source however long the history is. A setup row
+/// names its fleet only through its draft's saved fleet, which it may not have.
+/// `cached_input_token_count` is not selected: the charges response does not
+/// carry it.
 ///
-/// `$1` tenant, `$2` limit.
+/// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_AUTHORING`] · `$4`
+/// [`posture::PLATFORM`] · `$5` [`posture::SELF_MANAGED`].
 pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
     include_str!("select_tenant_charges_first.sql");
 
-/// A later charges page: strictly older than the cursor's boundary.
+/// A later charges page: strictly older than the cursor's boundary, the same
+/// two sources cut the same way.
 ///
-/// `$1` tenant, `$2` boundary instant, `$3` boundary id, `$4` limit.
+/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$7`
+/// as `$3`–`$5` above.
 pub(crate) const SELECT_TENANT_CHARGES_AFTER: &str =
     include_str!("select_tenant_charges_after.sql");

@@ -1,5 +1,5 @@
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Fleet } from "@/lib/api/fleets";
@@ -71,60 +71,75 @@ afterEach(() => {
  * wants. So the assertion is on text content, and it now fails if the live
  * region stops existing.
  */
-describe("FleetWall", () => {
-  it("renders one tile per fleet and a live count for active fleets", () => {
-    renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
-    expect(screen.getAllByTestId("tile")).toHaveLength(2);
-    expect(screen.getByRole("status").textContent).toContain("1 live");
-    expect(screen.getByText("Your fleets")).toBeTruthy();
-  });
+it("FleetWall > omits the fleet section when the loaded list is empty and complete", () => {
+  const { container } = renderWall([]);
+  expect(screen.queryByText("Your fleets")).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
+  expect(container.childElementCount).toBe(0);
+});
 
-  it("refuses to claim live before the stream is connected and greeted", () => {
-    // The old eyebrow counted ACTIVE fleets, so it read "1 live" while the
-    // EventSource was still opening — the page asserting liveness it had no
-    // evidence for. Connection state, not fleet status, decides this now.
-    streamState = { ...liveStream(), connectionStatus: "connecting", helloReceived: false };
-    renderWall([fleet()]);
-    expect(screen.getByRole("status").textContent).not.toContain("1 live");
-    expect(screen.getByRole("status").textContent).toContain("connecting…");
-  });
+it("FleetWall > keeps pagination and its failure visible when an empty page has a continuation", async () => {
+  listFleetsAction.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-X" });
+  renderWall([], "cur_1");
+  await userEvent.setup().click(screen.getByRole("button", { name: /load more/i }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/load more fleets/i));
+  expect(screen.queryByText("Your fleets")).toBeNull();
+  expect(screen.getByRole("button", { name: /load more/i })).toBeTruthy();
+});
 
-  it("says reconnecting when the stream dropped, rather than going quiet", () => {
-    streamState = { ...liveStream(), connectionStatus: "reconnecting" };
-    renderWall([fleet()]);
-    expect(screen.getByRole("status").textContent).toContain("reconnecting…");
-  });
+it("FleetWall > renders one tile per fleet and a live count for active fleets", () => {
+  renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
+  expect(screen.getAllByTestId("tile")).toHaveLength(2);
+  expect(screen.getByRole("status").textContent).toContain("1 live");
+  expect(screen.getByText("Your fleets")).toBeTruthy();
+});
 
-  it("says offline when the stream has given up, rather than going quiet", () => {
-    streamState = { ...liveStream(), connectionStatus: "offline" };
-    renderWall([fleet()]);
-    expect(screen.getByRole("status").textContent).toContain("offline");
-    expect(screen.getByRole("status").textContent).not.toContain("1 live");
-  });
+it("FleetWall > refuses to claim live before the stream is connected and greeted", () => {
+  // The old eyebrow counted ACTIVE fleets, so it read "1 live" while the
+  // EventSource was still opening — the page asserting liveness it had no
+  // evidence for. Connection state, not fleet status, decides this now.
+  streamState = { ...liveStream(), connectionStatus: "connecting", helloReceived: false };
+  renderWall([fleet()]);
+  expect(screen.getByRole("status").textContent).not.toContain("1 live");
+  expect(screen.getByRole("status").textContent).toContain("connecting…");
+});
 
-  it("hides the live counter when no loaded fleet is active", () => {
-    renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
-    // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
-    // is silence, not "0 live".
-    // No badge at all, so no live region to announce anything.
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getAllByTestId("tile")).toHaveLength(2);
-  });
+it("FleetWall > says reconnecting when the stream dropped, rather than going quiet", () => {
+  streamState = { ...liveStream(), connectionStatus: "reconnecting" };
+  renderWall([fleet()]);
+  expect(screen.getByRole("status").textContent).toContain("reconnecting…");
+});
 
-  it("appends the next page on Load more", async () => {
-    listFleetsAction.mockResolvedValue({ ok: true, data: { items: [fleet({ id: "f2", name: "beta" })], next_cursor: null } });
-    const user = userEvent.setup();
-    renderWall([fleet()], "cur_1");
-    await user.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => expect(screen.getAllByTestId("tile")).toHaveLength(2));
-    expect(listFleetsAction).toHaveBeenCalledWith("ws_1", { starting_after: "cur_1" });
-  });
+it("FleetWall > says offline when the stream has given up, rather than going quiet", () => {
+  streamState = { ...liveStream(), connectionStatus: "offline" };
+  renderWall([fleet()]);
+  expect(screen.getByRole("status").textContent).toContain("offline");
+  expect(screen.getByRole("status").textContent).not.toContain("1 live");
+});
 
-  it("surfaces an error when Load more fails", async () => {
-    listFleetsAction.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-X" });
-    const user = userEvent.setup();
-    renderWall([fleet()], "cur_1");
-    await user.click(screen.getByRole("button", { name: /load more/i }));
-    await waitFor(() => expect(screen.getByText(/load more fleets/i)).toBeTruthy());
-  });
+it("FleetWall > hides the live counter when no loaded fleet is active", () => {
+  renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
+  // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
+  // is silence, not "0 live".
+  // No badge at all, so no live region to announce anything.
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getAllByTestId("tile")).toHaveLength(2);
+});
+
+it("FleetWall > appends the next page on Load more", async () => {
+  listFleetsAction.mockResolvedValue({ ok: true, data: { items: [fleet({ id: "f2", name: "beta" })], next_cursor: null } });
+  const user = userEvent.setup();
+  renderWall([fleet()], "cur_1");
+  await user.click(screen.getByRole("button", { name: /load more/i }));
+  await waitFor(() => expect(screen.getAllByTestId("tile")).toHaveLength(2));
+  expect(listFleetsAction).toHaveBeenCalledWith("ws_1", { starting_after: "cur_1" });
+});
+
+it("FleetWall > surfaces an error when Load more fails", async () => {
+  listFleetsAction.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-X" });
+  const user = userEvent.setup();
+  renderWall([fleet()], "cur_1");
+  await user.click(screen.getByRole("button", { name: /load more/i }));
+  await waitFor(() => expect(screen.getByText(/load more fleets/i)).toBeTruthy());
 });

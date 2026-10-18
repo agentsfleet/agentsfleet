@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import HowItWorks from "./HowItWorks";
-import { APP_SIGN_UP_URL } from "../config";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { DEFAULT_JOB } from "../lib/example-jobs";
 
 afterEach(() => vi.restoreAllMocks());
@@ -17,7 +17,7 @@ describe("Conversation example", () => {
     expect(screen.getByText(/Report ready · repository unchanged/i)).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Example stages" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Replay" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Create fleet" })).toHaveAttribute("href", APP_SIGN_UP_URL);
+    expect(screen.getByRole("link", { name: "Join waitlist" })).toHaveAttribute("href", PUBLIC_ACCESS_URL);
     expect(screen.getByText(/sample run, no changes applied/)).toBeInTheDocument();
   });
   it("opens the exact evidence without navigating or claiming a live connection", () => {

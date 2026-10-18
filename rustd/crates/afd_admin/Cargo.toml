@@ -18,11 +18,13 @@ test-util = ["afd_core/test-util", "afd_crypto/test-util", "afd_db/test-util"]
 afd_core.workspace = true
 afd_crypto.workspace = true
 afd_db.workspace = true
+afd_wire.workspace = true
+afd_inference.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
-# `derive`: rows decode into named `FromRow` types.
-sqlx = { workspace = true, features = ["derive"] }
+# `derive`: rows decode into named `FromRow` types; `json`: the inference settings column.
+sqlx = { workspace = true, features = ["derive", "json"] }
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -1,13 +1,8 @@
 //! How much context a run gets, resolved per lease from three sources.
 //!
-//! # Per field, and independently
-//!
-//! Each knob resolves on its own: an authored value wins, a SENTINEL inherits
-//! from the provider the tenant resolved, and anything still unset falls to a
-//! static default. The independence is the part worth stating — a fleet may pin
-//! its model and inherit its cap, or the reverse, and the two must not move as
-//! a pair. `resolveContextBudget` states this in prose; here two of the tests
-//! are the asymmetry itself, in both directions.
+//! The saved provider model supplies execution identity. Authored context knobs
+//! may reduce the operating window without changing that identity or the saved
+//! physical model limit carried separately in the execution policy.
 //!
 //! # Zero is the sentinel, and that is a design constraint rather than a choice
 //!
@@ -64,15 +59,10 @@ pub struct Overlay<'a> {
 
 /// The budget this lease runs under.
 ///
-/// `authored` is the fleet's own block when it declared one; `model` is the
-/// model it pinned; `overlay` is what the tenant's resolved provider offers a
-/// knob the fleet left at its sentinel.
+/// `authored` supplies operating overrides. `overlay` carries the resolved
+/// provider model and the defaults for knobs the fleet left unset.
 #[must_use]
-pub fn resolve<'a>(
-    authored: Option<Authored>,
-    model: Option<&'a str>,
-    overlay: Overlay<'a>,
-) -> ContextBudget<'a> {
+pub fn resolve(authored: Option<Authored>, overlay: Overlay<'_>) -> ContextBudget<'_> {
     let declared = authored.unwrap_or(Authored {
         context_cap_tokens: 0,
         tool_window: 0,
@@ -82,10 +72,6 @@ pub fn resolve<'a>(
 
     // The overlay first, so an inherited cap feeds the tiering below.
     let cap = sentinel(declared.context_cap_tokens, overlay.cap_tokens);
-    let model = match model.unwrap_or_default() {
-        "" => overlay.model,
-        pinned => pinned,
-    };
 
     ContextBudget {
         // Derived from the cap, and only when the fleet authored no window.
@@ -99,7 +85,7 @@ pub fn resolve<'a>(
         } else {
             declared.stage_chunk_threshold
         },
-        model: model.into(),
+        model: overlay.model.into(),
         context_cap_tokens: cap,
     }
 }
@@ -143,7 +129,7 @@ mod tests {
 
     #[test]
     fn a_fleet_that_declares_no_block_gets_the_static_defaults() {
-        let budget = resolve(None, None, Overlay::default());
+        let budget = resolve(None, Overlay::default());
 
         assert_eq!(budget.tool_window, DEFAULT_TOOL_WINDOW);
         assert_eq!(
@@ -160,8 +146,8 @@ mod tests {
         // Two ways to say "I authored nothing", and they must not differ — the
         // second is what a document with an empty `context:` block produces.
         assert_eq!(
-            resolve(None, None, Overlay::default()),
-            resolve(Some(NOTHING), Some(""), Overlay::default())
+            resolve(None, Overlay::default()),
+            resolve(Some(NOTHING), Overlay::default())
         );
     }
 
@@ -174,7 +160,6 @@ mod tests {
                 memory_checkpoint_every: 7,
                 stage_chunk_threshold: 0.6,
             }),
-            Some("kimi-k2.6"),
             Overlay::default(),
         );
 
@@ -182,14 +167,13 @@ mod tests {
         assert_eq!(budget.tool_window, TOOL_WINDOW_LARGE);
         assert_eq!(budget.memory_checkpoint_every, 7);
         assert_eq!(budget.stage_chunk_threshold, 0.6);
-        assert_eq!(budget.model, "kimi-k2.6");
+        assert_eq!(budget.model, "");
     }
 
     #[test]
     fn a_sentinel_inherits_from_the_resolved_provider() {
         let budget = resolve(
             Some(NOTHING),
-            Some(""),
             Overlay {
                 cap_tokens: CAP_LARGE_TOKENS,
                 model: "accounts/fireworks/models/kimi-k2.6",
@@ -204,39 +188,27 @@ mod tests {
     }
 
     #[test]
-    fn the_cap_and_the_model_overlay_independently() {
-        // Both directions of the asymmetry, because the two fields resolve on
-        // separate conditions and a coupled implementation passes either test
-        // alone.
-        let cap_inherits = resolve(
-            Some(NOTHING),
-            Some("pinned-model"),
-            Overlay {
-                cap_tokens: 200_000,
-                model: "provider-model",
-            },
-        );
-        assert_eq!(cap_inherits.context_cap_tokens, 200_000);
-        assert_eq!(cap_inherits.model, "pinned-model");
-        assert_eq!(
-            cap_inherits.tool_window, TOOL_WINDOW_SMALL,
-            "a cap at the small boundary takes the small tier"
-        );
-
-        let model_inherits = resolve(
-            Some(Authored {
-                context_cap_tokens: 256_000,
-                ..NOTHING
-            }),
-            Some(""),
-            Overlay {
-                cap_tokens: CAP_LARGE_TOKENS,
-                model: "provider-model",
-            },
-        );
-        assert_eq!(model_inherits.context_cap_tokens, 256_000);
-        assert_eq!(model_inherits.model, "provider-model");
-        assert_eq!(model_inherits.tool_window, DEFAULT_TOOL_WINDOW);
+    fn authored_caps_keep_the_resolved_provider_model() {
+        for cap in [CAP_SMALL_TOKENS, CAP_LARGE_TOKENS] {
+            let budget = resolve(
+                Some(Authored {
+                    context_cap_tokens: cap,
+                    ..NOTHING
+                }),
+                Overlay {
+                    cap_tokens: 256_000,
+                    model: "provider-model",
+                },
+            );
+            assert_eq!(budget.context_cap_tokens, cap);
+            assert_eq!(budget.model, "provider-model");
+            let expected = if cap == CAP_SMALL_TOKENS {
+                TOOL_WINDOW_SMALL
+            } else {
+                TOOL_WINDOW_LARGE
+            };
+            assert_eq!(budget.tool_window, expected);
+        }
     }
 
     #[test]
@@ -244,7 +216,7 @@ mod tests {
         // The provider-resolution failure path. An unknown cap stays zero — the
         // runner's chunking needs a real one and must stay inert rather than
         // act on a number nobody established.
-        let budget = resolve(Some(NOTHING), Some(""), Overlay::default());
+        let budget = resolve(Some(NOTHING), Overlay::default());
 
         assert_eq!(budget.context_cap_tokens, 0);
         assert_eq!(budget.model, "");
@@ -273,7 +245,6 @@ mod tests {
                     context_cap_tokens: cap,
                     ..NOTHING
                 }),
-                None,
                 Overlay::default(),
             );
             assert_eq!(budget.tool_window, window, "cap {cap}");

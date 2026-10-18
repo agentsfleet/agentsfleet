@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
-import { APP_SIGN_IN_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
+import { PUBLIC_ACCESS_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 import { HERO_HEADLINE, LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { trackNavigationClicked } from "../analytics/posthog";
@@ -54,7 +54,7 @@ function FooterColumns() {
         <h2 className={COL_LABEL}>product</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
           <ListItem><Link to={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK} onClick={() => trackFooter("use_cases", "example")}>use cases</Link></ListItem>
-          <ListItem><a href={APP_SIGN_IN_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("sign_in", "sign_in")}>sign in</a></ListItem>
+          <ListItem><a href={PUBLIC_ACCESS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("sign_in", "sign_in")}>join waitlist</a></ListItem>
         </List>
       </div>
 

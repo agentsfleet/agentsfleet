@@ -136,7 +136,7 @@ export function presentError(input: ErrorInput): ErrorPresentation {
     return { title: `${lead} — ${trimmed.replace(/\.$/, "")}.`, code: errorCode };
   }
   return {
-    title: `${lead}. Try again, or check Events for what blocked it.`,
+    title: `${lead}. Try again, or check Activity for what blocked it.`,
     code: errorCode,
   };
 }

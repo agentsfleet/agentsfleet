@@ -4,6 +4,7 @@ import type { AppendMessage, MessageState, ThreadMessageLike } from "@assistant-
 import type { DraftView } from "@/lib/api/draft-state";
 import type { Message } from "@/lib/api/draft-types";
 import type { DraftClient } from "@/lib/api/drafts";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { GitPullRequestIcon, RadarIcon, SunriseIcon } from "lucide-react";
@@ -22,7 +23,7 @@ const FAILURE_COPY: Readonly<Record<string, string>> = {
   review_setup: "Review setup again before continuing.",
 };
 
-export function DraftConversation({client, view, onReview}: {client: DraftClient; view: DraftView; onReview: () => void}) {
+export function DraftConversation({client, view, onReview, children}: {client: DraftClient; view: DraftView; onReview: () => void; children?: ReactNode}) {
   const running = view.messages.some(isRunning);
   const adapter = useMemo(() => ({
     messages: view.messages, isRunning: running, convertMessage: toThreadMessage,
@@ -33,7 +34,7 @@ export function DraftConversation({client, view, onReview}: {client: DraftClient
     onCancel: () => client.stop(),
   }), [client, view.messages, running]);
   const runtime = useExternalStoreRuntime<Message>(adapter);
-  const empty = view.messages.length === 0;
+  const empty = view.messages.length === 0 && !view.fleet;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col" aria-label="Private fleet setup conversation">
@@ -42,6 +43,7 @@ export function DraftConversation({client, view, onReview}: {client: DraftClient
           <div role="log" aria-live="off" className={cn("mx-auto flex w-full max-w-measure flex-col", !empty && "flex-1 py-lg")}>
             {view.truncated ? <p className="text-sm text-muted-foreground">Showing the latest conversation messages. Earlier messages remain in this private draft.</p> : null}
             <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
+            {children}
           </div>
           <ThreadPrimitive.ViewportFooter className={cn("mx-auto w-full max-w-measure bg-background py-md", !empty && "sticky bottom-0")}>
             <ChatComposer client={client} view={view} running={running} onReview={onReview} />
@@ -54,7 +56,7 @@ export function DraftConversation({client, view, onReview}: {client: DraftClient
 }
 
 function ChatEntrance() {
-  return <div className="chat-entrance mx-auto flex w-full max-w-measure flex-col items-center gap-lg pb-xl pt-2xl text-center">
+  return <div className="content-entrance mx-auto flex w-full max-w-measure flex-col items-center gap-lg pb-xl pt-2xl text-center">
     <BrandMark className="size-10 text-pulse" aria-hidden="true" />
     <PageTitle>What should your fleet do?</PageTitle>
     <p className="text-body text-muted-foreground">Start with a job. We’ll work out the setup together.</p>
@@ -70,9 +72,9 @@ const SUGGESTIONS = [
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
   return <div className="mx-auto grid w-full max-w-measure grid-cols-1 gap-md pb-2xl pt-md sm:grid-cols-3">
     {SUGGESTIONS.map(({ title, detail, Icon, prompt }) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
-      <Button variant="outline" disabled={disabled} className="h-auto min-h-28 flex-col items-start gap-sm whitespace-normal p-lg text-left">
+      <Button variant="outline" size="card" disabled={disabled} className="flex-row items-center justify-start gap-lg whitespace-normal text-left sm:min-h-28 sm:flex-col sm:items-start">
         <Icon size={18} className="text-pulse" aria-hidden="true" />
-        <span>{title}</span><span className="text-label font-normal text-muted-foreground">{detail}</span>
+        <span className="flex flex-col gap-sm"><span>{title}</span><span className="text-label font-normal text-muted-foreground">{detail}</span></span>
       </Button>
     </ThreadPrimitive.Suggestion>)}
   </div>;

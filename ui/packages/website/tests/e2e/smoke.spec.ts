@@ -76,7 +76,7 @@ test.describe("Smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: /primary/i });
     await expect(nav.getByRole("link", { name: /^Product$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^Get started$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Early access$/i })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^GitHub ↗$/ })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
   });

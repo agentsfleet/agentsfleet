@@ -5,14 +5,16 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use rig_core::completion::{AssistantMessage, CacheRetention, CompletionRequest};
-use rig_core::message::{AssistantContent, Message as RigMessage, ToolName, UserContent};
+use rig_core::completion::CompletionRequest;
+use rig_core::message::{
+    AssistantContent, AssistantMessage, Message as RigMessage, ToolName, UserContent,
+};
 use serde_json::{Value, json};
 
 use super::request;
 use crate::error::raise;
 use crate::provider::{Call, Hosted, Message, Replay, Request, ToolSpec};
-use crate::registry::Wire;
+use afd_wire::inference::InferenceApi as Wire;
 
 /// The model every turn here names.
 const MODEL: &str = "model-1";
@@ -106,7 +108,7 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
     let [
         _,
         RigMessage::User { content: asked },
-        RigMessage::Assistant(AssistantMessage { content: turn, .. }),
+        RigMessage::Assistant(turn),
         RigMessage::User { content: answered },
     ] = sent.chat_history.as_slice()
     else {
@@ -119,7 +121,7 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
     let [
         AssistantContent::Text(text),
         AssistantContent::ToolCall(call),
-    ] = turn.as_slice()
+    ] = turn.content.as_slice()
     else {
         panic!("its text, then its call: {turn:?}");
     };
@@ -137,10 +139,9 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
 
 #[test]
 fn should_hand_the_replay_back_ahead_of_the_turns_text() {
-    let replay = Replay {
-        content: vec![AssistantContent::reasoning(THOUGHT)],
-        origin: None,
-    };
+    let replay = Replay(AssistantMessage::new(vec![AssistantContent::reasoning(
+        THOUGHT,
+    )]));
     let messages = [
         Message::User(QUESTION.to_owned()),
         said(PREAMBLE, Vec::new(), replay),
@@ -148,16 +149,15 @@ fn should_hand_the_replay_back_ahead_of_the_turns_text() {
 
     let sent = built(Wire::Messages, &messages, &[], &[]);
 
-    let Some(RigMessage::Assistant(AssistantMessage { content, .. })) = sent.chat_history.last()
-    else {
+    let Some(RigMessage::Assistant(turn)) = sent.chat_history.last() else {
         panic!("the turn ends the history: {:?}", sent.chat_history);
     };
     assert!(
         matches!(
-            content.as_slice(),
+            turn.content.as_slice(),
             [AssistantContent::Reasoning(_), AssistantContent::Text(_)]
         ),
-        "{content:?}"
+        "{turn:?}"
     );
 }
 
@@ -175,7 +175,7 @@ fn should_drop_an_assistant_turn_with_nothing_in_it() {
         !sent
             .chat_history
             .iter()
-            .any(|message| matches!(message, RigMessage::Assistant { .. })),
+            .any(|message| matches!(message, RigMessage::Assistant(_))),
         "{:?}",
         sent.chat_history
     );
@@ -272,39 +272,4 @@ fn should_refuse_a_call_that_names_no_tool() {
     let empty = ToolName::new(String::new()).unwrap_err();
     assert_eq!(refused.detail(), raise::unnamed(CALL_ID, empty).detail());
     assert_eq!(refused.failure_class(), None);
-}
-
-#[test]
-fn a_tool_offered_with_no_name_refuses_the_request() {
-    let parameters = json!({ "type": "object" });
-    let nameless = [ToolSpec {
-        name: "",
-        description: "A tool with no name.",
-        parameters: &parameters,
-    }];
-    let messages = [Message::User(QUESTION.to_owned())];
-    let turn = Request {
-        model: MODEL,
-        instructions: INSTRUCTIONS,
-        messages: &messages,
-        tools: &nameless,
-        hosted: &[],
-        cache_key: CACHE_KEY,
-    };
-
-    let refused = request(Wire::Messages, &turn).unwrap_err();
-
-    let empty = ToolName::new(String::new()).unwrap_err();
-    assert_eq!(refused.detail(), raise::nameless_tool(empty).detail());
-    assert_eq!(refused.failure_class(), None);
-}
-
-#[test]
-fn only_the_messages_wire_asks_the_provider_to_keep_its_moving_cache() {
-    let messages = [Message::User(QUESTION.to_owned())];
-    for wire in [Wire::Messages, Wire::Responses, Wire::Chat] {
-        let sent = built(wire, &messages, &[], &[]);
-        let expected = (wire == Wire::Messages).then_some(CacheRetention::Short);
-        assert_eq!(sent.options.cache, expected, "{wire:?}");
-    }
 }

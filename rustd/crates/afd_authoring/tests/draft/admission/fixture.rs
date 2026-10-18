@@ -20,7 +20,10 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 };
 
 pub(super) async fn funded(workers: i32) -> Fixture {
-    let f = Fixture::create().await;
+    fund(Fixture::create().await, workers).await
+}
+
+pub(super) async fn fund(f: Fixture, workers: i32) -> Fixture {
     RunnerSeed::new(f.runner.as_str(), ACTIVE, POLICY)
         .workers(workers)
         .insert(&mut *f.connection().await)

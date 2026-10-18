@@ -10,7 +10,7 @@ use crate::{
     types::{ModelsQuery, Page, WorkspaceModel},
 };
 use afd_core::paging::Cursor;
-use afd_credential::provider::{OPENAI_COMPATIBLE, PLATFORM_MODEL_REF};
+use afd_credential::provider::PLATFORM_MODEL_REF;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "list workspace owner's model choices";
@@ -44,7 +44,6 @@ impl Drafts {
             .bind(PLATFORM_MODEL_REF)
             .bind(after)
             .bind(i64::from(request.limit) + 1)
-            .bind(OPENAI_COMPATIBLE)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

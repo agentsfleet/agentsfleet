@@ -148,8 +148,8 @@ async fn should_record_one_receive_row_per_event_with_the_fleet_name() {
         .expect("answers");
     let [row] =
         <&[_; 1]>::try_from(rows.as_slice()).expect("the replay guard keeps one row per event");
-    assert_eq!(row.event_id, event.as_str());
-    assert_eq!(row.fleet_name, FLEET_NAME);
+    assert_eq!(row.event_id.as_deref(), Some(event.as_str()));
+    assert_eq!(row.fleet_name.as_deref(), Some(FLEET_NAME));
     assert_eq!(row.charged_nanos, RECEIVE_NANOS.as_i64());
     assert_eq!(row.input_token_count, None);
 }
@@ -181,10 +181,10 @@ async fn should_charge_a_fleet_that_has_no_row_under_its_identifier() {
         .await
         .expect("answers");
     let [row] = <&[_; 1]>::try_from(rows.as_slice()).expect("one charge row");
-    assert_eq!(row.fleet_id, missing.as_str());
+    assert_eq!(row.fleet_id.as_deref(), Some(missing.as_str()));
     assert_eq!(
-        row.fleet_name,
-        missing.as_str(),
+        row.fleet_name.as_deref(),
+        Some(missing.as_str()),
         "the name falls back to the fleet's identifier, which a reader tells \
          from a captured name because it equals fleet_id"
     );

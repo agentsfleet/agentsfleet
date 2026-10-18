@@ -11,11 +11,17 @@ pub(crate) const LIST_PLATFORM_MODELS: &str = include_str!("list_platform_models
 /// Files a model, or writes nothing when `(provider, model_name)` is taken.
 ///
 /// `$1` id · `$2` provider · `$3` model name · `$4` context cap · `$5`–`$7` the
-/// three prices.
+/// three prices · `$8` inference settings or NULL.
 pub(crate) const INSERT_PLATFORM_MODEL: &str = include_str!("insert_platform_model.sql");
 
-/// Replaces a model's cap and prices. `$1` id · `$2` cap · `$3`–`$5` prices.
+/// Replaces a model's cap and prices, and its inference settings when `$6` is
+/// not NULL. `$1` id · `$2` cap · `$3`–`$5` prices · `$6` settings.
 pub(crate) const UPDATE_PLATFORM_MODEL: &str = include_str!("update_platform_model.sql");
+
+/// A model's saved inference settings, locking the row for the update that
+/// follows. `$1` id.
+pub(crate) const SELECT_PLATFORM_MODEL_INFERENCE: &str =
+    include_str!("select_platform_model_inference.sql");
 
 /// Removes a model. A platform default still pointing at it refuses the delete
 /// through `ON DELETE RESTRICT`, which [`crate::Models::delete`] reports as

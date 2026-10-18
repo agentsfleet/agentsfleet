@@ -10,7 +10,7 @@ use std::ops::AddAssign;
 
 use afd_wire::activity::StreamTextKind;
 use futures_util::stream::BoxStream;
-use rig_core::message::{AssistantContent, Origin};
+use rig_core::message::{AssistantContent, AssistantMessage};
 
 use crate::error::Result;
 use crate::image_input::ImageInput;
@@ -35,23 +35,17 @@ pub struct Call {
 /// reasoning details. Opaque to the loop, which keeps it with the turn that
 /// produced it and hands it back unopened; a provider that reasons in the
 /// open, or not at all, leaves it empty.
-///
-/// It keeps the wire, provider and model that produced it: rig hands a
-/// turn's signed items back only to the target that made them, and reads
-/// them as plain text anywhere else.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Replay {
-    /// The provider's own blocks, in the order it sent them.
-    pub(crate) content: Vec<AssistantContent>,
-    /// Which wire, provider and model produced them.
-    pub(crate) origin: Option<Origin>,
-}
+pub struct Replay(pub(crate) AssistantMessage);
 
 impl Replay {
     /// Whether there is nothing to hand back.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.content.is_empty()
+        self.0
+            .content
+            .iter()
+            .all(|part| matches!(part, AssistantContent::Text(_)))
     }
 }
 

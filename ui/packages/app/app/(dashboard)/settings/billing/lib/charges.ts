@@ -13,6 +13,8 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
 });
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
+const SETUP_CHAT_LABEL = "Setup chat";
+const FLEET_SETUP_LABEL = "Fleet setup";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
 const TOKENS_LABEL = "tokens";
 const TOKENS_IN = "in";
@@ -49,6 +51,7 @@ export function formatChargeAmount(nanos: number): string {
  * table by something the operator cannot see.
  */
 export function chargeAgentLabel(row: ChargeRow): string {
+  if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return FLEET_SETUP_LABEL;
   return agentDisplayName(row.fleet_id, capturedFleetName(row));
 }
 
@@ -91,24 +94,23 @@ export function formatChargeTimestamp(recordedAt: string): string {
 }
 
 /**
- * Human activity summary for a flat charge row. A billing record has no
- * provider action or configured fleet name, so this stays precise about the
- * information it does have: receipt or run, plus token use when recorded.
+ * Activity and recorded usage; the amount comes only from the saved debit.
  */
 export function describeCharge(row: ChargeRow): string {
   if (row.charge_type === CHARGE_TYPE.receive) {
     return EVENT_RECEIVED_LABEL;
   }
+  const label = row.charge_type === CHARGE_TYPE.authoring ? SETUP_CHAT_LABEL : RUN_LABEL;
   if (row.token_count_input === null || row.token_count_output === null) {
-    return `${RUN_LABEL} · ${NO_TOKEN_USAGE_LABEL}`;
+    return `${label} · ${NO_TOKEN_USAGE_LABEL}`;
   }
   if (row.token_count_input === 0 && row.token_count_output === 0) {
-    return `${RUN_LABEL} · ${NO_TOKEN_USAGE_LABEL}`;
+    return `${label} · ${NO_TOKEN_USAGE_LABEL}`;
   }
   // "2,075 input tokens · 1,112 output tokens" said "tokens" twice and led with
   // the least useful number. The total is what an operator scans for; the split
   // is what they check afterwards.
   const total = row.token_count_input + row.token_count_output;
   const split = `${row.token_count_input.toLocaleString()} ${TOKENS_IN}${TOKEN_SPLIT_SEPARATOR}${row.token_count_output.toLocaleString()} ${TOKENS_OUT}`;
-  return `${RUN_LABEL} · ${total.toLocaleString()} ${TOKENS_LABEL} · ${split}`;
+  return `${label} · ${total.toLocaleString()} ${TOKENS_LABEL} · ${split}`;
 }

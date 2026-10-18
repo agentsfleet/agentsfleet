@@ -10,7 +10,9 @@ SELECT s.meta_provider AS provider,
            m.output_nanos_per_mtok, r.resource_version
        )::text, 'UTF8')), 'hex') AS resolution_version,
        s.workspace_id::text AS workspace_id,
-       s.key_name
+       s.key_name,
+       s.meta_base_url AS base_url,
+       m.inference
   FROM model.tenant_models e
   JOIN LATERAL (
         SELECT id FROM identity.workspaces
@@ -22,5 +24,5 @@ SELECT s.meta_provider AS provider,
   JOIN model.platform_models m ON m.provider = s.meta_provider AND m.model_name = e.model_name
  CROSS JOIN model.catalogue_version r
  WHERE e.tenant_id = $1::uuid AND e.id::text = $2
-   AND s.meta_has_key = true AND s.meta_base_url IS NULL
+   AND s.meta_has_key = true
    FOR SHARE OF e, s, m, r

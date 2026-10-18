@@ -140,7 +140,7 @@ connection or transaction; there is no generic repository trait.
 | `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
 | `candidates` | A frozen numbered setup the model proposed | `id, draft_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
 | `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, created_at, updated_at` |
-| `dispatches` | One physical model call: intent before, result after | `id, attempt_id, sequence, request_digest, status, result, usage, private_expires_at, created_at, updated_at` |
+| `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` | `id, attempt_id, sequence, request_digest, status, result, usage, native_reply, private_expires_at, created_at, updated_at` |
 | `activity_receipts` | Replay proof for "runner posted a setup" | `id, attempt_id, sequence, request_digest, candidate_id, created_at` · append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | `id, draft_id, attempt_id, report_id, answer_digest, expires_at, created_at` · append-only |
 | `replay_receipts` | Every authoring retry key: create draft, send message, publish | `id, workspace_id, user_id, scope, operation_id, request_digest, resource_id, created_at` · append-only, swept at a fixed age |
@@ -233,7 +233,7 @@ producer's instant billing uses, which the event row does not hold; the lease's 
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at` |
+| `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, inference, created_at, updated_at` · `inference` is NULL until an administrator saves routing settings |
 | `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution | `id (=1), resource_version, created_at, updated_at` |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key | `provider (PK), source_workspace_id, active, platform_model_id, base_url, created_at, updated_at` |
 | `tenant_models` | A tenant's own models, each pointing at a vault key | `id, tenant_id, model_name, secret_ref, created_at, updated_at` |
@@ -250,7 +250,7 @@ limit) arrives only with the change that reads it.
 |---|---|---|
 | `wallets` | The tenant's balance; the only row money moves on | `tenant_id (PK), balance_nanos, exhausted_at, created_at, updated_at` · `CHECK (balance_nanos >= 0)` |
 | `fleet_charges` | What each fleet event cost, per charge type, accumulating per renewal | `id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, model, charged_nanos, input_token_count, cached_input_token_count, output_token_count, wall_ms, event_created_at, created_at, updated_at` |
-| `authoring_settlements` | Final charge for one chat turn; outlives the chat | `id, attempt_id, report_id, accounting_digest, outcome, failure_reason, usage, charged_nanos, created_at` · append-only |
+| `authoring_settlements` | Final charge for one chat turn; outlives the chat | `id, attempt_id, tenant_id, report_id, accounting_digest, outcome, failure_reason, usage, charged_nanos, created_at` · append-only · `tenant_id` is a scope copy a trigger takes from the attempt |
 | `authoring_report_receipts` | Acknowledges an interim report without settling | `id, attempt_id, report_id, accounting_digest, acknowledgement, created_at` · append-only |
 
 Money outlives every deletion: `fleet_charges` carries opaque `tenant_id`, `workspace_id` and

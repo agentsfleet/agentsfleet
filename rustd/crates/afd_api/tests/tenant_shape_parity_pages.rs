@@ -19,23 +19,24 @@ use serde_json::Value;
 
 use crate::tenant_shape_parity::{TEXT, WHEN, assert_shape, keys_of};
 
-/// A charge names its workspace, its fleet and that fleet's name as strings,
-/// and only the settlement fields still spell absence as null.
+/// A charge always names its workspace as a string, and every field a setup
+/// chat or an unsettled run may lack still spells absence as null.
 ///
-/// `assert_shape` pins the key SET, which cannot see this: re-widening any of
-/// the three to `Option` emits the very same keys. What changes is the VALUE,
-/// so the type is pinned where the difference shows. All three columns are
-/// `NOT NULL` in `billing.fleet_charges`; the token counts and wall time are
-/// the control, seeded absent, and MUST still emit null.
+/// `assert_shape` pins the key SET, which cannot see this: re-widening
+/// `workspace_id` to `Option` emits the very same keys. What changes is the
+/// VALUE, so the type is pinned where the difference shows. Both sources carry
+/// the workspace `NOT NULL`; the fleet, event, attempt, token and wall fields
+/// are the control, seeded absent, and MUST still emit null.
 #[test]
-fn a_charge_names_its_owners_and_spells_only_settlement_null() {
+fn a_charge_names_its_workspace_and_spells_every_optional_field_null() {
     let emitted = serde_json::to_value(ChargeSummary {
         id: Cow::Borrowed(TEXT),
         tenant_id: Cow::Borrowed(TEXT),
         workspace_id: Cow::Borrowed(TEXT),
-        fleet_id: Cow::Borrowed(TEXT),
-        fleet_name: Cow::Borrowed(TEXT),
-        event_id: Cow::Borrowed(TEXT),
+        fleet_id: None,
+        fleet_name: None,
+        event_id: None,
+        authoring_attempt_id: None,
         charge_type: Cow::Borrowed(TEXT),
         posture: Cow::Borrowed(TEXT),
         model: Cow::Borrowed(TEXT),
@@ -47,14 +48,20 @@ fn a_charge_names_its_owners_and_spells_only_settlement_null() {
     })
     .expect("a wire shape serialises");
 
-    for named in ["workspace_id", "fleet_id", "fleet_name"] {
-        assert_eq!(
-            emitted.get(named),
-            Some(&Value::String(TEXT.to_owned())),
-            "{named} is always present on a charge"
-        );
-    }
-    for absent in ["token_count_input", "token_count_output", "wall_ms"] {
+    assert_eq!(
+        emitted.get("workspace_id"),
+        Some(&Value::String(TEXT.to_owned())),
+        "a charge always names its workspace"
+    );
+    for absent in [
+        "fleet_id",
+        "fleet_name",
+        "event_id",
+        "authoring_attempt_id",
+        "token_count_input",
+        "token_count_output",
+        "wall_ms",
+    ] {
         assert_eq!(
             emitted.get(absent),
             Some(&Value::Null),
@@ -70,9 +77,10 @@ fn a_charge_row_carries_its_whole_provenance() {
             id: Cow::Borrowed(TEXT),
             tenant_id: Cow::Borrowed(TEXT),
             workspace_id: Cow::Borrowed(TEXT),
-            fleet_id: Cow::Borrowed(TEXT),
-            fleet_name: Cow::Borrowed(TEXT),
-            event_id: Cow::Borrowed(TEXT),
+            fleet_id: Some(Cow::Borrowed(TEXT)),
+            fleet_name: Some(Cow::Borrowed(TEXT)),
+            event_id: Some(Cow::Borrowed(TEXT)),
+            authoring_attempt_id: Some(Cow::Borrowed(TEXT)),
             charge_type: Cow::Borrowed(TEXT),
             posture: Cow::Borrowed(TEXT),
             model: Cow::Borrowed(TEXT),
@@ -90,6 +98,7 @@ fn a_charge_row_carries_its_whole_provenance() {
             "fleet_id",
             "fleet_name",
             "event_id",
+            "authoring_attempt_id",
             "charge_type",
             "posture",
             "model",

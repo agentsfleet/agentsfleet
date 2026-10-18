@@ -7,30 +7,32 @@ scoreboard. The backend has had this kind of doctrine for a year
 
 Stack facts this doc assumes: Turbopack dev/build, React Compiler off until
 annotated (`next.config.ts`), Clerk for auth (`auth()` server-side), all
-backend traffic through the `/backend` same-origin rewrite in the browser
-and `NEXT_PUBLIC_API_URL` on the server — which throws when unset
+backend traffic through server reads/actions or authenticated same-origin
+`/live` route handlers. The server uses `NEXT_PUBLIC_API_URL`, which throws when unset
 (`lib/api/client.ts` `requireApiOrigin()`); no silent backend guessing.
 
-## Proposed chat workspace
+## Chat workspace
 
 The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one authoring-and-runtime conversation.
 It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent. Save, Save and run now, and explicit Save to library follow the [single resource reference](api_resources.md).
-The [authoring API proposal](../reviews/workspace-setup/api.md) remains unimplemented; this page does not change its approval status.
+The authoring API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
 ## The five statements
 
 **1 · The server fetches. The client reacts.**
-Every network call to the backend happens in a Server Component or a Server
-Action. A `"use client"` file that calls `fetch` is a bug. The token comes
-from `auth()` on the server; shipping it to the browser to repeat the same
-call adds a round trip and widens the credential surface.
-Grep: `grep -rl '"use client"' app components | xargs grep -l 'fetch('` → one
-file, `app/cli-auth/[session_id]/page.tsx`. That page is the command-line
+Backend authentication happens in a Server Component, Server Action or
+authenticated route handler. The token comes from `auth()` on the server.
+Stateful setup requests use the browser's same-origin cookie through the
+whitelisted `/live/v1/workspaces/{workspaceId}/...` proxy; they carry no browser bearer.
+The proxy authenticates upstream requests, bounds their bodies and checks write origins
+(`lib/api/setup-proxy/`). Browser setup state lives in `lib/api/drafts.ts`.
+
+`app/cli-auth/[session_id]/page.tsx` is another deliberate browser transport. That page is the command-line
 handoff: it derives an Elliptic-Curve Diffie-Hellman key in the browser and
 posts the encrypted result, so the call cannot move to the server without
 moving the private key with it. It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
-the only one.
+separate from the setup proxy.
 Every server fetch runs under one policy, `lib/api/retry.ts`: a declared
 schedule with a 20 s deadline, a 10 s `Retry-After` cap, full jitter, and a
 replay gate read from where the failure happened. A write the server may hold
@@ -114,7 +116,7 @@ The bar between the worlds:
                        │  props: plain data only
   ┌────────────────────▼─── CLIENT (leaves) ───────┐
   │  <FleetTile onRename>  <SecretForm>  <Menu>    │  ← useTransition, useOptimistic,
-  │  no fetch, no token, no secret                 │     useActionState live here
+  │  cookie-only setup transport; no bearer/key    │     useActionState live here
   └────────────────────────────────────────────────┘
 ```
 
@@ -171,36 +173,36 @@ larger cut gets proposed when a route's patch fights these statements.
 
 ## Where this is headed — a Backend-for-Frontend
 
-Deferred; build it with the v3 capability tokens.
+The dashboard server already obtains the customized Clerk session token for
+backend reads, actions and streams. Application code in the browser holds no
+backend bearer. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"
+describes this boundary.
 
-The dashboard rides one Clerk session token today, and the browser still holds it
-in memory to send as a Bearer. The end shape routes every dashboard read through
-`/api/*` route handlers on the Next.js server, so the browser carries only the
-`__session` cookie and never a token. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one
-token" describes what ships now.
+Workspace setup uses a narrow Backend-for-Frontend today: its `/live` handler
+authenticates each allowed request and stream. Writes also require a matching
+origin. This handler is separate from the generic `/backend` rewrite, which
+cannot bypass its checks.
 
-It is deferred, for three reasons.
+A common boundary for every dashboard route remains future work, alongside
+scoped capability tokens. Backend authorization must continue to cover the
+command-line and tenant-key callers as well as the dashboard.
 
-1. **Its value is not needed yet.** What a Backend-for-Frontend buys is one
-   audited boundary and a home for rate limiting. Neither is pressing.
-2. **A dashboard-only boundary is the wrong home for an authorization audit.**
-   `agentsfleetd` sees the command-line, dashboard and tenant-key flows; an
-   `/api` layer sees one of the three.
-3. **It would be rebuilt immediately.** The v3 direction stops `agentsfleetd`
-   trusting Clerk's key set directly and has `agentsfleet` mint scoped,
-   revocable capability tokens of its own. Building the boundary now means
-   building it around a token shape that work replaces.
-
-Build it with the v3 capability-token migration, so the boundary is built once
-around the final token shape.
-
-It also does not close token secrecy. Even behind a Backend-for-Frontend, a
-compromised page can call `getToken()` and get a token. Closing that is a
-Content-Security-Policy and Subresource-Integrity concern, and its own piece of
-work.
+Keeping tokens out of application state does not prevent a compromised page
+from calling Clerk's own token API. Content-Security-Policy and
+Subresource-Integrity remain separate browser protections.
 
 ## Workspace setup and runtime subjects
 
 Opening New fleet allocates no resource. The first mutation creates a creator-private draft. Draft and fleet adapters key all messages, pending sends, streams and caches by account/workspace/subject. Recovery reads durable messages; streams carry authorized hints. Closing, logout, revocation, delete and subject switches clear private buffers; unsent text stays in memory, never browser local storage. No workspace-wide private broadcast is permitted.
 
-A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks; Save and run now exposes Pending until append and receipt complete. Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Improve starts a private draft against a pinned setup revision. Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
+The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
+`StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
+Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
+The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime event streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable events list.
+
+A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks; Save and run now exposes Pending until append and receipt complete. Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision. Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
+
+Review explains the proposed task, run triggers, access, and spending limits before save. Opening review requests no run and creates no fleet.
+The saved view separates setup readiness from first-run admission; an accepted run can still be running.
+The inline saved result shares the assistant conversation viewport, keeping its actions inside the scroll area on narrow or short windows.
+The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.

@@ -32,7 +32,8 @@ pub(super) const LOCK_ATTEMPT: &str = include_str!("lock_attempt.sql");
 /// Records a provider outcome on a dispatch that has none yet.
 ///
 /// `$1` dispatch, `$2` attempt, `$3` status, `$4` private result, `$5` usage,
-/// `$6` and `$7` the unresolved statuses it may move from.
+/// `$6` and `$7` the unresolved statuses it may move from, `$8` the provider's
+/// native reply kept for replay, or NULL.
 pub(super) const COMPLETE: &str = include_str!("complete.sql");
 
 /// Adds a dispatch's output to the attempt and recomputes whether any dispatch
@@ -41,3 +42,10 @@ pub(super) const COMPLETE: &str = include_str!("complete.sql");
 /// `$1` attempt, `$2` output tokens, `$3` whether the outcome is unknown, `$4`
 /// the awaiting-accounting status, `$5` and `$6` the unresolved statuses.
 pub(super) const METER: &str = include_str!("meter.sql");
+
+/// The native replies an attempt's earlier completed calls kept, oldest first,
+/// with the instant each stops being readable.
+///
+/// `$1` attempt · `$2` this call's sequence · `$3` the completed status · `$4`
+/// the call ceiling.
+pub(super) const CONTINUATIONS: &str = include_str!("continuations.sql");

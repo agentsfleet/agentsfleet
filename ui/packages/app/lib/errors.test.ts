@@ -7,7 +7,7 @@ describe("presentError", () => {
     expect(unexpectedErrorMessage(new ApiError("Ask an owner to grant access", 403, "UZ-AUTH-001"), "open models"))
       .toContain("Ask an owner to grant access");
     expect(unexpectedErrorMessage(new Error("private transport details"), "open models"))
-      .toBe("Couldn't open models. Try again, or check Events for what blocked it.");
+      .toBe("Couldn't open models. Try again, or check Activity for what blocked it.");
   });
   it("maps a known errorCode to the curated title + body", () => {
     const p = presentError({ errorCode: "UZ-AUTH-401", action: "load the dashboard" });
@@ -28,18 +28,18 @@ describe("presentError", () => {
 
   it("falls back to the default sentence when only the verb is known", () => {
     const p = presentError({ action: "load more events" });
-    expect(p.title).toBe("Couldn't load more events. Try again, or check Events for what blocked it.");
+    expect(p.title).toBe("Couldn't load more events. Try again, or check Activity for what blocked it.");
     expect(p.code).toBeUndefined();
   });
 
   it("ignores a useless 'Failed to ...' server message in the fallback", () => {
     const p = presentError({ message: "Failed to delete Fleet", action: "delete this Fleet" });
-    expect(p.title).toBe("Couldn't delete this Fleet. Try again, or check Events for what blocked it.");
+    expect(p.title).toBe("Couldn't delete this Fleet. Try again, or check Activity for what blocked it.");
   });
 
   it.each(["constructor", "toString", "__proto__"])("treats inherited key %s as an unknown error code", (errorCode) => {
     expect(presentError({ errorCode, action: "load models" })).toEqual({
-      title: "Couldn't load models. Try again, or check Events for what blocked it.",
+      title: "Couldn't load models. Try again, or check Activity for what blocked it.",
       code: errorCode,
     });
   });

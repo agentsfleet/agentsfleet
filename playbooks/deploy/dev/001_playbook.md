@@ -54,6 +54,7 @@ gh run watch "$run_id" \
 | `compile-runner` and `push-ghcr` | The exact commit built and its image was published. |
 | `deploy-fly` | The API and Cloudflare tunnel deployed. |
 | `deploy-metal` | The enabled development runner deployed and passed its host gate. |
+| `dashboard` | The dashboard and command-line outputs were built, their receipts assembled, and the prebuilt dashboard deployed. Acceptance depends on this job succeeding. |
 | `verify` | Public API health and readiness passed. |
 | `qa` | Dashboard smoke passed. |
 | `acceptance-e2e` | Browser acceptance passed. |

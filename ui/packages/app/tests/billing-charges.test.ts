@@ -21,6 +21,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     fleet_id: "z_1",
     fleet_name: "z_1",
     event_id: "evt_1",
+    authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
     model: "kimi-k2.6",
@@ -83,6 +84,13 @@ describe("describeCharge", () => {
 });
 
 describe("charge identity", () => {
+  it("names setup costs before a fleet exists without marking them deleted", () => {
+    const row = charge({ fleet_id: null, event_id: null, charge_type: CHARGE_TYPE.authoring });
+    expect(chargeAgentLabel(row)).toBe("Fleet setup");
+    expect(describeCharge(row)).toBe("Setup chat · 1,860 tokens · 820 in · 1,040 out");
+    expect(describeCharge({ ...row, token_count_input: null })).toBe("Setup chat · No token usage recorded");
+  });
+
   it("uses the fleet sigil and a readable model label", () => {
     expect(chargeAgentLabel(charge())).toMatch(/^AGENT [A-Z]+-[0-9A-F]{4}$/);
     expect(displayModelName("deepseek-ai/DeepSeek-V4-Pro")).toBe("DeepSeek V4 Pro");

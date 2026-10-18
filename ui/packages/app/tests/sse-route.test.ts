@@ -65,7 +65,8 @@ describe("SSE route handler — auth", () => {
         headers: { "content-type": "text/event-stream" },
       }),
     );
-    await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    await res.text();
     expect(getTokenFn).toHaveBeenCalledWith();
   });
 });
@@ -79,7 +80,8 @@ describe("SSE route handler — upstream call", () => {
         headers: { "content-type": "text/event-stream" },
       }),
     );
-    await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    await res.text();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
@@ -96,7 +98,8 @@ describe("SSE route handler — upstream call", () => {
     fetchSpy.mockResolvedValueOnce(
       new Response("", { status: 200, headers: { "content-type": "text/event-stream" } }),
     );
-    await GET(makeReq(), paramsOf("ws/../admin", "zomb 1"));
+    const res = await GET(makeReq(), paramsOf("ws/../admin", "zomb 1"));
+    await res.text();
     const [url] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
       "https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/zomb%201/events/stream",
@@ -106,13 +109,16 @@ describe("SSE route handler — upstream call", () => {
   it("propagates the request abort signal to the upstream fetch", async () => {
     getTokenFn.mockResolvedValueOnce("tk");
     fetchSpy.mockResolvedValueOnce(
-      new Response("", { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(new ReadableStream<Uint8Array>(), { status: 200, headers: { "content-type": "text/event-stream" } }),
     );
     const ctl = new AbortController();
     const req = new Request("http://localhost/proxy", { method: "GET", signal: ctl.signal });
-    await GET(req, paramsOf("ws_1", "zomb_1"));
+    const res = await GET(req, paramsOf("ws_1", "zomb_1"));
     const [, init] = fetchSpy.mock.calls[0]!;
-    expect((init as RequestInit).signal).toBe(ctl.signal);
+    expect((init as RequestInit).signal?.aborted).toBe(false);
+    ctl.abort();
+    await res.text();
+    expect((init as RequestInit).signal?.aborted).toBe(true);
   });
 });
 

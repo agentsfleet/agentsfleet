@@ -101,6 +101,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
         "activate",
         fleet.as_str(),
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     c.fund().await;
@@ -150,6 +151,7 @@ async fn an_unsaved_receipt_answers_the_save_pending_and_the_same_key_accepts_th
         "receipt",
         fleet.as_str(),
         &format!("NEW.fleet_id='{fleet}'::uuid AND NEW.receipt IS NOT NULL"),
+        "RAISE EXCEPTION 'fixture refusal'",
     )
     .await;
     c.fund().await;

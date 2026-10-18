@@ -26,35 +26,6 @@ body {
   overflow: hidden;
 }
 
-/* Light frames the entry and input; conversation reading surfaces stay solid. */
-:root {
-  --chat-halo-radius: 3rem;
-  --chat-focus-radius: 1.5rem;
-  --chat-light: color-mix(in srgb, var(--pulse) 14%, transparent);
-  --chat-light-focus: color-mix(in srgb, var(--pulse) 22%, transparent);
-  --chat-settle-distance: 0.5rem;
-  --chat-settle-time: 480ms;
-}
-.chat-workspace { box-shadow: 0 0 var(--chat-halo-radius) var(--chat-light); }
-.chat-brand-halo { box-shadow: 0 0 var(--chat-halo-radius) var(--chat-light-focus); }
-.chat-composer {
-  transition: box-shadow var(--chat-settle-time) ease, border-color var(--chat-settle-time) ease;
-}
-.chat-composer:focus-within {
-  box-shadow: 0 0 var(--chat-focus-radius) var(--chat-light-focus);
-  border-color: var(--pulse);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .chat-entrance { animation: chat-settle var(--chat-settle-time) ease-out both; }
-  @keyframes chat-settle {
-    from { opacity: 0; transform: translateY(var(--chat-settle-distance)); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .chat-composer { transition: none; }
-}
-
 :root {
   --app-scrollbar: 6px;
   --app-canvas-gutter: 1rem;
@@ -127,6 +98,3 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 .app-dashboard-canvas:has([data-fleet-authoring]) > div { height: 100%; min-height: 0; }
 .app-sidebar { overflow: hidden; }
-@media (prefers-reduced-motion: no-preference) {
-  .fleet-entrance { animation: chat-settle var(--chat-settle-time) ease-out both; }
-}
