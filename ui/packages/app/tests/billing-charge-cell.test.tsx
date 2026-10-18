@@ -32,7 +32,7 @@ import {
 // A fixed epoch-ms instant so the ISO datetime attribute is deterministic.
 const RECORDED_AT_MS = 1_700_000_000_000;
 /** Fixture-only charge amount; nothing asserts on it. */
-const CREDIT_DEDUCTED_NANOS = 1_000_000;
+const CREDIT_DEDUCTED_NANOS = "1000000";
 /**
  * A purged fleet's identifier, kept on the charge since slot 915.
  *

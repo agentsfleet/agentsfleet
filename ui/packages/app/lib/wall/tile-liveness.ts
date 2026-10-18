@@ -104,8 +104,8 @@ export function formatTileEvents(eventsProcessed: bigint): string {
 }
 
 // Lifetime counters only increase; a retained stream snapshot cannot replace
-// a newer REST read. Stream values have already passed the safe-integer guard.
-export function latestTileCounter(snapshot: bigint, live: number | undefined): bigint {
+// a newer REST read. Stream amounts have already passed the decimal guard.
+export function latestTileCounter(snapshot: bigint, live: number | string | undefined): bigint {
   const current = live === undefined ? snapshot : BigInt(live);
   return current > snapshot ? current : snapshot;
 }

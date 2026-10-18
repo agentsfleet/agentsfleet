@@ -1,5 +1,4 @@
 import { ADMIN_MODEL, METADATA, PRICE } from "@/tests/helpers/catalogue-fixtures";
-import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listAdminModels, createAdminModel, updateAdminModel, deleteAdminModel, setPlatformDefault, listPlatformKeys, activePlatformDefault, type PlatformKey } from "./admin_model_library";
 
@@ -8,7 +7,7 @@ vi.stubGlobal("fetch", fetchMock);
 afterEach(() => fetchMock.mockReset());
 
 function okJson(body: unknown) {
-  return new Response(stringifyCatalogueBody(body), { status: 200 });
+  return new Response(JSON.stringify(body), { status: 200 });
 }
 
 // ── Authed admin client: correct verb + path + body to the wire contract ─────
@@ -29,7 +28,7 @@ describe("admin model catalogue client", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models");
     expect(init.method).toBe("POST");
-    expect(await readCatalogueBody(new Response(init.body))).toEqual(body);
+    expect(JSON.parse(init.body)).toEqual(body);
   });
 
   it("should PATCH caps/rates by id (identity stays immutable)", async () => {
@@ -118,7 +117,7 @@ it("sends exact int64 write amounts and preserves nulls on PATCH", async () => {
   await updateAdminModel("token", "a/b", { metadata: METADATA, prices });
   const [url, init] = fetchMock.mock.calls[0]!;
   expect(url).toContain("/a%2Fb");
-  expect(init.body).toContain('"input_nanos_per_mtok":9223372036854775807');
-  expect(init.body).toContain('"cache_write_5m_nanos_per_mtok":1');
+  expect(init.body).toContain('"input_nanos_per_mtok":"9223372036854775807"');
+  expect(init.body).toContain('"cache_write_5m_nanos_per_mtok":"1"');
   expect(init.body).toContain('"cache_write_nanos_per_mtok":null');
 });

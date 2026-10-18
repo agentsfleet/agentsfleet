@@ -3,6 +3,7 @@ import type { MessageState } from "@assistant-ui/react";
 import { REASONING_SPAN, REPLY_FIGURE } from "./fleetReplyMessage";
 import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { readNanos } from "@/lib/api/nanos";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
 // split out of `fleetMessageRenderers` at its length cap. `convertEvent`
@@ -58,14 +59,14 @@ export function readReasoningSpan(message: MessageState): { startedAtMs: number 
 
 /** What the turn cost, as the run reported it. A figure it did not report
  * reads null, so nothing draws it as zero. */
-export type ReplyFigures = { tokens: number | null; wallMs: number | null; costNanos: number | null };
+export type ReplyFigures = { tokens: number | null; wallMs: number | null; costNanos: string | null };
 
 export function readReplyFigures(message: MessageState): ReplyFigures {
   const custom = message.metadata.custom;
   return {
     tokens: finiteNumber(custom[REPLY_FIGURE.TOKENS]),
     wallMs: finiteNumber(custom[REPLY_FIGURE.WALL_MS]),
-    costNanos: finiteNumber(custom[REPLY_FIGURE.COST_NANOS]),
+    costNanos: readNanos(custom[REPLY_FIGURE.COST_NANOS]),
   };
 }
 

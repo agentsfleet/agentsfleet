@@ -164,7 +164,7 @@ export async function listWorkspaceEvents(
  */
 export type FleetCountersSnapshot = {
   events_processed?: number;
-  budget_used_nanos?: number;
+  budget_used_nanos?: string;
 };
 
 export type ActivityLiveFrame =

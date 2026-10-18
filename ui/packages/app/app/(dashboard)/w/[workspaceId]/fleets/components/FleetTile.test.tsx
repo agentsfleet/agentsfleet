@@ -260,7 +260,7 @@ describe("FleetTile kinds", () => {
       helloReceived: true,
       isLive: true,
       catchingUp: false,
-      counters: { eventsProcessed: 9, spentNanos: 2_500_000_000 },
+      counters: { eventsProcessed: 9, spentNanos: "2500000000" },
     });
     const { getByText } = renderTile(fleet());
     expect(getByText("spent").textContent).toBe("$2.50 spent");
@@ -271,7 +271,7 @@ describe("FleetTile kinds", () => {
     streamMock.mockReturnValue({
       feed: undefined, connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true, isLive: true, catchingUp: false,
-      counters: { eventsProcessed: 9, spentNanos: 2_000_000_000 },
+      counters: { eventsProcessed: 9, spentNanos: "2000000000" },
     });
     const { getByText } = renderTile(fleet({ budget_used_nanos: 9007199254740993n, events_processed: 9007199254740993n }));
     expect(getByText("spent").textContent).toBe("$9007199.25 spent");

@@ -1,3 +1,4 @@
+import { nanosSchema } from "./nanos";
 // Native setup is validated by the daemon; browser reads are parsed independently.
 
 import { z } from "zod";
@@ -83,7 +84,7 @@ export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
   eligibility: z.object({authoring: z.boolean(), runtime: z.boolean()}),
-  pricing: z.object({input_nanos_per_million: decimal, output_nanos_per_million: decimal, runtime_nanos_per_second: decimal}),
+  pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),

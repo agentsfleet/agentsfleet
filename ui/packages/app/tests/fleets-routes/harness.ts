@@ -13,7 +13,7 @@ import {
 } from "../helpers/dashboard-app-mocks";
 
 export type BillingSnapshot = {
-  balance_nanos: number;
+  balance_nanos: string;
   updated_at: string;
   is_exhausted: boolean;
   exhausted_at: string | null;
@@ -70,7 +70,7 @@ afterEach(() => {
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
 export const happyBilling: BillingSnapshot = {
-  balance_nanos: NANOS_PER_USD,
+  balance_nanos: String(NANOS_PER_USD),
   updated_at: "1970-01-01T00:00:00Z",
   is_exhausted: false,
   exhausted_at: null,

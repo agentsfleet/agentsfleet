@@ -1,6 +1,7 @@
 import { instantMs, isInstant } from "@/lib/api/decode";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { readNanos } from "@/lib/api/nanos";
 import {
   ACTOR,
   EVENT_STATUS,
@@ -211,7 +212,7 @@ function applyEventComplete(
     thinking: false,
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
-    costNanos: figure(frame.cost_nanos),
+    costNanos: readNanos(frame.cost_nanos),
   }), nowMs);
   return updated;
 }
@@ -245,7 +246,7 @@ function openFromCompletion(
     resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
     created_at: frame.created_at,
     updated_at: isInstant(frame.updated_at) ? frame.updated_at : frame.created_at,
-    cost_nanos: figure(frame.cost_nanos),
+    cost_nanos: readNanos(frame.cost_nanos),
   };
   return [...prev, rowToEvent(row)];
 }

@@ -1,4 +1,3 @@
-import { readCatalogueBody } from "./catalogue-json";
 import { tenantModelPageSchema, storedModelEntrySchema } from "./tenant-model-schemas";
 import { request } from "./client";
 import type {
@@ -43,7 +42,6 @@ export async function listTenantModelEntries(
     `/v1/tenants/me/models?${params.toString()}`,
     { method: "GET" },
     token,
-    readCatalogueBody,
   ));
 
   // Both platform-default fields describe the tenant rather than the page, and

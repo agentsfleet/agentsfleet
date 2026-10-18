@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { INFERENCE_API, MAX_RATE_NANOS } from "./admin-model-library-types";
+import { INFERENCE_API } from "./admin-model-library-types";
+import { nanosSchema } from "./nanos";
+export { nanosSchema } from "./nanos";
 
 const CONDITIONS_MAX_BYTES = 1024;
 export const CATALOGUE_LIMITS = {
@@ -24,9 +26,6 @@ export function boundedText(max: number) {
 export const instantSchema = z.iso.datetime({ offset: true }).refine(
   (value) => (value.match(/\.(\d+)/)?.[1]?.length ?? 0) <= FRACTION_DIGITS,
   "Use at most nine fractional second digits",
-);
-export const nanosSchema = z.string().refine(
-  (value) => /^(?:0|[1-9]\d*)$/.test(value) && BigInt(value) <= MAX_RATE_NANOS, "Price exceeds the maximum integer nanos amount",
 );
 export const metadataSchema = z.object({
   display_name: boundedText(CATALOGUE_LIMITS.displayName).pipe(z.string().min(1)),

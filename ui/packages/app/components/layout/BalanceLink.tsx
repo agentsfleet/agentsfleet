@@ -14,14 +14,9 @@ export const BALANCE_LABEL = "Credits";
 export const BALANCE_ARIA_LABEL = "Credit balance";
 export const BALANCE_EXHAUSTED_ARIA_LABEL = "Credit balance exhausted";
 
-const CENTS_PER_USD = 100;
-const NANOS_PER_CENT = NANOS_PER_USD / CENTS_PER_USD;
-const CENTS_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const CENTS_PER_USD = 100n;
+const NANOS_PER_CENT = BigInt(NANOS_PER_USD) / CENTS_PER_USD;
+const CENT_DIGITS = 2;
 
 /**
  * Cents in the header, because $4.8066 is a figure to parse and $4.81 is one
@@ -33,17 +28,18 @@ const CENTS_FORMATTER = new Intl.NumberFormat("en-US", {
  * four-decimal precision; under what four decimals can show, it says so,
  * exactly as a sub-visible debit does.
  */
-export function formatHeaderBalance(nanos: number): string {
-  if (nanos > 0 && nanos < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
-  if (nanos > 0 && nanos < NANOS_PER_CENT) return formatDollars(nanos);
-  return CENTS_FORMATTER.format(nanos / NANOS_PER_USD);
+export function formatHeaderBalance(nanos: string): string {
+  const amount = BigInt(nanos);
+  if (amount > 0n && amount < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
+  if (amount > 0n && amount < NANOS_PER_CENT) return formatDollars(nanos);
+  return formatDollars(nanos, CENT_DIGITS);
 }
 
 export function BalanceLink({
   balanceNanos,
   isExhausted,
 }: {
-  balanceNanos: number;
+  balanceNanos: string;
   isExhausted: boolean;
 }) {
   return (

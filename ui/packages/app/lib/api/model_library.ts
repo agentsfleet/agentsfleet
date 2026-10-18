@@ -8,7 +8,6 @@
 
 import { request } from "./client";
 import { modelLibrarySchema, type ModelLibrary } from "./model-library-types";
-import { readCatalogueBody } from "./catalogue-json";
 
 // Route path — mirrors the `ModelLibrary` row of the route table in
 // rustd/crates/afd_http/src/route/tenant.rs (shared verbatim).
@@ -26,5 +25,5 @@ export async function getModelLibrary(token: string, advanced = false, startingA
   if (startingAfter !== null) params.set("starting_after", startingAfter);
   const query = params.toString();
   const path = query ? `${MODEL_LIBRARY_PATH}?${query}` : MODEL_LIBRARY_PATH;
-  return modelLibrarySchema.parse(await request<unknown>(path, { method: "GET" }, token, readCatalogueBody));
+  return modelLibrarySchema.parse(await request<unknown>(path, { method: "GET" }, token));
 }

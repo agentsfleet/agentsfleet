@@ -117,7 +117,7 @@ interface WalkFleet {
 let workspaceId = "";
 let first: WalkFleet | null = null;
 let second: WalkFleet | null = null;
-let balanceBeforeNanos = 0;
+let balanceBeforeNanos = 0n;
 
 /** A fleet an earlier test in the chain installed, or that test's own failure
  * restated so the follower does not report a missing id as a product defect. */
@@ -175,7 +175,7 @@ test.describe.serial("multi-fleet grant journey", () => {
         detail: "the fixture tenant's credit is exhausted; no run can be billed",
       });
     }
-    balanceBeforeNanos = billing.balance_nanos;
+    balanceBeforeNanos = BigInt(billing.balance_nanos);
 
     await signInAs(page, FIXTURE_KEY.regular);
     // The template argument is spelled as a constant at the call site: a
@@ -311,15 +311,14 @@ test.describe.serial("multi-fleet grant journey", () => {
     expect(
       await observed(JOURNEY_LEG.observe, () => chargedToFleets(FIXTURE_KEY.regular, both)),
       "the usage ledger carries no charge for either fleet",
-    ).toBeGreaterThan(0);
+    ).toBeGreaterThan(0n);
 
     // Nanos, not the rendered card: the balance card rounds to cents, and a run
     // costing a tenth of one would leave the figure unchanged.
     await expect
       .poll(
         async () =>
-          (await observed(JOURNEY_LEG.observe, () => readTenantBilling(FIXTURE_KEY.regular)))
-            .balance_nanos,
+          BigInt((await observed(JOURNEY_LEG.observe, () => readTenantBilling(FIXTURE_KEY.regular))).balance_nanos),
         { timeout: BILLING_SETTLE_TIMEOUT_MS },
       )
       .toBeLessThan(balanceBeforeNanos);

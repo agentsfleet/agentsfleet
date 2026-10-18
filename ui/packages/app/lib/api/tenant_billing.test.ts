@@ -12,7 +12,7 @@ describe("getTenantBilling", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        balance_nanos: 4_710_000_000, updated_at: "1970-01-01T00:00:00.001Z", is_exhausted: false, exhausted_at: null,
+        balance_nanos: "4710000000", updated_at: "1970-01-01T00:00:00.001Z", is_exhausted: false, exhausted_at: null,
       }),
     });
     const { getTenantBilling } = await import("./tenant_billing");
@@ -24,7 +24,7 @@ describe("getTenantBilling", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),
     );
-    expect(res.balance_nanos).toBe(4_710_000_000);
+    expect(res.balance_nanos).toBe("4710000000");
   });
 
   it("throws ApiError on 500", async () => {
@@ -35,12 +35,28 @@ describe("getTenantBilling", () => {
     const { getTenantBilling } = await import("./tenant_billing");
     await expect(getTenantBilling("tok")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it.each([12, null, "01", "9223372036854775808"])("refuses malformed balance %j", async balance_nanos => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      balance_nanos, updated_at: "2026-10-18T12:00:00Z", is_exhausted: false, exhausted_at: null,
+    }) });
+    const { getTenantBilling } = await import("./tenant_billing");
+    await expect(getTenantBilling("tok")).rejects.toThrow();
+  });
+
+  it("retains the largest supported balance without converting it to a number", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      balance_nanos: "9223372036854775807", updated_at: "2026-10-18T12:00:00Z", is_exhausted: false, exhausted_at: null,
+    }) });
+    const { getTenantBilling } = await import("./tenant_billing");
+    expect((await getTenantBilling("tok")).balance_nanos).toBe("9223372036854775807");
+  });
 });
 
 describe("listTenantBillingCharges", () => {
   it("GET /v1/tenants/me/billing/charges?limit=50 by default", async () => {
     fetchMock.mockResolvedValue({
-      ok: true, status: 200, json: async () => ({ items: [] }),
+      ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }),
     });
     const { listTenantBillingCharges } = await import("./tenant_billing");
     await listTenantBillingCharges("tok");

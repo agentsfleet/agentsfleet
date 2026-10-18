@@ -3,8 +3,8 @@ import { instantSchema, nanosSchema } from "./catalogue-types";
 import { SECRET_KIND } from "./secrets-types";
 
 const rates = {
-  input_nanos_per_mtok: nanosSchema.optional(), cached_input_nanos_per_mtok: nanosSchema.optional(),
-  output_nanos_per_mtok: nanosSchema.optional(),
+  input_nanos_per_mtok: nanosSchema.nullable().optional(), cached_input_nanos_per_mtok: nanosSchema.nullable().optional(),
+  output_nanos_per_mtok: nanosSchema.nullable().optional(),
 };
 export const tenantModelEntrySchema = z.object({
   id: z.string(), model_id: z.string(), display_name: z.string().nullable().optional(), secret_ref: z.string(),

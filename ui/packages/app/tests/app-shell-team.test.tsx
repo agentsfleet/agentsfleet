@@ -36,6 +36,17 @@ function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> 
 afterEach(() => vi.clearAllMocks());
 
 describe("shell for teams", () => {
+  it("shows the served credit balance in the header and links to billing", () => {
+    usePathname.mockReturnValue("/w/ws_1/fleets");
+    const markup = shell({ billing: {
+      balance_nanos: "3680000000", updated_at: "2026-10-19T00:00:00Z",
+      is_exhausted: false, exhausted_at: null,
+    } });
+    expect(markup).toContain('aria-label="Credit balance"');
+    expect(markup).toContain('href="/settings/billing"');
+    expect(markup).toContain("$3.68");
+  });
+
   it("should show the invite notice above the page only while an invite waits", () => {
     usePathname.mockReturnValue("/w/ws_1/fleets");
     expect(shell({ waitingInvites: WAITING })).toContain(NOTICE);
