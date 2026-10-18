@@ -122,6 +122,9 @@ mod workspace_events;
 mod workspace_events_input;
 #[path = "workspace_member_roles.rs"]
 mod workspace_member_roles;
+
+#[path = "route_auth_walk.rs"]
+mod route_auth_walk;
 #[path = "workspace_preferences.rs"]
 mod workspace_preferences;
 mod workspace_secrets;

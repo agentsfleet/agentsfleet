@@ -15,18 +15,12 @@
 //! unknown-subject refusal — is proven against a real schema in
 //! `afd_tenant`'s own integration suite.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
 use afd_auth::directory::Liveness;
 use afd_auth::scope::{Scope, ScopeSet};
-use axum::response::Response;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, runner_id};
 
@@ -57,19 +51,6 @@ const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 
 /// A capability set, for the case that must behave identically.
 const SOME_SCOPES: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: Response) -> String {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a refusal body is small and complete");
-    let document: Value = serde_json::from_slice(&bytes).expect("every refusal is problem+json");
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
 
 /// Every person credential class reaches the read.
 ///
@@ -168,24 +149,6 @@ async fn a_runner_token_is_refused_the_identity_read() {
     assert!(
         response.status() == StatusCode::UNAUTHORIZED || response.status() == StatusCode::FORBIDDEN,
         "a runner is turned away in front of the handler, not by the store"
-    );
-}
-
-/// A caller with no credential is refused, and told nothing about the route.
-#[tokio::test]
-async fn an_anonymous_caller_is_refused_the_identity_read() {
-    let router = Fleet::new().router();
-
-    let response = harness::send(&router, Method::GET, CURRENT_USER, None, "").await;
-
-    assert_eq!(
-        response.status(),
-        StatusCode::UNAUTHORIZED,
-        "the route is bearer-guarded; requiring no capability is not requiring no credential"
-    );
-    assert!(
-        !detail_of(response).await.is_empty(),
-        "a refusal carries a sentence a reader can act on"
     );
 }
 

@@ -87,18 +87,6 @@ async fn detail_of(response: axum::response::Response) -> String {
 }
 
 #[tokio::test]
-async fn test_the_view_and_the_reset_sit_behind_the_bearer_guard() {
-    for method in [Method::GET, Method::DELETE] {
-        let anonymous = send(PROVIDER_READ, method.clone(), None).await;
-        assert_eq!(
-            anonymous.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} with no credential is the guard's refusal, not a 404"
-        );
-    }
-}
-
-#[tokio::test]
 async fn test_the_scope_rung_separates_the_read_from_the_reset() {
     // A read-scoped credential may view and may not reset; an unscoped one
     // may do neither. The rung, not the handler, is what answers — the pool

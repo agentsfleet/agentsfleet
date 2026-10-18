@@ -46,12 +46,6 @@ const SUBJECT: &str = "user_2workspaces";
 /// What the route table demands of both verbs.
 const WORKSPACE_ADMIN: ScopeSet = ScopeSet::from_scopes(&[Scope::WorkspaceAdmin]);
 
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the scope rung refuses with, as `Denied` renders it.
-const DETAIL_SCOPE: &str = "Requires scope workspace:admin";
-
 /// One request at a fresh router holding one scoped person.
 async fn send(
     scopes: ScopeSet,
@@ -89,31 +83,6 @@ async fn assert_reached_the_verb(response: axum::response::Response, case: &str)
         afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
         "{case}: the refusal is the plane's, not a layer's"
     );
-}
-
-#[tokio::test]
-async fn both_verbs_need_a_credential() {
-    for (method, path) in [(Method::GET, WORKSPACES), (Method::POST, CREATE)] {
-        let response = send(WORKSPACE_ADMIN, method, path, None, "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{path} is not anonymous"
-        );
-    }
-}
-
-#[tokio::test]
-async fn both_verbs_need_the_workspace_admin_scope() {
-    for (method, path) in [(Method::GET, WORKSPACES), (Method::POST, CREATE)] {
-        let response = send(NO_SCOPES, method, path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} without workspace:admin is refused"
-        );
-        assert_eq!(detail_of(response).await, DETAIL_SCOPE, "{path}");
-    }
 }
 
 #[tokio::test]

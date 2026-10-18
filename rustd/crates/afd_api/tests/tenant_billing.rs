@@ -50,12 +50,6 @@ const SUBJECT: &str = "user_2billing";
 /// What the route table demands of both reads.
 const BILLING_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::BillingRead]);
 
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the scope rung refuses with, as `Denied` renders it.
-const DETAIL_SCOPE: &str = "Requires scope billing:read";
-
 /// A GET at `path` presenting `credential`, against a fresh router.
 async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::response::Response {
     let router = Fleet::new()
@@ -91,35 +85,6 @@ async fn assert_reached_the_verb(response: axum::response::Response, case: &str)
         afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
         "{case}: the refusal is the plane's, not a layer's"
     );
-}
-
-#[tokio::test]
-async fn both_reads_need_a_credential() {
-    for path in [BILLING, CHARGES] {
-        let response = read(BILLING_READ, path, None).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{path} is not an anonymous read"
-        );
-    }
-}
-
-#[tokio::test]
-async fn both_reads_need_the_billing_scope() {
-    for path in [BILLING, CHARGES] {
-        let response = read(NO_SCOPES, path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} without billing:read is refused"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_SCOPE,
-            "{path}: the whole requirement is named in the detail"
-        );
-    }
 }
 
 #[tokio::test]

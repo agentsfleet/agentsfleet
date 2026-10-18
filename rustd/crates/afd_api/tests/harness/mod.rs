@@ -105,7 +105,9 @@ pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
-pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace, Ownership};
+pub(crate) use self::stubs_tenant::{
+    DEPLOYMENT, FOREIGN_WORKSPACE, OWNED_WORKSPACE, OneWorkspace, Ownership,
+};
 pub(crate) use self::team_faults::{Failpoint, HarnessTeam, TeamStep};
 /// Where this fixture deployment's schedule fires would arrive.
 ///
