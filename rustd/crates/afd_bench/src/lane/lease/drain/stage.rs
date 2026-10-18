@@ -143,7 +143,14 @@ impl Staged {
         Plane {
             leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
             gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
-            accounts: Accounts::new(database.clone(), Entropy::new()),
+            accounts: Accounts::new(database.clone()),
+            // The daemon wraps this in its outage policy and metrics; a drain
+            // lane reaches neither, so the bare ledger is the same money path.
+            biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
+                database.clone(),
+                Entropy::new(),
+                Arc::new(afd_core::clock::SystemClock),
+            )),
             memories: Memories::new(database.clone(), Entropy::new()),
             providers: Providers::new(database.clone(), Arc::clone(&self.kek), Entropy::new()),
             vault: Vault::new(database.clone(), Arc::clone(&self.kek)),

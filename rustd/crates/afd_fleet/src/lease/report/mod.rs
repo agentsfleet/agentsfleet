@@ -33,7 +33,6 @@
 //! attaches the instrument. An exporter fused into the money path would be one
 //! a report could not settle without.
 
-use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::report::ReportRequest;
 use jiff::Timestamp;
@@ -43,9 +42,11 @@ use crate::lease::commit::{Committed, TerminalReport};
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
 use crate::lease::tool_trace::{self, TraceOwner};
+use crate::lease::usage::{self, Pricing};
 use crate::lease::verdict::{Terminal, Verdict};
+use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
-use afd_billing::{Cumulative, Meter, Nanos};
+use afd_billing::{Cumulative, Nanos};
 
 /// What one settled report leaves its caller with.
 ///
@@ -103,7 +104,8 @@ pub struct Reconciled {
 impl Plane {
     /// Record one runner's terminal result for a lease it holds.
     ///
-    /// Answers what the final slice drained, so the caller can meter it, and
+    /// Answers what the final slice's usage line cost, so the caller can meter
+    /// it, and
     /// the two identifiers that were only knowable INSIDE this call: the report
     /// names a lease, and which fleet and workspace that lease belonged to is
     /// something the load resolved. The caller needs both to report the run,
@@ -116,7 +118,7 @@ impl Plane {
     /// with [`stale_fence`](crate::error) — neither writes anything. Also
     /// reports a datastore that would not answer, in which case the lease is
     /// left `active` for the runner to re-report against and nothing was
-    /// charged.
+    /// logged.
     pub async fn report(
         &self,
         runner_id: &Uuid7,
@@ -128,13 +130,33 @@ impl Plane {
             return Err(lease_not_found());
         };
 
+        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
         let tool_calls = stored_trace(&lease, request);
-        let meter = self.price_final_slice(&lease, request).await;
-        let report = terminal(
+        let pricing = Pricing::load(
+            self.leases.pool(),
+            posture_of(&lease),
+            &lease.provider,
+            &lease.model,
             lease_id,
-            runner_id,
-            &lease,
-            meter,
+        )
+        .await;
+        // The final slice passes the run's real counts even when the catalogue
+        // could not be read: no later slice can charge held tokens, so they
+        // land on the line as unpriced, visibly, rather than vanishing.
+        let cumulative = Cumulative::reported(
+            request.input_tokens,
+            request.cached_input_tokens,
+            request.output_tokens,
+        );
+        let report = terminal(
+            Subject {
+                id: lease_id,
+                key: &lease_key,
+                runner: runner_id,
+                row: &lease,
+            },
+            cumulative,
+            &pricing,
             request,
             tool_calls.as_deref(),
             now,
@@ -147,10 +169,15 @@ impl Plane {
                 Ok(reconciled(lease, Nanos::ZERO, true))
             }
             Committed::Settled {
-                charged,
+                settlement,
                 closed,
                 owed,
             } => {
+                let charged = usage::charged(settlement.as_deref());
+                if let Some(settled) = settlement.as_deref() {
+                    self.settle_usage(settled).await;
+                }
+                self.release_usage(&lease_key, release_of(request)).await;
                 self.announce(runner_id, request, &lease, closed, charged, now)
                     .await;
                 if let Some(owing) = owed {
@@ -161,52 +188,30 @@ impl Plane {
             }
         }
     }
+}
 
-    /// Price the final slice, fail-OPEN.
-    ///
-    /// The rate resolution is fail-OPEN and the posture is stated here rather
-    /// than inside the resolver: a datastore fault while pricing must not
-    /// refuse a report whose run has already happened, because the run cannot
-    /// be un-run and the alternative is charging nothing at all. So a fault
-    /// meters run-fee-only, exactly as `buildMeterInputs` does — the difference
-    /// is that [`afd_billing::Accounts::meter`] hands the decision UP to here,
-    /// where it is one line a reader can find, instead of absorbing it eight
-    /// frames down.
-    async fn price_final_slice(&self, lease: &Reported, request: &ReportRequest<'_>) -> Meter {
-        let posture = posture_of(lease);
-        let cumulative = Cumulative::reported(
-            request.input_tokens,
-            request.cached_input_tokens,
-            request.output_tokens,
-        );
-        match self
-            .accounts
-            .meter(posture, &lease.provider, &lease.model, cumulative)
-            .await
-        {
-            Ok(meter) => meter,
-            Err(failure) => {
-                let fleet = lease.fleet_id.as_str();
-                let Logged { error_code, reason } = failure.logged();
-                // The counts are the run's totals: whatever no priced renewal
-                // charged goes uncharged, including tokens a faulted renewal
-                // held for later (`renew::hold_tokens`). Logged so the loss is
-                // visible rather than silent.
-                tracing::warn!(
-                    error_code,
-                    fleet_id = fleet,
-                    lease_id = request.lease_id.as_ref(),
-                    input_tokens = cumulative.input,
-                    cached_input_tokens = cumulative.cached,
-                    output_tokens = cumulative.output,
-                    reason,
-                    event = "report_rates_unverified_run_fee_only",
-                    "the catalogue could not be read; the final slice meters runtime only and its tokens go uncharged"
-                );
-                self.accounts.run_fee_meter(cumulative)
-            }
-        }
+/// Why a reported lease's hold is released.
+fn release_of(request: &ReportRequest<'_>) -> Release {
+    if Verdict::of(
+        request.outcome,
+        request.failure_reason,
+        request.failure_detail.as_ref(),
+    )
+    .succeeded()
+    {
+        Release::Completed
+    } else {
+        Release::Failed
     }
+}
+
+/// The lease a report is about, by its three names and its row.
+#[derive(Clone, Copy)]
+struct Subject<'a> {
+    id: &'a str,
+    key: &'a Uuid7,
+    runner: &'a Uuid7,
+    row: &'a Reported,
 }
 
 /// Everything the report's transaction needs, assembled from the wire request.
@@ -217,19 +222,20 @@ impl Plane {
 /// clamped rather than refused — the run happened either way, and refusing it
 /// here would lose the answer over a telemetry field.
 fn terminal<'a>(
-    lease_id: &'a str,
-    runner_id: &'a Uuid7,
-    lease: &'a Reported,
-    meter: Meter,
+    lease: Subject<'a>,
+    cumulative: Cumulative,
+    pricing: &'a Pricing,
     request: &'a ReportRequest<'a>,
     tool_calls: Option<&'a str>,
     now: Timestamp,
 ) -> TerminalReport<'a> {
     TerminalReport {
-        lease_id,
-        runner_id,
-        lease,
-        meter,
+        lease_id: lease.id,
+        runner_id: lease.runner,
+        lease: lease.row,
+        lease_key: lease.key,
+        cumulative,
+        pricing,
         outcome: Terminal {
             verdict: Verdict::of(
                 request.outcome,

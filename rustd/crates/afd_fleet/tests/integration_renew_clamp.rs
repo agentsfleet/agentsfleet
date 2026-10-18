@@ -16,44 +16,49 @@
 )]
 
 use crate::queue;
-use afd_billing::{Cumulative, Meter, SliceRates};
+use afd_billing::Cumulative;
+use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL, MAX_RUNTIME};
-use afd_fleet::lease::Renewed;
+use afd_fleet::lease::sql::meter::Metering;
+use afd_fleet::lease::usage::Pricing;
+use afd_fleet::lease::{Leases, Renewed};
+use jiff::Timestamp;
 
 use crate::report_seed::{Held, held};
 use crate::rows::{LAPSE, Row};
 use crate::seed::{MODEL, PROVIDER};
 
-/// Rates that charge nothing at all.
-///
-/// These tests are about the DEADLINE arithmetic, not the money: a slice that
-/// charged would make every assertion below depend on the wallet's depth as
-/// well as on the clamp, and the charge has its own coverage in the report
-/// suite next door.
-const FREE: SliceRates = SliceRates {
-    run_nanos_per_sec: 0,
-    input_nanos_per_mtok: 0,
-    cached_input_nanos_per_mtok: 0,
-    output_nanos_per_mtok: 0,
-};
+/// One renewal of `lease`, reporting no tokens.
+async fn extend(
+    leases: &Leases,
+    lease: &str,
+    runner: &Uuid7,
+    priced: (&Uuid7, &Pricing),
+    now: Timestamp,
+) -> afd_fleet::Result<Renewed> {
+    let (lease_key, pricing) = priced;
+    leases
+        .extend(
+            Metering {
+                lease_id: lease,
+                runner_id: runner,
+                cumulative: Cumulative::default(),
+            },
+            lease_key,
+            pricing,
+            now,
+        )
+        .await
+}
 
-/// A meter that prices every slice at zero.
-fn free_meter() -> Meter {
-    Meter {
-        cumulative: Cumulative::default(),
-        rates: FREE,
+/// The deadline a renewal granted, when it extended.
+fn deadline(renewed: &Renewed) -> Option<Timestamp> {
+    match renewed {
+        Renewed::Extended { expires_at, .. } => Some(*expires_at),
+        Renewed::MaxRuntime | Renewed::Lost => None,
     }
 }
 
-/// Dimension 3.4a — a renewal near the ceiling is clamped to it, not past it.
-///
-/// Three renewals, and the middle one is the assertion. An ordinary renewal
-/// takes `now + LEASE_TTL`, because that is the smaller of the two arms. A
-/// lease whose `created_at + MAX_RUNTIME` falls INSIDE that window takes the
-/// ceiling instead — and the run gets the remainder of its budget rather than a
-/// full fresh TTL. A clamp that took the wrong arm would let a wedged agent
-/// renew forever, one TTL at a time, which is the whole failure `MAX_RUNTIME`
-/// exists to prevent.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_renew_clamps_to_the_hard_ceiling() {
@@ -64,6 +69,8 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         issued,
         fleet,
         now,
+        lease_key,
+        pricing,
         ..
     } = held().await;
     let lease = issued.lease_id.as_str();
@@ -71,17 +78,13 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     // An ordinary renewal, well inside the ceiling: the TTL arm wins. Renewal
     // reads the database clock and stamps that instant as the meter's next
     // start, so the deadline is stated against the stamp it wrote.
-    let early = leases
-        .extend(lease, &runner, free_meter(), now)
+    let early = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
         .await
         .expect("the extend must reach the datastore");
     let renewed_at = fixtures.metered_since(&fleet).await;
     assert_eq!(
-        early,
-        Renewed::Extended {
-            expires_at: afd_core::clock::after(renewed_at, LEASE_TTL),
-            charged: afd_billing::Nanos::ZERO,
-        },
+        deadline(&early),
+        Some(afd_core::clock::after(renewed_at, LEASE_TTL)),
         "with hours of budget left, a renewal takes the full lease TTL"
     );
     assert_eq!(
@@ -105,16 +108,12 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         .expect("the lease row carries its start");
     let ceiling = afd_core::clock::after(started, MAX_RUNTIME);
 
-    let clamped = leases
-        .extend(lease, &runner, free_meter(), now)
+    let clamped = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
         .await
         .expect("the extend must reach the datastore");
     assert_eq!(
-        clamped,
-        Renewed::Extended {
-            expires_at: ceiling,
-            charged: afd_billing::Nanos::ZERO,
-        },
+        deadline(&clamped),
+        Some(ceiling),
         "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
     );
     assert_eq!(
@@ -131,8 +130,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         .age(Row::Lease(lease), "created_at", LEASE_TTL)
         .await;
     assert_eq!(
-        leases
-            .extend(lease, &runner, free_meter(), now)
+        extend(&leases, lease, &runner, (&lease_key, &pricing), now)
             .await
             .expect("a capped renewal is an answer, not a fault"),
         Renewed::MaxRuntime,
@@ -168,6 +166,8 @@ async fn test_renew_after_reclaim_is_lost() {
         issued,
         fleet,
         now,
+        lease_key,
+        pricing,
         ..
     } = held().await;
     let lease = issued.lease_id.as_str();
@@ -181,8 +181,7 @@ async fn test_renew_after_reclaim_is_lost() {
         .expect("a lapsed claim is winnable");
 
     assert_eq!(
-        leases
-            .extend(lease, &first, free_meter(), now)
+        extend(&leases, lease, &first, (&lease_key, &pricing), now)
             .await
             .expect("a lost renewal is an answer, not a fault"),
         Renewed::Lost,

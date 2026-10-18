@@ -93,7 +93,9 @@ impl Billing {
                 .bind(i64::from(limit))
                 .bind(sql::CHARGE_TYPE_AUTHORING)
                 .bind(sql::posture::PLATFORM)
-                .bind(sql::posture::SELF_MANAGED),
+                .bind(sql::posture::SELF_MANAGED)
+                .bind(sql::work::FLEET_LEASE)
+                .bind(sql::charge::STAGE),
             Some(after) => sqlx::query_as(sql::SELECT_TENANT_CHARGES_AFTER)
                 .bind(tenant.as_str())
                 .bind(after.created_at.to_sqlx())
@@ -101,7 +103,9 @@ impl Billing {
                 .bind(i64::from(limit))
                 .bind(sql::CHARGE_TYPE_AUTHORING)
                 .bind(sql::posture::PLATFORM)
-                .bind(sql::posture::SELF_MANAGED),
+                .bind(sql::posture::SELF_MANAGED)
+                .bind(sql::work::FLEET_LEASE)
+                .bind(sql::charge::STAGE),
         };
         query
             .fetch_all(connection.as_mut())
@@ -136,7 +140,7 @@ pub struct ChargeRow {
     pub event_id: Option<String>,
     /// The setup attempt a settlement paid for; a fleet charge has none.
     pub authoring_attempt_id: Option<String>,
-    /// `receive` or `stage`, the two halves of one event's cost, or
+    /// `stage` for one usage line of a fleet run, or
     /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.

@@ -134,12 +134,12 @@ pub(super) async fn run_one_to_settlement(
         .await;
     let from = fixtures.metered_since(fleet).await;
     let settled_at = fixtures.enrolled_at();
-    let Settled::Claimed(charged) = fixtures
+    let Settled::Claimed(settlement) = fixtures
         .settle_alone(
             leases,
             issued.lease_id.as_str(),
             runner,
-            run_fee_meter(),
+            afd_billing::Cumulative::default(),
             true,
             settled_at,
         )
@@ -155,10 +155,17 @@ pub(super) async fn run_one_to_settlement(
         slice >= SLICE_NANOS,
         "the aged meter charges at least a slice: {slice}"
     );
+    let settlement = settlement.expect("a slice with runtime logs a usage line");
+    let settled = fixtures
+        .plane()
+        .biller
+        .settle(&settlement)
+        .await
+        .expect("the biller settles the logged line");
     assert_eq!(
-        charged.as_i64(),
+        settled.charged.as_i64(),
         slice,
-        "the charge is the meter's span at one nano per millisecond"
+        "the charge is the meter's span at the run fee"
     );
     let balance = fixtures.balance(tenant).await;
     assert_eq!(

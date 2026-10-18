@@ -33,7 +33,6 @@ pub mod error;
 
 pub mod biller;
 pub mod budget;
-pub mod charge;
 pub mod ledger;
 pub mod limits;
 pub mod meter;
@@ -50,12 +49,11 @@ pub mod tenant;
 pub mod wallet;
 
 pub use self::budget::{Spend, Verdict};
-pub use self::charge::Charged;
 pub use self::error::{Error, Result};
-pub use self::meter::{Cumulative, Meter};
+pub use self::meter::Cumulative;
 pub use self::nanos::{
-    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos, RECEIVE_NANOS,
-    RUN_NANOS_PER_SEC, SliceRates, slice_charge,
+    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
+    RUN_NANOS_PER_SEC,
 };
 pub use self::rates::Posture;
 pub use self::store::Accounts;

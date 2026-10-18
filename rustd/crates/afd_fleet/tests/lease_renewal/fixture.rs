@@ -1,12 +1,14 @@
 //! A capable host with one issued runtime lease, using the real lease store.
 
-use super::expiry::free_meter;
 use crate::{
     queue, requests,
     seed::{self, Seeded},
     support::Fixtures,
 };
+use afd_billing::{Cumulative, Posture};
 use afd_core::{clock, id::Uuid7};
+use afd_fleet::lease::sql::meter::Metering;
+use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Billed, Renewed};
 use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use jiff::Timestamp;
@@ -78,12 +80,24 @@ impl Running {
     }
 
     pub(super) async fn renew_from_old_request(&self) -> Renewed {
+        let pricing = Pricing::load(
+            &self.fixtures.database,
+            Posture::SelfManaged,
+            seed::PROVIDER,
+            seed::MODEL,
+            self.lease.as_str(),
+        )
+        .await;
         self.fixtures
             .leases()
             .extend(
-                self.lease.as_str(),
-                &self.runner,
-                free_meter(),
+                Metering {
+                    lease_id: self.lease.as_str(),
+                    runner_id: &self.runner,
+                    cumulative: Cumulative::default(),
+                },
+                &self.lease,
+                &pricing,
                 afd_core::clock::before(self.now, std::time::Duration::from_millis(10_000)),
             )
             .await

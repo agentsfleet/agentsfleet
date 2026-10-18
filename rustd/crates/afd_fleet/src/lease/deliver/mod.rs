@@ -166,6 +166,13 @@ impl Plane {
         else {
             return claim_lost(runner_id, &admitted.acquired);
         };
+        self.hold_issued(
+            &issued.lease_id,
+            &admitted.billed.tenant_id,
+            &admitted.acquired.workspace_id,
+            admitted.billed.floor,
+        )
+        .await;
         // Here, and not at the claim: a claim is an affinity token, and the
         // dozen refusals between it and this line — a stopped fleet, an
         // unparseable event, a denied budget, an unauthorised branch — end

@@ -1,7 +1,6 @@
 //! A delayed caller cannot revive either half of a lapsed runtime lease.
 
 use super::fixture::Running;
-use afd_billing::{Cumulative, Meter, SliceRates};
 use afd_fleet::lease::Renewed;
 
 use crate::rows::{LAPSE, Row};
@@ -55,16 +54,4 @@ pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timest
         stamp(Row::Slot(&running.fleet), "last_metered_at").await,
         stamp(Row::Slot(&running.fleet), "lease_expires_at").await,
     )
-}
-
-pub(super) fn free_meter() -> Meter {
-    Meter {
-        cumulative: Cumulative::default(),
-        rates: SliceRates {
-            run_nanos_per_sec: 0,
-            input_nanos_per_mtok: 0,
-            cached_input_nanos_per_mtok: 0,
-            output_nanos_per_mtok: 0,
-        },
-    }
 }

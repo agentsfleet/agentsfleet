@@ -118,7 +118,7 @@ async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
     .expect("a seeded fleet has a workspace")
 }
 
-/// Seeds one settled ledger row draining `nanos` for `fleet`.
+/// Seeds one usage line costing `nanos` for `fleet`.
 pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str, nanos: i64) {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
     let mut connection = fixtures
@@ -127,11 +127,14 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO billing.fleet_charges \
-           (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, \
-            model, charged_nanos, event_created_at, created_at, updated_at) \
-         VALUES ($7::uuid, $1::uuid, $2::uuid, $3::uuid, $3, $4, 'receive', 'platform', $5, \
-                 $6, now(), now(), now())",
+        "INSERT INTO billing.usage_lines \
+           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, \
+            event_id, provider, model, posture, requested_at, input_token_count, \
+            cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
+            cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
+            charged_nanos, created_at, updated_at) \
+         VALUES ($7::uuid, $8, $7::uuid, 0, $1::uuid, $2::uuid, $3::uuid, $3, $4, 'anthropic', \
+                 $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now(), now())",
     )
     .bind(tenant)
     .bind(&workspace)
@@ -139,7 +142,8 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
     .bind(format!("event-lease-gates-spent-{}", ready.fleet))
     .bind(MODEL)
     .bind(nanos)
-    .bind(mint_id())
+    .bind(afd_db::test_util::mint_uuid7().as_str())
+    .bind(afd_billing::sql::work::FLEET_LEASE)
     .execute(&mut *connection)
     .await
     .expect("the spend seeds");

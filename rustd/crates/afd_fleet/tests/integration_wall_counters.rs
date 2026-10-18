@@ -167,7 +167,7 @@ async fn a_parked_event_still_reports_its_event_count() {
     );
     assert_eq!(
         frame.pointer("/budget_used_nanos"),
-        Some(&serde_json::json!(0))
+        Some(&serde_json::json!("0"))
     );
 
     // Nothing closes a parked event, so the tail hears nothing more — and in
@@ -180,7 +180,7 @@ async fn a_parked_event_still_reports_its_event_count() {
     let _ = EVENT_COMPLETE;
 }
 
-/// Dimension 1.4. The park writes no ledger row and moves no budget — it is
+/// Dimension 1.4. The park writes no usage line and moves no budget — it is
 /// durably a retry, not a charge — and the row it leaves is still open.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -195,7 +195,7 @@ async fn a_parked_event_moves_no_budget() {
         .expect("a pooled connection");
 
     let ledger_rows: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM billing.fleet_charges WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1::uuid")
             .bind(fleet.as_str())
             .fetch_one(&mut *connection)
             .await

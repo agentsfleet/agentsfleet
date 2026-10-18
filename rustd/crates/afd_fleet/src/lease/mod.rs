@@ -32,6 +32,7 @@ mod mark;
 pub mod memory;
 pub mod message;
 pub mod mint;
+mod money;
 pub mod obligation;
 pub mod pull;
 pub mod reclaim;
@@ -47,6 +48,7 @@ pub mod store;
 mod test_dead;
 mod tool_detail;
 mod tool_trace;
+pub mod usage;
 pub mod verdict;
 pub mod write_fence;
 

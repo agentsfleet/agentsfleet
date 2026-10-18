@@ -20,7 +20,9 @@ use crate::report_seed;
 use afd_fleet::lease::Settled;
 use afd_fleet::lease::sql;
 
-use self::report_seed::{DEEP_POOL, SLICE_NANOS, held, run_fee, run_fee_meter};
+use afd_billing::Cumulative;
+
+use self::report_seed::{DEEP_POOL, SLICE_NANOS, held, run_fee};
 use crate::rows::{LAPSE, Row};
 
 /// Dimension 3.1 — the report's writes land, and every row says what it should.
@@ -45,12 +47,12 @@ async fn test_report_writes_row_parity() {
             &held.leases,
             lease,
             &held.runner,
-            run_fee_meter(),
+            Cumulative::default(),
             true,
             settled_at,
         )
         .await;
-    let Settled::Claimed(charged) = outcome else {
+    let Settled::Claimed(settlement) = outcome else {
         unreachable!("the only holder of this fleet cannot be fenced out")
     };
     let wall_ms = held.metered_from(from).await;
@@ -59,10 +61,14 @@ async fn test_report_writes_row_parity() {
         slice >= SLICE_NANOS,
         "the aged meter charges at least a slice: {slice}"
     );
+    let charged: i64 = settlement
+        .iter()
+        .flat_map(|settled| settled.lines.iter())
+        .map(|line| line.charged.as_i64())
+        .sum();
     assert_eq!(
-        charged.as_i64(),
-        slice,
-        "the charge is the meter's span at one nano per millisecond"
+        charged, slice,
+        "the line is the meter's span at the run fee, rounded up to the nano"
     );
 
     assert_eq!(
@@ -77,28 +83,22 @@ async fn test_report_writes_row_parity() {
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - slice),
-        "the wallet is drawn down by exactly what the settle reported charging"
+        Some(DEEP_POOL),
+        "the claim logs usage and moves no money; the biller charges it after commit"
     );
     assert_eq!(
         held.fixtures
-            .text(
-                Row::Charge(&held.event_id, afd_billing::sql::charge::STAGE),
-                "charged_nanos"
-            )
+            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
             .await,
         Some(slice.to_string()),
-        "the stage row records the same amount the wallet lost"
+        "the usage line records what the slice cost"
     );
     assert_eq!(
         held.fixtures
-            .text(
-                Row::Charge(&held.event_id, afd_billing::sql::charge::STAGE),
-                "wall_ms"
-            )
+            .text(Row::Line(&held.event_id, "0"), "runtime_ms")
             .await,
         Some(wall_ms.to_string()),
-        "the stage row carries the span it charged over, which the budget drain apportions on"
+        "the usage line carries the span it measured"
     );
     assert_eq!(
         held.fixtures
@@ -153,7 +153,7 @@ async fn test_report_stale_fence_rejected() {
             &held.leases,
             lease,
             &held.runner,
-            run_fee_meter(),
+            Cumulative::default(),
             true,
             held.now,
         )
@@ -167,17 +167,14 @@ async fn test_report_stale_fence_rejected() {
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
         before,
-        "a fenced report charges nothing — the wallet arm is gated on the same guard"
+        "a fenced report charges nothing"
     );
     assert_eq!(
         held.fixtures
-            .text(
-                Row::Charge(&held.event_id, afd_billing::sql::charge::STAGE),
-                "charged_nanos"
-            )
+            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
             .await,
         None,
-        "a fenced report writes no stage row at all, not a zero-valued one"
+        "a fenced report logs no usage line at all, not a zero-valued one"
     );
     // BOTH arms, and both `Some("0")` rather than `None`. The counter ROW
     // already exists: `sql::lease::INSERT_LEASE_WITH_EVENT` writes it with
@@ -232,7 +229,7 @@ async fn test_report_dedup_idempotent() {
             &held.leases,
             lease,
             &held.runner,
-            run_fee_meter(),
+            Cumulative::default(),
             true,
             settled_at,
         )
@@ -244,8 +241,8 @@ async fn test_report_dedup_idempotent() {
     let after_first = held.fixtures.balance(&held.tenant).await;
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
-        2,
-        "one receive row and one stage row: the two-rows-per-event invariant"
+        1,
+        "one usage line for the final slice"
     );
 
     let replay = held
@@ -254,7 +251,7 @@ async fn test_report_dedup_idempotent() {
             &held.leases,
             lease,
             &held.runner,
-            run_fee_meter(),
+            Cumulative::default(),
             true,
             settled_at,
         )
@@ -267,8 +264,8 @@ async fn test_report_dedup_idempotent() {
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
-        2,
-        "a replayed report adds no row — the ledger stays at two however often it is re-sent"
+        1,
+        "a replayed report adds no line however often it is re-sent"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,

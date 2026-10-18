@@ -153,7 +153,51 @@ impl Error {
             _ => false,
         }
     }
+
+    /// Whether a statement gave up waiting: on a row lock another transaction
+    /// held past the lock timeout (SQLSTATE `55P03`), or past the statement
+    /// timeout (`57014`).
+    ///
+    /// Contention, not an outage: the datastore answered, and it answered
+    /// "not now". It still leaves the biller without an answer, so
+    /// [`Self::is_unanswered`] counts it with an outage, and the outage policy
+    /// decides what the work does.
+    #[must_use]
+    pub fn is_contended(&self) -> bool {
+        let ErrorKind::Query { source, .. } = self.kind() else {
+            return false;
+        };
+        source
+            .as_database_error()
+            .and_then(sqlx::error::DatabaseError::code)
+            .is_some_and(|code| {
+                code == SQLSTATE_LOCK_NOT_AVAILABLE || code == SQLSTATE_QUERY_CANCELED
+            })
+    }
+
+    /// Whether the biller could not answer: an outage or contention. What the
+    /// outage policy turns on.
+    #[must_use]
+    pub fn is_unanswered(&self) -> bool {
+        self.is_datastore_unavailable() || self.is_contended()
+    }
+
+    /// Whether the payer has no wallet row at all.
+    ///
+    /// A gate admits such a tenant rather than refusing it: the row is written
+    /// at tenant creation, so its absence is an operator gap, and refusing every
+    /// run for it would turn a provisioning defect into an outage.
+    #[must_use]
+    pub fn is_wallet_missing(&self) -> bool {
+        matches!(self.kind(), ErrorKind::WalletMissing)
+    }
 }
+
+/// A row lock was not granted within the lock timeout.
+const SQLSTATE_LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// The statement ran past its timeout and was cancelled.
+const SQLSTATE_QUERY_CANCELED: &str = "57014";
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The billing operation could not be completed";

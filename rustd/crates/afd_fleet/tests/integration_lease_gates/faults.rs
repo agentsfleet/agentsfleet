@@ -7,7 +7,6 @@ use super::*;
 
 use afd_billing::Accounts;
 use afd_core::test_util::trace::Capture;
-use afd_crypto::entropy::Entropy;
 use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::admit::Refusal;
@@ -146,7 +145,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
 /// The fixture plane with a payer ledger whose database never answers.
 fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
     Plane {
-        accounts: Accounts::new(afd_db::test_util::unreachable_db(), Entropy::new()),
+        accounts: Accounts::new(afd_db::test_util::unreachable_db()),
         ..fixtures.plane()
     }
 }

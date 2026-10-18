@@ -61,4 +61,32 @@ CREATE INDEX idx_usage_lines_fleet_id_created_at
 CREATE INDEX idx_usage_lines_created_at_unsettled
     ON billing.usage_lines (created_at) WHERE settled_at IS NULL;
 
+-- Keeps `fleet.activity_counters.budget_used_nanos` equal to the fleet's usage
+-- (rule 5 exception), so the fleet list reads one counter row per fleet rather
+-- than summing lines per row. A line is written once and its price never
+-- changes, so only an insert moves the counter; `ON CONFLICT DO NOTHING` on a
+-- re-sent line inserts nothing and fires nothing. Setup-chat lines name no
+-- fleet and a purged fleet has no counter row, so neither writes.
+CREATE FUNCTION billing.usage_lines_bump_budget() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO pg_catalog, fleet, billing
+AS $$
+BEGIN
+    INSERT INTO fleet.activity_counters
+        (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
+    SELECT f.id, 0, NEW.charged_nanos, f.created_at, NEW.updated_at
+      FROM fleet.fleets f WHERE f.id = NEW.fleet_id
+    ON CONFLICT (fleet_id) DO UPDATE
+       SET budget_used_nanos = fleet.activity_counters.budget_used_nanos
+                             + EXCLUDED.budget_used_nanos,
+           updated_at = GREATEST(fleet.activity_counters.updated_at, EXCLUDED.updated_at);
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_usage_lines_bump_budget
+    AFTER INSERT ON billing.usage_lines
+    FOR EACH ROW WHEN (NEW.fleet_id IS NOT NULL)
+    EXECUTE FUNCTION billing.usage_lines_bump_budget();
+
 GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;

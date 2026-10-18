@@ -2,7 +2,7 @@
 //!
 //! # Why nanos, and why an integer
 //!
-//! `billing.usage_ledger.credit_deducted_nanos` is `BIGINT`, and every drain in
+//! `billing.usage_lines.charged_nanos` is `BIGINT`, and every drain in
 //! this product is a whole number of nanos. One US dollar is
 //! [`NANOS_PER_USD`], which [`afd_core::money`] declares because an account
 //! balance is denominated in it too. The rates below are this crate's alone:
@@ -25,16 +25,6 @@ pub struct Nanos(i64);
 
 pub use afd_core::money::NANOS_PER_USD;
 
-/// What receiving one event costs, under either posture.
-///
-/// Zero, and that is not a placeholder: the receive path prices every posture
-/// the same. The debit still fires, and still
-/// writes its ledger row, because the ROW is what the budget drain and the
-/// charges endpoint read — a charge of zero that is recorded is a different
-/// thing from a charge that never happened, and only one of them can later be
-/// priced without a migration.
-pub const RECEIVE_NANOS: Nanos = Nanos(0);
-
 /// What one second of active runtime costs, under either posture.
 ///
 /// $0.0001/sec, about $0.36/hour. Declared once: the daemon is what charges a
@@ -45,25 +35,20 @@ pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 ///
 /// The runner does not know its real token counts at lease time, so the gate
 /// prices a deliberately small floor.
-pub const ESTIMATE_FLOOR_INPUT_TOKENS: i64 = 100;
+pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 
 /// The output-token floor the issue-time estimate is sized against.
-pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: i64 = 100;
+pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
 
 /// Tokens in the unit a catalogue rate is quoted per.
 ///
-/// `pub` because the settle and renew statements divide by it too, as a bind
-/// parameter — and those statements stayed in `afd_fleet` when the money
-/// arithmetic moved here, so the second reader is now across a crate boundary.
-/// One declaration, two readers (RULE UFS): the SQL and [`slice_charge`] have
-/// to agree on the unit or the statement charges something the pure reference
-/// does not, and that disagreement would be invisible — both would still
-/// return a plausible number.
+/// The [`Rater`](crate::price::Rater) divides every token category by it.
 pub const TOKENS_PER_MTOK: i64 = 1_000_000;
 
 /// Milliseconds in the unit [`RUN_NANOS_PER_SEC`] is quoted per.
 ///
-/// `pub` for the reason [`TOKENS_PER_MTOK`] is.
+/// `pub` because the lease metering statement converts its elapsed interval
+/// with it, as a bind parameter.
 pub const MS_PER_SEC: i64 = 1_000;
 
 impl Nanos {
@@ -123,44 +108,6 @@ impl Nanos {
     }
 }
 
-/// The four per-unit rates one metered slice is charged at.
-///
-/// Resolved once and applied in two places — here, and as bind parameters to
-/// the renewal CTE — so the SQL charges what this charges by construction
-/// rather than by a rate table copied into a statement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SliceRates {
-    /// Charged per second of active runtime, under both postures.
-    pub run_nanos_per_sec: i64,
-    /// Charged per million input tokens. Zero under self-managed.
-    pub input_nanos_per_mtok: i64,
-    /// Charged per million cached input tokens. Zero under self-managed.
-    pub cached_input_nanos_per_mtok: i64,
-    /// Charged per million output tokens. Zero under self-managed.
-    pub output_nanos_per_mtok: i64,
-}
-
-/// What a slice costs at these rates.
-///
-/// Pure, total, and the reference the SQL is pinned against. Every division
-/// truncates toward zero, which is what Postgres `bigint` division does for
-/// non-negative operands — the two agree only because both truncate, so a
-/// change to rounding here is a change to the money in two places.
-#[must_use]
-pub const fn slice_charge(
-    rates: SliceRates,
-    elapsed_ms: i64,
-    input_tokens: i64,
-    cached_input_tokens: i64,
-    output_tokens: i64,
-) -> Nanos {
-    let run = elapsed_ms * rates.run_nanos_per_sec / MS_PER_SEC;
-    let input = rates.input_nanos_per_mtok * input_tokens / TOKENS_PER_MTOK;
-    let cached = rates.cached_input_nanos_per_mtok * cached_input_tokens / TOKENS_PER_MTOK;
-    let output = rates.output_nanos_per_mtok * output_tokens / TOKENS_PER_MTOK;
-    Nanos(run + input + cached + output)
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -168,61 +115,7 @@ mod tests {
         reason = "the validated budget is the conversion fixture precondition"
     )]
 
-    use super::{
-        ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
-        RUN_NANOS_PER_SEC, SliceRates, slice_charge,
-    };
-
-    /// The rates a self-managed tenant meters at: runtime only.
-    const SELF_MANAGED: SliceRates = SliceRates {
-        run_nanos_per_sec: RUN_NANOS_PER_SEC,
-        input_nanos_per_mtok: 0,
-        cached_input_nanos_per_mtok: 0,
-        output_nanos_per_mtok: 0,
-    };
-
-    #[test]
-    fn a_slice_under_self_managed_is_the_run_fee_and_nothing_else() {
-        // Twenty seconds of runtime, and a million tokens of every kind: the
-        // tokens land on the tenant's own provider bill, never here.
-        // pin test: literal is the contract
-        let charged = slice_charge(SELF_MANAGED, 20_000, 1_000_000, 1_000_000, 1_000_000);
-        assert_eq!(charged, Nanos::from_i64(20 * RUN_NANOS_PER_SEC));
-    }
-
-    #[test]
-    fn the_run_fee_keeps_millisecond_precision_and_truncates() {
-        // 1_500ms is a second and a half; truncating division floors it to the
-        // nano rather than rounding up, which is what the renewal CTE does.
-        assert_eq!(
-            slice_charge(SELF_MANAGED, 1_500, 0, 0, 0),
-            Nanos::from_i64(150_000)
-        );
-        // At lease issue no time has elapsed, so the estimate carries no run
-        // fee at all — only the token floor, and only under platform posture.
-        assert_eq!(slice_charge(SELF_MANAGED, 0, 0, 0, 0), Nanos::ZERO);
-    }
-
-    #[test]
-    fn token_tiers_are_priced_per_million_and_truncate_toward_zero() {
-        let platform = SliceRates {
-            run_nanos_per_sec: 0,
-            input_nanos_per_mtok: 3_000_000,
-            cached_input_nanos_per_mtok: 300_000,
-            output_nanos_per_mtok: 15_000_000,
-        };
-        // The estimate floor: 100 in, 100 out, nothing cached. Each tier
-        // truncates independently, exactly as four separate `@divTrunc` calls
-        // do — summing first and dividing once would answer differently.
-        let charged = slice_charge(
-            platform,
-            0,
-            ESTIMATE_FLOOR_INPUT_TOKENS,
-            0,
-            ESTIMATE_FLOOR_OUTPUT_TOKENS,
-        );
-        assert_eq!(charged, Nanos::from_i64(300 + 1_500));
-    }
+    use super::{NANOS_PER_USD, Nanos};
 
     #[test]
     fn nanos_per_usd_is_exact_in_both_representations() {

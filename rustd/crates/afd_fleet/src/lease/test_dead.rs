@@ -63,7 +63,8 @@ pub(crate) fn plane() -> Plane {
     Plane {
         leases: leases(),
         gates: Gates::new(database(), queue(), Entropy::new()),
-        accounts: Accounts::new(database(), Entropy::new()),
+        accounts: Accounts::new(database()),
+        biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),
         providers: Providers::new(database(), Arc::clone(&kek), Entropy::new()),
         vault: Vault::new(database(), kek),
@@ -74,6 +75,15 @@ pub(crate) fn plane() -> Plane {
         grants: afd_approval::IntegrationGrants::new(database(), Entropy::new()),
         thread: Arc::new(afd_events::History::new(database())),
     }
+}
+
+/// The built-in biller over the dead pool.
+pub(crate) fn biller() -> afd_billing::ledger::LedgerBiller {
+    afd_billing::ledger::LedgerBiller::new(
+        database(),
+        Entropy::new(),
+        Arc::new(afd_core::clock::SystemClock),
+    )
 }
 
 /// A fixed identifier, distinct per `seed`.

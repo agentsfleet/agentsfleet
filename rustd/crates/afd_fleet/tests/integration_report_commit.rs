@@ -79,6 +79,7 @@ async fn assert_a_refused_result_charges_nothing(
             lease_id,
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_POSTGRES_REFUSES,
             settled_at,
         ))
@@ -114,13 +115,14 @@ async fn assert_the_retry_commits_all_four(
             lease_id,
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
         .await
         .expect("the retry must reach the datastore");
     let Committed::Settled {
-        charged,
+        settlement,
         closed,
         owed,
     } = committed
@@ -133,9 +135,9 @@ async fn assert_the_retry_commits_all_four(
         "the aged meter charges at least a slice: {slice}"
     );
     assert_eq!(
-        charged.as_i64(),
+        line_charge(settlement.as_deref()),
         slice,
-        "the retry charges the slice ONCE — the refused attempt charged nothing"
+        "the retry logs the slice ONCE — the refused attempt logged nothing"
     );
     assert!(
         owed.is_none(),
@@ -184,6 +186,7 @@ async fn assert_the_repeat_changes_nothing(
             held.issued.lease_id.as_str(),
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
@@ -235,13 +238,14 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
         .await
         .expect("the report must reach the datastore");
     let Committed::Settled {
-        charged,
+        settlement,
         closed,
         owed,
     } = committed
@@ -249,9 +253,9 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         unreachable!("the lease is this runner's and still active, so the claim wins")
     };
     assert_eq!(
-        charged.as_i64(),
+        line_charge(settlement.as_deref()),
         run_fee(held.metered_from(from).await),
-        "the run happened and is charged for, whatever the event row already said"
+        "the run happened and its usage is logged, whatever the event row already said"
     );
     assert!(
         closed.is_none(),
@@ -280,6 +284,13 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     held.fixtures.cleanup().await;
 }
 
+/// What a committed report's usage line cost; zero when it logged none.
+fn line_charge(settlement: Option<&afd_billing::biller::Settlement>) -> i64 {
+    settlement.map_or(0, |settled| {
+        settled.lines.iter().map(|line| line.charged.as_i64()).sum()
+    })
+}
+
 /// Every row the committed transaction wrote, asserted as a set.
 ///
 /// Called after the settle and again after the repeat. The repeat charges
@@ -290,13 +301,21 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     let lease_id = held.issued.lease_id.as_str();
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - slice),
-        "the wallet is drawn down by one slice, however many times the report is sent"
+        Some(DEEP_POOL),
+        "the report's transaction logs usage and moves no money: the biller charges \
+         after commit"
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
         LEDGER_ROWS_AFTER_SETTLE,
-        "one receive row and one stage row: the two-rows-per-event invariant"
+        "one usage line for the final slice, however many times the report is sent"
+    );
+    assert_eq!(
+        held.fixtures
+            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
+            .await,
+        Some(slice.to_string()),
+        "the line is priced at the slice it measured"
     );
     assert_eq!(
         held.fixtures.text(Row::Lease(lease_id), "status").await,

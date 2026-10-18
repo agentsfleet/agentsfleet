@@ -27,6 +27,9 @@ afd_crypto.workspace = true
 afd_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
 afd_wire.workspace = true
+# The billing families: every reservation and settlement is counted where the
+# biller is called, the one place both products and the sweeper pass through.
+afd_observability.workspace = true
 # `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
 async-trait.workspace = true
 # Only the conformance suite races two reservations on one task.
@@ -41,8 +44,6 @@ jiff-sqlx.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
-# The charges cursor's identifier bound, declared on the decoded boundary.
-garde.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's

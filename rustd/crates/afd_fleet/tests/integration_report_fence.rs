@@ -55,6 +55,7 @@ async fn test_a_superseded_report_commits_nothing() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             held.now,
         ))
@@ -76,6 +77,7 @@ async fn test_a_superseded_report_commits_nothing() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             held.now,
         ))
