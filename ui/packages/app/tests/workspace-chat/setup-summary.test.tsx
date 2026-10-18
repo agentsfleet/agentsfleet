@@ -70,7 +70,7 @@ it.each([undefined, UTC, "Asia/Kolkata"])("previews scheduled timing in the runt
   render(<SetupSummary definition={definition([{type: "cron", schedule: SCHEDULE, timezone}])} />, {wrapper: TooltipProvider});
   const timing = screen.getByText(/Next scheduled time/);
   const text = timing.textContent;
-  expect(text).toContain(`Schedule timezone: ${timezone ?? UTC}`);
+  expect(text).toContain(`Timezone: ${timezone ?? UTC}`);
   expect(timing.querySelector("time")?.getAttribute("datetime")).toBe(timezone === "Asia/Kolkata" ? "2026-10-18T03:30:00.000Z" : "2026-10-18T09:00:00.000Z");
   expect(text).toContain("must be registered");
 });
@@ -100,7 +100,7 @@ it("shows declared access and exact daily and monthly limits without rounding la
   expect(screen.getByText(/Connected accounts:/).closest("li")?.textContent).toContain(SOURCE);
   expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
   expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
-  expect(screen.getByText(/Network:/).closest("li")?.textContent).toContain("Read-only policy enabled; see advanced details for exceptions.");
+  expect(screen.getByText(/Network:/).closest("li")?.textContent).toContain("Read-only policy enabled.");
   // Pin test: exact decimal limits must survive values beyond Number.MAX_SAFE_INTEGER.
   expect(screen.getByText(/Spending limit:/).closest("li")?.textContent).toContain("$0.000000001 per day; $9223372036.854775807 per month.");
 });

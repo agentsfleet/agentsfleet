@@ -15,8 +15,9 @@ const RECENT_DELIVERY_AGE_MS = 1_000;
 describe("TriggerPanel", () => {
   it.each([{triggers: undefined}, {triggers: []}])("explains chat and steer access with no external triggers (%j)", ({triggers: empty}) => {
     render(<TriggerPanel triggers={empty} />);
-    expect(screen.getByText("Chat and steer messages only")).toBeTruthy();
-    expect(screen.getByText(/Review and Apply affect new work/i)).toBeTruthy();
+    expect(screen.getByText("Runs when you send a message")).toBeTruthy();
+    expect(screen.getByText(/No automatic triggers or schedules/)).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText(/reinstall/i)).toBeNull();
     expect(screen.queryByText(/webhook url/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /copy/i })).toBeNull();
@@ -24,10 +25,10 @@ describe("TriggerPanel", () => {
 
   it("shows generic configured-trigger details in declared order", () => {
     render(<TriggerPanel triggers={triggers} />);
-    expect(screen.getByText("github · pull_request")).toBeTruthy();
-    expect(screen.getByText("*/15 * * * *")).toBeTruthy();
+    expect(screen.getByText(/When github sends pull_request/)).toBeTruthy();
+    expect(screen.getByText(/On a schedule:/)).toBeTruthy();
     expect(screen.getByText("Chat mention")).toBeTruthy();
-    expect(screen.getByText("slack · C0123456789")).toBeTruthy();
+    expect(screen.getByText(/When mentioned in slack: C0123456789/)).toBeTruthy();
     expect(screen.queryByText(/https?:\/\//i)).toBeNull();
   });
 
@@ -49,8 +50,14 @@ describe("TriggerPanel", () => {
         lastDeliveryByKey={{ [triggerKey(trigger)]: new Date(Date.now() - RECENT_DELIVERY_AGE_MS).toISOString() }}
       />,
     );
-    expect(screen.getByText("linear")).toBeTruthy();
+    expect(screen.getByText(/When linear sends an event/)).toBeTruthy();
     expect(screen.getByText(/Last delivery/)).toBeTruthy();
+  });
+
+  it("keeps failed history lookups distinct from no deliveries", () => {
+    render(<TriggerPanel triggers={[triggers[0]!]} lastDeliveryByKey={{}} />);
+    expect(screen.getByText("Delivery history unavailable")).toBeTruthy();
+    expect(screen.queryByText("No deliveries yet")).toBeNull();
   });
 
   it("keeps trigger keys stable across supported trigger types", () => {

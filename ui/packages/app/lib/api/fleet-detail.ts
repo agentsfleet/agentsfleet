@@ -1,14 +1,9 @@
 import { z } from "zod";
 import { Instant } from "./decode";
-import { AGENT_TRIGGER_TYPE } from "@/lib/types";
+import { FleetTriggerSchema } from "./fleet-trigger";
 import { DefinitionSchema, FleetSchema } from "./draft-types";
 
-const TriggerSchema = z.discriminatedUnion("type", [
-  z.object({type: z.literal(AGENT_TRIGGER_TYPE.cron), schedule: z.string()}),
-  z.object({type: z.literal(AGENT_TRIGGER_TYPE.webhook), source: z.string(), events: z.array(z.string()).optional()}),
-  z.object({type: z.literal(AGENT_TRIGGER_TYPE.mention), source: z.string(), channels: z.array(z.string())}),
-]);
-const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(TriggerSchema).optional()}).passthrough()});
+const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()}).passthrough()});
 const DecimalSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
 
 // REST counters are decimal strings. Decode to bigint because nanos can
@@ -17,7 +12,7 @@ const CounterSchema = DecimalSchema.transform((value) => BigInt(value));
 export const FleetSummarySchema = z.object({
   id: z.string(), name: z.string(), status: z.string(),
   created_at: Instant, updated_at: Instant,
-  triggers: z.array(TriggerSchema).optional(),
+  triggers: z.array(FleetTriggerSchema).optional(),
   events_processed: CounterSchema, budget_used_nanos: CounterSchema,
 });
 export const FleetListSchema = z.object({

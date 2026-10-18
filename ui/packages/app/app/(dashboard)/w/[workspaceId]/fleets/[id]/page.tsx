@@ -25,7 +25,6 @@ import {
   cursorTrailFrom,
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
-import TriggerPanel from "./components/TriggerPanel";
 import { SetupPanel } from "./components/SetupPanel";
 import MemoryPanel from "./components/MemoryPanel";
 import { ChatView } from "./components/ChatView";
@@ -180,9 +179,7 @@ async function loadFleetView(
     case FLEET_VIEW.memory:
       return loadMemoryView(context, data);
     case FLEET_VIEW.setup:
-      return <SetupPanel workspaceId={context.workspaceId} fleet={context.fleet} />;
-    case FLEET_VIEW.trigger:
-      return loadTriggerView(context);
+      return loadSetupView(context);
     default:
       return loadChatView(context, data);
   }
@@ -250,7 +247,7 @@ async function loadMemoryView(
   );
 }
 
-async function loadTriggerView(context: PageContext) {
+async function loadSetupView(context: PageContext) {
   const { workspaceId, fleet, token } = context;
   const triggers = fleet.triggers;
   const lastDeliveryByKey = await resolveLastDeliveries(
@@ -261,7 +258,7 @@ async function loadTriggerView(context: PageContext) {
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-lg">
-      <TriggerPanel triggers={triggers} lastDeliveryByKey={lastDeliveryByKey} />
+      <SetupPanel workspaceId={workspaceId} fleet={fleet} lastDeliveryByKey={lastDeliveryByKey} />
     </div>
   );
 }

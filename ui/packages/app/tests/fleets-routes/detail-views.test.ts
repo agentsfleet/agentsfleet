@@ -203,7 +203,7 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain("Activity");
     expect(markup).toContain("Memory");
     expect(markup).toContain("Setup");
-    expect(markup).toContain("Trigger");
+    expect(markup).not.toContain("?view=trigger");
     expect(markup).not.toContain("Settings");
     // The panel paints in the same pass as the tabs. A skeleton between them
     // stays up at least 300 ms once shown, and made Chat land later than its reads.
@@ -228,7 +228,7 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("fleet Setup view isolates reviewed instructions and links to private improvement", async () => {
+  it("fleet Setup view shows saved instructions and links to private improvement", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");

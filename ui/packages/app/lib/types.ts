@@ -5,6 +5,7 @@
 import type { z } from "zod";
 import type { tenantModelEntrySchema, tenantPlatformDefaultSchema } from "./api/tenant-model-schemas";
 import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
+import type { FleetTriggerSchema } from "./api/fleet-trigger";
 
 export type CommandClass = "safe" | "sensitive" | "critical";
 
@@ -23,10 +24,7 @@ export type ApiError = {
 // carries the chat provider and the one channel it answers in.
 export const AGENT_TRIGGER_TYPE = {webhook: "webhook", cron: "cron", mention: "mention"} as const;
 
-export type FleetTrigger =
-  | { type: "webhook"; source: string; events?: string[] }
-  | { type: "cron"; schedule: string }
-  | { type: "mention"; source: string; channels: string[] };
+export type FleetTrigger = z.infer<typeof FleetTriggerSchema>;
 
 export type Fleet = NativeFleetSummary;
 

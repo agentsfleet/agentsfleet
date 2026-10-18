@@ -1,8 +1,6 @@
 import type { FleetTrigger } from "@/lib/types";
-import Link from "next/link";
 import {
   Badge,
-  Button,
   DashboardPanelTitle,
   EmptyState,
   List,
@@ -13,18 +11,19 @@ import {
 import { ZapIcon } from "lucide-react";
 import { AGENT_TRIGGER_TYPE } from "@/lib/types";
 import { triggerKey } from "./trigger-key";
+import { FleetTriggerSummary } from "@/components/domain/FleetTriggerSummary";
 
 export { triggerKey } from "./trigger-key";
 
 type Props = {
   triggers?: FleetTrigger[];
-  lastDeliveryByKey?: Record<string, string | null>;
+  lastDeliveryByKey?: Record<string, string | null | undefined>;
 };
 
 const TRIGGERS_TITLE = "Configured triggers";
-const TRIGGERS_EMPTY_TITLE = "Chat and steer messages only";
+const TRIGGERS_EMPTY_TITLE = "Runs when you send a message";
 const TRIGGERS_EMPTY_DESCRIPTION =
-  "Open Setup and improve this fleet to add a trigger.";
+  "No automatic triggers or schedules are configured for this fleet.";
 
 export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props) {
   return (
@@ -35,7 +34,6 @@ export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props
             icon={<ZapIcon size={28} />}
             title={TRIGGERS_EMPTY_TITLE}
             description={TRIGGERS_EMPTY_DESCRIPTION}
-            action={<Button asChild variant="secondary"><Link href="?view=setup">Open setup</Link></Button>}
           />
         ) : (
           <List variant="ordered" className="flex list-none flex-col gap-sm space-y-0 pl-0">
@@ -52,9 +50,6 @@ export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props
             })}
           </List>
         )}
-        <p className="text-sm text-muted-foreground">
-          Review and Apply affect new work. Running work keeps the setup it started with.
-        </p>
     </Section>
   );
 }
@@ -71,7 +66,7 @@ function TriggerRow({
       <div className="min-w-0">
         <p className="font-sans text-sm text-foreground">{triggerLabel(trigger)}</p>
         <p className="mt-xs break-words text-sm text-muted-foreground">
-          {triggerDetail(trigger)}
+          <FleetTriggerSummary trigger={trigger} />
         </p>
       </div>
       <LastDelivery at={lastDeliveryAt} />
@@ -90,21 +85,8 @@ function triggerLabel(trigger: FleetTrigger): string {
   }
 }
 
-function triggerDetail(trigger: FleetTrigger): string {
-  switch (trigger.type) {
-    case AGENT_TRIGGER_TYPE.webhook: {
-      const events = trigger.events?.length ? ` · ${trigger.events.join(", ")}` : "";
-      return `${trigger.source}${events}`;
-    }
-    case AGENT_TRIGGER_TYPE.cron:
-      return trigger.schedule;
-    case AGENT_TRIGGER_TYPE.mention:
-      return `${trigger.source} · ${trigger.channels.join(", ")}`;
-  }
-}
-
 function LastDelivery({ at }: { at: string | null | undefined }) {
-  if (at === undefined) return null;
+  if (at === undefined) return <Badge variant="default">Delivery history unavailable</Badge>;
   if (at === null) {
     return (
       <Badge variant="default" title="No recorded delivery has reached this trigger yet.">
