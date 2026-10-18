@@ -1,4 +1,6 @@
 import { request, requestWithRetry } from "./client";
+import { EventsPageSchema, type EventRow, type EventsPage } from "./event-history-schema";
+export type { EventRow, EventsPage } from "./event-history-schema";
 
 import type { RetryOptions } from "./retry";
 import { buildQuery } from "./events-types";
@@ -27,41 +29,6 @@ export type EventType = "chat" | "webhook" | "cron" | "continuation";
 export type EventStatusValue = EventStatus | (string & {});
 
 export type EventTypeValue = EventType | (string & {});
-
-export type EventRow = {
-  event_id: string;
-  fleet_id: string;
-  workspace_id: string;
-  actor: string;
-  event_type: EventTypeValue;
-  status: EventStatusValue;
-  tokens: number | null;
-  wall_ms: number | null;
-  failure_label: string | null;
-  /**
-   * Human-readable cause line from the runner's classification site (which
-   * check failed, and why). `null` on success or when an older runner omitted
-   * it — every surface then falls back to the canned `failure_label` sentence.
-   */
-  failure_detail: string | null;
-  resumes_event_id: string | null;
-  /**
-   * Summed telemetry `credit_deducted_nanos` for this event — server truth
-   * (M131 §2). `null` when the event recorded no telemetry: the ledger renders
-   * that as unknown (`—`), never a fabricated zero, and never derives cost from
-   * `tokens`.
-   */
-  cost_nanos: number | null;
-  /** epoch milliseconds */
-  created_at: string;
-  /** epoch milliseconds */
-  updated_at: string;
-};
-
-export type EventsPage = {
-  items: EventRow[];
-  next_cursor: string | null;
-};
 
 /**
  * One event with everything recorded about it — the list row plus the two
@@ -110,12 +77,12 @@ export async function listFleetEvents(
   opts?: Omit<EventsQuery, "fleet_id">,
   retry?: RetryOptions,
 ): Promise<EventsPage> {
-  return requestWithRetry<EventsPage>(
+  return EventsPageSchema.parse(await requestWithRetry<unknown>(
     `${fleetScope(workspaceId, fleetId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
     retry,
-  );
+  ));
 }
 
 export type ThreadPage = {
@@ -178,11 +145,11 @@ export async function listWorkspaceEvents(
   token: string,
   opts?: EventsQuery,
 ): Promise<EventsPage> {
-  return request<EventsPage>(
+  return EventsPageSchema.parse(await request<unknown>(
     `/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
-  );
+  ));
 }
 
 /**
