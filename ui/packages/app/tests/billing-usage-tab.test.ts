@@ -59,7 +59,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: 1_700_000_000_000,
+    recorded_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
@@ -150,7 +150,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
           charge(),
           charge({
             id: "tel_2",
-            recorded_at: 1_800_000_000_000,
+            recorded_at: "2027-01-15T08:00:00Z",
             credit_deducted_nanos: 5_000_000,
           }),
         ],

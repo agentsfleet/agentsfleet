@@ -5,7 +5,7 @@ import { LIBRARY_CARD, PUBLICATION, WORKSPACE, response } from "@/tests/helpers/
 
 const OPERATION = "0199a801-1000-7000-8000-000000000009";
 const TAG = '\"platform-one\"';
-const platform = {card: {...LIBRARY_CARD, visibility: "platform_draft"}, published: false, updated_at: 0};
+const platform = {card: {...LIBRARY_CARD, visibility: "platform_draft"}, published: false, updated_at: "1970-01-01T00:00:00Z"};
 const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
 afterEach(() => vi.unstubAllGlobals());

@@ -34,7 +34,7 @@ describe("exhaustion components", () => {
     const { default: ExhaustionBadge } = await import(
       "../components/domain/ExhaustionBadge"
     );
-    render(React.createElement(ExhaustionBadge, { exhaustedAt: 1713700000000 }));
+    render(React.createElement(ExhaustionBadge, { exhaustedAt: "2024-04-21T11:46:40Z" }));
     const el = screen.getByRole("status", { name: /balance exhausted/i });
     expect(el).toBeTruthy();
     expect(el.getAttribute("title")).toMatch(/^Exhausted since /);
@@ -66,7 +66,7 @@ describe("exhaustion components", () => {
       React.createElement(ExhaustionBanner, {
         billing: {
           balance_nanos: 500_000_000,
-          updated_at: 0,
+          updated_at: "1970-01-01T00:00:00Z",
           is_exhausted: false,
           exhausted_at: null,
         },
@@ -83,9 +83,9 @@ describe("exhaustion components", () => {
       React.createElement(ExhaustionBanner, {
         billing: {
           balance_nanos: 0,
-          updated_at: 1713700000000,
+          updated_at: "2024-04-21T11:46:40Z",
           is_exhausted: true,
-          exhausted_at: 1713700400000,
+          exhausted_at: "2024-04-21T11:53:20Z",
         },
       }),
     );
@@ -104,7 +104,7 @@ describe("exhaustion components", () => {
       React.createElement(ExhaustionBanner, {
         billing: {
           balance_nanos: 0,
-          updated_at: 0,
+          updated_at: "1970-01-01T00:00:00Z",
           is_exhausted: true,
           exhausted_at: null,
         },

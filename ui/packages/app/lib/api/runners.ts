@@ -52,6 +52,10 @@ const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
 
+/** Whether the runner has ever beaten. The daemon writes the Unix epoch for a
+ * runner that never connected (`NEVER_SEEN` in `afd_runner`), never null. */
+export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > 0;
+
 export interface RunnerListItem {
   id: string;
   host_id: string;
@@ -59,8 +63,8 @@ export interface RunnerListItem {
   status: RunnerAdminState;
   liveness: RunnerLiveness;
   labels: string[];
-  last_seen_at: number;
-  created_at: number;
+  last_seen_at: string;
+  created_at: string;
   /** The assignment this host must satisfy. */
   assigned_policy: AssignedPolicy;
   /** The host's last capability report; null until its first report arrives. */
@@ -110,11 +114,11 @@ export interface RunnerDetail extends RunnerListItem {
   /** An operator's outstanding ask, epoch ms; null when none is pending. The
    * daemon clears it on the beat that reports the matching verdict, so a
    * non-null value means "asked, not yet answered". */
-  selftest_requested_at: number | null;
+  selftest_requested_at: string | null;
   /** When the verdict landed, epoch ms; null until a first report. A runner may
    * hold a request with no result, or a result with no request (the startup
    * probe, which no operator asked for). */
-  selftest_completed_at: number | null;
+  selftest_completed_at: string | null;
   /** The latest verdict; null means never self-tested, which the page renders
    * differently from "tested and reported no checks". */
   selftest: SelftestReport | null;
@@ -151,8 +155,8 @@ export interface RunnerLease {
   metered_cached_tokens: number;
   metered_output_tokens: number;
   wall_ms: number | null;
-  lease_expires_at: number;
-  created_at: number;
+  lease_expires_at: string;
+  created_at: string;
 }
 
 export interface RunnerLeaseResponse {
@@ -179,7 +183,7 @@ export interface RunnerAdminStateUpdate {
 export interface RunnerSelftestRequest {
   id: string;
   status: RunnerAdminState;
-  selftest_requested_at: number;
+  selftest_requested_at: string;
 }
 
 /** At least one edit field; both are applied atomically by the daemon. */
@@ -194,14 +198,14 @@ export interface RunnerEditResponse {
   status: RunnerAdminState;
   assigned_policy: AssignedPolicy | null;
   labels: string[] | null;
-  selftest_requested_at: number | null;
+  selftest_requested_at: string | null;
 }
 
 export interface RunnerEventItem {
   id: string;
   runner_id: string;
   event_type: RunnerEventType;
-  occurred_at: number;
+  occurred_at: string;
   metadata: unknown;
 }
 

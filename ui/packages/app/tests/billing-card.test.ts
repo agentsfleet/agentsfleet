@@ -12,7 +12,7 @@ import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
   balance_nanos: 4_710_000_000,
-  updated_at: 1,
+  updated_at: "1970-01-01T00:00:00.001Z",
   is_exhausted: false,
   exhausted_at: null,
 };

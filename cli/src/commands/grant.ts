@@ -21,8 +21,8 @@ const GRANT_ID_FIELD = "id";
 interface GrantRow {
   readonly service?: string | null;
   readonly status?: string | null;
-  readonly created_at?: number | string | null;
-  readonly approved_at?: number | string | null;
+  readonly created_at?: string | null;
+  readonly approved_at?: string | null;
   readonly id?: string | null;
 }
 

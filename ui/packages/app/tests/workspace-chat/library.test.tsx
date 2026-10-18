@@ -65,7 +65,7 @@ it("removes stale actions while inspecting history and uses the selected immutab
   vi.stubGlobal("fetch", vi.fn(async (input: string) => {
     const url = new URL(input, "https://app.test");
     if (url.pathname.endsWith("/fleet-libraries")) return response({items: [LIBRARY_CARD], next_cursor: null});
-    if (url.pathname.endsWith("/revisions")) return response({items: [{id: FLEET_ID, revision: "0", canonical_digest: "older", created_at: 0}], next_cursor: null});
+    if (url.pathname.endsWith("/revisions")) return response({items: [{id: FLEET_ID, revision: "0", canonical_digest: "older", created_at: "1970-01-01T00:00:00Z"}], next_cursor: null});
     if (url.searchParams.get("revision_id") === FLEET_ID) return historical.promise;
     return response(LIBRARY);
   }));
@@ -142,7 +142,7 @@ it("can page recipes and revision history and inspect the same historical revisi
   vi.stubGlobal("fetch", vi.fn(async (input: string) => {
     paths.push(input); const url = new URL(input, "https://app.test");
     if (url.pathname.endsWith("/fleet-libraries")) return response({items: [LIBRARY_CARD], next_cursor: url.searchParams.has("starting_after") ? null : "page-two"});
-    if (url.pathname.endsWith("/revisions")) return response({items: [{id: FLEET_ID, revision: "0", canonical_digest: "older", created_at: 0}], next_cursor: url.searchParams.has("starting_after") ? null : "older"});
+    if (url.pathname.endsWith("/revisions")) return response({items: [{id: FLEET_ID, revision: "0", canonical_digest: "older", created_at: "1970-01-01T00:00:00Z"}], next_cursor: url.searchParams.has("starting_after") ? null : "older"});
     return response({...LIBRARY, head: {...LIBRARY.head, id: url.searchParams.get("revision_id")}});
   }));
   render(<LibraryBrowser {...PROPS} />);

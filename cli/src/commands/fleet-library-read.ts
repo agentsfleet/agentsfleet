@@ -2,6 +2,7 @@
 
 import type { HttpClientShape } from "../services/http-client.ts";
 import { Effect, Schema, type Redacted } from "effect";
+import { instant } from "../lib/instant.ts";
 import { ServerError } from "../errors/index.ts";
 import { QUERY_LIMIT, QUERY_STARTING_AFTER } from "../lib/api-paths.ts";
 
@@ -18,7 +19,7 @@ const card = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   visibility: Schema.Literals(Object.values(LIBRARY_VISIBILITY)),
-  created_at: Schema.Number,
+  created_at: instant,
   requirements: object,
   required_credentials_reasons: Schema.Record(Schema.String, Schema.String),
   head_revision_id: Schema.String,

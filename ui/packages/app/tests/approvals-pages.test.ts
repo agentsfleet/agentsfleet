@@ -122,8 +122,8 @@ describe("ApprovalsPage (workspace inbox)", () => {
           blast_radius: "single repo branch",
           status: "pending",
           detail: "",
-          created_at: 1,
-          expires_at: 2,
+          created_at: "1970-01-01T00:00:00.001Z",
+          expires_at: "1970-01-01T00:00:00.002Z",
           resolved_at: null,
           resolved_by: "",
         },
@@ -180,8 +180,8 @@ describe("ApprovalDetailPage", () => {
       blast_radius: "single repo branch",
       status: "pending",
       detail: "",
-      created_at: 1_700_000_000_000,
-      expires_at: 1_700_086_400_000,
+      created_at: "2023-11-14T22:13:20Z",
+      expires_at: "2023-11-15T22:13:20Z",
       resolved_at: null,
       resolved_by: "",
       ...over,
@@ -231,7 +231,7 @@ describe("ApprovalDetailPage", () => {
       gateFixture({
         status: "approved",
         resolved_by: "user:user_x",
-        resolved_at: 1_700_000_001_000,
+        resolved_at: "2023-11-14T22:13:21Z",
       }),
     );
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
@@ -285,7 +285,7 @@ describe("ApprovalDetailPage", () => {
       gateFixture({
         status: "approved",
         resolved_by: "",
-        resolved_at: 1_700_000_001_000,
+        resolved_at: "2023-11-14T22:13:21Z",
         detail: "approved with caveat",
       }),
     );

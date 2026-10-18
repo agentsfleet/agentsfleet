@@ -22,7 +22,7 @@ function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
     id: "key_1",
     key_name: "ci-token",
     active: true,
-    created_at: CREATED_AT,
+    created_at: new Date(CREATED_AT).toISOString(),
     revoked_at: null,
     ...row,
   };
@@ -43,7 +43,7 @@ afterEach(() => cleanup());
 describe("ApiKeyList timestamps", () => {
   it("shows only the available created and revoked instants", () => {
     const revoked = Date.UTC(2026, 0, 3, 6, 7, 8);
-    const {container} = renderList(makeResponse({active: false, revoked_at: revoked}));
+    const {container} = renderList(makeResponse({active: false, revoked_at: new Date(revoked).toISOString()}));
     const times = Array.from(container.querySelectorAll("time")).map((node) => node.getAttribute("dateTime"));
     expect(times).toContain(new Date(CREATED_AT).toISOString());
     expect(times).toContain(new Date(revoked).toISOString());

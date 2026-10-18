@@ -36,8 +36,8 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    created_at: SEED_AT,
-    updated_at: SEED_AT,
+    created_at: new Date(SEED_AT).toISOString(),
+    updated_at: new Date(SEED_AT).toISOString(),
     ...over,
   };
 }
@@ -45,7 +45,7 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
 function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>> = {}): LiveFrame {
   return {
     kind: FRAME_KIND.EVENT_COMPLETE,
-    ...row({ event_id: "evt_live", tokens: 1200, created_at: SEED_AT + 60_000 }),
+    ...row({ event_id: "evt_live", tokens: 1200, created_at: new Date(SEED_AT + 60_000).toISOString() }),
     fleet_status: "active",
     pending_approvals: 0,
     ...over,
@@ -73,7 +73,7 @@ describe("fleet-stream-registry — fleet facts", () => {
   it("seeds with no facts and the seed's newest figures", () => {
     const { release } = open();
     expect(getSnapshot(FLEET).fleet).toBe(NO_FACTS);
-    expect(getSnapshot(FLEET).latest).toMatchObject({ tokens: 1500, created_at: SEED_AT });
+    expect(getSnapshot(FLEET).latest).toMatchObject({ tokens: 1500, created_at: new Date(SEED_AT).toISOString() });
     release();
   });
 
@@ -161,7 +161,7 @@ describe("fleet-stream-registry — fleet facts", () => {
 describe("fleet-stream-registry — the newest figures", () => {
   it("keep their identity across chunks of a streaming reply", () => {
     const { release, emit } = open();
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "fleet", created_at: SEED_AT + 1 });
+    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "fleet", created_at: new Date(SEED_AT + 1).toISOString() });
     const opened = getSnapshot(FLEET).latest;
     expect(opened).toMatchObject({ status: "received", tokens: null });
     emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "Hel" });
@@ -172,7 +172,7 @@ describe("fleet-stream-registry — the newest figures", () => {
 
   it("move when a backfill lands a newer terminal row", () => {
     const { release } = open();
-    reconcileServerRows(FLEET, [row({ event_id: "evt_missed", tokens: 7, created_at: SEED_AT + 5 })]);
+    reconcileServerRows(FLEET, [row({ event_id: "evt_missed", tokens: 7, created_at: new Date(SEED_AT + 5).toISOString() })]);
     expect(getSnapshot(FLEET).latest).toMatchObject({ tokens: 7 });
     release();
   });

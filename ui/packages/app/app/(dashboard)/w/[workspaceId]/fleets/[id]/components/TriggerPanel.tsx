@@ -16,7 +16,7 @@ export { triggerKey } from "./trigger-key";
 
 type Props = {
   triggers?: FleetTrigger[];
-  lastDeliveryByKey?: Record<string, number | null>;
+  lastDeliveryByKey?: Record<string, string | null>;
 };
 
 const TRIGGERS_TITLE = "Configured triggers";
@@ -63,7 +63,7 @@ function TriggerRow({
   lastDeliveryAt,
 }: {
   trigger: FleetTrigger;
-  lastDeliveryAt: number | null | undefined;
+  lastDeliveryAt: string | null | undefined;
 }) {
   return (
     <div className="flex flex-col gap-sm rounded-md border border-border p-md sm:flex-row sm:items-center sm:justify-between">
@@ -102,7 +102,7 @@ function triggerDetail(trigger: FleetTrigger): string {
   }
 }
 
-function LastDelivery({ at }: { at: number | null | undefined }) {
+function LastDelivery({ at }: { at: string | null | undefined }) {
   if (at === undefined) return null;
   if (at === null) {
     return (
@@ -114,7 +114,7 @@ function LastDelivery({ at }: { at: number | null | undefined }) {
   return (
     <Badge variant="default">
       Last delivery&nbsp;
-      <Time value={new Date(at)} format="relative" tooltip={false} />
+      <Time value={at} format="relative" tooltip={false} />
     </Badge>
   );
 }

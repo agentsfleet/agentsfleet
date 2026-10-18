@@ -6,7 +6,7 @@ import { LIBRARY_ID, REVISION_ID, WORKSPACE, withApi, problem } from "./fixture.
 
 const CARD = {
   id: LIBRARY_ID, name: "argo", description: "Review deployments", visibility: LIBRARY_VISIBILITY.tenant,
-  created_at: 1, requirements: {}, required_credentials_reasons: {}, head_revision_id: REVISION_ID, etag: '"library-1"',
+  created_at: "1970-01-01T00:00:00.001Z", requirements: {}, required_credentials_reasons: {}, head_revision_id: REVISION_ID, etag: '"library-1"',
 };
 const BASE = `/v1/workspaces/${WORKSPACE}/fleet-libraries`;
 const CURSOR = "opaque+/cursor";

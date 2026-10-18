@@ -16,6 +16,7 @@
  * `workspace use` (idempotent) or pass `--workspace` per command.
  */
 
+import { isInstant } from "../../../src/lib/instant.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -42,7 +43,7 @@ const liveCredentials = new Map<string, MintedCliCredential>();
 export interface HydratedWorkspace {
   readonly workspace_id: string;
   readonly name: string | null;
-  readonly created_at: number;
+  readonly created_at: string;
 }
 
 export interface HydrateOptions {
@@ -66,7 +67,7 @@ interface RawWorkspaceItem {
 
 function normalizeWorkspace(
   item: RawWorkspaceItem | null | undefined,
-  fallbackCreatedAt: number,
+  fallbackCreatedAt: string,
 ): HydratedWorkspace | null {
   if (!item || typeof item !== "object") return null;
   const workspaceId = typeof item.workspace_id === "string"
@@ -76,7 +77,7 @@ function normalizeWorkspace(
   return {
     workspace_id: workspaceId,
     name: typeof item.name === "string" ? item.name : null,
-    created_at: Number.isFinite(item.created_at) ? item.created_at as number : fallbackCreatedAt,
+    created_at: isInstant(item.created_at) ? item.created_at : fallbackCreatedAt,
   };
 }
 
@@ -165,7 +166,7 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
   if (typeof body.tenant_id !== "string" || body.tenant_id.length === 0) {
     throw new Error("hydrateWorkspacesForToken: response missing tenant_id");
   }
-  const fallbackCreatedAt = Date.now();
+  const fallbackCreatedAt = new Date().toISOString();
   const rawItems: RawWorkspaceItem[] = Array.isArray(body?.items) ? body.items as RawWorkspaceItem[] : [];
   const items: HydratedWorkspace[] = rawItems
     .map((item) => normalizeWorkspace(item, fallbackCreatedAt))

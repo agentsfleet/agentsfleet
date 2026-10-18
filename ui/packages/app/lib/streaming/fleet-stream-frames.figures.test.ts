@@ -26,8 +26,8 @@ function row(over: Partial<EventRow> = {}): EventRow {
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: 40_000_000,
-    created_at: OPENED_AT,
-    updated_at: OPENED_AT,
+    created_at: new Date(OPENED_AT).toISOString(),
+    updated_at: new Date(OPENED_AT).toISOString(),
     ...over,
   };
 }
@@ -37,7 +37,7 @@ function opened(over: Partial<Extract<LiveFrame, { kind: "event_received" }>> = 
 }
 
 function received(): FleetEvent[] {
-  return applyLiveFrame([], opened({ event_type: "cron", created_at: OPENED_AT }));
+  return applyLiveFrame([], opened({ event_type: "cron", created_at: new Date(OPENED_AT).toISOString() }));
 }
 
 describe("event_received — the opening bracket", () => {
@@ -65,10 +65,10 @@ describe("event_received — a row the browser already holds", () => {
   it("adopts the daemon's instant on the operator's own steer, and keeps everything else", () => {
     const guessed = OPENED_AT - 90_000;
     const held: FleetEvent = {
-      ...rowToEvent(row({ actor: "steer:kishore", status: "received", created_at: guessed })),
+      ...rowToEvent(row({ actor: "steer:kishore", status: "received", created_at: new Date(guessed).toISOString() })),
       text: "deploy it",
     };
-    const [event] = applyLiveFrame([held], opened({ actor: "steer:kishore", created_at: OPENED_AT }));
+    const [event] = applyLiveFrame([held], opened({ actor: "steer:kishore", created_at: new Date(OPENED_AT).toISOString() }));
     expect(event?.createdAt.getTime()).toBe(OPENED_AT);
     expect(event?.text).toBe("deploy it");
   });
@@ -76,7 +76,7 @@ describe("event_received — a row the browser already holds", () => {
   it("keeps the row's identity when the frame carries no instant or the same one", () => {
     const held = rowToEvent(row({ status: "received" }));
     expect(applyLiveFrame([held], opened())[0]).toBe(held);
-    expect(applyLiveFrame([held], opened({ created_at: OPENED_AT }))[0]).toBe(held);
+    expect(applyLiveFrame([held], opened({ created_at: new Date(OPENED_AT).toISOString() }))[0]).toBe(held);
   });
 });
 

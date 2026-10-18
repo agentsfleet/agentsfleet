@@ -50,7 +50,7 @@ export interface PlatformKey {
   source_workspace_id: string;
   model: string | null;
   active: boolean;
-  updated_at: number;
+  updated_at: string;
 }
 
 export interface PlatformKeyList {

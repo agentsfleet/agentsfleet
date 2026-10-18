@@ -12,7 +12,7 @@ describe("getTenantBilling", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        balance_nanos: 4_710_000_000, updated_at: 1, is_exhausted: false, exhausted_at: null,
+        balance_nanos: 4_710_000_000, updated_at: "1970-01-01T00:00:00.001Z", is_exhausted: false, exhausted_at: null,
       }),
     });
     const { getTenantBilling } = await import("./tenant_billing");

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Instant } from "./decode";
 import { AGENT_TRIGGER_TYPE } from "@/lib/types";
 import { DefinitionSchema, FleetSchema } from "./draft-types";
 
@@ -15,7 +16,7 @@ const DecimalSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const CounterSchema = DecimalSchema.transform((value) => BigInt(value));
 export const FleetSummarySchema = z.object({
   id: z.string(), name: z.string(), status: z.string(),
-  created_at: z.number().int(), updated_at: z.number().int(),
+  created_at: Instant, updated_at: Instant,
   triggers: z.array(TriggerSchema).optional(),
   events_processed: CounterSchema, budget_used_nanos: CounterSchema,
 });
@@ -26,7 +27,7 @@ export type NativeFleetSummary = z.infer<typeof FleetSummarySchema>;
 
 export const FleetDetailSchema = FleetSchema.extend({
   definition: DefinitionSchema.extend({config: ConfigSchema.passthrough()}),
-  created_at: z.number().int(), updated_at: z.number().int(),
+  created_at: Instant, updated_at: Instant,
   policy_semantics: z.string(), needs_re_review: z.boolean(),
   events_processed: DecimalSchema, budget_used_nanos: DecimalSchema,
   pending_approvals: z.number().int().nonnegative(),

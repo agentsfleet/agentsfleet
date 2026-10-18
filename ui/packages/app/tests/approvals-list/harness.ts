@@ -67,8 +67,8 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     // express one: a hardcoded `pending` made every row look unanswered.
     status: over.status ?? "pending",
     detail: over.detail ?? "",
-    created_at: over.created_at ?? Date.now() - 60_000,
-    expires_at: over.expires_at ?? Date.now() + 3_600_000,
+    created_at: over.created_at ?? new Date(Date.now() - 60_000).toISOString(),
+    expires_at: over.expires_at ?? new Date(Date.now() + 3_600_000).toISOString(),
     resolved_at: over.resolved_at ?? null,
     resolved_by: over.resolved_by ?? "",
     resolved_by_name: over.resolved_by_name ?? "",

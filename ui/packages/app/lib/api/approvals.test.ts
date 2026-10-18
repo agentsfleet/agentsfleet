@@ -48,8 +48,8 @@ function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
     blast_radius: "single repo branch",
     status: "pending",
     detail: "",
-    created_at: 1_700_000_000_000,
-    expires_at: 1_700_086_400_000,
+    created_at: "2023-11-14T22:13:20Z",
+    expires_at: "2023-11-15T22:13:20Z",
     resolved_at: null,
     resolved_by: "",
     resolved_by_name: "",
@@ -129,7 +129,7 @@ describe("resolve base URL — server-side (window undefined)", () => {
       gate_id: GATE_ID,
       action_id: "a",
       outcome: "approved",
-      resolved_at: 1,
+      resolved_at: "1970-01-01T00:00:00.001Z",
       resolved_by: "user:x",
     });
   }

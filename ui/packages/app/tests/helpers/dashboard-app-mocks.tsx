@@ -154,7 +154,7 @@ export function addSecretFormMock() {
 
 export function secretsListMock() {
   return {
-    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: number }[] }) =>
+    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: string }[] }) =>
       secrets.length === 0
         ? React.createElement("p", { "data-secrets-empty": workspaceId }, "No secrets stored yet")
         : React.createElement(

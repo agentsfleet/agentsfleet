@@ -37,7 +37,7 @@ function liveStream() {
 }
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
-  return { id: "f1", name: "alpha", status: "active", created_at: 0, updated_at: 0, events_processed: 0n, budget_used_nanos: 0n, ...over };
+  return { id: "f1", name: "alpha", status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: 0n, budget_used_nanos: 0n, ...over };
 }
 
 function renderWall(fleets: Fleet[], cursor: string | null = null) {

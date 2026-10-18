@@ -16,10 +16,10 @@ describe("events — happy path (human output)", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
-              { created_at: 1700000000000, actor: "user",  status: "processed",   response_text: "Hello." },
-              { created_at: 1700000060000, actor: "fleet", status: "fleet_error", response_text: "Boom." },
-              { created_at: 1700000120000, actor: "gate",  status: "gate_blocked", response_text: null },
-              { created_at: 1700000180000, actor: "sys",   status: "pending_custom", response_text: "" },
+              { created_at: "2023-11-14T22:13:20Z", actor: "user",  status: "processed",   response_text: "Hello." },
+              { created_at: "2023-11-14T22:14:20Z", actor: "fleet", status: "fleet_error", response_text: "Boom." },
+              { created_at: "2023-11-14T22:15:20Z", actor: "gate",  status: "gate_blocked", response_text: null },
+              { created_at: "2023-11-14T22:16:20Z", actor: "sys",   status: "pending_custom", response_text: "" },
             ],
             next_cursor: null,
           }),
@@ -57,7 +57,7 @@ describe("events — happy path (human output)", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
-            items: [{ created_at: 1700000000000, actor: "user", status: "processed", response_text: "ok" }],
+            items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: "ok" }],
             next_cursor: "cur_abc123",
           }),
       };
@@ -145,7 +145,7 @@ describe("events — happy path (human output)", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
-            items: [{ created_at: 1700000000000, actor: "user", status: "processed", response_text: longText }],
+            items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: longText }],
             next_cursor: null,
           }),
       };
@@ -216,7 +216,7 @@ describe("events — JSON output", () => {
   test("`events <fleet_id> --json` emits raw API envelope to stdout", async () => {
     await authedScope(async () => {
       const envelope = {
-        items: [{ created_at: 1700000000000, actor: "user", status: "processed", response_text: "hi" }],
+        items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: "hi" }],
         next_cursor: "c2",
       };
       const routes: MockRoutes = {

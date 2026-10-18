@@ -53,7 +53,7 @@ export interface WorkspaceItem {
   // Older persisted rows and list responses may carry a missing name.
   // Display callers tolerate this with `name ?? "—"`.
   name: string | null;
-  created_at: number | null;
+  created_at: string | null;
 }
 
 export interface Workspaces {

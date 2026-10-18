@@ -14,9 +14,9 @@ import {
 
 export type BillingSnapshot = {
   balance_nanos: number;
-  updated_at: number;
+  updated_at: string;
   is_exhausted: boolean;
-  exhausted_at: number | null;
+  exhausted_at: string | null;
 };
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -71,14 +71,14 @@ afterEach(() => {
 
 export const happyBilling: BillingSnapshot = {
   balance_nanos: NANOS_PER_USD,
-  updated_at: 0,
+  updated_at: "1970-01-01T00:00:00Z",
   is_exhausted: false,
   exhausted_at: null,
 };
 export const exhaustedBilling: BillingSnapshot = {
   ...happyBilling,
   is_exhausted: true,
-  exhausted_at: 1,
+  exhausted_at: "1970-01-01T00:00:00.001Z",
 };
 export const SAMPLE_TEMPLATES = [
   {
@@ -106,8 +106,8 @@ export function detailBody(over: Record<string, unknown> = {}) {
     events_processed: "0",
     budget_used_nanos: "0",
     pending_approvals: 0,
-    created_at: 1,
-    updated_at: 1,
+    created_at: "1970-01-01T00:00:00.001Z",
+    updated_at: "1970-01-01T00:00:00.001Z",
     ...over,
   };
 }

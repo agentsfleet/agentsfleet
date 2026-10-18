@@ -7,7 +7,7 @@ import { LIBRARY_CARD } from "@/tests/helpers/draft-fixtures";
 const {patch, refresh} = vi.hoisted(() => ({patch: vi.fn(), refresh: vi.fn()}));
 vi.mock("../actions", () => ({patchPlatformLibraryAction: patch}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
-const ENTRY: PlatformEntry = {...LIBRARY_CARD, visibility: "platform_draft", published: false, updated_at: 0,
+const ENTRY: PlatformEntry = {...LIBRARY_CARD, visibility: "platform_draft", published: false, updated_at: "1970-01-01T00:00:00Z",
   requirements: {credentials: ["github"]}, required_credentials_reasons: {github: "Review code"}};
 function show(entry = ENTRY) {
   const saved = vi.fn(), closed = vi.fn();

@@ -22,7 +22,7 @@ describe("secret show", () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
-          jsonResponse(200, { secrets: [{ name: "github", created_at: 1700000000000 }] }),
+          jsonResponse(200, { secrets: [{ name: "github", created_at: "2023-11-14T22:13:20Z" }] }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
@@ -35,7 +35,7 @@ describe("secret show", () => {
         const text = out.read();
         expect(text).toMatch(/exists/i);
         expect(text).toContain("github");
-        expect(text).toContain("1700000000000");
+        expect(text).toContain("2023-11-14T22:13:20Z");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           `GET /v1/workspaces/${WS_ID}/secrets`,
         ]);
@@ -47,7 +47,7 @@ describe("secret show", () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
-          jsonResponse(200, { secrets: [{ name: "slack", created_at: 1700000001000 }] }),
+          jsonResponse(200, { secrets: [{ name: "slack", created_at: "2023-11-14T22:13:21Z" }] }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
@@ -60,11 +60,11 @@ describe("secret show", () => {
         const parsed = JSON.parse(out.read()) as {
           name?: string;
           exists?: boolean;
-          created_at?: number;
+          created_at?: string;
         };
         expect(parsed.name).toBe("slack");
         expect(parsed.exists).toBe(true);
-        expect(parsed.created_at).toBe(1700000001000);
+        expect(parsed.created_at).toBe("2023-11-14T22:13:21Z");
       });
     });
   });
@@ -205,8 +205,8 @@ describe("secret list extra branches", () => {
     await authedScope(async () => {
       const payload = {
         secrets: [
-          { name: "github", created_at: 1700000000000 },
-          { name: "slack", created_at: 1700000000001 },
+          { name: "github", created_at: "2023-11-14T22:13:20Z" },
+          { name: "slack", created_at: "2023-11-14T22:13:20.001Z" },
         ],
       };
       await withMockApi(
@@ -252,7 +252,7 @@ describe("secret list extra branches", () => {
           [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
             jsonResponse(200, {
               secrets: [
-                { name: "alpha", created_at: 1700000000000 },
+                { name: "alpha", created_at: "2023-11-14T22:13:20Z" },
                 { name: "beta", created_at: null },
               ],
             }),

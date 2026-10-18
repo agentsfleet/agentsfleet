@@ -35,8 +35,8 @@ function row(): EventRow {
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: null,
-    created_at: SEED_AT,
-    updated_at: SEED_AT,
+    created_at: new Date(SEED_AT).toISOString(),
+    updated_at: new Date(SEED_AT).toISOString(),
   };
 }
 
@@ -84,7 +84,7 @@ afterEach(() => {
 describe("useFleetRunSummary — what a streaming reply costs the strip", () => {
   it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", async (chunks) => {
     render(React.createElement(Harness));
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: SEED_AT + 1 });
+    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: new Date(SEED_AT + 1).toISOString() });
     const settled = renders;
 
     for (let i = 0; i < chunks; i += 1) {
@@ -97,7 +97,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
       ...row(),
       event_id: "evt_live",
       tokens: 1200,
-      created_at: SEED_AT + 1,
+      created_at: new Date(SEED_AT + 1).toISOString(),
       fleet_status: "active",
       pending_approvals: 0,
     });
@@ -117,7 +117,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
         ...row(),
         event_id: `evt_${i}`,
         tokens: i + 1,
-        created_at: SEED_AT + i + 1,
+        created_at: new Date(SEED_AT + i + 1).toISOString(),
         fleet_status: INITIAL.status,
         pending_approvals: 0,
       });
@@ -136,7 +136,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
       kind: FRAME_KIND.EVENT_COMPLETE,
       ...row(),
       event_id: "evt_live",
-      created_at: SEED_AT + 1,
+      created_at: new Date(SEED_AT + 1).toISOString(),
       fleet_status: "paused",
       pending_approvals: 0,
     });

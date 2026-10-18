@@ -40,15 +40,15 @@ const ACTIVE: ApiKeyRow = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   key_name: "ci-runner",
   active: true,
-  created_at: 1_716_000_000_000,
+  created_at: "2024-05-18T02:40:00Z",
   revoked_at: null,
 };
 const REVOKED: ApiKeyRow = {
   id: "0190bbbb-bbbb-7bbb-bbbb-bbbbbbbbbbbb",
   key_name: "old-zapier",
   active: false,
-  created_at: 1_715_000_000_000,
-  revoked_at: 1_715_900_000_000,
+  created_at: "2024-05-06T12:53:20Z",
+  revoked_at: "2024-05-16T22:53:20Z",
 };
 
 function listResponse(items: ApiKeyRow[], total = items.length): ApiKeyListResponse {
@@ -127,7 +127,7 @@ describe("ApiKeyList component", () => {
       expect(screen.getByLabelText(/Revoke API key ci-runner/i).hasAttribute("disabled")).toBe(true),
     );
 
-    resolveRevoke({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
+    resolveRevoke({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: "1970-01-01T00:00:00.001Z" } });
     // After settle the list re-fetched (row now revoked → Delete affordance).
     await waitFor(() => expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy());
   });
@@ -143,7 +143,7 @@ describe("ApiKeyList component", () => {
   });
 
   it("revoke happy path: confirm → revokeApiKeyAction(id) → list re-fetched", async () => {
-    revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
+    revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: "1970-01-01T00:00:00.001Z" } });
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE]));
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
@@ -164,7 +164,7 @@ describe("ApiKeyList component", () => {
   });
 
   it("a successful revoke whose re-fetch fails leaves the existing rows in place", async () => {
-    revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
+    revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: "1970-01-01T00:00:00.001Z" } });
     // The post-mutation refresh() re-fetch fails → its `if (r.ok)` guard skips
     // apply(), so the rows the user already sees stay put.
     listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "refetch failed", errorCode: "UZ-INTERNAL-003" });
@@ -281,7 +281,7 @@ describe("ApiKeyList component", () => {
     );
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: "1970-01-01T00:00:00.001Z" },
     });
         // The dialog submit is just "Create"; the trigger keeps the noun.
     await user.click(screen.getByRole("button", { name: /create key/i }));

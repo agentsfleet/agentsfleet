@@ -13,7 +13,7 @@ import { SECRET_KIND } from "./secrets-types";
 interface SecretBase {
   name: string;
   /** Epoch milliseconds — `vault.secrets.created_at`, serialized as int64. */
-  created_at: number;
+  created_at: string;
 }
 
 /**

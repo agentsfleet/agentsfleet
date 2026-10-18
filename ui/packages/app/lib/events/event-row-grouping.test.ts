@@ -27,8 +27,8 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: "failure_label" in over ? over.failure_label ?? null : "startup_posture",
     failure_detail: "failure_detail" in over ? over.failure_detail ?? null : "no instructions configured",
     resumes_event_id: null,
-    created_at: over.created_at ?? 1_700_000_000_000,
-    updated_at: 1_700_000_000_000,
+    created_at: over.created_at ?? "2023-11-14T22:13:20Z",
+    updated_at: "2023-11-14T22:13:20Z",
   };
 }
 

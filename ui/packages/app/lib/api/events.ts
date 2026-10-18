@@ -53,9 +53,9 @@ export type EventRow = {
    */
   cost_nanos: number | null;
   /** epoch milliseconds */
-  created_at: number;
+  created_at: string;
   /** epoch milliseconds */
-  updated_at: number;
+  updated_at: string;
 };
 
 export type EventsPage = {
@@ -210,7 +210,7 @@ export type ActivityLiveFrame =
       actor: string;
       event_type?: EventTypeValue;
       message?: string;
-      created_at?: number;
+      created_at?: string;
     }
   // The row as the lease verb opened it: who raised it, how it entered, and
   // the row's own instant. Every field past the identifier is optional on the
@@ -221,7 +221,7 @@ export type ActivityLiveFrame =
       event_id: string;
       actor: string;
       event_type?: EventTypeValue;
-      created_at?: number;
+      created_at?: string;
       /** What a person typed, on a steer's frame only. */
       message?: string;
     } & FleetCountersSnapshot)

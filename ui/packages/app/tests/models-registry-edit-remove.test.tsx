@@ -50,7 +50,7 @@ function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
     kind: "provider_key",
     has_key: true,
     active: false,
-    created_at: 1_777_507_200_000,
+    created_at: "2026-04-30T00:00:00Z",
     ...overrides,
   };
 }
@@ -104,7 +104,7 @@ afterEach(() => cleanup());
 describe("Row actions — Edit", () => {
   it("saves a model change via PATCH; entering a key also replaces the shared secret whole", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     await renderTable(registry([target]));
 
@@ -126,7 +126,7 @@ describe("Row actions — Edit", () => {
 
   it("changes only the model when no key is entered — replace is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
@@ -153,7 +153,7 @@ describe("Row actions — Edit", () => {
 
   it("a failed replace strands only the model write, and the table is re-read to show it", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });
     replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
     const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
@@ -227,7 +227,7 @@ describe("Row actions — Edit", () => {
 
   it("an opaque secret hides the key field and points at the CLI; model edits still work", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5", provider: undefined, kind: "custom_secret" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
     // The dashboard cannot recompose an opaque body, so there is no key input

@@ -35,11 +35,11 @@ describe("ApprovalsList — one read, and only when asked", () => {
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
         initialItems: [
-          gate({ gate_id: "g1", created_at: 200 }),
+          gate({ gate_id: "g1", created_at: "1970-01-01T00:00:00.2Z" }),
           gate({
             gate_id: "g2",
             action_id: "a2",
-            created_at: 100,
+            created_at: "1970-01-01T00:00:00.1Z",
             fleet_id: AGENTSFLEET_B,
             status: "approved",
           }),

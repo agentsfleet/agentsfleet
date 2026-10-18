@@ -17,7 +17,7 @@ describe("secret commands", () => {
         // which is the point: the server owns the name-is-free decision now.
         [`POST /v1/workspaces/${WS_ID}/secrets`]: async (_req, _url, body) => {
           postBody = body;
-          return jsonResponse(201, { name: "github", created_at: Date.now() });
+          return jsonResponse(201, { name: "github", created_at: new Date().toISOString() });
         },
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -168,8 +168,8 @@ describe("secret commands", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () => jsonResponse(200, {
           secrets: [
-            { name: "github", created_at: 1700000000000 },
-            { name: "slack", created_at: 1700000000001 },
+            { name: "github", created_at: "2023-11-14T22:13:20Z" },
+            { name: "slack", created_at: "2023-11-14T22:13:20.001Z" },
           ],
         }),
       };

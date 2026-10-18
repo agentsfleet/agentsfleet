@@ -32,8 +32,8 @@ const BASE: RunnerLease = {
   metered_cached_tokens: 4096,
   metered_output_tokens: 2881,
   wall_ms: 242_000,
-  lease_expires_at: Date.now() - 60_000,
-  created_at: Date.now() - 3_600_000,
+  lease_expires_at: new Date(Date.now() - 60_000).toISOString(),
+  created_at: new Date(Date.now() - 3_600_000).toISOString(),
 };
 
 describe("ReviewLease", () => {

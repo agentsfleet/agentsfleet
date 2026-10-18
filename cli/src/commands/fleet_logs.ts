@@ -12,7 +12,7 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isString } from "../lib/guards.ts";
 import { wsFleetEventsPath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../lib/id.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
+import { ui, EMPTY_CELL, instantCell } from "../output/index.ts";
 import {
   ValidationError,
   type CliError,
@@ -29,7 +29,7 @@ const USAGE =
 
 
 interface EventRow {
-  readonly created_at?: number | string | null;
+  readonly created_at?: string | null;
   readonly response_text?: string | null;
   readonly status?: string | null;
   readonly actor?: string | null;
@@ -63,17 +63,6 @@ const requireFleetId = (
     }
     return raw;
   });
-
-// Falsy input (null/undefined/0/""/NaN) and any truthy-but-unparseable value
-// (`new Date("garbage")`, out-of-range numbers) both fall back to EMPTY_CELL —
-// never throw RangeError, which would crash the whole `logs` command.
-// Numeric 0 (Unix epoch) is treated as an unset/invalid sentinel here, not a
-// valid timestamp, matching how the API uses created_at.
-export const formatTimestamp = (raw: number | string | null | undefined): string => {
-  if (!raw) return EMPTY_CELL;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? EMPTY_CELL : date.toISOString();
-};
 
 export const logsEffectFromFlags = (
   flags: LogsEffectFlags,
@@ -116,7 +105,7 @@ export const logsEffectFromFlags = (
 
     yield* output.printSection("Event Stream");
     for (const evt of events) {
-      const ts = formatTimestamp(evt.created_at);
+      const ts = instantCell(evt.created_at);
       const summary = evt.response_text
         ? evt.response_text.slice(0, 80)
         : (evt.status ?? "");

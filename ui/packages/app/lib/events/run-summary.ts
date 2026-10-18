@@ -78,7 +78,15 @@ export function buildRunSummary(
 
 /** The strip's view of a list row — only the fields it renders. */
 export function figuresOfRow(row: EventRow): RunFigures {
-  return Object.fromEntries(RUN_FIGURE_KEYS.map((key) => [key, row[key]])) as RunFigures;
+  const figures = Object.fromEntries(RUN_FIGURE_KEYS.map((key) => [key, row[key]])) as RunFigures;
+  return { ...figures, created_at: spelled(new Date(row.created_at)) };
+}
+
+// One spelling per moment, so the server render and the live registry agree on
+// the same row: the daemon writes `…20Z`, a re-read Date writes `…20.000Z`. An
+// unreadable instant spells as nothing, which the strip renders as no time.
+function spelled(at: Date): string {
+  return Number.isNaN(at.getTime()) ? "" : at.toISOString();
 }
 
 // The statuses the server writes. A row the browser made — an optimistic
@@ -103,7 +111,7 @@ export function latestFigures(events: readonly FleetEvent[]): RunFigures | null 
     status: newest.status,
     failure_label: newest.failureLabel,
     failure_detail: newest.failureDetail,
-    created_at: newest.createdAt.getTime(),
+    created_at: spelled(newest.createdAt),
     tokens: newest.tokens ?? null,
     wall_ms: newest.wallMs ?? null,
     cost_nanos: newest.costNanos ?? null,

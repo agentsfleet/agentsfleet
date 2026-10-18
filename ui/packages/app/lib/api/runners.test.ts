@@ -6,7 +6,7 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0011";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
-import { listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
+import { hasBeenSeen, listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
 import { parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
 
 beforeEach(() => {
@@ -305,5 +305,15 @@ describe("wire constants mirror the daemon's enums", () => {
       "runner_revoked",
       "runner_policy_assigned",
     ]);
+  });
+});
+
+describe("hasBeenSeen", () => {
+  it("reads the daemon's never-seen epoch as never connected", () => {
+    expect(hasBeenSeen("1970-01-01T00:00:00Z")).toBe(false);
+  });
+
+  it("reads any later beat as seen", () => {
+    expect(hasBeenSeen("2026-10-17T18:06:49Z")).toBe(true);
   });
 });

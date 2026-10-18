@@ -40,7 +40,7 @@ export function pageWith(
 
 // Rows arrive newest-first, mirroring the upstream `created_at DESC` order.
 export function descRows(ids: string[], newestMs: number): EventRow[] {
-  return ids.map((id, i) => row({ event_id: id, created_at: newestMs - i * ROW_SPACING_MS }));
+  return ids.map((id, i) => row({ event_id: id, created_at: new Date(newestMs - i * ROW_SPACING_MS).toISOString() }));
 }
 
 export function queryOf(callIndex: number): URLSearchParams {

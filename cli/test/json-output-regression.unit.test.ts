@@ -18,7 +18,7 @@ const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 const ENTRY_ID = "01900000-0000-7000-8000-00000011b111";
 const REVISION_ID = "01900000-0000-7000-8000-00000011b112";
-const CREATED_MS = 1700000000000;
+const CREATED_AT = "2023-11-14T22:13:20Z";
 
 // An age renders as digits plus one unit letter. If any of these reach a JSON
 // payload, the text renderer has leaked into the machine register.
@@ -28,21 +28,21 @@ const AGE_SHAPED = /"\d+[smhdy]"/;
 // so a partial row would be refused before the JSON register is reached.
 const LIBRARY_CARD = {
   id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests", visibility: LIBRARY_VISIBILITY.tenant,
-  created_at: CREATED_MS, requirements: {}, required_credentials_reasons: {},
+  created_at: CREATED_AT, requirements: {}, required_credentials_reasons: {},
   head_revision_id: REVISION_ID, etag: '"library-1"',
 };
 
 const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
-    jsonResponse(200, { secrets: [{ name: "github", kind: "custom_secret", created_at: CREATED_MS }] }),
+    jsonResponse(200, { secrets: [{ name: "github", kind: "custom_secret", created_at: CREATED_AT }] }),
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
-    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_MS }] }),
+    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_AT }] }),
   [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
     jsonResponse(200, { items: [LIBRARY_CARD], next_cursor: null }),
   "GET /v1/api-keys": () =>
-    jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_MS }] }),
+    jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_AT }] }),
   "GET /v1/workspaces": () =>
-    jsonResponse(200, { items: [{ id: WS_ID, name: "main", created_at: CREATED_MS }], tenant_id: "t", total: null, next_cursor: null }),
+    jsonResponse(200, { items: [{ id: WS_ID, name: "main", created_at: CREATED_AT }], tenant_id: "t", total: null, next_cursor: null }),
 };
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
@@ -77,7 +77,7 @@ describe("the table reshape did not reach the machine register", () => {
 
     // It is still JSON, and it still carries the instant the server sent.
     expect(() => JSON.parse(text)).not.toThrow();
-    expect(text).toContain(String(CREATED_MS));
+    expect(text).toContain(CREATED_AT);
 
     // None of the text renderer's vocabulary crossed over.
     expect(text).not.toContain("AGO");

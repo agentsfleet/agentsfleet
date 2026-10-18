@@ -107,8 +107,8 @@ describe("Secrets page", () => {
   it("composes the list and the add-dialog with the resolved secrets", async () => {
     listSecretsCached.mockResolvedValue({
       secrets: [
-        { kind: "custom_secret", name: "stripe", created_at: 1_777_507_200_000 },
-        { kind: "custom_secret", name: "github", created_at: 1_777_507_300_000 },
+        { kind: "custom_secret", name: "stripe", created_at: "2026-04-30T00:00:00Z" },
+        { kind: "custom_secret", name: "github", created_at: "2026-04-30T00:01:40Z" },
       ],
     });
 
@@ -132,7 +132,7 @@ describe("Secrets page", () => {
 
   it("passes the self-managed provider's secret_ref as protectedSecretName", async () => {
     listSecretsCached.mockResolvedValue({
-      secrets: [{ kind: "provider_key", name: "anthropic-prod", created_at: 1 }],
+      secrets: [{ kind: "provider_key", name: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     getTenantProviderCached.mockResolvedValue(selfManagedProvider("anthropic-prod"));
 
@@ -156,7 +156,7 @@ describe("Secrets page", () => {
 
   it("does not expose delete controls when the active provider protection is unknown", async () => {
     listSecretsCached.mockResolvedValue({
-      secrets: [{ kind: "custom_secret", name: "stripe", created_at: 1 }],
+      secrets: [{ kind: "custom_secret", name: "stripe", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     getTenantProviderCached.mockRejectedValue(new Error("503"));
 

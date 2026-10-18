@@ -211,8 +211,8 @@ describe("fleet stream reply delivery", () => {
 
   it("settles a lost completion from the terminal backfill row", async () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_lost", response_text: "Recovered after gap" }) });
-    fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_lost", created_at: MISSED_AT_MS, response_text: null })]));
-    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_lost", created_at: new Date(MISSED_AT_MS).toISOString(), response_text: null })]));
+    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     sourceAt(0).emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_lost", text: "<tool_result>PRIVATE" });
     reconnect();
     await flushBackfill();
@@ -286,7 +286,7 @@ describe("fleet stream reply delivery", () => {
     vi.useRealTimers();
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_no_chunks", response_text: "Complete answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
-    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_no_chunks", status: "processed", actor: "fleet", created_at: Date.now() });
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_no_chunks", status: "processed", actor: "fleet", created_at: new Date().toISOString() });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Complete answer"));
     release();
   });

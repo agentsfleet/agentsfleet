@@ -47,7 +47,7 @@ describe("approveApproval", () => {
       gate_id: GATE_ID,
       action_id: "act_001",
       outcome: "approved",
-      resolved_at: 1_700_000_001_000,
+      resolved_at: "2023-11-14T22:13:21Z",
       resolved_by: "user:user_abc",
     };
     fetchMock.mockResolvedValueOnce(jsonResponse(body));
@@ -65,7 +65,7 @@ describe("approveApproval", () => {
         gate_id: GATE_ID,
         action_id: "a",
         outcome: "approved",
-        resolved_at: 1,
+        resolved_at: "1970-01-01T00:00:00.001Z",
         resolved_by: "user:x",
       }),
     );
@@ -82,7 +82,7 @@ describe("approveApproval", () => {
         gate_id: GATE_ID,
         action_id: "a",
         outcome: "approved",
-        resolved_at: 1,
+        resolved_at: "1970-01-01T00:00:00.001Z",
         resolved_by: "user:x",
       }),
     );
@@ -96,7 +96,7 @@ describe("approveApproval", () => {
       gate_id: GATE_ID,
       action_id: "act_001",
       outcome: "approved",
-      resolved_at: 1_700_000_001_000,
+      resolved_at: "2023-11-14T22:13:21Z",
       resolved_by: "slack:webhook",
       error_code: ERR_ALREADY_RESOLVED,
       detail: "already resolved by slack",
@@ -160,7 +160,7 @@ describe("denyApproval", () => {
         gate_id: GATE_ID,
         action_id: "a",
         outcome: "denied",
-        resolved_at: 1,
+        resolved_at: "1970-01-01T00:00:00.001Z",
         resolved_by: "user:x",
       }),
     );
@@ -180,7 +180,7 @@ describe("denyApproval", () => {
           gate_id: GATE_ID,
           action_id: "a",
           outcome: "denied",
-          resolved_at: 1,
+          resolved_at: "1970-01-01T00:00:00.001Z",
           resolved_by: "slack:interaction",
           error_code: ERR_ALREADY_RESOLVED,
           detail: "x",

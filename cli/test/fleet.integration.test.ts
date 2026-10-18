@@ -138,7 +138,7 @@ describe("status", () => {
   test("--json emits the raw API JSON envelope", async () => {
     await authedScope(async () => {
       const payload = {
-        items: [{ id: FLEET_ID, name: "bot-a", status: "active", events_processed: "7", budget_used_nanos: "0", created_at: 1 }],
+        items: [{ id: FLEET_ID, name: "bot-a", status: "active", events_processed: "7", budget_used_nanos: "0", created_at: "1970-01-01T00:00:00.001Z" }],
         total: null, next_cursor: null,
       };
       const routes: MockRoutes = {

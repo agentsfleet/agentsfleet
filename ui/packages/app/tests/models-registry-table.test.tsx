@@ -79,7 +79,7 @@ function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
     kind: "provider_key",
     has_key: true,
     active: false,
-    created_at: 1_777_507_200_000,
+    created_at: "2026-04-30T00:00:00Z",
     ...overrides,
   };
 }
@@ -727,7 +727,7 @@ describe("ModelsRegistryTable", () => {
   it("creating a model entry refreshes the secrets list — a repeat add on the same key name replaces instead of re-creating", async () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
-    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: "1970-01-01T00:00:00.001Z" } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
     // The dialog now loads the stored-secret list on OPEN as well as after a
     // secret changes, so the sequence has to mirror reality: nothing stored
@@ -738,7 +738,7 @@ describe("ModelsRegistryTable", () => {
       .mockResolvedValueOnce({ ok: true, data: { secrets: [] } })
       .mockResolvedValue({
         ok: true,
-        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" }] },
       });
     await renderTable(registry([]));
 
@@ -778,12 +778,12 @@ describe("ModelsRegistryTable", () => {
     // lose the replace-vs-create resolution it feeds. Only a list that NEVER
     // loaded fails closed — that case is the test below.
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
-    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: "1970-01-01T00:00:00.001Z" } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
     listSecretsActionMock
       .mockResolvedValueOnce({
         ok: true,
-        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" }] },
       })
       .mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
     await renderTable(registry([]));
@@ -823,7 +823,7 @@ describe("ModelsRegistryTable", () => {
     // whatever already holds the typed name — so an unloaded list must BLOCK,
     // not silently take the create path.
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
-    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: "1970-01-01T00:00:00.001Z" } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
     listSecretsActionMock
       .mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" })
@@ -863,7 +863,7 @@ describe("ModelsRegistryTable", () => {
     // dialog strands at "Checking your stored secrets…" — Save disabled forever
     // and no Retry, because Retry only renders in the error state.
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
-    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: "1970-01-01T00:00:00.001Z" } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
     listSecretsActionMock
       .mockRejectedValueOnce(new Error("network down"))

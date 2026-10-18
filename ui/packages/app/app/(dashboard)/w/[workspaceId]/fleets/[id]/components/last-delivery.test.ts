@@ -42,10 +42,10 @@ describe("resolveLastDeliveries", () => {
   it("fans out one events call per webhook + cron trigger and returns created_at", async () => {
     eventsApi.listFleetEvents.mockImplementation(async (_w, _z, _t, opts) => {
       if (opts?.actor === "webhook:github:*") {
-        return { items: [{ created_at: 1_700_000_000_000 }], next_cursor: null };
+        return { items: [{ created_at: "2023-11-14T22:13:20Z" }], next_cursor: null };
       }
       if (opts?.actor === "cron:*") {
-        return { items: [{ created_at: 1_700_000_001_000 }], next_cursor: null };
+        return { items: [{ created_at: "2023-11-14T22:13:21Z" }], next_cursor: null };
       }
       return { items: [], next_cursor: null };
     });
@@ -56,8 +56,8 @@ describe("resolveLastDeliveries", () => {
     ];
     const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", triggers);
     expect(result).toEqual({
-      "webhook:github": 1_700_000_000_000,
-      "cron:*/15 * * * *": 1_700_000_001_000,
+      "webhook:github": "2023-11-14T22:13:20Z",
+      "cron:*/15 * * * *": "2023-11-14T22:13:21Z",
     });
   });
 

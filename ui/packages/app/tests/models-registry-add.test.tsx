@@ -48,7 +48,7 @@ const ANTHROPIC_SECRET: Secret = {
   kind: "provider_key",
   name: "anthropic-prod",
   provider: "anthropic",
-  created_at: 1_777_507_200_000,
+  created_at: "2026-04-30T00:00:00Z",
 };
 const ROTATED_API_KEY = "sk-ant-rotated-key";
 
@@ -88,7 +88,7 @@ beforeEach(() => {
   catalogueState.models = [];
   createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
   replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
-  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: "1970-01-01T00:00:00.001Z" } });
   setProviderSelfManagedActionMock.mockResolvedValue({
     ok: true,
     data: { mode: "self_managed", provider: "anthropic", model: "claude-sonnet-5", context_cap_tokens: 200000, secret_ref: "anthropic", platform_default_available: true },
@@ -175,7 +175,7 @@ describe("AddModelEntryDialog — create-or-replace by name", () => {
   });
 
   it("errors without writing anything when the name is owned by a different provider's key", async () => {
-    const openaiSecret: Secret = { kind: "provider_key", name: "openai-prod", provider: "openai", created_at: 1_777_507_200_000 };
+    const openaiSecret: Secret = { kind: "provider_key", name: "openai-prod", provider: "openai", created_at: "2026-04-30T00:00:00Z" };
     const { user } = await renderDialog([openaiSecret]);
     const dialog = screen.getByRole("dialog");
 
@@ -194,7 +194,7 @@ describe("AddModelEntryDialog — create-or-replace by name", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://vllm.corp/v1",
-      created_at: 1_777_507_200_000,
+      created_at: "2026-04-30T00:00:00Z",
     };
     const { user } = await renderDialog([endpointSecret]);
     const dialog = screen.getByRole("dialog");

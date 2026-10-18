@@ -171,7 +171,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
   const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
   // A list row carries no trace, and a run that recorded none carries null:
   // either way the row says nothing about its calls.
-  const trace = readSavedTrace(bodies.tool_calls, row.created_at);
+  const trace = readSavedTrace(bodies.tool_calls, Date.parse(row.created_at));
   return {
     id: row.event_id,
     role: roleFor(row.actor),

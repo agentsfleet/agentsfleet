@@ -41,14 +41,14 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     status: "active",
     liveness: "online",
     labels: [],
-    last_seen_at: 1_760_000_000_000,
-    created_at: 1_759_000_000_000,
+    last_seen_at: "2025-10-09T08:53:20Z",
+    created_at: "2025-09-27T19:06:40Z",
     assigned_policy: ASSIGNED,
     achievable: null,
     degraded: false,
     degraded_reason: null,
     selftest_requested_at: null,
-    selftest_completed_at: 1_760_000_000_000,
+    selftest_completed_at: "2025-10-09T08:53:20Z",
     selftest: report(),
     active_lease_count: 0,
     active_fleet_count: 0,
@@ -62,7 +62,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 
 describe("requestRunnerSelftest", () => {
   it("PATCHes the self_test action against the single-runner operator path", async () => {
-    const recorded = { id: "runner-1", status: "active", selftest_requested_at: 1_760_000_000_000 };
+    const recorded = { id: "runner-1", status: "active", selftest_requested_at: "2025-10-09T08:53:20Z" };
     requestMock.mockResolvedValueOnce(recorded);
     const r = await requestRunnerSelftest("tok", "runner-1");
     expect(r).toEqual(recorded);
@@ -74,7 +74,7 @@ describe("requestRunnerSelftest", () => {
   });
 
   it("percent-encodes the runner id rather than splicing it into the path raw", async () => {
-    requestMock.mockResolvedValueOnce({ id: "a/b", status: "active", selftest_requested_at: 1 });
+    requestMock.mockResolvedValueOnce({ id: "a/b", status: "active", selftest_requested_at: "1970-01-01T00:00:00.001Z" });
     await requestRunnerSelftest("tok", "a/b");
     expect(requestMock).toHaveBeenCalledWith("/v1/fleets/runners/a%2Fb", expect.anything(), "tok");
   });

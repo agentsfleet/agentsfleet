@@ -22,8 +22,8 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     wall_ms: null,
     failure_label: null,
     resumes_event_id: null,
-    created_at: MS_PER_SECOND,
-    updated_at: MS_PER_SECOND,
+    created_at: "1970-01-01T00:00:01Z",
+    updated_at: "1970-01-01T00:00:01Z",
     ...over,
   } as EventDetail;
 }

@@ -36,19 +36,19 @@ function twoRows() {
       gate_id: "01999999-0000-7000-8000-000000000001",
       action_id: "a1",
       fleet_id: AGENTSFLEET_B,
-      created_at: NEWER,
+      created_at: new Date(NEWER).toISOString(),
       status: "approved",
-      resolved_at: NEWER + A_MOMENT_MS,
+      resolved_at: new Date(NEWER + A_MOMENT_MS).toISOString(),
       resolved_by: "human:someone",
     }),
     gate({
       gate_id: "01999999-0000-7000-8000-000000000002",
       action_id: "a2",
-      created_at: OLDER,
+      created_at: new Date(OLDER).toISOString(),
       // Still pending: no `resolved_at`, so the Decided column sorts on the
       // deadline instead. Both arms of that `??` need a row.
       resolved_at: null,
-      expires_at: NEWER + A_WHILE_MS,
+      expires_at: new Date(NEWER + A_WHILE_MS).toISOString(),
     }),
   ];
 }

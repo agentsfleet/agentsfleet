@@ -48,7 +48,7 @@ function entry(active = false): TenantModelEntry {
     kind: MODEL_KIND.providerKey,
     has_key: true,
     active,
-    created_at: CREATED_AT,
+    created_at: new Date(CREATED_AT).toISOString(),
   };
 }
 

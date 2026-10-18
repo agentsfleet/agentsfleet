@@ -46,8 +46,8 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     status: "active",
     liveness: "online",
     labels: [],
-    last_seen_at: 1_760_000_000_000,
-    created_at: 1_759_000_000_000,
+    last_seen_at: "2025-10-09T08:53:20Z",
+    created_at: "2025-09-27T19:06:40Z",
     assigned_policy: ASSIGNED,
     achievable: null,
     degraded: false,
@@ -70,7 +70,7 @@ const DAY_MS = 86_400_000;
 
 describe("RunnerChecksBadge", () => {
   it("names the passing verdict on a green icon without a timestamp", () => {
-    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: Date.now() - 5 * 3_600_000 })} />);
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: new Date(Date.now() - 5 * 3_600_000).toISOString() })} />);
     expect(trigger().getAttribute("aria-label")).toMatch(/checks passed/i);
     expect(trigger().className).toContain("text-success");
     expect(trigger().parentElement?.querySelector("time")).toBeNull();
@@ -78,14 +78,14 @@ describe("RunnerChecksBadge", () => {
   });
 
   it("paints a failure red and counts it, so it is seen without a click", () => {
-    renderBadge(<RunnerChecksBadge runner={detail({ selftest: FAILING, selftest_completed_at: 1 })} />);
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest: FAILING, selftest_completed_at: "1970-01-01T00:00:00.001Z" })} />);
     expect(trigger().getAttribute("aria-label")).toMatch(/2 checks failed/i);
     expect(trigger().className).toContain("text-destructive");
   });
 
   it("makes the last-check age and exact date available on keyboard focus", async () => {
     const completedAt = Date.now() - 6 * DAY_MS;
-    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: completedAt })} />);
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: new Date(completedAt).toISOString() })} />);
     fireEvent.focus(trigger());
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip.textContent).toContain("Last checked 6 days ago");
@@ -112,7 +112,7 @@ describe("RunnerChecksBadge", () => {
   });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
-    renderBadge(<RunnerChecksBadge runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest_requested_at: "2025-10-09T08:53:20Z" })} />);
     expect(trigger().getAttribute("aria-label")).toMatch(/checks pending/i);
   });
 
@@ -122,7 +122,7 @@ describe("RunnerChecksBadge", () => {
       <RunnerChecksBadge
         runner={detail({
           selftest: { ...PASSING, network_policy: "allow_all" },
-          selftest_completed_at: 1_760_000_000_000,
+          selftest_completed_at: "2025-10-09T08:53:20Z",
         })}
       />,
     );
@@ -131,7 +131,7 @@ describe("RunnerChecksBadge", () => {
   });
 
   it("opens the full report — every check by name and the mounts — on click", () => {
-    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })} />);
+    renderBadge(<RunnerChecksBadge runner={detail({ selftest: PASSING, selftest_completed_at: "2025-10-09T08:53:20Z" })} />);
     expect(screen.queryByRole("dialog")).toBeNull();
     const button = trigger();
     expect(button.getAttribute("aria-haspopup")).toBe("dialog");

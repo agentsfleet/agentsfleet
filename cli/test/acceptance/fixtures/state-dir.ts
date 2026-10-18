@@ -90,7 +90,7 @@ export async function makeStubbedStateDir(opts?: StubbedStateDirOptions): Promis
     workspacesPath,
     JSON.stringify({
       current_workspace_id: workspaceId,
-      items: [{ workspace_id: workspaceId, name: workspaceName, created_at: Date.now() }],
+      items: [{ workspace_id: workspaceId, name: workspaceName, created_at: new Date().toISOString() }],
     }),
   );
 

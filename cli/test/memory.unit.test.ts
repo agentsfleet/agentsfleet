@@ -30,9 +30,9 @@ const FLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const FIXTURE_ITEMS = [
-  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: 1765500300000 },
-  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: 1765500200000 },
-  { key: "greeting_style", content: "terse, no emoji", category: "conversation", updated_at: 1765500100000 },
+  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: "2025-12-12T00:45:00Z" },
+  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: "2025-12-12T00:43:20Z" },
+  { key: "greeting_style", content: "terse, no emoji", category: "conversation", updated_at: "2025-12-12T00:41:40Z" },
 ];
 
 const FIXTURE_ENVELOPE = {

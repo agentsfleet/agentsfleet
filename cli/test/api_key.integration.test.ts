@@ -21,7 +21,7 @@ describe("api-key commands", () => {
             id: KEY_ID,
             key_name: "ci-runner",
             key: RAW_KEY,
-            created_at: 1700000000000,
+            created_at: "2023-11-14T22:13:20Z",
           });
         },
       };
@@ -53,7 +53,7 @@ describe("api-key commands", () => {
     id,
     key_name: name,
     active: true,
-    created_at: 1700000000000,
+    created_at: "2023-11-14T22:13:20Z",
     revoked_at: null,
   });
   // Two server pages split by a cursor boundary; the walk must cross it.
@@ -150,7 +150,7 @@ describe("api-key commands", () => {
       const routes: MockRoutes = {
         [`PATCH /v1/api-keys/${KEY_ID}`]: async (_req, _url, body) => {
           expect(JSON.parse(body ?? "{}")).toEqual({ active: false });
-          return jsonResponse(200, { id: KEY_ID, active: false, revoked_at: 1700000001000 });
+          return jsonResponse(200, { id: KEY_ID, active: false, revoked_at: "2023-11-14T22:13:21Z" });
         },
         [`DELETE /v1/api-keys/${KEY_ID}`]: () => jsonResponse(204, {}),
       };

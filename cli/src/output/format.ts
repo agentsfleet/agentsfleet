@@ -3,6 +3,7 @@
 // and table headers are intentionally non-pulse — they're not live
 // signals, they're chrome.
 
+import { instantMs, isInstant } from "../lib/instant.ts";
 import { palette, type StyleOpts } from "./palette.ts";
 
 const COLUMN_GAP = "  ";
@@ -23,6 +24,11 @@ export const EMPTY_CELL = "—" as const;
 export const cell = (value: string | null | undefined): string =>
   value !== null && value !== undefined && value.length > 0 ? value : EMPTY_CELL;
 
+/** An instant exactly as the daemon wrote it, or `missing` for anything that is
+ *  not one — never a thrown RangeError that would take the whole command down. */
+export const instantCell = (value: unknown, missing: string = EMPTY_CELL): string =>
+  isInstant(value) ? value : missing;
+
 const MS_PER_SECOND = 1_000;
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
@@ -41,13 +47,13 @@ const AGE_UNIT = {
  * How long ago an instant was, in the coarsest unit that still reads true.
  *
  * It renders [`EMPTY_CELL`] rather than a number whenever it cannot know: a
- * missing or unparseable timestamp, and an instant in the future — which is
- * clock disagreement between this machine and the server, not an age. A table
- * that printed `-1m` there would be stating something no one measured.
+ * missing value or one that is not an instant, and an instant in the future —
+ * which is clock disagreement between this machine and the server, not an age.
+ * A table that printed `-1m` there would be stating something no one measured.
  */
-export function ago(createdAtMs: unknown, nowMs: number = Date.now()): string {
-  if (typeof createdAtMs !== "number" || !Number.isSafeInteger(createdAtMs))
-    return EMPTY_CELL;
+export function ago(createdAt: unknown, nowMs: number = Date.now()): string {
+  const createdAtMs = instantMs(createdAt);
+  if (createdAtMs === null) return EMPTY_CELL;
   const elapsed = Math.floor((nowMs - createdAtMs) / MS_PER_SECOND);
   if (elapsed < 0) return EMPTY_CELL;
   if (elapsed < SECONDS_PER_MINUTE) return `${elapsed}${AGE_UNIT.second}`;

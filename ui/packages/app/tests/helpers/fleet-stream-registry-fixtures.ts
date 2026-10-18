@@ -21,8 +21,8 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    created_at: now,
-    updated_at: now,
+    created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
     ...over,
   };
 }

@@ -29,7 +29,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe("lazy workspace menu entry focus", () => {
   it("focuses a workspace when mounted open and keeps arrow-key navigation working", async () => {
     const workspaces = Array.from({ length: 32 }, (_, index) => ({
-      id: `ws_${index}`, name: `Workspace ${index}`, created_at: 1, ...OWN_ACCOUNT,
+      id: `ws_${index}`, name: `Workspace ${index}`, created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT,
     }));
     render(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={vi.fn()} />);
     const first = await screen.findByRole("menuitem", { name: "Workspace 0" });
@@ -55,7 +55,7 @@ describe("lazy workspace menu entry focus", () => {
 
   it("does not jump to the first workspace on pointer leave and restores entry focus on reopening", async () => {
     const workspaces = Array.from({ length: 32 }, (_, index) => ({
-      id: `ws_${index}`, name: `Workspace ${index}`, created_at: 1, ...OWN_ACCOUNT,
+      id: `ws_${index}`, name: `Workspace ${index}`, created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT,
     }));
     const onOpenChange = vi.fn();
     const view = render(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={onOpenChange} />);

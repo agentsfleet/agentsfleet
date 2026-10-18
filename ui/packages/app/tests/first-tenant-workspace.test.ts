@@ -15,7 +15,7 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE = {
   id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
   name: "primary",
-  created_at: 1_777_507_200_000,
+  created_at: "2026-04-30T00:00:00Z",
   account: { tenant_id: TENANT_ID, owner_name: "Primary" },
   role: ACCOUNT_ROLE.owner,
 };
@@ -24,7 +24,7 @@ const JOINED = {
   ...WORKSPACE,
   id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22",
   name: "inviter",
-  created_at: WORKSPACE.created_at - 1,
+  created_at: new Date(Date.parse(WORKSPACE.created_at) - 1).toISOString(),
   account: { tenant_id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f02", owner_name: "John" },
   role: ACCOUNT_ROLE.member,
 };

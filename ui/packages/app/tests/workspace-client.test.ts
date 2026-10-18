@@ -100,7 +100,7 @@ describe("listTenantWorkspaces", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            items: [{ id: "ws_1", name: "one", created_at: 1, ...OWN }],
+            items: [{ id: "ws_1", name: "one", created_at: "1970-01-01T00:00:00.001Z", ...OWN }],
             tenant_id: "tenant_x",
             total: null,
             next_cursor: "1:ws_1",
@@ -111,7 +111,7 @@ describe("listTenantWorkspaces", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            items: [{ id: "ws_2", name: "two", created_at: 2, ...JOINED }],
+            items: [{ id: "ws_2", name: "two", created_at: "1970-01-01T00:00:00.002Z", ...JOINED }],
             tenant_id: "tenant_x",
             total: null,
             next_cursor: null,
@@ -124,8 +124,8 @@ describe("listTenantWorkspaces", () => {
 
     expect(result).toEqual({
       items: [
-        { id: "ws_1", name: "one", created_at: 1, ...OWN },
-        { id: "ws_2", name: "two", created_at: 2, ...JOINED },
+        { id: "ws_1", name: "one", created_at: "1970-01-01T00:00:00.001Z", ...OWN },
+        { id: "ws_2", name: "two", created_at: "1970-01-01T00:00:00.002Z", ...JOINED },
       ],
       tenant_id: "tenant_x",
       total: 2,
@@ -174,7 +174,7 @@ describe("listTenantWorkspaces", () => {
 describe("listTenantWorkspaces account and role", () => {
   // A workspace the list cannot place under an account would land in the wrong
   // switcher group, so an item that does not say whose it is fails the read.
-  const OWNED = { id: "ws_1", name: "one", created_at: 1 };
+  const OWNED = { id: "ws_1", name: "one", created_at: "1970-01-01T00:00:00.001Z" };
   const ACCOUNT = { tenant_id: "tenant_x", owner_name: "Xan" };
 
   function pageOf(item: unknown) {

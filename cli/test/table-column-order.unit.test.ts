@@ -78,7 +78,7 @@ describe("entityTable renders the age from the row", () => {
   test("a row carrying a timestamp shows its age under AGO", () => {
     const rendered = entityTable(
       spec,
-      [{ name: "reviewer", id: "abc", status: "active", created_at: now - 7_200_000 }],
+      [{ name: "reviewer", id: "abc", status: "active", created_at: new Date(now - 7_200_000).toISOString() }],
       WIDE,
     );
     expect(rendered).toContain("AGO");
@@ -96,7 +96,7 @@ describe("entityTable renders the age from the row", () => {
   test("a table ages by the field it names, not only by created_at", () => {
     const rendered = entityTable(
       { name: NAME, domain: [STATUS], ageKey: "updated_at" },
-      [{ name: "note", status: "kept", updated_at: now - 7_200_000 }],
+      [{ name: "note", status: "kept", updated_at: new Date(now - 7_200_000).toISOString() }],
       WIDE,
     );
     expect(rendered).toContain("AGO");
@@ -106,7 +106,7 @@ describe("entityTable renders the age from the row", () => {
   test("a row's own created_at value never reaches the output raw", () => {
     const rendered = entityTable(
       spec,
-      [{ name: "reviewer", id: "abc", status: "active", created_at: now }],
+      [{ name: "reviewer", id: "abc", status: "active", created_at: new Date(now).toISOString() }],
       WIDE,
     );
     expect(rendered).not.toContain(String(now));

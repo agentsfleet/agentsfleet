@@ -105,7 +105,7 @@ export const workspaceAddEffect = (
           {
             workspace_id: workspaceId,
             name: resolvedName,
-            created_at: created.created_at ?? Date.now(),
+            created_at: created.created_at ?? new Date().toISOString(),
           },
         ];
     yield* workspaces.save({

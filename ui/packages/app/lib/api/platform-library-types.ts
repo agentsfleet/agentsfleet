@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { Instant } from "./decode";
 import { LibraryCardSchema } from "./draft-library";
 
 export const PlatformEntrySchema = z.object({
   card: LibraryCardSchema.extend({visibility: z.enum(["platform", "platform_draft"])}),
-  published: z.boolean(), updated_at: z.number().int(),
+  published: z.boolean(), updated_at: Instant,
 }).transform(({card, published, updated_at}) => ({...card, published, updated_at}));
 export const PlatformEntriesSchema = z.object({entries: z.array(PlatformEntrySchema)});
 export type PlatformEntry = z.infer<typeof PlatformEntrySchema>;

@@ -114,8 +114,8 @@ describe("api-keys page", () => {
     mockAuth();
     listApiKeysMock.mockResolvedValueOnce({
       items: [
-        { id: "a", key_name: "ci-runner", active: true, created_at: 2, revoked_at: null },
-        { id: "b", key_name: "old-zapier", active: false, created_at: 1, revoked_at: 1 },
+        { id: "a", key_name: "ci-runner", active: true, created_at: "1970-01-01T00:00:00.002Z", revoked_at: null },
+        { id: "b", key_name: "old-zapier", active: false, created_at: "1970-01-01T00:00:00.001Z", revoked_at: "1970-01-01T00:00:00.001Z" },
       ],
       total: 2,
       next_cursor: null,

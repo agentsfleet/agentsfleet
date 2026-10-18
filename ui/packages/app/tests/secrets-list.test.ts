@@ -52,9 +52,9 @@ afterEach(() => cleanup());
 
 describe("SecretsList component", () => {
   async function renderList(
-    secrets: Array<{ name: string; created_at: number }> = [
-      { name: "fly", created_at: Date.UTC(2026, 3, 26, 12) },
-      { name: "slack", created_at: Date.UTC(2026, 3, 26, 12, 1) },
+    secrets: Array<{ name: string; created_at: string }> = [
+      { name: "fly", created_at: new Date(Date.UTC(2026, 3, 26, 12)).toISOString() },
+      { name: "slack", created_at: new Date(Date.UTC(2026, 3, 26, 12, 1)).toISOString() },
     ],
     protectedSecretName?: string | null,
   ) {
@@ -153,7 +153,7 @@ describe("SecretsList component", () => {
     const user = userEvent.setup();
     // The vault never returns plaintext, so the list renders only the name +
     // the "write-only" label — the secret value never appears in the DOM.
-    await renderList([{ name: "openai-key", created_at: Date.UTC(2026, 3, 26, 12) }]);
+    await renderList([{ name: "openai-key", created_at: new Date(Date.UTC(2026, 3, 26, 12)).toISOString() }]);
     expect(screen.getByText("openai-key")).toBeTruthy();
     expect(screen.getByText(SECRET_ROW_DESCRIPTION)).toBeTruthy();
     // No plaintext secret is rendered anywhere.
@@ -225,7 +225,7 @@ describe("SecretsList component", () => {
 
   it("confirm on an empty-named secret is a no-op", async () => {
     const user = userEvent.setup();
-    await renderList([{ name: "", created_at: Date.UTC(2026, 3, 26, 12, 2) }]);
+    await renderList([{ name: "", created_at: new Date(Date.UTC(2026, 3, 26, 12, 2)).toISOString() }]);
     await user.click(screen.getByLabelText(/^Delete secret\s*$/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^delete$/i }));

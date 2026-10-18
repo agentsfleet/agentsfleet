@@ -37,8 +37,8 @@ export async function resolveLastDeliveries(
   fleetId: string,
   token: string,
   triggers: readonly FleetTrigger[],
-): Promise<Record<string, number | null>> {
-  const out: Record<string, number | null> = {};
+): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
   await Promise.all(
     triggers.map(async (t) => {
       const key = triggerKey(t);

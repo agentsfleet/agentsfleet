@@ -13,7 +13,7 @@ import { SidebarNavigation } from "@/components/layout/SidebarNavigation";
 import { NavSection } from "@/components/layout/SidebarNavigationSections";
 import { BOTTOM_NAV } from "@/components/layout/sidebar-navigation-data";
 
-const WORKSPACE = { id: "ws_1", name: "My workspace", created_at: 1, ...OWN_ACCOUNT };
+const WORKSPACE = { id: "ws_1", name: "My workspace", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT };
 const MENU = "Workspace and account menu";
 function mount(scopes: string[] = []) { render(<ShellFrame workspaces={[WORKSPACE]} operatorScopes={scopes}>Page content</ShellFrame>); }
 beforeEach(() => { mocks.pathname.mockReturnValue("/w/ws_1/fleets"); });

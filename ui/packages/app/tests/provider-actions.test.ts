@@ -124,7 +124,7 @@ describe("provider server actions — thin forwarders", () => {
   });
 
   it("createModelEntryAction forwards the body then token through withToken to the client", async () => {
-    const created = { id: "e1", model_id: "m1", secret_ref: "s1", created_at: 1 };
+    const created = { id: "e1", model_id: "m1", secret_ref: "s1", created_at: "1970-01-01T00:00:00.001Z" };
     createTenantModelEntryMock.mockResolvedValueOnce(created);
     const body = { model_id: "m1", secret_ref: "s1" };
     const r = await createModelEntryAction(body);
@@ -133,7 +133,7 @@ describe("provider server actions — thin forwarders", () => {
   });
 
   it("updateModelEntryAction forwards (id, body) then token through withToken to the client", async () => {
-    const updated = { id: "e1", model_id: "m2", secret_ref: "s1", created_at: 1 };
+    const updated = { id: "e1", model_id: "m2", secret_ref: "s1", created_at: "1970-01-01T00:00:00.001Z" };
     updateTenantModelEntryMock.mockResolvedValueOnce(updated);
     const r = await updateModelEntryAction("e1", { model_id: "m2" });
     expect(r).toEqual({ ok: true, data: updated });
@@ -148,7 +148,7 @@ describe("provider server actions — thin forwarders", () => {
   });
 
   it("listSecretsAction forwards (workspaceId) then token through withToken to the client", async () => {
-    const list = { secrets: [{ kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 }] };
+    const list = { secrets: [{ kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" }] };
     listSecretsMock.mockResolvedValueOnce(list);
     const r = await listSecretsAction("ws_1");
     expect(r).toEqual({ ok: true, data: list });

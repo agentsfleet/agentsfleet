@@ -230,7 +230,7 @@ describe("a message waiting for a runner", () => {
       event_id: "e1",
       actor: "steer:user_bob",
       message: "check the tests",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     });
     flushFrame();
     // The tile is the one it was: same feed, same object.

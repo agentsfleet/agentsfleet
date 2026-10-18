@@ -10,7 +10,7 @@ import { LIBRARY_CARD } from "./helpers/draft-fixtures";
 const {patch, remove, refresh} = vi.hoisted(() => ({patch: vi.fn(), remove: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({patchPlatformLibraryAction: patch, deletePlatformLibraryAction: remove}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
-const ENTRY: PlatformEntry = {...LIBRARY_CARD, visibility: "platform_draft", published: false, updated_at: 0};
+const ENTRY: PlatformEntry = {...LIBRARY_CARD, visibility: "platform_draft", published: false, updated_at: "1970-01-01T00:00:00Z"};
 function show(entries = [ENTRY]) { return render(<TooltipProvider><FleetLibrariesView entries={entries} /></TooltipProvider>); }
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => {cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks();});

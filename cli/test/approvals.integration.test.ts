@@ -26,8 +26,8 @@ const gate = (overrides: Record<string, unknown> = {}) => ({
   status: "pending",
   proposed_action: "open a pull request",
   blast_radius: BLAST,
-  created_at: 1700000000000,
-  expires_at: 1700000600000,
+  created_at: "2023-11-14T22:13:20Z",
+  expires_at: "2023-11-14T22:23:20Z",
   ...overrides,
 });
 
