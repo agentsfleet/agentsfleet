@@ -6,7 +6,7 @@ use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
 use afd_crypto::entropy::Entropy;
 
 const SERVICE: &str = "github";
-const INDEX: &str = "uq_fleet_approval_gates_active_grant_id";
+const INDEX: &str = "uq_approval_gates_active_grant_id";
 
 async fn request(lane: &Lane, service: &str) -> Requested {
     IntegrationGrants::new(lane.pool.clone(), Entropy::new())
@@ -25,7 +25,7 @@ async fn request(lane: &Lane, service: &str) -> Requested {
 }
 
 async fn counts(lane: &Lane) -> (i64, i64) {
-    sqlx::query_as("SELECT COUNT(*), COUNT(active_grant_id) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid")
+    sqlx::query_as("SELECT COUNT(*), COUNT(active_grant_id) FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
         .bind(lane.fleet.as_str())
         .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
         .await.expect("card counts")
@@ -51,14 +51,14 @@ async fn a_second_active_reference_is_refused_by_the_database() {
     let lane = Lane::isolated().await;
     request(&lane, SERVICE).await;
     let failure = sqlx::query(
-        "INSERT INTO core.fleet_approval_gates
-        (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
-         proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
-         detail, created_at, active_grant_id)
-        SELECT $2::uuid, fleet_id, workspace_id, $3, tool_name, action_name, gate_kind,
-         proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
-         detail, created_at, active_grant_id
-        FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+        "INSERT INTO fleet.approval_gates
+        (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
+         proposed_action, evidence, blast_radius, expires_at, status,
+         detail, created_at, updated_at, active_grant_id)
+        SELECT $2::uuid, fleet_id, workspace_id, $3, tool_name, action_name, gate_type,
+         proposed_action, evidence, blast_radius, expires_at, status,
+         detail, created_at, updated_at, active_grant_id
+        FROM fleet.approval_gates WHERE fleet_id = $1::uuid",
     )
     .bind(lane.fleet.as_str())
     .bind(mint().as_str())
@@ -81,21 +81,14 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
         let lane = Lane::isolated().await;
         request(&lane, SERVICE).await;
         let action: String = sqlx::query_scalar(
-            "SELECT action_id FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
+            "SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1::uuid",
         )
         .bind(lane.fleet.as_str())
         .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
         .await
         .expect("card action");
         lane.inbox
-            .resolve(
-                &action,
-                decision,
-                "fixture",
-                "",
-                Some(lane.fleet.as_str()),
-                Lane::now(),
-            )
+            .resolve(&action, decision, "fixture", "", Some(lane.fleet.as_str()))
             .await
             .expect("resolution");
         assert_eq!(counts(&lane).await, (1, 0));
@@ -113,13 +106,13 @@ async fn expiry_releases_the_reference_for_one_replacement_card() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
     request(&lane, SERVICE).await;
-    sqlx::query("UPDATE core.fleet_approval_gates SET timeout_at = $2 WHERE fleet_id = $1::uuid")
+    // Lapsed on the database's own clock, which is the one the sweep reads.
+    sqlx::query("UPDATE fleet.approval_gates SET expires_at = now() WHERE fleet_id = $1::uuid")
         .bind(lane.fleet.as_str())
-        .bind(Lane::now().as_millis())
         .execute(&mut *lane.pool.acquire().await.expect("connection"))
         .await
         .expect("deadline fixture");
-    lane.inbox.expire(Lane::now()).await.expect("expiry");
+    lane.inbox.expire().await.expect("expiry");
     assert_eq!(counts(&lane).await, (1, 0));
     assert_eq!(request(&lane, SERVICE).await, Requested::Raised);
     assert_eq!(request(&lane, SERVICE).await, Requested::Pending);
@@ -148,7 +141,7 @@ async fn a_card_insert_failure_rolls_back_the_new_grant() {
     );
     assert_eq!(counts(&lane).await, (0, 0));
     let grants: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM core.integration_grants WHERE fleet_id = $1::uuid",
+        "SELECT COUNT(*) FROM connector.integration_grants WHERE fleet_id = $1::uuid",
     )
     .bind(lane.fleet.as_str())
     .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))

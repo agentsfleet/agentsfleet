@@ -19,10 +19,13 @@
 )]
 
 use afd_api_wire::approval::GateStatus;
-use afd_approval::{Cursor, Decision, Filter, Resolution};
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS};
+use afd_approval::{Cursor, Decision, Filter, Resolution};
+use afd_core::clock::before;
+use jiff::Timestamp;
+
+use crate::lane::{Lane, NOW, Window};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -35,7 +38,7 @@ const WHOLE_PAGE: i64 = 50;
 
 /// The gap between two seeded instants, wide enough that the order is the
 /// statement's and never the clock's.
-const A_MOMENT_MS: i64 = 1_000;
+const A_MOMENT: Duration = Duration::from_secs(1);
 
 /// The status filter is a filter: absent narrows nothing.
 ///
@@ -46,18 +49,11 @@ const A_MOMENT_MS: i64 = 1_000;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_absent_status_reads_every_state_and_a_named_one_narrows() {
     let lane = Lane::isolated().await;
-    let answered = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let answered = lane.seed_gate(Window::Open).await;
+    lane.seed_gate(Window::Open).await;
     let resolved = lane
         .inbox
-        .resolve(
-            &answered,
-            Decision::Approved,
-            OPERATOR,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(&answered, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(matches!(resolved, Resolution::Resolved(_)));
@@ -126,12 +122,10 @@ async fn the_page_reads_newest_first() {
     // Seeded oldest-first, so a page that merely echoed insertion order would
     // come back in exactly the wrong sequence and the assertion would catch it.
     let oldest = lane
-        .seed_gate_at(NOW_MS - 2 * A_MOMENT_MS, NOW_MS + WINDOW_MS)
+        .seed_gate_at(before(NOW, A_MOMENT.saturating_mul(2)), Window::Open)
         .await;
-    let middle = lane
-        .seed_gate_at(NOW_MS - A_MOMENT_MS, NOW_MS + WINDOW_MS)
-        .await;
-    let newest = lane.seed_gate_at(NOW_MS, NOW_MS + WINDOW_MS).await;
+    let middle = lane.seed_gate_at(before(NOW, A_MOMENT), Window::Open).await;
+    let newest = lane.seed_gate_at(NOW, Window::Open).await;
 
     let page = lane
         .inbox
@@ -168,11 +162,11 @@ async fn the_cursor_walks_every_gate_raised_in_one_millisecond() {
     let mut seeded = Vec::with_capacity(SIBLINGS);
     for _ in 0..SIBLINGS {
         // The same instant every time: the tie is the whole point.
-        seeded.push(lane.seed_gate_at(NOW_MS, NOW_MS + WINDOW_MS).await);
+        seeded.push(lane.seed_gate_at(NOW, Window::Open).await);
     }
 
     let mut walked: Vec<String> = Vec::with_capacity(SIBLINGS);
-    let mut resume: Option<(i64, String)> = None;
+    let mut resume: Option<(Timestamp, String)> = None;
     loop {
         let cursor = resume.as_ref().map(|(at, id)| Cursor {
             created_at: *at,

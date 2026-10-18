@@ -40,10 +40,14 @@
 use afd_api_wire::approval::status as gate_status;
 use afd_api_wire::grant::status;
 use afd_approval::{Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, Wanted};
-use afd_crypto::entropy::Entropy;
-use sqlx::Row as _;
+use std::time::Duration;
 
-use crate::lane::{Lane, NOW_MS, mint};
+use afd_crypto::entropy::Entropy;
+
+use crate::lane::{Lane, mint};
+
+/// How long the forged card stands, from the database's clock.
+const FORGED_WINDOW: Duration = Duration::from_hours(1);
 
 /// The service both the honest card and the forged one name.
 const SERVICE: &str = "github";
@@ -61,14 +65,14 @@ const FORGED_EVENT: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// the resolve might treat differently. The only deliberate difference is the
 /// event id, which is the discriminator under test.
 const FORGED_CARD: &str = "\
-INSERT INTO core.fleet_approval_gates
+INSERT INTO fleet.approval_gates
   (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-   resolved_by, status, detail, created_at, event_id, stated_binding,
+   gate_type, proposed_action, evidence, blast_radius, expires_at,
+   status, detail, created_at, updated_at, event_id, stated_binding,
    spend_count, spend_ceiling)
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
-        $7, $8, $9::jsonb, $10, $11,
-        '', $12, '', $13, $14, NULL, NULL, NULL)";
+        $7, $8, $9::jsonb, $10, now() + $11::interval,
+        $12, '', now(), now(), $13, NULL, NULL, NULL)";
 
 /// Raises the honest grant + card through the statement under test.
 async fn raise_honest_grant(lane: &Lane) {
@@ -105,9 +109,8 @@ async fn insert_forged_card(lane: &Lane, action: &str) {
         .bind("run a routine build step")
         .bind(format!("{{\"service\":\"{SERVICE}\"}}"))
         .bind("this repository")
-        .bind(NOW_MS + 3_600_000)
+        .bind(FORGED_WINDOW)
         .bind(gate_status::PENDING)
-        .bind(NOW_MS)
         .bind(FORGED_EVENT)
         .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
@@ -117,8 +120,10 @@ async fn insert_forged_card(lane: &Lane, action: &str) {
 /// Simulates an expired honest card, leaving its grant awaiting approval.
 async fn sweep_honest_card(lane: &Lane) {
     sqlx::query(
-        "UPDATE core.fleet_approval_gates SET status = $2, active_grant_id = NULL
-          WHERE fleet_id = $1::uuid AND gate_kind = $3",
+        "UPDATE fleet.approval_gates
+            SET status = $2, active_grant_id = NULL, resolved_by = 'system:fixture',
+                resolved_at = now(), updated_at = now()
+          WHERE fleet_id = $1::uuid AND gate_type = $3 AND resolved_at IS NULL",
     )
     .bind(lane.fleet.as_str())
     .bind(gate_status::TIMED_OUT)
@@ -130,12 +135,11 @@ async fn sweep_honest_card(lane: &Lane) {
 
 /// The grant's status, or nothing when the fleet holds none.
 async fn grant_status(lane: &Lane) -> Option<String> {
-    sqlx::query("SELECT status FROM core.integration_grants WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT status FROM connector.integration_grants WHERE fleet_id = $1::uuid")
         .bind(lane.fleet.as_str())
         .fetch_optional(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
         .expect("the grant row is readable")
-        .map(|row| row.try_get(0).expect("status"))
 }
 
 /// Approving a fleet-authored card does NOT grant the integration.
@@ -159,7 +163,6 @@ async fn approving_a_card_that_carries_an_event_moves_no_grant() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("the resolve itself still runs — the card is answerable");
@@ -192,7 +195,6 @@ async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("the resolve itself still runs");
@@ -220,7 +222,6 @@ async fn a_forged_approval_cannot_move_a_grant_with_an_open_honest_card() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("resolve runs");

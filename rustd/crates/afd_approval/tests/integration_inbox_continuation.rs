@@ -9,12 +9,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
-
 use afd_admission::{Admissions, Budgets};
 use afd_approval::{Decision, Inbox, Resolution};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
+use crate::lane::{Lane, Window, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -23,30 +21,16 @@ const OTHER_OPERATOR: &str = "human:somebody-else";
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
 
-/// How long after its deadline the late-answer case answers a gate.
-///
-/// Three hours, against a default window of one — comfortably past any window
-/// a sweeper would have taken the row on, so the test cannot pass by accident
-/// on a fast machine.
-const LATE_ANSWER_MS: i64 = 3 * 60 * 60 * 1_000;
-
 /// Dimension 6.2 — an approval lands a continuation that resumes the blocked run.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
 
     let outcome = lane
         .inbox
-        .resolve(
-            &action,
-            Decision::Approved,
-            OPERATOR,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -85,19 +69,12 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_denied_gate_continues_nothing() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     let before = lane.event_count().await;
 
     let outcome = lane
         .inbox
-        .resolve(
-            &action,
-            Decision::Denied,
-            OPERATOR,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -116,18 +93,17 @@ async fn a_denied_gate_continues_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_second_answer_does_not_continue_the_run_again() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let action = lane.seed_gate(Window::Open).await;
 
     lane.inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let after_first = lane.event_count().await;
 
     let second = lane
         .inbox
-        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -147,18 +123,11 @@ async fn a_second_answer_does_not_continue_the_run_again() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
 
     let before = lane.event_count().await;
     lane.inbox
-        .resolve(
-            &action,
-            Decision::Denied,
-            OPERATOR,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -209,21 +178,13 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
 
-    // Raised at 10:00 with the default one-hour window: the deadline passed
-    // three hours before the answer arrives.
-    let deadline = NOW_MS - LATE_ANSWER_MS;
-    let action = lane.seed_gate(deadline).await;
+    // The deadline passed an hour ago on the database's clock — the clock a
+    // sweeper would have taken the row on — and nothing swept it.
+    let action = lane.seed_gate(Window::Lapsed).await;
 
     let outcome = lane
         .inbox
-        .resolve(
-            &action,
-            Decision::Approved,
-            OPERATOR,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -263,8 +224,7 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let action = lane.seed_gate(Window::Open).await;
     let before = lane.event_count().await;
 
     // A ledger with no room refuses the continuation after the row moved.
@@ -278,7 +238,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
     );
     refusing
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect_err("the continuation's admission is refused");
     assert_eq!(lane.status_of(&action).await, "approved");
@@ -286,7 +246,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
 
     let retried = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the retry settles the standing approval");
     let Resolution::AlreadyResolved(retried) = retried else {
@@ -308,7 +268,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
 
     let third = lane
         .inbox
-        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None)
         .await
         .expect("a third answer reads the standing decision");
     let Resolution::AlreadyResolved(third) = third else {

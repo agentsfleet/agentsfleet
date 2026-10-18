@@ -13,13 +13,11 @@ use std::borrow::Cow;
 use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::{FleetStreams, ReadyIndex};
-use sqlx::Row as _;
 
 use super::announce::Answer;
-use super::row::read_resolved;
+use super::row::{StoredResolution, StoredWin};
 use super::{Inbox, NO_FILTER, Resolution, Resolved};
 use crate::decision::Decision;
 use crate::request::KIND_INTEGRATION_GRANT;
@@ -41,9 +39,6 @@ const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
 
 /// The ready mark that wakes a parked delivery would not write.
 const EVENT_WAKE_READY_MARK_FAILED: &str = "gate_wake_ready_mark_failed";
-
-/// The column the pending count sits in, after the resolved row's nine.
-const COLUMN_PENDING_APPROVALS: usize = 9;
 
 /// The actor a continuation event records.
 ///
@@ -71,6 +66,8 @@ impl Inbox {
     /// There is no "resolve to pending" arm to refuse: [`Decision`] cannot
     /// express it, so the statement needs no guard and no caller can ask.
     ///
+    /// The answer is stamped on the database clock; nothing here reads one.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and a queue that would not
     /// take the continuation an approval lands.
@@ -81,18 +78,15 @@ impl Inbox {
         by: &str,
         detail: &str,
         fleet: Option<&str>,
-        now: UnixMillis,
     ) -> Result<Resolution> {
         let scope = fleet.unwrap_or(NO_FILTER);
         let mut connection = self.database.acquire().await?;
 
-        let won = sqlx::query(sql::RESOLVE_GATE)
+        let won = sqlx::query_as::<_, StoredWin>(sql::RESOLVE_GATE)
             .bind(outcome.as_str())
             .bind(detail)
             .bind(by)
-            .bind(now.as_millis())
             .bind(action)
-            .bind(status::PENDING)
             .bind(scope)
             .bind(status::APPROVED)
             .bind(GRANT_APPROVED)
@@ -104,14 +98,14 @@ impl Inbox {
 
         if let Some(row) = won {
             return Ok(Resolution::Resolved(
-                self.won(&mut connection, &row, outcome, now).await?,
+                self.won(&mut connection, row, outcome).await?,
             ));
         }
 
         // Nothing updated: either somebody answered first, or there was never
         // a gate. The second read is what tells those apart, and it runs only
         // on the losing path so the winner pays one statement.
-        let existing = sqlx::query(sql::SELECT_GATE_BY_ACTION)
+        let existing = sqlx::query_as::<_, StoredResolution>(sql::SELECT_GATE_BY_ACTION)
             .bind(action)
             .bind(scope)
             .fetch_optional(&mut *connection)
@@ -119,7 +113,7 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         Ok(match existing {
-            Some(row) => Resolution::AlreadyResolved(self.stood(&row, now).await?),
+            Some(row) => Resolution::AlreadyResolved(self.stood(row.into()).await?),
             None => Resolution::NotFound,
         })
     }
@@ -135,21 +129,18 @@ impl Inbox {
     async fn won(
         &self,
         connection: &mut sqlx::PgConnection,
-        row: &sqlx::postgres::PgRow,
+        row: StoredWin,
         outcome: Decision,
-        now: UnixMillis,
     ) -> Result<Resolved> {
-        let mut resolved = read_resolved(row)?;
-        let pending_approvals: i64 = row
-            .try_get(COLUMN_PENDING_APPROVALS)
-            .map_err(error::query(CONTEXT_RESOLVE))?;
+        let pending_approvals = row.pending_approvals;
+        let mut resolved = Resolved::from(row.resolution);
         // The continuation is part of RESOLVING, not something a caller
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
         let continuation = if outcome.continues_the_run()
             && let Some(event_id) = resolved.event_id.as_deref()
         {
-            self.continue_from(&resolved, event_id, now).await
+            self.continue_from(&resolved, event_id).await
         } else {
             // Every other answer leaves a delivery parked on the stream for
             // the next poll to read — a runless gate's, or a refused run's,
@@ -224,12 +215,7 @@ impl Inbox {
     /// lands here, and only here: the lease verb announces the rows it
     /// writes, and this one is already there when the runner pulls it, so a
     /// watcher would otherwise never see the continued run open.
-    async fn continue_from(
-        &self,
-        resolved: &Resolved,
-        event_id: &str,
-        now: UnixMillis,
-    ) -> Result<Option<String>> {
+    async fn continue_from(&self, resolved: &Resolved, event_id: &str) -> Result<Option<String>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
         let kind = afd_wire::event::EventType::Continuation.as_str();
         let admitted = self
@@ -252,7 +238,7 @@ impl Inbox {
             .await?;
 
         let (inserted, counters) = self
-            .insert_continuation(resolved, admitted.stored.id.as_str(), &actor, event_id, now)
+            .insert_continuation(resolved, admitted.stored.id.as_str(), &actor, event_id)
             .await?;
         // Once, on the write that landed the row: a retried resolve finds it
         // already there and announces nothing, as the lease verb does.
@@ -261,7 +247,9 @@ impl Inbox {
                 event_id: Cow::Borrowed(admitted.stored.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
-                created_at: now.as_millis(),
+                // The admission's own instant, which the ledger stamped and
+                // a thread page keys this event on.
+                created_at: admitted.stored.created_at,
                 // A continuation carries no typed words: a person's message
                 // is announced on its own admission.
                 message: None,
@@ -286,10 +274,9 @@ impl Inbox {
         stored_id: &str,
         actor: &str,
         event_id: &str,
-        now: UnixMillis,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
-        let inserted: bool = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+        let landed = sqlx::query_as::<_, Landed>(afd_events::sql::INSERT_FLEET_EVENT)
             .bind(&resolved.fleet_id)
             .bind(stored_id)
             .bind(&resolved.workspace_id)
@@ -297,13 +284,11 @@ impl Inbox {
             .bind(afd_wire::event::EventType::Continuation.as_str())
             .bind(CONTINUATION_BODY)
             .bind(event_id)
-            .bind(now.as_millis())
             .bind(afd_core::event::status::RECEIVED)
             .fetch_one(&mut *connection)
             .await
-            .map_err(error::query(CONTEXT_CONTINUE))?
-            .try_get(0)
             .map_err(error::query(CONTEXT_CONTINUE))?;
+        let inserted = landed.inserted;
         let counters = if inserted {
             afd_events::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id).await
         } else {
@@ -311,6 +296,13 @@ impl Inbox {
         };
         Ok((inserted, counters))
     }
+}
+
+/// What the continuation insert answers, by name: whether this call wrote
+/// the row. The id it also returns is the one the admission already named.
+#[derive(Debug, sqlx::FromRow)]
+struct Landed {
+    inserted: bool,
 }
 
 mod stood;

@@ -1,4 +1,4 @@
-//! The statements over `core.integration_grants` this crate reads.
+//! The statements over `connector.integration_grants` this crate reads.
 //!
 //! They answer "may this fleet use this integration", and they only read: the
 //! request/approve/revoke half is the tenant plane's, and a second writer of a
@@ -26,6 +26,4 @@ pub const STATUS_APPROVED: &str = afd_api_wire::grant::status::APPROVED;
 /// question the whole set shares.
 ///
 /// `$1` fleet, `$2` the approved status.
-pub const SELECT_APPROVED_SERVICES: &str = "\
-SELECT service FROM core.integration_grants
-WHERE fleet_id = $1::uuid AND status = $2";
+pub const SELECT_APPROVED_SERVICES: &str = include_str!("select_approved_services.sql");

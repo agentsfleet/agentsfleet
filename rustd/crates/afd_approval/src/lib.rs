@@ -28,7 +28,7 @@
 //! # The race is Postgres's decision
 //!
 //! Two operators answering one gate both run one UPDATE carrying
-//! `WHERE status = 'pending'`. Exactly one updates a row; the other's
+//! `WHERE resolved_at IS NULL`. Exactly one updates a row; the other's
 //! `RETURNING` comes back empty, which is how [`Resolution`] tells "you decided
 //! this" from "somebody already had". A read-then-write would let both believe
 //! they won and both tell their person so.

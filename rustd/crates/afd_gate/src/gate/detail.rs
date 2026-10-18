@@ -19,6 +19,8 @@
 //! or authored by whoever configured the fleet. Nothing here passed through a
 //! model, which is what makes the card trustworthy at all.
 
+use std::time::Duration;
+
 use afd_fleet_runtime::config::{GateRule, RepositoryBinding};
 
 /// The trustworthy half of one approval card.
@@ -51,8 +53,8 @@ pub struct Stated<'a> {
     /// `None` when the fleet declares none, which fails the mint closed, so
     /// there is no reach to state.
     pub binding: Option<&'a RepositoryBinding>,
-    /// How long the question stands before it lapses, in milliseconds.
-    pub timeout_ms: i64,
+    /// How long the question stands before it lapses.
+    pub timeout: Duration,
 }
 
 impl<'a> Stated<'a> {
@@ -67,7 +69,7 @@ impl<'a> Stated<'a> {
         action: &'a str,
         summary: &'a str,
         binding: Option<&'a RepositoryBinding>,
-        timeout_ms: i64,
+        timeout: Duration,
     ) -> Self {
         Self {
             tool,
@@ -76,7 +78,7 @@ impl<'a> Stated<'a> {
             kind: "",
             radius: "",
             binding,
-            timeout_ms,
+            timeout,
         }
     }
 
@@ -95,8 +97,13 @@ impl<'a> Stated<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::Stated;
     use afd_fleet_runtime::config::{Behavior, GateRule};
+
+    /// A rule's timeout, as a fixture authors one.
+    const FIFTEEN_MINUTES: Duration = Duration::from_mins(15);
 
     fn rule(kind: &str, radius: &str) -> GateRule {
         GateRule {
@@ -113,18 +120,19 @@ mod tests {
     fn the_daemon_derived_facts_are_always_present() {
         // They are what a model cannot forge, so a blank one here is a failure
         // rather than a display default.
-        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, 900_000);
+        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES);
 
         assert_eq!(stated.tool, "chat");
         assert_eq!(stated.action, "steer:user_42");
         assert_eq!(stated.summary, "evt-1");
-        assert_eq!(stated.timeout_ms, 900_000);
+        assert_eq!(stated.timeout, FIFTEEN_MINUTES);
     }
 
     #[test]
     fn a_matched_rule_supplies_the_workspace_copy() {
         let matched = rule("repair", "one draft Pull Request");
-        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, 900_000).under(&matched);
+        let stated =
+            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
 
         assert_eq!(stated.kind, "repair");
         assert_eq!(stated.radius, "one draft Pull Request");
@@ -133,7 +141,8 @@ mod tests {
     #[test]
     fn an_omitted_blast_radius_stays_empty_rather_than_inventing_a_reassuring_one() {
         let matched = rule("repair", "");
-        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, 1).under(&matched);
+        let stated =
+            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
 
         assert_eq!(stated.radius, "");
     }

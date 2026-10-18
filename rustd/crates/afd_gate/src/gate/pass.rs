@@ -29,10 +29,10 @@
 //! its row and one that wrote it twice are both unrepresentable when the value
 //! is the only thing that decides.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
+use jiff::Timestamp;
 
 use crate::gate::pause::Trigger;
 use crate::gate::pending::{Evaluation, GateRef};
@@ -126,13 +126,16 @@ impl Gates {
     /// Answers a [`Verdict`] rather than a `Result` for the reason the module
     /// note gives: every fault reachable here has one correct response, and the
     /// caller has no decision left to make about it.
-    pub async fn check(&self, request: Check<'_>, now: UnixMillis) -> Verdict {
+    ///
+    /// `now` mints the identifiers a first encounter's card is written under;
+    /// whether a recorded gate has lapsed is the database's call.
+    pub async fn check(&self, request: Check<'_>, now: Timestamp) -> Verdict {
         // ONE lookup, and all three states come out of it. `Unreadable` stays
         // distinct from `Absent` because collapsing them is unsafe in both
         // directions — see [`RefState`].
         match self.recorded(request.fleet_id, request.event_id).await {
             // A recorded gate decides, whatever the policy now says.
-            Ok(Some(reference)) => self.resolve_recorded(&request, &reference, now).await,
+            Ok(Some(reference)) => self.resolve_recorded(&request, &reference).await,
             Ok(None) => {
                 self.judge_first_encounter(&request, RefState::Absent, now)
                     .await
@@ -155,13 +158,8 @@ impl Gates {
     }
 
     /// What a poll makes of the gate this event already holds.
-    async fn resolve_recorded(
-        &self,
-        request: &Check<'_>,
-        reference: &GateRef,
-        now: UnixMillis,
-    ) -> Verdict {
-        match self.evaluate(reference, now).await {
+    async fn resolve_recorded(&self, request: &Check<'_>, reference: &GateRef) -> Verdict {
+        match self.evaluate(reference).await {
             Ok(Evaluation::Approved) => Verdict::Pass,
             Ok(Evaluation::Denied) => Verdict::Refuse(Refused::Denied),
             Ok(Evaluation::Expired) => Verdict::Refuse(Refused::Expired),
