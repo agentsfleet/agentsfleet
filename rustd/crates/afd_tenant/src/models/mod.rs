@@ -74,14 +74,7 @@ impl Models {
         let mut prices = prices_for(connection.as_mut(), &ids)
             .await
             .map_err(error::library_page_unavailable)?;
-        let max_updated = served
-            .iter()
-            .map(|row| {
-                prices
-                    .changed(&row.id)
-                    .map_or(row.updated_at, |at| at.max(row.updated_at))
-            })
-            .max();
+        let max_updated = served.iter().map(|row| row.updated_at).max();
         let boundary = served.last().map(|row| Boundary {
             display_key: row.display_key.clone(),
             vendor_key: row.vendor_key.clone(),
