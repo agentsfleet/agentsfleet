@@ -220,7 +220,10 @@ async fn a_report_settles_once_across_both_stores(
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
     let logged = ledger_rows(run).await;
-    assert!(logged >= 1, "the run's usage is logged, at least its final slice");
+    assert!(
+        logged >= 1,
+        "the run's usage is logged, at least its final slice"
+    );
     assert_eq!(
         unsettled_lines(run).await,
         0,

@@ -183,7 +183,11 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
 /// How many usage lines the scenario's event has logged: one per slice that
 /// measured something, the report's final slice among them.
 pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
-    count_lines(run, "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1").await
+    count_lines(
+        run,
+        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1",
+    )
+    .await
 }
 
 /// How many of those lines the biller has not yet settled.
