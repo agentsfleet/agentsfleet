@@ -1,4 +1,5 @@
 import React from "react";
+import { vi } from "vitest";
 
 // Shared mock harness for the Models client-component tests (hero, switch
 // list, forms, panels). Each shard declares its own hoisted `vi.mock(...)` and
@@ -11,8 +12,9 @@ import React from "react";
 // Lightweight DOM-only renders of just the primitives these surfaces use — no
 // Radix runtime, so happy-dom stays deterministic. Each preserves the props the
 // component / a test assertion reads (testids, ids, aria-*, disabled, onClick).
-export function designSystemStub() {
+export async function designSystemStub() {
   return {
+    ...await vi.importActual<typeof import("@agentsfleet/design-system")>("@agentsfleet/design-system"),
     // Shared eyebrow typography constant (plain string; components compose it
     // via cn). The stub only needs it to be a defined export.
     EYEBROW_CLASS: "font-mono text-eyebrow uppercase leading-eyebrow tracking-eyebrow",
@@ -77,8 +79,8 @@ export function designSystemStub() {
     Select: ({
       children,
       value,
-      onValueChange,
-    }: React.PropsWithChildren<{ value?: string; onValueChange?: (v: string) => void }>) =>
+      onValueChange, disabled,
+    }: React.PropsWithChildren<{ value?: string; onValueChange?: (v: string) => void; disabled?: boolean }>) =>
       React.createElement(
         "div",
         { "data-select": "1", "data-value": value },
@@ -86,7 +88,7 @@ export function designSystemStub() {
           "select",
           {
             "data-select-native": "1",
-            value,
+            value, disabled,
             onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onValueChange?.(e.target.value),
           },
           children,

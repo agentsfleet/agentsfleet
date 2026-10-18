@@ -33,3 +33,10 @@ describe("complete price disclosure", () => {
     expect(screen.getByText("javascript:alert(1)")).toBeTruthy();
   });
 });
+
+it("keeps the complete source timestamps visible, including sub-millisecond precision", () => {
+  const instant = "2026-10-18T00:00:00.123456789Z";
+  render(<ModelPriceSchedule prices={[{ ...PRICE, effective_from: instant, verified_at: instant }]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Price schedule (1)" }));
+  expect(screen.getAllByText(instant)).toHaveLength(2);
+});

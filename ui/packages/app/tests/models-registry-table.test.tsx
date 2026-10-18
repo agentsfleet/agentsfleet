@@ -92,7 +92,7 @@ describe("Models registry actions", () => {
     let rows = screen.getAllByRole("row");
     expect(within(rows[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     // Ascending: "" (no provider) sorts before named providers.
-    expect(within(rows[2]!).getByText("Unknown")).toBeTruthy();
+    expect(within(within(rows[2]!).getAllByRole("cell")[0]!).getByText("Unknown")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /^provider$/i }));
     rows = screen.getAllByRole("row");

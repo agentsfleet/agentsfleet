@@ -74,7 +74,14 @@ describe("provider server actions — thin forwarders", () => {
     getModelLibraryMock.mockResolvedValueOnce(library);
     const r = await getModelLibraryAction(advanced);
     expect(r).toEqual({ ok: true, data: library });
-    expect(getModelLibraryMock).toHaveBeenCalledWith("tok", advanced ?? false);
+    expect(getModelLibraryMock).toHaveBeenCalledWith("tok", advanced ?? false, null);
+  });
+
+  it("keeps advanced pagination cursors opaque through the server action", async () => {
+    const cursor = "opaque/advanced+cursor=";
+    getModelLibraryMock.mockResolvedValueOnce({ version: "v", models: [], total: null, next_cursor: null });
+    await getModelLibraryAction(true, cursor);
+    expect(getModelLibraryMock).toHaveBeenCalledWith("tok", true, cursor);
   });
 
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {

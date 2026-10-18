@@ -47,7 +47,7 @@ describe("Models registry names and rates", () => {
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
-  it("entry rows price from the library when known and say who bills otherwise", async () => {
+  it("entry rows price from the library when known and disclose unknown rates otherwise", async () => {
     await renderTableWithLibrary(
       registry([
         entry({ id: "e1", model_id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000 }),
@@ -60,11 +60,8 @@ describe("Models registry names and rates", () => {
     // Row order: header, Default, sonnet (priced), local (unpriced).
     const localRow = within(rows[3]!);
     expect(localRow.getByText("32,000")).toBeTruthy();
-    // A tenant entry is self-managed by definition, so an unpriced row is "not
-    // applicable", not a lookup miss — and a price here would imply agentsfleet
-    // is charging it when the tenant's own provider bills them directly.
-    expect(localRow.getByText("Billed by provider")).toBeTruthy();
-    expect(localRow.queryByText("Rates unavailable")).toBeNull();
+    expect(localRow.getByText("Unknown")).toBeTruthy();
+    expect(localRow.queryByText("0.00 / 0.00 / 0.00")).toBeNull();
   });
 
   it("entry rows render server-provided rates without depending on the public catalogue", async () => {
@@ -96,7 +93,8 @@ describe("Models registry names and rates", () => {
 
   it("shows Unknown in the Provider cell when the entry has no provider", async () => {
     await renderTable(registry([entry({ provider: undefined })]));
-    expect(screen.getByText("Unknown")).toBeTruthy();
+    const cells = within(screen.getAllByRole("row")[2]!).getAllByRole("cell");
+    expect(within(cells[0]!).getByText("Unknown")).toBeTruthy();
   });
 
   it("ignores an onSortChange call for a key outside the sortable column set", async () => {
@@ -183,12 +181,12 @@ describe("Models registry names and rates", () => {
     expect(screen.getByText("0")).toBeTruthy();
   });
 
-  it("renders a dash for absent context and names who bills", async () => {
+  it("renders a dash for absent context and marks unknown rates", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
     const rows = screen.getAllByRole("row");
     const contextCell = within(rows[2]!);
     expect(contextCell.getByText("—")).toBeTruthy();
-    expect(contextCell.getByText("Billed by provider")).toBeTruthy();
+    expect(contextCell.getByText("Unknown")).toBeTruthy();
   });
 
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Badge,
   Dialog,
@@ -13,6 +14,11 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { providerLabel } from "@/lib/api/model-library-types";
+import { CatalogueModelDetails } from "@/components/domain/CatalogueModelDetails";
+import { CatalogueBrowseControls } from "./CatalogueBrowseControls";
+import { useModelCatalogue } from "./ModelCatalogueProvider";
+import { libraryRateFor } from "./registry-view";
+import { CATALOGUE_STATUS } from "./catalogue-status";
 import { modelLabel } from "@/lib/models/display";
 import type { TenantModelEntry } from "@/lib/types";
 
@@ -61,8 +67,21 @@ function Details({ target }: { target: TenantModelEntry }) {
           </div>
         ) : null}
       </DescriptionList>
+      <CatalogueDetails target={target} />
     </>
   );
+}
+
+function CatalogueDetails({ target }: { target: TenantModelEntry }) {
+  const { models, status } = useModelCatalogue();
+  const [advanced, setAdvanced] = useState(false);
+  const catalogue = libraryRateFor(models, target.provider, target.model_id);
+  return <div className="space-y-sm">
+    {catalogue ? <CatalogueModelDetails model={catalogue} /> : <DialogDescription>
+      {status === CATALOGUE_STATUS.loading ? "Loading catalogue details…" : "Catalogue evidence and price schedule are unavailable for this model."}
+    </DialogDescription>}
+    <CatalogueBrowseControls id={`details-${target.id}-advanced`} advanced={advanced} onAdvancedChange={setAdvanced} />
+  </div>;
 }
 
 /** Read-only detail view for one registry row — never the key material itself. */

@@ -17,7 +17,7 @@ export function CatalogueEvidence({ source, verifiedAt }: { source: string; veri
   const url = EVIDENCE_URL.safeParse(source);
   return <div className="flex flex-wrap items-center gap-sm text-body-sm text-muted-foreground">
     {url.success ? <Button asChild variant="ghost" size="sm"><a href={url.data} target="_blank" rel="noreferrer">Source</a></Button> : <span>{source}</span>}
-    <span>Verified <Time value={new Date(verifiedAt)} format="absolute" /></span>
+    <span>Verified <Time value={verifiedAt} format="datetime" label={verifiedAt} /></span>
   </div>;
 }
 
@@ -41,9 +41,9 @@ function PriceDetails({ price }: { price: CataloguePrice }) {
       <div><DescriptionTerm>Prompt tier</DescriptionTerm><DescriptionDetails>
         {price.prompt_tokens_above === 0 ? "Base tier" : `Whole prompt above ${formatContextTokens(price.prompt_tokens_above)} tokens`}
       </DescriptionDetails></div>
-      <div><DescriptionTerm>Effective from</DescriptionTerm><DescriptionDetails><Time value={new Date(price.effective_from)} format="absolute" /></DescriptionDetails></div>
+      <div><DescriptionTerm>Effective from</DescriptionTerm><DescriptionDetails><Time value={price.effective_from} format="datetime" label={price.effective_from} /></DescriptionDetails></div>
       <div><DescriptionTerm>Effective until (exclusive)</DescriptionTerm><DescriptionDetails>
-        {price.effective_until === null ? "Open-ended" : <Time value={new Date(price.effective_until)} format="absolute" />}
+        {price.effective_until === null ? "Open-ended" : <Time value={price.effective_until} format="datetime" label={price.effective_until} />}
       </DescriptionDetails></div>
       {RATES.map(([field, label]) => <div key={field}><DescriptionTerm>{label} ($/1M)</DescriptionTerm>
         <DescriptionDetails mono>{formatRatePerMtok(price[field])}</DescriptionDetails></div>)}
