@@ -96,6 +96,12 @@ pub(crate) const RECORD_RECEIPT: &str = include_str!("record_receipt.sql");
 /// is false when the row already carries a receipt or a sibling's claim has
 /// not expired; the caller tells the two apart by `receipt`.
 ///
+/// `SKIP LOCKED`: a row another statement holds answers no row, which the
+/// caller reads as held, rather than making a request wait on that lock. A
+/// confirmation abandoned mid-wait would otherwise still commit its claim
+/// when the lock freed, and hold the row from the next confirmation for the
+/// whole claim span.
+///
 /// `$1` producer, `$2` producer key, `$3` the claim's span, as an interval.
 pub(crate) const CLAIM_ADMISSION: &str = include_str!("claim_admission.sql");
 

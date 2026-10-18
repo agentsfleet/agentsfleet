@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use afd_admission::Reply as ReplyTo;
+use afd_admission::{Producer, Reply as ReplyTo};
 use afd_db::test_util::mint_id;
 use jiff::{SignedDuration, Timestamp};
 use jiff_sqlx::ToSqlx as _;
 
 use super::lane::Lane;
 use super::ledger::{FAKE_RECEIPT, admit, steer};
-use super::queue::{over_fake, recording};
+use super::queue::{admit_against, confirm, over_fake, recording};
 use crate::fake_redis::Reply;
 
 /// An append the queue refuses, so each admitted row is left owed.
@@ -121,28 +121,19 @@ async fn two_racing_sweepers_append_each_row_once() {
 
 /// A row claimed by a pass that has not finished is left alone, and replayed
 /// once that claim lapses — the recovery for a pass that died mid-batch.
+///
+/// The claim is stamped as the row is inserted: in the shared lane another
+/// suite's deployment-wide pass could otherwise take the row between its
+/// commit and a later stamp.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_claimed_row_waits_until_its_claim_lapses() {
     let lane = Lane::seed().await;
+    let claimer = lane.claim_on_insert().await;
     let _owed = owed_rows(&lane, 1).await;
-    let claim = |expires_at: Timestamp| {
-        let lane = &lane;
-        async move {
-            sqlx::query(
-                "UPDATE fleet.admissions SET replay_claim_expires_at = $2 \
-                 WHERE fleet_id = $1::uuid",
-            )
-            .bind(&lane.fleet)
-            .bind(expires_at.to_sqlx())
-            .execute(&mut *lane.database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("the claim is stamped");
-        }
-    };
+    drop(claimer);
     let (_queue, admissions) = over_fake(&lane, &[("XADD", Reply::Bulk(FAKE_RECEIPT))]).await;
 
-    claim(Timestamp::now() + SignedDuration::from_hours(1)).await;
     admissions
         .replay(AN_HOUR, REPLAY_ALL)
         .await
@@ -150,18 +141,65 @@ async fn a_claimed_row_waits_until_its_claim_lapses() {
     assert_eq!(
         owed(&lane).await,
         1,
-        "a live claim keeps the row from this pass"
+        "a live claim keeps the row from every pass"
     );
 
-    claim(Timestamp::now() - SignedDuration::from_hours(1)).await;
-    admissions
-        .replay(AN_HOUR, REPLAY_ALL)
+    sqlx::query(
+        "UPDATE fleet.admissions SET replay_claim_expires_at = $2 WHERE fleet_id = $1::uuid",
+    )
+    .bind(&lane.fleet)
+    .bind((Timestamp::now() - SignedDuration::from_hours(1)).to_sqlx())
+    .execute(&mut *lane.database.acquire().await.expect("a pooled connection"))
+    .await
+    .expect("the claim lapses");
+    // Once lapsed, any pass in the lane may take the row; a sibling's refused
+    // append releases it again, so this suite keeps passing until it lands.
+    for _ in 0..ROUNDS {
+        admissions
+            .replay(AN_HOUR, REPLAY_ALL)
+            .await
+            .expect("a pass runs");
+        if owed(&lane).await == 0 {
+            break;
+        }
+    }
+    assert!(lane.receipt().await.is_some(), "a lapsed claim is replayed");
+    lane.cleanup().await;
+}
+
+/// A confirmation meets a row another statement holds locked and answers
+/// "held" at once, rather than waiting on the lock and committing a claim
+/// after its caller gave up.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_confirmation_never_waits_on_a_locked_row() {
+    let lane = Lane::seed().await;
+    admit_against(&lane, &[("XADD", Reply::Raw(XADD_REFUSED))])
         .await
-        .expect("a pass runs");
-    assert_eq!(
-        lane.receipt().await.as_deref(),
-        Some(FAKE_RECEIPT),
-        "a lapsed claim is replayed"
+        .outcome
+        .expect("a refused append defers the admission");
+    let (_queue, admissions) = over_fake(&lane, &[("XADD", Reply::Bulk(FAKE_RECEIPT))]).await;
+
+    let mut holder = lane.hold_rows().await;
+    let held = tokio::time::timeout(NO_WAIT, admissions.confirm(Producer::Steer, &lane.fleet))
+        .await
+        .expect("a locked row answers without waiting on the lock")
+        .expect("the ledger answers");
+    assert_eq!(held, None, "a locked row reads as held");
+    sqlx::query("COMMIT")
+        .execute(&mut holder)
+        .await
+        .expect("the holder finishes");
+
+    let confirmed = confirm(&admissions, &lane)
+        .await
+        .expect("the row is confirmed");
+    assert!(
+        confirmed.accepted,
+        "the freed row is appended and receipted"
     );
     lane.cleanup().await;
 }
+
+/// Longer than a confirmation takes, far shorter than any lock wait.
+const NO_WAIT: Duration = Duration::from_secs(2);

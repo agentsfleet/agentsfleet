@@ -2,6 +2,7 @@ WITH target AS (
     SELECT id
     FROM fleet.admissions
     WHERE producer = $1 AND producer_key = $2
+    FOR UPDATE SKIP LOCKED
 ), claimed AS (
     UPDATE fleet.admissions a
     SET replay_claim_expires_at = statement_timestamp() + $3::interval, updated_at = now()

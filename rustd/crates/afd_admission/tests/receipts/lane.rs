@@ -108,6 +108,58 @@ impl Lane {
         sweeper
     }
 
+    /// Stands in for a replay pass that claimed this fleet's rows and has not
+    /// finished: every admission row inserted for THIS fleet carries a claim
+    /// an hour out the moment it lands, so no pass in the shared lane can take
+    /// it before the test does anything. Removed when the guard drops.
+    pub(crate) async fn claim_on_insert(&self) -> Sweeper {
+        let claimer = Sweeper {
+            url: self.handle.url(),
+            name: format!("afd_it_claim_{}", self.fleet.replace('-', "")),
+        };
+        let name = &claimer.name;
+        let mut admin = sqlx::PgConnection::connect(&claimer.url)
+            .await
+            .expect("the lane's owner connects");
+        // Both identifiers and the WHEN UUID come from this fixture's minted id.
+        for statement in [
+            format!(
+                "CREATE FUNCTION public.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ \
+                 BEGIN NEW.replay_claim_expires_at := statement_timestamp() + interval '1 hour'; \
+                 RETURN NEW; END $$"
+            ),
+            format!(
+                "CREATE TRIGGER {name} BEFORE INSERT ON fleet.admissions FOR EACH ROW \
+                 WHEN (NEW.fleet_id = '{}'::uuid) EXECUTE FUNCTION public.{name}()",
+                self.fleet
+            ),
+        ] {
+            sqlx::query(AssertSqlSafe(statement))
+                .execute(&mut admin)
+                .await
+                .expect("the stand-in claim installs");
+        }
+        claimer
+    }
+
+    /// Holds this fleet's admission rows `FOR UPDATE` on a connection of its
+    /// own until the returned connection runs `COMMIT` or drops.
+    pub(crate) async fn hold_rows(&self) -> sqlx::PgConnection {
+        let mut holder = sqlx::PgConnection::connect(&self.handle.url())
+            .await
+            .expect("the lane's owner connects");
+        sqlx::query("BEGIN")
+            .execute(&mut holder)
+            .await
+            .expect("the holder opens a transaction");
+        sqlx::query("SELECT id FROM fleet.admissions WHERE fleet_id = $1::uuid FOR UPDATE")
+            .bind(&self.fleet)
+            .execute(&mut holder)
+            .await
+            .expect("the holder locks the rows");
+        holder
+    }
+
     /// Refuses only this fixture's receipt updates, after the admission committed.
     pub(super) async fn refuse_receipts(&self) -> Sweeper {
         let guard = Sweeper {
