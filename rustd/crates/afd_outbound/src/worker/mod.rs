@@ -18,7 +18,7 @@
 //! starved the other thirty-one jobs.
 //!
 //! What recovers an entry THIS process dropped is not the pending list: it is
-//! the committed row in `core.fleet_obligations`, which the producer re-offers
+//! the committed row in `fleet.obligations`, which the producer re-offers
 //! when it was queued and never delivered.
 //!
 //! Then a blocking read, raced against the supervisor's token. `BLOCK` is what
@@ -79,19 +79,11 @@ use crate::poster::{Deliver, Posters};
 /// commands a minute, and short enough that nothing waits on it: cancellation
 /// does not wait out the interval, because the token is raced against the read
 /// rather than checked between reads.
-pub const BLOCK_INTERVAL: usize = 5_000;
-
-/// The longest a read parks, as a [`Duration`].
 ///
-/// What the reader's connection is opened with, so its reply deadline outlives
-/// every `BLOCK` this worker passes — see [`afd_dragonfly::Dedicated::connect`] for
-/// what happens when it does not.
-pub const LONGEST_PARK: Duration = Duration::from_millis(5_000);
-
-// One number spelled twice for two APIs — the wire wants milliseconds as a
-// `usize`, the connection wants a `Duration` — and this is what keeps them one
-// number.
-const _: () = assert!(LONGEST_PARK.as_millis() == BLOCK_INTERVAL as u128);
+/// The reader's connection is opened with the same span, so its reply deadline
+/// outlives every `BLOCK` this worker passes — see
+/// [`afd_dragonfly::Dedicated::connect`] for what happens when it does not.
+pub const LONGEST_PARK: Duration = Duration::from_secs(5);
 
 /// The pause a failed read costs before the next one.
 ///
@@ -162,7 +154,7 @@ impl<S: Deliver + 'static> Worker<S> {
         // answers already acknowledged, which for this stream means posting the
         // same reply to a real channel twice. Resuming exactly where delivery
         // stopped needs a durable record of the last acknowledged id, and
-        // `core.fleet_obligations` is now that record: an answer queued and
+        // `fleet.obligations` is now that record: an answer queued and
         // never delivered is a receipted, unstamped row, and the producer
         // re-offers it whatever the group did.
         if let Err(failure) = self.queue.ensure_group().await {
@@ -274,7 +266,7 @@ impl<S: Deliver + 'static> Worker<S> {
     ///
     /// What this deliberately does NOT do is recover an entry THIS process was
     /// handed and then failed to acknowledge. That is not lost: the answer is a
-    /// committed row in `core.fleet_obligations`, and the producer's
+    /// committed row in `fleet.obligations`, and the producer's
     /// undelivered scan re-offers it. The durable record is the recovery
     /// mechanism; the pending list is only the hand-over.
     async fn resume(
@@ -306,7 +298,7 @@ impl<S: Deliver + 'static> Worker<S> {
             // during a shutdown that had already been requested.
             biased;
             () = token.cancelled() => Turn::Stopped,
-            read = reader.read_blocking(BLOCK_INTERVAL) => match read {
+            read = reader.read_blocking(LONGEST_PARK) => match read {
                 Ok(Some(job)) => Turn::Job(Box::new(job)),
                 Ok(None) => Turn::Idle,
                 Err(failure) => Self::read_failed("outbound_read_next_failed", failure),

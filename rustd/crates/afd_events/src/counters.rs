@@ -29,13 +29,22 @@ use afd_api_wire::tail::FleetCounters;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use sqlx::PgConnection;
-use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
 use crate::sql::SELECT_FLEET_COUNTERS;
 
 /// The context a refused counter read is reported under.
 const CONTEXT_COUNTERS: &str = "fleet activity counters";
+
+/// What a refused decode is reported as.
+const ROW: &str = "fleet counters row";
+
+/// The counters as `fleet.activity_counters` spells them.
+#[derive(sqlx::FromRow)]
+struct StoredCounters {
+    event_count: i64,
+    budget_used_nanos: i64,
+}
 
 /// The log event a publisher emits when it goes out without its figures.
 const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
@@ -62,14 +71,17 @@ pub async fn fleet_counters_on(
     connection: &mut PgConnection,
     fleet_id: &str,
 ) -> Result<FleetCounters> {
-    let row = sqlx::query(SELECT_FLEET_COUNTERS)
+    let stored = sqlx::query_as::<_, StoredCounters>(SELECT_FLEET_COUNTERS)
         .bind(fleet_id)
         .fetch_one(&mut *connection)
         .await
-        .map_err(query(CONTEXT_COUNTERS))?;
+        .map_err(|failure| match failure {
+            decode @ sqlx::Error::ColumnDecode { .. } => row_malformed(ROW)(decode),
+            other => query(CONTEXT_COUNTERS)(other),
+        })?;
     Ok(FleetCounters {
-        events_processed: row.try_get(0).map_err(row_malformed("events_processed"))?,
-        budget_used_nanos: row.try_get(1).map_err(row_malformed("budget_used_nanos"))?,
+        events_processed: stored.event_count,
+        budget_used_nanos: stored.budget_used_nanos,
     })
 }
 

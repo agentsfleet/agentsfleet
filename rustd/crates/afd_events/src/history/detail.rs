@@ -14,28 +14,30 @@
 //! order and JSON field order are independent; only the second is a contract a
 //! client reads, and it is `afd_wire::event::EventDetail` that declares it.
 //!
-//! # And why the bodies are read by NAME
+//! # Decoded by name
 //!
-//! `EventRow::read` reads by index because it decodes a whole statement it owns
-//! end to end. The bodies are spliced onto that statement, so an index here
-//! would be a hand-counted offset into somebody else's column list — the exact
-//! coupling this file exists to avoid. Postgres names the output column after
-//! the column being cast, so `request_json::text` arrives as `request_json`.
+//! [`StoredDetail`] flattens the listing's own typed row and adds the three
+//! bodies, all bound by column name through `sqlx::FromRow`, so neither half
+//! counts offsets into the other's column list.
 
-use sqlx::Row as _;
+use sqlx::FromRow as _;
 use sqlx::postgres::PgRow;
 
-use super::row::EventRow;
+use super::row::{EventRow, Stored};
 use crate::error::{Error, row_malformed};
 
-/// The stored trigger payload's column, named once (RULE UFS).
-const COLUMN_REQUEST_JSON: &str = "request_json";
+/// What a refused decode is reported as.
+const ROW: &str = "event detail row";
 
-/// The agent's answer's column, named once (RULE UFS).
-const COLUMN_RESPONSE_TEXT: &str = "response_text";
-
-/// The run's tool trace's column, named once (RULE UFS).
-const COLUMN_TOOL_CALLS: &str = "tool_calls";
+/// The row as the detail and thread reads select it.
+#[derive(sqlx::FromRow)]
+struct StoredDetail {
+    #[sqlx(flatten)]
+    row: Stored,
+    request_json: String,
+    response_text: Option<String>,
+    tool_calls: Option<String>,
+}
 
 /// One event with everything recorded about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,17 +67,12 @@ impl EventDetailRow {
     /// [`Error::RowMalformed`] when a column is not the type this build reads —
     /// which is a schema this binary was not built for, not a caller's mistake.
     pub(crate) fn read(row: &PgRow) -> Result<Self, Error> {
+        let stored = StoredDetail::from_row(row).map_err(row_malformed(ROW))?;
         Ok(Self {
-            row: EventRow::read(row)?,
-            request_json: row
-                .try_get(COLUMN_REQUEST_JSON)
-                .map_err(row_malformed(COLUMN_REQUEST_JSON))?,
-            response_text: row
-                .try_get(COLUMN_RESPONSE_TEXT)
-                .map_err(row_malformed(COLUMN_RESPONSE_TEXT))?,
-            tool_calls: row
-                .try_get(COLUMN_TOOL_CALLS)
-                .map_err(row_malformed(COLUMN_TOOL_CALLS))?,
+            row: EventRow::from(stored.row),
+            request_json: stored.request_json,
+            response_text: stored.response_text,
+            tool_calls: stored.tool_calls,
         })
     }
 }
@@ -118,7 +115,7 @@ const FIXTURE_REQUEST_JSON: &str = r#"{"message":"hello"}"#;
 impl EventDetailRow {
     /// One row of a thread, identified by `event_id` at `created_at`.
     #[must_use]
-    pub fn fixture(event_id: &str, created_at: i64, response_text: String) -> Self {
+    pub fn fixture(event_id: &str, created_at: jiff::Timestamp, response_text: String) -> Self {
         Self {
             row: EventRow {
                 fleet_id: FIXTURE_FLEET_ID.to_owned(),

@@ -2,30 +2,65 @@
 //!
 //! Both are the caller's, both reach SQL, and neither reaches it as text the
 //! caller wrote. The glob is translated into a LIKE pattern with every
-//! metacharacter escaped, and `since=` is resolved to an integer before it goes
-//! anywhere near a statement.
+//! metacharacter escaped, and `since=` is resolved to a [`Since`] before it
+//! goes anywhere near a statement.
+//!
+//! # The database reads the clock
+//!
+//! A relative window — `30m` — is a SPAN, and the statement subtracts it from
+//! its own `statement_timestamp()`, the clock that stamped every row it
+//! compares against. Nothing here reads a clock, so a parse is deterministic
+//! without a seam for one.
 
-use afd_core::clock::UnixMillis;
-use afd_core::timing::DAY_MS;
+use std::time::Duration;
+
+use afd_core::timing::DAY;
 use afd_db::statement::{LIKE_ANY, like_escape};
 use jiff::Timestamp;
 
 use crate::error::{Result, cursor_malformed};
 
-/// Milliseconds in each unit a `since=` duration may name; a day is
-/// [`DAY_MS`], spelled once in `afd_core`.
-const MS_PER_SECOND: i64 = 1_000;
-const MS_PER_MINUTE: i64 = 60 * MS_PER_SECOND;
-const MS_PER_HOUR: i64 = 60 * MS_PER_MINUTE;
+/// The widest window a relative `since=` resolves to: a thousand years.
+///
+/// Wider than any history this product holds, and still a span Postgres can
+/// subtract from now. A wider ask saturates here instead of overflowing.
+pub const WIDEST_WINDOW: Duration = DAY.saturating_mul(365_000);
 
 /// The exact length of the timestamp form `since=` accepts.
 ///
-/// `YYYY-MM-DDTHH:MM:SSZ`. Checked before parsing so acceptance matches
-/// `parseRfc3339Z` rather than matching whatever [`Timestamp`] is willing to
-/// read — jiff alone would take an offset and a fractional second, which is a
-/// WIDER surface than the daemon this ports and would have the two answering
-/// differently during the migration.
+/// `YYYY-MM-DDTHH:MM:SSZ`. Checked before parsing so acceptance stays the
+/// narrow `Z` shape rather than whatever [`Timestamp`] is willing to read —
+/// jiff alone would take an offset and a fractional second.
 const RFC3339_Z_LEN: usize = 20;
+
+/// A lower bound on `created_at`, as the caller asked for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Since {
+    /// The last `span`, measured back from the statement's own clock.
+    Within(Duration),
+    /// From a fixed instant, inclusive.
+    From(Timestamp),
+}
+
+impl Since {
+    /// The instant a listing binds: set for [`Since::From`], else NULL.
+    #[must_use]
+    pub const fn instant(window: Option<Self>) -> Option<Timestamp> {
+        match window {
+            Some(Self::From(at)) => Some(at),
+            Some(Self::Within(_)) | None => None,
+        }
+    }
+
+    /// The span a listing binds: set for [`Since::Within`], else NULL.
+    #[must_use]
+    pub const fn span(window: Option<Self>) -> Option<Duration> {
+        match window {
+            Some(Self::Within(span)) => Some(span),
+            Some(Self::From(_)) | None => None,
+        }
+    }
+}
 
 /// What narrows a listing, once every caller-supplied value is resolved.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -33,86 +68,65 @@ pub struct Filter {
     /// A SQL LIKE pattern, already escaped by [`glob_to_like`].
     pub actor_like: Option<String>,
     /// An inclusive lower bound on `created_at`.
-    ///
-    /// [`UnixMillis`] rather than a bare `i64`, because that is the type every
-    /// timestamp in this workspace already is — `schema/`'s BIGINT columns,
-    /// `afd_wire`'s fields and a `UUIDv7`'s own layout all agree on
-    /// epoch-milliseconds, and `afd_core::clock` exists so the agreement has a
-    /// name. An `i64` here would be a second spelling of it that nothing checks.
-    pub since: Option<UnixMillis>,
+    pub since: Option<Since>,
 }
 
-/// Resolve a `since=` value against `now_ms`.
+/// Resolve a `since=` value.
 ///
-/// Two forms, exactly as `parseSince` takes them:
-/// - a duration — `15s`, `30m`, `2h`, `7d` — meaning `now - duration`
+/// Two forms:
+/// - a duration — `15s`, `30m`, `2h`, `7d` — meaning that span back from now,
+///   where now is the database's
 /// - `YYYY-MM-DDTHH:MM:SSZ`, meaning that instant
-///
-/// `now` is a parameter rather than a clock read so a test is deterministic —
-/// the seam `afd_core::clock` exists to provide.
-///
-/// # Why jiff appears here at all
-///
-/// `afd_core::clock` is the instant TYPE and the clock SOURCE; it carries no
-/// calendar, and the absolute form of `since=` is a calendar string. So the
-/// division is the one `afd_billing::window` already draws: [`UnixMillis`]
-/// at both boundaries, [`Timestamp`] only for the civil-to-instant conversion
-/// in between, and no epoch arithmetic hand-written anywhere.
 ///
 /// # Errors
 /// A window supplied ALONGSIDE a cursor is not refused here — that is the
-/// caller's check,
-/// because only the caller knows whether a cursor also arrived. Everything this
-/// function refuses is an unreadable window value.
-pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis> {
+/// caller's check, because only the caller knows whether a cursor also
+/// arrived. Everything this function refuses is an unreadable window value.
+pub fn parse_since(input: &str) -> Result<Since> {
     let Some(last) = input.chars().last() else {
         return Err(cursor_malformed());
     };
-    let unit_ms = match last {
-        's' => Some(MS_PER_SECOND),
-        'm' => Some(MS_PER_MINUTE),
-        'h' => Some(MS_PER_HOUR),
-        'd' => Some(DAY_MS),
+    let unit = match last {
+        's' => Some(Duration::from_secs(1)),
+        'm' => Some(Duration::from_mins(1)),
+        'h' => Some(Duration::from_hours(1)),
+        'd' => Some(DAY),
         _timestamp_form => None,
     };
-    match unit_ms {
-        Some(unit) => parse_duration(&input[..input.len() - last.len_utf8()], unit, now),
+    match unit {
+        Some(unit) => parse_duration(&input[..input.len() - last.len_utf8()], unit),
         None => parse_rfc3339_z(input),
     }
 }
 
 /// `15s` and friends: the count before the unit, refusing a negative window.
 ///
-/// Saturating rather than wrapping: a caller naming a duration wider than the
-/// epoch gets the beginning of time, which is what they asked for, instead of
-/// an arithmetic wrap that would silently become a window in the future.
-fn parse_duration(digits: &str, unit_ms: i64, now: UnixMillis) -> Result<UnixMillis> {
+/// Saturating at [`WIDEST_WINDOW`] rather than wrapping: a caller naming a
+/// duration wider than any history gets all of it, which is what they asked
+/// for, instead of an overflow.
+fn parse_duration(digits: &str, unit: Duration) -> Result<Since> {
     let count: i64 = digits.parse().map_err(|_digits| cursor_malformed())?;
     if count < 0 {
         return Err(cursor_malformed());
     }
-    Ok(UnixMillis::from_millis(
-        now.as_millis()
-            .saturating_sub(count.saturating_mul(unit_ms)),
-    ))
+    let span = u32::try_from(count)
+        .ok()
+        .and_then(|count| unit.checked_mul(count))
+        .unwrap_or(WIDEST_WINDOW);
+    Ok(Since::Within(span.min(WIDEST_WINDOW)))
 }
 
 /// The absolute form, shape-checked before it is parsed.
 ///
-/// **Declared divergence.** `parseRfc3339Z` validates the day as `1..=31` for
-/// every month and then runs a days-from-civil conversion, so it ACCEPTS
-/// `2026-02-31T00:00:00Z` and silently rolls it into March. [`Timestamp`]
-/// refuses it. That is a narrowing, which `docs/REST_API_DESIGN_GUIDELINES.md`
-/// §9 classes as breaking — taken deliberately, because an impossible calendar
-/// date is not a client contract and rolling it over answers a question nobody
-/// asked. Recorded in the spec's Discovery rather than left for a reader to
-/// discover from a diff.
-fn parse_rfc3339_z(input: &str) -> Result<UnixMillis> {
+/// An impossible calendar date — `2026-02-31T00:00:00Z` — is refused rather
+/// than rolled into March: it is not a date, and rolling it over answers a
+/// question nobody asked.
+fn parse_rfc3339_z(input: &str) -> Result<Since> {
     if input.len() != RFC3339_Z_LEN || !input.ends_with('Z') {
         return Err(cursor_malformed());
     }
     let at: Timestamp = input.parse().map_err(|_shape| cursor_malformed())?;
-    Ok(UnixMillis::from_millis(at.as_millisecond()))
+    Ok(Since::From(at))
 }
 
 /// The glob wildcard a client types for any run of characters.
@@ -161,57 +175,67 @@ mod tests {
 
     use super::*;
 
-    /// A fixed instant, so every assertion below reads as arithmetic.
-    const NOW_MS: i64 = 1_735_689_600_000;
-
     /// The four unit widths, spelled out HERE rather than imported from the
-    /// module under test.
-    ///
-    /// Importing `MS_PER_SECOND` and its siblings would make these assertions
-    /// tautological — the test would multiply by the same constant the parser
-    /// divides by and agree with itself no matter what either said. An
-    /// independent oracle has to carry its own numbers; naming them is what
-    /// keeps that independence from reading as a bare literal.
-    const ONE_SECOND: i64 = 1_000;
-    const ONE_MINUTE: i64 = 60_000;
-    const ONE_HOUR: i64 = 3_600_000;
-    const ONE_DAY: i64 = 86_400_000;
+    /// module under test, so the assertions are an independent oracle rather
+    /// than the parser agreeing with itself.
+    const ONE_SECOND: Duration = Duration::from_secs(1);
+    const ONE_MINUTE: Duration = Duration::from_mins(1);
+    const ONE_HOUR: Duration = Duration::from_hours(1);
+    const ONE_DAY: Duration = Duration::from_hours(24);
 
-    fn now() -> UnixMillis {
-        UnixMillis::from_millis(NOW_MS)
-    }
-
-    /// The instant `raw` resolves to, in milliseconds.
-    fn resolved(raw: &str) -> i64 {
-        parse_since(raw, now())
-            .expect("a window this test declares readable")
-            .as_millis()
+    /// The window `raw` resolves to.
+    fn resolved(raw: &str) -> Since {
+        parse_since(raw).expect("a window this test declares readable")
     }
 
     #[test]
-    fn resolves_every_duration_unit() {
-        assert_eq!(resolved("15s"), NOW_MS - 15 * ONE_SECOND);
-        assert_eq!(resolved("30m"), NOW_MS - 30 * ONE_MINUTE);
-        assert_eq!(resolved("2h"), NOW_MS - 2 * ONE_HOUR);
-        assert_eq!(resolved("7d"), NOW_MS - 7 * ONE_DAY);
+    fn resolves_every_duration_unit_to_a_span() {
+        assert_eq!(resolved("15s"), Since::Within(ONE_SECOND * 15));
+        assert_eq!(resolved("30m"), Since::Within(ONE_MINUTE * 30));
+        assert_eq!(resolved("2h"), Since::Within(ONE_HOUR * 2));
+        assert_eq!(resolved("7d"), Since::Within(ONE_DAY * 7));
     }
 
     #[test]
     fn a_zero_duration_is_now_not_a_refusal() {
-        assert_eq!(resolved("0s"), NOW_MS);
+        assert_eq!(resolved("0s"), Since::Within(Duration::ZERO));
     }
 
     #[test]
     fn an_absurd_duration_saturates_instead_of_wrapping() {
         // A wrap would put the lower bound in the FUTURE and return nothing,
         // which reads to a caller as "this fleet has no history".
-        let floor = resolved(&format!("{}d", i64::MAX));
-        assert!(floor < NOW_MS, "a wider window must not land ahead of now");
+        assert_eq!(
+            resolved(&format!("{}d", i64::MAX)),
+            Since::Within(WIDEST_WINDOW)
+        );
+        assert_eq!(
+            resolved(&format!("{}d", u32::MAX)),
+            Since::Within(WIDEST_WINDOW)
+        );
     }
 
     #[test]
-    fn reads_the_absolute_form() {
-        assert_eq!(resolved("2025-01-01T00:00:00Z"), NOW_MS);
+    fn reads_the_absolute_form_as_an_instant() {
+        assert_eq!(
+            resolved("2025-01-01T00:00:00Z"),
+            Since::From(Timestamp::constant(1_735_689_600, 0))
+        );
+    }
+
+    #[test]
+    fn a_window_binds_exactly_one_of_its_two_slots() {
+        let span = Some(Since::Within(ONE_HOUR));
+        let at = Some(Since::From(Timestamp::UNIX_EPOCH));
+        assert_eq!(
+            (Since::instant(span), Since::span(span)),
+            (None, Some(ONE_HOUR))
+        );
+        assert_eq!(
+            (Since::instant(at), Since::span(at)),
+            (Some(Timestamp::UNIX_EPOCH), None)
+        );
+        assert_eq!((Since::instant(None), Since::span(None)), (None, None));
     }
 
     #[test]
@@ -225,14 +249,14 @@ mod tests {
             "2025-01-01T00:00:00+00:00", // an offset: wider than the `Z` shape
             "2025-01-01T00:00:00.5Z",    // fractional: also wider
         ] {
-            assert!(parse_since(raw, now()).is_err(), "accepted {raw:?}");
+            assert!(parse_since(raw).is_err(), "accepted {raw:?}");
         }
     }
 
     #[test]
     fn refuses_an_impossible_calendar_date() {
         // Pinned: a parser that normalises the date would roll this into March.
-        parse_since("2026-02-31T00:00:00Z", now()).expect_err("the 31st of February is not a date");
+        parse_since("2026-02-31T00:00:00Z").expect_err("the 31st of February is not a date");
     }
 
     #[test]

@@ -38,7 +38,8 @@ pub(super) async fn ready() -> OutboundHarness {
     harness
 }
 
-/// Owes an answer, appends it and records the receipt — the report's fast path.
+/// Owes an answer, appends it and records the receipt — the report's fast path —
+/// then ages the row past both of the producer's spans.
 ///
 /// Answers the entry id the queue minted, which is what a job carries as its
 /// `id` and what the lanes acknowledge by.
@@ -54,14 +55,9 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         .begin()
         .await
         .expect("the report's transaction opens");
-    let written = obligation::owe(
-        &mut transaction,
-        &obligation_id(nth),
-        delivery(event),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("owing a delivery");
+    let written = obligation::owe(&mut transaction, &obligation_id(nth), delivery(event))
+        .await
+        .expect("owing a delivery");
     transaction
         .commit()
         .await
@@ -80,38 +76,49 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         })
         .await
         .expect("the queue takes the entry");
-    obligation::receipt(
-        &harness.database,
-        &obligation_id(nth),
-        entry.as_str(),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("recording the receipt");
+    obligation::receipt(&harness.database, &obligation_id(nth), entry.as_str())
+        .await
+        .expect("recording the receipt");
+    // The entry has sat on the queue an hour, as far as the undelivered scan
+    // can tell.
+    age(&harness.database, event).await;
     entry
 }
 
 /// The row as the ledger holds it: `(attempt_count, delivered_at, updated_at)`.
-pub(super) async fn row(harness: &OutboundHarness, event: &str) -> (i64, Option<i64>, i64) {
+pub(super) async fn row(
+    harness: &OutboundHarness,
+    event: &str,
+) -> (i64, Option<jiff::Timestamp>, jiff::Timestamp) {
     let mut connection = harness
         .database
         .acquire()
         .await
         .expect("the ledger answers");
-    sqlx::query_as(
-        "SELECT attempt_count, delivered_at, updated_at FROM core.fleet_obligations
+    let (attempts, delivered_at, updated_at): (
+        i64,
+        Option<jiff_sqlx::Timestamp>,
+        jiff_sqlx::Timestamp,
+    ) = sqlx::query_as(
+        "SELECT attempt_count, delivered_at, updated_at FROM fleet.obligations
           WHERE fleet_id = $1::uuid AND event_id = $2::text",
     )
     .bind(FLEET)
     .bind(event)
     .fetch_one(&mut *connection)
     .await
-    .expect("reading the obligation")
+    .expect("reading the obligation");
+    (
+        attempts,
+        delivered_at.map(jiff_sqlx::Timestamp::to_jiff),
+        updated_at.to_jiff(),
+    )
 }
 
-/// The event ids the recovery scan would re-offer before `cutoff`.
-pub(super) async fn reoffered_before(harness: &OutboundHarness, cutoff: i64) -> Vec<String> {
-    obligation::undelivered(&harness.database, UnixMillis::from_millis(cutoff), AMPLE)
+/// The event ids the recovery scan would re-offer now, at the producer's own
+/// [`LOST_AFTER`].
+pub(super) async fn reoffered(harness: &OutboundHarness) -> Vec<String> {
+    obligation::undelivered(&harness.database, LOST_AFTER, AMPLE)
         .await
         .expect("the scan answers")
         .into_iter()

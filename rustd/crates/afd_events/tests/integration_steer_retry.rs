@@ -38,7 +38,6 @@ use afd_dragonfly::ReadyIndex;
 use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
 use afd_wire::event::field;
-use sqlx::Row as _;
 
 use crate::support::EventsLane;
 
@@ -103,7 +102,7 @@ async fn test_steer_retry_reuses_its_admission() {
         admissions_for(&lane, OPERATION).await,
         1,
         "one ledger row for the key: the UNIQUE (producer, producer_key) on \
-         core.fleet_admissions is what makes the retry free, and a second row \
+         fleet.admissions is what makes the retry free, and a second row \
          is a second unit of accepted work the replay sweeper will deliver"
     );
 
@@ -208,8 +207,8 @@ pub(crate) async fn append_with(
 pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
     let key = [lane.fleet.as_str(), operation].join(KEY_SEPARATOR);
     let mut connection = lane.connection().await;
-    sqlx::query(
-        "SELECT count(*) FROM core.fleet_admissions \
+    sqlx::query_scalar(
+        "SELECT count(*) FROM fleet.admissions \
          WHERE producer = $1 AND producer_key = $2",
     )
     .bind(PRODUCER_STEER)
@@ -217,8 +216,6 @@ pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
     .fetch_one(&mut *connection)
     .await
     .expect("the ledger count must run")
-    .try_get(0)
-    .expect("count answers a bigint")
 }
 
 /// Returns the lane's shared state to where the next suite expects it.

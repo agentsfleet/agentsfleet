@@ -5,9 +5,12 @@
 //! text numbers its placeholders the way `History` binds them, and that the
 //! cursor pair carries two events in one millisecond across a page boundary.
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
 use afd_core::id::Uuid7;
-use afd_events::{Cursor, EventRow, Filter, History, next_cursor, prefix_to_like};
+use afd_db::test_util::mint_id;
+use afd_events::{Cursor, EventRow, Filter, History, Since, next_cursor, prefix_to_like};
+use jiff::Timestamp;
 
 use crate::support::EventsLane;
 
@@ -15,9 +18,9 @@ use crate::support::EventsLane;
 const EVENTS: i64 = 24;
 /// Rows per page: few, so every walk resumes several times and ends deep.
 const PAGE: i64 = 5;
-/// The oldest walked event's timestamp; each later pair is one step newer.
-const FIRST_MS: i64 = 1_800_000_000_000;
-const STEP_MS: i64 = 1_000;
+/// The oldest walked event's instant; each later pair is one step newer.
+const FIRST_AT: Timestamp = Timestamp::constant(1_800_000_000, 0);
+const STEP: Duration = Duration::from_secs(1);
 /// The prefix of the actor every walked event carries (`EventsLane::seed_event`),
 /// and one none of them does.
 const SEEDED_ACTOR: &str = "steer:";
@@ -49,13 +52,22 @@ enum Listing {
     WorkspaceDrillDown,
 }
 
+/// The instant of the `nth` pair of walked events.
+fn pair_at(nth: i64) -> Timestamp {
+    let steps = u32::try_from(nth).expect("a walk is a few dozen events");
+    FIRST_AT
+        .checked_add(STEP * steps)
+        .expect("a walk instant is in range")
+}
+
 /// Seeds the walked events and answers `(created_at, event_id)` for each,
-/// newest first, as every page orders them.
-pub(super) async fn seed_walk(lane: &EventsLane) -> Vec<(i64, String)> {
+/// newest first, as every page orders them. Ids are `UUIDv7`s, as an admitted
+/// event's are, and each pair shares an instant so the id breaks the tie.
+pub(super) async fn seed_walk(lane: &EventsLane) -> Vec<(Timestamp, String)> {
     let mut seeded = Vec::new();
     for nth in 0..EVENTS {
-        let created_at = FIRST_MS + (nth / 2) * STEP_MS;
-        let event_id = format!("{created_at}-{}", nth % 2);
+        let created_at = pair_at(nth / 2);
+        let event_id = mint_id();
         lane.seed_event(&event_id, created_at).await;
         seeded.push((created_at, event_id));
     }
@@ -147,7 +159,7 @@ async fn walk_thread(history: &History, scope: &Scope) -> Vec<String> {
 }
 
 /// The seeded events' ids at or after `since`, newest first.
-fn ids_since(seeded: &[(i64, String)], since: i64) -> Vec<String> {
+fn ids_since(seeded: &[(Timestamp, String)], since: Timestamp) -> Vec<String> {
     seeded
         .iter()
         .filter(|(created_at, _)| *created_at >= since)
@@ -155,21 +167,21 @@ fn ids_since(seeded: &[(i64, String)], since: i64) -> Vec<String> {
         .collect()
 }
 
-/// A listing filter, from an actor prefix and a `since` millisecond.
-fn filter(actor_prefix: Option<&str>, since: Option<i64>) -> Filter {
+/// A listing filter, from an actor prefix and a `since` instant.
+fn filter(actor_prefix: Option<&str>, since: Option<Timestamp>) -> Filter {
     Filter {
         actor_like: actor_prefix.map(prefix_to_like),
-        since: since.map(UnixMillis::from_millis),
+        since: since.map(Since::From),
     }
 }
 
 /// Every listing walks exactly the events each filter admits, so every text
 /// `History` picks runs with its binds, and the thread walks them all.
-pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(i64, String)]) {
+pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(Timestamp, String)]) {
     let history = History::new(lane.database.clone());
     let scope = Scope::of(lane);
-    let since = FIRST_MS + (EVENTS / 4) * STEP_MS;
-    let everything = ids_since(seeded, i64::MIN);
+    let since = pair_at(EVENTS / 4);
+    let everything = ids_since(seeded, Timestamp::MIN);
     let recent = ids_since(seeded, since);
     let cases = [
         (filter(None, None), everything.clone()),

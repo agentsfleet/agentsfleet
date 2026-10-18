@@ -8,7 +8,7 @@
 use super::*;
 
 const CLEAR_RECEIPT: &str = "\
-UPDATE core.fleet_admissions SET receipt = NULL
+UPDATE fleet.admissions SET receipt = NULL
 WHERE fleet_id = $1::uuid AND delivered_at IS NULL";
 
 #[tokio::test(flavor = "multi_thread")]
@@ -66,7 +66,6 @@ async fn mark_delivered(lane: &EventsLane) {
     let mut connection = lane.connection().await;
     sqlx::query(MARK_DELIVERED)
         .bind(&lane.fleet)
-        .bind(clock::now().as_millis())
         .execute(&mut *connection)
         .await
         .expect("delivery is recorded");

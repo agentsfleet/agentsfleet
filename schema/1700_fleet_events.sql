@@ -2,12 +2,17 @@
 -- what it cost in tokens and wall time. The activity feed, resume and runner
 -- leases read it. `event_id` is the producer's identifier, unique per fleet.
 --
+-- `id` is minted by Postgres (`uuidv7()`), not by the writer: an insert names
+-- the event by `(fleet_id, event_id)` and reads its row id back with
+-- `RETURNING id`, so the row a tool call or a lease points at exists before
+-- anything names it.
+--
 -- `tool_calls` is the compact list the feed renders; full arguments and output
 -- live in `fleet.tool_calls`. `resumes_event_id` names the event a resume
 -- continues, read by the resume chain.
 
 CREATE TABLE fleet.events (
-    id                UUID PRIMARY KEY,
+    id                UUID PRIMARY KEY DEFAULT uuidv7(),
     CONSTRAINT ck_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id          UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     workspace_id      UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,

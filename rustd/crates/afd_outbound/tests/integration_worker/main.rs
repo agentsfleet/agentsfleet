@@ -70,6 +70,9 @@ const POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// leaves headroom for timer granularity while still being far above the zero
 /// a worker that had stopped backing off would post.
 const MIN_BACKOFF_WAIT: Duration = Duration::from_millis(500);
+/// How long a direct read parks: long enough that a live server answers,
+/// short enough that an empty read returns inside the test.
+const READ_BLOCK: Duration = Duration::from_millis(500);
 
 /// A workspace id shaped like the ones the report path queues.
 const WORKSPACE_ID: &str = "0199a0b0-0000-7000-8000-000000000001";
@@ -240,7 +243,7 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
 
     let mut reader = harness.reader().await;
     let read = reader
-        .read_blocking(500)
+        .read_blocking(READ_BLOCK)
         .await
         .expect("a reachable queue answers the read");
     assert!(
@@ -258,7 +261,7 @@ async fn an_entry_that_cannot_be_decoded_is_acknowledged_rather_than_re_offered(
     // And the queue still works behind it: the next real job is deliverable.
     enqueue(&harness, "Aurora is healthy.").await;
     let next = reader
-        .read_blocking(500)
+        .read_blocking(READ_BLOCK)
         .await
         .expect("a reachable queue answers the read");
     assert_eq!(

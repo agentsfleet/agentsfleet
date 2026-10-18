@@ -2,6 +2,7 @@
 //! run list, where the actor is `cron:<schedule_id>`.
 
 use afd_core::id::Uuid7;
+use jiff_sqlx::ToSqlx as _;
 
 use super::statement::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
 use super::{Cursor, EventRow, History, MAX_LIMIT};
@@ -30,7 +31,7 @@ impl History {
             Some(at) => sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR_AFTER)
                 .bind(workspace.as_str())
                 .bind(fleet.as_str())
-                .bind(at.created_at)
+                .bind(at.created_at.to_sqlx())
                 .bind(at.event_id.as_str()),
         };
         let mut connection = self.database.acquire().await?;

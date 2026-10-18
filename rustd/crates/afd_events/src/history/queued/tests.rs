@@ -8,8 +8,9 @@ use crate::history::{EventDetailRow, EventRow};
 /// A bound wider than any page these cases build, so only the cut case cuts.
 const WIDE: usize = 10;
 
-/// A thread row for `event_id` at `created_at`, in `state`.
-fn row(event_id: &str, created_at: i64, state: &str) -> EventDetailRow {
+/// A thread row for `event_id` at `second` past the epoch, in `state`.
+fn row(event_id: &str, second: i64, state: &str) -> EventDetailRow {
+    let created_at = jiff::Timestamp::constant(second, 0);
     EventDetailRow {
         row: EventRow {
             fleet_id: String::new(),

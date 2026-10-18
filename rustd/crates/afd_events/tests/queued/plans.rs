@@ -2,9 +2,16 @@
 
 use super::*;
 
+/// The instant the decoy ledger starts at.
+const SEEDED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
+
 /// Both waiting reads probe an index of in-flight work alone under a generic
 /// plan, over a ledger whose history is almost all delivered: the fleet is an
 /// index condition, nothing is sorted, and no table is scanned whole.
+///
+/// The reads order by `(created_at, id)`, the key the merged thread page and
+/// its cursor cut on, and `idx_admissions_delivery_lookup` keys exactly that
+/// after the fleet, so the order comes off the index.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_queued_read_plans_on_the_undelivered_index() {
@@ -12,13 +19,13 @@ async fn test_queued_read_plans_on_the_undelivered_index() {
     let mut connection = db.acquire().await.expect("a private connection");
     sqlx::query(SEED_LEDGER)
         .bind(tenant.as_str())
-        .bind(1_700_000_000_000_i64)
+        .bind(jiff_sqlx::ToSqlx::to_sqlx(SEEDED_AT))
         .bind(40_i32)
         .bind(500_i32)
         .execute(&mut *connection)
         .await
         .expect("the ledger history inserts");
-    sqlx::query("ANALYZE core.fleet_admissions")
+    sqlx::query("ANALYZE fleet.admissions")
         .execute(&mut *connection)
         .await
         .expect("statistics refresh");

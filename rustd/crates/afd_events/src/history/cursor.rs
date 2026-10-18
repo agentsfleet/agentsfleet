@@ -1,25 +1,30 @@
 //! Where a page of history resumes from.
 //!
+//! # What the token carries
+//!
+//! The boundary pair, `(created_at, event_id)`, as `{instant}|{event_id}` in
+//! base64url without padding: the instant in RFC 3339 exactly as the API
+//! serializes one (`…:49Z`, `…:49.123Z`), never as epoch digits, because an
+//! instant is never a number anywhere this product speaks. The separator is a
+//! character no RFC 3339 instant contains, so the first one ends the instant
+//! whatever the event id holds.
+//!
 //! # Why this is not [`afd_core::paging::Cursor`]
 //!
-//! That type exists, it is keyset, and it carries the same two fields. It also
-//! spells a timestamp boundary `{millis}:{id}` in the CLEAR. The events
-//! endpoints do not: they wrap the whole pair in base64url.
-//!
-//! Two cursor formats in one product is not a thing to be pleased about, and it
-//! was inherited rather than chosen. What settles which one this crate emits is
-//! `docs/REST_API_DESIGN_GUIDELINES.md` §9: a cursor is already exposed on
-//! these paths in production, a dashboard holds one across a deploy, and
-//! re-spelling it inside `/v1` is the breaking change that section forbids.
-//! Converging the two is a `/v2` change, and it is recorded as one.
+//! That type exists, it is keyset, and it carries the same two fields in the
+//! clear. The events endpoints wrap the pair, which keeps the token opaque to a
+//! client that would otherwise parse it.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 
+use jiff::Timestamp;
+
 use crate::error::{Result, cursor_malformed};
 
-/// The character between the two fields, inside the encoded payload.
-const FIELD_SEPARATOR: char = ':';
+/// The character between the two fields, inside the encoded payload: one no
+/// RFC 3339 instant contains.
+const FIELD_SEPARATOR: char = '|';
 
 /// The longest event identifier a cursor will carry.
 ///
@@ -36,7 +41,7 @@ const EVENT_ID_MAX_LEN: usize = 128;
 pub struct Cursor {
     /// The `created_at` of the last row on the previous page.
     #[garde(skip)]
-    pub created_at: i64,
+    pub created_at: Timestamp,
     /// The `event_id` of that row, breaking ties within one millisecond.
     #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
     pub event_id: String,
@@ -45,7 +50,7 @@ pub struct Cursor {
 impl Cursor {
     /// The cursor a page ending on this row hands back.
     #[must_use]
-    pub fn after(created_at: i64, event_id: &str) -> Self {
+    pub fn after(created_at: Timestamp, event_id: &str) -> Self {
         Self {
             created_at,
             event_id: event_id.to_owned(),
@@ -54,8 +59,8 @@ impl Cursor {
 
     /// The opaque string a client is given.
     ///
-    /// Base64url without padding, exactly as `makeCursor` writes it — a `=`
-    /// would have to be percent-encoded in the query string it comes back in.
+    /// Base64url without padding — a `=` would have to be percent-encoded in
+    /// the query string it comes back in.
     #[must_use]
     pub fn encode(&self) -> String {
         BASE64.encode(format!(
@@ -79,7 +84,7 @@ impl Cursor {
         let (head, id) = plain
             .split_once(FIELD_SEPARATOR)
             .ok_or(cursor_malformed())?;
-        let created_at: i64 = head.parse().map_err(|_digits| cursor_malformed())?;
+        let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
         garde::Unvalidated::new(Self::after(created_at, id))
             .validate()
             .map(garde::Valid::into_inner)
@@ -106,43 +111,45 @@ mod tests {
         Cursor::decode(raw).expect("a cursor this test built or spelled out")
     }
 
+    /// The boundary every case pages from: a millisecond instant, as a row
+    /// stores one.
+    const AT: Timestamp = Timestamp::constant(1_735_689_600, 123_000_000);
+
     #[test]
     fn round_trips_through_the_wire_form() {
-        let cursor = Cursor::after(1_735_689_600_000, "01HZQ8P0X3");
+        let cursor = Cursor::after(AT, "01HZQ8P0X3");
         assert_eq!(decoded(&cursor.encode()), cursor);
     }
 
     #[test]
-    fn reads_a_cursor_issued_before_a_deploy() {
-        // base64url of `1735689600000:01HZQ8P0X3`, spelled out as bytes rather
-        // than built by `encode`. This is the assertion that makes the format a
-        // data format rather than an implementation detail: a dashboard holding
-        // this string across a deploy must land on the new binary and page on.
-        let issued_earlier = "MTczNTY4OTYwMDAwMDowMUhaUThQMFgz";
+    fn the_token_spells_the_instant_as_rfc3339() {
+        // Spelled out as bytes rather than built by `encode`: the payload is a
+        // data format, so its shape is asserted, not re-derived.
         assert_eq!(
-            decoded(issued_earlier),
-            Cursor::after(1_735_689_600_000, "01HZQ8P0X3")
+            Cursor::after(AT, "01HZQ8P0X3").encode(),
+            "MjAyNS0wMS0wMVQwMDowMDowMC4xMjNafDAxSFpROFAwWDM"
         );
     }
 
     #[test]
-    fn a_negative_timestamp_survives_the_round_trip() {
-        // Pre-epoch is not a case the product produces, but the field is a
-        // signed integer and a parser that lost the sign would silently page
-        // from the wrong end.
-        let cursor = Cursor::after(-42, "e");
+    fn an_event_id_holding_the_separator_survives_the_round_trip() {
+        // The first separator ends the instant; everything after it is the id.
+        let cursor = Cursor::after(AT, "cron:a|b");
         assert_eq!(decoded(&cursor.encode()), cursor);
     }
 
     #[test]
     fn refuses_what_this_daemon_did_not_mint() {
         for raw in [
-            "",                                 // empty
-            "not-base64!!",                     // not the alphabet
-            &BASE64.encode("no-separator"),     // decodes, but has no colon
-            &BASE64.encode("notanumber:01HZQ"), // separator, unparseable head
-            &BASE64.encode("1735689600000:"),   // empty identifier
-            &BASE64.encode(format!("1:{}", "x".repeat(EVENT_ID_MAX_LEN + 1))),
+            "",                                      // empty
+            "not-base64!!",                          // not the alphabet
+            &BASE64.encode("no-separator"),          // decodes, no separator
+            &BASE64.encode("1735689600000|01HZQ"),   // epoch digits, not an instant
+            &BASE64.encode("2025-01-01T00:00:00Z|"), // empty identifier
+            &BASE64.encode(format!(
+                "2025-01-01T00:00:00Z|{}",
+                "x".repeat(EVENT_ID_MAX_LEN + 1)
+            )),
         ] {
             let refused = Cursor::decode(raw);
             assert!(refused.is_err(), "accepted {raw:?}");
@@ -164,10 +171,10 @@ mod tests {
                 .map(|error| (error.code(), error.detail()))
         };
         let malformed = refusal("not-base64!!");
-        let past_cap = BASE64.encode(format!("1:{}", "x".repeat(EVENT_ID_MAX_LEN + 1)));
+        let past_cap = Cursor::after(AT, &"x".repeat(EVENT_ID_MAX_LEN + 1)).encode();
         assert!(malformed.is_some());
         assert_eq!(refusal(&past_cap), malformed);
-        let at_cap = Cursor::after(1, &"x".repeat(EVENT_ID_MAX_LEN));
+        let at_cap = Cursor::after(AT, &"x".repeat(EVENT_ID_MAX_LEN));
         assert_eq!(decoded(&at_cap.encode()), at_cap);
     }
 
