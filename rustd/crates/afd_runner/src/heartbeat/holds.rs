@@ -8,13 +8,12 @@
 //! holds nothing: a standing hold keeps the fleet from every other runner,
 //! while a hold cleared by mistake costs only a cold start.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_core::timing::HEARTBEAT_INTERVAL_MS;
+use afd_core::timing::HEARTBEAT_INTERVAL;
 use afd_wire::runner::HeldFleets;
 use garde::{Unvalidated, Valid};
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
 
 use super::best_effort;
 use crate::sql;
@@ -50,15 +49,13 @@ pub(super) async fn reconcile(
     runner: &Uuid7,
     holds: Option<&Valid<HeldFleets<'_>>>,
     closing: bool,
-    now: UnixMillis,
 ) -> Vec<String> {
     let held = holds.map(fleets).unwrap_or_default();
     let listed: Vec<&str> = held.iter().map(Uuid7::as_str).collect();
     let clear = sqlx::query(sql::holds::CLEAR_DROPPED_HOLDS)
         .bind(runner.as_str())
         .bind(&listed)
-        .bind(now.as_millis())
-        .bind(HEARTBEAT_INTERVAL_MS)
+        .bind(HEARTBEAT_INTERVAL)
         .bind(closing);
     best_effort(clear, connection, EVENT_HOLDS_RECONCILE, runner).await;
     if listed.is_empty() {
@@ -66,17 +63,12 @@ pub(super) async fn reconcile(
     }
     // A row that will not decode fails the answer like a failed read: the
     // runner keeps its holds one beat longer, and the warning says why.
-    let released = sqlx::query(sql::holds::SELECT_HOLDS_TO_RELEASE)
+    let released = sqlx::query_scalar::<_, String>(sql::holds::SELECT_HOLDS_TO_RELEASE)
         .bind(runner.as_str())
         .bind(&listed)
         .bind(sql::FLEET_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
-        .await
-        .and_then(|rows| {
-            rows.iter()
-                .map(|row| row.try_get::<String, _>(0))
-                .collect::<Result<Vec<_>, _>>()
-        });
+        .await;
     match released {
         Ok(fleets) => fleets,
         Err(error) => {

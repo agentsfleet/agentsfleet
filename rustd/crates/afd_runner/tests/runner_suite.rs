@@ -12,7 +12,9 @@ mod integration_reclaim;
 mod integration_reclaim_faults;
 #[path = "integration_reclaim_paging.rs"]
 mod integration_reclaim_paging;
+mod integration_runner_plane;
 mod integration_sweeps;
+mod rows;
 mod support;
 
 #[path = "error_surface.rs"]

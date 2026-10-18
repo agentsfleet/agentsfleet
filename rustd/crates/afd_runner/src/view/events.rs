@@ -3,19 +3,26 @@
 use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use afd_core::id::Uuid7;
 use afd_core::spelling::to_spelling;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::error::Result;
 use crate::sql;
 
 use super::KeysetCursor;
+use super::decode::EventRow;
+
+/// The statement an event page runs: its rows decode by name.
+type EventPage<'a> =
+    sqlx::query::QueryAs<'a, sqlx::Postgres, EventRow, sqlx::postgres::PgArguments>;
 
 /// Validated filters over one runner's append-only history.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunnerEventFilter {
     /// The stored spellings of the types asked for, as the column holds them.
     event_types: Vec<String>,
-    since: Option<i64>,
-    until: Option<i64>,
+    since: Option<Timestamp>,
+    until: Option<Timestamp>,
 }
 
 impl RunnerEventFilter {
@@ -28,8 +35,8 @@ impl RunnerEventFilter {
     #[must_use]
     pub fn new(
         event_types: Vec<RunnerEventType>,
-        since: Option<i64>,
-        until: Option<i64>,
+        since: Option<Timestamp>,
+        until: Option<Timestamp>,
     ) -> Option<Self> {
         if matches!((since, until), (Some(start), Some(end)) if end < start) {
             return None;
@@ -49,11 +56,11 @@ impl RunnerEventFilter {
         (!self.event_types.is_empty()).then(|| self.event_types.clone())
     }
 
-    pub(super) const fn since(&self) -> Option<i64> {
+    pub(super) const fn since(&self) -> Option<Timestamp> {
         self.since
     }
 
-    pub(super) const fn until(&self) -> Option<i64> {
+    pub(super) const fn until(&self) -> Option<Timestamp> {
         self.until
     }
 }
@@ -62,23 +69,25 @@ pub(super) fn statement<'a>(
     runner: &'a Uuid7,
     filter: &RunnerEventFilter,
     event_types: Option<Vec<String>>,
-    cursor: Option<&KeysetCursor>,
+    cursor: Option<&'a KeysetCursor>,
     limit: u32,
-) -> afd_db::statement::Bound<'a> {
+) -> EventPage<'a> {
+    let since = filter.since().map(Timestamp::to_sqlx);
+    let until = filter.until().map(Timestamp::to_sqlx);
     cursor.map_or(
-        sqlx::query(sql::runner_view::LIST_EVENTS_FIRST)
+        sqlx::query_as(sql::runner_view::LIST_EVENTS_FIRST)
             .bind(runner.as_str())
             .bind(event_types.clone())
-            .bind(filter.since())
-            .bind(filter.until())
+            .bind(since)
+            .bind(until)
             .bind(i64::from(limit)),
         |boundary| {
-            sqlx::query(sql::runner_view::LIST_EVENTS_AFTER)
+            sqlx::query_as(sql::runner_view::LIST_EVENTS_AFTER)
                 .bind(runner.as_str())
                 .bind(event_types)
-                .bind(filter.since())
-                .bind(filter.until())
-                .bind(boundary.created_at())
+                .bind(since)
+                .bind(until)
+                .bind(boundary.created_at().to_sqlx())
                 .bind(boundary.id().as_str())
                 .bind(i64::from(limit))
         },
@@ -97,7 +106,7 @@ pub(super) fn cursor(
         .map(|item| {
             Uuid7::parse(&item.id)
                 .map(|id| KeysetCursor::new(item.occurred_at, id))
-                .map_err(crate::error::row_malformed("fleet.runner_events", "id"))
+                .map_err(crate::error::row_malformed("runner.events", "id"))
         })
         .transpose()
 }
@@ -108,11 +117,13 @@ mod tests {
 
     #[test]
     fn event_filter_accepts_open_bounds_and_refuses_a_reversed_window() {
+        let start = Timestamp::constant(10, 0);
+        let later = Timestamp::constant(11, 0);
         assert!(RunnerEventFilter::new(Vec::new(), None, None).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(10), None).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), None, Some(10)).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(10), Some(10)).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(11), Some(10)).is_none());
+        assert!(RunnerEventFilter::new(Vec::new(), Some(start), None).is_some());
+        assert!(RunnerEventFilter::new(Vec::new(), None, Some(start)).is_some());
+        assert!(RunnerEventFilter::new(Vec::new(), Some(start), Some(start)).is_some());
+        assert!(RunnerEventFilter::new(Vec::new(), Some(later), Some(start)).is_none());
     }
 
     #[test]

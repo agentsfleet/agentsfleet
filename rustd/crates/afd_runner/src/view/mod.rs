@@ -9,35 +9,29 @@ mod events;
 mod store;
 
 use afd_api_wire::admin::RunnerEventItem;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
-use sqlx::Row as _;
+use jiff::Timestamp;
 
-use crate::error::{Result, query, runner_not_found};
-use crate::sql;
-use crate::store::Runners;
-
-use self::decode::{runner_detail, runner_event, runner_item};
 pub use self::events::RunnerEventFilter;
 
 /// The final composite key from a page, used to seek the next one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysetCursor {
-    created_at: i64,
+    created_at: Timestamp,
     id: Uuid7,
 }
 
 impl KeysetCursor {
     /// A cursor from a row the service already decoded.
     #[must_use]
-    pub const fn new(created_at: i64, id: Uuid7) -> Self {
+    pub const fn new(created_at: Timestamp, id: Uuid7) -> Self {
         Self { created_at, id }
     }
 
-    /// The timestamp half of the database boundary.
+    /// The instant half of the database boundary.
     #[must_use]
-    pub const fn created_at(&self) -> i64 {
+    pub const fn created_at(&self) -> Timestamp {
         self.created_at
     }
 
@@ -57,16 +51,16 @@ pub struct RunnerItem {
     host_id: String,
     /// Assigned isolation tier spelling.
     sandbox_tier: String,
-    /// Operator-controlled admission state.
-    admin_state: afd_api_wire::admin::AdminState,
+    /// Operator-controlled status.
+    status: afd_api_wire::admin::AdminState,
     /// Runtime state derived from heartbeat and lease rows.
     liveness: RunnerLiveness,
     /// Placement labels, as enrolment or the last operator replacement stored them.
     labels: Vec<String>,
-    /// Last heartbeat instant in epoch milliseconds.
-    last_seen_at: i64,
-    /// Enrolment instant in epoch milliseconds.
-    created_at: i64,
+    /// Last heartbeat, or [`crate::sql::NEVER_SEEN`] when it has never connected.
+    last_seen_at: Timestamp,
+    /// Enrolment instant.
+    created_at: Timestamp,
     /// Policy currently assigned to the host.
     assigned_policy: AssignedPolicy<'static>,
     /// Capability report most recently supplied by the host.
@@ -96,10 +90,10 @@ impl RunnerItem {
         &self.sandbox_tier
     }
 
-    /// Operator-controlled admission state.
+    /// Operator-controlled status.
     #[must_use]
-    pub const fn admin_state(&self) -> afd_api_wire::admin::AdminState {
-        self.admin_state
+    pub const fn status(&self) -> afd_api_wire::admin::AdminState {
+        self.status
     }
 
     /// Runtime state derived from heartbeat and lease rows.
@@ -114,15 +108,15 @@ impl RunnerItem {
         &self.labels
     }
 
-    /// Last heartbeat instant in epoch milliseconds.
+    /// Last heartbeat, or [`crate::sql::NEVER_SEEN`] when it has never connected.
     #[must_use]
-    pub const fn last_seen_at(&self) -> i64 {
+    pub const fn last_seen_at(&self) -> Timestamp {
         self.last_seen_at
     }
 
-    /// Enrolment instant in epoch milliseconds.
+    /// Enrolment instant.
     #[must_use]
-    pub const fn created_at(&self) -> i64 {
+    pub const fn created_at(&self) -> Timestamp {
         self.created_at
     }
 
@@ -206,9 +200,9 @@ pub struct RunnerDetail {
     /// Leases expired over the runner's lifetime.
     leases_expired: i64,
     /// Outstanding self-test request instant.
-    selftest_requested_at: Option<i64>,
+    selftest_requested_at: Option<Timestamp>,
     /// Most recent self-test completion instant.
-    selftest_completed_at: Option<i64>,
+    selftest_completed_at: Option<Timestamp>,
     /// Most recent complete self-test report.
     selftest: Option<SelftestReport<'static>>,
 }
@@ -258,13 +252,13 @@ impl RunnerDetail {
 
     /// Outstanding self-test request instant.
     #[must_use]
-    pub const fn selftest_requested_at(&self) -> Option<i64> {
+    pub const fn selftest_requested_at(&self) -> Option<Timestamp> {
         self.selftest_requested_at
     }
 
     /// Most recent self-test completion instant.
     #[must_use]
-    pub const fn selftest_completed_at(&self) -> Option<i64> {
+    pub const fn selftest_completed_at(&self) -> Option<Timestamp> {
         self.selftest_completed_at
     }
 

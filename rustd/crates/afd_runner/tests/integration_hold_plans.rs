@@ -1,11 +1,11 @@
 //! The heartbeat's hold reconcile reaches its slots through the partial index
-//! `schema/932` builds for it, under the generic plan a prepared statement
+//! `schema/1820` builds for it, under the generic plan a prepared statement
 //! settles on.
 //!
 //! sqlx prepares `CLEAR_DROPPED_HOLDS` once per connection, and Postgres may
 //! then plan it once for every runner. A partial index serves that plan only
 //! when the statement's own predicate implies the index's whatever the binds
-//! are, which `held_until IS NOT NULL`, a literal in both, does. An index
+//! are, which `hold_expires_at IS NOT NULL`, a literal in both, does. An index
 //! whose predicate drifted from the statement's would leave every beat of
 //! every runner reading each slot that runner was ever last on.
 //!
@@ -13,8 +13,9 @@
 //! `schema/`, seeded with mostly unheld slots in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
 //! the shape `afd_events`' `integration_list_plans/mod.rs` set. That suite asks
-//! `EXPLAIN (GENERIC_PLAN)`, which cannot type `$3 - $4`; here the text is
-//! prepared with the types sqlx binds and explained with generic plans forced.
+//! `EXPLAIN (GENERIC_PLAN)`, which cannot type every parameter; here the text
+//! is prepared with the types sqlx binds and explained with generic plans
+//! forced.
 //! No planner switch is touched, so the index wins on cost or not at all.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
@@ -29,10 +30,12 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
 use afd_runner::sql::holds::CLEAR_DROPPED_HOLDS;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
 /// The index under test.
-const HELD_INDEX: &str = "idx_runner_affinity_last_runner_id_held";
+const HELD_INDEX: &str = "idx_fleet_slots_last_runner_id_held";
 
 /// The spreads the plan is asked against, as `(runners, slots per runner, one
 /// slot in this many held)`: a small fleet and a larger one, because the
@@ -40,63 +43,63 @@ const HELD_INDEX: &str = "idx_runner_affinity_last_runner_id_held";
 const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 
 /// The instant every seeded row is stamped at.
-const SEEDED_AT: i64 = 1_700_000_000_000;
+const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The one tenant every seeded row belongs to.
-const SEED_TENANT: &str = "INSERT INTO core.tenants (id, name, created_at, updated_at)
+const SEED_TENANT: &str = "INSERT INTO identity.tenants (id, name, created_at, updated_at)
 VALUES ($1::uuid, 'hold-plan', $2, $2)";
 
 /// Runners, a fleet per slot, and the slots, dealt round the runners, every
 /// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` slots each.
 const SEED_SPREAD: &str = "
 WITH workspace AS (
-    INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-    VALUES (uuidv7(), $1::uuid, 'hold-plan', 'hold-plan', $2)
+    INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
+    VALUES (uuidv7(), $1::uuid, 'hold-plan', $2)
     RETURNING id
 ), runners AS (
-    INSERT INTO fleet.runners
-      (id, host_id, token_hash, sandbox_tier, admin_state, labels,
-       network_policy, registry_allowlist, last_seen_at, created_at, updated_at)
+    INSERT INTO runner.runners
+      (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
+       registry_allowlist, worker_count, last_seen_at, lease_version, created_at, updated_at)
     SELECT uuidv7(), 'hold-plan-' || r, 'hold-plan-' || r, 'dev_none', 'active',
-           '[]'::jsonb, 'deny_all_egress', '[]'::jsonb, $2, $2, $2
+           '[]'::jsonb, 'deny_all_egress', '[]'::jsonb, 1, $2, 0, $2, $2
       FROM generate_series(1, $3) r
     RETURNING id
 ), ranked AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS rank FROM runners
 ), fleets AS (
-    INSERT INTO core.fleets
-      (id, workspace_id, tenant_id, name, config_json, status,
-       created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1::uuid, 'hold-plan-' || f,
-           '{}'::jsonb, 'active', $2, $2
+    INSERT INTO fleet.fleets
+      (id, workspace_id, tenant_id, name, status, required_tags, memory_reads_workspace,
+       memory_publishes_workspace, resource_version, created_at, updated_at)
+    SELECT uuidv7(), workspace.id, $1::uuid, 'hold-plan-' || f, 'active', '{}', false, false,
+           1, $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id
 ), slots AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM fleets
 )
-INSERT INTO fleet.runner_affinity
-  (fleet_id, last_runner_id, fencing_seq, leased_until, metered_input_tokens,
-   metered_cached_tokens, metered_output_tokens, last_metered_at, created_at,
-   updated_at, held_until)
-SELECT slots.id, ranked.id, 1, $2, 0, 0, 0, $2, $2, $2,
-       CASE WHEN slots.n % $5 = 0 THEN $2 + 1 END
+INSERT INTO runner.fleet_slots
+  (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+   metered_input_token_count, metered_cached_token_count, metered_output_token_count,
+   last_metered_at, created_at, updated_at)
+SELECT slots.id, ranked.id, 1, $2,
+       CASE WHEN slots.n % $5 = 0 THEN $2 + interval '1 millisecond' END,
+       0, 0, 0, $2, $2, $2
   FROM slots JOIN ranked ON ranked.rank = slots.n % $3";
 
 /// Refreshes the statistics the plan is costed from.
-const ANALYZE_SLOTS: &str = "ANALYZE fleet.runner_affinity";
+const ANALYZE_SLOTS: &str = "ANALYZE runner.fleet_slots";
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 
 /// The reconcile's text prepared with the types sqlx binds it with: the
-/// runner and the listed fleets as text, the instant and interval as `i64`,
+/// runner and the listed fleets as text, the beat interval as an interval,
 /// and whether the beat is closing.
-const PREPARE_CLEAR: &str =
-    "PREPARE clear_dropped_holds (text, text[], bigint, bigint, boolean) AS ";
+const PREPARE_CLEAR: &str = "PREPARE clear_dropped_holds (text, text[], interval, boolean) AS ";
 
 /// Its plan. The values are placeholders a generic plan never reads.
 const EXPLAIN_CLEAR: &str = "EXPLAIN EXECUTE clear_dropped_holds \
-('01890a5d-ac96-774b-bcce-b302099a80a1', '{}', 0, 0, false)";
+('01890a5d-ac96-774b-bcce-b302099a80a1', '{}', '10 seconds', false)";
 
 /// Drops the prepared text, which outlives the transaction.
 const DEALLOCATE_CLEAR: &str = "DEALLOCATE clear_dropped_holds";
@@ -122,7 +125,7 @@ async fn private_database() -> (TestDatabase, Db, String) {
     let mut connection = db.acquire().await.expect("a private connection");
     sqlx::query(SEED_TENANT)
         .bind(tenant.as_str())
-        .bind(SEEDED_AT)
+        .bind(SEEDED_AT.to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("the tenant must insert");
@@ -140,7 +143,7 @@ async fn generic_plan(
     run(&mut connection, "BEGIN").await;
     sqlx::query(SEED_SPREAD)
         .bind(tenant)
-        .bind(SEEDED_AT)
+        .bind(SEEDED_AT.to_sqlx())
         .bind(runners)
         .bind(each)
         .bind(held_one_in)

@@ -16,14 +16,15 @@
 //! its documentation, and a call site that reads as a decision rather than as
 //! an omission.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_core::timing::RUNNER_OFFLINE_AFTER;
 use afd_observability::producers;
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
 use garde::{Valid, Validate as _};
-use sqlx::{Executor as _, PgConnection, Row as _};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+use sqlx::{Executor as _, PgConnection};
 
 use crate::bounds;
 use crate::error::{Error, Result, query, runner_vanished};
@@ -80,11 +81,48 @@ struct PolicyRow {
     selftest_requested: bool,
 }
 
+/// [`sql::runner::SELECT_RUNNER_ASSIGNED_POLICY`]'s row, by column name.
+///
+/// Whether a self-test is outstanding arrives decided: the reply carries "is
+/// one pending", and nothing downstream has a use for when it was asked.
+#[derive(Debug, sqlx::FromRow)]
+struct PolicyColumns {
+    sandbox_tier: String,
+    network_policy: String,
+    registry_allowlist: String,
+    worker_count: i32,
+    degraded_reason: Option<String>,
+    capability_report: Option<String>,
+    selftest_requested: bool,
+    sandbox_config: Option<String>,
+}
+
+impl From<PolicyColumns> for PolicyRow {
+    fn from(row: PolicyColumns) -> Self {
+        Self {
+            assignment: AssignmentColumns {
+                sandbox_tier: row.sandbox_tier,
+                network_policy: row.network_policy,
+                registry_allowlist_json: row.registry_allowlist,
+                worker_count: row.worker_count,
+                sandbox_config_json: row.sandbox_config,
+            },
+            stored: StoredVerdict {
+                reason: row.degraded_reason,
+            },
+            capability_report_json: row.capability_report,
+            selftest_requested: row.selftest_requested,
+        }
+    }
+}
+
 impl Runners {
     /// Records a beat and answers what the host must apply. `held` is the
     /// beat's holds list as its handler proved it; `None` holds nothing. A
     /// beat whose `closing` is set clears every hold the list leaves out at
-    /// once, since a closing runner's list is final.
+    /// once, since a closing runner's list is final. `now` mints the
+    /// transition event's identifier and dates the liveness gauge; every row
+    /// this beat writes is stamped by the database.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a statement Postgres refused,
@@ -97,7 +135,7 @@ impl Runners {
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
         held: Option<&Valid<HeldFleets<'_>>>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Beat> {
         let mut connection = self.pool().acquire().await?;
         let row = self.policy_row(&mut connection, runner).await?;
@@ -107,18 +145,17 @@ impl Runners {
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
 
-        verdict::persist(&mut connection, runner, incoming, &row.stored, verdict, now).await;
+        verdict::persist(&mut connection, runner, incoming, &row.stored, verdict).await;
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
-        let reported = persist_selftest(&mut connection, runner, beat.selftest.as_ref(), now).await;
+        let reported = persist_selftest(&mut connection, runner, beat.selftest.as_ref()).await;
         self.bump_liveness(&mut connection, runner, now).await;
-        let release_holds =
-            holds::reconcile(&mut connection, runner, held, beat.closing, now).await;
+        let release_holds = holds::reconcile(&mut connection, runner, held, beat.closing).await;
         // The gauge's only input. Liveness is a Postgres row a collection
         // callback cannot read — it is a network round trip, and the SDK
         // collects on a thread that must not make one — so the beat that
         // writes the row publishes the same instant for the gauge to serve.
-        producers::fleet::runner::seen(runner.as_str(), now.as_millis());
+        producers::fleet::runner::seen(runner.as_str(), now);
 
         Ok(Beat {
             selftest_requested: row.selftest_requested && !reported,
@@ -134,34 +171,14 @@ impl Runners {
     /// host, so answering 200 with no policy would tell a runner to apply
     /// nothing.
     async fn policy_row(&self, connection: &mut PgConnection, runner: &Uuid7) -> Result<PolicyRow> {
-        let found = sqlx::query(sql::runner::SELECT_RUNNER_ASSIGNED_POLICY)
+        let found = sqlx::query_as::<_, PolicyColumns>(sql::runner::SELECT_RUNNER_ASSIGNED_POLICY)
             .bind(runner.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_POLICY_READ))?;
         // Fail closed rather than beat a phantom runner: the token is real and
         // the enrolment is gone, so the host must be re-enrolled.
-        let row = found.ok_or_else(runner_vanished)?;
-
-        let column = query(CONTEXT_POLICY_READ);
-        Ok(PolicyRow {
-            assignment: AssignmentColumns {
-                sandbox_tier: row.try_get(0).map_err(&column)?,
-                network_policy: row.try_get(1).map_err(&column)?,
-                registry_allowlist_json: row.try_get(2).map_err(&column)?,
-                worker_count: row.try_get(3).map_err(&column)?,
-                extra_binds_json: row.try_get(8).map_err(&column)?,
-            },
-            stored: StoredVerdict {
-                degraded: row.try_get(4).map_err(&column)?,
-                reason: row.try_get(5).map_err(&column)?,
-            },
-            capability_report_json: row.try_get(6).map_err(&column)?,
-            // A decided boolean rather than the raw instant: the reply carries
-            // "is one pending", and nothing downstream has a use for when it
-            // was made.
-            selftest_requested: row.try_get::<Option<i64>, _>(7).map_err(&column)?.is_some(),
-        })
+        Ok(found.ok_or_else(runner_vanished)?.into())
     }
 
     /// Bumps liveness, emitting a transition event only on a real transition.
@@ -170,18 +187,16 @@ impl Runners {
     /// cannot be minted or the combined statement is refused: a beat that
     /// writes liveness without its audit row is a quieter loss than one that
     /// writes nothing, because the fleet read stays true.
-    async fn bump_liveness(&self, connection: &mut PgConnection, runner: &Uuid7, now: UnixMillis) {
+    async fn bump_liveness(&self, connection: &mut PgConnection, runner: &Uuid7, now: Timestamp) {
         let landed = match self.event_id(now) {
             Ok(event_id) => {
-                let millis = now.as_millis();
                 let with_event = sqlx::query(sql::runner::HEARTBEAT_WITH_TRANSITION_EVENT)
                     .bind(runner.as_str())
-                    .bind(millis)
                     .bind(event_id.as_str())
                     .bind(sql::event_type::RUNNER_ONLINE)
                     .bind(sql::meta::LAST_SEEN_AT)
-                    .bind(sql::LAST_SEEN_NEVER)
-                    .bind(RUNNER_OFFLINE_AFTER_MS);
+                    .bind(sql::NEVER_SEEN.to_sqlx())
+                    .bind(RUNNER_OFFLINE_AFTER);
                 best_effort(with_event, connection, EVENT_LIVENESS_WRITE, runner).await
             }
             Err(error) => {
@@ -190,15 +205,13 @@ impl Runners {
             }
         };
         if !landed {
-            let touch = sqlx::query(sql::runner::TOUCH_RUNNER_LAST_SEEN)
-                .bind(runner.as_str())
-                .bind(now.as_millis());
+            let touch = sqlx::query(sql::runner::TOUCH_RUNNER_LAST_SEEN).bind(runner.as_str());
             best_effort(touch, connection, EVENT_LIVENESS_WRITE, runner).await;
         }
     }
 
     /// Draws the identifier a transition event is written under.
-    fn event_id(&self, now: UnixMillis) -> Result<Uuid7> {
+    fn event_id(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
 }
@@ -211,7 +224,6 @@ async fn persist_selftest(
     connection: &mut PgConnection,
     runner: &Uuid7,
     reported: Option<&SelftestReport<'_>>,
-    now: UnixMillis,
 ) -> bool {
     let Some(report) = reported else {
         return false;
@@ -225,10 +237,8 @@ async fn persist_selftest(
     let write = sqlx::query(sql::runner::UPDATE_RUNNER_SELFTEST)
         .bind(runner.as_str())
         .bind(checks_json)
-        .bind(report.all_ok)
         .bind(report.sandbox_tier.as_ref())
-        .bind(report.network_policy.as_ref())
-        .bind(now.as_millis());
+        .bind(report.network_policy.as_ref());
     best_effort(write, connection, EVENT_SELFTEST_WRITE, runner).await
 }
 
