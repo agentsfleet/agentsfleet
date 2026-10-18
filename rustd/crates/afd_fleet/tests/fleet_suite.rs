@@ -63,6 +63,8 @@ mod integration_held_sandbox;
 mod integration_lease_affinity;
 #[path = "integration_lease_assign.rs"]
 mod integration_lease_assign;
+#[path = "integration_lease_billing_races.rs"]
+mod integration_lease_billing_races;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
 #[path = "integration_lease_fairness.rs"]
