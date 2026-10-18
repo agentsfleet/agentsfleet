@@ -33,7 +33,7 @@ use crate::integration_tool_trace::{stored_trace, tenant_get};
 
 /// The memory row a run's push writes.
 const REMEMBERED: &str =
-    "SELECT content FROM memory.memory_entries WHERE fleet_id = $1::uuid AND key = $2";
+    "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
 
 /// Dimension 6.1. The responder is offered exactly its policy's tools, reads
 /// GitHub with a minted token and Grafana with its sealed one, reads the 302's

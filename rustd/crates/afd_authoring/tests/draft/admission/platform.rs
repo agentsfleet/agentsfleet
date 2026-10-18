@@ -95,25 +95,34 @@ async fn platform_admission_reserves_priced_input_output_and_runtime() {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn invalid_platform_prices_fail_without_creating_an_attempt() {
-    for (price, expected) in [
-        (-1_i64, afd_core::error_code::AUTHORING_MODEL),
-        (i64::MAX, afd_core::error_code::AUTHORING_BALANCE),
-    ] {
-        let f = configured().await;
-        let draft = queued(&f).await;
-        sqlx::query("UPDATE model.platform_models SET input_nanos_per_mtok=$2 WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue model").as_str())
-            .bind(price)
-            .execute(&mut *f.connection().await)
-            .await
-            .expect("owned invalid price");
-        assert!(claim(&f, &draft).await.is_none());
-        let failed = fixture::failure(&f, &draft).await;
-        assert_eq!(
-            failed.failure.expect("bounded billing refusal").error_code,
-            expected
-        );
-        assert_eq!(fixture::attempts(&f).await, 0);
-        f.cleanup().await;
-    }
+    let f = configured().await;
+    let draft = queued(&f).await;
+    let model = f.catalogue.first().expect("owned catalogue model").as_str();
+    let negative = sqlx::query(SET_INPUT_PRICE)
+        .bind(model)
+        .bind(-1_i64)
+        .execute(&mut *f.connection().await)
+        .await;
+    assert!(
+        negative.is_err(),
+        "the price table refuses a negative rate, so no claim can read one"
+    );
+    sqlx::query(SET_INPUT_PRICE)
+        .bind(model)
+        .bind(i64::MAX)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("owned unaffordable price");
+    assert!(claim(&f, &draft).await.is_none());
+    let failed = fixture::failure(&f, &draft).await;
+    assert_eq!(
+        failed.failure.expect("bounded billing refusal").error_code,
+        afd_core::error_code::AUTHORING_BALANCE
+    );
+    assert_eq!(fixture::attempts(&f).await, 0);
+    f.cleanup().await;
 }
+
+/// Rewrites every price tier of one catalogue model's input rate.
+const SET_INPUT_PRICE: &str = "UPDATE model.platform_model_prices SET input_nanos_per_mtok = $2 \
+     WHERE platform_model_id = $1::uuid";

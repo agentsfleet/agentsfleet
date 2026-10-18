@@ -157,13 +157,13 @@ where
 
 /// The fleet's monotonic claim counter.
 ///
-/// `CLAIM_AFFINITY_SLOT` bumps it on every won claim, and this suite expires
+/// `CLAIM_FLEET_SLOT` bumps it on every won claim, and this suite expires
 /// the deadline before each poll, so a poll that reaches this fleet's partition
 /// always wins the claim and always moves this number. That makes it the one
 /// observable meaning "the daemon looked here" — as opposed to the rows the
 /// callers assert on, which say what it decided once it did.
-async fn fencing_seq(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT fencing_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid")
+async fn fencing_token(run: &Scenario) -> i64 {
+    sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id = $1::uuid")
         .bind(&run.fleet)
         .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
@@ -180,21 +180,20 @@ async fn fencing_seq(run: &Scenario) -> i64 {
 /// assertion then reads a row no poll revisited. The claim counter cannot be
 /// true in advance, because the caller reads it first.
 async fn poll_until_reached(http: &reqwest::Client, run: &Scenario, awaited: &str) {
-    let before = fencing_seq(run).await;
+    let before = fencing_token(run).await;
     poll_until(http, run, awaited, || async {
-        fencing_seq(run).await > before
+        fencing_token(run).await > before
     })
     .await;
 }
 
 async fn deny(run: &Scenario) {
-    let actions: Vec<String> = sqlx::query_scalar(
-        "SELECT action_id FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
-    )
-    .bind(&run.fleet)
-    .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
-    .await
-    .expect("actionable cards");
+    let actions: Vec<String> =
+        sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
+            .bind(&run.fleet)
+            .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
+            .await
+            .expect("actionable cards");
     assert_eq!(
         actions.len(),
         1,

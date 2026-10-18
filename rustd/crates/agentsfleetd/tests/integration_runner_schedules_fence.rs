@@ -48,7 +48,7 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
 
     // A reclaim moves the fleet's live sequence past the old holder's token.
     sqlx::query(
-        "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1 WHERE fleet_id = $1::uuid",
+        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
     )
     .bind(&leased.run.fleet)
     .execute(&mut *connection)

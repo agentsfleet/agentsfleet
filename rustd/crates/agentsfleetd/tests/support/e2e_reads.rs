@@ -113,7 +113,7 @@ fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> 
 /// One column of a lease row, as text.
 pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.runner_leases WHERE id = $1::uuid"
+        "SELECT {column}::text FROM runner.leases WHERE id = $1::uuid"
     ));
     let mut connection = run
         .booted
@@ -146,7 +146,7 @@ pub(crate) async fn event_column_of(
     column: &str,
 ) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM core.fleet_events \
+        "SELECT {column}::text FROM fleet.events \
          WHERE fleet_id = $1::uuid AND event_id = $2"
     ));
     let mut connection = run
@@ -172,7 +172,7 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+    sqlx::query("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
         .bind(&run.tenant)
         .fetch_optional(&mut *connection)
         .await
@@ -232,7 +232,7 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT count(*) FROM fleet.runner_leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
+        "SELECT count(*) FROM runner.leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
     )
     .bind(run.runner_id.as_str())
     .bind(&run.fleet)

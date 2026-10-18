@@ -523,17 +523,14 @@ async fn seed_second_model(run: &crate::e2e::Scenario) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.model_library
-           (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-            cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, 1)
-         ON CONFLICT (provider, model_id) DO NOTHING",
+    afd_db::test_util::ModelSeed::new(
+        &afd_db::test_util::mint_id(),
+        PROVIDER,
+        SECOND_MODEL,
+        200_000,
     )
-    .bind(afd_db::test_util::mint_id())
-    .bind(SECOND_MODEL)
-    .bind(PROVIDER)
-    .execute(&mut *connection)
+    .rates(5, 1, 25)
+    .insert(&mut *connection)
     .await
     .expect("the second catalogue row seeds");
 }

@@ -22,7 +22,7 @@
 use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
-use sqlx::{AssertSqlSafe, Row as _};
+use sqlx::AssertSqlSafe;
 
 use crate::e2e::{Scenario, scenario};
 use crate::integration_tool_trace::{REPORTS, tenant_reader};
@@ -52,7 +52,7 @@ pub(crate) async fn post_records(
 /// One statement over the scenario's pool, answering its single integer.
 pub(crate) async fn scalar(run: &Scenario, statement: &str, fence: Option<u64>) -> i64 {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
-    let query = sqlx::query(AssertSqlSafe(statement.to_owned()))
+    let query = sqlx::query_scalar(AssertSqlSafe(statement.to_owned()))
         .bind(&run.fleet)
         .bind(&run.event_id);
     let query = match fence {
@@ -63,16 +63,15 @@ pub(crate) async fn scalar(run: &Scenario, statement: &str, fence: Option<u64>) 
         .fetch_one(&mut *connection)
         .await
         .expect("the read runs")
-        .try_get(0)
-        .expect("an integer")
 }
 
 /// How many records the scenario's event keeps.
 pub(crate) async fn rows(run: &Scenario) -> i64 {
     scalar(
         run,
-        "SELECT count(*) FROM core.fleet_tool_call_details \
-         WHERE fleet_id = $1::uuid AND event_id = $2",
+        "SELECT count(*) FROM fleet.tool_calls t \
+         JOIN fleet.events e ON e.id = t.fleet_event_id \
+         WHERE t.fleet_id = $1::uuid AND e.event_id = $2",
         None,
     )
     .await
@@ -82,8 +81,9 @@ pub(crate) async fn rows(run: &Scenario) -> i64 {
 async fn rows_at(run: &Scenario, fence: u64) -> i64 {
     scalar(
         run,
-        "SELECT count(*) FROM core.fleet_tool_call_details \
-         WHERE fleet_id = $1::uuid AND event_id = $2 AND fencing_token = $3",
+        "SELECT count(*) FROM fleet.tool_calls t \
+         JOIN fleet.events e ON e.id = t.fleet_event_id \
+         WHERE t.fleet_id = $1::uuid AND e.event_id = $2 AND t.fencing_token = $3",
         Some(fence),
     )
     .await
@@ -149,7 +149,7 @@ async fn test_stale_fence_tool_call_details_refused() {
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
     execute(
         &run,
-        "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1 \
+        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1::uuid AND $2 <> ''",
     )
     .await;
@@ -211,13 +211,13 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
     execute(
         run,
         &format!(
-            "INSERT INTO core.fleet_tool_call_details \
-             (id, workspace_id, fleet_id, event_id, fencing_token, call_number, arguments, \
+            "INSERT INTO fleet.tool_calls \
+             (id, workspace_id, fleet_id, fleet_event_id, fencing_token, sequence, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {fence}, 1, '{{}}'::jsonb, \
-                    false, 'dead', 1, false, 256, 0, 0 \
-             FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2"
+             SELECT '{dead}'::uuid, workspace_id, fleet_id, id, {fence}, 1, '{{}}'::jsonb, \
+                    false, 'dead', 1, false, 256, now(), now() \
+             FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2"
         ),
     )
     .await;

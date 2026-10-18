@@ -47,7 +47,7 @@ async fn test_schedule_run_now_admits_one_event() {
 
     let mut connection = leased.connection().await;
     let row = sqlx::query(
-        "SELECT count(*), min(event_type) FROM core.fleet_admissions \
+        "SELECT count(*), min(event_type) FROM fleet.admissions \
          WHERE fleet_id = $1::uuid AND actor = $2",
     )
     .bind(&leased.run.fleet)
@@ -82,7 +82,7 @@ async fn test_scheduled_run_is_leased_with_its_message() {
 
     let mut connection = leased.connection().await;
     let message: String = sqlx::query_scalar(
-        "SELECT request_json->>'message' FROM core.fleet_events \
+        "SELECT request_json->>'message' FROM fleet.events \
          WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(&leased.run.fleet)
@@ -145,7 +145,7 @@ async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
     let leased = Leased::boot(&mut supervisor, &qstash).await;
     let schedule = leased.seed(Source::Fleet, "own-active").await;
     leased
-        .on_fleet("UPDATE core.fleets SET status = 'paused' WHERE id = $1::uuid")
+        .on_fleet("UPDATE fleet.fleets SET status = 'paused' WHERE id = $1::uuid")
         .await;
 
     let (status, refused) = leased.run_now(&schedule).await;
