@@ -140,7 +140,7 @@ impl<'a> PendingRow<'a> {
 /// microsecond, so a timeout carrying sub-millisecond noise would otherwise
 /// fail the park rather than round.
 fn timeout(span: Duration) -> Duration {
-    Duration::from_millis(u64::try_from(span.as_millis()).unwrap_or(u64::MAX))
+    Duration::from_millis(afd_core::clock::saturating_millis(span))
 }
 
 #[cfg(test)]
