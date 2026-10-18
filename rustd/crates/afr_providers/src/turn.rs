@@ -212,12 +212,6 @@ impl Reading {
                 None => Step::Continue(Pass::Reading(self)),
             },
             Some(Ok(Item::Unknown(_))) => Step::Continue(Pass::Reading(self)),
-            Some(Err(ProviderError::MalformedToolInput(input))) => {
-                let raw = serde_json::Value::String(input.raw);
-                let call = turns.call(&input.id, input.name, raw);
-                let rest = ending(self.stream.partial());
-                Step::Break((Ok(Chunk::Call(call)), Pass::Ending(rest)))
-            }
             Some(Err(failure)) if !self.shown && self.attempt < ATTEMPTS && reopens(&failure) => {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
@@ -247,11 +241,13 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
             ..
         } => {
             let name = String::from(call.function.name);
-            Some(Chunk::Call(turns.call(
-                &call.id,
-                name,
-                call.function.arguments,
-            )))
+            // Arguments that are not a JSON object go out as the text the
+            // model sent, for the tool to refuse in its own words.
+            let arguments = match call.function.invalid_arguments {
+                Some(raw) => serde_json::Value::String(raw),
+                None => serde_json::Value::Object(call.function.arguments),
+            };
+            Some(Chunk::Call(turns.call(&call.id, name, arguments)))
         }
         StreamEvent::Start { .. } | StreamEvent::Arguments { .. } | StreamEvent::End { .. } => None,
     }
@@ -287,7 +283,10 @@ fn ending(response: CompletionResponse) -> Ending {
         .into_iter()
         .filter(|content| matches!(content, AssistantContent::Reasoning(_)));
     let end = End {
-        replay: Replay(reasoning.collect()),
+        replay: Replay {
+            content: reasoning.collect(),
+            origin: Some(response.origin),
+        },
         cut,
     };
     [Chunk::Usage(spent), Chunk::End(end)].into_iter()

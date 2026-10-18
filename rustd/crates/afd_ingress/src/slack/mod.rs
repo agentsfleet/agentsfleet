@@ -10,7 +10,6 @@
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_runtime::config::{Access, FleetConfig};
-use sqlx::Row as _;
 
 use crate::error::{self, Result, stored_fleet};
 use crate::{Ingress, sql};
@@ -78,7 +77,7 @@ impl Ingress {
     ) -> Result<Vec<Subscriber>> {
         let statuses: Vec<&str> = READABLE.iter().map(|status| status.as_str()).collect();
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_MENTION_CANDIDATES)
+        let rows: Vec<CandidateRow> = sqlx::query_as(sql::SELECT_MENTION_CANDIDATES)
             .bind(workspace.as_str())
             .bind(&statuses)
             .fetch_all(connection.as_mut())
@@ -88,15 +87,28 @@ impl Ingress {
 
         rows.iter()
             .map(|row| {
-                let unreadable = error::query(CONTEXT_MENTION_SUBSCRIBERS);
-                let fleet: String = row.try_get(0).map_err(&unreadable)?;
-                let status: String = row.try_get(1).map_err(&unreadable)?;
-                let document: String = row.try_get(2).map_err(&unreadable)?;
-                subscribed(stored_fleet(&fleet)?, &status, &document, provider, channel)
+                subscribed(
+                    stored_fleet(&row.fleet_id)?,
+                    &row.status,
+                    &row.document,
+                    provider,
+                    channel,
+                )
             })
             .filter_map(Result::transpose)
             .collect()
     }
+}
+
+/// [`sql::SELECT_MENTION_CANDIDATES`]'s row: one fleet a mention could reach.
+#[derive(Debug, sqlx::FromRow)]
+struct CandidateRow {
+    /// The fleet, as text.
+    fleet_id: String,
+    /// The stored status word.
+    status: String,
+    /// The head revision's configuration, as JSON text.
+    document: String,
 }
 
 /// Whether one stored fleet is attached to `channel` on `provider`.

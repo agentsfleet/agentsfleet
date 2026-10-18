@@ -42,7 +42,6 @@ pub(crate) fn model(
             messages.wire = messages
                 .wire
                 .with_prompt_caching()
-                .with_automatic_caching()
                 .with_default_max_tokens(MAX_TOKENS);
             messages.erase()
         }

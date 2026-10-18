@@ -17,6 +17,7 @@ mod support;
 
 mod caching;
 mod ends;
+mod hosted;
 mod hosts;
 mod images;
 mod retries;
@@ -28,7 +29,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::report::FailureClass;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
-use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::UPDATE_PLAN;
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 
@@ -41,8 +42,6 @@ const ANSWER: &str = "It is 4.";
 const CALL_ID: &str = "call-1";
 /// The wait the fake's 429 asks for, as the header spells it.
 const RETRY_AFTER: &str = "1";
-/// What a refused hosted call reads back, as the router spells it.
-const HOSTED_REFUSAL: &str = "[hosted_tool_unavailable]";
 /// Sends per turn, the first included: the transport's retry and a cut
 /// turn's reopening share the bound.
 const ATTEMPTS: usize = 3;
@@ -215,44 +214,6 @@ async fn test_api_key_never_leaves_the_supervisor() {
             "{wire:?}"
         );
     }
-}
-
-#[tokio::test]
-async fn test_web_search_is_a_hosted_spec() {
-    for wire in [Wire::Messages, Wire::Responses] {
-        let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
-        let leased = lease(&wire.provider(), &[WEB_SEARCH.name()], "search");
-
-        let (output, _frames) = run(&engine(&fake), &leased).await;
-
-        assert_eq!(output.result.content, ANSWER, "{wire:?}");
-        let offered = wire.offered(&fake.seen()[0].body);
-        let spec = offered
-            .iter()
-            .find(|tool| tool.starts_with(WEB_SEARCH.name()));
-        assert!(spec.is_some(), "{wire:?}: {offered:?}");
-    }
-    let wire = Wire::Chat;
-    let mut fake = Fake::serve(vec![
-        wire.call(CALL_ID, WEB_SEARCH.name(), &json!({"query": "x"})),
-        wire.answer(ANSWER),
-    ])
-    .await;
-    let leased = lease(&wire.provider(), &[WEB_SEARCH.name()], "search");
-
-    let (output, _frames) = run(&engine(&fake), &leased).await;
-
-    let seen = fake.seen();
-    assert!(
-        wire.offered(&seen[0].body).is_empty(),
-        "chat has no hosted spec"
-    );
-    let refused = wire.results(&seen[1].body);
-    assert!(refused[0].starts_with(HOSTED_REFUSAL), "{refused:?}");
-    assert_eq!(
-        output.trace.unwrap().calls[0].status,
-        ToolCallStatus::Failed
-    );
 }
 
 #[tokio::test]
