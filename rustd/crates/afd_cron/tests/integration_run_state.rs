@@ -5,11 +5,6 @@
 //! not yet registered, so it names no run; once finalized it is registered and
 //! names its next match in its zone.
 
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
-
 #[path = "support/cron_lane.rs"]
 mod support;
 

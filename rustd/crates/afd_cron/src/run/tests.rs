@@ -116,3 +116,16 @@ fn a_description_names_the_expression_in_words_and_its_zone() {
         "an expression the parser refuses is shown as written, never hidden"
     );
 }
+
+#[test]
+fn a_time_in_the_midnight_hour_keeps_its_minute() {
+    for (cron, words) in [
+        ("30 0 * * *", "At 12:30 AM"),
+        ("5 0 * * *", "At 12:05 AM"),
+        ("0 0 * * *", "At 12:00 AM"),
+        ("30 9 * * *", "At 9:30 AM"),
+    ] {
+        let described = describe(cron, "UTC");
+        assert!(described.starts_with(words), "{cron}: {described}");
+    }
+}
