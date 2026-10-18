@@ -61,8 +61,6 @@ struct PriceRow {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     verified_at: Timestamp,
     conditions: String,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    updated_at: Timestamp,
 }
 
 impl PriceRow {
@@ -88,7 +86,6 @@ impl PriceRow {
 #[derive(Debug, Default)]
 pub struct Prices {
     schedules: HashMap<String, Vec<Price>>,
-    changed: HashMap<String, Timestamp>,
 }
 
 impl Prices {
@@ -96,12 +93,6 @@ impl Prices {
     /// model has no price row.
     pub fn take(&mut self, model_id: &str) -> Vec<Price> {
         self.schedules.remove(model_id).unwrap_or_default()
-    }
-
-    /// When any of `model_id`'s price rows last changed.
-    #[must_use]
-    pub fn changed(&self, model_id: &str) -> Option<Timestamp> {
-        self.changed.get(model_id).copied()
     }
 }
 
@@ -119,11 +110,6 @@ pub async fn prices_for<'e>(
         .await?;
     let mut prices = Prices::default();
     for row in rows {
-        let changed = prices
-            .changed
-            .entry(row.platform_model_id.clone())
-            .or_insert(row.updated_at);
-        *changed = (*changed).max(row.updated_at);
         prices
             .schedules
             .entry(row.platform_model_id.clone())
