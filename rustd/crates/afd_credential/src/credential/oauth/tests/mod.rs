@@ -7,7 +7,6 @@
 //! way a token endpoint reads it.
 #![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 #![expect(
@@ -15,6 +14,10 @@
     reason = "no client here sends: one builds a request to read its form, the other backs a mint that refuses before dialling"
 )]
 
+use std::time::Duration;
+
+use afd_core::clock::after;
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
@@ -23,7 +26,7 @@ use crate::credential::outcome::{Outcome, Retry};
 use crate::credential::platform::OauthApp;
 
 /// The instant every expiry here is measured from.
-const NOW_MS: i64 = 1_760_000_000_000;
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// A response body, as a token endpoint writes one.
 fn answered(body: &Value) -> Answered {
@@ -33,14 +36,12 @@ fn answered(body: &Value) -> Answered {
 /// Zoho's declared endpoint, standing in for whatever the descriptor carries.
 const DECLARED: &str = "https://accounts.zoho.com/oauth/v2/token";
 
-/// An hour, as a provider states it and as this daemon stores it.
+/// An hour, as this daemon holds it and as a provider states it.
 ///
-/// The pair, named (RULE UFS): `expires_in` is SECONDS on the wire and the
-/// minted expiry is MILLISECONDS, so the two numbers must move together and a
-/// literal repeated at four sites is four places for that relationship to be
-/// edited apart.
-const EXPIRES_IN_AN_HOUR: i64 = 3_600;
-const AN_HOUR_MS: i64 = 3_600_000;
+/// `expires_in` is SECONDS on the wire, so it is derived from the span rather
+/// than written beside it, and the two cannot be edited apart (RULE UFS).
+const AN_HOUR: Duration = Duration::from_hours(1);
+const EXPIRES_IN_AN_HOUR: u64 = AN_HOUR.as_secs();
 
 /// Four centuries, in the seconds `expires_in` is written in: forty times the
 /// ten-year ceiling `MAX_ACCESS_TTL` believes, so the refusal cannot hinge on
@@ -90,11 +91,11 @@ fn a_success_body_mints_for_exactly_as_long_as_it_states() {
     let outcome = granted(
         &answered(&json!({"access_token": "at_live", "expires_in": EXPIRES_IN_AN_HOUR})),
         "rt_posted",
-        NOW_MS,
+        NOW,
     );
     let minted = outcome.minted().expect("a success body mints");
     assert_eq!(minted.token.as_str(), "at_live");
-    assert_eq!(minted.expires_at_ms, NOW_MS + AN_HOUR_MS);
+    assert_eq!(minted.expires_at, after(NOW, AN_HOUR));
     assert!(minted.rotated_refresh_token.is_none());
 }
 
@@ -102,25 +103,22 @@ fn a_success_body_mints_for_exactly_as_long_as_it_states() {
 fn expires_in_is_read_however_the_provider_spells_a_number() {
     // Real OAuth servers emit all three, and a rendering this daemon refuses is
     // a mint that worked before the hostile-input hardening and stops after it.
-    for (spelled, expected_ms) in [
-        (json!(EXPIRES_IN_AN_HOUR), AN_HOUR_MS),
+    for (spelled, lifetime) in [
+        (json!(EXPIRES_IN_AN_HOUR), AN_HOUR),
         // Spelled from the same constant rather than written out: the claim is
         // that the RENDERING varies, not the number, and a literal "3600" here
         // could drift from the row above and still look like it agreed.
-        (json!(EXPIRES_IN_AN_HOUR.to_string()), AN_HOUR_MS),
-        (json!(1800.5), 1_800_500),
+        (json!(EXPIRES_IN_AN_HOUR.to_string()), AN_HOUR),
+        (json!(1800.5), Duration::from_millis(1_800_500)),
     ] {
         let outcome = granted(
             &answered(&json!({"access_token": "at", "expires_in": spelled})),
             "rt",
-            NOW_MS,
+            NOW,
         );
         assert_eq!(
-            outcome
-                .minted()
-                .expect("a success body mints")
-                .expires_at_ms,
-            NOW_MS + expected_ms,
+            outcome.minted().expect("a success body mints").expires_at,
+            after(NOW, lifetime),
             "{spelled}"
         );
     }
@@ -130,14 +128,10 @@ fn expires_in_is_read_however_the_provider_spells_a_number() {
 fn an_absent_expiry_falls_to_the_conservative_floor() {
     // Short, never long: an assumed lifetime past the real one caches a dead
     // token and a child meets a 401 mid-run.
-    let outcome = granted(&answered(&json!({"access_token": "at"})), "rt", NOW_MS);
-    let expected = i64::try_from(DEFAULT_ACCESS_TTL.as_millis()).unwrap();
+    let outcome = granted(&answered(&json!({"access_token": "at"})), "rt", NOW);
     assert_eq!(
-        outcome
-            .minted()
-            .expect("a success body mints")
-            .expires_at_ms,
-        NOW_MS + expected
+        outcome.minted().expect("a success body mints").expires_at,
+        after(NOW, DEFAULT_ACCESS_TTL)
     );
 }
 
@@ -156,7 +150,7 @@ fn a_success_body_this_daemon_cannot_read_mints_nothing() {
         // Beyond any integer: a float a naive cast would saturate or trap on.
         json!({"access_token": "at", "expires_in": 1e30}),
     ] {
-        let outcome = granted(&answered(&malformed), "rt", NOW_MS);
+        let outcome = granted(&answered(&malformed), "rt", NOW);
         assert!(
             matches!(outcome, Outcome::MintFailed(Retry::Permanent)),
             "{malformed}: {outcome:?}"
@@ -243,7 +237,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         handle: &stored,
         token_url: DECLARED,
         http: &http,
-        now_ms: NOW_MS,
+        now: NOW,
     })
     .await;
     assert!(matches!(outcome, Outcome::ReconnectRequired));
@@ -255,7 +249,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         handle: &stored,
         token_url: DECLARED,
         http: &http,
-        now_ms: NOW_MS,
+        now: NOW,
     })
     .await;
     assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));
@@ -268,7 +262,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         handle: &stored,
         token_url: DECLARED,
         http: &http,
-        now_ms: NOW_MS,
+        now: NOW,
     })
     .await;
     assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));

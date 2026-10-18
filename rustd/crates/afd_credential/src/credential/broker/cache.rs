@@ -6,18 +6,20 @@
 
 use std::time::Duration;
 
+use afd_core::clock::before;
+use jiff::Timestamp;
 use moka::Expiry;
 use zeroize::Zeroizing;
 
-use super::{FIELD_EXPIRES_AT_MS, Key};
+use super::Key;
 use crate::credential::outcome::{Minted, Outcome, Retry};
 
-/// Re-mint this many milliseconds BEFORE the upstream expiry.
+/// Re-mint this long BEFORE the upstream expiry.
 ///
 /// A token handed to a tool call has to outlive the call, and the daemon cannot
 /// know how long that is. Erring early is the only safe direction: too much
 /// slack costs a re-mint, too little costs a 401 mid-run.
-const EXPIRY_SKEW_MS: i64 = 60_000;
+const EXPIRY_SKEW: Duration = Duration::from_mins(1);
 
 /// A token this process is holding on to.
 #[derive(Clone)]
@@ -25,7 +27,7 @@ pub(super) struct Cached {
     /// The credential.
     pub(super) token: Zeroizing<String>,
     /// When it stops working upstream.
-    pub(super) expires_at_ms: i64,
+    pub(super) expires_at: Timestamp,
     /// A refresh token the exchange rotated, held only until the caller that
     /// performed that exchange has taken it — see [`Broker::mint`].
     pub(super) rotated_refresh_token: Option<Zeroizing<String>>,
@@ -38,7 +40,7 @@ pub(super) struct Cached {
 impl std::fmt::Debug for Cached {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cached")
-            .field(FIELD_EXPIRES_AT_MS, &self.expires_at_ms)
+            .field("expires_at", &self.expires_at)
             .field("live_for", &self.live_for)
             .finish_non_exhaustive()
     }
@@ -46,31 +48,29 @@ impl std::fmt::Debug for Cached {
 
 impl Cached {
     /// The cache entry for a freshly minted credential.
-    pub(super) fn new(minted: Minted, now_ms: i64) -> Self {
-        // Saturating, and then clamped at zero by the conversion: a provider
-        // that returned a token expiring inside the skew is cached for no time
-        // at all rather than for a negative one. The CALLER still receives it —
-        // what it does not get is a second caller a minute later.
-        let live_ms = minted
-            .expires_at_ms
-            .saturating_sub(now_ms)
-            .saturating_sub(EXPIRY_SKEW_MS);
+    pub(super) fn new(minted: Minted, now: Timestamp) -> Self {
+        // Clamped at zero by the conversion: a provider that returned a token
+        // expiring inside the skew is cached for no time at all rather than for
+        // a negative one. The CALLER still receives it — what it does not get
+        // is a second caller a minute later.
+        let live_for = Duration::try_from(now.duration_until(stale_at(minted.expires_at)))
+            .unwrap_or(Duration::ZERO);
         Self {
             token: minted.token,
-            expires_at_ms: minted.expires_at_ms,
+            expires_at: minted.expires_at,
             rotated_refresh_token: minted.rotated_refresh_token,
-            live_for: Duration::from_millis(u64::try_from(live_ms).unwrap_or(0)),
+            live_for,
         }
     }
 
-    /// Whether this entry is still worth handing over at `now_ms`.
+    /// Whether this entry is still worth handing over at `now`.
     ///
     /// Checked against the INJECTED clock rather than left to `moka`'s own
     /// expiry alone, which is what keeps the decision provable without waiting
     /// for wall-clock time to pass. The two agree; this one is the earlier of
     /// them and the one a test can drive.
-    pub(super) const fn is_live(&self, now_ms: i64) -> bool {
-        now_ms < self.expires_at_ms.saturating_sub(EXPIRY_SKEW_MS)
+    pub(super) fn is_live(&self, now: Timestamp) -> bool {
+        now < stale_at(self.expires_at)
     }
 
     /// This entry with the rotation dropped.
@@ -81,11 +81,16 @@ impl Cached {
     pub(super) fn without_rotation(&self) -> Self {
         Self {
             token: self.token.clone(),
-            expires_at_ms: self.expires_at_ms,
+            expires_at: self.expires_at,
             rotated_refresh_token: None,
             live_for: self.live_for,
         }
     }
+}
+
+/// The instant a token expiring at `expires_at` stops being handed over.
+fn stale_at(expires_at: Timestamp) -> Timestamp {
+    before(expires_at, EXPIRY_SKEW)
 }
 
 /// Expires each entry by its OWN remaining life.
@@ -138,9 +143,10 @@ impl From<Refused> for Outcome {
 
 #[cfg(test)]
 mod tests {
+    use jiff::Timestamp;
     use zeroize::Zeroizing;
 
-    use super::{Cached, EXPIRY_SKEW_MS};
+    use super::Cached;
     use crate::credential::outcome::Minted;
 
     /// The token a fixture mints; it must never reach a log line.
@@ -152,13 +158,17 @@ mod tests {
         let cached = Cached::new(
             Minted {
                 token: Zeroizing::new(TOKEN.to_owned()),
-                expires_at_ms: EXPIRY_SKEW_MS * 3,
+                expires_at: Timestamp::constant(180, 0),
                 rotated_refresh_token: Some(Zeroizing::new(TOKEN.to_owned())),
             },
-            0,
+            Timestamp::UNIX_EPOCH,
         );
         let rendered = format!("{cached:?}");
         assert!(!rendered.contains(TOKEN), "{rendered}");
-        assert!(rendered.contains("expires_at_ms"), "{rendered}");
+        assert!(rendered.contains("expires_at"), "{rendered}");
+        assert!(
+            rendered.contains("120s"),
+            "cached for the life minus the skew: {rendered}"
+        );
     }
 }

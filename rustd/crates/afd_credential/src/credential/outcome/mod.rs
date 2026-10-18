@@ -13,7 +13,15 @@
 //! carries no credential, which is a property of the type rather than of the
 //! care taken at each call site.
 
+use jiff::Timestamp;
 use zeroize::Zeroizing;
+
+/// The expiry a credential with no upstream expiry carries.
+///
+/// The last whole millisecond jiff represents, so the runner's one "is it still
+/// good" comparison holds for it without a second "never expires" branch, and
+/// the wire's millisecond-precision instant round-trips it unchanged.
+pub const NEVER_EXPIRES: Timestamp = Timestamp::constant(253_402_207_200, 999_000_000);
 
 /// Whether a failed mint is worth trying again.
 ///
@@ -40,8 +48,8 @@ pub enum Retry {
 pub struct Minted {
     /// The credential itself.
     pub token: Zeroizing<String>,
-    /// When it stops working, in Unix milliseconds.
-    pub expires_at_ms: i64,
+    /// When it stops working; [`NEVER_EXPIRES`] when nothing upstream says.
+    pub expires_at: Timestamp,
     /// A REPLACEMENT refresh token the provider issued during the exchange, if
     /// it rotated one.
     ///
@@ -64,7 +72,7 @@ pub struct Minted {
 impl std::fmt::Debug for Minted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Minted")
-            .field("expires_at_ms", &self.expires_at_ms)
+            .field("expires_at", &self.expires_at)
             .field("rotated", &self.rotated_refresh_token.is_some())
             .finish_non_exhaustive()
     }

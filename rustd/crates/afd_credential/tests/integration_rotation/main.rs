@@ -1,4 +1,5 @@
-//! Refresh-token rotation against a locked, encrypted vault row.
+//! The credential store against live Postgres: the shared [`Fixture`] every
+//! case seeds through, and one module per concern.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -8,11 +9,7 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
-use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_credential::credential::platform::Platform;
-use afd_credential::vault::rotate::Rotated;
 use afd_credential::vault::{KeyRef, Vault};
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::{Envelope, Sealer};
@@ -20,105 +17,30 @@ use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{DefaultSeed, PlatformDefault, TestDatabase, mint_id};
-use serde_json::Value;
+use jiff::Timestamp;
 
 mod activation;
+mod activation_ceiling;
 mod provider_resolution;
 mod registry;
 mod registry_default;
 mod registry_page;
 mod registry_tenancy;
 mod registry_walk;
+mod rotation;
+mod selection_pointer;
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const KEY_NAME: &str = "provider-handle";
 
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn refresh_rotation_persists_only_the_handle_that_was_redeemed() {
-    let fixture = Fixture::create().await;
-    fixture
-        .seed(KEY_NAME, br#"{"refresh_token":"old","account":"kept"}"#)
-        .await;
-    let key = fixture.key(KEY_NAME);
-
-    assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(key, "old", "replacement", NOW)
-            .await
-            .expect("the matching handle rotates"),
-        Rotated::Persisted
-    );
-    let opened = fixture
-        .vault
-        .open(key)
-        .await
-        .expect("the envelope opens")
-        .expect("the row exists");
-    let body: Value = serde_json::from_slice(opened.expose()).expect("the handle is JSON");
-    assert_eq!(
-        body.get("refresh_token").and_then(Value::as_str),
-        Some("replacement")
-    );
-    assert_eq!(body.get("account").and_then(Value::as_str), Some("kept"));
-
-    assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(key, "old", "must-not-win", NOW)
-            .await
-            .expect("a stale exchange is a typed outcome"),
-        Rotated::SkippedStale
-    );
-    assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(fixture.key("missing"), "old", "new", NOW)
-            .await
-            .expect("a deleted handle is a typed outcome"),
-        Rotated::SkippedStale
-    );
-
-    fixture.seed("malformed", b"[]").await;
-    let invalid = fixture
-        .vault
-        .rotate_refresh_token(fixture.key("malformed"), "old", "new", NOW)
-        .await
-        .expect_err("a stored handle must be a JSON object");
-    assert_eq!(invalid.code(), error_code::VAULT_DATA_INVALID);
-
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn platform_credentials_load_independently_and_degrade_bad_rows() {
-    let fixture = Fixture::create().await;
-    fixture
-        .seed("github-app", br#"{"app_id":"42","private_key_pem":"pem"}"#)
-        .await;
-    fixture
-        .seed(
-            "zoho-app",
-            br#"{"client_id":"zoho-client","client_secret":"secret"}"#,
-        )
-        .await;
-    fixture.seed("jira-app", b"not-json").await;
-    fixture.seed("linear-app", b"{}").await;
-
-    let platform = Platform::load(&fixture.vault, &fixture.workspace).await;
-
-    assert_eq!(platform.github().map(|app| app.app_id), Some(42));
-    assert_eq!(
-        platform.oauth("zoho").map(|app| app.client_id.as_str()),
-        Some("zoho-client")
-    );
-    assert!(platform.oauth("jira").is_none());
-    assert!(platform.oauth("linear").is_none());
-
-    fixture.cleanup().await;
-}
+/// Points a tenant's selection at one entry, as a raw row.
+///
+/// `$1` tenant · `$2` entry.
+const POINT_SELECTION: &str = "\
+INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, updated_at)
+VALUES ($1::uuid, $2::uuid, now(), now())
+ON CONFLICT (tenant_id) DO UPDATE SET tenant_model_id = EXCLUDED.tenant_model_id,
+                                      updated_at = now()";
 
 struct Fixture {
     lane: TestDatabase,
@@ -164,8 +86,8 @@ impl Fixture {
         let orphan = id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'No workspace', 1, 1)",
+            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+             VALUES ($1::uuid, 'No workspace', now(), now())",
         )
         .bind(orphan.as_str())
         .execute(&mut *connection)
@@ -178,12 +100,12 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Credential rotation', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Credential rotation', now(), now()) \
                RETURNING id \
              ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $2::uuid, id, $2, 'test', 1 FROM tenant",
+             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+             SELECT $2::uuid, id, $2, now() FROM tenant",
         )
         .bind(self.tenant.as_str())
         .bind(self.workspace.as_str())
@@ -231,19 +153,18 @@ impl Fixture {
         .expect("the projection columns seed");
     }
 
-    /// Publishes one catalogue row, which the default below has a foreign key
-    /// into: `platform_provider_defaults(provider, model)` references
-    /// `model_library`, so a default can only name a model the catalogue
-    /// carries — the schema's own way of saying an unpriced default is not a
-    /// default.
+    /// Publishes one catalogue row, which the default below points at:
+    /// `platform_defaults.platform_model_id` references `platform_models`, so a
+    /// default can only name a model the catalogue carries — the schema's own
+    /// way of saying an unpriced default is not a default.
     async fn seed_catalogue(&self, provider: &str, model: &str, cap: i32) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.model_library \
-               (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
+            "INSERT INTO model.platform_models \
+               (id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, \
                 cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, 1, 1) \
-             ON CONFLICT (provider, model_id) DO NOTHING",
+             VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, now(), now()) \
+             ON CONFLICT (provider, model_name) DO NOTHING",
         )
         .bind(mint_id())
         .bind(model)
@@ -257,7 +178,7 @@ impl Fixture {
     /// Publishes one ACTIVE platform default, for the reset's copy path, and
     /// holds it.
     ///
-    /// `core.platform_provider_defaults` has no tenant column and the read is
+    /// `model.platform_defaults` has no tenant column and the read is
     /// `WHERE active = true ... LIMIT 1`, so a caller seeding one is naming the
     /// deployment's default and not its own — see `registry.rs`'s header on
     /// what that costs and which half is therefore graded. Pass a provider name
@@ -280,19 +201,35 @@ impl Fixture {
                 source_workspace_id: self.workspace.as_str(),
                 model,
                 context_cap_tokens: cap,
-                created_at: NOW.as_millis(),
+                created_at: NOW,
             },
         )
         .await
+    }
+
+    /// Points `tenant`'s selection straight at one of its registry entries.
+    ///
+    /// Written as the row rather than through `activate`, so a test about the
+    /// page or the pointer does not also depend on the catalogue gate and a
+    /// decrypt. The composite foreign key still checks the entry is the
+    /// tenant's own.
+    async fn point_selection_at(&self, tenant: &Uuid7, entry: &Uuid7) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(POINT_SELECTION)
+            .bind(tenant.as_str())
+            .bind(entry.as_str())
+            .execute(&mut *connection)
+            .await
+            .expect("the selection points at the entry");
     }
 
     async fn insert(&self, name: &str, envelope: &Envelope) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "INSERT INTO vault.secrets \
-               (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, dek_tag, \
-                nonce, ciphertext, tag, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, 1, 1)",
+               (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, dek_tag, \
+                secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
         )
         .bind(mint_id())
         .bind(self.workspace.as_str())
@@ -311,7 +248,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(self.tenant.as_str())
             .execute(&mut *connection)
             .await

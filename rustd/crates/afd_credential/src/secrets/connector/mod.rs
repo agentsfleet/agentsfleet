@@ -17,11 +17,6 @@
 //! that a descriptor or a crate-backed connector implements. Nothing in this
 //! file moves when it does, and no caller here learns about it — which is the
 //! whole reason the seam is a trait today rather than after the broker lands.
-//!
-//! `octocrab` is the GitHub client that will back one of these, taken with
-//! `default-features = false`: its defaults pull `rustls-ring`, and this
-//! workspace resolves to one crypto provider with `ring` absent from the graph
-//! entirely.
 
 use std::fmt::Debug;
 
@@ -62,7 +57,7 @@ pub enum Supply {
 pub trait Connector: Debug + Send + Sync {
     /// The `integration` value a stored handle names this connector by.
     ///
-    /// Also the value stored in `core.integration_grants.service` and emitted
+    /// Also the value stored in `connector.integration_grants.service` and emitted
     /// on the execution policy, so it is one audited string rather than
     /// whatever a variant rename produces.
     fn name(&self) -> &str;

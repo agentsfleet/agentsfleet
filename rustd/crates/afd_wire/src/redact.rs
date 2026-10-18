@@ -83,7 +83,7 @@ impl Debug for MintCredentialResponse<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("MintCredentialResponse")
             .field("token", &redacted(&self.token))
-            .field("expires_at_ms", &self.expires_at_ms)
+            .field("expires_at", &self.expires_at)
             .finish()
     }
 }
