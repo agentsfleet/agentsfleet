@@ -13,7 +13,7 @@
 [![app coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=app&label=app&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=app)
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
 [![cli coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=cli&label=cli&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=cli)
-[![Rust](https://img.shields.io/badge/Rust-1.99.0-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.99.1-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-B8F0CE?labelColor=151716&logo=gitbook&logoColor=B8F0CE)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -67,7 +67,7 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ## Local development
 
-**Prerequisites:** [Rust 1.99.0](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.99.1](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
