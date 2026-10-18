@@ -3,11 +3,12 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use afd_core::clock::{UnixMillis, saturating_millis};
+use afd_core::clock::saturating_millis;
 use afd_wire::lease::LeasePayload;
 use afd_wire::report::{FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 use afr_agent::{Meter, RunOutput};
+use jiff::Timestamp;
 
 /// How a lease's run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +73,7 @@ pub(crate) fn report<'a>(
     meter: &Meter,
     wall: Duration,
     trace: Option<&'a str>,
-    held_until: Option<UnixMillis>,
+    held_until: Option<Timestamp>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
     let (result, first_chunk) = match ending {
@@ -118,7 +119,8 @@ pub(crate) fn report<'a>(
             last_response: response_text,
         },
         tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
-        held_until_ms: held_until.map(UnixMillis::as_millis),
+        // The wire still spells this instant as epoch milliseconds.
+        held_until_ms: held_until.map(Timestamp::as_millisecond),
     }
 }
 

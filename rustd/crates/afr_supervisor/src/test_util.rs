@@ -46,8 +46,8 @@ pub struct Healthy {
     pub assigned: AssignedPolicy<'static>,
     /// How often to beat and to ask for a lease again, in milliseconds.
     pub interval_ms: u32,
-    /// When a renewal is granted until, in Unix milliseconds.
-    pub granted_until: i64,
+    /// When a renewal is granted until.
+    pub granted_until: jiff::Timestamp,
 }
 
 impl Healthy {
@@ -136,7 +136,7 @@ impl Healthy {
                     .unwrap_or_default()
                     .to_owned(),
             ),
-            last_seen_at: 0,
+            last_seen_at: jiff::Timestamp::UNIX_EPOCH,
             assigned_policy: self.assigned.clone(),
             achievable: None,
             degraded: false,

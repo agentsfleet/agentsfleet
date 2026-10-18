@@ -6,25 +6,23 @@ use std::time::Duration;
 use afd_core::clock::Clock;
 use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED};
 use afd_core::id::Uuid7;
-use afd_core::timing::{MAX_RUNTIME_MS, RENEWAL_TICK_MS};
+use afd_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
 use afd_wire::report::{FailureClass, RenewRequest};
 use afr_agent::Meter;
+use jiff::Timestamp;
 use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::client::ControlPlane;
 use crate::error::Error;
 use crate::report::narrow;
 
-/// How often a held lease is renewed: inside the renewal window, so one missed
-/// tick still lands before the lease lapses (`afd_core::timing`).
-pub(crate) const RENEWAL_TICK: Duration = Duration::from_millis(RENEWAL_TICK_MS.unsigned_abs());
 /// How long before the daemon's deadline the runner gives the lease up. The
 /// daemon may hand an expired lease to another runner, so a run must end
 /// before then, not at it; this is one slow call's worth of slack.
 pub(crate) const EXPIRY_MARGIN: Duration = Duration::from_secs(2);
 /// The longest a lease can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
-const LONGEST_GRANT: Duration = Duration::from_millis(MAX_RUNTIME_MS.unsigned_abs());
+const LONGEST_GRANT: Duration = MAX_RUNTIME;
 const EVENT_RENEWED: &str = "lease_renewed";
 const EVENT_RETRY: &str = "renew_failed_retry";
 const EVENT_TERMINATED: &str = "lease_terminated_by_renewal";
@@ -35,19 +33,19 @@ const EVENT_EXPIRED: &str = "lease_timed_out";
 pub(crate) struct Renewal<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
-    expires_at: i64,
+    expires_at: Timestamp,
     clock: &'a dyn Clock,
     meter: &'a Meter,
 }
 
 impl<'a> Renewal<'a> {
-    /// Renews `lease_id`, granted until `expires_at` (Unix milliseconds), with
+    /// Renews `lease_id`, granted until `expires_at`, with
     /// `clock` reading the wall time the daemon's deadlines are written in and
     /// `meter` the tokens each renewal reports.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
         lease_id: &'a Uuid7,
-        expires_at: i64,
+        expires_at: Timestamp,
         clock: &'a dyn Clock,
         meter: &'a Meter,
     ) -> Self {
@@ -105,9 +103,8 @@ impl<'a> Renewal<'a> {
     }
 
     /// When to give the lease up, for a grant until `expires_at`.
-    fn deadline(&self, expires_at: i64) -> Instant {
-        let left = expires_at.saturating_sub(self.clock.now().as_millis());
-        let left = Duration::from_millis(u64::try_from(left).unwrap_or(0)).min(LONGEST_GRANT);
+    fn deadline(&self, expires_at: Timestamp) -> Instant {
+        let left = crate::deadline::left(self.clock.now(), expires_at).min(LONGEST_GRANT);
         Instant::now() + left.saturating_sub(EXPIRY_MARGIN)
     }
 

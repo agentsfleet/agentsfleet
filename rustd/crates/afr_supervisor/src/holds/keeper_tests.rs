@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::testing::{Recorded, Tally};
@@ -114,7 +114,7 @@ async fn test_after_shutdown_a_take_finds_nothing_and_a_discard_still_destroys()
 async fn test_a_park_is_counted_and_a_take_is_not() {
     let engine = FakeEngine::default();
     let (tally, recorded) = Tally::new();
-    let clock = Arc::new(FixedClock::at(UnixMillis::from_millis(0)));
+    let clock = Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH));
     let holds = Holds::recording(clock, tally);
     holds.resize(2);
 
@@ -205,17 +205,17 @@ async fn test_releasing_a_fleet_not_held_ends_nothing() {
 }
 
 /// A clock that jumped back past the bottom of the range between a park and
-/// its take reads as the longest possible negative hold, not an overflow: the
-/// release profile aborts on one, which would end the runner.
+/// its take reads as a hold of no time, not an overflow: the release profile
+/// aborts on one, which would end the runner.
 #[tokio::test]
-async fn test_a_take_across_a_clock_jump_saturates() {
+async fn test_a_take_across_a_clock_jump_back_reads_as_no_time_held() {
     let engine = FakeEngine::default();
     let (holds, clock) = holds(2);
     park(&holds, &engine, FLEET_A).await;
 
-    clock.set(UnixMillis::from_millis(i64::MIN));
+    clock.set(jiff::Timestamp::MIN);
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
     holds.shutdown().await;
 
-    assert_eq!(taken.held_ms, i64::MIN);
+    assert_eq!(taken.held, Duration::ZERO);
 }

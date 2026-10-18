@@ -6,8 +6,9 @@
 )]
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_egress::fixture::policy;
@@ -37,7 +38,7 @@ use crate::testing::Discard;
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
 /// The token the test mint answers, and how long it lives: an hour.
 const MINTED: &str = "ghs_minted_token";
-const HOUR_MILLIS: i64 = 3_600_000;
+const HOUR: Duration = Duration::from_hours(1);
 
 #[tokio::test]
 async fn test_unlisted_tool_refused_run_continues() {
@@ -253,7 +254,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
     leased.lease_id = "lease-77".into();
     leased.policy = policy(false);
     leased.policy.tools = vec![HTTP_REQUEST.name().into()];
-    let mint = CountingMint::answering(MINTED, HOUR_MILLIS, FixedClock::at(UnixMillis::EPOCH));
+    let mint = CountingMint::answering(MINTED, HOUR, FixedClock::at(jiff::Timestamp::UNIX_EPOCH));
     let frames = Frames::default();
     let sink = frames.sink();
 

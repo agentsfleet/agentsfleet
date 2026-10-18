@@ -28,7 +28,7 @@ fn healthy() -> Healthy {
             extra_binds: Vec::new(),
         },
         interval_ms: 500,
-        granted_until: 9,
+        granted_until: jiff::Timestamp::constant(9, 0),
     }
 }
 

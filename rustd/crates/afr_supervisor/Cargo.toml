@@ -34,6 +34,9 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The one wire: every verb's request and reply, spelled once.
 afd_wire.workspace = true
+# The instants a lease, a renewal and a held sandbox carry; the runner reads
+# them off the injected clock and waits on the span left until each.
+jiff.workspace = true
 afr_agent.workspace = true
 afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.

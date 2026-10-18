@@ -16,7 +16,6 @@ use super::ACTIVITY_DRAIN_WAIT;
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
 use crate::error;
-use crate::renew::RENEWAL_TICK;
 use crate::report_spool::ReportSpool;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FENCING, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME,
@@ -24,6 +23,7 @@ use crate::test_support::{
     reported,
 };
 use crate::turns::FleetTurns;
+use afd_core::timing::RENEWAL_TICK;
 
 /// The metered fields a renewal and a report carry, by their wire names.
 const TOKENS: &str = "tokens";

@@ -5,7 +5,7 @@ use super::{ANSWER, ATTEMPT, Fixture, LEASE, report};
 use crate::{
     client::{Call, Verb},
     halt::Halt,
-    report_spool::authoring::{PRIVATE_TTL_MS, files},
+    report_spool::authoring::{PRIVATE_TTL, files},
     test_support::{self, Answer, Calls},
 };
 use afd_core::{id::Uuid7, test_util::trace::Capture};
@@ -147,7 +147,7 @@ async fn a_failed_cleanup_is_reported_and_holds_the_entry_until_cleanup_succeeds
     let capture = Capture::install();
     let fixture = Fixture::new();
     fixture.hold().await;
-    fixture.clock.advance_millis(PRIVATE_TTL_MS);
+    fixture.clock.advance(PRIVATE_TTL);
     mode(&fixture.directory, UNREMOVABLE);
     let content = fixture.directory.join(files::CONTENT);
     let swept = fixture.spool.sweep().await;
@@ -178,7 +178,7 @@ async fn one_unremovable_entry_never_holds_back_a_healthy_one() {
     let capture = Capture::install();
     let fixture = Fixture::new();
     fixture.hold().await;
-    fixture.clock.advance_millis(PRIVATE_TTL_MS);
+    fixture.clock.advance(PRIVATE_TTL);
     let healthy = hold_healthy(&fixture).await;
     mode(&fixture.directory, UNREMOVABLE);
     let mut drain = Drain::start(&fixture);
