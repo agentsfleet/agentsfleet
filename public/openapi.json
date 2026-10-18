@@ -18293,7 +18293,9 @@
         "required": [
           "id",
           "tenant_id",
+          "workspace_id",
           "fleet_id",
+          "fleet_name",
           "event_id",
           "charge_type",
           "posture",
@@ -18317,14 +18319,11 @@
           },
           "fleet_id": {
             "type": "string",
-            "description": "The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES\nthat fleet's deletion, and it is never absent.\n\nThe dashboard derives the fleet's callsign from this value, so a charge\ncan always say what it paid for."
+            "description": "The fleet it was incurred by, kept the same way through the fleet's\ndeletion.\n\nThe dashboard derives the fleet's callsign from this value, so a charge\ncan always say what it paid for."
           },
           "fleet_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "That fleet's name as it stood when the charge was written.\n\nA snapshot rather than a live lookup. Renaming a fleet does not reach\ncharges already written, because a ledger records what was true when the\nmoney moved. `null` when the fleet's row could not be read as the\ncharge was written; the charge is recorded regardless."
+            "type": "string",
+            "description": "That fleet's name as it stood when the charge was written.\n\nA snapshot rather than a live lookup. Renaming a fleet does not reach\ncharges already written, because a ledger records what was true when the\nmoney moved. A fleet purged before its charge landed leaves its own\nidentifier here. When this value equals `fleet_id`, the charge captured\nno name."
           },
           "id": {
             "type": "string",
@@ -18372,11 +18371,8 @@
             "description": "How long the stage ran."
           },
           "workspace_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The workspace it was incurred in — `null` once that workspace is\ndeleted, because a charge outlives what it was incurred on."
+            "type": "string",
+            "description": "The workspace it was incurred in. It survives that workspace's\ndeletion, because a charge outlives what it was incurred on."
           }
         }
       },

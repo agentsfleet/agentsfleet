@@ -152,11 +152,11 @@ pub struct ChargeSummary<'a> {
     pub id: Cow<'a, str>,
     /// Whose charge it is.
     pub tenant_id: Cow<'a, str>,
-    /// The workspace it was incurred in — `null` once that workspace is
-    /// deleted, because a charge outlives what it was incurred on.
-    pub workspace_id: Option<Cow<'a, str>>,
-    /// The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES
-    /// that fleet's deletion, and it is never absent.
+    /// The workspace it was incurred in. It survives that workspace's
+    /// deletion, because a charge outlives what it was incurred on.
+    pub workspace_id: Cow<'a, str>,
+    /// The fleet it was incurred by, kept the same way through the fleet's
+    /// deletion.
     ///
     /// The dashboard derives the fleet's callsign from this value, so a charge
     /// can always say what it paid for.
@@ -165,9 +165,10 @@ pub struct ChargeSummary<'a> {
     ///
     /// A snapshot rather than a live lookup. Renaming a fleet does not reach
     /// charges already written, because a ledger records what was true when the
-    /// money moved. `null` when the fleet's row could not be read as the
-    /// charge was written; the charge is recorded regardless.
-    pub fleet_name: Option<Cow<'a, str>>,
+    /// money moved. A fleet purged before its charge landed leaves its own
+    /// identifier here. When this value equals `fleet_id`, the charge captured
+    /// no name.
+    pub fleet_name: Cow<'a, str>,
     /// The event that triggered the work.
     pub event_id: Cow<'a, str>,
     /// `receive` or `stage` — the two halves of one event's cost.

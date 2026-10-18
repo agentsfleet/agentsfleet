@@ -50,7 +50,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
-    fleet_name: null,
+    fleet_name: "z_1",
     event_id: "evt_1",
     charge_type: CHARGE_TYPE.stage,
     posture: PROVIDER_MODE.platform,
@@ -114,5 +114,23 @@ describe("BillingUsageTab charge cell", () => {
     expect(label?.textContent).toContain(CAPTURED_NAME);
     expect(label?.textContent).toContain("AGENT ");
     expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
+  });
+
+  // The orphan case: the server wrote the fleet's identifier as its name, and
+  // the cell must not print that identifier where a name belongs.
+  it("renders the callsign alone when the charge captured no name", () => {
+    const { container } = render(
+      React.createElement(BillingUsageTab, {
+        initialCharges: [
+          charge({ fleet_id: PURGED_FLEET_ID, fleet_name: PURGED_FLEET_ID }),
+        ],
+        initialCursor: null,
+        pageSize: 25,
+      }),
+    );
+
+    const expected = agentDisplayName(PURGED_FLEET_ID, null);
+    expect(container.querySelector(`[data-agent-name="${expected}"]`)).not.toBeNull();
+    expect(container.textContent).not.toContain(PURGED_FLEET_ID);
   });
 });
