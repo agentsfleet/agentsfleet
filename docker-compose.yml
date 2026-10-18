@@ -30,7 +30,7 @@
 # lanes do not collide on 3000 the way two `make up` stacks still would.
 services:
   postgres:
-    image: mirror.gcr.io/library/postgres:18-alpine
+    image: mirror.gcr.io/library/postgres:19rc1-alpine
     # pg_stat_statements is preloaded so the bench lanes can count the
     # statements a path executes from the SERVER's side (afd_bench's statement
     # counter). It only loads at server start, which is why it lives here and
