@@ -61,8 +61,9 @@ pub struct ModelEntryRow<'a> {
     pub has_key: bool,
     // A blank cell, which is different from a zero window and must not render
     // as one.
-    /// The catalogue's label for the model, or `null` for a model the
-    /// catalogue does not carry, which a picker shows by its `model_id`.
+    /// The catalogue's label for the model. Absent for a model the catalogue
+    /// does not carry, which a picker shows by its `model_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<&'a str>,
     /// The context window this model is priced at, in tokens.
     ///
@@ -94,8 +95,9 @@ pub struct PlatformDefaultRow<'a> {
     pub provider: &'a str,
     /// The model it selects.
     pub model: &'a str,
-    /// The catalogue's label for the model, or `null` when the catalogue
+    /// The catalogue's label for the model. Absent when the catalogue
     /// carries no price for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<&'a str>,
     /// The context window the catalogue prices it at.
     pub context_cap_tokens: u32,
@@ -268,7 +270,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","context_cap_tokens":200000,"input_nanos_per_mtok":3000000}}"#
+            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","display_name":"Sonnet 5","context_cap_tokens":200000,"input_nanos_per_mtok":3000000}}"#
         );
     }
 

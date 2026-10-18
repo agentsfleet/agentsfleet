@@ -44,23 +44,34 @@ fn a_configured_choice_keeps_its_catalogue_label_and_exact_identity() {
 }
 
 #[test]
-fn authoring_refuses_missing_keys_custom_endpoints_and_unsupported_models() {
+fn authoring_refuses_missing_keys_and_endpoints_the_saved_route_does_not_name() {
     let mut missing = row();
     missing.has_key = false;
     let mut custom = row();
     custom.base_url = Some("https://customer.example/v1".into());
-    let mut unsupported = row();
-    unsupported.model = "gpt-6.1-sol".into();
-    for choice in [missing, custom, unsupported] {
+    for choice in [missing, custom] {
         assert!(eligible(choice, Some(ModelPurpose::Authoring)).is_none());
     }
 }
 
+// Routing reads saved settings, never the model identifier: a model name the
+// catalogue has no family for still routes when its saved API carries tools.
 #[test]
-fn an_invalid_runtime_route_is_not_offered_for_runtime_or_any_purpose() {
-    for purpose in [None, Some(ModelPurpose::Runtime)] {
+fn a_model_name_alone_never_decides_eligibility() {
+    let mut unfamiliar = row();
+    unfamiliar.model = "gpt-6.1-sol".into();
+    assert!(eligible(unfamiliar, Some(ModelPurpose::Authoring)).is_some());
+}
+
+#[test]
+fn an_invalid_runtime_route_is_refused_for_runtime_and_listed_as_ineligible() {
+    let invalid = || {
         let mut invalid = row();
         invalid.base_url = Some("http://127.0.0.1:11434".into());
-        assert!(eligible(invalid, purpose).is_none());
-    }
+        invalid
+    };
+    assert!(eligible(invalid(), Some(ModelPurpose::Runtime)).is_none());
+    let listed =
+        eligible(invalid(), None).expect("an unfiltered listing shows every configured model");
+    assert!(!listed.eligibility.runtime && !listed.eligibility.authoring);
 }

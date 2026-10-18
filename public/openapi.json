@@ -22758,7 +22758,7 @@
               "string",
               "null"
             ],
-            "description": "The catalogue's label for the model, or `null` for a model the\ncatalogue does not carry, which a picker shows by its `model_id`."
+            "description": "The catalogue's label for the model. Absent for a model the catalogue\ndoes not carry, which a picker shows by its `model_id`."
           },
           "has_key": {
             "type": "boolean",
@@ -23638,7 +23638,7 @@
               "string",
               "null"
             ],
-            "description": "The catalogue's label for the model, or `null` when the catalogue\ncarries no price for it."
+            "description": "The catalogue's label for the model. Absent when the catalogue\ncarries no price for it."
           },
           "input_nanos_per_mtok": {
             "type": [
