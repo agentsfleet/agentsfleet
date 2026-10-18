@@ -45,8 +45,15 @@ impl Drafts {
         let person = access::current(&mut tx, access).await?;
         let draft = read::lock(&mut tx, access, &person, id).await?;
         let scope = scope(access.workspace, id);
-        let prior =
-            replay::find(&mut tx, &scope, &request.operation_id, &person.id, &digest).await?;
+        let prior = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::Message,
+            &request.operation_id,
+            &person.id,
+            &digest,
+        )
+        .await?;
         let accepted = if let Some(message) = prior {
             let sequence: Option<i64> = sqlx::query_scalar(sql::message::SEQUENCE)
                 .bind(message.as_str())

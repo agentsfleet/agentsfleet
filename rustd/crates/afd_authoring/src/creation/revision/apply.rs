@@ -49,7 +49,16 @@ impl Creations {
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:fleet:{fleet}:revision", access.workspace);
         let digest = replay::digest(&**request)?;
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::FleetRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             return Ok(id);
         }
         let captured = self
@@ -63,7 +72,16 @@ impl Creations {
             )
             .await?;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::FleetRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             return Ok(id);
         }
         validate(&captured, &row, expected)?;
@@ -96,9 +114,16 @@ impl Creations {
                 .await?;
             revision
         } else {
-            replay::find(&mut tx, &scope, operation, &person.id, &digest)
-                .await?
-                .ok_or(ErrorKind::Gone)?
+            replay::find(
+                &mut tx,
+                &scope,
+                replay::Resource::FleetRevision,
+                operation,
+                &person.id,
+                &digest,
+            )
+            .await?
+            .ok_or(ErrorKind::Gone)?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(revision)

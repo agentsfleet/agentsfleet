@@ -59,7 +59,16 @@ impl Creations {
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:fleet:create:{}", access.workspace, person.id);
         let digest = replay::digest(&**request)?;
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::Fleet,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             tx.commit().await.map_err(query(CONTEXT))?;
             return Ok(id);
         }
@@ -68,7 +77,16 @@ impl Creations {
             .await?;
         // Waiting on the private source can let an identical Save commit.
         // Its receipt wins before the new lifecycle state is interpreted.
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::Fleet,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             tx.commit().await.map_err(query(CONTEXT))?;
             return Ok(id);
         }
@@ -96,9 +114,16 @@ impl Creations {
                 .await?;
             id
         } else {
-            replay::find(&mut tx, &scope, operation, &person.id, &digest)
-                .await?
-                .ok_or(ErrorKind::Gone)?
+            replay::find(
+                &mut tx,
+                &scope,
+                replay::Resource::Fleet,
+                operation,
+                &person.id,
+                &digest,
+            )
+            .await?
+            .ok_or(ErrorKind::Gone)?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(id)

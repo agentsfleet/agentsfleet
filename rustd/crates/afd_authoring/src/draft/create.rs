@@ -40,8 +40,15 @@ impl Drafts {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:draft:create:{}", access.workspace, person.id);
-        let existing =
-            replay::find(&mut tx, &scope, &request.operation_id, &person.id, &digest).await?;
+        let existing = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::Draft,
+            &request.operation_id,
+            &person.id,
+            &digest,
+        )
+        .await?;
         let (id, replayed) = if let Some(id) = existing {
             (id, true)
         } else {
@@ -108,6 +115,7 @@ impl Drafts {
             let existing = replay::find(
                 connection,
                 new.scope,
+                replay::Resource::Draft,
                 &new.request.operation_id,
                 &new.person.id,
                 new.digest,
