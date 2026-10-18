@@ -74,7 +74,7 @@ pub enum FailureClass {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenewResponse {
-    /// Epoch milliseconds of the new deadline.
+    /// The new deadline.
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,
 }

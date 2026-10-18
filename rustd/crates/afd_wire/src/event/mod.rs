@@ -108,7 +108,7 @@ pub struct EventEnvelope<'a> {
     /// Opaque request payload, carried verbatim.
     #[serde(borrow)]
     pub request_json: Cow<'a, str>,
-    /// Epoch milliseconds at which the event was created.
+    /// When the event was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
 }
@@ -159,10 +159,10 @@ pub struct EventSummary<'a> {
     /// The event this one continues, set on a continuation.
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
-    /// Epoch milliseconds the row was created.
+    /// When the row was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
-    /// Epoch milliseconds the row last changed.
+    /// When the row last changed.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
@@ -253,10 +253,10 @@ pub struct EventDetail<'a> {
     /// The event this one continues, set on a continuation.
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
-    /// Epoch milliseconds the row was created.
+    /// When the row was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
-    /// Epoch milliseconds the row last changed.
+    /// When the row last changed.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.

@@ -120,7 +120,7 @@ pub struct Lease<C> {
     pub fence: String,
     /// Decimal private deletion generation.
     pub deletion_generation: String,
-    /// Lease deadline in epoch milliseconds.
+    /// The lease deadline.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
     /// Original attempt deadline; renewal cannot extend it.
