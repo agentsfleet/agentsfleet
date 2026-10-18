@@ -209,7 +209,7 @@ Six producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_
   │ type          chat | webhook | cron | continuation                     │
   │ workspace_id  <uuid>                                                   │
   │ request       <the message or the digest JSON>                         │
-  │ created_at    <epoch ms>                                               │
+  │ created_at    <RFC 3339>                                               │
   │ event_id      <admission id>       ← minted by the ADMISSION ROW       │
   └────────────────────────────────────────────────────────────────────────┘
        The agent never branches on actor; it is metadata for the instructions and history.

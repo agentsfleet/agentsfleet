@@ -23,8 +23,8 @@ impl Admissions {
     /// there first; the extra physical entry is dropped at lease by the
     /// `fleet.events` conflict arm, and the line below says it happened.
     ///
-    /// The entry's `created_at` is the row's, which the database stamped, in
-    /// the milliseconds [`Entry::created_at`] is spelled in.
+    /// The entry's `created_at` is the row's, which the database stamped,
+    /// spelled in the RFC 3339 [`Entry::created_at`] carries.
     pub(crate) async fn queue_entry(
         &self,
         row_id: &Uuid7,

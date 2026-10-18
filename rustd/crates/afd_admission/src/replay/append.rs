@@ -21,7 +21,7 @@ impl Admissions {
         pending: &Pending,
         transaction: &mut Transaction<'_, Postgres>,
     ) -> Result<bool> {
-        // The stream spells the producer's instant in milliseconds
+        // The stream spells the producer's instant in RFC 3339
         // (`Entry::created_at`); the row holds it as a timestamp.
         let created_at = pending.event_created_at.to_string();
         let entry = Entry {

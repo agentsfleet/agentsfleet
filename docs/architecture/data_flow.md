@@ -139,7 +139,7 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║       type=chat                        ║     the same XADD.
            ║       workspace_id=<uuid>              ║
            ║       request=<msg-json>               ║
-           ║       created_at=<epoch_ms>            ║
+           ║       created_at=<rfc3339>             ║
            ║       event_id=<admission id>          ║
            ║  SPUBLISH fleet:{id}:activity          ║   ← every screen shows
            ║    {kind:"event_admitted",             ║     the message, waiting
@@ -513,7 +513,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
-       created_at    <epoch milliseconds; project bigint convention>
+       created_at    <RFC 3339 in UTC; when the admission row was stored>
        event_id      <uuid>, the admission row's id; the
                      append adds it as a sixth field
 
@@ -522,7 +522,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → XADD fleet:{id}:events *
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                → 202 { event_id }                ← CLI uses event_id
                                                    to filter SSE frames
 
@@ -536,7 +536,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → XADD fleet:{id}:events * for each exact match
                       actor=github-app      type=webhook
                       workspace_id=<ws>     request=<normalized-json>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                → 202
 
                `repositories` is required and fail-closed, with replay per fleet
@@ -564,7 +564,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → atomically suppresses replay + XADD fleet:{id}:events *
                       actor=cron:<schedule_id>  type=cron
                       workspace_id=<ws>        request=<schedule-event-json>
-                      created_at=<ms>
+                      created_at=<rfc3339>
 
    CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
                  user-resumed fulfillment)
@@ -572,7 +572,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                       actor=continuation:<original_actor>
                       type=continuation
                       workspace_id=<ws>  request=<continuation-msg>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                  The new event's row carries
                  resumes_event_id=<immediate_parent_event_id>.
                  Continuation actor is FLAT — never re-nests
