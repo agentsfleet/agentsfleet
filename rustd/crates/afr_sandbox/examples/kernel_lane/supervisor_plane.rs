@@ -3,6 +3,7 @@
 //! These observations prove runner requests, not daemon datastore effects.
 
 use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::paths::{
@@ -27,6 +28,8 @@ pub(crate) const GRAFANA: &str = "grafana.example.test";
 pub(crate) const SCHEDULE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 pub(crate) const SCHEDULE_EVENT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
+/// How long the fixture grants a lease and a minted credential for.
+const GRANTED_FOR: Duration = Duration::from_secs(60);
 pub(crate) const PROVIDER_TOKEN: &str = "provider-fixture-credential";
 pub(crate) const RUNNER_TOKEN: &str = "agt_r_kernel_fixture";
 
@@ -61,7 +64,7 @@ impl Server {
     ) -> Result<Self, Failed> {
         let (calls, received) = mpsc::channel();
         let reported = Arc::new(Notify::new());
-        let granted_until = now() + 60_000;
+        let granted_until = afd_core::clock::after(afd_core::clock::now(), GRANTED_FOR);
         let healthy = Healthy {
             assigned: AssignedPolicy {
                 sandbox_tier: SandboxTier::LandlockFull,
@@ -137,7 +140,7 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
         RUNNER_CREDENTIALS_MINT => {
             json!(afd_wire::credentials::MintCredentialResponse {
                 token: TOKEN.into(),
-                expires_at_ms: plane.healthy.granted_until
+                expires_at: plane.healthy.granted_until
             })
         }
         _ if path.ends_with("/messages") => json!({ "delivered": true }),
@@ -153,11 +156,7 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
     }
 }
 
-fn now() -> i64 {
-    afd_core::clock::now().as_millis()
-}
-
-fn lease(tools: &[&str], repository: bool, expires: i64) -> Result<Value, Failed> {
+fn lease(tools: &[&str], repository: bool, expires: jiff::Timestamp) -> Result<Value, Failed> {
     let mut lease: LeasePayload<'_> = serde_json::from_str(LEASE_JSON)?;
     lease.lease_id = LEASE_ID.into();
     lease.lease_expires_at = expires;
