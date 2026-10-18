@@ -120,7 +120,7 @@ pub(crate) fn report<'a>(
         },
         tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
         // The wire still spells this instant as epoch milliseconds.
-        held_until_ms: held_until.map(Timestamp::as_millisecond),
+        held_until,
     }
 }
 
