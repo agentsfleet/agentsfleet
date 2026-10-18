@@ -8,7 +8,7 @@
 
 **Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. It also adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof. The live GitHub App subscription and delivery are not yet proven together; the registration playbook requires that final operator check.
 
-> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026; `schema/951_*`). §5–§9 describe a design with no code behind it.
+> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
 >
 > A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §"7. Four stages, four authorities".
 
@@ -73,90 +73,7 @@ repair branch workflow result
           `---- NEVER a closure trigger
 ```
 
-## 5. Pin the merge before observing production
-
-The human reviews the PR diff and merges through GitHub. A merged PR webhook records GitHub's exact `merge_commit_sha` on the repair link. Merge, squash, and rebase strategies are all represented by that provider-returned value; the daemon never guesses it from the current default branch.
-
-If the webhook says closed-but-not-merged, or omits the merged commit hash, the link remains unmerged and cannot correlate a production result. The production result may arrive first; it remains durable until a matching merge exists.
-
-```text
-PR opened -> incident link
-
-merged_commit_sha -------------------+
-                                      +-- exact equality --> verifier event allowed
-production repository + commit ------+
-
-Either merge or production may arrive first; both are durable.
-```
-
-## 6. Wake the verifier only for the exact production result
-
-The verifier is a third, read-only Fleet. GitHub deployment-status intake runs before Fleet trigger matching. A Vercel deployment is eligible only when Vercel reports it through GitHub's deployment-status event.
-
-Every normalized production result is stored before correlation. The same reconciler runs after either a production-result insert or a merged-hash write, so webhook order does not change the outcome. Both paths take the same transaction-scoped PostgreSQL advisory lock keyed by workspace, repository, and commit before writing or reconciling. A simultaneous arrival therefore waits, then observes the first committed side instead of both deliveries missing each other. Before emitting an event, the daemon requires all of the following:
-
-- the provider marks the deployment terminal;
-- the environment is production;
-- repository identity is exact;
-- the provider supplies the deployed commit hash; and
-- that hash equals a stored `merge_commit_sha` in the same workspace.
-
-A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
-
-Each selected verifier Fleet gets one verification intent row with `verifier_event_id = NULL` and `verify_after` fifteen minutes after production completion. A dispatcher on every replica claims due intents in batches under a claim token that lapses after 30 seconds (`CLAIM_STALE`), and admits each as a `repair_production_result` event. The admission ledger's (`fleet.admissions`) unique index on the intent makes a retry answer the first attempt's event identifier, and the completion, guarded on the claim token, fills `verifier_event_id` once.
-
-The `verifier_event_id` is therefore the standard Fleet event identifier for Fleet 3's verification run. It is not another incident identifier and users do not copy it between Fleets. It lets event history, logs, and support trace the exact verification run back to the repair and production result.
-
-A missing or mismatched hash remains durable with a named unmatched reason and emits no synthetic event. A preview result remains history even if it is green. A default-branch result for a later commit does not verify an earlier repair.
-
-The queued verifier event is enriched with the incident event identifier, repair PR, merged commit hash, provider deployment identifier, production completion time, and evidence window. The Fleet receives this context; it does not read internal database tables.
-
-## 7. Judge production telemetry read-only
-
-The verifier event reuses the linked incident request, repair result, and Pull Request evidence already stored by the normal Fleet path. Fifteen minutes after production completion, the verifier reads Grafana and Elasticsearch over that completed window and judges the original symptom. There is no configurable baseline engine or separate settling period.
-
-- `cleared` — the original symptom is absent through the complete fifteen-minute window;
-- `not_cleared` — the original symptom remains or regressed; or
-- `inconclusive` — evidence is missing, contradictory, or the window is incomplete.
-
-Its repository binding is read-only and pinned to the exact merged commit carried by the event. It must never inspect whatever commit happens to be current when the Fleet runs.
-
-The standard Fleet event stores the verifier's response and repair context. Operators read `cleared`, `not_cleared`, or `inconclusive` from that response; the daemon does not parse model prose into another status. This workstream adds no separate incident card. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
-
-## 8. Production-result normalization
-
-Production results enter as signed GitHub deployment-status events. This includes Vercel deployments surfaced through GitHub. Direct Vercel webhook ingestion is outside this repair loop. GitHub input normalizes before correlation:
-
-```text
-production_result {
-  provider, provider_deployment_id, provider_status_id,
-  workspace_id, repository,
-  environment, commit_sha,
-  conclusion, completed_at
-}
-```
-
-The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. The live record includes `deployment.id` as deployment context and `deployment_status.id` as the append identity of the production-result record. Fixture coverage is not accepted as evidence that the live App subscription exists.
-
-`agentsfleet` accepts any signed terminal production status from a mapped GitHub installation. That proves GitHub origin and repository routing; it does not attest that Vercel produced the status. Which identities that boundary admits is [`../connectors.md`](../connectors.md) §"Trust anchors" item 5; the daemon inspects neither `deployment_status.creator` nor App identity. The live proof records the expected deployment integration, received creator identity, repository, commit, deployment identifier, deployment-status identifier, and delivery identifier in Pull Request (PR) Session Notes for audit; it does not add a daemon rejection rule.
-
-The production-result record retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. The verification record retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, and claim fence. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
-
-## 9. Proof status
-
-The three fleets, `incident-responder`, `incident-repairer` and
-`incident-verifier`, are native setup test fixtures
-(`tests/fixtures/fleets/<fleet>/definition.json`). The correlated-repair path landed in `M157_003` on the
-retired daemon. The Rust daemon ports the verification dispatcher and not the
-evidence writer or the production-result intake (the box at the top).
-
-One item is not a repository fact and stays open here: the platform GitHub App
-must carry the deployment-status subscription and Deployments read permission in
-each environment, proven by a live delivery. Fixture coverage is not evidence
-that the subscription exists.
-
-
-## 10. Invariants
+## 5. Invariants
 
 - One incident can record at most one repair PR per repair Fleet.
 - A write-bound repair lease carries provider-neutral HTTP rules for one exact repository, trusted base, and daemon-issued repair branch.
@@ -180,7 +97,7 @@ that the subscription exists.
 - A human saves the write-bound repairer, reviews the diff, and merges.
 - No repair automatically merges, deploys, reverts, or expands to a second repository.
 
-## 11. Test fixture boundary
+## 6. Test fixture boundary
 
 `tests/fixtures/fleets/platform-ops/definition.json` remains test input. The API, dashboard, and Command Line Interface (CLI) do not load that directory in production.
 
