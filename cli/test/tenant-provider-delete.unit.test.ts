@@ -37,7 +37,7 @@ describe("tenantProviderDeleteEffect", () => {
             }) as Effect.Effect<unknown, ServerError>;
           }
           return Effect.succeed({
-            balance_nanos: 42 * ONE_CENT_NANOS,
+            balance_nanos: String(42 * ONE_CENT_NANOS),
           }) as Effect.Effect<unknown, ServerError>;
         }, rec),
       ),
@@ -70,7 +70,7 @@ describe("tenantProviderDeleteEffect", () => {
             }) as Effect.Effect<unknown, ServerError>;
           }
           return Effect.succeed({
-            balance_nanos: 999 * ONE_CENT_NANOS,
+            balance_nanos: String(999 * ONE_CENT_NANOS),
           }) as Effect.Effect<unknown, ServerError>;
         }, rec),
       ),
@@ -135,7 +135,7 @@ describe("tenantProviderDeleteEffect", () => {
               return Effect.succeed(payload) as Effect.Effect<unknown, ServerError>;
             }
             return Effect.succeed({
-              balance_nanos: 999 * ONE_CENT_NANOS,
+              balance_nanos: String(999 * ONE_CENT_NANOS),
             }) as Effect.Effect<unknown, ServerError>;
           },
           rec,

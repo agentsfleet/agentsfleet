@@ -41,14 +41,14 @@ describe("billingShowEffectFromArgs — served amounts are rendered, not derived
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 500 * ONE_CENT_NANOS,
+              balance_nanos: String(500 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
           return Effect.succeed({
             items: [
-              { ...RECEIVE_ROW, credit_deducted_nanos: SERVED_RECEIVE_NANOS },
-              { ...STAGE_ROW, credit_deducted_nanos: SERVED_STAGE_NANOS },
+              { ...RECEIVE_ROW, credit_deducted_nanos: String(SERVED_RECEIVE_NANOS)},
+              { ...STAGE_ROW, credit_deducted_nanos: String(SERVED_STAGE_NANOS)},
             ],
           }) as Effect.Effect<unknown, ServerError>;
         }, rec),

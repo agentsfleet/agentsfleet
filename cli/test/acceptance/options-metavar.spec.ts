@@ -25,6 +25,7 @@ import http from "node:http";
 
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { TENANT_BILLING_PATH } from "../../src/lib/api-paths.ts";
 import type { AddressInfo } from "node:net";
 
 // Each case spawns the real CLI as a child process and awaits its exit.
@@ -173,7 +174,12 @@ describe("validators reject invalid values with clear error stem", () => {
 
 describe("option values flow end-to-end into the wire request", () => {
   let stub: CapturingStub | null = null;
-  beforeAll(async () => { stub = await startCapturingStub(); });
+  beforeAll(async () => { stub = await startCapturingStub({
+    [`GET ${TENANT_BILLING_PATH}`]: {
+      balance_nanos: "0", is_exhausted: false,
+      updated_at: "2026-10-19T00:00:00Z", exhausted_at: null,
+    },
+  }); });
   afterAll(async () => { if (stub) await stub.close(); });
 
   function requireStub(): CapturingStub {

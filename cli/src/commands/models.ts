@@ -9,57 +9,38 @@
 // Rates print as United States Dollars per million tokens, converted from the
 // nanos the wire carries. They are charged only under platform-managed
 // posture; a self-managed credential pays the run fee and is billed by the
-// operator's own provider account, so a zero rate is a real catalogue state
-// (schema/400_model_library.sql) and prints as a dash rather than $0.00.
+// operator's own provider account. Zero rates remain explicit; a catalogue
+// price never substitutes for the selected credential's billing posture.
 
 import { Effect } from "effect";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { catalogueProviders, fetchCatalogue, type LibraryModel } from "../lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import { ui, EMPTY_CELL } from "../output/index.ts";
-import { NANOS_PER_USD } from "../constants/billing.ts";
+import { ui } from "../output/index.ts";
+import { formatRate } from "../constants/billing.ts";
 
 const FIELD_PROVIDER = "provider" as const;
 const FIELD_MODEL = "model" as const;
+const FIELD_NAME = "name" as const;
 const FIELD_CONTEXT = "context" as const;
 const FIELD_INPUT = "input" as const;
 const FIELD_OUTPUT = "output" as const;
+const FIELD_CACHED = "cached" as const;
 
 const MODELS_LISTED = "Model catalogue" as const;
 
-const TOKENS_PER_K = 1_000;
-
 export interface ModelsFlags {
   readonly provider?: string | undefined;
+  readonly advanced?: boolean | undefined;
 }
 
-// Two decimals is right for a dollar, and wrong for a rate below a cent —
-// $0.003625 per Mtok would print as "$0.00", which is this table's signal for
-// "no rate at all". A priced model must never be indistinguishable from an
-// unpriced one, so a sub-cent rate switches to significant digits instead.
-const SUB_CENT = 0.01;
-const SUB_CENT_DIGITS = 2;
-
-/** Nanos per million tokens → "$1.25", or a dash when the row carries no rate. */
-const usd = (nanos: number | undefined): string => {
-  if (!nanos || nanos <= 0) return EMPTY_CELL;
-  const dollars = nanos / NANOS_PER_USD;
-  return dollars < SUB_CENT
-    ? `$${dollars.toPrecision(SUB_CENT_DIGITS)}`
-    : `$${dollars.toFixed(SUB_CENT_DIGITS)}`;
-};
-
-/** 200000 → "200k". The exact number is in --json; the table wants a shape. */
-const contextLabel = (tokens: number | undefined): string =>
-  !tokens || tokens <= 0 ? EMPTY_CELL : `${Math.round(tokens / TOKENS_PER_K)}k`;
-
 const row = (m: LibraryModel): Record<string, string> => ({
-  provider: String(m.provider ?? ""),
-  model: String(m.id ?? ""),
-  context: contextLabel(m.context_cap_tokens),
-  input: usd(m.input_nanos_per_mtok),
-  output: usd(m.output_nanos_per_mtok),
+  provider: m.provider, model: m.id, name: m.display_name,
+  context: m.context_cap_tokens.toLocaleString("en-US"),
+  input: formatRate(m.input_nanos_per_mtok),
+  cached: formatRate(m.cached_input_nanos_per_mtok),
+  output: formatRate(m.output_nanos_per_mtok),
 });
 
 export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
@@ -69,7 +50,7 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
 
   const token = yield* resolveAuthToken;
   const provider = flags.provider?.trim();
-  const models = yield* fetchCatalogue(token, { provider });
+  const models = yield* fetchCatalogue(token, { provider, advanced: flags.advanced });
 
   if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.success(MODELS_LISTED, { models });
@@ -92,9 +73,11 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
     {
       name: { key: FIELD_MODEL, label: "MODEL" },
       domain: [
+        { key: FIELD_NAME, label: "NAME" },
         { key: FIELD_PROVIDER, label: "PROVIDER" },
         { key: FIELD_CONTEXT, label: "CONTEXT" },
         { key: FIELD_INPUT, label: "IN/MTOK" },
+        { key: FIELD_CACHED, label: "CACHED/MTOK" },
         { key: FIELD_OUTPUT, label: "OUT/MTOK" },
       ],
       // A published catalogue is not something this workspace made, so there

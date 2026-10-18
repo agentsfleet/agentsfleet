@@ -112,7 +112,7 @@ if (!isLive) {
     let fleetId = "";
     let ctx: AuthContext | null = null;
     let installGrant: GrantRow | null = null;
-    let balanceBeforeNanos = 0;
+    let balanceBeforeNanos = 0n;
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
       const result = await runFleetctl(args, { env, timeoutMs: STEER_TIMEOUT_MS });
@@ -120,13 +120,14 @@ if (!isLive) {
       return result;
     }
 
-    async function readBalanceNanos(): Promise<number> {
+    async function readBalanceNanos(): Promise<bigint> {
       const result = await runWithEnv([...BILLING_ARGS]);
       assert.equal(result.code, 0, `billing show exited ${result.code}: ${result.stderr}`);
       const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
       const balance = parsed[BALANCE_FIELD];
-      assert.equal(typeof balance, "number", `billing show carried no ${BALANCE_FIELD}`);
-      return balance as number;
+      assert.equal(typeof balance, "string", `billing show carried no ${BALANCE_FIELD}`);
+      assert.match(String(balance), /^(0|[1-9][0-9]*)$/);
+      return BigInt(String(balance));
     }
 
     beforeAll(async () => {

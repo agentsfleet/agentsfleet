@@ -211,7 +211,7 @@ describe("steer — tail lifecycle on success and late stream error", () => {
     };
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (input.method === POST) return postedEvent<T>();
-      return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
+      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
@@ -263,7 +263,7 @@ describe("steer — a tail that never becomes ready is closed and the poll decid
       });
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (input.method === POST) return postedEvent<T>();
-      return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
+      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {

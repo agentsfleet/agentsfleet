@@ -18,24 +18,11 @@ import { Effect } from "effect";
 import { HttpClient } from "../services/http-client.ts";
 import { MODEL_LIBRARY_PATH, QUERY_LIMIT, QUERY_PROVIDER, QUERY_STARTING_AFTER } from "./api-paths.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import { ValidationError, type CliError } from "../errors/index.ts";
+import { ServerError, ValidationError, type CliError } from "../errors/index.ts";
 import type { Redacted } from "effect/Redacted";
 
-/** One priced catalogue row. Mirrors `CatalogueModel` in rustd/crates/afd_api_wire/src/models.rs. */
-export interface LibraryModel {
-  readonly id?: string;
-  readonly provider?: string;
-  readonly context_cap_tokens?: number;
-  readonly input_nanos_per_mtok?: number;
-  readonly cached_input_nanos_per_mtok?: number;
-  readonly output_nanos_per_mtok?: number;
-}
-
-interface ModelLibraryPage {
-  readonly version?: string;
-  readonly models?: ReadonlyArray<LibraryModel>;
-  readonly next_cursor?: string | null;
-}
+import { decodeCatalogue, type LibraryModel } from "./model-catalogue-schema.ts";
+export type { LibraryModel };
 
 // The endpoint caps `limit` at 100 and rejects anything larger with
 // UZ-LIBRARY-003. Ask for the maximum so a catalogue the size of the current
@@ -48,10 +35,17 @@ const PAGE_LIMIT = 100;
 // two orders of magnitude beyond any real catalogue, so hitting it means the
 // server is looping, not that the operator has a big catalogue.
 const MAX_PAGES = 100;
+const paginationError = (): ServerError => new ServerError({
+  detail: "The model catalogue did not finish paging",
+  suggestion: "retry; if this continues, check the daemon's catalogue cursor",
+  code: "MODEL_CATALOGUE_PAGINATION_INVALID", status: 502, requestId: null,
+});
 
 interface CatalogueReadOptions {
   /** Restrict the read to one provider's rows (server-side `?provider=`). */
   readonly provider?: string | undefined;
+  /** Include advanced rows as well as the default catalogue. */
+  readonly advanced?: boolean | undefined;
 }
 
 /**
@@ -67,24 +61,29 @@ export const fetchCatalogue = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const collected: LibraryModel[] = [];
+    const cursors = new Set<string>();
     let cursor: string | undefined;
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const params = new URLSearchParams({ [QUERY_LIMIT]: String(PAGE_LIMIT) });
       if (options.provider) params.set(QUERY_PROVIDER, options.provider);
       if (cursor) params.set(QUERY_STARTING_AFTER, cursor);
+      if (options.advanced) params.set("advanced", "true");
 
-      const res = yield* http.request<ModelLibraryPage>({
+      const body = yield* http.request<unknown>({
         path: `${MODEL_LIBRARY_PATH}?${params.toString()}`,
         token,
       });
 
-      collected.push(...(res.models ?? []));
+      const res = yield* decodeCatalogue(body);
+      collected.push(...res.models);
       const next = res.next_cursor;
       if (typeof next !== "string" || next.length === 0) return collected;
+      if (cursors.has(next)) return yield* Effect.fail(paginationError());
+      cursors.add(next);
       cursor = next;
     }
-    return collected;
+    return yield* Effect.fail(paginationError());
   });
 
 /** Provider ids the catalogue actually serves, sorted, deduped. */
@@ -93,7 +92,7 @@ export const catalogueProviders = (
 ): ReadonlyArray<string> => {
   const seen = new Set<string>();
   for (const m of models) {
-    const p = m.provider?.trim();
+    const p = m.provider.trim();
     if (p) seen.add(p);
   }
   return [...seen].sort();
@@ -243,7 +242,7 @@ export const resolveCatalogueTarget = (
   Effect.gen(function* () {
     if (provider === OPENAI_COMPATIBLE_PROVIDER) return { provider, model };
 
-    const models = yield* fetchCatalogue(token).pipe(
+    const models = yield* fetchCatalogue(token, { advanced: true }).pipe(
       Effect.orElseSucceed((): ReadonlyArray<LibraryModel> => []),
     );
     if (models.length === 0) return { provider, model };

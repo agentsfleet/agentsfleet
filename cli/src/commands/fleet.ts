@@ -9,6 +9,7 @@
 // detail + suggestion + (for ServerError) request_id.
 
 import { Effect, Schema } from "effect";
+import { nanosSchema } from "../lib/nanos.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -46,18 +47,10 @@ const STATUS_VERB: Record<FleetMutationStatus, string> = {
   [AGENTSFLEET_STATUS.KILLED]: "kill",
 };
 
-interface FleetListItem {
-  readonly name?: string;
-  readonly status?: string;
-  readonly events_processed?: string;
-  readonly budget_used_nanos?: string;
-  readonly id?: string;
-}
-
 /** What `status` prints: the response body for `--json`, its rows for text. */
 interface FleetsRead {
   readonly body: Record<string, unknown>;
-  readonly fleets: ReadonlyArray<FleetListItem>;
+  readonly fleets: ReadonlyArray<typeof FleetSummarySchema.Type>;
 }
 
 // `FleetsResponse` / `FleetSummary` in rustd/crates/afd_api_wire/src/fleet/collection.rs.
@@ -65,7 +58,7 @@ interface FleetsRead {
 // cannot render, refused here rather than thrown by `BigInt` mid-table.
 const FleetSummarySchema = Schema.Struct({
   id: Schema.String, name: Schema.String, status: Schema.String,
-  events_processed: decimal, budget_used_nanos: decimal,
+  events_processed: decimal, budget_used_nanos: nanosSchema,
 });
 const FleetListSchema = Schema.Struct({ items: Schema.Array(FleetSummarySchema) });
 export const FLEET_LIST_INVALID = "FLEET_LIST_INVALID";
@@ -73,7 +66,7 @@ const BAD_GATEWAY = 502;
 
 const decodeFleetList = (value: unknown): Effect.Effect<typeof FleetListSchema.Type, ServerError> =>
   Schema.decodeUnknownEffect(FleetListSchema)(value).pipe(Effect.mapError(() => new ServerError({
-    detail: "The fleet list did not match the supported API shape",
+    detail: "The fleet response did not match the supported API shape",
     suggestion: "update the CLI and verify that it targets the matching daemon build",
     code: FLEET_LIST_INVALID, status: BAD_GATEWAY, requestId: null,
   })));
@@ -100,64 +93,11 @@ const requireFleetId = (
     return fleetId;
   });
 
-/**
- * The workspace summary and the single-fleet read, sharing one rendering.
- *
- * `status` answers for every fleet and takes no identifier: that is what it
- * has always meant, and narrowing it would change a shipped command for every
- * caller. `fleet show <fleet_id>` is the one-fleet read, named the way every
- * other single-resource read on this surface is named.
- *
- * With an identifier it READS that one fleet rather than filtering the list.
- * The list is paged, so a client-side filter would answer "no such fleet" for
- * anything past the first page.
- */
-const statusEffectFromId = (
-  fleetId: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> => Effect.gen(function* () {
+const printFleetRows = (
+  fleets: FleetsRead["fleets"],
+  waitingByFleet: ReadonlyMap<string, number> | null,
+): Effect.Effect<void, never, Output> => Effect.gen(function* () {
   const output = yield* Output;
-  const http = yield* HttpClient;
-  const wsId = yield* requireWorkspaceId;
-  const token = yield* resolveAuthToken;
-
-  const read: FleetsRead = fleetId === undefined
-    ? yield* Effect.flatMap(
-        http.request<Record<string, unknown>>({ path: wsFleetsPath(wsId), token }),
-        (body) => Effect.map(decodeFleetList(body), (listed): FleetsRead => ({ body, fleets: listed.items })),
-      )
-    : yield* Effect.map(
-        http.request<FleetListItem>({
-          path: wsFleetPath(
-            wsId,
-            yield* requireFleetId(fleetId, FLEET_SHOW_USAGE),
-          ),
-          token,
-        }),
-        (one): FleetsRead => ({ body: { items: [one] }, fleets: [one] }),
-      );
-
-  if (output.format !== OUTPUT_FORMAT.text) {
-    yield* output.success(FLEETS_SHOWN, { ...read.body });
-    return;
-  }
-
-  const { fleets } = read;
-  if (fleets.length === 0) {
-    yield* output.info(
-      NO_FLEETS_HINT,
-    );
-    return;
-  }
-
-  // Counted from the approvals inbox, not from the Fleet row: the list endpoint
-  // does not carry a pending count, so a column sourced from the row would read
-  // 0 for a parked Fleet.
-  const waitingByFleet = yield* pendingGateCounts(wsId, token);
-
   yield* output.printSection("Fleets");
   let anyParked = false;
   for (const z of fleets) {
@@ -166,12 +106,12 @@ const statusEffectFromId = (
     const waiting =
       waitingByFleet === null
         ? EMPTY_CELL
-        : String(z.id ? (waitingByFleet.get(z.id) ?? 0) : 0);
+        : String(waitingByFleet.get(z.id) ?? 0);
     if (waiting !== EMPTY_CELL && waiting !== "0") anyParked = true;
     yield* output.printKeyValue({
-      Name: z.name ?? "",
-      Status: z.status ?? "",
-      Events: String(z.events_processed ?? 0),
+      Name: z.name,
+      Status: z.status,
+      Events: z.events_processed,
       Budget: formatDollars(z.budget_used_nanos),
       Waiting: waiting,
     });
@@ -182,6 +122,40 @@ const statusEffectFromId = (
   if (waitingByFleet === null) {
     yield* output.info(ui.dim(WAITING_UNREADABLE));
   }
+});
+
+// Read a selected fleet directly: filtering the paged list can miss it.
+const statusEffectFromId = (
+  fleetId: string | undefined,
+): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> => Effect.gen(function* () {
+  const output = yield* Output;
+  const http = yield* HttpClient;
+  const wsId = yield* requireWorkspaceId;
+  const token = yield* resolveAuthToken;
+  const read: FleetsRead = fleetId === undefined
+    ? yield* Effect.flatMap(
+        http.request<Record<string, unknown>>({ path: wsFleetsPath(wsId), token }),
+        (body) => Effect.map(decodeFleetList(body), (listed): FleetsRead => ({ body, fleets: listed.items })),
+      )
+    : yield* Effect.flatMap(
+        http.request<Record<string, unknown>>({
+          path: wsFleetPath(wsId, yield* requireFleetId(fleetId, FLEET_SHOW_USAGE)),
+          token,
+        }),
+        (one) => Effect.map(decodeFleetList({ items: [one] }), (listed): FleetsRead => ({
+          body: { items: [one] }, fleets: listed.items,
+        })),
+      );
+  if (output.format !== OUTPUT_FORMAT.text) {
+    yield* output.success(FLEETS_SHOWN, { ...read.body });
+    return;
+  }
+  if (read.fleets.length === 0) {
+    yield* output.info(NO_FLEETS_HINT);
+    return;
+  }
+  // The list omits pending approvals; an unreadable inbox must stay unknown.
+  yield* printFleetRows(read.fleets, yield* pendingGateCounts(wsId, token));
 });
 
 /** `agentsfleet status` — every fleet in the active workspace. */
