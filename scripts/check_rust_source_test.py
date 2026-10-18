@@ -43,7 +43,7 @@ pub struct Workspace {
 impl utoipa::ToSchema for Manual {}
 """
 
-MIGRATION_RS = 'pub static MIGRATIONS: &[Migration] = &[\n    migration!("100_schemas.sql"),\n    migration!("200_tenants.sql"),\n];\n'
+MIGRATION_RS = 'pub static MIGRATIONS: &[Migration] = &[\n    migration!("1000_schemas.sql"),\n    migration!("1100_identity_tenants.sql"),\n];\n'
 
 KNOBS_RS = "pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 256;\n"
 
@@ -62,8 +62,8 @@ def clean_tree() -> dict[str, str]:
         f"{checker.SCHEMA_CRATES[0]}/policy.rs": WIRE_RS,
         f"{checker.SCHEMA_CRATES[1]}/workspace.rs": API_WIRE_RS,
         checker.MIGRATION_LIST: MIGRATION_RS,
-        "schema/100_schemas.sql": "CREATE SCHEMA core;\n",
-        "schema/200_tenants.sql": "CREATE TABLE core.tenants ();\n",
+        "schema/1000_schemas.sql": "CREATE SCHEMA identity;\n",
+        "schema/1100_identity_tenants.sql": "CREATE TABLE identity.tenants ();\n",
         checker.KNOBS: KNOBS_RS,
         checker.TAIL_BASELINE: json.dumps(TAIL),
     }
@@ -119,10 +119,10 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertIn("`RunnerPolicy` is also published at", output)
 
     def test_a_listed_file_git_does_not_track_is_refused(self) -> None:
-        files = seeded(checker.MIGRATION_LIST, '    migration!("200_tenants.sql"),\n', '    migration!("200_tenants.sql"),\n    migration!("200_tenants.sql"),\n    migration!("900_draft.sql"),\n')
+        files = seeded(checker.MIGRATION_LIST, '    migration!("1100_identity_tenants.sql"),\n', '    migration!("1100_identity_tenants.sql"),\n    migration!("1100_identity_tenants.sql"),\n    migration!("900_draft.sql"),\n')
         code, output = lint_tree(files)
         self.assertIn("`900_draft.sql` is not a tracked schema file", output)
-        self.assertIn("`200_tenants.sql` is listed twice", output)
+        self.assertIn("`1100_identity_tenants.sql` is listed twice", output)
 
     def test_a_ceiling_on_a_rung_that_missed_a_bound_is_refused(self) -> None:
         for files in (

@@ -16,7 +16,7 @@ table has one obvious home and one obvious shape.
 ## Rules
 
 1. **Placement.** A table lives in the schema of the product area that owns it. Its name is a
-   plural noun that never repeats the schema name: `authoring.drafts`, not `authoring.authoring_drafts`.
+   plural noun that never repeats the schema name: `authoring.drafts`, never with the schema name repeated as a prefix.
    A singleton is named for its one row (`model.catalogue_version`) and says so in its slot.
 2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `draft_id`). A prefix
    names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,

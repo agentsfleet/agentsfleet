@@ -164,9 +164,9 @@ fi
 #   isolation is enforced in the application, by the ownership layer in front of
 #   every workspace route.
 #
-#   The session execution handle. `core.fleet_sessions.execution_id` has no
-#   writer and no reader in the Rust tree; `fleet.runner_leases` answers "which
-#   fleet is executing" with a fencing token and an expiry behind it.
+#   The session execution handle. `fleet.sessions` carries no `execution_id`
+#   column at all; `runner.leases` answers "which fleet is executing" with a
+#   fencing token and an expiry behind it.
 #
 # Asserted as ABSENCE of the claim rather than presence of a correction,
 # because there is no one sentence a page must carry — only a thing it must
