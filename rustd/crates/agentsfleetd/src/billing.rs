@@ -10,8 +10,6 @@ use std::sync::Arc;
 
 use afd_billing::biller::{Biller, Observed, OutagePolicy, WithOutagePolicy};
 use afd_billing::ledger::LedgerBiller;
-use afd_core::clock::SystemClock;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
 /// What a reservation does while the biller cannot answer.
@@ -30,7 +28,7 @@ pub const OUTAGE_POLICY: OutagePolicy = OutagePolicy::Open;
 #[must_use]
 pub fn biller(database: Db) -> Arc<dyn Biller> {
     Arc::new(Observed::new(WithOutagePolicy::new(
-        LedgerBiller::new(database, Entropy::new(), Arc::new(SystemClock)),
+        LedgerBiller::on_system_clock(database),
         OUTAGE_POLICY,
     )))
 }

@@ -16,7 +16,7 @@ use afd_observability::{Analytics, Recorded, Telemetry};
 use serde_json::Value;
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 /// One recorder for every fixture in the suite.
 ///
@@ -68,7 +68,8 @@ impl Fixture {
         let db = lane.open(DbRole::Api, &[]).await;
         let (analytics, recorded) = RECORDING.clone();
         let mut fixture = Self {
-            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics.clone()),
+            drafts: Drafts::new(db.clone(), Entropy::new(), ledger(&db))
+                .with_analytics(analytics.clone()),
             recorded: recorded.clone(),
             db,
             cleanup: OwnedRows::new(&lane),
@@ -229,4 +230,12 @@ impl Fixture {
 
 pub(super) fn now() -> jiff::Timestamp {
     clock::now()
+}
+
+/// The built-in biller over the suite's database: setup chat reserves, logs and
+/// settles through it exactly as the daemon's does.
+pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
+    Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
+        db.clone(),
+    ))
 }

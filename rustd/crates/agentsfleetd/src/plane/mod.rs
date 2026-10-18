@@ -129,14 +129,19 @@ impl ServingPlane {
         } = parts;
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
+        // One biller for every money path: fleet leases and setup chat reserve
+        // against the same holds and settle into the same ledger (billing §11).
+        let biller = crate::billing::biller(database.clone());
+        let drafts =
+            afd_authoring::Drafts::new(database.clone(), Entropy::new(), Arc::clone(&biller))
+                .with_analytics(analytics.clone());
         let authoring = surfaces::authoring(
-            &database,
+            drafts,
             &queue,
             &kek,
             &providers,
             &admissions,
             authoring_transport,
-            &analytics,
         );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
@@ -164,7 +169,7 @@ impl ServingPlane {
             signup_writeback,
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
-            leases: lease_plane(database, queue, kek, providers, doorbell, broker),
+            leases: lease_plane(database, queue, kek, providers, doorbell, broker, biller),
             identity_webhook_secret,
             platform_admin_workspace,
             live,
@@ -193,6 +198,7 @@ fn lease_plane(
     providers: Providers,
     doorbell: Doorbell,
     broker: Arc<afd_credential::credential::Broker>,
+    biller: Arc<dyn afd_billing::biller::Biller>,
 ) -> Plane {
     Plane {
         leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
@@ -203,7 +209,7 @@ fn lease_plane(
         // that owns the row rather than writing one.
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
-        biller: crate::billing::biller(database.clone()),
+        biller,
         memories: Memories::new(database.clone(), Entropy::new()),
         providers,
         // The thread a chat lease reads its earlier turns from: the rows the

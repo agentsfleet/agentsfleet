@@ -2,6 +2,7 @@
 
 mod payload;
 
+use afd_billing::biller::Reservation;
 use afd_core::{clock, error_code, id::Uuid7, timing::LEASE_TTL};
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::FailureReason;
@@ -18,10 +19,7 @@ use super::{
 };
 use crate::{
     Drafts, Result,
-    error::{
-        ErrorKind,
-        raise::{query, stored},
-    },
+    error::raise::{query, stored},
     funnel::Owed,
     lease::Status,
     model::{self, budget},
@@ -47,7 +45,7 @@ pub(super) async fn admit(
     hint: &Hint,
     selected: Selected,
     owed: &mut Owed,
-) -> Result<Option<Claimed>> {
+) -> Result<Option<(Claimed, Reservation)>> {
     let prepared = prepare(connection, hint, &selected).await;
     let gate = Gate {
         hint,
@@ -70,7 +68,13 @@ pub(super) async fn admit(
         .execute(connection)
         .await
         .map_err(query(sql::CONTEXT))?;
-    Ok(Some(payload))
+    let hold = budget::reservation(
+        placement.attempt.clone(),
+        &hint.tenant_id,
+        &hint.workspace_id,
+        placement.reserved,
+    );
+    Ok(Some((payload, hold)))
 }
 
 /// The message a refused gate fails, and whose draft it belongs to.
@@ -107,24 +111,9 @@ async fn prepare(
 ) -> Result<(RegisteredModel, context::Context, i64)> {
     let model = model::selected(connection, &hint.tenant_id, &selected.model_ref).await?;
     let bound = budget::bound(&model)?;
-    coverage(connection, hint, bound).await?;
+    budget::gate(connection, &hint.tenant_id, bound).await?;
     let context = context::read(connection, selected, &model).await?;
     Ok((model, context, bound))
-}
-
-async fn coverage(connection: &mut PgConnection, hint: &Hint, required: i64) -> Result<()> {
-    let totals = budget::reserved(connection, &hint.tenant_id, sql::CONTEXT)
-        .await?
-        .ok_or(ErrorKind::Balance)?;
-    let obligation = totals
-        .open_count
-        .checked_add(1)
-        .and_then(|total| total.checked_mul(totals.largest_reserved.max(required)))
-        .ok_or(ErrorKind::Balance)?;
-    if totals.balance_nanos < obligation {
-        return Err(ErrorKind::Balance.into());
-    }
-    Ok(())
 }
 
 async fn mint(drafts: &Drafts, connection: &mut PgConnection, reserved: i64) -> Result<Placement> {

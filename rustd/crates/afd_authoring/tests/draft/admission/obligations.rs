@@ -1,14 +1,16 @@
-//! Wallet coverage under integer extremes and concurrently priced turns.
+//! Admission against the biller's holds, and concurrently priced turns.
 //!
-//! Admission multiplies every unresolved obligation by the largest bound; a
-//! product past `i64` must refuse, never wrap into an affordable number. Two
-//! turns pinned to different prices dispatch at once and each is charged its
-//! own rate; their settlements debit one shared wallet without losing either.
+//! Admission reads the balance less every open hold; a hold that leaves less
+//! than the attempt's bound refuses it as the wallet refusal it is. Two turns
+//! pinned to different prices dispatch at once and each is charged its own
+//! rate; their settlements debit one shared wallet without losing either.
 
 use super::{claim, fixture, funded, mint, now, queue};
 use afd_authoring::{
     Claimed, ModelCallInput, ModelCalls, ProviderRequest, ProviderResponse, Transport,
 };
+use afd_billing::Nanos;
+use afd_billing::biller::{Account, Release, Reservation, WorkKey};
 use afd_core::{id::Uuid7, money::NANOS_PER_USD};
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_wire::authoring::{
@@ -17,10 +19,6 @@ use afd_wire::authoring::{
 };
 use std::sync::Arc;
 
-/// An unresolved obligation whose doubled bound no longer fits an `i64`.
-const PAST_HALF: i64 = i64::MAX / 2 + 1;
-/// The same obligation shrunk until doubling it fits again.
-const BELOW_HALF: i64 = i64::MAX / 4;
 /// Three times the fixture model's rates: three and six dollars per million.
 const DEAR_INPUT: i64 = 3 * NANOS_PER_USD;
 /// See [`DEAR_INPUT`].
@@ -31,33 +29,35 @@ const CHEAP_COST: &str = "3000";
 const DEAR_COST: &str = "9000";
 /// One reported millisecond of runtime at the runtime rate.
 const RUNTIME_DEBIT: i64 = 100;
-const OUTSTANDING: &str = "\
-INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
-draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
-lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
-reported_runtime_ms,last_activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$1::uuid,1,1,$1,'{}',
-'awaiting_accounting','epoch','epoch',$6,true,0,0,0,0,now(),now())";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() {
+async fn an_open_hold_that_leaves_less_than_the_bound_refuses_admission() {
     let f = funded(1).await;
-    fixture::balance(&f, i64::MAX).await;
-    let outstanding = mint();
-    sqlx::query(OUTSTANDING)
-        .bind(outstanding.as_str())
-        .bind(f.runner.as_str())
-        .bind(f.workspace.as_str())
-        .bind(f.tenant.as_str())
-        .bind(f.owner.as_str())
-        .bind(PAST_HALF)
-        .execute(&mut *f.connection().await)
-        .await
-        .expect("an unknown-usage liability that no longer holds a slot");
-    let refused = queue(&f, "Two bounds past the integer range").await;
-    assert!(claim(&f, &refused).await.is_none(), "overflow never admits");
-    assert_eq!(fixture::attempts(&f).await, 1, "only the liability exists");
+    fixture::balance(&f, NANOS_PER_USD).await;
+    let biller = crate::draft::fixture::ledger(&f.db);
+    let elsewhere = Reservation {
+        work: WorkKey::AuthoringAttempt(mint()),
+        payer: Account {
+            tenant: f.tenant.clone(),
+            workspace: f.workspace.clone(),
+        },
+        ceiling: Nanos::from_i64(NANOS_PER_USD),
+    };
+    assert!(
+        biller
+            .reserve(&elsewhere)
+            .await
+            .expect("the biller answers")
+            .admits(),
+        "another setup chat holds the whole balance"
+    );
+    let refused = queue(&f, "A turn the held balance cannot fund").await;
+    assert!(
+        claim(&f, &refused).await.is_none(),
+        "a held balance never admits"
+    );
+    assert_eq!(fixture::attempts(&f).await, 0, "no attempt was issued");
     let failed = fixture::failure(&f, &refused).await;
     assert_eq!(
         failed
@@ -65,18 +65,16 @@ async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() 
             .expect("durable balance failure")
             .recovery_action,
         "owner_billing",
-        "the overflow reads as the wallet refusal it is"
+        "the held balance reads as the wallet refusal it is"
     );
-    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=$2 WHERE id=$1::uuid")
-        .bind(outstanding.as_str())
-        .bind(BELOW_HALF)
-        .execute(&mut *f.connection().await)
+    biller
+        .release(&elsewhere.work, Release::Completed)
         .await
-        .expect("the liability shrinks below half the range");
-    let admitted = queue(&f, "The same wallet once the product fits").await;
+        .expect("the other hold releases");
+    let admitted = queue(&f, "The same wallet once the hold is gone").await;
     assert!(
         claim(&f, &admitted).await.is_some(),
-        "the refusal above was the overflow, not the balance"
+        "the refusal above was the hold, not the balance"
     );
     f.cleanup().await;
 }

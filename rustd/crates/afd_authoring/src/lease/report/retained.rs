@@ -3,9 +3,10 @@
 //! A report acknowledged while a provider request was pending saved
 //! `settled:false`, and the supervisor resends that same report until it reads
 //! `settled:true`. The late provider result records known usage on the
-//! dispatch receipt, so the replay that first sees it debits and settles. The
-//! attempt row lock taken by `guard::accounting` serializes concurrent replays,
-//! and the one settlement row per attempt is what every later replay reads.
+//! dispatch receipt, so the replay that first sees it logs the attempt's usage
+//! lines and settles. The attempt row lock taken by `guard::accounting`
+//! serializes concurrent replays, and the outcome the settlement stamps on the
+//! attempt is what every later replay reads.
 
 use afd_wire::authoring::{Knowledge, Outcome, Reported};
 use sqlx::PgConnection;
@@ -20,14 +21,14 @@ pub(super) async fn resolve(
     prepared: &Prepared,
     saved: Reported,
     owed: &mut Owed,
-) -> Result<Reported> {
+) -> Result<(Reported, Option<settle::Owing>)> {
     if attempt.status == Status::Settled {
-        return settled(connection, attempt, saved).await;
+        return Ok((settled(connection, attempt, saved).await?, None));
     }
     // Accounting only: a retained replay never reopens private rows.
     let basis = Basis::measure(connection, attempt, prepared, None).await?;
     if basis.verified.usage.knowledge != Knowledge::Known {
-        return Ok(saved);
+        return Ok((saved, None));
     }
     basis
         .conclude(drafts, connection, settle::Acknowledgement::Retained, owed)

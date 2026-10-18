@@ -1,1 +1,1 @@
-SELECT outcome FROM billing.authoring_settlements WHERE attempt_id = $1::uuid
+SELECT outcome FROM authoring.attempts WHERE id = $1::uuid AND outcome IS NOT NULL

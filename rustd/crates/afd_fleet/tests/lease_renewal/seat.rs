@@ -114,7 +114,13 @@ impl Seat {
 
     /// Drafts over `database`: the primary's pool, or a replica's.
     pub(super) fn drafts(database: &Db) -> Drafts {
-        Drafts::new(database.clone(), Entropy::new())
+        Drafts::new(
+            database.clone(),
+            Entropy::new(),
+            std::sync::Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
+                database.clone(),
+            )),
+        )
     }
 
     /// Queues one turn through the production create path.

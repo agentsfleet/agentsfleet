@@ -72,11 +72,6 @@ pub(super) async fn authorize(
     hint: &Hint,
     owed: &mut Owed,
 ) -> Result<Option<Selected>> {
-    let _wallet: Option<String> = sqlx::query_scalar(crate::lease::sql::WALLET)
-        .bind(hint.tenant_id.as_str())
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(sql::CONTEXT))?;
     let Some(subject) = subject(connection, hint).await? else {
         return Ok(None);
     };

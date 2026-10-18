@@ -83,26 +83,24 @@ pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
 
 /// The tenant's first charges page: newest first, no boundary.
 ///
-/// Two sources debit the one wallet, so the page reads both: a fleet run's
-/// usage lines in `billing.usage_lines`, one row per line, and a setup chat's
-/// `billing.authoring_settlements` until setup chat logs usage lines too.
-/// Each is cut to the page size by its own `(tenant_id, created_at, id)` index
-/// in a `MATERIALIZED` CTE BEFORE any join, so the draft and fleet detail joins
-/// touch at most one page per source however long the history is. A setup row
-/// names its fleet only through its draft's saved fleet, which it may not have.
+/// Every charge is a usage line in `billing.usage_lines`, one row per line,
+/// whether a fleet run or a setup chat logged it. The page is cut to its size
+/// by the `(tenant_id, created_at, id)` index in a `MATERIALIZED` CTE BEFORE
+/// any join, so the draft and fleet detail joins touch at most one page
+/// however long the history is. A setup line names its fleet only through its
+/// draft's saved fleet, which it may not have; a fleet line names its own.
 /// `cached_input_token_count` is not selected: the charges response does not
 /// carry it.
 ///
 /// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_AUTHORING`] · `$4`
-/// [`posture::PLATFORM`] · `$5` [`posture::SELF_MANAGED`] · `$6`
-/// [`work::FLEET_LEASE`] · `$7` [`charge::STAGE`].
+/// [`work::FLEET_LEASE`] · `$5` [`charge::STAGE`].
 pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
     include_str!("select_tenant_charges_first.sql");
 
 /// A later charges page: strictly older than the cursor's boundary, the same
 /// two sources cut the same way.
 ///
-/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$9`
-/// as `$3`–`$7` above.
+/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$7`
+/// as `$3`–`$5` above.
 pub(crate) const SELECT_TENANT_CHARGES_AFTER: &str =
     include_str!("select_tenant_charges_after.sql");

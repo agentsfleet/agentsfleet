@@ -11,8 +11,12 @@ const FAILED: &str = "authoring_maintenance_failed";
 const COMPLETED: &str = "authoring_maintenance_completed";
 
 pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
-    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new())
-        .with_analytics(analytics.clone());
+    let drafts = afd_authoring::Drafts::new(
+        database.clone(),
+        Entropy::new(),
+        crate::billing::biller(database.clone()),
+    )
+    .with_analytics(analytics.clone());
     supervisor.spawn(super::AUTHORING, move |stop| async move {
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

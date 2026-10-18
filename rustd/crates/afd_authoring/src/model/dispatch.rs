@@ -158,6 +158,7 @@ impl ModelCalls {
             request.call_index,
             &request.request,
         ))?;
+        let held = budget::held(&self.drafts, runner, lease).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
@@ -173,7 +174,7 @@ impl ModelCalls {
             if let Some(prior) = receipt::prior(&mut tx, &guarded, request, &digest).await? {
                 Ok(prior)
             } else {
-                self.next(&mut tx, guarded, request, counters, &digest)
+                self.next(&mut tx, guarded, request, counters, &digest, held)
                     .await
             }
         }
@@ -198,6 +199,7 @@ impl ModelCalls {
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         digest: &str,
+        held: Result<()>,
     ) -> Result<Decision> {
         if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
@@ -210,7 +212,7 @@ impl ModelCalls {
         {
             return Err(ErrorKind::Token.into());
         }
-        budget::coverage(connection, &guarded.attempt).await?;
+        held?;
         let continuations =
             super::continuation::read(connection, &guarded.attempt, request, guarded.now).await?;
         let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
