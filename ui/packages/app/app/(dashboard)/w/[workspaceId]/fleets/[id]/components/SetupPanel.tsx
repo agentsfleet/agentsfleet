@@ -3,7 +3,7 @@ import { Badge, Button, DashboardPanelTitle, Section } from "@agentsfleet/design
 import { workspacePath } from "@/lib/workspace-routes";
 import type { FleetDetail } from "@/lib/types";
 import { FleetMarkdownDynamic } from "@/components/domain/FleetMarkdownDynamic";
-import TriggerPanel from "./TriggerPanel";
+import { FleetScheduleSummary } from "@/components/domain/FleetScheduleSummary";
 
 const SETUP_COPY = {
   region: "Fleet setup",
@@ -15,7 +15,7 @@ const SETUP_COPY = {
   updateHint: "Updates apply to new work. Work already running keeps its current instructions.",
 } as const;
 
-export function SetupPanel({workspaceId, fleet, lastDeliveryByKey}: {workspaceId: string; fleet: FleetDetail; lastDeliveryByKey?: Record<string, string | null | undefined>}) {
+export function SetupPanel({workspaceId, fleet}: {workspaceId: string; fleet: FleetDetail}) {
   const query = new URLSearchParams({fleet: fleet.id, setup_revision: fleet.setup_revision});
   return <Section aria-label={SETUP_COPY.region} className="gap-xl">
     <div className="space-y-md">
@@ -32,6 +32,6 @@ export function SetupPanel({workspaceId, fleet, lastDeliveryByKey}: {workspaceId
       <h3 className="text-label font-semibold text-muted-foreground">{SETUP_COPY.instructions}</h3>
       <FleetMarkdownDynamic>{fleet.definition.instructions_md}</FleetMarkdownDynamic>
     </Section>
-    <TriggerPanel triggers={fleet.triggers} lastDeliveryByKey={lastDeliveryByKey} />
+    <FleetScheduleSummary fleet={fleet} />
   </Section>;
 }

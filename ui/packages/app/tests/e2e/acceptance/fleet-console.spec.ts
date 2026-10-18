@@ -90,7 +90,7 @@ test.describe("fleet console", () => {
     await expect(page.getByRole("heading", { name: "Saved instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(page.getByText(SEEDED_INSTRUCTIONS).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Advanced settings", exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("Configured triggers")).toBeVisible();
+    await expect(page.getByLabel("Schedule")).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit fleet" })).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its

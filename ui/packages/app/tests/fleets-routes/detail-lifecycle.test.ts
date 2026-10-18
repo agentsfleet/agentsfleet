@@ -94,8 +94,8 @@ describe("fleets routes — detail lifecycle states", () => {
       }),
     );
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Configured triggers");
-    expect(markup).toContain("Runs when you send a message");
+    expect(markup).toContain("Schedule");
+    expect(markup).toContain("No schedule set.");
     expect(markup).not.toContain("Webhook URL");
   });
 });

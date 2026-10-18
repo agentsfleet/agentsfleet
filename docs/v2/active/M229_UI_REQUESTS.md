@@ -31,6 +31,15 @@ This request log belongs to the existing schema clean-slate milestone.
 - Requested behavior: retain lease history within the server's retention window when the related fleet/event disappears, and expose an authorized destination or an explicit unavailable state. Do not infer this from a fleet-name prefix.
 - Screens: Runner → Leases and Review lease → Open fleet.
 
+### Saved schedule summary — open
+
+- Endpoint: `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}` and `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules`.
+- Fields: a human-readable schedule description and nullable `next_run_at`, calculated by the server from the registered schedule and its timezone.
+- Why: Setup should answer whether a schedule is set and when it will run. The browser must not calculate a misleading time for paused, unregistered, or stopped schedules.
+- Behavior: distinguish no schedule, paused, activation pending, and next run unavailable. Keep execution history in Fleet Chat and Activity.
+- Screen: the small Schedule summary within Fleet Setup.
+- Dependency cleanup: the UI removed `cron-parser` from its package manifest. Claude owns the root `bun.lock`; refresh it with the next dependency update.
+
 The UI continues with explicit loaded-title search, available setup state, and safe destination checking while these requests are open.
 
 

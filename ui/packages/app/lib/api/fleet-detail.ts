@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Instant } from "./decode";
 import { FleetTriggerSchema } from "./fleet-trigger";
-import { DefinitionSchema, FleetSchema } from "./draft-types";
+import { DefinitionSchema, FleetSchema, ScheduleSchema } from "./draft-types";
 
 const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()}).passthrough()});
 const DecimalSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
@@ -21,6 +21,7 @@ export const FleetListSchema = z.object({
 export type NativeFleetSummary = z.infer<typeof FleetSummarySchema>;
 
 export const FleetDetailSchema = FleetSchema.extend({
+  schedules: z.array(ScheduleSchema.extend({timezone: z.string(), status: z.string()})),
   definition: DefinitionSchema.extend({config: ConfigSchema.passthrough()}),
   created_at: Instant, updated_at: Instant,
   policy_semantics: z.string(), needs_re_review: z.boolean(),

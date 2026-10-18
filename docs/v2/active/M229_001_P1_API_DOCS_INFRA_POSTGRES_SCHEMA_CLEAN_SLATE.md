@@ -201,7 +201,7 @@ Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed
 | 3b | Show draft, saved, version, and publication state from recorded data. | `2ead62453`: current chat state; list revision summaries requested from server. |
 | 4 | Remove Review Setup; save directly with current setup validation. | `2ead62453`: inline setup and direct Save / Save changes. |
 | 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | Correct source is revision-bound; saved purpose and Advanced settings removal implemented; awaiting checks. |
-| 6 | Combine Setup and Trigger; show triggers and schedules read-only. | Implemented together under Setup; awaiting checks. |
+| 6 | Combine Setup and Trigger; show triggers and schedules read-only. | `aa88f485f`: combined under Setup. Simplified to a schedule summary; next-run fields requested from server. |
 | 7 | Use the shared table row hover on runner leases. | Pending. |
 | 8 | Retain lease history and prevent missing Open fleet destinations. | UI checking pending; retained history and authorized destinations requested from server. |
 | 9 | Rename runner lease Outcome to Status. | Pending. |

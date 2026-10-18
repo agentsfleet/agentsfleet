@@ -32,7 +32,6 @@ import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
-import { resolveLastDeliveries } from "./components/last-delivery";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { namedMembers } from "@/lib/events/sender-names";
 import {
@@ -179,7 +178,7 @@ async function loadFleetView(
     case FLEET_VIEW.memory:
       return loadMemoryView(context, data);
     case FLEET_VIEW.setup:
-      return loadSetupView(context);
+      return <SetupPanel workspaceId={context.workspaceId} fleet={context.fleet} />;
     default:
       return loadChatView(context, data);
   }
@@ -247,18 +246,3 @@ async function loadMemoryView(
   );
 }
 
-async function loadSetupView(context: PageContext) {
-  const { workspaceId, fleet, token } = context;
-  const triggers = fleet.triggers;
-  const lastDeliveryByKey = await resolveLastDeliveries(
-    workspaceId,
-    fleet.id,
-    token,
-    triggers,
-  );
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-lg">
-      <SetupPanel workspaceId={workspaceId} fleet={fleet} lastDeliveryByKey={lastDeliveryByKey} />
-    </div>
-  );
-}
