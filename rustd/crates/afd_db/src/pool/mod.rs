@@ -35,7 +35,7 @@ mod limits;
 mod open;
 mod roles;
 
-pub use self::limits::{LOCK_TIMEOUT, STATEMENT_TIMEOUT};
+pub use self::limits::{LOCK_TIMEOUT, STATEMENT_TIMEOUT, gave_up_on_lock};
 pub use self::roles::Pools;
 
 /// How long a connection may sit idle before the reaper closes it.

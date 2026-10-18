@@ -1,6 +1,6 @@
 //! Duplicate requests contend on real rows and converge on one retained identity.
 
-use super::super::{fixture::now, lock_limited, mint, retried};
+use super::super::{fixture::now, mint, retried};
 use super::fixture::Case;
 use afd_authoring::types::Start;
 use std::sync::{
@@ -40,7 +40,7 @@ async fn one_hundred_concurrent_saves_converge_on_one_retained_fleet() {
                 Ok(saved) => saved,
                 Err(error) => {
                     assert!(
-                        lock_limited(&error),
+                        afd_db::pool::gave_up_on_lock(&error),
                         "only the retryable lock limit may refuse: {error:?}"
                     );
                     retried(|| {
