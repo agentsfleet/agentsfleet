@@ -62,3 +62,6 @@ impl<B: Biller> Biller for WithOutagePolicy<B> {
         self.inner.balance(payer).await
     }
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests;

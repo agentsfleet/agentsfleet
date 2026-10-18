@@ -214,3 +214,16 @@ async fn a_fleets_spend_is_the_sum_of_its_lines() {
         "this month's spend includes today's"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_settlement_past_the_balance_takes_it_all_and_marks_it_exhausted() {
+    let (lane, payer) = funded_lane().await;
+    let biller = ledger(&lane);
+    conformance::a_short_settlement_writes_off_the_rest(&biller, payer.clone()).await;
+    let balance = biller.balance(&payer).await.expect("balance answers");
+    assert!(
+        balance.exhausted_at.is_some(),
+        "a spent balance records when it ran out"
+    );
+}

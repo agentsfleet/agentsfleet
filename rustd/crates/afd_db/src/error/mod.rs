@@ -31,8 +31,12 @@ use std::time::Duration;
 
 use afd_core::error_code::{self, ErrorCode};
 
+#[cfg(any(test, feature = "test-util"))]
+mod answer;
 #[cfg(feature = "test-util")]
 mod samples;
+#[cfg(any(test, feature = "test-util"))]
+pub use self::answer::database_answer;
 
 #[cfg(feature = "test-util")]
 pub use self::samples::one_of_each_kind;
@@ -275,6 +279,37 @@ pub(crate) fn query(context: &'static str, source: sqlx::Error) -> Error {
     Error::new(ErrorKind::Query { context, source })
 }
 
+/// Whether a statement failed because its connection to Postgres was lost
+/// rather than because of the statement.
+///
+/// The question an outage policy turns on: a socket that died mid-query, a
+/// pool that closed, a TLS stream that broke, or Postgres answering with a
+/// connection-exception (`08xxx`) or shutdown (`57P01`–`57P03`) code is an
+/// outage. A constraint, syntax or decode failure is a defect in the
+/// statement, and stays one however often it is retried.
+#[must_use]
+pub fn is_connection_lost(source: &sqlx::Error) -> bool {
+    match source {
+        sqlx::Error::Io(_)
+        | sqlx::Error::Tls(_)
+        | sqlx::Error::Protocol(_)
+        | sqlx::Error::PoolTimedOut
+        | sqlx::Error::PoolClosed
+        | sqlx::Error::WorkerCrashed => true,
+        sqlx::Error::Database(database) => database.code().is_some_and(|code| {
+            code.starts_with(SQLSTATE_CONNECTION_EXCEPTION)
+                || SQLSTATE_SHUTDOWN.contains(&code.as_ref())
+        }),
+        _ => false,
+    }
+}
+
+/// The SQLSTATE class every connection exception shares.
+const SQLSTATE_CONNECTION_EXCEPTION: &str = "08";
+
+/// Administrator shutdown, crash shutdown, and cannot-connect-now.
+const SQLSTATE_SHUTDOWN: [&str; 3] = ["57P01", "57P02", "57P03"];
+
 /// Builds the malformed-boolean-knob error, which callers outside this module
 /// need because the knobs they read are theirs, not this module's.
 #[must_use]
@@ -308,3 +343,6 @@ pub(crate) fn acquire_stalled(
         ceiling,
     })
 }
+
+#[cfg(test)]
+mod tests;

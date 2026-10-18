@@ -86,23 +86,42 @@ async fn take(
         .iter()
         .try_fold(0_i64, |sum, line| sum.checked_add(*line))
         .ok_or_else(charge_overflow)?;
-    if total > 0 {
-        sqlx::query(DEBIT_WALLET)
-            .bind(tenant.as_str())
-            .bind(total)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(context))?;
-        sqlx::query(CAPTURE_HOLD)
-            .bind(work.work_type())
-            .bind(work.id().as_str())
-            .bind(total)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(context))?;
+    if total == 0 {
+        return Ok(Receipt {
+            settled_lines: charged.len(),
+            ..Receipt::default()
+        });
+    }
+    let taken: i64 = sqlx::query_scalar(DEBIT_WALLET)
+        .bind(tenant.as_str())
+        .bind(total)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query(context))?;
+    sqlx::query(CAPTURE_HOLD)
+        .bind(work.work_type())
+        .bind(work.id().as_str())
+        .bind(taken)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(context))?;
+    let written_off = total - taken;
+    if written_off > 0 {
+        tracing::warn!(
+            tenant_id = tenant.as_str(),
+            work_type = work.work_type(),
+            work_id = work.id().as_str(),
+            charged_nanos = total,
+            taken_nanos = taken,
+            written_off_nanos = written_off,
+            event = "billing_charge_written_off",
+            "the balance could not cover settled usage; the rest is written off"
+        );
     }
     Ok(Receipt {
         settled_lines: charged.len(),
         charged: Nanos::from_i64(total),
+        taken: Nanos::from_i64(taken),
+        written_off: Nanos::from_i64(written_off),
     })
 }

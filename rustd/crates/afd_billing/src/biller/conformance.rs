@@ -10,7 +10,9 @@ use std::time::Duration;
 use afd_wire::usage::UsageLine;
 use jiff::Timestamp;
 
-use super::{Account, Attribution, Biller, Hold, Release, Reservation, Settlement, WorkKey};
+use super::{
+    Account, Attribution, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey,
+};
 use crate::price::RatedLine;
 use crate::{Nanos, Posture};
 
@@ -47,6 +49,7 @@ where
     settling_twice_charges_once(biller, fresh().await).await;
     a_released_work_reserves_no_more(biller, fresh().await).await;
     an_expired_lease_bills_its_last_runtime(biller, fresh().await).await;
+    a_short_settlement_writes_off_the_rest(biller, fresh().await).await;
 }
 
 fn work() -> WorkKey {
@@ -257,4 +260,36 @@ async fn an_expired_lease_bills_its_last_runtime(biller: &dyn Biller, payer: Acc
         Nanos::ZERO,
         "the expired lease's hold is released"
     );
+}
+
+/// A settlement half again past the balance: the balance gives what it has,
+/// and the rest is written off rather than silently dropped.
+///
+/// # Panics
+/// When the biller takes more than the balance, or loses the difference.
+#[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
+pub async fn a_short_settlement_writes_off_the_rest(
+    biller: &dyn Biller,
+    payer: Account,
+) -> Receipt {
+    let work = work();
+    let past = Nanos::from_i64(BALANCE.as_i64() + BALANCE.as_i64() / 2);
+    let receipt = biller
+        .settle(&settlement(&work, &payer, vec![line(0, past, 0)]))
+        .await
+        .expect(SETTLES);
+    assert_eq!(receipt.charged, past, "the line's whole cost is charged");
+    assert_eq!(receipt.taken, BALANCE, "the balance gives what it has");
+    assert_eq!(
+        receipt.written_off.as_i64(),
+        past.as_i64() - BALANCE.as_i64(),
+        "the rest is written off"
+    );
+    let balance = biller.balance(&payer).await.expect(BALANCES);
+    assert_eq!(
+        balance.balance,
+        Nanos::ZERO,
+        "the balance is spent, never negative"
+    );
+    receipt
 }
