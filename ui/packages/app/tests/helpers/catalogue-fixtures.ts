@@ -1,3 +1,4 @@
+import type { LibraryModel } from "@/lib/api/model-library-types";
 import type { AdminModel } from "@/lib/api/admin_model_library";
 import type { CatalogueMetadata, CataloguePrice } from "@/lib/api/catalogue-types";
 import { INFERENCE_API } from "@/lib/api/admin-model-library-types";
@@ -25,3 +26,9 @@ export const ADMIN_CATALOGUE: AdminModel[] = [
     prices: [{ ...PRICE, input_nanos_per_mtok: "15000000000", cached_input_nanos_per_mtok: "1500000000", output_nanos_per_mtok: "75000000000" }],
     inference: { api: INFERENCE_API.messages, base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
 ];
+
+export const CATALOGUE_MODEL: LibraryModel = {
+  ...METADATA, id: ADMIN_MODEL.model_id, provider: ADMIN_MODEL.provider,
+  input_nanos_per_mtok: PRICE.input_nanos_per_mtok, cached_input_nanos_per_mtok: PRICE.cached_input_nanos_per_mtok,
+  output_nanos_per_mtok: PRICE.output_nanos_per_mtok, prices: [PRICE],
+};

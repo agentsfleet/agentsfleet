@@ -215,7 +215,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
       header: CONTEXT_HEADER,
       numeric: true, sortable: true,
       hideOnMobile: true,
-      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} />,
+      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
     },
     {
       key: "rates",
@@ -237,7 +237,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
           platformDefaultAvailable={platformDefaultAvailable}
           onSwitchDefault={onSwitchDefault}
           onSwitchEntry={onSwitchEntry}
-          onView={setDetailsTarget}
+          onView={(entry) => { preloadCatalogue(); setDetailsTarget(entry); }}
           onEdit={(entry) => {
             // Opening is ungated intent — the picker inside needs the
             // catalogue now. Usually a no-op: focus or hover warmed it.

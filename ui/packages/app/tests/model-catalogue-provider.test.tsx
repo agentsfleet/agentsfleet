@@ -35,11 +35,11 @@ const model = (id: string, provider: string, advanced = false) => ({
 
 const okLibrary = (models: ReturnType<typeof model>[]) => ({
   ok: true as const,
-  data: { version: "1", models },
+  data: { version: "1", models, total: null, next_cursor: null },
 });
 
 function Probe() {
-  const { models, status, preload, preloadAdvanced } = useModelCatalogue();
+  const { models, status, preload, preloadAdvanced, loadMore, retry } = useModelCatalogue();
   return React.createElement(
     "div",
     null,
@@ -47,6 +47,8 @@ function Probe() {
     React.createElement("span", { "data-testid": "models" }, models.map((m) => m.id).join(",")),
     React.createElement("button", { "data-testid": "preload", onClick: preload }, "preload"),
     React.createElement("button", { "data-testid": "advanced", onClick: preloadAdvanced }, "advanced"),
+    React.createElement("button", { "data-testid": "more", onClick: () => loadMore(true) }, "more"),
+    React.createElement("button", { "data-testid": "retry", onClick: retry }, "retry"),
   );
 }
 
@@ -77,7 +79,7 @@ afterEach(() => {
 describe("ModelCatalogueProvider — intent loading", () => {
   it("loads advanced entries after the default catalogue and caches the result", async () => {
     getModelLibraryActionMock.mockResolvedValueOnce(okLibrary([model("base", "openai")]))
-      .mockResolvedValueOnce(okLibrary([model("base", "openai"), model("advanced", "openai", true)]));
+      .mockResolvedValueOnce(okLibrary([model("advanced", "openai", true)]));
     renderProvider();
     await fireIntent();
     await act(async () => { screen.getByTestId("advanced").click(); });
@@ -100,7 +102,7 @@ describe("ModelCatalogueProvider — intent loading", () => {
     expect(getModelLibraryActionMock).toHaveBeenCalledTimes(2);
     await act(async () => { screen.getByTestId("advanced").click(); });
     await act(async () => { resolveAdvanced(okLibrary([model("advanced", "openai", true)])); });
-    expect(screen.getByTestId("models").textContent).toBe("advanced");
+    expect(screen.getByTestId("models").textContent).toBe("base,advanced");
     expect(getModelLibraryActionMock).toHaveBeenCalledTimes(2);
   });
 
@@ -269,7 +271,8 @@ describe("useModelCatalogue outside a provider", () => {
     // models — pickers fall back to free-text entry, and preload is a no-op.
     expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error);
     expect(screen.getByTestId("models").textContent).toBe("");
-    await act(async () => { screen.getByTestId("preload").click(); screen.getByTestId("advanced").click(); });
+    await act(async () => { screen.getByTestId("preload").click(); screen.getByTestId("advanced").click();
+      screen.getByTestId("more").click(); screen.getByTestId("retry").click(); });
     expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });
 });

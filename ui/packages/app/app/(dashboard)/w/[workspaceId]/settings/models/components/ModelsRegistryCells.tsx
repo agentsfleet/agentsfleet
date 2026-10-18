@@ -15,6 +15,7 @@ import {
   formatRatesPerMtok,
   type RateFields,
 } from "@/lib/models/display";
+import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
 import { ModelName, PlatformManagedMark, ProviderBadge } from "@/components/domain/ModelCells";
 import { libraryRateFor, rowRateFor } from "./registry-view";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
@@ -26,10 +27,7 @@ import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 export type RegistryRow = { kind: "default" } | { kind: "entry"; entry: TenantModelEntry };
 
 const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
-const RATES_UNAVAILABLE = "Rates unavailable";
 const NUMERIC_CELL_CLASS = "font-mono text-mono leading-mono tabular-nums text-muted-foreground";
-// Self-managed rows use the tenant's provider account.
-const RATES_NOT_APPLICABLE = "Billed by provider";
 
 export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
@@ -112,19 +110,15 @@ function identityFor(
 }
 
 /** The context window in tokens, grouped as the model library prints it. */
-export function ContextCell({
-  row,
-  platformDefault,
-}: {
-  row: RegistryRow;
-  platformDefault: TenantPlatformDefault | null;
+export function ContextCell({ row, platformDefault, libraryModels }: {
+  row: RegistryRow; platformDefault: TenantPlatformDefault | null; libraryModels: LibraryModel[];
 }) {
   const identity = identityFor(row, platformDefault);
-  return (
-    <span className={NUMERIC_CELL_CLASS}>
-      {identity ? formatContextTokens(identity.context) : EMPTY_VALUE}
-    </span>
-  );
+  const catalogue = identity ? libraryRateFor(libraryModels, identity.provider, identity.model) : null;
+  return <div className={NUMERIC_CELL_CLASS}>
+    {identity ? formatContextTokens(identity.context ?? catalogue?.context_cap_tokens) : EMPTY_VALUE}
+    {catalogue ? <CatalogueEvidence source={catalogue.context_source_url} verifiedAt={catalogue.context_verified_at} /> : null}
+  </div>;
 }
 
 /** Per-million pricing, split out of the context column it used to share. */
@@ -140,15 +134,12 @@ export function RatesCell({
   const identity = identityFor(row, platformDefault);
   if (!identity) return <span className={NUMERIC_CELL_CLASS}>{EMPTY_VALUE}</span>;
   if (identity.provider === OLLAMA_PROVIDER) return <span className={NUMERIC_CELL_CLASS}>{PRICE_UNKNOWN}</span>;
-  const rate = identity.rate ?? libraryRateFor(libraryModels, identity.provider, identity.model);
-  // A tenant entry is self-managed by definition — the platform row is the only
-  // platform-managed one — so an unpriced entry is "not applicable", not a miss.
-  const rateLine = rate
-    ? formatRatesPerMtok(rate)
-    : row.kind === "entry"
-      ? RATES_NOT_APPLICABLE
-      : RATES_UNAVAILABLE;
-  return <span className={NUMERIC_CELL_CLASS}>{rateLine}</span>;
+  const catalogue = libraryRateFor(libraryModels, identity.provider, identity.model);
+  const rate = identity.rate ?? catalogue;
+  return <div className="space-y-sm">
+    <span className={NUMERIC_CELL_CLASS}>{formatRatesPerMtok(rate)}</span>
+    {catalogue && catalogue.prices.length > 0 ? <ModelPriceSchedule prices={catalogue.prices} /> : null}
+  </div>;
 }
 
 export function StatusCell({ row, isDefaultLive }: { row: RegistryRow; isDefaultLive: boolean }) {

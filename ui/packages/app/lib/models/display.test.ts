@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PRICE } from "@/tests/helpers/catalogue-fixtures";
 import { usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
 import { EMPTY_VALUE, PRICE_UNKNOWN, compareNanos, currentBasePrice, formatRatePerMtok, compareModels, formatContextTokens, formatRatesPerMtok, modelLabel } from "./display";
 
@@ -48,4 +49,18 @@ it("discloses unknown prices and compares int64 rates without rounding", () => {
   expect(compareNanos("0", null)).toBe(1);
   expect(compareNanos("0", "0")).toBe(0);
   expect(currentBasePrice([])).toBeNull();
+});
+
+it("uses only the base tier effective at the requested instant, with exclusive end times", () => {
+  const start = "2026-10-18T00:00:00Z";
+  const end = "2026-10-19T00:00:00Z";
+  const active = { ...PRICE, effective_from: start, effective_until: end };
+  const future = { ...PRICE, effective_from: end };
+  const tier = { ...PRICE, prompt_tokens_above: 200000 };
+  expect(currentBasePrice([tier, active, future], Date.parse(start))).toBe(active);
+  expect(currentBasePrice([active, future], Date.parse(end))).toBe(future);
+  expect(currentBasePrice([active], Date.parse(end))).toBeNull();
+  expect(currentBasePrice([future], Date.parse(start))).toBeNull();
+  expect(currentBasePrice([tier], Date.parse(start))).toBeNull();
+  expect(modelLabel("exact-id", null)).toBe("exact-id");
 });
