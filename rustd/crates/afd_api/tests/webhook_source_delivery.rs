@@ -162,40 +162,25 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {
     // Acknowledged rather than refused: the sender configured this URL against
     // a fleet somebody has since paused, and a 4xx would retry-loop a delivery
-    // that will be just as paused next time.
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::FLEET, signed::SECRET, PAYLOAD).await;
+    // that will be just as paused next time. The fleet's state is read before
+    // the body is parsed, so a body that is not a document is dropped alike.
+    for (case, body) in [("a document", PAYLOAD), ("not a document", NOT_JSON)] {
+        let ingress = fleet_in("paused");
+        let answered = deliver(&ingress, signed::FLEET, signed::SECRET, body).await;
 
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "a paused fleet must not accumulate work to run when it resumes"
-    );
-}
-
-#[tokio::test]
-async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::FLEET, signed::SECRET, NOT_JSON).await;
-
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "{:?}",
-        ingress.deliveries()
-    );
+        let status = answered.status();
+        let document = json_body(answered).await;
+        assert_eq!(status, StatusCode::OK, "{case}: {document}");
+        assert_eq!(
+            document.get("ignored").and_then(Value::as_str),
+            Some(REASON_PAUSED),
+            "{case}"
+        );
+        assert!(
+            ingress.deliveries().is_empty(),
+            "{case}: a paused fleet must not accumulate work to run when it resumes"
+        );
+    }
 }
 
 #[tokio::test]

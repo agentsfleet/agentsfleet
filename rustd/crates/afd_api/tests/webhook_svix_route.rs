@@ -211,42 +211,28 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     );
 }
 
+/// A paused fleet acknowledges and drops a delivery, a document or not: the
+/// fleet's state is read before the body is parsed.
 #[tokio::test]
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
+    for (case, body) in [("a document", PAYLOAD), ("not a document", NOT_JSON)] {
+        let ingress = fleet_in("paused");
+        let answered = deliver(&ingress, signed::SVIX_DELIVERY, body).await;
 
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "{:?}",
-        ingress.deliveries()
-    );
-}
-
-#[tokio::test]
-async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::SVIX_DELIVERY, NOT_JSON).await;
-
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "{:?}",
-        ingress.deliveries()
-    );
+        let status = answered.status();
+        let document = json_body(answered).await;
+        assert_eq!(status, StatusCode::OK, "{case}: {document}");
+        assert_eq!(
+            document.get("ignored").and_then(Value::as_str),
+            Some(REASON_PAUSED),
+            "{case}"
+        );
+        assert!(
+            ingress.deliveries().is_empty(),
+            "{case}: {:?}",
+            ingress.deliveries()
+        );
+    }
 }
 
 #[tokio::test]

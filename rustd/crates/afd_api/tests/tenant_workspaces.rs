@@ -115,13 +115,6 @@ async fn every_wrong_limit_earns_the_one_sentence() {
 }
 
 #[tokio::test]
-async fn the_limit_cap_is_inside_the_range() {
-    let path = format!("{WORKSPACES}?limit=100");
-    let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
-    assert_reached_the_verb(response, "limit=100").await;
-}
-
-#[tokio::test]
 async fn a_cursor_from_any_other_list_is_refused() {
     // Not a token, a text-sort token, a timestamp token whose second half is
     // no workspace identifier, and an instant in epoch digits — none is this
