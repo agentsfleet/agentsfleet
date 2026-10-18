@@ -7,11 +7,6 @@ export const CATALOGUE_LIMITS = {
   provider: 64, modelId: 256, dialect: 64,
 } as const;
 export const BASE_TIER = 0;
-export const PRICE_FIELDS = {
-  input: "input_nanos_per_mtok", cached: "cached_input_nanos_per_mtok",
-  write: "cache_write_nanos_per_mtok", write5m: "cache_write_5m_nanos_per_mtok",
-  write1h: "cache_write_1h_nanos_per_mtok", output: "output_nanos_per_mtok",
-} as const;
 export const SCHEDULE_ERRORS = {
   count: "Provide between 1 and 64 prices",
   base: "Include a base tier with Prompt tokens above set to 0",

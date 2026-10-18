@@ -4,7 +4,7 @@
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
-import type { z } from "zod";
+import { z } from "zod";
 import { request } from "./client";
 import { adminModelSchema, adminModelListSchema, modelSettingsSchema, boundedText, CATALOGUE_LIMITS } from "./catalogue-types";
 import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
@@ -12,9 +12,11 @@ import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
 const createModelSchema = modelSettingsSchema.extend({
-  provider: boundedText(CATALOGUE_LIMITS.provider).pipe(boundedText(CATALOGUE_LIMITS.provider).refine((value) => value.length > 0)),
-  model_id: boundedText(CATALOGUE_LIMITS.modelId).pipe(boundedText(CATALOGUE_LIMITS.modelId).refine((value) => value.length > 0)),
+  provider: boundedText(CATALOGUE_LIMITS.provider).pipe(z.string().min(1)),
+  model_id: boundedText(CATALOGUE_LIMITS.modelId).pipe(z.string().min(1)),
 });
+
+const updateModelResultSchema = z.object({ id: z.string(), updated: z.boolean() });
 
 export type AdminModel = z.infer<typeof adminModelSchema>;
 export type AdminModelList = z.infer<typeof adminModelListSchema>;
@@ -58,7 +60,8 @@ export async function updateAdminModel(
   id: string,
   body: ModelRatesInput,
 ): Promise<{ id: string; updated: boolean }> {
-  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "PATCH", body: stringifyCatalogueBody(modelSettingsSchema.parse(body)) }, token);
+  return updateModelResultSchema.parse(await request<unknown>(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: stringifyCatalogueBody(modelSettingsSchema.parse(body)) }, token));
 }
 
 export async function deleteAdminModel(token: string, id: string): Promise<void> {

@@ -34,7 +34,7 @@ describe("admin model catalogue client", () => {
 
   it("should PATCH caps/rates by id (identity stays immutable)", async () => {
     fetchMock.mockResolvedValue(okJson({ id: "u1", updated: true }));
-    await updateAdminModel("tok", "u1", { metadata: METADATA, prices: [PRICE] });;
+    await updateAdminModel("tok", "u1", { metadata: METADATA, prices: [PRICE] });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models/u1");
     expect(init.method).toBe("PATCH");
@@ -106,4 +106,19 @@ it("leaves the server's schedule refusal visible to the editor", async () => {
   const detail = "date ranges for one tier overlap";
   fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail, error_code: "UZ-LIBRARY-003" }), { status: 400 }));
   await expect(updateAdminModel("token", "u1", { metadata: METADATA, prices: [PRICE] })).rejects.toMatchObject({ message: detail, status: 400 });
+});
+
+it.each([{ updated: true }, { id: "u1", updated: "yes" }])("refuses a malformed PATCH result %j", async (body) => {
+  fetchMock.mockResolvedValue(okJson(body));
+  await expect(updateAdminModel("token", "u1", { metadata: METADATA, prices: [PRICE] })).rejects.toThrow();
+});
+it("sends exact int64 write amounts and preserves nulls on PATCH", async () => {
+  fetchMock.mockResolvedValue(okJson({ id: "u1", updated: true }));
+  const prices = [{ ...PRICE, input_nanos_per_mtok: "9223372036854775807", cache_write_5m_nanos_per_mtok: "1" }];
+  await updateAdminModel("token", "a/b", { metadata: METADATA, prices });
+  const [url, init] = fetchMock.mock.calls[0]!;
+  expect(url).toContain("/a%2Fb");
+  expect(init.body).toContain('"input_nanos_per_mtok":9223372036854775807');
+  expect(init.body).toContain('"cache_write_5m_nanos_per_mtok":1');
+  expect(init.body).toContain('"cache_write_nanos_per_mtok":null');
 });
