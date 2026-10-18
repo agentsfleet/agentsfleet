@@ -254,11 +254,11 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
-R2 inventory check — removed names are the tables `CREATE`d at `a8646bb2a` and absent at `HEAD`:
+R2 inventory check — removed names are the tables `CREATE`d at `a8646bb2a` and absent at `HEAD` (the rebuilt slots write `CREATE TABLE` without `IF NOT EXISTS`, so the `HEAD` side matches both spellings):
 
 ```bash
 old=$(git grep -hoE "CREATE TABLE IF NOT EXISTS [a-z_]+\.[a-z_]+" a8646bb2a -- schema | awk '{print $NF}' | sort -u)
-new=$(git grep -hoE "CREATE TABLE IF NOT EXISTS [a-z_]+\.[a-z_]+" HEAD -- schema | awk '{print $NF}' | sort -u)
+new=$(git grep -hoE "CREATE TABLE (IF NOT EXISTS )?[a-z_]+\.[a-z_]+" HEAD -- schema | awk '{print $NF}' | sort -u)
 comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
   | xargs -I{} git grep -nwE "{}" -- rustd ui cli scripts playbooks make docs/architecture docs/AUTH.md docs/AUTH_DEVICE_LOGIN.md docs/v2/pending docs/v2/active | wc -l
 ```
