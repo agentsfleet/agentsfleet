@@ -220,7 +220,7 @@ Once Dragonfly connection count and request volume fit the machine, the next bot
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do — `INSERT fleet.events`, the receive debit at lease, the run metered on each `/renew`, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `runner.leases`/`runner.fleet_slots` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
+The lease/report hot path does the durable writes the worker used to do — `INSERT fleet.events`, the run's usage logged on each `/renew` and settled through the biller, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `runner.leases`/`runner.fleet_slots` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
 Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
 

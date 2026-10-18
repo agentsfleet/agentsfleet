@@ -14,7 +14,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Event ingress | ONE — six producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `slack_mention` (`rustd/crates/afd_admission/src/admission.rs`, `Producer`) each commit a `fleet.admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions reach admission through `rustd/crates/afd_api_ingress/src/handler/mention/mod.rs` (M206_002) | §B. TRIGGER |
 | Hot-path writes | 12 in the worker's order, then 3 for the answer | `lease` does 1–6, `report` does 7–15; 1–12 are row-equivalent to the deleted worker (cutover Invariant 2), and 13–15 record and queue the answer the run owes | §Steer flow end-to-end |
-| Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `fleet.obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.fleet_charges` (two rows per FLEET-event — a receive and a stage — UNIQUE `(event_id, charge_type, fleet_id)`, so one event id charged by two fleets holds four rows, not two) | §The five durable stores |
+| Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `fleet.obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a lease, UNIQUE `(work_type, work_id, seq)`, with the lease's money held in `billing.holds`) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the ledger's UNIQUE `(event_id, charge_type, fleet_id)` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `Leases::claim_and_settle` fences, flips, settles and dedups in one statement | §C. EXECUTE |
 | Shared Dragonfly handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, the readiness index's `HRANDFIELD`, non-blocking `XREADGROUP`, `SPUBLISH`, `XACK` | §Connection topology |
@@ -67,7 +67,7 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Two per-delivery tables (`fleet.events` + `billing.fleet_charges`) | different write authorities and retention rules | §The five durable stores |
+| A narrative table and a usage table (`fleet.events` + `billing.usage_lines`) | different write authorities and retention rules | §The five durable stores |
 | `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Dragonfly tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
@@ -168,9 +168,9 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║     (status='received')                ║     (ephemeral, no ACK)
            ║  2. SPUBLISH fleet:{id}:activity       ║
            ║     {kind:"event_received"}            ║   See
-           ║  3. balance, budget, receive debit,    ║   [`capabilities.md`](./capabilities.md)
-           ║     approval gates; run metered per    ║   for each gate layer.
-           ║     /renew, settled at report          ║
+           ║  3. balance, budget, approval gates;   ║   [`capabilities.md`](./capabilities.md)
+           ║     the lease is held, its usage       ║   for each gate layer.
+           ║     logged per /renew and at report    ║
            ║  4. resolve secrets_map from vault     ║
            ║  5. READ fleet.sessions                ║   ← read with the fleet
            ║     context_json                       ║     row; handed to no lease
@@ -219,8 +219,8 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║      response_text=<content>           ║
            ║   8. SPUBLISH fleet:{id}:activity      ║   ← live: terminal frame
            ║      {kind:"event_complete"}           ║
-           ║   9. UPSERT billing.fleet_charges      ║   ← billing/latency
-           ║      (reconcile actuals)               ║     audit, one row per charge
+           ║   9. INSERT billing.usage_lines        ║   ← usage, one row per
+           ║      (the final slice)                 ║     slice; settled after commit
            ║  10. UPSERT fleet.sessions             ║   ← resume cursor:
            ║      context_json                      ║     advances the
            ║  11. XACK fleet:{id}:events            ║     bookmark
@@ -313,12 +313,12 @@ That decides the direction of error, too. An uncertain admission is REFUSED, bec
 | `fleet.obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
 | `fleet.sessions` | **One row per Fleet** | UPSERT — replaced at each report | "Where did this Fleet leave off?" — the resume bookmark, and only that. The lease path reads it with the fleet row and hands it to no lease; the report path replaces it. "Which fleet is executing right now" is `runner.leases`, which has the fencing token and the expiry that make the answer trustworthy. |
 | `fleet.events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
-| `billing.fleet_charges` | **Two rows per fleet-event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type, fleet_id)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet.events` via `(fleet_id, event_id)` — NOT `event_id` alone, which is not unique across fleets: two fleets may hold the same event id, and joining on it would aggregate one fleet's spend into the other's. |
+| `billing.usage_lines` | **One row per measured slice** of a lease: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, seq)`, where the work is the lease. The lease's money is held in `billing.holds` and taken from `billing.wallets` by the biller after commit (billing §3, §11). | INSERT in the lease's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did event X's run use, and what did it cost?" — billing audit and the source of fleet budgets. Joinable to `fleet.events` via `(fleet_id, event_id)` — NOT `event_id` alone, which is not unique across fleets. |
 
-Why two per-delivery tables (`fleet.events` + `billing.fleet_charges`) instead of one? They have different write authorities and retention rules:
+Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
 
 - `fleet.events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
-- `billing.fleet_charges` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
+- `billing.usage_lines` holds numeric audit columns — small, priced once and never repriced, retained for billing reconciliation independent of whether the conversation row is purged; it has no foreign keys, so a line outlives the fleet, workspace and price row it names.
 
 The durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
 
@@ -334,7 +334,7 @@ A call's full arguments and output are a fourth body that no page read selects. 
 
 The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `fleet.events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
 
-**Partitioning is not done here, but its key is.** The ledger's uniqueness is fleet-scoped (`schema/2010_billing_fleet_charges.sql`) — `(event_id, charge_type, fleet_id)` — so a partition key may carry the fleet without splitting a row's own arbiter. `billing.fleet_charges` carries the originating event's creation time rather than the write time. A renewal firing hours after its receive row would otherwise land in a different partition, miss the conflict target, and silently duplicate ledger rows. Carrying the column now means a later partitioning decision has a stable key already present and needs no backfill; the machinery itself waits for a measurement that demands it.
+**Partitioning is not done here.** A usage line's arbiter is `(work_type, work_id, seq)` and it is written once, so a later partition key by `created_at` never splits a line from its own conflict target; the machinery waits for a measurement that demands it.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -675,16 +675,15 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         A redelivery whose row is already terminal is acknowledged and stops here.
      2. SPUBLISH fleet:{id}:activity { kind:"event_received", event_id, actor }
      3. Gates + billing (mirror of afd_billing):
-          balance gate → budget gate → receive debit → approval gate; the run
-          is metered per /renew and settled at report.
+          balance gate → budget gate → approval gate. Admission charges
+          nothing: once the lease is issued its first hold is reserved, and
+          each /renew and the report log the slice's usage, settled through
+          the biller after commit (billing §3).
           The BUDGET gate is the fleet's own ceiling, resolved from the config
-          the session already carries; it sits after the tenant credit pool and
-          before any debit, so a refused event is never charged. Both it and the
-          balance gate fail OPEN on a datastore fault — a metering outage must
-          not halt every fleet on the platform.
-          The receive debit fires on FIRST DELIVERY only: the balance debit is
-          not replay-guarded (only the ledger row is), so a pending-entry re-delivery
-          that already paid must not pay twice.
+          the session already carries; it sits after the tenant credit pool,
+          so a refused event is never charged. Both it and the balance gate
+          fail OPEN on a datastore fault — a metering outage must not halt
+          every fleet on the platform.
           Blocked → UPDATE fleet.events status='gate_blocked',
                                               failure_label=<gate>
                     → SPUBLISH fleet:{id}:activity
@@ -749,9 +748,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           SET status = outcome==ok ? 'processed' : 'fleet_error',
               response_text, completed_at = now()
      8. SPUBLISH fleet:{id}:activity { kind:"event_complete", event_id, status }
-     9. INSERT/reconcile billing.fleet_charges ← billing/latency,
-          (UNIQUE (event_id, charge_type, fleet_id), token_count, ttft_ms,
-           wall_seconds, ...)
+     9. INSERT billing.usage_lines           ← the final slice, priced
+          (UNIQUE (work_type, work_id, seq)); after commit the biller settles
+          it and releases the lease's hold
     10. UPSERT fleet.sessions                     ← the bookmark
           SET context_json = { last_event_id, last_response },
               checkpoint_at = now()
