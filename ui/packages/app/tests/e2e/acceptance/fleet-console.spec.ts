@@ -1,6 +1,6 @@
 /**
  * fleet-console.spec.ts — the operator lives on the fleet console: a local
- * navigation rail (Chat, Events, Memory, Setup, Trigger) beside one
+ * navigation rail (Chat, Activity, Memory, Setup) beside one
  * working surface at a time, with Chat as the action surface.
  *
  * The walk proves the two things a console must get right before anything
@@ -45,7 +45,7 @@ test.describe("fleet console", () => {
     await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     // Five destinations — lifecycle actions moved to the detail header, so
     // Settings is no longer a rail view.
-    for (const section of ["Chat", "Events", "Memory", "Setup", "Trigger"]) {
+    for (const section of ["Chat", "Activity", "Memory", "Setup"]) {
       await expect(rail.getByRole("link", { name: section })).toBeVisible();
     }
 
@@ -89,7 +89,8 @@ test.describe("fleet console", () => {
     await rail.getByRole("link", { name: "Setup" }).click();
     await expect(page.getByRole("heading", { name: "Saved instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(page.getByText(SEEDED_INSTRUCTIONS).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Advanced settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Advanced settings", exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Configured triggers")).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit fleet" })).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its

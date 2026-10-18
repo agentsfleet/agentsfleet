@@ -189,7 +189,7 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 
 ### §8 UI follow-up — user-reported fixes
 
-Indy added these fixes on October 19, 2026. The UI stream owns application and design-system files under `ui/packages/**` and this tracking section.
+These user-reported fixes extend the application and design-system scope under `ui/packages/**` and this tracking section.
 Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed rows name their commits; application unit tests and coverage await Claude's checks.
 
 | Report | Required result | Progress / evidence |
@@ -200,8 +200,8 @@ Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed
 | 3a | Delete a private setup chat with confirmation and clear failures. | `2ead62453`: shared deletion action and confirmation. |
 | 3b | Show draft, saved, version, and publication state from recorded data. | `2ead62453`: current chat state; list revision summaries requested from server. |
 | 4 | Remove Review Setup; save directly with current setup validation. | `2ead62453`: inline setup and direct Save / Save changes. |
-| 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | Correct source is revision-bound; purpose and saved-screen simplification in progress. |
-| 6 | Combine Setup and Trigger; show triggers and schedules read-only. | In progress. |
+| 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | Correct source is revision-bound; saved purpose and Advanced settings removal implemented; awaiting checks. |
+| 6 | Combine Setup and Trigger; show triggers and schedules read-only. | Implemented together under Setup; awaiting checks. |
 | 7 | Use the shared table row hover on runner leases. | Pending. |
 | 8 | Retain lease history and prevent missing Open fleet destinations. | UI checking pending; retained history and authorized destinations requested from server. |
 | 9 | Rename runner lease Outcome to Status. | Pending. |

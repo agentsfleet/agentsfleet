@@ -27,8 +27,8 @@ export function actorGlobFor(t: FleetTrigger): string {
 
 /**
  * Per-trigger "last delivery" lookup. One lightweight server-side call
- * per declared trigger, in parallel; failures degrade to `null` so the
- * TriggerPanel renders the "never" badge. Webhook actors are namespaced
+ * per declared trigger, in parallel; failures stay unknown rather than
+ * claiming no delivery occurred. Webhook actors are namespaced
  * as `webhook:<source>:*`; cron as `cron:*`; a chat mention as
  * `<source>:<user>`, so `<source>:*`.
  */
@@ -37,8 +37,8 @@ export async function resolveLastDeliveries(
   fleetId: string,
   token: string,
   triggers: readonly FleetTrigger[],
-): Promise<Record<string, string | null>> {
-  const out: Record<string, string | null> = {};
+): Promise<Record<string, string | null | undefined>> {
+  const out: Record<string, string | null | undefined> = {};
   await Promise.all(
     triggers.map(async (t) => {
       const key = triggerKey(t);
@@ -50,7 +50,7 @@ export async function resolveLastDeliveries(
         });
         out[key] = page.items[0]?.created_at ?? null;
       } catch {
-        out[key] = null;
+        out[key] = undefined;
       }
     }),
   );

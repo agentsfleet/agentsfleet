@@ -35,7 +35,7 @@ export type MemoryViewData = {
 
 /** Setup and trigger render from the fleet itself. */
 export type SourceViewData = {
-  view: typeof FLEET_VIEW.setup | typeof FLEET_VIEW.trigger;
+  view: typeof FLEET_VIEW.setup;
 };
 
 /**
@@ -83,9 +83,7 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
         ),
       };
     case FLEET_VIEW.setup:
-    case FLEET_VIEW.trigger:
-      // Setup renders from the fleet itself; trigger needs the fleet's declared
-      // triggers before it can fetch anything.
+      // Trigger delivery lookups need the fleet's saved setup first.
       return { view };
     default:
       return {

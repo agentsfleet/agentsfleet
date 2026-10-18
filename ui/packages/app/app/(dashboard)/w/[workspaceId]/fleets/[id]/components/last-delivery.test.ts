@@ -69,12 +69,12 @@ describe("resolveLastDeliveries", () => {
     expect(result).toEqual({ "webhook:linear": null });
   });
 
-  it("degrades a thrown events fetch into a null entry", async () => {
+  it("keeps a failed history read unknown", async () => {
     eventsApi.listFleetEvents.mockRejectedValue(new Error("network down"));
     const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", [
       { type: "webhook", source: "slack" },
     ]);
-    expect(result).toEqual({ "webhook:slack": null });
+    expect(result).toEqual({ "webhook:slack": undefined });
   });
 
 });
