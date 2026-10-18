@@ -1,6 +1,6 @@
 SELECT l.created_at
 FROM runner.leases l
-JOIN fleet.fleets f ON f.id = l.fleet_id
+LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
 WHERE l.id = $1::uuid
   AND l.runner_id = $2::uuid
   AND ($3::uuid IS NULL OR l.workspace_id = $3::uuid)

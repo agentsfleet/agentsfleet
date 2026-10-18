@@ -5,7 +5,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_api_wire::operator::{LeaseKind, LeaseOutcome};
+use afd_api_wire::operator::{LeaseDestination, LeaseKind, LeaseOutcome};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::Db;
@@ -80,7 +80,7 @@ async fn runner_lease_history_pages_filters_and_scopes_cursors() {
 
 async fn assert_history_pages(history: &RunnerLeaseHistory, fixtures: &Fixtures, runner: &Uuid7) {
     let first = history
-        .list(runner, None, None, None, 2)
+        .list(&fixtures.tenant, runner, None, None, None, 2)
         .await
         .expect("the first page reads");
     assert_eq!(first.total, 4);
@@ -91,6 +91,11 @@ async fn assert_history_pages(history: &RunnerLeaseHistory, fixtures: &Fixtures,
     let failed = first.items.first().expect("the failed row is present");
     let running = first.items.get(1).expect("the running row is present");
     assert_eq!(failed.outcome, LeaseOutcome::Failed);
+    assert_eq!(
+        failed.destination,
+        LeaseDestination::Available,
+        "a live fleet in the viewer's own account is a destination"
+    );
     assert_eq!(failed.failure_label.as_deref(), Some("provider_error"));
     assert_eq!(running.outcome, LeaseOutcome::Running);
     assert_eq!(
@@ -99,7 +104,14 @@ async fn assert_history_pages(history: &RunnerLeaseHistory, fixtures: &Fixtures,
     );
 
     let second = history
-        .list(runner, None, None, Some(&fixtures.lease_3), 2)
+        .list(
+            &fixtures.tenant,
+            runner,
+            None,
+            None,
+            Some(&fixtures.lease_3),
+            2,
+        )
         .await
         .expect("the next page reads");
     assert_eq!(second.total, 4);
@@ -116,7 +128,14 @@ async fn assert_history_pages(history: &RunnerLeaseHistory, fixtures: &Fixtures,
 
 async fn assert_history_filters(history: &RunnerLeaseHistory, fixtures: &Fixtures, runner: &Uuid7) {
     let production = history
-        .list(runner, None, Some("production"), None, 100)
+        .list(
+            &fixtures.tenant,
+            runner,
+            None,
+            Some("production"),
+            None,
+            100,
+        )
         .await
         .expect("fleet names match case-insensitively");
     assert_eq!(production.total, 2);
@@ -126,7 +145,14 @@ async fn assert_history_filters(history: &RunnerLeaseHistory, fixtures: &Fixture
     );
 
     let secondary = history
-        .list(runner, Some(&fixtures.workspace_b), None, None, 100)
+        .list(
+            &fixtures.tenant,
+            runner,
+            Some(&fixtures.workspace_b),
+            None,
+            None,
+            100,
+        )
         .await
         .expect("workspace filtering reads");
     assert_eq!(secondary.total, 2);
@@ -144,14 +170,21 @@ async fn assert_history_refusals(
     for cursor in [&fixtures.foreign_lease, &fixtures.lease_2] {
         let workspace = (cursor == &fixtures.lease_2).then_some(&fixtures.workspace_b);
         let refused = history
-            .list(runner, workspace, None, Some(cursor), 50)
+            .list(&fixtures.tenant, runner, workspace, None, Some(cursor), 50)
             .await
             .expect_err("a cursor outside this filtered runner stream is refused");
         assert_eq!(refused.code().as_str(), "UZ-REQ-001");
     }
 
     let missing = history
-        .list(&fixtures.missing_runner, None, None, None, 50)
+        .list(
+            &fixtures.tenant,
+            &fixtures.missing_runner,
+            None,
+            None,
+            None,
+            50,
+        )
         .await
         .expect_err("an unknown runner is distinct from an empty history");
     assert_eq!(missing.code(), error_code::RUNNER_NOT_FOUND);

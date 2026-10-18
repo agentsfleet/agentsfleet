@@ -110,6 +110,19 @@ pub enum LeaseOutcome {
     Unknown,
 }
 
+/// Whether the signed-in operator can open the lease's fleet.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaseDestination {
+    /// The fleet exists in the caller's own account.
+    Available,
+    /// The fleet was purged; the lease is retained runner history.
+    FleetDeleted,
+    /// The fleet belongs to an account the caller is not acting in.
+    NotPermitted,
+}
+
 /// Whether the lease was the event's first claim or a later reclaim.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,18 +148,20 @@ pub struct RunnerLeaseItem<'a> {
     /// Current display name, absent if the fleet row is gone.
     #[serde(borrow)]
     pub fleet_name: Option<Cow<'a, str>>,
+    /// Whether the caller can open the fleet. Never inferred from the name.
+    pub destination: LeaseDestination,
     /// Workspace owning the Fleet event.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
     /// Fleet event identifier.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
-    /// Fleet event type.
+    /// Fleet event type, absent once the event row is gone.
     #[serde(borrow)]
-    pub event_type: Cow<'a, str>,
-    /// Actor recorded on the Fleet event.
+    pub event_type: Option<Cow<'a, str>>,
+    /// Actor recorded on the Fleet event, absent once the event row is gone.
     #[serde(borrow)]
-    pub actor: Cow<'a, str>,
+    pub actor: Option<Cow<'a, str>>,
     /// Server-derived closed outcome.
     pub outcome: LeaseOutcome,
     /// Terminal failure classification, when one was stored.
@@ -214,10 +229,11 @@ mod tests {
                 id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010"),
                 fleet_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011"),
                 fleet_name: Some(Cow::Borrowed("Production")),
+                destination: LeaseDestination::Available,
                 workspace_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012"),
                 event_id: Cow::Borrowed("1725000000000-0"),
-                event_type: Cow::Borrowed("chat"),
-                actor: Cow::Borrowed("user:operator"),
+                event_type: Some(Cow::Borrowed("chat")),
+                actor: Some(Cow::Borrowed("user:operator")),
                 outcome: LeaseOutcome::Failed,
                 failure_label: Some(Cow::Borrowed("provider_error")),
                 failure_detail: Some(Cow::Borrowed("upstream refused")),
@@ -244,6 +260,7 @@ mod tests {
                     "id": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010",
                     "fleet_id": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011",
                     "fleet_name": "Production",
+                    "destination": "available",
                     "workspace_id": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012",
                     "event_id": "1725000000000-0",
                     "event_type": "chat",

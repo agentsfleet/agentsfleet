@@ -10,14 +10,20 @@
 //!
 //! # What goes, and what stays
 //!
-//! Every child row cascades from the fleet row (deletion matrix: Fleet), so the
-//! purge runs one DELETE and no statement on any child. That includes the
+//! Every other child row cascades from the fleet row (deletion matrix: Fleet), so
+//! the purge runs no statement on them. That includes the
 //! approval gates, whose table grants `api_runtime` no DELETE at all: a gate
 //! goes only by this cascade, which runs as the table owner, so no session
 //! setting has to open a guard. It includes memory too, which `api_runtime`
 //! reaches only by assuming `memory_runtime`; the cascade needs no such step,
 //! and `the_purge_itself_runs_as_api_runtime` proves both through a pool that
 //! holds `api_runtime` alone.
+//!
+//! Runner leases are the one child the purge deletes by hand. `runner.leases`
+//! holds no foreign key to the fleet, so a SETTLED lease outlives it as runner
+//! history for its own 30-day window, with the fleet shown as deleted. A LIVE
+//! lease would name a fleet that no longer exists, so the purge deletes those
+//! in the same transaction, before the row, as the cascade used to.
 //!
 //! `billing.fleet_charges` survives deliberately, WITH its attribution:
 //! `fleet_id` is no foreign key, so a charge the wallet was already debited for
@@ -37,6 +43,7 @@
 
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
+use afd_state::sql::LEASE_STATUS_ACTIVE;
 
 use crate::error::{self, ErrorKind, Result};
 use crate::{FleetStatus, Fleets, sql};
@@ -45,6 +52,7 @@ use crate::{FleetStatus, Fleets, sql};
 const CONTEXT_PROBE: &str = "read fleet status before purge";
 const CONTEXT_BEGIN: &str = "open fleet purge transaction";
 const CONTEXT_PARENT: &str = "purge fleet row";
+const CONTEXT_LEASES: &str = "purge fleet live leases";
 const CONTEXT_COMMIT: &str = "commit fleet purge";
 
 /// The hint a failed stream cleanup leaves for an operator to grep.
@@ -67,6 +75,12 @@ impl Fleets {
             .await
             .map_err(error::query(CONTEXT_BEGIN))?;
         guard(&mut transaction, workspace, fleet, expected).await?;
+        sqlx::query(sql::DELETE_ACTIVE_LEASES)
+            .bind(fleet.as_str())
+            .bind(LEASE_STATUS_ACTIVE)
+            .execute(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_LEASES))?;
         let purged = sqlx::query_scalar::<_, String>(sql::DELETE_FLEET_IN_STATUS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
