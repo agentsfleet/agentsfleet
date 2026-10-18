@@ -38,6 +38,11 @@ afd_crypto.workspace = true
 afd_auth.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# Every instant a runner row, a lease or a history row carries.
+jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: row fields decode through it and
+# a sentinel or cursor binds through it.
+jiff-sqlx.workspace = true
 # The stored vocabulary two planes share — admin states, lease statuses, the
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true

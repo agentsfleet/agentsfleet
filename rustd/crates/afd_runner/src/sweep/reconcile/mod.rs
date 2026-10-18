@@ -34,7 +34,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use afd_admission::{Admissions, DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
-use afd_core::clock;
 
 use crate::error::Result;
 use crate::sweep::{Sweep, Swept};
@@ -200,7 +199,7 @@ impl Sweep for Reconcile {
         // starvation this cursor exists to end, reintroduced by the error path.
         let reconciled = self
             .admissions
-            .reconcile(clock::now(), FLEET_LIMIT, ROW_LIMIT, &mut progress)
+            .reconcile(FLEET_LIMIT, ROW_LIMIT, &mut progress)
             .await;
         if let Ok(mut held) = self.progress.lock() {
             *held = progress;

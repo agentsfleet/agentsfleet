@@ -1,10 +1,10 @@
 //! The runner store: one pool, one entropy source, and the verbs over both.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_wire::runner::{AssignedPolicy, RegisterRequest};
+use jiff::Timestamp;
 
 use crate::error::{Result, query};
 use crate::reconcile::{Verdict, reconcile};
@@ -83,7 +83,7 @@ impl Runners {
     /// Split out because it is the only part that touches entropy, and because
     /// three consecutive fallible draws inside the write would push
     /// [`Runners::register`] past the function-length line for no gain.
-    fn mint(&self, now: UnixMillis) -> Result<(Uuid7, Uuid7, Minted)> {
+    fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7, Minted)> {
         let runner_id = self.entropy.uuid7(now)?;
         let event_id = self.entropy.uuid7(now)?;
         Ok((
@@ -98,7 +98,7 @@ impl Runners {
     ///
     /// The row and its enrolment event land in ONE statement, so an observer
     /// can never see a registered runner with no audit row explaining where it
-    /// came from.
+    /// came from. `now` mints the two identifiers; the database stamps the row.
     ///
     /// # The initial verdict is reconciled against NO report
     ///
@@ -114,7 +114,7 @@ impl Runners {
     pub async fn register(
         &self,
         request: &RegisterRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Enrolled> {
         let stored = registration(request)?;
         let host_id: &str = &request.host_id;
@@ -141,16 +141,14 @@ impl Runners {
             host_id,
             token_digest: token.digest().as_str(),
             sandbox_tier: tier_wire(assigned.sandbox_tier),
-            admin_state: sql::ADMIN_STATE_ACTIVE,
+            status: sql::ADMIN_STATE_ACTIVE,
             labels_json: &labels_json,
-            last_seen_at: sql::LAST_SEEN_NEVER,
-            now,
+            last_seen_at: sql::NEVER_SEEN,
             event_id: &event_id,
             event_type: sql::event_type::RUNNER_REGISTERED,
             network_policy: policy_wire(assigned.network_policy),
             registry_allowlist_json: &registry_json,
             worker_count: worker_count.cast_signed(),
-            degraded: verdict.is_degraded(),
             degraded_reason: verdict.reason(),
         }
         .bind()

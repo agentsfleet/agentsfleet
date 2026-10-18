@@ -28,17 +28,20 @@
 
 use std::time::Duration;
 
-use afd_core::clock::{self, UnixMillis};
 use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::streams::FleetStreams;
 use afd_observability::producers;
-use sqlx::Row as _;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::error::{Result, query};
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
+
+use self::cursor::{ActiveFleet, CURSOR_START_ID, Cursor};
+
+mod cursor;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FLEETS: &str = "reclaim active fleets";
@@ -62,38 +65,6 @@ const CLAIM_LIMIT: usize = 10;
 
 /// How often a pass runs.
 const INTERVAL: Duration = Duration::from_secs(30);
-
-/// The identifier every fleet's `(updated_at, id)` cursor starts below.
-///
-/// The nil UUID, which sorts below every version-7 identifier. Never stored —
-/// only ever compared against.
-const CURSOR_START_ID: &str = "00000000-0000-0000-0000-000000000000";
-
-/// Where a pass stopped, so the next one resumes rather than restarts.
-///
-/// An `Option` of the pair: `None` is the head of the population, which
-/// [`CURSOR_START_ID`] spells for the statement, and a rewind is `= None`
-/// rather than several field assignments that have to agree.
-#[derive(Debug, Clone, Default)]
-struct Cursor(Option<(i64, String)>);
-
-impl Cursor {
-    /// The instant this cursor resumes after.
-    const fn after_updated_at(&self) -> i64 {
-        match &self.0 {
-            Some((updated_at, _id)) => *updated_at,
-            None => 0,
-        }
-    }
-
-    /// The identifier this cursor resumes after.
-    fn after_id(&self) -> &str {
-        match &self.0 {
-            Some((_updated_at, id)) => id,
-            None => CURSOR_START_ID,
-        }
-    }
-}
 
 /// The reclaim pass, over the fleet streams and the fleets that own them.
 #[derive(Debug, Clone)]
@@ -141,33 +112,24 @@ impl Reclaim {
     async fn next_page(&self) -> Result<Vec<String>> {
         let mut cursor = self.cursor.lock().await;
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::sweep::SELECT_ACTIVE_FLEETS_AFTER)
+        let page = sqlx::query_as::<_, ActiveFleet>(sql::sweep::SELECT_ACTIVE_FLEETS_AFTER)
             .bind(sql::FLEET_STATUS_ACTIVE)
-            .bind(cursor.after_updated_at())
+            .bind(cursor.after_updated_at().to_sqlx())
             .bind(cursor.after_id())
             .bind(BATCH_LIMIT)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_FLEETS))?;
 
-        let page = rows
-            .iter()
-            .map(|row| {
-                let id: String = row.try_get(0).map_err(query(CONTEXT_FLEETS))?;
-                let updated_at: i64 = row.try_get(1).map_err(query(CONTEXT_FLEETS))?;
-                Ok((id, updated_at))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
         *cursor = match page.last() {
-            Some((id, updated_at)) if page.len() >= usize::try_from(BATCH_LIMIT).unwrap_or(0) => {
-                Cursor(Some((*updated_at, id.clone())))
+            Some(last) if page.len() >= usize::try_from(BATCH_LIMIT).unwrap_or(0) => {
+                Cursor(Some((last.updated_at, last.id.clone())))
             }
             // A short page, or none at all: the cursor reached the end of the
             // active set and the next pass starts over.
             _exhausted => Cursor::default(),
         };
-        Ok(page.into_iter().map(|(id, _updated_at)| id).collect())
+        Ok(page.into_iter().map(|fleet| fleet.id).collect())
     }
 
     /// Claims what one fleet has stranded, up to the per-pass bound.
@@ -261,21 +223,17 @@ impl Reclaim {
     /// whose zero-PostgreSQL property is deliberate. Bounded by the same
     /// fleet count as the stream walk, because each fleet marked here is a
     /// claim the pool will see on the next poll.
-    async fn stranded_fleets(&self, now: UnixMillis) -> Result<Vec<String>> {
+    async fn stranded_fleets(&self) -> Result<Vec<String>> {
         let mut after = self.stranded_after.lock().await;
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES)
-            .bind(vec![sql::LEASE_STATUS_ACTIVE])
-            .bind(now.as_millis())
-            .bind(BATCH_LIMIT)
-            .bind(after.as_deref().unwrap_or(CURSOR_START_ID))
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_STRANDED))?;
-        let page = rows
-            .iter()
-            .map(|row| row.try_get(0).map_err(query(CONTEXT_STRANDED)))
-            .collect::<Result<Vec<String>>>()?;
+        let page =
+            sqlx::query_scalar::<_, String>(sql::sweep::SELECT_FLEETS_HOLDING_EXPIRED_LEASES)
+                .bind(vec![sql::LEASE_STATUS_ACTIVE])
+                .bind(BATCH_LIMIT)
+                .bind(after.as_deref().unwrap_or(CURSOR_START_ID))
+                .fetch_all(&mut *connection)
+                .await
+                .map_err(query(CONTEXT_STRANDED))?;
         // A full page may have more behind it; a short one reached the end,
         // and the next pass starts over — the same rule the fleet walk uses.
         *after = match page.last() {
@@ -312,7 +270,7 @@ impl Sweep for Reclaim {
         }
         // The ledger's answer, after the stream's: a fleet the stream could
         // not vouch for may still hold a lease a dead runner never finished.
-        for fleet_id in self.stranded_fleets(clock::now()).await? {
+        for fleet_id in self.stranded_fleets().await? {
             if self.mark_ready(&fleet_id).await {
                 swept.changed += 1;
                 tracing::info!(

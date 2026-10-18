@@ -13,11 +13,11 @@
 use std::sync::atomic::Ordering;
 
 use afd_core::env::MapEnv;
-use afd_core::timing::MAX_RUNTIME_MS;
+use afd_core::timing::MAX_RUNTIME;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 
-use super::{IDLE_INTERVAL, RETENTION_WINDOW_MS, Retention, SATURATED_INTERVAL};
+use super::{IDLE_INTERVAL, RETENTION_WINDOW, Retention, SATURATED_INTERVAL};
 use crate::sweep::Sweep as _;
 
 /// A sweeper over a pool nothing here ever asks anything of.
@@ -59,4 +59,4 @@ async fn a_drained_cycle_waits_an_hour_and_a_saturated_one_comes_straight_back()
 /// grows past the window. A runtime assertion over two constants is a check
 /// that can only pass, and clippy is right to refuse it — this comment is what
 /// the test was for.
-const _: () = assert!(MAX_RUNTIME_MS < RETENTION_WINDOW_MS);
+const _: () = assert!(MAX_RUNTIME.as_secs() < RETENTION_WINDOW.as_secs());

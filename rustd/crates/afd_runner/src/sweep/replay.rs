@@ -27,7 +27,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use afd_admission::Admissions;
-use afd_core::clock;
 use afd_observability::producers;
 
 use crate::error::Result;
@@ -133,15 +132,11 @@ impl Sweep for Replay {
     }
 
     async fn sweep(&self) -> Result<Swept> {
-        let now = clock::now();
-        let replayed = self
-            .admissions
-            .replay(now, self.min_age, BATCH_LIMIT)
-            .await?;
+        let replayed = self.admissions.replay(self.min_age, BATCH_LIMIT).await?;
         // Counted whole after the pass, not from the batch: the batch is
         // capped, and a capped count published as the backlog would read
         // "thirty-two" over a hundred thousand.
-        let backlog = self.admissions.backlog(now).await?;
+        let backlog = self.admissions.backlog().await?;
         producers::fleet::admission_backlog_observed(
             backlog.rows,
             backlog.oldest_age.map_or(0, |age| age.as_secs()),

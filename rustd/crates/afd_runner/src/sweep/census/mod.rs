@@ -22,7 +22,6 @@ use std::time::Duration;
 use afd_db::Db;
 use afd_observability::metrics::label::fleet::FleetStatusLabel;
 use afd_observability::producers::fleet::census;
-use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::sql;
@@ -46,7 +45,7 @@ pub const FLEET_CENSUS_INTERVAL: Duration = Duration::from_secs(30);
 /// One row of the grouped count: a stored spelling and how many rows carry it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Counted {
-    /// The `core.fleets.status` value, as stored.
+    /// The `fleet.fleets.status` value, as stored.
     pub status: String,
     /// How many fleets carry it.
     pub fleets: u64,
@@ -104,22 +103,29 @@ impl Census {
     /// The grouped count, one row per distinct status.
     async fn count(&self) -> Result<Vec<Counted>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::sweep::COUNT_FLEETS_BY_STATUS)
+        let rows = sqlx::query_as::<_, CountRow>(sql::sweep::COUNT_FLEETS_BY_STATUS)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CENSUS))?;
-        rows.iter()
-            .map(|row| {
-                let status: String = row.try_get(0).map_err(query(CONTEXT_CENSUS))?;
-                let fleets: i64 = row.try_get(1).map_err(query(CONTEXT_CENSUS))?;
-                Ok(Counted {
-                    status,
-                    // `COUNT(*)` is never negative; the conversion exists for
-                    // the type, not for a case.
-                    fleets: u64::try_from(fleets).unwrap_or_default(),
-                })
-            })
-            .collect()
+        Ok(rows.into_iter().map(Counted::from).collect())
+    }
+}
+
+/// [`sql::sweep::COUNT_FLEETS_BY_STATUS`]'s row.
+#[derive(Debug, sqlx::FromRow)]
+struct CountRow {
+    status: String,
+    fleets: i64,
+}
+
+impl From<CountRow> for Counted {
+    fn from(row: CountRow) -> Self {
+        Self {
+            status: row.status,
+            // `COUNT(*)` is never negative; the conversion exists for the
+            // type, not for a case.
+            fleets: u64::try_from(row.fleets).unwrap_or_default(),
+        }
     }
 }
 

@@ -1,15 +1,29 @@
 //! Every statement the runner plane runs, and the stored vocabulary it writes.
 //!
-//! `fleet.runners` and `fleet.runner_events` are this crate's tables. The one
+//! `runner.runners` and `runner.events` are this crate's tables. The one
 //! writer OUTSIDE it is `afd_fleet::lease::finalize`, which records a
 //! `lease_released` runner-event when a lease ends — it reads [`meta`] and
 //! [`event_type`] from here, because a key spelled inline at a second write
 //! site is how a consumer's `metadata->>'lease_id'` silently stops matching.
+//!
+//! Each statement is a `.sql` file beside its module, loaded with
+//! `include_str!`, schema-qualified, and stamped by the database's clock.
+
+use jiff::Timestamp;
 
 pub use afd_state::sql::{
     ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, FLEET_STATUS_ACTIVE,
-    LAST_SEEN_NEVER, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
 };
+
+/// `runner.runners.last_seen_at` for a runner that has never connected.
+///
+/// A sentinel rather than `NULL` because the column is `NOT NULL` and the
+/// liveness sweep's ordering predicate reads it directly. What matters is that
+/// the derived state reads `registered` rather than a fabricated `online`, which
+/// is Dimension 6.3, and that the offline sweep never mistakes it for a host
+/// that stopped.
+pub const NEVER_SEEN: Timestamp = Timestamp::UNIX_EPOCH;
 
 pub mod holds;
 pub mod runner;
@@ -17,7 +31,7 @@ pub mod runner_admin;
 pub mod runner_view;
 pub mod sweep;
 
-/// `fleet.runner_events.metadata` keys.
+/// `runner.events.metadata` keys.
 ///
 /// One declaration each, imported by every writer (RULE UFS): a key spelled
 /// inline at a second write site is how a consumer's `metadata->>'host_id'`
@@ -37,10 +51,10 @@ pub mod meta {
     pub const WORKER_COUNT: &str = "worker_count";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
-    /// The admin state a transition event moved OUT of.
-    pub const FROM_ADMIN_STATE: &str = "from_admin_state";
-    /// The admin state it moved INTO.
-    pub const TO_ADMIN_STATE: &str = "to_admin_state";
+    /// The status a transition event moved OUT of.
+    pub const FROM_STATUS: &str = "from_status";
+    /// The status it moved INTO.
+    pub const TO_STATUS: &str = "to_status";
     /// The lease a `lease_acquired` row is about.
     pub const LEASE_ID: &str = "lease_id";
     /// The fleet that lease claimed.
@@ -55,7 +69,7 @@ pub mod meta {
     pub const KIND: &str = "kind";
 }
 
-/// `fleet.runner_events.event_type` values this crate writes.
+/// `runner.events.event_type` values this crate writes.
 ///
 /// `afd_wire`'s [`RunnerEventType`](afd_api_wire::admin::RunnerEventType)
 /// carries these values as serde renames, so the strings come from there
@@ -70,9 +84,9 @@ pub mod event_type {
     pub const LEASE_ACQUIRED: &str = "lease_acquired";
     /// A runner stopped beating for longer than it may.
     ///
-    /// Written by the liveness sweep, once per stale episode — the dedup key is
-    /// the last-seen instant, so an hour of silence is one row rather than one
-    /// row every heartbeat interval.
+    /// Written by the liveness sweep, once per stale episode — the row's
+    /// `last_seen_at` is unique per runner, so an hour of silence is one row
+    /// rather than one row every heartbeat interval.
     pub const RUNNER_OFFLINE: &str = "runner_offline";
     /// A draining runner finished its last lease.
     pub const RUNNER_DRAINED: &str = "runner_drained";

@@ -14,6 +14,8 @@ use afd_core::test_util::trace::Capture;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
+use jiff::Timestamp;
+
 use super::{CURSOR_START_ID, Cursor, Reclaim};
 
 /// A queue address nothing listens on.
@@ -28,17 +30,18 @@ fn a_fresh_cursor_starts_below_every_real_row() {
     // below every real `updated_at`, so the first page of a cycle is the head
     // of the population rather than a page somewhere in its middle.
     let fresh = Cursor::default();
-    assert_eq!(fresh.after_updated_at(), 0);
+    assert_eq!(fresh.after_updated_at(), Timestamp::UNIX_EPOCH);
     assert_eq!(fresh.after_id(), CURSOR_START_ID);
 }
 
 #[test]
 fn a_cursor_resumes_after_the_row_it_recorded() {
+    let recorded = Timestamp::constant(1_760_000_000, 0);
     let advanced = Cursor(Some((
-        1_760_000_000_000,
+        recorded,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01".to_owned(),
     )));
-    assert_eq!(advanced.after_updated_at(), 1_760_000_000_000);
+    assert_eq!(advanced.after_updated_at(), recorded);
     assert_eq!(advanced.after_id(), "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01");
 }
 

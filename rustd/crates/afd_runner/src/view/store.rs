@@ -1,4 +1,14 @@
-use super::*;
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+
+use super::decode::{DetailRow, EventRow, ItemRow};
+use super::{
+    KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage, events,
+};
+use crate::error::{Result, query, runner_not_found};
+use crate::sql;
+use crate::store::Runners;
 
 const CONTEXT_RUNNER_COUNT: &str = "runner list count";
 const CONTEXT_RUNNER_LIST: &str = "runner list page";
@@ -8,7 +18,7 @@ const CONTEXT_EVENT_COUNT: &str = "runner event count";
 const CONTEXT_EVENT_LIST: &str = "runner event page";
 
 impl Runners {
-    /// Lists runners newest first, deriving liveness at `now`.
+    /// Lists runners newest first, deriving liveness at the database's clock.
     ///
     /// # Errors
     /// Reports datastore failures or malformed stored rows.
@@ -16,25 +26,20 @@ impl Runners {
         &self,
         cursor: Option<&KeysetCursor>,
         limit: u32,
-        now: UnixMillis,
     ) -> Result<RunnerPage> {
         let mut connection = self.pool().acquire().await?;
-        let total = sqlx::query(sql::runner_view::COUNT_RUNNERS)
+        let total = sqlx::query_scalar(sql::runner_view::COUNT_RUNNERS)
             .fetch_one(&mut *connection)
             .await
-            .map_err(query(CONTEXT_RUNNER_COUNT))?
-            .try_get(0)
             .map_err(query(CONTEXT_RUNNER_COUNT))?;
         let statement = cursor.map_or(
-            sqlx::query(sql::runner_view::LIST_RUNNERS_FIRST)
+            sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
                 .bind(sql::LEASE_STATUS_ACTIVE)
-                .bind(now.as_millis())
                 .bind(i64::from(limit)),
             |boundary| {
-                sqlx::query(sql::runner_view::LIST_RUNNERS_AFTER)
+                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
                     .bind(sql::LEASE_STATUS_ACTIVE)
-                    .bind(now.as_millis())
-                    .bind(boundary.created_at())
+                    .bind(boundary.created_at().to_sqlx())
                     .bind(boundary.id().as_str())
                     .bind(i64::from(limit))
             },
@@ -44,8 +49,8 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_RUNNER_LIST))?;
         let items = rows
-            .iter()
-            .map(|row| runner_item(row, now))
+            .into_iter()
+            .map(ItemRow::parse)
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerPage {
             next_cursor: page_cursor(&items, limit),
@@ -58,17 +63,16 @@ impl Runners {
     ///
     /// # Errors
     /// Reports a missing runner, datastore failures, or malformed stored rows.
-    pub async fn runner_detail(&self, runner: &Uuid7, now: UnixMillis) -> Result<RunnerDetail> {
+    pub async fn runner_detail(&self, runner: &Uuid7) -> Result<RunnerDetail> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner_view::RUNNER_DETAIL)
+        sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
             .bind(runner.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUNNER_DETAIL))?
-            .ok_or_else(runner_not_found)?;
-        runner_detail(&row, now)
+            .ok_or_else(runner_not_found)?
+            .parse()
     }
 
     /// Lists one runner's append-only history newest first.
@@ -92,21 +96,22 @@ impl Runners {
             return Err(runner_not_found());
         }
         let event_types = filter.event_type_names();
-        let total = sqlx::query(sql::runner_view::COUNT_EVENTS)
+        let total = sqlx::query_scalar(sql::runner_view::COUNT_EVENTS)
             .bind(runner.as_str())
             .bind(event_types.clone())
-            .bind(filter.since())
-            .bind(filter.until())
+            .bind(filter.since().map(Timestamp::to_sqlx))
+            .bind(filter.until().map(Timestamp::to_sqlx))
             .fetch_one(&mut *connection)
             .await
-            .map_err(query(CONTEXT_EVENT_COUNT))?
-            .try_get(0)
             .map_err(query(CONTEXT_EVENT_COUNT))?;
         let rows = events::statement(runner, filter, event_types, cursor, limit)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
-        let items = rows.iter().map(runner_event).collect::<Result<Vec<_>>>()?;
+        let items = rows
+            .into_iter()
+            .map(EventRow::parse)
+            .collect::<Result<Vec<_>>>()?;
         Ok(RunnerEventPage {
             next_cursor: events::cursor(&items, limit)?,
             items,

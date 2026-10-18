@@ -8,7 +8,7 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, RunnerSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
 use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex, Subscription};
@@ -16,7 +16,9 @@ use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
+use jiff::Timestamp;
 
+use crate::rows::{self, LeaseRow, POLICY};
 use crate::support::{RING_QUIET_FOR, Recorder, connect_redis, heard_ring, listen_for_rings};
 
 /// Held by every test that runs a reclaim pass: a pass sweeps every active
@@ -34,8 +36,10 @@ const IDLE_PAST_THRESHOLD_MS: u64 = 400_000;
 /// A Dragonfly nobody is listening on.
 const NOWHERE: &str = "redis://127.0.0.1:1";
 
-/// The instant the fixture's lease expired at.
-const LONG_AGO: i64 = 1;
+/// The instant the fixture's lease expired at, and its rows were stamped:
+/// just after the reclaim cursor's starting instant, so a pass reaches the
+/// fixture fleet on its first page.
+const LONG_AGO: Timestamp = Timestamp::constant(0, 1_000_000);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
@@ -191,6 +195,7 @@ struct Fixture {
     database: Db,
     tenant: String,
     fleet: String,
+    runner: String,
 }
 
 impl Fixture {
@@ -200,23 +205,22 @@ impl Fixture {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
             fleet: mint_id(),
+            runner: mint_id(),
             lane,
         };
         let workspace = mint_id();
         let mut connection = fixture.database.acquire().await.expect("a connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Reclaim faults', 1, 1) RETURNING id \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $2::uuid, id, $2, 'test', 1 FROM tenant",
-        )
-        .bind(&fixture.tenant)
-        .bind(&workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the fleet seeds");
+        TenantSeed::new(&fixture.tenant)
+            .name("Reclaim faults")
+            .at(LONG_AGO)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(&workspace, &fixture.tenant)
+            .at(LONG_AGO)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
         FleetSeed::new(
             &fixture.fleet,
             &workspace,
@@ -224,7 +228,7 @@ impl Fixture {
             FLEET_STATUS_ACTIVE,
         )
         .name(&fixture.fleet)
-        .at(1)
+        .at(LONG_AGO)
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
@@ -237,45 +241,32 @@ impl Fixture {
 
     /// A runner, and an `active` lease of it that expired long ago.
     async fn strand(&self, connection: &mut sqlx::PgConnection, workspace: &str) {
-        let (runner, lease, event) = (mint_id(), mint_id(), format!("evt_{}", mint_id()));
-        sqlx::query(
-            "WITH runner AS ( \
-               INSERT INTO fleet.runners (id, host_id, token_hash, sandbox_tier, admin_state, \
-                 labels, network_policy, registry_allowlist, last_seen_at, created_at, \
-                 updated_at) \
-               VALUES ($1::uuid, $1, $1, 'dev_none', 'active', '[]', 'deny_all_egress', '[]', \
-                 $6, $6, $6) RETURNING id \
-             ), event AS ( \
-               INSERT INTO core.fleet_events (fleet_id, workspace_id, event_id, actor, \
-                 event_type, status, request_json, created_at, updated_at) \
-               VALUES ($2::uuid, $3::uuid, $4, 'test', 'chat', 'received', '{}', $6, $6) \
-               RETURNING event_id \
-             ) \
-             INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id, \
-               event_id, actor, event_type, event_created_at, posture, provider, model, \
-               metered_input_tokens, metered_cached_tokens, metered_output_tokens, \
-               last_metered_at, fencing_token, lease_expires_at, status, created_at, \
-               updated_at, receipt) \
-             SELECT $5::uuid, runner.id, $2::uuid, $3::uuid, $7::uuid, event.event_id, 'test', \
-               'chat', $6, 'platform', 'test', 'test', 0, 0, 0, $6, 1, $6, 'active', $6, $6, \
-               event.event_id FROM runner CROSS JOIN event",
+        RunnerSeed::new(&self.runner, afd_runner::sql::ADMIN_STATE_ACTIVE, POLICY)
+            .seen(LONG_AGO)
+            .at(LONG_AGO)
+            .insert(&mut *connection)
+            .await
+            .expect("the stranded runner seeds");
+        rows::lease(
+            connection,
+            LeaseRow {
+                id: &mint_id(),
+                runner: &self.runner,
+                fleet: &self.fleet,
+                workspace,
+                tenant: &self.tenant,
+                status: LEASE_STATUS_ACTIVE,
+                expires_at: LONG_AGO,
+                stamped_at: Some(LONG_AGO),
+            },
         )
-        .bind(&runner)
-        .bind(&self.fleet)
-        .bind(workspace)
-        .bind(&event)
-        .bind(&lease)
-        .bind(LONG_AGO)
-        .bind(&self.tenant)
-        .execute(connection)
-        .await
-        .expect("the stranded lease seeds");
+        .await;
     }
 
     /// Every lease status the fixture's fleet holds.
     async fn lease_statuses(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a connection");
-        sqlx::query_scalar("SELECT status FROM fleet.runner_leases WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT status FROM runner.leases WHERE fleet_id = $1::uuid")
             .bind(&self.fleet)
             .fetch_all(&mut *connection)
             .await
@@ -284,8 +275,12 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a connection");
-        let _removed = sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        let _removed = sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
+            .execute(&mut *connection)
+            .await;
+        let _retired = sqlx::query("DELETE FROM runner.runners WHERE id = $1::uuid")
+            .bind(&self.runner)
             .execute(&mut *connection)
             .await;
         drop(connection);

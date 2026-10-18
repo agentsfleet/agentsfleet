@@ -56,18 +56,22 @@ use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
 mod fleet;
+mod fleet_event;
 mod identity;
 mod platform_default;
 mod rows;
+mod runner;
 mod unreachable;
 
 pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
+pub use self::fleet_event::{EventKind, FleetEventSeed};
 pub use self::identity::{TenantSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::rows::OwnedRows;
+pub use self::runner::{RunnerPolicy, RunnerSeed};
 pub use self::unreachable::unreachable_db;
 
 /// The environment knob naming the lane's admin connection.

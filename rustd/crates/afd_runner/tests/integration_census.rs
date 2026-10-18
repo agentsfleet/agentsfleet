@@ -17,10 +17,9 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_observability::metrics::label::fleet::FleetStatusLabel;
 use afd_observability::producers::fleet::census::fleet_census_readings;
 use afd_runner::sweep::Sweep as _;
@@ -101,28 +100,21 @@ impl Fixture {
     }
 
     async fn seed(&self) {
-        let now = clock::now().as_millis();
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Census test', $2, $2) \
-               RETURNING id \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $3::uuid, id, 'census', 'test', $2 FROM tenant",
-        )
-        .bind(&self.tenant)
-        .bind(now)
-        .bind(&self.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant and workspace seed");
+        TenantSeed::new(&self.tenant)
+            .name("Census test")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .name("census")
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
         for (index, (fleet, status)) in self.fleets.iter().enumerate() {
             let name = format!("census-{index}");
             FleetSeed::new(fleet, &self.workspace, &self.tenant, status.as_str())
                 .name(&name)
-                .at(now)
                 .insert(&mut *connection)
                 .await
                 .expect("the fleet row seeds");
@@ -131,17 +123,17 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.fleets WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM fleet.fleets WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the fleet rows clean up");
-        sqlx::query("DELETE FROM core.workspaces WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.workspaces WHERE id = $1::uuid")
             .bind(&self.workspace)
             .execute(&mut *connection)
             .await
             .expect("the workspace cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
