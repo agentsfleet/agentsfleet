@@ -11,7 +11,7 @@ use afd_db::{
 use jiff::Timestamp;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use crate::rows::{self, LeaseRow, POLICY};
+use crate::rows::{self, AttemptRow, LeaseRow, POLICY};
 
 /// How long a live seeded lease or attempt has left.
 pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
@@ -76,8 +76,11 @@ impl Fixture {
         rows::attempt(
             tx,
             (self.runner.as_str(), &self.workspace, &self.tenant),
-            afd_runner::sql::LEASE_STATUS_ACTIVE,
-            until,
+            AttemptRow {
+                status: afd_runner::sql::LEASE_STATUS_ACTIVE,
+                lease_expires_at: until,
+                reserved_nanos: 0,
+            },
         )
         .await;
     }
@@ -128,7 +131,8 @@ impl Fixture {
 
     pub(super) async fn cleanup(self) {
         let mut connection = self.db.acquire().await.expect("cleanup connection");
-        // Attempts name the runner with no cascade, so they go first.
+        // Attempts outlive their runner by design, so a test removes the ones
+        // it seeded itself rather than leaving them in the lane.
         sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1::uuid")
             .bind(self.runner.as_str())
             .execute(&mut *connection)

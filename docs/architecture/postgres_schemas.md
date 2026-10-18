@@ -125,7 +125,8 @@ connection or transaction; there is no generic repository trait.
                                  │ library_revision_id ──▶ library_revisions
                                  │ source_fleet_revision_id ──▶ fleet.revisions
               messages ──▶ drafts; candidate_id ──▶ candidates
- attempts ──▶ runner.runners   (no FK to drafts/messages: a charge outlives chat text)
+ attempts ──▶ runner.runners   ON DELETE SET NULL: a revoked runner's record goes, its charges stay
+          (no FK to drafts/messages: a charge outlives chat text)
    ◀── dispatches, activity_receipts, answer_receipts
  library_entries ◀── library_revisions (ON DELETE CASCADE)
  replay_receipts (no FKs: a retry key outlives erasure)
@@ -262,6 +263,7 @@ or account therefore never deletes a charge. The slots name the export that read
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot | charges; drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` of its attempts |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` of its attempts |
+| Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |
 
 ## vault and memory
 
