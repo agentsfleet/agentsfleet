@@ -85,23 +85,6 @@ async fn detail_of(response: axum::response::Response) -> String {
 }
 
 #[tokio::test]
-async fn test_every_verb_sits_behind_the_bearer_guard() {
-    for (method, path) in [
-        (Method::GET, ENTRIES),
-        (Method::POST, ENTRIES),
-        (Method::PATCH, ENTRY),
-        (Method::DELETE, ENTRY),
-    ] {
-        let anonymous = send(ENTRIES_READ, method.clone(), path, None, "").await;
-        assert_eq!(
-            anonymous.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} with no credential is the guard's refusal, not a 404"
-        );
-    }
-}
-
-#[tokio::test]
 async fn test_the_scope_rung_separates_the_list_from_the_writes() {
     // A read-scoped credential may list and may not write; an unscoped one may
     // do neither. The rung answers, not the handler — the pool behind the

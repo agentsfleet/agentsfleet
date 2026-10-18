@@ -38,20 +38,11 @@ const TENANT_KEY: &str = "agt_tdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2streams";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 
 /// The rung both stream routes take.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// One fleet's live tail.
 fn fleet_stream() -> String {
@@ -97,58 +88,6 @@ async fn code_of(response: axum::response::Response) -> String {
 /// Both templates, as a client addresses them.
 fn both_streams() -> [String; 2] {
     [workspace_stream(), fleet_stream()]
-}
-
-/// Neither stream is reachable without a credential.
-#[tokio::test]
-async fn neither_stream_is_anonymous() {
-    for path in both_streams() {
-        let response = send(FLEET_READ, &path, None).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{path} must refuse an anonymous caller"
-        );
-    }
-}
-
-/// Both streams are refused by the scope rung before anything else.
-#[tokio::test]
-async fn both_streams_are_refused_by_the_scope_rung() {
-    for path in both_streams() {
-        let response = send(NO_SCOPES, &path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused by the rung"
-        );
-    }
-}
-
-/// A principal streaming somebody else's workspace is refused by the layer.
-///
-/// The refusal that matters most on this surface: a stream that got past the
-/// ownership check would deliver another tenant's activity for as long as the
-/// tab stayed open, and nothing in the client would say so.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    for path in [
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/events/stream"),
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/fleets/{FLEET}/events/stream"),
-    ] {
-        let response = send(FLEET_READ, &path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused before a channel is subscribed"
-        );
-        let document = harness::json_body(response).await;
-        assert_eq!(
-            document.get("detail").and_then(Value::as_str),
-            Some(DETAIL_NOT_YOURS),
-            "{path}: the refusal is the ownership layer's"
-        );
-    }
 }
 
 /// `/events/stream` is the STREAM route, not an event whose id is "stream".

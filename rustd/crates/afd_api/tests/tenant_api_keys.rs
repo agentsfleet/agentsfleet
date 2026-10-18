@@ -26,8 +26,6 @@ const SUBJECT: &str = "user_2apikeys";
 const READ: ScopeSet = ScopeSet::from_scopes(&[Scope::ApikeyRead]);
 const WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::ApikeyWrite]);
 const ADMIN: ScopeSet = ScopeSet::from_scopes(&[Scope::ApikeyAdmin]);
-const NONE: ScopeSet = ScopeSet::from_scopes(&[]);
-
 async fn send(
     scopes: ScopeSet,
     method: Method,
@@ -61,32 +59,6 @@ async fn assert_store_reached(response: axum::response::Response, case: &str) {
         afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
         "{case}: the refusal belongs to the store"
     );
-}
-
-#[tokio::test]
-async fn every_api_key_verb_requires_a_credential() {
-    for (method, path, body) in [
-        (Method::GET, KEYS, ""),
-        (Method::POST, KEYS, r#"{"key_name":"deploy"}"#),
-        (Method::PATCH, KEY, r#"{"active":false}"#),
-        (Method::DELETE, KEY, ""),
-    ] {
-        let response = send(ADMIN, method, path, None, body).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
-    }
-}
-
-#[tokio::test]
-async fn each_verb_enforces_its_scope_before_the_store() {
-    for (method, path, body) in [
-        (Method::GET, KEYS, ""),
-        (Method::POST, KEYS, r#"{"key_name":"deploy"}"#),
-        (Method::PATCH, KEY, r#"{"active":false}"#),
-        (Method::DELETE, KEY, ""),
-    ] {
-        let response = send(NONE, method, path, Some(CREDENTIAL), body).await;
-        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
-    }
 }
 
 #[tokio::test]

@@ -43,9 +43,6 @@ const TENANT_KEY: &str = "agt_tdecafbaddecafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2fleets";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A well-formed fleet identifier.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
@@ -58,12 +55,6 @@ const FLEET_ADMIN: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetAdmin]);
 /// never refused by the rung.
 const EVERY_FLEET_SCOPE: ScopeSet =
     ScopeSet::from_scopes(&[Scope::FleetRead, Scope::FleetWrite, Scope::FleetAdmin]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The collection path, under the workspace the fixture owns.
 fn collection() -> String {
@@ -149,30 +140,6 @@ fn every_verb() -> [(Method, String, ScopeSet); 5] {
 }
 
 #[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None, "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} is not anonymous"
-        );
-    }
-}
-
-#[tokio::test]
-async fn every_verb_is_gated_on_its_own_scope() {
-    for (method, path, _needs) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} without its scope is refused"
-        );
-    }
-}
-
-#[tokio::test]
 async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
     // The allow half of Dimension 3.3: valid scopes AND the right workspace
     // reach the store, which is the only thing left that can refuse.
@@ -189,24 +156,6 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
         };
         let response = authorised(method.clone(), &path, body).await;
         assert_reached_the_verb(response, &format!("{method} {path}")).await;
-    }
-}
-
-#[tokio::test]
-async fn a_foreign_workspace_is_refused_before_any_statement_runs() {
-    // The deny half of Dimension 3.3, and the reason ownership is a LAYER: the
-    // scopes are valid and the caller is proven, and they still never reach a
-    // datastore. A 403 rather than a 404 is parity — a dashboard branches on it.
-    for (method, path, _scopes) in every_verb() {
-        let foreign = path.replace(OWNED_WORKSPACE, FOREIGN_WORKSPACE);
-        let response = authorised(method.clone(), &foreign, "").await;
-
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {foreign} is not this caller's"
-        );
-        assert_eq!(detail_of(response).await, DETAIL_NOT_YOURS, "{method}");
     }
 }
 

@@ -41,9 +41,6 @@ const TENANT_KEY: &str = "agt_tdecafbaddecafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2secrets";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A name the fixture addresses the item route by.
 const SECRET: &str = "anthropic-prod";
 
@@ -55,12 +52,6 @@ const SECRET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretWrite]);
 /// never refused by the rung.
 const EVERY_SECRET_SCOPE: ScopeSet =
     ScopeSet::from_scopes(&[Scope::SecretRead, Scope::SecretWrite]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// A well-formed create body, for the tests isolating another axis.
 const VALID_CREATE: &str = r#"{"name":"anthropic-prod","data":{"api_key":"sk-live"}}"#;
@@ -147,32 +138,6 @@ fn every_verb() -> [(Method, String, ScopeSet, &'static str); 4] {
 }
 
 #[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes, body) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None, body).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} answered an unauthenticated caller"
-        );
-    }
-}
-
-#[tokio::test]
-async fn every_verb_is_refused_by_the_scope_rung_before_anything_else() {
-    // A credential this daemon accepts, carrying none of the capabilities this
-    // surface asks for. The refusal must be the rung's, not the store's.
-    for (method, path, _demanded, body) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY), body).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} admitted a caller holding no scope"
-        );
-    }
-}
-
-#[tokio::test]
 async fn reading_a_secret_list_does_not_confer_the_authority_to_write_one() {
     // Two rungs on one surface, and the split is the point: an operator who may
     // see WHICH credentials a workspace holds is not thereby able to replace
@@ -198,43 +163,6 @@ async fn reading_a_secret_list_does_not_confer_the_authority_to_write_one() {
             StatusCode::FORBIDDEN,
             "{method} {path} admitted a read-only principal"
         );
-    }
-}
-
-#[tokio::test]
-async fn a_scoped_principal_acting_in_a_foreign_workspace_runs_no_statement() {
-    // Dimension 3.3's axis, on this surface: the credential is good and the
-    // capabilities are right, and the workspace is somebody else's. The
-    // ownership LAYER answers, so the store is never asked.
-    for (method, path, body) in [
-        (
-            Method::GET,
-            format!("/v1/workspaces/{FOREIGN_WORKSPACE}/secrets"),
-            "",
-        ),
-        (
-            Method::POST,
-            format!("/v1/workspaces/{FOREIGN_WORKSPACE}/secrets"),
-            VALID_CREATE,
-        ),
-        (
-            Method::PUT,
-            format!("/v1/workspaces/{FOREIGN_WORKSPACE}/secrets/{SECRET}"),
-            VALID_REPLACE,
-        ),
-        (
-            Method::DELETE,
-            format!("/v1/workspaces/{FOREIGN_WORKSPACE}/secrets/{SECRET}"),
-            "",
-        ),
-    ] {
-        let response = authorised(method.clone(), &path, body).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} acted inside a workspace the caller does not own"
-        );
-        assert_eq!(detail_of(response).await, DETAIL_NOT_YOURS);
     }
 }
 

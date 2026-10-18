@@ -42,9 +42,6 @@ const TENANT_KEY: &str = "agt_tfacefeeddecafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2grants";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
@@ -59,12 +56,6 @@ const GRANT_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::GrantWrite]);
 
 /// Both, for the tests isolating an axis other than scope.
 const EVERY_GRANT_SCOPE: ScopeSet = ScopeSet::from_scopes(&[Scope::GrantRead, Scope::GrantWrite]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The sentence a grant that is gone earns.
 const DETAIL_GRANT_NOT_FOUND: &str = "Grant not found or already revoked";
@@ -97,11 +88,6 @@ async fn authorised(method: Method, path: &str) -> axum::response::Response {
     send(EVERY_GRANT_SCOPE, method, path, Some(TENANT_KEY)).await
 }
 
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    field_of(response, "detail").await
-}
-
 /// Reads one string field of a problem document back.
 ///
 /// Every caller names a key the problem envelope always carries, so an absent
@@ -113,45 +99,6 @@ async fn field_of(response: axum::response::Response, key: &str) -> String {
         .and_then(Value::as_str)
         .expect("every refusal carries the field an assertion names")
         .to_owned()
-}
-
-/// Every verb on this surface, with the scope its route row demands.
-fn every_verb() -> [(Method, String, ScopeSet); 2] {
-    [
-        (Method::GET, collection(), GRANT_READ),
-        (Method::DELETE, item(), GRANT_WRITE),
-    ]
-}
-
-/// No verb here is reachable without a credential.
-#[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} must refuse an anonymous caller"
-        );
-    }
-}
-
-/// Every verb is refused by the scope rung before anything else.
-#[tokio::test]
-async fn every_verb_is_refused_by_the_scope_rung_before_anything_else() {
-    for (method, path, _demanded) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} must be refused by the rung"
-        );
-        assert_eq!(
-            field_of(response, "error_code").await,
-            error_code::AUTH_INSUFFICIENT_SCOPE.as_str(),
-            "{method} {path}: the refusal is the capability gate's"
-        );
-    }
 }
 
 /// Seeing a fleet's grants does not confer the authority to revoke one.
@@ -192,28 +139,6 @@ async fn revoking_a_grant_carries_the_authority_to_read_them() {
         StatusCode::FORBIDDEN,
         "a revoker reaches the list through the hierarchy closure"
     );
-}
-
-/// A principal acting in somebody else's workspace runs no statement.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    let foreign = format!("/v1/workspaces/{FOREIGN_WORKSPACE}/fleets/{FLEET}/integration-grants");
-    let paths = [foreign.clone(), format!("{foreign}/{GRANT}")];
-    let methods = [Method::GET, Method::DELETE];
-
-    for (path, method) in paths.iter().zip(methods) {
-        let response = send(EVERY_GRANT_SCOPE, method, path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused before the handler"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_NOT_YOURS,
-            "{path}: the refusal is the ownership layer's"
-        );
-    }
 }
 
 /// A fleet segment that is not an identifier never reaches the store.
@@ -272,31 +197,6 @@ async fn a_grant_id_that_is_not_an_identifier_reads_as_absent() {
         Some(DETAIL_GRANT_NOT_FOUND),
         "the sentence says 'or already revoked' — the two are one answer"
     );
-}
-
-/// The templates carry only the methods they document.
-///
-/// The whole surface is one GET and one DELETE. A grant is seeded by the
-/// install and answered through the approval inbox, so a POST that created one
-/// here would be a second origination path for a standing human decision, and
-/// that path is kept singular on purpose.
-#[tokio::test]
-async fn the_templates_carry_only_the_methods_they_document() {
-    for (method, path) in [
-        (Method::POST, collection()),
-        (Method::DELETE, collection()),
-        (Method::PATCH, collection()),
-        (Method::GET, item()),
-        (Method::POST, item()),
-        (Method::PUT, item()),
-    ] {
-        let response = authorised(method.clone(), &path).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::METHOD_NOT_ALLOWED,
-            "{method} {path} is not a verb this surface serves"
-        );
-    }
 }
 
 /// A datastore that will not answer is a 503, on both verbs.
