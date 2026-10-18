@@ -78,6 +78,8 @@ describe("conversation-first app navigation", () => {
     await userEvent.setup().click(screen.getByRole("menuitem", {name: "Settings"}));
     const approvals = screen.getByRole("menuitem", {name: "Approvals"});
     expect(approvals.getAttribute("href")).toBe("/w/ws_1/approvals");
+    expect(approvals.getAttribute("aria-current")).toBe("page");
+    expect(screen.getAllByRole("menuitem").filter((item) => item.getAttribute("aria-current") === "page")).toHaveLength(1);
     await userEvent.setup().click(approvals);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_approvals", surface: "app_sidebar", target: "/w/ws_1/approvals"});
@@ -109,4 +111,16 @@ describe("conversation-first app navigation", () => {
     await user.click(within(dialog).getByRole("link", { name: "Your fleets" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+});
+
+it("marks the active Platform destination and keeps menu icons decorative", async () => {
+  mocks.pathname.mockReturnValue("/admin/runners/runner-1");
+  mount(["runner:read", "model:read"]);
+  await openMenu();
+  await userEvent.click(screen.getByRole("menuitem", {name: "Platform"}));
+  expect(screen.getByRole("menuitem", {name: "Runners"}).getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("menuitem", {name: "Model library"}).hasAttribute("aria-current")).toBe(false);
+  for (const item of screen.getAllByRole("menuitem")) {
+    expect(item.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  }
 });
