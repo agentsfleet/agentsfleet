@@ -14,7 +14,7 @@ INSERT INTO model.platform_model_prices
     (id, platform_model_id, effective_from, prompt_tokens_above,
      input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
      source_url, verified_at, conditions, created_at, updated_at)
-SELECT uuidv7(), m.id, to_timestamp(0), 0, $5, $6, $7,
+SELECT $10::uuid, m.id, to_timestamp(0), 0, $5, $6, $7,
        'https://fixtures.agentsfleet.net/pricing', COALESCE($8::timestamptz, now()),
        'Synthetic test fixture; not a provider quotation.', now(), now()
   FROM identity m
