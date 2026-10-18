@@ -43,8 +43,8 @@ function renderCell(cell: React.ReactNode) {
 
 describe("workspace model cells", () => {
   it("keeps Ollama pricing unknown even if a response supplies zero rates", () => {
-    const entry = { ...ENTRY, provider: OLLAMA_PROVIDER, input_nanos_per_mtok: 0,
-      cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 };
+    const entry = { ...ENTRY, provider: OLLAMA_PROVIDER, input_nanos_per_mtok: "0",
+      cached_input_nanos_per_mtok: "0", output_nanos_per_mtok: "0" };
     renderCell(<RatesCell row={{ kind: "entry", entry }} platformDefault={null} libraryModels={[]} />);
     expect(screen.getByText(PRICE_UNKNOWN)).toBeTruthy();
     expect(screen.queryByText("0.00 / 0.00 / 0.00")).toBeNull();

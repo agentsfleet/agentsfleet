@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
-import { EMPTY_VALUE, compareModels, formatContextTokens, formatRatesPerMtok, modelLabel } from "./display";
+import { EMPTY_VALUE, PRICE_UNKNOWN, compareNanos, currentBasePrice, formatRatePerMtok, compareModels, formatContextTokens, formatRatesPerMtok, modelLabel } from "./display";
 
 describe("model display", () => {
   it("uses the catalogue label without inferring words from the identifier", () => {
@@ -25,17 +25,27 @@ describe("model display", () => {
     expect(formatContextTokens(200_000)).toBe("200,000");
     expect(formatContextTokens(512)).toBe("512");
     expect(formatContextTokens(undefined)).toBe(EMPTY_VALUE);
-    expect(formatRatesPerMtok(null)).toBe(EMPTY_VALUE);
+    expect(formatRatesPerMtok(null)).toBe(PRICE_UNKNOWN);
   });
 
   it.each(["0.006", "0.015", "0.0375", "0.075", "0.125", "0.1875", "0.000000001"])(
     "keeps the exact sub-cent rate %s visible", (rate) => {
       // pin test: literal is the contract
       expect(formatRatesPerMtok({
-        input_nanos_per_mtok: usdPerMtokToNanos(0.15),
-        cached_input_nanos_per_mtok: usdPerMtokToNanos(Number(rate)),
-        output_nanos_per_mtok: usdPerMtokToNanos(0.5),
+        input_nanos_per_mtok: usdPerMtokToNanos("0.15"),
+        cached_input_nanos_per_mtok: usdPerMtokToNanos(rate),
+        output_nanos_per_mtok: usdPerMtokToNanos("0.5"),
       })).toBe(`0.15 / ${rate} / 0.50`);
     },
   );
+});
+
+it("discloses unknown prices and compares int64 rates without rounding", () => {
+  expect(formatRatePerMtok(null)).toBe(PRICE_UNKNOWN);
+  expect(formatRatePerMtok("9223372036854775807")).toBe("9223372036.854775807");
+  expect(compareNanos("9007199254740993", "9007199254740992")).toBe(1);
+  expect(compareNanos(null, "0")).toBe(-1);
+  expect(compareNanos("0", null)).toBe(1);
+  expect(compareNanos("0", "0")).toBe(0);
+  expect(currentBasePrice([])).toBeNull();
 });

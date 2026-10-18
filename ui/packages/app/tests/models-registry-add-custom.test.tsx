@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -28,7 +29,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
 const { catalogueState } = vi.hoisted(() => ({
   catalogueState: {
     models: [
-      { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+      { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: "0", cached_input_nanos_per_mtok: "0", output_nanos_per_mtok: "0", context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [] },
     ],
     status: "ready" as const,
     preload: vi.fn(),

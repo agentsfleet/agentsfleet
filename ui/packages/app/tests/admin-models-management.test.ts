@@ -1,3 +1,4 @@
+import { ADMIN_CATALOGUE, METADATA, PRICE, SOURCE_URL, VERIFIED_AT } from "./helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -48,9 +49,12 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function fillModelSettings() {
-  for (const [label, value] of [["Context window (tokens)", "128000"], ["Inference base URL", "https://models.example.com/v1"], ["Model output limit (tokens)", "8192"]]) {
-    fireEvent.change(screen.getByLabelText(label!), { target: { value } });
-  }
+  for (const [label, value] of [
+    ["Catalogue display name", "GLM 5.2"], ["Context window (tokens)", "128000"],
+    ["Context source URL", SOURCE_URL], ["Context verified at", VERIFIED_AT],
+    ["Effective from", VERIFIED_AT], ["Price source URL", SOURCE_URL], ["Price verified at", VERIFIED_AT],
+    ["Input ($/1M)", "0.55"], ["Cached ($/1M)", "0.14"], ["Output ($/1M)", "2.19"],
+  ]) fireEvent.change(screen.getByLabelText(label!), { target: { value } });
 }
 
 function rowFor(modelId: string): HTMLElement {
@@ -64,10 +68,7 @@ async function loadedEditDialog(label: string) {
   return within(dialog as HTMLElement);
 }
 
-const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", display_name: "GLM 5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", display_name: "Opus 4.8", advanced: false, context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
-];
+const CATALOGUE: AdminModel[] = ADMIN_CATALOGUE;
 
 const DEFAULT_FIREWORKS: PlatformKey = {
   provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: "1970-01-01T00:00:00.001Z",
@@ -95,14 +96,12 @@ it("CatalogueList — Edit (rates dialog wired to updateAdminModelAction) > open
 
   await waitFor(() => expect(updateAdminModelActionMock).toHaveBeenCalledTimes(1));
   expect(updateAdminModelActionMock).toHaveBeenCalledWith("u1", {
-    context_cap_tokens: 128000,
-    input_nanos_per_mtok: 990_000_000, // 0.99 $/1M
-    cached_input_nanos_per_mtok: 140_000_000,
-    output_nanos_per_mtok: 2_190_000_000,
+    metadata: CATALOGUE[0]!.metadata,
+    prices: [{ ...PRICE, input_nanos_per_mtok: "990000000" }],
     inference: CATALOGUE[0]!.inference,
   });
   // The parent gets the row's new shape (identity + edited rates).
-  await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: "u1", input_nanos_per_mtok: 990_000_000 })));
+  await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: "u1", prices: [{ ...PRICE, input_nanos_per_mtok: "990000000" }] })));
 });
 
 it("CatalogueList — Edit (rates dialog wired to updateAdminModelAction) > shows the immutable provider + model as disabled fields", async () => {
@@ -193,7 +192,7 @@ it("CatalogueList — Make default (★ minimal key dialog) > treats a whitespac
 it("CatalogueList — Make default (★ minimal key dialog) > uses the saved inference URL for an openai-compatible default", async () => {
   setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
   const custom: AdminModel[] = [
-    { id: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", display_name: "glm-5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0, inference: { api: "chat", base_url: "https://endpoint.example/v1", max_output_tokens: 8192 } },
+    { ...CATALOGUE[0]!, id: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, inference: { api: "chat", base_url: "https://endpoint.example/v1", max_output_tokens: 8192 } },
   ];
   renderWithTooltipProvider(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
@@ -291,8 +290,9 @@ it("ModelsView > passes the active default through so the matching row is badged
 
 it("ModelsView > appends a newly created model to the catalogue without a round-trip", async () => {
   const created: AdminModel = {
-    id: "u3", provider: "moonshot", model_id: "kimi-k2.6", display_name: "Kimi K2.6", advanced: false, context_cap_tokens: 256000,
-    input_nanos_per_mtok: 600_000_000, cached_input_nanos_per_mtok: 150_000_000, output_nanos_per_mtok: 2_300_000_000,
+    id: "u3", provider: "moonshot", model_id: "kimi-k2.6",
+    metadata: { ...METADATA, display_name: "Kimi K2.6", context_cap_tokens: 256000 },
+    prices: [{ ...PRICE, input_nanos_per_mtok: "600000000", cached_input_nanos_per_mtok: "150000000", output_nanos_per_mtok: "2300000000" }],
   };
   createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
   renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));

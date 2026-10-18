@@ -6,7 +6,7 @@
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import { providerLabel, type LibraryModel } from "@/lib/api/model-library-types";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
-import { compareModels, type RateFields } from "@/lib/models/display";
+import { compareModels, compareNanos, type RateFields } from "@/lib/models/display";
 
 /** The columns the table sorts, matching the model library's set. */
 const SORT_KEYS = ["model", "provider", "context", "rates"] as const;
@@ -55,14 +55,14 @@ export function compareEntries(
     case "context":
       return (a.context_cap_tokens ?? ABSENT_FIGURE) - (b.context_cap_tokens ?? ABSENT_FIGURE);
     case "rates":
-      return inputRateOf(a, libraryModels) - inputRateOf(b, libraryModels);
+      return compareNanos(inputRateOf(a, libraryModels), inputRateOf(b, libraryModels));
   }
 }
 
 /** The input rate an entry's Rates cell shows, or ABSENT_FIGURE. */
-function inputRateOf(entry: TenantModelEntry, libraryModels: LibraryModel[]): number {
+function inputRateOf(entry: TenantModelEntry, libraryModels: LibraryModel[]): string | null {
   const rate = rowRateFor(entry) ?? libraryRateFor(libraryModels, entry.provider, entry.model_id);
-  return rate?.input_nanos_per_mtok ?? ABSENT_FIGURE;
+  return rate?.input_nanos_per_mtok ?? null;
 }
 
 /** The library row pricing (provider, model_id) — null when the library

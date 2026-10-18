@@ -23,9 +23,9 @@ describe("Models registry names and rates", () => {
         provider: "anthropic",
         model: "claude-sonnet-5", display_name: "Sonnet 5",
         context_cap_tokens: 200000,
-        input_nanos_per_mtok: 3_000_000_000,
-        cached_input_nanos_per_mtok: 300_000_000,
-        output_nanos_per_mtok: 15_000_000_000,
+        input_nanos_per_mtok: "3000000000",
+        cached_input_nanos_per_mtok: "300000000",
+        output_nanos_per_mtok: "15000000000",
       }),
     );
 
@@ -75,9 +75,9 @@ describe("Models registry names and rates", () => {
           model_id: "claude-sonnet-5",
           provider: "anthropic",
           context_cap_tokens: 200000,
-          input_nanos_per_mtok: 3_000_000_000,
-          cached_input_nanos_per_mtok: 300_000_000,
-          output_nanos_per_mtok: 15_000_000_000,
+          input_nanos_per_mtok: "3000000000",
+          cached_input_nanos_per_mtok: "300000000",
+          output_nanos_per_mtok: "15000000000",
         }),
       ]),
     );
@@ -143,9 +143,9 @@ describe("Models registry names and rates", () => {
     const priced = entry({
       provider: "openai",
       model_id: "own",
-      input_nanos_per_mtok: 5,
-      cached_input_nanos_per_mtok: 1,
-      output_nanos_per_mtok: 9,
+      input_nanos_per_mtok: "5",
+      cached_input_nanos_per_mtok: "1",
+      output_nanos_per_mtok: "9",
     });
     const library = entry({ provider: "openai", model_id: "listed" });
     const unpriced = entry({ provider: "openai", model_id: "unlisted" });
@@ -156,14 +156,15 @@ describe("Models registry names and rates", () => {
         advanced: false,
         provider: "openai",
         context_cap_tokens: 1,
-        input_nanos_per_mtok: 3,
-        cached_input_nanos_per_mtok: 1,
-        output_nanos_per_mtok: 4,
+        context_source_url: "https://example.com/evidence", context_verified_at: "2026-10-18T00:00:00Z", prices: [],
+        input_nanos_per_mtok: "3",
+        cached_input_nanos_per_mtok: "1",
+        output_nanos_per_mtok: "4",
       },
     ];
     expect(compareEntries(priced, library, "rates", models)).toBeGreaterThan(0);
     expect(compareEntries(unpriced, library, "rates", models)).toBeLessThan(0);
-    expect(compareEntries(library, unpriced, "rates")).toBe(0);
+    expect(compareEntries(library, unpriced, "rates", models)).toBeGreaterThan(0);
   });
 
   it("groups the context column in threes, as the model library prints it", async () => {

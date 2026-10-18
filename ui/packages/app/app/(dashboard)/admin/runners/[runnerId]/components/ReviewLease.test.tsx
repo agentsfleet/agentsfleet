@@ -46,7 +46,7 @@ it("ReviewLease > test_review_lease_renders_lease_facts", () => {
   expect(screen.getByRole("link", {name: /Open Fleet/}).getAttribute("href")).toBe(`/w/${BASE.workspace_id}/fleets/${BASE.fleet_id}`);
   expect(screen.getByText("1,884")).toBeTruthy();
   expect(screen.getByText("Azure OpenAI")).toBeTruthy();
-  expect(screen.getByText("GPT-4o Mini")).toBeTruthy();
+  expect(screen.getByText(BASE.model)).toBeTruthy();
   expect(screen.getByText("Metered")).toBeTruthy();
   expect(screen.getByText(/18,204 in/)).toBeTruthy();
   expect(screen.getByText(/4,096 cached/)).toBeTruthy();

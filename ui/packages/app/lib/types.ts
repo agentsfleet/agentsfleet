@@ -2,7 +2,8 @@
 
 // Type-only — erased at compile time, so this does not create a runtime
 // cycle with secrets.ts's own `import { SECRET_FIELD } from "@/lib/types"`.
-import type { SecretKind } from "./api/secrets-types";
+import type { z } from "zod";
+import type { tenantModelEntrySchema, tenantPlatformDefaultSchema } from "./api/tenant-model-schemas";
 import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
 
 export type CommandClass = "safe" | "sensitive" | "critical";
@@ -138,34 +139,8 @@ export type TenantProvider = {
 // shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.
-export type TenantModelEntry = {
-  id: string;
-  model_id: string;
-  display_name?: string;
-  secret_ref: string;
-  provider?: string;
-  kind: SecretKind;
-  base_url?: string;
-  has_key: boolean;
-  context_cap_tokens?: number;
-  input_nanos_per_mtok?: number;
-  cached_input_nanos_per_mtok?: number;
-  output_nanos_per_mtok?: number;
-  active: boolean;
-  created_at: string;
-};
-
-/** The active platform default's identity — rides the registry list so the
- * Models page renders the Default row without a second request. */
-export type TenantPlatformDefault = {
-  provider: string;
-  model: string;
-  display_name: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok?: number;
-  cached_input_nanos_per_mtok?: number;
-  output_nanos_per_mtok?: number;
-};
+export type TenantModelEntry = z.infer<typeof tenantModelEntrySchema>;
+export type TenantPlatformDefault = z.infer<typeof tenantPlatformDefaultSchema>;
 
 export type TenantModelEntryList = {
   models: TenantModelEntry[];

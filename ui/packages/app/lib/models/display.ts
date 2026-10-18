@@ -1,5 +1,6 @@
 // Shared catalogue labels, context windows and per-million prices.
 import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
+import type { CataloguePrice } from "@/lib/api/catalogue-types";
 import type { LibraryModel } from "@/lib/api/model-library-types";
 
 export type RateFields = Pick<
@@ -7,7 +8,7 @@ export type RateFields = Pick<
   "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok"
 >;
 
-type NamedModel = { model_id: string; display_name?: string };
+type NamedModel = { model_id: string; display_name?: string | null };
 
 export const EMPTY_VALUE = "—";
 export const PRICE_UNKNOWN = "Unknown";
@@ -16,16 +17,10 @@ export const RATES_HEADER = "Rates $/1M (in / cached / out)";
 
 const RATE_SEPARATOR = " / ";
 const RATE_MIN_DECIMALS = 2;
-const RATE_MAX_DECIMALS = 9;
-const RATE_FORMAT = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: RATE_MIN_DECIMALS,
-  maximumFractionDigits: RATE_MAX_DECIMALS,
-  useGrouping: false,
-});
 const MODEL_COLLATOR = new Intl.Collator("en-US", { numeric: true });
 
 /** Catalogue names are authoritative. A custom model keeps its exact identifier. */
-export function modelLabel(modelId: string, displayName?: string): string {
+export function modelLabel(modelId: string, displayName?: string | null): string {
   return displayName ?? modelId;
 }
 
@@ -46,7 +41,24 @@ export function formatContextTokens(tokens: number | undefined): string {
 
 /** Keep every stored fractional dollar digit visible, including sub-cent rates. */
 export function formatRatesPerMtok(rates: RateFields | null): string {
-  if (!rates) return EMPTY_VALUE;
+  if (!rates) return PRICE_UNKNOWN;
   return [rates.input_nanos_per_mtok, rates.cached_input_nanos_per_mtok, rates.output_nanos_per_mtok]
-    .map((nanos) => RATE_FORMAT.format(nanosToUsdPerMtok(nanos))).join(RATE_SEPARATOR);
+    .map(formatRatePerMtok).join(RATE_SEPARATOR);
+}
+
+export function formatRatePerMtok(nanos: string | null): string {
+  if (nanos === null) return PRICE_UNKNOWN;
+  const [whole = "", fraction = ""] = nanosToUsdPerMtok(nanos).split(".");
+  return `${whole}.${fraction.padEnd(RATE_MIN_DECIMALS, "0")}`;
+}
+
+export function compareNanos(a: string | null, b: string | null): number {
+  const left = a === null ? -1n : BigInt(a);
+  const right = b === null ? -1n : BigInt(b);
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function currentBasePrice(prices: CataloguePrice[], now = Date.now()): CataloguePrice | null {
+  return prices.find((price) => price.prompt_tokens_above === 0 && Date.parse(price.effective_from) <= now
+    && (price.effective_until === null || now < Date.parse(price.effective_until))) ?? null;
 }

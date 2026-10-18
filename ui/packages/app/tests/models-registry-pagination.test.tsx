@@ -18,7 +18,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/EditModelE
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog", () => ({default: () => null}));
 
 function entry(name: string, active = false): TenantModelEntry {
-  return {id: name, model_id: name, secret_ref: "key", provider: "anthropic", kind: "provider_key",
+  return {id: name, model_id: name, display_name: null, secret_ref: "key", provider: "anthropic", kind: "provider_key",
     has_key: true, active, created_at: "1970-01-01T00:00:00.001Z"};
 }
 function page(models: TenantModelEntry[], next_cursor: string | null) {

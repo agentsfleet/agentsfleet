@@ -4,48 +4,23 @@
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
-import type { INFERENCE_API } from "./admin-model-library-types";
+import type { z } from "zod";
 import { request } from "./client";
+import { adminModelSchema, adminModelListSchema, modelSettingsSchema, boundedText, CATALOGUE_LIMITS } from "./catalogue-types";
+import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
 
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
+const createModelSchema = modelSettingsSchema.extend({
+  provider: boundedText(CATALOGUE_LIMITS.provider).pipe(boundedText(CATALOGUE_LIMITS.provider).refine((value) => value.length > 0)),
+  model_id: boundedText(CATALOGUE_LIMITS.modelId).pipe(boundedText(CATALOGUE_LIMITS.modelId).refine((value) => value.length > 0)),
+});
 
-export interface ModelInference {
-  api: (typeof INFERENCE_API)[keyof typeof INFERENCE_API];
-  base_url: string;
-  dialect?: string;
-  max_output_tokens: number;
-}
-
-export interface AdminModel {
-  id: string;
-  provider: string;
-  model_id: string;
-  display_name: string;
-  advanced: boolean;
-  context_cap_tokens: number;
-  input_nanos_per_mtok: number;
-  cached_input_nanos_per_mtok: number;
-  output_nanos_per_mtok: number;
-  inference?: ModelInference;
-}
-
-export interface AdminModelList {
-  models: AdminModel[];
-}
-
-export interface LibraryModelInput {
-  provider: string;
-  model_id: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok: number;
-  cached_input_nanos_per_mtok: number;
-  output_nanos_per_mtok: number;
-  inference?: ModelInference;
-}
-
-/** Provider and model identity remain immutable when settings change. */
-export type ModelRatesInput = Omit<LibraryModelInput, "provider" | "model_id">;
+export type AdminModel = z.infer<typeof adminModelSchema>;
+export type AdminModelList = z.infer<typeof adminModelListSchema>;
+export type ModelRatesInput = z.infer<typeof modelSettingsSchema>;
+export type LibraryModelInput = z.infer<typeof createModelSchema>;
+export type { ModelInference } from "./catalogue-types";
 
 export interface PlatformDefaultInput {
   provider: string;
@@ -70,11 +45,12 @@ export interface PlatformKeyList {
 }
 
 export async function listAdminModels(token: string): Promise<AdminModelList> {
-  return request<AdminModelList>(ADMIN_MODELS_PATH, { method: "GET" }, token);
+  return adminModelListSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "GET" }, token, readCatalogueBody));
 }
 
 export async function createAdminModel(token: string, body: LibraryModelInput): Promise<AdminModel> {
-  return request<AdminModel>(ADMIN_MODELS_PATH, { method: "POST", body: JSON.stringify(body) }, token);
+  const parsed = createModelSchema.parse(body);
+  return adminModelSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "POST", body: stringifyCatalogueBody(parsed) }, token, readCatalogueBody));
 }
 
 export async function updateAdminModel(
@@ -82,7 +58,7 @@ export async function updateAdminModel(
   id: string,
   body: ModelRatesInput,
 ): Promise<{ id: string; updated: boolean }> {
-  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, token);
+  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "PATCH", body: stringifyCatalogueBody(modelSettingsSchema.parse(body)) }, token);
 }
 
 export async function deleteAdminModel(token: string, id: string): Promise<void> {

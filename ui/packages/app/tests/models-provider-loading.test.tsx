@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -26,7 +27,8 @@ const props = {
 const model: LibraryModel = {
   id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000,
   display_name: "Sonnet 5", advanced: false,
-  input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0,
+  input_nanos_per_mtok: "0", cached_input_nanos_per_mtok: "0", output_nanos_per_mtok: "0",
+  context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
 };
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });

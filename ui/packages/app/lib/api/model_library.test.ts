@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requestMock = vi.hoisted(() => vi.fn());
@@ -15,7 +16,7 @@ import { modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type
 // Mirrors the GET /v1/models wire shape from
 // rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs.
 const LIBRARY_OK: ModelLibrary = {
-  version: "2026-04-29",
+  version: "2026-04-29", total: null, next_cursor: null,
   models: [
     {
       id: "claude-sonnet-4-6",
@@ -23,9 +24,10 @@ const LIBRARY_OK: ModelLibrary = {
       display_name: "Sonnet 4.6",
       advanced: false,
       context_cap_tokens: 256000,
-      input_nanos_per_mtok: 3000000000,
-      cached_input_nanos_per_mtok: 300000000,
-      output_nanos_per_mtok: 15000000000,
+      input_nanos_per_mtok: "3000000000",
+      cached_input_nanos_per_mtok: "300000000",
+      output_nanos_per_mtok: "15000000000",
+      context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
     },
   ],
 };
@@ -35,7 +37,7 @@ describe("getModelLibrary", () => {
     requestMock.mockResolvedValue(LIBRARY_OK);
     await getModelLibrary("token_abc", true);
     // pin test: literal is the contract
-    expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true", { method: "GET" }, "token_abc");
+    expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true", { method: "GET" }, "token_abc", expect.any(Function));
   });
 
   it("GETs /v1/models through the authed request helper and returns the library", async () => {
@@ -68,9 +70,10 @@ const model = (id: string, provider: string) => ({
   display_name: id,
   advanced: false,
   context_cap_tokens: 1,
-  input_nanos_per_mtok: 1,
-  cached_input_nanos_per_mtok: 1,
-  output_nanos_per_mtok: 1,
+  input_nanos_per_mtok: "1",
+  cached_input_nanos_per_mtok: "1",
+  output_nanos_per_mtok: "1",
+  context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
 });
 
 describe("uniqueModelIds", () => {
@@ -143,4 +146,14 @@ describe("providerLabel", () => {
     expect(providerLabel("some_vendor")).toBe("Some Vendor");
     expect(providerLabel("")).toBe("");
   });
+});
+
+it("forwards opaque pagination cursors with the advanced filter unchanged", async () => {
+  requestMock.mockResolvedValue(LIBRARY_OK);
+  await getModelLibrary("token", true, "cursor+/=");
+  expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true&starting_after=cursor%2B%2F%3D", { method: "GET" }, "token", expect.any(Function));
+});
+it("rejects incomplete catalogue pages at the API boundary", async () => {
+  requestMock.mockResolvedValue({ models: [{ id: "malformed" }] });
+  await expect(getModelLibrary("token")).rejects.toThrow();
 });

@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -93,6 +94,7 @@ export function registry(
 }
 
 export const LIBRARY: ModelLibrary = {
+  total: null, next_cursor: null,
   version: "test",
   models: [
     {
@@ -101,9 +103,9 @@ export const LIBRARY: ModelLibrary = {
       advanced: false,
       provider: "anthropic",
       context_cap_tokens: 200000,
-      input_nanos_per_mtok: 3_000_000_000,
-      cached_input_nanos_per_mtok: 300_000_000,
-      output_nanos_per_mtok: 15_000_000_000,
+      input_nanos_per_mtok: "3000000000",
+      cached_input_nanos_per_mtok: "300000000",
+      output_nanos_per_mtok: "15000000000", context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
     },
   ],
 };
