@@ -7,7 +7,7 @@
 use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, cursor};
 use jiff::Timestamp;
 
-use crate::lane::{Lane, Stage};
+use crate::lane::{Lane, Line};
 
 /// Three charge instants a minute apart, oldest first.
 const FIRST: Timestamp = Timestamp::constant(1_784_000_000, 0);
@@ -17,19 +17,14 @@ const THIRD: Timestamp = Timestamp::constant(1_784_000_120, 0);
 /// Each row drains a different amount, so the order is visible in the sums.
 const NANOS: [i64; 3] = [1, 2, 3];
 
-/// The charge type the rows carry; the walk does not filter on it.
-const STAGE: &str = "stage";
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_walk_charges_newest_first_and_resume_strictly_after_the_cursor() {
     let lane = Lane::create().await;
     for (at, nanos) in [FIRST, SECOND, THIRD].into_iter().zip(NANOS) {
-        lane.charge(Stage {
-            charge_type: STAGE,
+        lane.line(Line {
             nanos,
             created_at: at,
-            updated_at: at,
         })
         .await;
     }
@@ -45,6 +40,7 @@ async fn should_walk_charges_newest_first_and_resume_strictly_after_the_cursor()
     assert_eq!(newest.created_at, THIRD);
     assert_eq!(newest.workspace_id, lane.workspace.as_str());
     assert_eq!(newest.fleet_id.as_deref(), Some(lane.fleet.as_str()));
+    assert_eq!(newest.charge_type, afd_billing::sql::charge::STAGE);
 
     let token = cursor::render(last.created_at, &last.id);
     let boundary = cursor::parse(&token).expect("a token this daemon issued");

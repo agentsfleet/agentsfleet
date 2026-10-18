@@ -202,7 +202,8 @@ fn lease_plane(
         // same table: a delivery that finds no grant asks through the crate
         // that owns the row rather than writing one.
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
-        accounts: Accounts::new(database.clone(), Entropy::new()),
+        accounts: Accounts::new(database.clone()),
+        biller: crate::billing::biller(database.clone()),
         memories: Memories::new(database.clone(), Entropy::new()),
         providers,
         // The thread a chat lease reads its earlier turns from: the rows the

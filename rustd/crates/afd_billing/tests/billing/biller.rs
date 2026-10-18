@@ -227,3 +227,60 @@ async fn a_settlement_past_the_balance_takes_it_all_and_marks_it_exhausted() {
         "a spent balance records when it ran out"
     );
 }
+
+/// Raises the lane's wallet by `nanos`, as a credit grant would.
+async fn top_up(lane: &Lane, nanos: i64) {
+    sqlx::query(
+        "UPDATE billing.wallets SET balance_nanos = balance_nanos + $2 WHERE tenant_id = $1::uuid",
+    )
+    .bind(lane.tenant.as_str())
+    .bind(nanos)
+    .execute(&mut *lane.pool.acquire().await.expect("the lane answers"))
+    .await
+    .expect("topping up the wallet");
+}
+
+/// `exhausted_at` follows the balance through drain, top-up and drain again.
+///
+/// The debit is the one writer of the flag on the money path: it sets it when
+/// a settlement empties the balance and clears it when one leaves the balance
+/// positive, so a tenant topped up after running dry reads as exhausted only
+/// until its next charge lands with credit to spare.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn exhaustion_follows_the_balance_through_a_top_up() {
+    let lane = Lane::create().await;
+    lane.wallet(LINE.as_i64(), None, Timestamp::now()).await;
+    let payer = Account {
+        tenant: lane.tenant.clone(),
+        workspace: lane.workspace.clone(),
+    };
+    let biller = ledger(&lane);
+    let work = WorkKey::FleetLease(mint_uuid7());
+    let exhausted = |balance: afd_billing::biller::Balance| balance.exhausted_at.is_some();
+
+    biller
+        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
+        .await
+        .expect("the first line drains the balance");
+    assert!(exhausted(biller.balance(&payer).await.expect("answers")));
+
+    top_up(&lane, LINE.as_i64() * 2).await;
+    biller
+        .settle(&settlement(&lane, &payer, &work, vec![rated(1)]))
+        .await
+        .expect("a line after the top-up settles");
+    assert!(
+        !exhausted(biller.balance(&payer).await.expect("answers")),
+        "a charge that leaves credit clears the flag"
+    );
+
+    biller
+        .settle(&settlement(&lane, &payer, &work, vec![rated(2), rated(3)]))
+        .await
+        .expect("draining again settles");
+    assert!(
+        exhausted(biller.balance(&payer).await.expect("answers")),
+        "running dry again sets it again"
+    );
+}

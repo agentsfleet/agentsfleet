@@ -1,4 +1,4 @@
-//! The lease gate's reads and the receive debit, against the rebuilt schema.
+//! The lease gate's reads, against the rebuilt schema.
 //!
 //! Each statement is graded on both halves its absence can mean: a workspace
 //! with no tenant, a tenant with no wallet, a model the catalogue does not
@@ -9,24 +9,19 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_billing::charge::Charged;
 use afd_billing::rates::Estimate;
-use afd_billing::tenant::CHARGES_LIMIT_DEFAULT;
-use afd_billing::{
-    Cumulative, ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Posture, RECEIVE_NANOS,
-    RUN_NANOS_PER_SEC, SliceRates, slice_charge,
-};
+use afd_billing::{ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, Posture};
 use jiff::Timestamp;
 
 use afd_db::test_util::mint_uuid7;
 
-use crate::lane::{FLEET_NAME, Lane, PROVIDER};
+use crate::lane::{Lane, PROVIDER};
 
-/// The instant the receive debits below mint their rows at.
+/// The instant the estimates below are priced at and the wallets stamped with.
 const NOW: Timestamp = Timestamp::constant(1_783_699_440, 0);
 
-/// The event a receive debit charges for was created a minute earlier.
-const EVENT_CREATED_AT: Timestamp = Timestamp::constant(1_783_699_380, 0);
+/// Tokens in the unit a catalogue rate is quoted per.
+const PER_MTOK: i64 = 1_000_000;
 
 /// Three distinct prices, so a column read into the wrong field shows.
 const INPUT_PRICE: i64 = 3_000_000_000;
@@ -78,116 +73,37 @@ async fn should_price_a_catalogued_model_and_refuse_to_price_an_unknown_one() {
     let model = lane
         .priced_model(INPUT_PRICE, CACHED_PRICE, OUTPUT_PRICE)
         .await;
-    let rates = SliceRates {
-        run_nanos_per_sec: RUN_NANOS_PER_SEC,
-        input_nanos_per_mtok: INPUT_PRICE,
-        cached_input_nanos_per_mtok: CACHED_PRICE,
-        output_nanos_per_mtok: OUTPUT_PRICE,
-    };
 
     let priced = lane
         .accounts
-        .estimate(Posture::Platform, PROVIDER, &model)
+        .estimate(Posture::Platform, PROVIDER, &model, NOW)
         .await
         .expect("answers");
-    let floor = slice_charge(
-        rates,
-        0,
-        ESTIMATE_FLOOR_INPUT_TOKENS,
-        0,
-        ESTIMATE_FLOOR_OUTPUT_TOKENS,
-    );
-    assert_eq!(priced, Estimate::Priced(floor));
+    // The floor's input and output at their own rates, each rounded up on its
+    // own, and no cached input and no runtime at issue.
+    let up = |tokens: u32, rate: i64| (i64::from(tokens) * rate + PER_MTOK - 1) / PER_MTOK;
+    let floor = up(ESTIMATE_FLOOR_INPUT_TOKENS, INPUT_PRICE)
+        + up(ESTIMATE_FLOOR_OUTPUT_TOKENS, OUTPUT_PRICE);
+    assert_eq!(priced, Estimate::Priced(Nanos::from_i64(floor)));
 
     let unknown = lane
         .accounts
-        .estimate(Posture::Platform, PROVIDER, "not-in-the-catalogue")
+        .estimate(Posture::Platform, PROVIDER, "not-in-the-catalogue", NOW)
         .await
         .expect("a miss is a value, not an error");
     assert_eq!(unknown, Estimate::Unpriceable);
-
-    let metered = lane
-        .accounts
-        .meter(Posture::Platform, PROVIDER, &model, Cumulative::default())
-        .await
-        .expect("answers");
-    assert_eq!(metered.rates, rates, "each price lands in its own field");
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_record_one_receive_row_per_event_with_the_fleet_name() {
+async fn should_estimate_a_self_managed_run_at_nothing_without_the_catalogue() {
     let lane = Lane::create().await;
-    let event = mint_uuid7();
-    let charged = Charged {
-        tenant_id: &lane.tenant,
-        workspace_id: &lane.workspace,
-        fleet_id: &lane.fleet,
-        event_id: event.as_str(),
-        posture: Posture::Platform,
-        model: PROVIDER,
-        event_created_at: EVENT_CREATED_AT,
-    };
-
-    let drained = lane
+    let estimate = lane
         .accounts
-        .debit_receive(charged, NOW)
+        .estimate(Posture::SelfManaged, PROVIDER, "any-model", NOW)
         .await
-        .expect("the receive charge records");
-    assert_eq!(drained, RECEIVE_NANOS);
-    // A redelivery reaching the statement again writes nothing new.
-    lane.accounts
-        .debit_receive(charged, NOW)
-        .await
-        .expect("the replay is a no-op, not a failure");
-
-    let rows = lane
-        .billing
-        .charges(&lane.tenant, CHARGES_LIMIT_DEFAULT, None)
-        .await
-        .expect("answers");
-    let [row] =
-        <&[_; 1]>::try_from(rows.as_slice()).expect("the replay guard keeps one row per event");
-    assert_eq!(row.event_id.as_deref(), Some(event.as_str()));
-    assert_eq!(row.fleet_name.as_deref(), Some(FLEET_NAME));
-    assert_eq!(row.charged_nanos, RECEIVE_NANOS.as_i64());
-    assert_eq!(row.input_token_count, None);
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_charge_a_fleet_that_has_no_row_under_its_identifier() {
-    let lane = Lane::create().await;
-    let missing = mint_uuid7();
-    let event = mint_uuid7();
-    let charged = Charged {
-        tenant_id: &lane.tenant,
-        workspace_id: &lane.workspace,
-        fleet_id: &missing,
-        event_id: event.as_str(),
-        posture: Posture::Platform,
-        model: PROVIDER,
-        event_created_at: EVENT_CREATED_AT,
-    };
-
-    lane.accounts
-        .debit_receive(charged, NOW)
-        .await
-        .expect("a purged fleet never costs the charge");
-
-    let rows = lane
-        .billing
-        .charges(&lane.tenant, CHARGES_LIMIT_DEFAULT, None)
-        .await
-        .expect("answers");
-    let [row] = <&[_; 1]>::try_from(rows.as_slice()).expect("one charge row");
-    assert_eq!(row.fleet_id.as_deref(), Some(missing.as_str()));
-    assert_eq!(
-        row.fleet_name.as_deref(),
-        Some(missing.as_str()),
-        "the name falls back to the fleet's identifier, which a reader tells \
-         from a captured name because it equals fleet_id"
-    );
+        .expect("a self-managed estimate needs no catalogue");
+    assert_eq!(estimate, Estimate::Priced(Nanos::ZERO));
 }
 
 #[tokio::test]
@@ -205,47 +121,4 @@ async fn should_snapshot_the_wallet_and_refuse_a_tenant_without_one() {
     assert_eq!(wallet.balance.as_i64(), BALANCE);
     assert_eq!(wallet.exhausted_at, None);
     assert_eq!(wallet.updated_at, NOW);
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_meter_at_the_run_fee_alone_when_tokens_are_not_ours_to_price() {
-    let lane = Lane::create().await;
-    let run_fee_only = SliceRates {
-        run_nanos_per_sec: RUN_NANOS_PER_SEC,
-        input_nanos_per_mtok: 0,
-        cached_input_nanos_per_mtok: 0,
-        output_nanos_per_mtok: 0,
-    };
-    let counted = Cumulative::reported(1, 2, 3);
-
-    // The tenant's own key: tokens land on their provider bill.
-    let own_key = lane
-        .accounts
-        .meter(Posture::SelfManaged, PROVIDER, "any-model", counted)
-        .await
-        .expect("a self-managed meter needs no catalogue");
-    assert_eq!(own_key.rates, run_fee_only);
-    assert_eq!(own_key.cumulative, counted);
-
-    // A platform model the catalogue does not carry.
-    let uncatalogued = lane
-        .accounts
-        .meter(Posture::Platform, PROVIDER, "not-in-the-catalogue", counted)
-        .await
-        .expect("a miss is a value, not an error");
-    assert_eq!(uncatalogued.rates, run_fee_only);
-
-    // The fallback a caller takes when the catalogue could not be read.
-    assert_eq!(lane.accounts.run_fee_meter(counted).rates, run_fee_only);
-
-    let estimate = lane
-        .accounts
-        .estimate(Posture::SelfManaged, PROVIDER, "any-model")
-        .await
-        .expect("a self-managed estimate needs no catalogue");
-    assert_eq!(
-        estimate,
-        Estimate::Priced(slice_charge(run_fee_only, 0, 0, 0, 0))
-    );
 }

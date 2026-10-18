@@ -6,10 +6,9 @@
 //! statement this suite exercises carries the tenant, the workspace or the
 //! fleet in its predicate, and no other test can name them.
 //!
-//! The wallet and the stage charge rows are written here directly, because
-//! their production writers live in `afd_tenant` (signup) and `afd_fleet` (the
-//! renewal statement), which depend on this crate rather than the other way
-//! round.
+//! The wallet and the usage lines are written here directly, because their
+//! production writers live in `afd_tenant` (signup) and the lease and setup
+//! chat paths, which depend on this crate rather than the other way round.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -18,7 +17,6 @@
 use afd_billing::tenant::Billing;
 use afd_billing::{Accounts, Posture};
 use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
@@ -43,29 +41,26 @@ VALUES ($1::uuid, $2, $3, now(), $4)";
 
 /// Writes one charge row with chosen stamps, as the renewal statement would
 /// have accumulated it.
-const INSERT_CHARGE: &str = "\
-INSERT INTO billing.fleet_charges
-  (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, model,
-   charged_nanos, event_created_at, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $11, $12)";
+const INSERT_LINE: &str = "\
+INSERT INTO billing.usage_lines
+  (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+   provider, model, posture, requested_at, input_token_count, cached_input_token_count,
+   cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
+   output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at)
+VALUES ($1::uuid, $2, $3::uuid, 0, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $9, $10, $11,
+        0, 0, 0, 0, 0, 0, 0, 0, $12, $11, $11)";
 
 /// The context window a seeded catalogue row declares; nothing here reads it.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
 
 /// A charge row's shape, for [`Lane::charge`].
+/// One fleet usage line, by what it cost and when it was written.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Stage<'a> {
-    /// `receive` or `stage`, or a type the drain must ignore.
-    pub(crate) charge_type: &'a str,
-    /// What the row drained.
+pub(crate) struct Line {
     pub(crate) nanos: i64,
-    /// When the run started charging.
     pub(crate) created_at: Timestamp,
-    /// When it last charged.
-    pub(crate) updated_at: Timestamp,
 }
 
-/// A migrated database, the stores over it, and the seeded owners.
 pub(crate) struct Lane {
     pub(crate) pool: Db,
     pub(crate) accounts: Accounts,
@@ -82,7 +77,7 @@ impl Lane {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
         let lane = Self {
-            accounts: Accounts::new(pool.clone(), Entropy::new()),
+            accounts: Accounts::new(pool.clone()),
             billing: Billing::new(pool.clone()),
             tenant: mint_uuid7(),
             workspace: mint_uuid7(),
@@ -128,36 +123,36 @@ impl Lane {
             .expect("opening the wallet");
     }
 
-    /// Writes one charge row against the seeded fleet, answering its id.
-    pub(crate) async fn charge(&self, stage: Stage<'_>) -> Uuid7 {
+    /// Writes one usage line against the seeded fleet, answering its id.
+    pub(crate) async fn line(&self, line: Line) -> Uuid7 {
         let mut connection = self.pool.acquire().await.expect("the lane answers");
-        self.charge_on(&mut *connection, stage).await
+        self.line_on(&mut *connection, line).await
     }
 
-    /// [`Self::charge`], written on `executor` — inside a caller's
-    /// transaction, so a later read in it sees the row.
-    pub(crate) async fn charge_on<'e>(
+    /// [`Self::line`], written on `executor` — inside a caller's transaction,
+    /// so a later read in it sees the row.
+    pub(crate) async fn line_on<'e>(
         &self,
         executor: impl sqlx::PgExecutor<'e>,
-        stage: Stage<'_>,
+        line: Line,
     ) -> Uuid7 {
         let id = mint_uuid7();
-        sqlx::query(INSERT_CHARGE)
+        sqlx::query(INSERT_LINE)
             .bind(id.as_str())
+            .bind(afd_billing::sql::work::FLEET_LEASE)
+            .bind(mint_uuid7().as_str())
             .bind(self.tenant.as_str())
             .bind(self.workspace.as_str())
             .bind(self.fleet.as_str())
             .bind(FLEET_NAME)
             .bind(mint_id())
-            .bind(stage.charge_type)
-            .bind(Posture::Platform.as_str())
             .bind(PROVIDER)
-            .bind(stage.nanos)
-            .bind(stage.created_at.to_sqlx())
-            .bind(stage.updated_at.to_sqlx())
+            .bind(Posture::Platform.as_str())
+            .bind(line.created_at.to_sqlx())
+            .bind(line.nanos)
             .execute(executor)
             .await
-            .expect("writing a charge row");
+            .expect("writing a usage line");
         id
     }
 

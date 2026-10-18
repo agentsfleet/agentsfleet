@@ -54,7 +54,7 @@ use tokio::sync::Mutex;
 
 use crate::lease_reads::COLUMN_LAST_METERED;
 use crate::queue;
-use crate::report_seed::{DEEP_POOL, SLICE, SLICE_NANOS, run_fee, run_fee_meter};
+use crate::report_seed::{DEEP_POOL, SLICE, SLICE_NANOS, run_fee};
 use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;

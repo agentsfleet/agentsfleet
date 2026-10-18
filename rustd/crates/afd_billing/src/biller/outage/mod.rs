@@ -35,7 +35,7 @@ impl<B> WithOutagePolicy<B> {
 impl<B: Biller> Biller for WithOutagePolicy<B> {
     async fn reserve(&self, ask: &Reservation) -> Result<Hold> {
         match (self.inner.reserve(ask).await, self.policy) {
-            (Err(fault), OutagePolicy::Open) if fault.is_datastore_unavailable() => {
+            (Err(fault), OutagePolicy::Open) if fault.is_unanswered() => {
                 tracing::warn!(
                     error = %fault,
                     error_code = fault.code().as_str(),

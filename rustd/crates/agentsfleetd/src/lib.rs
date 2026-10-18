@@ -25,6 +25,7 @@ use {
 };
 
 pub mod banner;
+pub mod billing;
 pub mod cli;
 pub mod credentials;
 pub mod daemon;

@@ -10,11 +10,13 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use afd_billing::Cumulative;
 use afd_core::id::Uuid7;
+use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Reported, Terminal, TerminalReport, Verdict};
 use jiff::Timestamp;
 
-use crate::report_seed::{DEEP_POOL, Held, SLICE_MS, run_fee_meter};
+use crate::report_seed::{DEEP_POOL, Held, SLICE_MS};
 use crate::rows::Row;
 
 /// A response Postgres refuses, after the settle has already written.
@@ -37,11 +39,11 @@ pub(crate) const RESUME_EVENT_ID: &str = "1788550034853-0";
 /// The answer that next run resumes from.
 pub(crate) const RESUME_RESPONSE: &str = "resume from here";
 
-/// One ledger row — the receive charge §2 wrote, and no settle beside it.
-pub(crate) const LEDGER_ROWS_BEFORE_SETTLE: i64 = 1;
+/// No usage line: admission charges nothing, and no report has committed.
+pub(crate) const LEDGER_ROWS_BEFORE_SETTLE: i64 = 0;
 
-/// Two ledger rows: one receive, one stage. The invariant §3 pins.
-pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 2;
+/// One usage line: the report's final slice, however often it is re-sent.
+pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 1;
 
 /// One terminal report over the seeded lease, carrying `response_text`.
 ///
@@ -53,14 +55,18 @@ pub(crate) fn report<'a>(
     lease_id: &'a str,
     runner_id: &'a Uuid7,
     lease: &'a Reported,
+    priced: (&'a Uuid7, &'a Pricing),
     response_text: &'a str,
     now: Timestamp,
 ) -> TerminalReport<'a> {
+    let (lease_key, pricing) = priced;
     TerminalReport {
         lease_id,
         runner_id,
         lease,
-        meter: run_fee_meter(),
+        lease_key,
+        cumulative: Cumulative::default(),
+        pricing,
         outcome: Terminal {
             verdict: Verdict::Succeeded,
             response_text,
@@ -104,7 +110,6 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
         LEDGER_ROWS_BEFORE_SETTLE,
-        "{why}: the receive row stands alone; the stage row belongs to a settle that \
-         did not commit"
+        "{why}: no usage line was logged; it belongs to a report that did not commit"
     );
 }

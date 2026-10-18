@@ -101,13 +101,13 @@ impl Fixtures {
             .expect("the balance read must run")
     }
 
-    /// How many charge rows one event has, across every charge type.
+    /// How many usage lines one event's runs have logged.
     ///
-    /// The number Dimension 3.3 pins: two, and two however many times the
-    /// report is re-sent.
+    /// One per slice that measured something, and the same count however many
+    /// times a report is re-sent: a line is stored once per `(work, seq)`.
     pub(crate) async fn ledger_rows(&self, event: &str) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM billing.fleet_charges WHERE event_id = $1")
+        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE event_id = $1")
             .bind(event)
             .fetch_one(&mut *connection)
             .await

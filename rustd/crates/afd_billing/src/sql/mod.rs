@@ -40,87 +40,6 @@ pub const SELECT_TENANT_FOR_WORKSPACE: &str = include_str!("select_tenant_for_wo
 /// `$1` tenant.
 pub const SELECT_WALLET: &str = include_str!("select_wallet.sql");
 
-/// Credit drained by one fleet inside two windows, apportioned by run span.
-///
-/// The subtlest statement in the money path. The problem it solves: ONE
-/// ledger row holds a whole run's accumulated spend, a run may last twelve
-/// hours, and the daily window is a rolling twenty-four — so "which window does
-/// this spend fall in" is not a question one timestamp can answer.
-///
-/// Each `CASE` is one row's share of the window opening at that floor: none if
-/// the run stopped charging before it, all of it if the run began after it,
-/// else the covered fraction of `[created_at, updated_at]`. A stage row's
-/// `updated_at` is its last charge, since nothing but a charge updates the row.
-/// The fraction is a ratio of `EXTRACT(EPOCH …)` spans, which Postgres answers
-/// as `numeric`, so nanos times a span cannot overflow `BIGINT`.
-///
-/// The floor test is `< floor` and not `<= floor`, matching the row filter's
-/// `>=`, so a one-shot charge stamped exactly at a month start is counted
-/// rather than dropped. `NULLIF` guards a future arm reordering rather than a
-/// reachable divide: reaching the fraction arm implies `created_at < floor <=
-/// updated_at`, which makes the divisor strictly positive.
-///
-/// Both floors open from `now()`, the transaction's timestamp: the rolling
-/// day is `now() - $3` with `$3` a whole day as a microsecond interval (so a
-/// daylight-saving change in the session's zone cannot stretch it), cut to the
-/// millisecond the `TIMESTAMPTZ(3)` charge columns hold — `now()` carries
-/// microseconds, and an uncut floor would drop a charge stamped at it — and the
-/// month is `date_trunc('month', now(), 'UTC')`. One instant feeds both, so the
-/// day window can never open after the month window it is nested in, and a
-/// caller holding a transaction measures against the same instant its other
-/// statements see.
-///
-/// The two arms are spelled out rather than factored into a helper. This is a
-/// money path, and the SQL a reader sees here is the SQL that runs.
-///
-/// `$1` workspace, `$2` fleet, `$3` the rolling day's span, `$4` and `$5` the
-/// two charge types counted.
-pub const SELECT_BUDGET_DRAIN: &str = include_str!("select_budget_drain.sql");
-
-/// Record one charge.
-///
-/// `ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING` is the replay guard, and it
-/// guards THIS ROW ONLY. The balance drain itself is not replay-guarded, which
-/// is the entire reason the receive debit is gated on a first delivery — a
-/// re-delivered event that reached this statement twice would write one row and
-/// charge one balance, but a caller that skipped the delivery check would
-/// charge the balance on every poll and leave one row to show for it.
-///
-/// `event_created_at` is the EVENT's instant, not this row's: every ledger row
-/// for one event must carry the same value, and the receive row is written on a
-/// different path at a different moment from the stage row a renewal
-/// accumulates. A clock read here would disagree with the lease's copy whenever
-/// the two straddle a millisecond.
-///
-/// `updated_at` equals `created_at` for a receive fee: both are the statement's
-/// `now()`, it is charged once, so its span is a point and the drain's
-/// apportioning degenerates to all-or-nothing, which is what it has always been
-/// for this row.
-///
-/// `$1` row id, `$2` tenant, `$3` workspace, `$4` fleet, `$5` event, `$6` charge
-/// type, `$7` posture, `$8` model, `$9` nanos, `$10`–`$13` token counts and wall
-/// time, `$14` event instant.
-///
-/// # `fleet_name` is read, never bound
-///
-/// It takes no parameter of its own — the subselect reads it from the fleet
-/// `$4` already names. That is the difference between a snapshot and a claim: a
-/// caller cannot pass a name that disagrees with the identifier beside it, and
-/// no request field reaches this column. A fleet row purged before the charge
-/// lands leaves the fleet's own identifier as the name, so the money still
-/// lands and a reader tells it from a captured name by comparing it with
-/// `fleet_id` on the same row.
-pub const INSERT_FLEET_CHARGE: &str = include_str!("insert_fleet_charge.sql");
-
-/// A platform model's three per-token prices.
-///
-/// No row is an authoritative miss: the catalogue does not carry the model,
-/// which [`crate::Accounts::meter`] prices at the run fee alone. A datastore that
-/// would not answer is an `Err`, so the two never collapse.
-///
-/// `$1` provider, `$2` model name.
-pub const SELECT_PLATFORM_MODEL_PRICES: &str = include_str!("select_platform_model_prices.sql");
-
 /// Every tier one model is published at, across all its dates, oldest first.
 ///
 /// `$1` provider · `$2` model name. The rater, not this statement, picks the
@@ -136,18 +55,10 @@ pub mod work {
     pub const AUTHORING_ATTEMPT: &str = "authoring_attempt";
 }
 
-/// The `billing.fleet_charges.charge_type` values this crate writes and counts.
-///
-/// Two spellings, declared once (RULE UFS): the budget drain counts BOTH, so a charge type spelled
-/// differently at the insert than at the drain is spend that never reaches a
-/// ceiling.
+/// The charges page's spellings for a fleet run's usage. Never stored: a
+/// usage line names its work, and the page names the charge it reads as.
 pub mod charge {
-    /// Charged when an event is admitted. Zero nanos today; the row is what
-    /// the drain and the charges endpoint read.
-    pub const RECEIVE: &str = "receive";
-
-    /// Charged as a run proceeds — accumulated per renewal slice and settled at
-    /// report. Written by §3, counted here.
+    /// A fleet run's usage, one row per usage line.
     pub const STAGE: &str = "stage";
 }
 
@@ -173,7 +84,8 @@ pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
 /// The tenant's first charges page: newest first, no boundary.
 ///
 /// Two sources debit the one wallet, so the page reads both: a fleet run's
-/// `billing.fleet_charges` and a setup chat's `billing.authoring_settlements`.
+/// usage lines in `billing.usage_lines`, one row per line, and a setup chat's
+/// `billing.authoring_settlements` until setup chat logs usage lines too.
 /// Each is cut to the page size by its own `(tenant_id, created_at, id)` index
 /// in a `MATERIALIZED` CTE BEFORE any join, so the draft and fleet detail joins
 /// touch at most one page per source however long the history is. A setup row
@@ -182,14 +94,15 @@ pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
 /// carry it.
 ///
 /// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_AUTHORING`] · `$4`
-/// [`posture::PLATFORM`] · `$5` [`posture::SELF_MANAGED`].
+/// [`posture::PLATFORM`] · `$5` [`posture::SELF_MANAGED`] · `$6`
+/// [`work::FLEET_LEASE`] · `$7` [`charge::STAGE`].
 pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
     include_str!("select_tenant_charges_first.sql");
 
 /// A later charges page: strictly older than the cursor's boundary, the same
 /// two sources cut the same way.
 ///
-/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$7`
-/// as `$3`–`$5` above.
+/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$9`
+/// as `$3`–`$7` above.
 pub(crate) const SELECT_TENANT_CHARGES_AFTER: &str =
     include_str!("select_tenant_charges_after.sql");

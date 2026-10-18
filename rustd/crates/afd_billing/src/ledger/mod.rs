@@ -21,8 +21,10 @@ use crate::{Nanos, Result};
 mod lines;
 mod reserve;
 mod settle;
+mod sweep;
 
 pub use self::lines::log_lines;
+pub use self::sweep::{GRACE, Resettled, charged_so_far, resettle, unsettled};
 
 const LOCK_WALLET: &str = include_str!("sql/lock_wallet.sql");
 const SELECT_HOLD: &str = include_str!("sql/select_hold.sql");
@@ -35,6 +37,18 @@ const DEBIT_WALLET: &str = include_str!("sql/debit_wallet.sql");
 const CAPTURE_HOLD: &str = include_str!("sql/capture_hold.sql");
 const RELEASE_HOLD: &str = include_str!("sql/release_hold.sql");
 const SELECT_BALANCE: &str = include_str!("sql/select_balance.sql");
+const BOUND_TRANSACTION: &str = include_str!("sql/bound_transaction.sql");
+
+/// How long a billing statement waits for the wallet row lock.
+///
+/// Every operation for one tenant serializes on that lock, so a holder that
+/// stalls would stall the tenant's whole fleet. Past this the statement gives
+/// up with SQLSTATE `55P03`, which [`crate::Error::is_contended`] names and the
+/// outage policy treats as a biller that could not answer.
+const LOCK_TIMEOUT: &str = "2000ms";
+
+/// How long any one billing statement may run.
+const STATEMENT_TIMEOUT: &str = "5000ms";
 
 /// What each statement here was doing, for [`query`].
 const CONTEXT_RESERVE: &str = "hold a reservation";
@@ -69,6 +83,21 @@ impl LedgerBiller {
     }
 }
 
+/// Bounds the lock wait and statement time for the rest of the transaction.
+///
+/// Set per transaction with `set_config(.., true)` rather than as connection
+/// startup options: a transaction-pooling bouncer refuses those, and a local
+/// setting ends with the transaction it bounds.
+async fn bound(connection: &mut sqlx::PgConnection, context: &'static str) -> Result<()> {
+    sqlx::query(BOUND_TRANSACTION)
+        .bind(LOCK_TIMEOUT)
+        .bind(STATEMENT_TIMEOUT)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(context))?;
+    Ok(())
+}
+
 /// `tenant`'s wallet balance, locked for the rest of the transaction.
 ///
 /// # Errors
@@ -101,6 +130,7 @@ impl Biller for LedgerBiller {
     async fn reserve(&self, ask: &Reservation) -> Result<Hold> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_RESERVE))?;
+        bound(&mut transaction, CONTEXT_RESERVE).await?;
         let hold = reserve::reserve(self, &mut transaction, ask).await?;
         transaction.commit().await.map_err(query(CONTEXT_RESERVE))?;
         Ok(hold)
@@ -109,6 +139,7 @@ impl Biller for LedgerBiller {
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SETTLE))?;
+        bound(&mut transaction, CONTEXT_SETTLE).await?;
         lock_wallet(&mut transaction, &settlement.payer.tenant, CONTEXT_SETTLE).await?;
         log_lines(
             &mut *transaction,
@@ -125,6 +156,7 @@ impl Biller for LedgerBiller {
     async fn release(&self, work: &WorkKey, _why: Release) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_RELEASE))?;
+        bound(&mut transaction, CONTEXT_RELEASE).await?;
         settle::release(&mut transaction, work).await?;
         transaction.commit().await.map_err(query(CONTEXT_RELEASE))?;
         Ok(())

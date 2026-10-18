@@ -1,9 +1,9 @@
 WITH runtime_page AS MATERIALIZED (
-    SELECT id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type,
+    SELECT id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, $9::text AS charge_type,
            posture, model, charged_nanos, input_token_count, output_token_count,
-           wall_ms, created_at
-      FROM billing.fleet_charges
-     WHERE tenant_id = $1::uuid
+           runtime_ms AS wall_ms, created_at
+      FROM billing.usage_lines
+     WHERE tenant_id = $1::uuid AND work_type = $8
        AND (created_at, id) < ($2::timestamptz, $3::uuid)
      ORDER BY created_at DESC, id DESC
      LIMIT $4

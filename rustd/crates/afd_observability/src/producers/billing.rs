@@ -51,7 +51,11 @@ impl Handles {
                 .collect()
         })?;
         instruments.gauge_u64(&declared::BILLING_UNSETTLED_OLDEST_SECONDS, || {
-            UNSETTLED_OLDEST.load().map(Reading::unlabelled).into_iter().collect()
+            UNSETTLED_OLDEST
+                .load()
+                .map(Reading::unlabelled)
+                .into_iter()
+                .collect()
         })?;
         instruments.gauge_u64(&declared::BILLING_HELD_NANOS, || {
             HELD.load().map(Reading::unlabelled).into_iter().collect()

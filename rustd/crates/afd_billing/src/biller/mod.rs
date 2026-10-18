@@ -19,8 +19,10 @@ use jiff::Timestamp;
 use crate::price::RatedLine;
 use crate::{Nanos, Posture, Result, sql};
 
+pub(crate) mod observed;
 mod outage;
 
+pub use self::observed::Observed;
 pub use self::outage::{OutagePolicy, WithOutagePolicy};
 
 #[cfg(feature = "test-util")]

@@ -23,9 +23,12 @@
 //! [`crate::Error::is_config_permanent`] is what separates the two, so the
 //! distinction is the error's own rather than a `match` re-derived here.
 
+use afd_billing::biller::{Account, Hold, Reservation, WorkKey};
 use afd_core::error_code::{Coded as _, Logged};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
-use crate::error::{Result, budget_exhausted, renewal_no_credits};
+use crate::error::{Result, budget_exhausted, lease_lost, renewal_no_credits};
 use crate::lease::pull::Plane;
 use crate::lease::renew::Renewing;
 use afd_billing::budget::{self, Verdict};
@@ -50,32 +53,61 @@ impl Plane {
     /// Refuses with [`renewal_no_credits`](crate::error) when the tenant's
     /// balance is spent, and [`budget_exhausted`](crate::error) when the
     /// fleet's own ceiling is reached or its stored ceiling will not parse.
-    pub(super) async fn gate_renewal(&self, lease: &Renewing, lease_id: &str) -> Result<()> {
-        self.credits_cover(lease, lease_id).await?;
+    pub(super) async fn gate_renewal(
+        &self,
+        lease: &Renewing,
+        lease_key: &Uuid7,
+        lease_id: &str,
+        now: Timestamp,
+    ) -> Result<()> {
+        self.hold_covers(lease, lease_key, lease_id, now).await?;
         self.budget_covers(lease, lease_id).await
     }
 
-    /// The tenant's credit pool against this run's floor cost.
+    /// The lease's hold, raised to cover one more slice.
     ///
-    /// The same estimate the lease path admits against, so issue and renewal
-    /// share one credit policy rather than each deciding what "enough" means.
+    /// The ceiling is what the lease's usage lines have cost so far plus the
+    /// same floor the issue gate admits against, so issue and renewal share one
+    /// credit policy, and the hold tracks what the run has used rather than how
+    /// often it renewed. The biller answers whether the payer's balance, less
+    /// every other open hold, covers it.
+    ///
     /// A tenant with no wallet row is admitted, for the reason the issue gate
-    /// admits one.
-    async fn credits_cover(&self, lease: &Renewing, lease_id: &str) -> Result<()> {
+    /// admits one. An outage the biller's outage policy admitted answers
+    /// [`Hold::Unconfirmed`] and renews.
+    async fn hold_covers(
+        &self,
+        lease: &Renewing,
+        lease_key: &Uuid7,
+        lease_id: &str,
+        now: Timestamp,
+    ) -> Result<()> {
         let posture = super::renew::posture_of(lease);
-        let covered = async {
+        let held: core::result::Result<Hold, afd_billing::Error> = async {
             let estimate = self
                 .accounts
-                .estimate(posture, &lease.provider, &lease.model)
+                .estimate(posture, &lease.provider, &lease.model, now)
                 .await?;
-            let wallet = self.accounts.wallet(&lease.tenant_id).await?;
-            Ok(wallet.is_none_or(|held| held.balance.covers(estimate.floor())))
+            let work = WorkKey::FleetLease(lease_key.clone());
+            let spent = {
+                let mut connection = self.leases.pool().acquire().await?;
+                afd_billing::ledger::charged_so_far(&mut *connection, &work).await?
+            };
+            let ask = Reservation {
+                work,
+                payer: Account {
+                    tenant: lease.tenant_id.clone(),
+                    workspace: lease.workspace_id.clone(),
+                },
+                ceiling: spent.saturating_add(estimate.floor()),
+            };
+            self.biller.reserve(&ask).await
         }
         .await;
 
-        match covered {
-            Ok(true) => Ok(()),
-            Ok(false) => {
+        match held {
+            Ok(Hold::Held { .. } | Hold::Unconfirmed) => Ok(()),
+            Ok(Hold::Short { .. }) => {
                 let fleet = lease.fleet_id.as_str();
                 tracing::warn!(
                     fleet_id = fleet,
@@ -85,10 +117,14 @@ impl Plane {
                 );
                 Err(renewal_no_credits())
             }
+            // The hold was released, which only a report or the sweeper does
+            // once the lease ended: there is no live run left to renew.
+            Ok(Hold::Closed) => Err(lease_lost()),
+            Err(fault) if fault.is_wallet_missing() => Ok(()),
             // Fail OPEN: the balance could not be read at all, which says
             // nothing about whether it covers the run.
             Err(fault) => {
-                admit_unreadable("balance", lease, lease_id, &fault);
+                admit_unreadable("balance", lease, lease_id, &crate::Error::from(fault));
                 Ok(())
             }
         }

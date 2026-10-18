@@ -34,7 +34,8 @@
 //! "every failure branch must ROLLBACK" is satisfied here without a `match`
 //! per statement.
 
-use afd_billing::{Meter, Nanos};
+use afd_billing::Cumulative;
+use afd_billing::biller::Settlement;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
 use jiff::Timestamp;
@@ -43,7 +44,9 @@ use sqlx::{Acquire as _, PgConnection};
 use crate::error::{Result, query};
 use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
+use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
+use crate::lease::usage::Pricing;
 use crate::lease::verdict::Terminal;
 
 /// Statement name, for the context a transaction failure carries.
@@ -65,8 +68,13 @@ pub struct TerminalReport<'a> {
     /// The lease as the row holds it: the fleet, the money identities, the
     /// event, and the token the settle is fenced on.
     pub lease: &'a Reported,
-    /// What the final slice is priced from.
-    pub meter: Meter,
+    /// The lease's identifier as the work its usage lines name.
+    pub lease_key: &'a Uuid7,
+    /// The runner's cumulative counts, already held at zero when the
+    /// catalogue could not be read.
+    pub cumulative: Cumulative,
+    /// What the final slice is priced against.
+    pub pricing: &'a Pricing,
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
@@ -82,21 +90,23 @@ pub struct TerminalReport<'a> {
 
 /// What the report's transaction decided.
 ///
-/// Three arms, and the charge lives on exactly one of them — the same property
-/// [`Settled`] holds, carried up so a caller cannot read an amount off a report
-/// that committed nothing. The closed row rides [`Committed::Settled`] rather
+/// Three arms, and the usage line lives on exactly one of them — the same
+/// property [`Settled`] holds, carried up so a caller cannot settle a line off
+/// a report that committed nothing. The closed row rides [`Committed::Settled`] rather
 /// than being read again afterwards: the terminal write already returned it,
 /// and re-reading would answer about a row a concurrent reclaim may have moved
 /// on from.
 #[derive(Debug)]
 pub enum Committed {
-    /// The report won its fence and all five writes committed. The final slice
-    /// drained `charged`; `closed` is the row the terminal write ended, absent
+    /// The report won its fence and all its writes committed, the final
+    /// slice's usage line among them; `closed` is the row the terminal write
+    /// ended, absent
     /// when the event was already terminal and there was no new ending to
     /// announce.
     Settled {
-        /// What the final slice drained.
-        charged: Nanos,
+        /// The final slice's usage line, logged and still to be settled; `None`
+        /// when the last window measured nothing.
+        settlement: Option<Box<Settlement>>,
         /// The row this report ended, for the frame the caller announces.
         ///
         /// Boxed because a closing carries the whole event row and the fleet's
@@ -116,15 +126,16 @@ pub enum Committed {
         owed: Option<Owing>,
     },
     /// This runner already settled this lease and the earlier report committed
-    /// everything below. Nothing was written and nothing charged; what the
+    /// everything below. Nothing was written and nothing logged; what the
     /// runner is owed is the acknowledgement its lost response never carried.
     AlreadySettled,
-    /// A newer holder has the fleet. Nothing was written and nothing charged.
+    /// A newer holder has the fleet. Nothing was written and nothing logged.
     Fenced,
 }
 
 impl Leases {
-    /// Commit one terminal report: the money, the result, the cursor, the slot.
+    /// Commit one terminal report: the usage line, the result, the cursor, the
+    /// slot.
     ///
     /// One transaction, in that order, on one pooled connection. The queue is
     /// NOT acknowledged here and cannot be — see [`super::finalize`] — so a
@@ -132,26 +143,31 @@ impl Leases {
     /// entry pending and redelivered, which is the safe direction.
     ///
     /// # Errors
-    /// Reports an entropy source that could not produce the ledger row's
+    /// Reports an entropy source that could not produce the usage line's
     /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer at any of the five statements — in which case nothing
-    /// at all was written, including the charge and the obligation.
+    /// would not answer at any statement — in which case nothing at all was
+    /// written, including the usage line and the obligation.
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
 
-        let charged = match self
+        let metering = Metering {
+            lease_id: report.lease_id,
+            runner_id: report.runner_id,
+            cumulative: report.cumulative,
+        };
+        let settlement = match self
             .claim_and_settle(
                 &mut transaction,
-                report.lease_id,
-                report.runner_id,
-                report.meter,
+                metering,
+                report.lease_key,
+                report.pricing,
                 report.outcome.verdict.succeeded(),
                 report.now,
             )
             .await?
         {
-            Settled::Claimed(nanos) => nanos,
+            Settled::Claimed(settlement) => settlement.map(Box::new),
             Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
             Settled::Fenced => return Ok(Committed::Fenced),
         };
@@ -159,7 +175,7 @@ impl Leases {
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
-            charged,
+            settlement,
             closed,
             owed,
         })

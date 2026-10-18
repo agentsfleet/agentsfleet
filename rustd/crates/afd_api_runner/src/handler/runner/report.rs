@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use afd_fleet::lease::report::Reconciled;
-use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
+use afd_observability::metrics::label::cost::ErrorType;
 use afd_observability::producers::cost::{self, Spend};
 use afd_observability::producers::fleet::runner;
 use afd_observability::{Delivery, Telemetry};
@@ -171,17 +171,9 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
         error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
     });
 
-    // The final slice only. Receive and renewal are charged on their own paths
-    // and record their own class there — summing them here would double-count
-    // every renewed run.
-    if let Ok(nanocredits) = u64::try_from(settled.charged.as_i64()) {
-        cost::credits_consumed(
-            &settled.model,
-            &settled.posture,
-            ChargeClass::Settle,
-            nanocredits,
-        );
-    }
+    // Spend is recorded where the biller settles, once per settlement, so
+    // renewals, this report and the sweeper's retries all count there and
+    // nowhere else.
 }
 
 /// The finished run, as the span that describes it.

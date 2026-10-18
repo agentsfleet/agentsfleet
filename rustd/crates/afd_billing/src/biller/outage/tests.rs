@@ -73,3 +73,31 @@ async fn a_statement_defect_is_refused_under_either_policy() {
         );
     }
 }
+
+fn lock_wait_expired() -> sqlx::Error {
+    database_answer("55P03")
+}
+
+fn statement_cancelled() -> sqlx::Error {
+    database_answer("57014")
+}
+
+/// Contention on the wallet lock is the datastore answering "not now": not a
+/// lost connection, but still a biller with no answer, so the outage policy
+/// decides it exactly as it decides an outage.
+#[tokio::test]
+async fn a_lock_wait_past_its_timeout_is_contention_the_policy_decides() {
+    for contended in [
+        lock_wait_expired as fn() -> sqlx::Error,
+        statement_cancelled,
+    ] {
+        let open = WithOutagePolicy::new(Failing(contended), OutagePolicy::Open);
+        assert_eq!(open.reserve(&ask()).await.ok(), Some(Hold::Unconfirmed));
+
+        let closed = WithOutagePolicy::new(Failing(contended), OutagePolicy::Closed);
+        let refused = closed.reserve(&ask()).await.err();
+        assert!(refused.is_some_and(|fault| {
+            fault.is_contended() && fault.is_unanswered() && !fault.is_datastore_unavailable()
+        }));
+    }
+}

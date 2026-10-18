@@ -10,7 +10,12 @@ use sqlx::PgExecutor;
 use crate::error::query;
 use crate::{Nanos, Result, Spend};
 
-const SELECT_FLEET_SPEND: &str = include_str!("select_fleet_spend.sql");
+/// A fleet's day and month sums over its usage lines.
+///
+/// Public so a planner probe can `EXPLAIN` the statement the budget gate
+/// runs, rather than a copy of it. `$1` workspace · `$2` fleet · `$3` the
+/// rolling day's span.
+pub const SELECT_FLEET_SPEND: &str = include_str!("select_fleet_spend.sql");
 
 /// What the statement was doing, for [`query`].
 const CONTEXT_SPEND: &str = "read a fleet's spend";

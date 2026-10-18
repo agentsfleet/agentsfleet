@@ -1,7 +1,7 @@
 //! What must hold after any ordering: one live holder, one full host.
 
 use super::{
-    expiry::{free_meter, snapshot},
+    expiry::snapshot,
     fixture::Running,
     replica::{Replica, original},
 };
@@ -60,12 +60,24 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
         "{order}: one expired and one re-admitted lease; no third admission"
     );
     assert_host_full(running, order).await;
+    let pricing = afd_fleet::lease::usage::Pricing::load(
+        &running.fixtures.database,
+        afd_billing::Posture::SelfManaged,
+        crate::seed::PROVIDER,
+        crate::seed::MODEL,
+        outcome.readmitted.as_str(),
+    )
+    .await;
     let renewed = replica
         .leases
         .extend(
-            outcome.readmitted.as_str(),
-            &running.runner,
-            free_meter(),
+            afd_fleet::lease::sql::meter::Metering {
+                lease_id: outcome.readmitted.as_str(),
+                runner_id: &running.runner,
+                cumulative: afd_billing::Cumulative::default(),
+            },
+            outcome.readmitted,
+            &pricing,
             clock::now(),
         )
         .await

@@ -41,8 +41,8 @@ pub(crate) enum Row<'a> {
     Attempt(&'a str),
     /// A `fleet.events` row, by fleet id and event id.
     Event(&'a str, &'a str),
-    /// A `billing.fleet_charges` row, by event id and charge type.
-    Charge(&'a str, &'a str),
+    /// A `billing.usage_lines` row, by event id and line number.
+    Line(&'a str, &'a str),
 }
 
 impl<'a> Row<'a> {
@@ -68,18 +68,18 @@ impl<'a> Row<'a> {
                 fleet,
                 event,
             ),
-            Self::Charge(event, charge_type) => (
-                "billing.fleet_charges",
-                "event_id = $1 AND charge_type = $2",
+            Self::Line(event, seq) => (
+                "billing.usage_lines",
+                "event_id = $1 AND seq = $2::bigint",
                 event,
-                charge_type,
+                seq,
             ),
         }
     }
 
     /// Whether the predicate reads a second key.
     const fn keyed_twice(self) -> bool {
-        matches!(self, Self::Event(..) | Self::Charge(..))
+        matches!(self, Self::Event(..) | Self::Line(..))
     }
 }
 

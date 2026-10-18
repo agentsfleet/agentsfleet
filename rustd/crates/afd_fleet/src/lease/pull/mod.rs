@@ -84,8 +84,15 @@ pub struct Plane {
     pub leases: Leases,
     /// Approval gates and standing integration grants.
     pub gates: Gates,
-    /// Wallets, ceilings and the receive debit.
+    /// The payer, the issue-time floor and a fleet's spend: the reads a money
+    /// gate makes before anything moves.
     pub accounts: Accounts,
+    /// Holds, charges and releases money for every lease (billing §11).
+    ///
+    /// A trait object so the built-in ledger, a queue or a third-party
+    /// metering system all sit behind one call site; the daemon chooses which,
+    /// and its outage policy, where it builds the plane.
+    pub biller: std::sync::Arc<dyn afd_billing::biller::Biller>,
     /// What a fleet remembers between runs.
     ///
     /// A store of its own rather than a verb on [`Leases`]: the tables are a
@@ -197,8 +204,7 @@ impl Plane {
                 .publish_received(&acquired, received.opened_at, received.counters)
                 .await;
         }
-        self.billed(acquired, installed, delivery, runner_id, now)
-            .await
+        self.billed(acquired, installed, runner_id, now).await
     }
 
     /// The event's type, its payer, its provider and every gate, over a row
@@ -207,7 +213,6 @@ impl Plane {
         &self,
         acquired: Acquired,
         installed: Installed,
-        delivery: crate::lease::event::Delivery,
         runner_id: &Uuid7,
         now: Timestamp,
     ) -> Result<Step<Admission2>> {
@@ -231,7 +236,7 @@ impl Plane {
             .providers
             .resolve_reference(&tenant, &installed.runtime_model_ref)
             .await?;
-        let gated = self.gated(&acquired, &installed, tenant, &resolved, delivery, now);
+        let gated = self.gated(&acquired, &installed, tenant, &resolved, now);
         let billed = match gated.await?.admitted() {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
@@ -292,21 +297,25 @@ impl Plane {
         installed: &Installed,
         tenant: Uuid7,
         resolved: &Resolved,
-        delivery: crate::lease::event::Delivery,
         now: Timestamp,
     ) -> Result<Admission> {
         let request = Request {
             workspace_id: &acquired.workspace_id,
             fleet_id: &acquired.fleet_id,
             event_id: &acquired.event_id,
-            event_created_at: acquired.event_created_at,
             budget: installed.config.budget(),
             posture: resolved.posture,
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
-            delivery,
         };
-        let money = money_gates(&self.accounts, Ok(Some(tenant)), request, now).await?;
+        let money = money_gates(
+            &self.accounts,
+            self.biller.as_ref(),
+            Ok(Some(tenant)),
+            request,
+            now,
+        )
+        .await?;
         if !matches!(money, Admission::Admit(_)) {
             return Ok(money);
         }

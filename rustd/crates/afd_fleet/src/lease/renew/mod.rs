@@ -22,17 +22,18 @@
 //! an [`Error`](crate::Error), and the posture is applied once, where a reader
 //! can see both halves at once.
 
-use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::report::RenewRequest;
 use jiff::Timestamp;
 use sqlx::{Connection as _, FromRow as _};
 
-use crate::error::{Result, lease_lost, lease_max_runtime, query};
+use crate::error::{Result, lease_lost, lease_max_runtime, lease_not_found, query};
 use crate::lease::pull::Plane;
 use crate::lease::sql;
 use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
+use crate::lease::usage::{self, Pricing, SliceColumns};
+use afd_billing::biller::Settlement;
 use afd_billing::rates::Posture;
 use afd_billing::{Cumulative, Nanos};
 
@@ -41,10 +42,6 @@ const CONTEXT_LOAD: &str = "renew lease load";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RENEW: &str = "renew and meter";
-
-/// Logged when a renewal could not price its tokens and left them for a later
-/// slice to charge.
-const EVENT_TOKENS_HELD: &str = "renew_tokens_held_for_pricing";
 
 /// The lease a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]
@@ -67,16 +64,18 @@ pub struct Renewing {
 
 /// What the extend-and-meter statement decided.
 ///
-/// A three-variant enum, because only the variant that drained a slice has a
-/// deadline and a charge to read; the other two carry nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A three-variant enum, because only the variant that measured a slice has a
+/// deadline and a usage line to read; the other two carry nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Renewed {
-    /// Both rows advanced. Carries the new deadline and what the slice drained.
+    /// Both rows advanced. Carries the new deadline and the slice's usage line,
+    /// logged in the same transaction and still to be settled; `None` when the
+    /// slice measured nothing.
     Extended {
         /// The instant both rows now expire at.
         expires_at: Timestamp,
-        /// Nanocredits this slice actually took.
-        charged: Nanos,
+        /// The slice's priced line, as its biller charges it.
+        settlement: Option<Box<Settlement>>,
     },
     /// Still the live holder, but the hard runtime ceiling is reached.
     MaxRuntime,
@@ -107,42 +106,57 @@ impl Leases {
         found.map(LeaseForRenew::into_renewing).transpose()
     }
 
-    /// Advance both deadline rows and meter the slice, atomically.
+    /// Advance both deadline rows, measure the slice and log its usage line,
+    /// atomically.
+    ///
+    /// The line is logged inside the transaction that advanced the deadlines,
+    /// so a renewal and what it cost commit together; the caller settles it
+    /// through the biller after commit.
     ///
     /// # Errors
-    /// Reports an entropy source that could not produce the ledger row's
-    /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer. Every VERDICT — extended, capped, lost — is an `Ok`.
+    /// Reports an entropy source that could not produce the line's
+    /// identifier, an instant that cannot be encoded, a charge past a 64-bit
+    /// nano count, and a datastore that would not answer. Every VERDICT —
+    /// extended, capped, lost — is an `Ok`.
     pub async fn extend(
         &self,
-        lease_id: &str,
-        runner_id: &Uuid7,
-        meter: afd_billing::Meter,
+        lease: Metering<'_>,
+        lease_key: &afd_core::id::Uuid7,
+        pricing: &Pricing,
         now: Timestamp,
     ) -> Result<Renewed> {
-        let ledger_id = self.entropy().uuid7(now)?;
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_RENEW))?;
-        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
+        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, lease.runner_id).await?
+        else {
             return Ok(Renewed::Lost);
         };
         if !capacity.can_renew() {
             return Ok(Renewed::Lost);
         }
-        let metering = Metering {
-            lease_id,
-            runner_id,
-            meter,
-            ledger_id: &ledger_id,
-        };
-        let row = metering
+        let row = lease
             .bind(Ending::Renew)
             .fetch_one(&mut *transaction)
             .await
             .map_err(query(CONTEXT_RENEW))?;
-        let renewed = RenewAnswer::from_row(&row).map_err(query(CONTEXT_RENEW))?;
+        let answer = RenewAnswer::from_row(&row).map_err(query(CONTEXT_RENEW))?;
+        let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_RENEW))?;
+        let Some(expires_at) = answer.extended() else {
+            transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
+            return Ok(answer.verdict(capacity.now()));
+        };
+        let settlement = match slice.into_slice() {
+            Some(slice) => pricing.settlement(lease_key, slice)?,
+            None => None,
+        };
+        if let Some(settled) = settlement.as_ref() {
+            afd_billing::ledger::log_lines(&mut *transaction, self.entropy(), now, settled).await?;
+        }
         transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-        Ok(renewed.verdict(capacity.now()))
+        Ok(Renewed::Extended {
+            expires_at,
+            settlement: settlement.map(Box::new),
+        })
     }
 }
 
@@ -165,19 +179,17 @@ struct RenewAnswer {
     probe_found: i64,
     new_until: Option<jiff_sqlx::Timestamp>,
     hard_cap: Option<jiff_sqlx::Timestamp>,
-    charged_nanos: Option<i64>,
 }
 
 impl RenewAnswer {
-    /// The renewal's outcome, judged against `checked_at`, the database's own
-    /// instant read under the host lock.
-    fn verdict(self, checked_at: Timestamp) -> Renewed {
-        if let Some(until) = self.new_until {
-            return Renewed::Extended {
-                expires_at: until.to_jiff(),
-                charged: Nanos::from_i64(self.charged_nanos.unwrap_or(0)),
-            };
-        }
+    /// The new deadline, when both rows advanced.
+    fn extended(&self) -> Option<Timestamp> {
+        self.new_until.map(jiff_sqlx::Timestamp::to_jiff)
+    }
+
+    /// The outcome of a renewal that did NOT advance, judged against
+    /// `checked_at`, the database's own instant read under the host lock.
+    fn verdict(&self, checked_at: Timestamp) -> Renewed {
         if self.probe_found == 0 {
             return Renewed::Lost;
         }
@@ -242,38 +254,42 @@ impl Plane {
         if lease.status != sql::LEASE_STATUS_ACTIVE {
             return Err(lease_lost());
         }
-        self.gate_renewal(&lease, lease_id).await?;
+        let lease_key =
+            afd_core::id::Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+        self.gate_renewal(&lease, &lease_key, lease_id, now).await?;
 
-        let cumulative = Cumulative::reported(
-            request.input_tokens,
-            request.cached_input_tokens,
-            request.output_tokens,
-        );
-        let meter = match self
-            .accounts
-            .meter(
-                posture_of(&lease),
-                &lease.provider,
-                &lease.model,
-                cumulative,
-            )
-            .await
-        {
-            Ok(meter) => meter,
-            // Fail open, for the reason the report's twin does: a catalogue
-            // that will not answer must not kill a run in flight. The tokens
-            // are held for a priced slice rather than charged at zero; see
-            // `hold_tokens`.
-            Err(fault) => {
-                hold_tokens(&lease, lease_id, cumulative, &crate::Error::from(fault));
-                self.accounts.run_fee_meter(Cumulative::default())
-            }
+        let pricing = Pricing::load(
+            self.leases.pool(),
+            posture_of(&lease),
+            &lease.provider,
+            &lease.model,
+            lease_id,
+        )
+        .await;
+        let metering = Metering {
+            lease_id,
+            runner_id,
+            cumulative: pricing.counts(Cumulative::reported(
+                request.input_tokens,
+                request.cached_input_tokens,
+                request.output_tokens,
+            )),
         };
-        match self.leases.extend(lease_id, runner_id, meter, now).await? {
+        match self
+            .leases
+            .extend(metering, &lease_key, &pricing, now)
+            .await?
+        {
             Renewed::Extended {
                 expires_at,
-                charged,
-            } => Ok((expires_at, charged)),
+                settlement,
+            } => {
+                let charged = usage::charged(settlement.as_deref());
+                if let Some(settled) = settlement.as_deref() {
+                    self.settle_usage(settled).await;
+                }
+                Ok((expires_at, charged))
+            }
             Renewed::MaxRuntime => Err(lease_max_runtime()),
             Renewed::Lost => Err(lease_lost()),
         }
@@ -284,37 +300,3 @@ impl Plane {
 pub(super) fn posture_of(lease: &Renewing) -> Posture {
     Posture::parse(&lease.posture).unwrap_or(Posture::Platform)
 }
-
-/// Says that a renewal metered the run fee and none of `cumulative`, because
-/// the catalogue could not price it.
-///
-/// The caller meters zero counts. `METER_LEASE` advances the token cursor
-/// with `GREATEST`, so zero counts leave it where the last priced slice left
-/// it, and the next priced renewal or a priced report charges these tokens.
-/// Real counts at run-fee rates would move the cursor past tokens charged at
-/// zero, and no later slice would charge them. A report that cannot price
-/// either still settles at the run fee alone, so a fault that lasts to the
-/// end of the run leaves these tokens uncharged.
-fn hold_tokens(lease: &Renewing, lease_id: &str, cumulative: Cumulative, fault: &crate::Error) {
-    let fleet = lease.fleet_id.as_str();
-    let Logged { error_code, reason } = fault.logged();
-    let Cumulative {
-        input,
-        cached,
-        output,
-    } = cumulative;
-    tracing::warn!(
-        error_code,
-        fleet_id = fleet,
-        lease_id,
-        input_tokens = input,
-        cached_input_tokens = cached,
-        output_tokens = output,
-        reason,
-        event = EVENT_TOKENS_HELD,
-        "the catalogue could not be read; the run fee is charged and the tokens wait for a priced slice"
-    );
-}
-
-#[cfg(test)]
-mod tests;
