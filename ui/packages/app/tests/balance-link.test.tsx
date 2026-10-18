@@ -37,18 +37,21 @@ describe("BalanceLink", () => {
     // gate-block until a top-up.
     render(<BalanceLink balanceNanos={0} isExhausted />);
     expect(figure().className).toContain("text-destructive");
-    expect(figure().className).not.toContain("text-pulse");
+    expect(figure().className).not.toContain("text-info");
     // The whole chip turns, not just the figure inside it.
     expect(link().className).toContain("border-destructive/40");
     expect(link().className).toContain("bg-destructive/10");
-    expect(link().className).not.toContain("border-pulse/40");
+    expect(link().className).not.toContain("border-info/40");
     expect(link().dataset.exhausted).toBe("true");
     expect(link().getAttribute("aria-label")).toBe(BALANCE_EXHAUSTED_ARIA_LABEL);
   });
 
-  it("stays in the accent while there is credit", () => {
+  it("distinguishes the available balance with information blue", () => {
     render(<BalanceLink balanceNanos={4_806_600_000} isExhausted={false} />);
     expect(link().dataset.exhausted).toBeUndefined();
+    expect(figure().className).toContain("text-info");
+    expect(figure().className).toContain("font-semibold");
+    expect(link().className).toContain("border-info/40");
   });
 
 });

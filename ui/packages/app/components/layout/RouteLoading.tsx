@@ -1,11 +1,12 @@
 import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
+import type { ReactNode } from "react";
 export default function RouteLoading({
   title,
   description,
   className,
 }: {
   title?: string;
-  description?: string;
+  description?: ReactNode;
   className?: string;
 }) {
   return (

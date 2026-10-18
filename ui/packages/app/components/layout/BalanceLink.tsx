@@ -7,34 +7,8 @@ import {
 } from "@/app/(dashboard)/settings/billing/lib/charges";
 import { NANOS_PER_USD } from "@/lib/types";
 
-/*
- * What is left to spend, in the header, on every page.
- *
- * The balance used to live only on the billing page, so the answer to "can
- * this fleet still run?" was a navigation away. It is one figure, so it rides
- * the trailing cluster beside the workspace switcher rather than taking a
- * meter or a card: the fraction consumed is a billing-page question, the
- * number left is an everywhere question.
- *
- * Labelled and bounded, not a muted glyph and a number. A quiet coin icon
- * read as header chrome — the operator scanning for "how much is left"
- * skipped it — and simply growing the type made the figure loud without
- * making it findable, since nothing around it agreed to be a row of chips.
- *
- * So it is a chip: its own border and tinted ground in the mint a live fleet
- * wears, which is what credits buy. The bound is what the eye lands on, so
- * the type can stay at the header's own size. It takes the workspace
- * switcher's own height, because two bounded controls side by side at
- * different heights read as a mistake before they read as a hierarchy.
- * Exhausted, the whole chip turns destructive — that is the one state that
- * changes what an operator does next, because new fleet events gate-block
- * until a top-up.
- *
- * Server-rendered from the layout's own read, so it refreshes when a page
- * does. A tab left open overnight shows last night's figure; the billing page
- * is the live answer, and this links straight to it.
- */
-
+// Header balance links to Billing. Information blue separates the amount
+// from navigation; exhaustion keeps the destructive treatment.
 export const BALANCE_HREF = "/settings/billing";
 export const BALANCE_LABEL = "Credits";
 export const BALANCE_ARIA_LABEL = "Credit balance";
@@ -82,22 +56,16 @@ export function BalanceLink({
         "transition-colors duration-snap ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isExhausted
           ? "border-destructive/40 bg-destructive/10 hover:bg-destructive/20"
-          : "border-pulse/40 bg-pulse/10 hover:bg-pulse/20",
+          : "border-info/40 bg-info/10 hover:bg-info/20",
       )}
     >
-      <span className="font-sans text-label uppercase tracking-label text-muted-foreground">
+      <span className="font-sans text-label text-muted-foreground">
         {BALANCE_LABEL}
       </span>
       <span
         className={cn(
-          // Header-sized, deliberately NOT the 13px `text-mono` step the data
-          // surfaces use. This figure is chrome: it sits beside the workspace
-          // switcher and the nav, and its size is set by those neighbours
-          // rather than by the kind of value it holds. Growing or shrinking it
-          // away from 14px made it loud without making it findable, which is
-          // what the bounded chip does instead.
-          "font-mono text-body-sm font-medium tabular-nums",
-          isExhausted ? "text-destructive" : "text-pulse",
+          "font-mono text-body-sm font-semibold tabular-nums",
+          isExhausted ? "text-destructive" : "text-info",
         )}
       >
         {formatHeaderBalance(balanceNanos)}
