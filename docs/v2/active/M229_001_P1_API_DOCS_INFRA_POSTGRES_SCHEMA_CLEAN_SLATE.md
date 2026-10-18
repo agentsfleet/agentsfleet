@@ -190,7 +190,7 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 ### §8 UI follow-up — user-reported fixes
 
 These user-reported fixes extend the application and design-system scope under `ui/packages/**` and this tracking section.
-Backend requests remain in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md). Completed rows name their commits. `make lint-app` passes. `make test-coverage-all` passes: app 401 files / 3773 tests, website 20 / 133, command-line interface (CLI) 204 files / 1778 passing tests / 16 existing skips, and design system 62 / 497. App, website and design system reach 100% statements, branches, functions and lines; CLI reaches its 100% functions and lines gate. No coverage threshold, timeout or bundle budget changed. Full output: `/tmp/m229-coverage-all-final.txt`.
+Five backend requests remain open in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md). Completed rows name their commits. `make lint-app` and `make lint-cli` pass. `make test-coverage-all` passes: app 402 files / 3783 tests, website 20 / 133, command-line interface (CLI) 210 files / 1841 passing tests / 16 existing skips, and design system 62 / 497. App, website and design system reach 100% statements, branches, functions and lines; CLI reaches its 100% functions and lines gate. No coverage threshold, timeout, skip or bundle budget changed. Full output: `/tmp/m229-coverage-all-complete.txt`; lint: `/tmp/m229-lint-app-nanos-final.txt` and `/tmp/m229-lint-cli-complete.txt`.
 
 | Report | Required result | Progress / evidence |
 |---|---|---|
@@ -212,18 +212,22 @@ Backend requests remain in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.
 | 14 | Show the full Secrets search focus border on the first click. | `492e115f6`: shared inset focus ring and focus border; browser regression written. |
 | 15 | Use the agent callsign across recents, fleets, leases, and billing; billing shows only the callsign. | `e6184d1ad`: callsign across recents, fleet headings/cards, leases and billing; description beside the callsign on saved fleets. List-purpose summary remains requested from server. |
 | 16 | Make the credit balance stand out with a contrasting accent. | `492e115f6`: information-blue balance treatment and stronger amount. |
-| 17 | Improve Platform menu icons, alignment, and active destinations. | Implemented: shared menu navigation, consistent icons, active destination, keyboard focus tests. |
-| 18 | Improve Settings menu icons, alignment, and active destinations. | Implemented through the same menu navigation and destination tests. |
+| 17 | Improve Platform menu icons, alignment, and active destinations. | `ffc5cfd3b`: shared menu navigation, consistent icons, active destination, keyboard focus tests. |
+| 18 | Improve Settings menu icons, alignment, and active destinations. | `ffc5cfd3b`: the same menu navigation and destination tests. |
 | 19 | Remove repeated Encrypted and hidden rows; emphasize Encrypted in the Secrets subtitle. | `492e115f6`: shared subtitle with emphasized Encrypted; repeated row text removed. |
-| 20a | Standardize runner Activity headings: Activity, Details, and Occurred. | Implemented. Occurred names the recorded activity time, preserving its API meaning. |
-| 20b | Show descriptive runner activities for both existing and future rows. | Implemented: one typed formatter reads recorded facts, including access-token changes. |
-| 20c | Explain activity details without repeating the activity timestamp. | Implemented: descriptive details, current metadata keys, one timestamp column, regression tests written. |
+| 20a | Standardize runner Activity headings: Activity, Details, and Occurred. | `0645aedcc`: Occurred names the recorded activity time, preserving its API meaning. |
+| 20b | Show descriptive runner activities for both existing and future rows. | `0645aedcc`: one typed formatter reads recorded facts, including access-token changes. |
+| 20c | Explain activity details without repeating the activity timestamp. | `0645aedcc`: descriptive details, current metadata keys, one timestamp column, regression tests. |
 | 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | `ff00608e2`: parse the published Activity payload and keep recovery within the page; app regression tests pass. Deployed reproduction remains unverified. |
-| 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | Implemented: one-line description, Fleet setups heading, workspace action, empty-state regression. |
-| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | In progress; baseline coverage gate passes. Exact monetary readers await the verified server field list. |
+| 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | `ffc5cfd3b`: one-line description, Fleet setups heading, workspace action, empty-state regression. |
+| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | `e0c15db29`: audited corresponding commands; exact money validation and totals, inclusive advanced-model paging, complete catalogue output, bounded billing limits and exact-event stream recovery. Final CLI gate: 1841 pass / 16 existing skips, 100% functions and lines. Schedule summary reader awaits the published server fields. |
 
 The catalogue editor and picker landed in `43b537a19`, `7152af4d2`, `c50b4b630`, and `98c184bdc`.
-`bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard. Shared compressed JavaScript is 275298 / 276480 bytes. Compared with `4e0bafb45502bad3b3b88b631a3690bb80ec2496`, new-fleet total JavaScript falls from 364917 to 334444 bytes; fleet-detail total falls from 366692 to 364937. These measurements include the sidebar import cleanup and removal of the Trigger tab and `cron-parser`. The baseline failed the server-module guard; current budgets and guard are unchanged. Build and size output: `/tmp/m229-bundle-after-build.txt`, `/tmp/m229-bundle-after-size.json`.
+`bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard. Shared compressed JavaScript is 275298 / 276480 bytes. Compared with `4e0bafb45502bad3b3b88b631a3690bb80ec2496`, new-fleet total JavaScript falls from 364917 to 334570 bytes; fleet-detail total falls from 366692 to 365303. These measurements include the sidebar import cleanup and removal of the Trigger tab and `cron-parser`. The baseline failed the server-module guard; current budgets and guard are unchanged. Build and size output: `/tmp/m229-bundle-nanos-build.txt`, `/tmp/m229-bundle-nanos-size.json`.
+
+`78118fd17` finishes the sidebar action/import refactor. `716c0cfdd` and `e0c15db29` consume the verified decimal-string money wire in the app and CLI, including live counters and exact integer totals. Native production review is clean after correcting duplicate advanced-model rows and an unvalidated fleet-detail read; receipts and scope: `.tmp/reviews/m229-cli-ui-money.md`.
+
+Local branch-daemon health and readiness returned HTTP 200; readiness reports database and queue available. Authenticated priming and browser checks remain blocked by the shared Clerk identity decision recorded in `.tmp/agent-mailbox.md`; no shared identity was changed. Deviations: `.tmp/audits/local-priming-deviations.md`. The five backend additions are being built by Claude; their UI readers and live verification remain required before the shared spec moves to `done/`.
 
 ### §9 — One billing lifecycle behind a `Biller` trait
 
