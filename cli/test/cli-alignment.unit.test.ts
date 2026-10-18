@@ -241,8 +241,8 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
         headers: makeHeaders([["content-type", "application/json"]]),
         text: async () => JSON.stringify({
           items: [
-            { fleet_id: "zom_1", name: "alpha", status: "active" },
-            { fleet_id: "zom_2", name: "beta", status: "paused" },
+            { id: "zom_1", name: "alpha", status: "active", created_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" },
+            { id: "zom_2", name: "beta", status: "paused", created_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" },
           ],
           total: 2,
           next_cursor: "1713700000000:zom_2",

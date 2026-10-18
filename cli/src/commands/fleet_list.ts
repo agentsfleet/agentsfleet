@@ -1,4 +1,4 @@
-// `agentsfleet fleet list` — paginated table of fleets in a workspace.
+// `agentsfleet list` — paginated table of fleets in a workspace.
 // Workspace defaults to `current_workspace_id`; `--workspace` overrides.
 
 import { Effect } from "effect";
@@ -12,15 +12,7 @@ import {
 import { isString } from "../lib/guards.ts";
 import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
 import { ui, AGE_KEY } from "../output/index.ts";
-
-interface FleetListRow {
-  readonly [key: string]: unknown;
-}
-
-interface FleetListResponse {
-  readonly items?: ReadonlyArray<FleetListRow>;
-  readonly next_cursor?: string | null;
-}
+import { decodeFleetPage } from "./fleet-read.ts";
 
 const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
@@ -55,19 +47,19 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
 
   const wsId = yield* resolveWorkspaceId(flags.workspaceId, WORKSPACE_FLAG);
   const token = yield* resolveAuthToken;
-  const res = yield* http.request<FleetListResponse>({
+  const body = yield* http.request<Record<string, unknown>>({
     path: buildPath(wsId, flags.startingAfter, flags.limit),
     token,
   });
+  const res = yield* decodeFleetPage(body);
 
   if (output.format !== OUTPUT_FORMAT.text) {
-    // Spread, not a re-key: the payload stays byte-identical to what
-    // `printJson(res)` emitted, so a script reading `.items` is unaffected.
-    yield* output.success(FLEETS_LISTED, { ...res });
+    // Validate consumed fields, then preserve the complete served envelope.
+    yield* output.success(FLEETS_LISTED, { ...body });
     return;
   }
 
-  const items = res.items ?? [];
+  const items = res.items;
   if (items.length === 0) {
     yield* output.info(NO_FLEETS);
     return;
@@ -80,10 +72,10 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
       domain: [{ key: FIELD_STATUS, label: "STATUS" }],
     },
     items.map((z) => ({
-      name: String(z[FIELD_NAME] ?? ""),
-      fleet_id: String(z[FIELD_FLEET_ID] ?? z["id"] ?? ""),
-      status: String(z[FIELD_STATUS] ?? ""),
-      [AGE_KEY]: z[AGE_KEY],
+      name: z.name,
+      fleet_id: z.id,
+      status: z.status,
+      [AGE_KEY]: z.created_at,
     })),
   );
   if (res.next_cursor) {

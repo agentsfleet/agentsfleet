@@ -8,8 +8,7 @@
 // CliError variants on failure. The dispatcher's renderError prints the
 // detail + suggestion + (for ServerError) request_id.
 
-import { Effect, Schema } from "effect";
-import { nanosSchema } from "../lib/nanos.ts";
+import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -25,10 +24,10 @@ import {
   type FleetMutationStatus,
 } from "../constants/fleet-status.ts";
 import { formatDollars } from "../constants/billing.ts";
-import { decimal, decode, FleetSchema } from "./chat/protocol.ts";
+import { decode, FleetSchema } from "./chat/protocol.ts";
+import { decodeFleetList, type FleetsRead } from "./fleet-read.ts";
 import { IF_MATCH } from "./chat/transport.ts";
 import {
-  ServerError,
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
@@ -46,30 +45,6 @@ const STATUS_VERB: Record<FleetMutationStatus, string> = {
   [AGENTSFLEET_STATUS.ACTIVE]: "resume",
   [AGENTSFLEET_STATUS.KILLED]: "kill",
 };
-
-/** What `status` prints: the response body for `--json`, its rows for text. */
-interface FleetsRead {
-  readonly body: Record<string, unknown>;
-  readonly fleets: ReadonlyArray<typeof FleetSummarySchema.Type>;
-}
-
-// `FleetsResponse` / `FleetSummary` in rustd/crates/afd_api_wire/src/fleet/collection.rs.
-// The counters are decimal strings; anything else is a daemon this client
-// cannot render, refused here rather than thrown by `BigInt` mid-table.
-const FleetSummarySchema = Schema.Struct({
-  id: Schema.String, name: Schema.String, status: Schema.String,
-  events_processed: decimal, budget_used_nanos: nanosSchema,
-});
-const FleetListSchema = Schema.Struct({ items: Schema.Array(FleetSummarySchema) });
-export const FLEET_LIST_INVALID = "FLEET_LIST_INVALID";
-const BAD_GATEWAY = 502;
-
-const decodeFleetList = (value: unknown): Effect.Effect<typeof FleetListSchema.Type, ServerError> =>
-  Schema.decodeUnknownEffect(FleetListSchema)(value).pipe(Effect.mapError(() => new ServerError({
-    detail: "The fleet response did not match the supported API shape",
-    suggestion: "update the CLI and verify that it targets the matching daemon build",
-    code: FLEET_LIST_INVALID, status: BAD_GATEWAY, requestId: null,
-  })));
 
 const requireFleetId = (
   fleetId: string | undefined,

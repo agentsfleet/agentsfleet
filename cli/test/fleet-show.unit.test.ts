@@ -9,7 +9,7 @@ import { describe, test, expect } from "bun:test";
 import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
-import { FLEET_LIST_INVALID } from "../src/commands/fleet.ts";
+import { FLEET_LIST_INVALID } from "../src/commands/fleet-read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const WANTED = "01900000-0000-7000-8000-0000000f1ee7";
