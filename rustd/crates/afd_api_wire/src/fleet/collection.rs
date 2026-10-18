@@ -17,12 +17,15 @@ pub struct FleetSummary<'a> {
     pub name: Cow<'a, str>,
     /// Current lifecycle state.
     pub status: Cow<'a, str>,
-    /// Creation time in Unix milliseconds.
+    /// Creation time.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
-    /// Last mutation in Unix milliseconds.
+    /// Last mutation.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
+    /// The saved purpose, as the fleet's setup describes it; null while the
+    /// fleet has no saved setup.
+    pub description: Option<Cow<'a, str>>,
     /// Authored trigger projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
