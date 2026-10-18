@@ -8,10 +8,10 @@ afterEach(() => fetchMock.mockReset());
 const readers = [() => listFleetEvents("workspace", "fleet", "session"), () => listWorkspaceEvents("workspace", "session")];
 
 it.each(readers)("accepts recorded facts and future event names without losing precision", async (read) => {
-  const event = row({event_type: "future_trigger", status: "future_status", cost_nanos: 1, created_at: "2026-10-19T00:00:00.125Z"});
+  const event = row({event_type: "future_trigger", status: "future_status", cost_nanos: "9007199254740993", created_at: "2026-10-19T00:00:00.125Z"});
   fetchMock.mockResolvedValue(Response.json({items: [event], next_cursor: "next"}));
   const page = await read();
-  expect(page.items[0]).toMatchObject({event_type: "future_trigger", status: "future_status", cost_nanos: 1, created_at: event.created_at});
+  expect(page.items[0]).toMatchObject({event_type: "future_trigger", status: "future_status", cost_nanos: "9007199254740993", created_at: event.created_at});
   expect(page.next_cursor).toBe("next");
 });
 

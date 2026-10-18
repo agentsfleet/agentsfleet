@@ -7,7 +7,6 @@
 import { z } from "zod";
 import { request } from "./client";
 import { adminModelSchema, adminModelListSchema, modelSettingsSchema, boundedText, CATALOGUE_LIMITS } from "./catalogue-types";
-import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
 
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
@@ -47,12 +46,12 @@ export interface PlatformKeyList {
 }
 
 export async function listAdminModels(token: string): Promise<AdminModelList> {
-  return adminModelListSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "GET" }, token, readCatalogueBody));
+  return adminModelListSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "GET" }, token));
 }
 
 export async function createAdminModel(token: string, body: LibraryModelInput): Promise<AdminModel> {
   const parsed = createModelSchema.parse(body);
-  return adminModelSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "POST", body: stringifyCatalogueBody(parsed) }, token, readCatalogueBody));
+  return adminModelSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "POST", body: JSON.stringify(parsed) }, token));
 }
 
 export async function updateAdminModel(
@@ -61,7 +60,7 @@ export async function updateAdminModel(
   body: ModelRatesInput,
 ): Promise<{ id: string; updated: boolean }> {
   return updateModelResultSchema.parse(await request<unknown>(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`,
-    { method: "PATCH", body: stringifyCatalogueBody(modelSettingsSchema.parse(body)) }, token));
+    { method: "PATCH", body: JSON.stringify(modelSettingsSchema.parse(body)) }, token));
 }
 
 export async function deleteAdminModel(token: string, id: string): Promise<void> {

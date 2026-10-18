@@ -74,7 +74,7 @@ describe("DashboardLayout edge branches", () => {
     vi.doMock("@/lib/api/tenant_billing", () => ({
       getTenantBillingCached: vi.fn().mockResolvedValue({
         // pin test: literal is the contract
-        balance_nanos: 1_000_000_000,
+        balance_nanos: "1000000000",
         is_exhausted: false,
         exhausted_at: null,
         updated_at: "1970-01-01T00:00:00.001Z",

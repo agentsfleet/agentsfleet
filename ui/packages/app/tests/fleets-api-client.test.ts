@@ -62,7 +62,7 @@ describe("lib/api/tenant_billing", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        balance_nanos: NANOS_PER_USD,
+        balance_nanos: String(NANOS_PER_USD),
         updated_at: "2024-04-21T11:46:40Z",
         is_exhausted: false,
         exhausted_at: null,

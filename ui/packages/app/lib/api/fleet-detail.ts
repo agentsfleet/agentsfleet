@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Instant } from "./decode";
 import { FleetTriggerSchema } from "./fleet-trigger";
 import { DefinitionSchema, FleetSchema, ScheduleSchema } from "./draft-types";
+import { nanosSchema } from "./nanos";
 
 const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()}).passthrough()});
 const DecimalSchema = z.string().regex(/^(0|[1-9][0-9]*)$/);
@@ -13,7 +14,7 @@ export const FleetSummarySchema = z.object({
   id: z.string(), name: z.string(), status: z.string(),
   created_at: Instant, updated_at: Instant,
   triggers: z.array(FleetTriggerSchema).optional(),
-  events_processed: CounterSchema, budget_used_nanos: CounterSchema,
+  events_processed: CounterSchema, budget_used_nanos: nanosSchema.transform((value) => BigInt(value)),
 });
 export const FleetListSchema = z.object({
   items: z.array(FleetSummarySchema), total: z.null(), next_cursor: z.string().nullable(),
@@ -25,7 +26,7 @@ export const FleetDetailSchema = FleetSchema.extend({
   definition: DefinitionSchema.extend({config: ConfigSchema.passthrough()}),
   created_at: Instant, updated_at: Instant,
   policy_semantics: z.string(), needs_re_review: z.boolean(),
-  events_processed: DecimalSchema, budget_used_nanos: DecimalSchema,
+  events_processed: DecimalSchema, budget_used_nanos: nanosSchema,
   pending_approvals: z.number().int().nonnegative(),
   memory_access: z.object({read: z.boolean(), publish: z.boolean()}),
 }).transform((fleet) => ({...fleet, triggers: fleet.definition.config["x-agentsfleet"].triggers ?? []}));

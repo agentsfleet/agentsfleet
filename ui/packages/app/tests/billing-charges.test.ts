@@ -11,7 +11,7 @@ import {
 import { CHARGE_TYPE, NANOS_PER_USD, PROVIDER_MODE } from "@/lib/types";
 
 // $0.001 — a representative sub-cent stage charge (the platform stage rate).
-const SAMPLE_CHARGE_NANOS = 1_000_000;
+const SAMPLE_CHARGE_NANOS = "1000000";
 
 function charge(over: Partial<ChargeRow> = {}): ChargeRow {
   return {
@@ -36,16 +36,16 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
 
 describe("formatDollars", () => {
   it("renders cents with sub-cent precision when present", () => {
-    expect(formatDollars(290_000_000)).toBe("$0.29");
+    expect(formatDollars("290000000")).toBe("$0.29");
     expect(formatDollars(SAMPLE_CHARGE_NANOS)).toBe("$0.001");
-    expect(formatDollars(0)).toBe("$0.00");
+    expect(formatDollars("0")).toBe("$0.00");
   });
 });
 
 describe("formatChargeAmount", () => {
   it("keeps zero debits honest and exposes a nonzero amount below display precision", () => {
-    expect(formatChargeAmount(0)).toBe("$0.00");
-    expect(formatChargeAmount(1)).toBe("<$0.0001");
+    expect(formatChargeAmount("0")).toBe("$0.00");
+    expect(formatChargeAmount("1")).toBe("<$0.0001");
     expect(formatChargeAmount(SAMPLE_CHARGE_NANOS)).toBe("−$0.001");
   });
 });
@@ -121,7 +121,7 @@ describe("charge identity", () => {
 // the daemon's run rate would be 300_000_000 nanos, not this. A client that
 // recomputed a run fee from wall_ms would report that instead of what the
 // ledger row actually says was charged.
-const SERVED_COST_NANOS = 7_111_111;
+const SERVED_COST_NANOS = "7111111";
 
 // The largest balance the product's own copy claims to hold without loss.
 const NINE_MILLION_USD = 9_000_000;
@@ -134,7 +134,7 @@ describe("spend is reported from the served figure, never recomputed", () => {
 
 describe("the nanos denominator stays exact across a balance's range", () => {
   it("formats the largest balance the wire format claims to carry", () => {
-    expect(formatDollars(NINE_MILLION_USD * NANOS_PER_USD)).toBe("$9,000,000.00");
+    expect(formatDollars(String(NINE_MILLION_USD * NANOS_PER_USD))).toBe("$9,000,000.00");
   });
 
   it("keeps that balance inside the safe-integer range", () => {

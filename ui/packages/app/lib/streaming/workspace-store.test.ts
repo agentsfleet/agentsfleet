@@ -18,8 +18,8 @@ import { WorkspaceStore } from "./workspace-store";
 const FLEET_A = "fleet_a";
 const FLEET_B = "fleet_b";
 const SEVEN_EVENTS = 7;
-const SPENT_NANOS = 1_500_000_000;
-const STANDING = { events_processed: 3, budget_used_nanos: 900_000_000 };
+const SPENT_NANOS = "1500000000";
+const STANDING = { events_processed: 3, budget_used_nanos: "900000000" };
 
 let store: WorkspaceStore;
 let disconnect: () => void;
@@ -101,7 +101,7 @@ describe("the tile counters are a snapshot the store assigns", () => {
       counters: {
         [FLEET_A]: null,
         [FLEET_B]: { events_processed: SEVEN_EVENTS, budget_used_nanos: SPENT_NANOS },
-        fleet_stranger: { events_processed: 1, budget_used_nanos: 1 },
+        fleet_stranger: { events_processed: 1, budget_used_nanos: "1" },
       } as unknown as Record<string, FleetCountersSnapshot>,
     });
     expect(store.snapshot(FLEET_A).helloReceived).toBe(true);
@@ -113,8 +113,8 @@ describe("the tile counters are a snapshot the store assigns", () => {
     expect(store.snapshot("fleet_stranger").counters).toBeUndefined();
 
     greet({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A], counters: "nonsense" as never });
-    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: -1, budget_used_nanos: 1 }));
-    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: 1.5, budget_used_nanos: 1 }));
+    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: -1, budget_used_nanos: "1" }));
+    push(FLEET_A, completed(FLEET_A, "e1", { events_processed: 1.5, budget_used_nanos: "1" }));
     expect(store.snapshot(FLEET_A).counters).toBeUndefined();
   });
 

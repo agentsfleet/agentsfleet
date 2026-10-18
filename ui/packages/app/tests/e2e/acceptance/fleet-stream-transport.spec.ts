@@ -138,7 +138,7 @@ function eventRow(createdAt: number): Omit<EventRow, "fleet_id" | "workspace_id"
   return {
     event_id: EVENT_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
     created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: 12_345, wall_ms: 2_500,
-    cost_nanos: 1_250_000_000, failure_label: null, failure_detail: null,
+    cost_nanos: "1250000000", failure_label: null, failure_detail: null,
     resumes_event_id: null,
   };
 }

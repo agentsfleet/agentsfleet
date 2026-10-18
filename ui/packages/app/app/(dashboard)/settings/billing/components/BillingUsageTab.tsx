@@ -20,6 +20,7 @@ import {
 } from "../lib/charges";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
+import { compareNanos } from "@/lib/money";
 
 export type BillingUsageTabProps = {
   initialCharges: ChargeRow[];
@@ -78,11 +79,12 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "amount",
     header: "Amount",
     numeric: true,
-    sortValue: (c) => -c.credit_deducted_nanos,
+    sortValue: (c) => c.credit_deducted_nanos,
+    compare: (a, b) => compareNanos(b.credit_deducted_nanos, a.credit_deducted_nanos),
     cell: (c) => (
       <span
         className="whitespace-nowrap font-mono tabular-nums text-destructive data-[zero=true]:text-muted-foreground"
-        data-zero={c.credit_deducted_nanos === 0 ? "true" : undefined}
+        data-zero={c.credit_deducted_nanos === "0" ? "true" : undefined}
       >
         {formatChargeAmount(c.credit_deducted_nanos)}
       </span>

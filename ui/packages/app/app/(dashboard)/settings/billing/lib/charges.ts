@@ -1,16 +1,10 @@
-import { CHARGE_TYPE, NANOS_PER_USD, type TenantBillingChargesResponse } from "@/lib/types";
+import { CHARGE_TYPE, type TenantBillingChargesResponse } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { formatDollars } from "@/lib/money";
+export { formatDollars } from "@/lib/money";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
-// Two-to-four decimal places — cents granularity, with sub-cent precision
-// when traction rates ($0.001 stage, $0.0001 self-managed) need it.
-const USD_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-});
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const SETUP_CHAT_LABEL = "Setup chat";
@@ -24,18 +18,14 @@ const TOKEN_SPLIT_SEPARATOR = " · ";
  * as nothing. Exported because the header's balance has the same floor for
  * the same reason, and two copies of it would drift.
  */
-export const MIN_VISIBLE_NANOS = 50_000;
+export const MIN_VISIBLE_NANOS = 50_000n;
 export const SUBVISIBLE_AMOUNT_LABEL = "<$0.0001";
 
-/** Format a nanos amount as a USD string. */
-export function formatDollars(nanos: number): string {
-  return USD_FORMATTER.format(nanos / NANOS_PER_USD);
-}
-
 /** Human-readable debit: never render a misleading negative zero. */
-export function formatChargeAmount(nanos: number): string {
-  if (nanos === 0) return formatDollars(0);
-  if (nanos < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
+export function formatChargeAmount(nanos: string): string {
+  const amount = BigInt(nanos);
+  if (amount === 0n) return formatDollars(nanos);
+  if (amount < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
   return `−${formatDollars(nanos)}`;
 }
 

@@ -192,9 +192,8 @@ export async function request<T>(
   path: string,
   init: RequestInit,
   token: string,
-  decode?: (response: Response) => Promise<unknown>,
 ): Promise<T> {
-  return (await requestWithEtag<T>(path, init, token, decode)).data;
+  return (await requestWithEtag<T>(path, init, token)).data;
 }
 
 // Like `request`, but also surfaces the `ETag` response header. Used by the
@@ -212,11 +211,10 @@ export async function requestWithEtag<T>(
   path: string,
   init: RequestInit,
   token: string,
-  decode?: (response: Response) => Promise<unknown>,
 ): Promise<{ data: T; etag: string | null }> {
   const method = methodOf(init);
   recordAudit(path, method);
-  const { data, etag } = await runWithRetry(classifiedAttempt<T>(path, init, token, decode), method, {
+  const { data, etag } = await runWithRetry(classifiedAttempt<T>(path, init, token), method, {
     ...(DEFAULT_RETRY_METHODS.has(method) ? {} : { maxAttempts: 1 }),
     signal: init.signal ?? undefined,
     cancelled: cancelledFor(path),
@@ -277,12 +275,12 @@ function statusOfAttempt<T>(attempt: Attempt<T>): number {
 // One attempt as the policy sees it: the send and the read each classify
 // their own failure with what only this side knows — whether the response
 // headers had arrived — and the policy reads the provenance off the result.
-function classifiedAttempt<T>(path: string, init: RequestInit, token: string, decode?: (response: Response) => Promise<unknown>): (remainingMs: number) => Promise<Attempt<T>> {
+function classifiedAttempt<T>(path: string, init: RequestInit, token: string): (remainingMs: number) => Promise<Attempt<T>> {
   return async (remainingMs: number) => {
     const res = await sendRequest(path, init, token, remainingMs).catch((cause: unknown) => {
       throw classifyFailure(cause, false);
     });
-    return readResponse<T>(res, path, decode).catch((cause: unknown) => {
+    return readResponse<T>(res, path).catch((cause: unknown) => {
       throw classifyFailure(cause, true);
     });
   };
@@ -311,12 +309,12 @@ async function sendRequest(path: string, init: RequestInit, token: string, remai
 }
 
 // The read: the status, the ETag, and the RFC 7807 parse.
-async function readResponse<T>(res: Response, path: string, decode?: (response: Response) => Promise<unknown>): Promise<Attempt<T>> {
+async function readResponse<T>(res: Response, path: string): Promise<Attempt<T>> {
   const etag = etagFrom(res);
 
   if (res.status === 204) return { data: undefined as T, etag, status: res.status };
 
-  const body = await (res.ok && decode ? decode(res) : readBody(res, path));
+  const body = await readBody(res, path);
 
   if (!res.ok) {
     // `user_message` (when present) is the curated dashboard-safe sentence for

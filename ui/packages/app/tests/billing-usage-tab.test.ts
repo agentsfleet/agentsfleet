@@ -42,7 +42,7 @@ import {
 
 // $0.001 — a representative sub-cent stage charge; the "−$0.001" row assertions
 // below depend on this exact value.
-const SAMPLE_CHARGE_NANOS = 1_000_000;
+const SAMPLE_CHARGE_NANOS = "1000000";
 
 function charge(over: Partial<ChargeRow> = {}): ChargeRow {
   return {
@@ -131,7 +131,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders a zero debit without a negative sign", () => {
     render(
       React.createElement(BillingUsageTab, {
-        initialCharges: [charge({ credit_deducted_nanos: 0 })],
+        initialCharges: [charge({ credit_deducted_nanos: "0" })],
         initialCursor: null,
         pageSize: 25,
       }),
@@ -163,7 +163,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
           charge({
             id: "tel_2",
             recorded_at: "2027-01-15T08:00:00Z",
-            credit_deducted_nanos: 5_000_000,
+            credit_deducted_nanos: "5000000",
           }),
         ],
         initialCursor: null,

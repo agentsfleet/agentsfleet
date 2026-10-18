@@ -2,6 +2,7 @@
 import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
 import type { CataloguePrice } from "@/lib/api/catalogue-types";
 import type { LibraryModel } from "@/lib/api/model-library-types";
+export { compareNanos } from "@/lib/money";
 
 export type RateFields = Pick<
   LibraryModel,
@@ -50,12 +51,6 @@ export function formatRatePerMtok(nanos: string | null): string {
   if (nanos === null) return PRICE_UNKNOWN;
   const [whole, fraction = ""] = nanosToUsdPerMtok(nanos).split(".");
   return `${whole}.${fraction.padEnd(RATE_MIN_DECIMALS, "0")}`;
-}
-
-export function compareNanos(a: string | null, b: string | null): number {
-  const left = a === null ? -1n : BigInt(a);
-  const right = b === null ? -1n : BigInt(b);
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function currentBasePrice(prices: CataloguePrice[], now = Date.now()): CataloguePrice | null {

@@ -62,18 +62,12 @@ export type FleetListResponse = {
 
 // ── Tenant billing ──
 
-// Canonical billing unit: 1 USD = 1_000_000_000 nanos. A JavaScript Number
-// holds the full range (≤ 2^53 ≈ 9e15 nanos / ~$9M tenant balance) without
-// precision loss. This is the wire format's denominator, not a price: no
-// balance or ledger row can be read without it. Rates are the server's — the
-// dashboard renders the charge it was served and computes none of its own.
+// Canonical billing unit. Wire amounts are decimal strings; use integer
+// arithmetic when formatting or comparing them to preserve every nano.
 export const NANOS_PER_USD = 1_000_000_000;
 
-// Unix-epoch timestamps on this type are **milliseconds**, matching the
-// server's `*_at_ms` fields (rustd/crates/afd_billing/src/nanos.rs). Pass them
-// straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
-  balance_nanos: number;
+  balance_nanos: string;
   updated_at: string;
   is_exhausted: boolean;
   exhausted_at: string | null;
@@ -172,7 +166,7 @@ export type TenantBillingChargesResponse = {
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;
-    credit_deducted_nanos: number;
+    credit_deducted_nanos: string;
     token_count_input: number | null;
     token_count_output: number | null;
     wall_ms: number | null;

@@ -31,7 +31,7 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    cost_nanos: 40_000_000,
+    cost_nanos: "40000000",
     created_at: "2023-11-14T22:13:20Z",
     updated_at: "2023-11-14T22:13:20Z",
     ...over,

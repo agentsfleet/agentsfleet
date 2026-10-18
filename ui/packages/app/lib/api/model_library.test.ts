@@ -37,7 +37,7 @@ describe("getModelLibrary", () => {
     requestMock.mockResolvedValue(LIBRARY_OK);
     await getModelLibrary("token_abc", true);
     // pin test: literal is the contract
-    expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true", { method: "GET" }, "token_abc", expect.any(Function));
+    expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true", { method: "GET" }, "token_abc");
   });
 
   it("GETs /v1/models through the authed request helper and returns the library", async () => {
@@ -151,7 +151,7 @@ describe("providerLabel", () => {
 it("forwards opaque pagination cursors with the advanced filter unchanged", async () => {
   requestMock.mockResolvedValue(LIBRARY_OK);
   await getModelLibrary("token", true, "cursor+/=");
-  expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true&starting_after=cursor%2B%2F%3D", { method: "GET" }, "token", expect.any(Function));
+  expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true&starting_after=cursor%2B%2F%3D", { method: "GET" }, "token");
 });
 it("rejects incomplete catalogue pages at the API boundary", async () => {
   requestMock.mockResolvedValue({ models: [{ id: "malformed" }] });

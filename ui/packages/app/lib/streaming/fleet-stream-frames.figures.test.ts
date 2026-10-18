@@ -25,7 +25,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    cost_nanos: 40_000_000,
+    cost_nanos: "40000000",
     created_at: new Date(OPENED_AT).toISOString(),
     updated_at: new Date(OPENED_AT).toISOString(),
     ...over,
@@ -93,7 +93,7 @@ describe("event_complete — the closing bracket", () => {
       outcome: OUTCOME.COMPLETED,
       tokens: 1200,
       wallMs: 12_000,
-      costNanos: 40_000_000,
+      costNanos: "40000000",
     });
   });
 
@@ -105,6 +105,18 @@ describe("event_complete — the closing bracket", () => {
       pending_approvals: 0,
     });
     expect(event).toMatchObject({ tokens: null, wallMs: null, costNanos: null });
+  });
+
+  it("retains exact streamed costs above safe integers", () => {
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+      ...row({ cost_nanos: "9007199254740993" }), fleet_status: "active", pending_approvals: 0 });
+    expect(event?.costNanos).toBe("9007199254740993");
+  });
+
+  it("a numeric stream cost remains unknown instead of showing an imprecise charge", () => {
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+      ...row(), cost_nanos: 9007199254740992, fleet_status: "active", pending_approvals: 0 } as unknown as LiveFrame);
+    expect(event?.costNanos).toBeNull();
   });
 
   it("a refusal closes the row with its label and no figures", () => {
@@ -134,7 +146,7 @@ describe("event_complete — a row the timeline never opened", () => {
       status: "processed",
       tokens: 1200,
       wallMs: 12_000,
-      costNanos: 40_000_000,
+      costNanos: "40000000",
     });
     expect(events[0]?.createdAt.getTime()).toBe(OPENED_AT);
   });
@@ -183,7 +195,7 @@ describe("event_complete — a row the timeline never opened", () => {
 
 describe("rowToEvent", () => {
   it("carries a durable row's figures so a backfilled completion moves the strip too", () => {
-    expect(rowToEvent(row())).toMatchObject({ tokens: 1200, wallMs: 12_000, costNanos: 40_000_000 });
+    expect(rowToEvent(row())).toMatchObject({ tokens: 1200, wallMs: 12_000, costNanos: "40000000" });
     expect(rowToEvent(row({ cost_nanos: null }))).toMatchObject({ costNanos: null });
   });
 });

@@ -1,4 +1,3 @@
-import { stringifyCatalogueBody } from "./catalogue-json";
 const ENTRY = { id: "e1", model_id: "m1", display_name: null, secret_ref: "s1", kind: "custom_secret", has_key: true, active: false, created_at: "2026-10-18T00:00:00Z" };
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +7,7 @@ vi.stubGlobal("fetch", fetchMock);
 afterEach(() => fetchMock.mockReset());
 
 function jsonResponse(body: unknown) {
-  return new Response(stringifyCatalogueBody(body), { status: 200 });
+  return new Response(JSON.stringify(body), { status: 200 });
 }
 
 describe("listTenantModelEntries", () => {
@@ -133,7 +132,7 @@ it("rejects malformed registry rows instead of inventing missing labels or rates
 });
 it("retains int64 price digits and nullable labels from the registry", async () => {
   // pin test: literal is the contract
-  fetchMock.mockResolvedValue(new Response('{"models":[],"platform_default_available":true,"total":null,"next_cursor":null,"platform_default":{"provider":"openai","model":"model","display_name":null,"context_cap_tokens":1000,"input_nanos_per_mtok":9223372036854775807}}'));
+  fetchMock.mockResolvedValue(new Response('{"models":[],"platform_default_available":true,"total":null,"next_cursor":null,"platform_default":{"provider":"openai","model":"model","display_name":null,"context_cap_tokens":1000,"input_nanos_per_mtok":"9223372036854775807"}}'));
   const { listTenantModelEntries } = await import("./tenant_model_entries");
   expect((await listTenantModelEntries("token")).platform_default).toMatchObject({ display_name: null, input_nanos_per_mtok: "9223372036854775807" });
 });
