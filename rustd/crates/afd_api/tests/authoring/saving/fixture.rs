@@ -115,7 +115,7 @@ impl Case {
 
     pub(super) async fn cleanup(self) {
         let fleets: Vec<String> =
-            sqlx::query_scalar("SELECT id::text FROM core.fleets WHERE workspace_id=$1::uuid")
+            sqlx::query_scalar("SELECT id::text FROM fleet.fleets WHERE workspace_id=$1::uuid")
                 .bind(self.base.workspace.as_str())
                 .fetch_all(&mut *self.base.db.acquire().await.expect("cleanup connection"))
                 .await

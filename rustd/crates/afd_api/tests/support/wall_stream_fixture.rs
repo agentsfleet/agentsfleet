@@ -11,7 +11,9 @@ use afd_auth::directory::Digest;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, FleetSeed, SEEDED_AT, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
@@ -150,27 +152,23 @@ impl Fixture {
     pub(crate) async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Workspace stream', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'stream', $3, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1)",
-        )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(SUBJECT)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated workspace seeds");
+        TenantSeed::new(&self.tenant)
+            .name("Workspace stream")
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("stream")
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated workspace seeds");
         FleetSeed::new(
             &self.fleet,
             self.workspace.as_str(),
@@ -178,7 +176,7 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("streamed")
-        .at(afd_db::test_util::SEEDED_AT)
+        .at(SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
@@ -205,7 +203,7 @@ impl Fixture {
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

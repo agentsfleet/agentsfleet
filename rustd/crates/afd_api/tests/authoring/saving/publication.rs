@@ -66,10 +66,16 @@ async fn publish_candidate(case: &mut Case, request: &Value) -> (String, Value) 
     (library, published)
 }
 
-/// The Library revision the saved fleet's current definition is pinned to.
+/// The Library revision the setup chat that saved `fleet` published: the
+/// publication Save reused rather than minting a second one.
 async fn installed_pin(case: &Case, fleet: &str) -> String {
-    sqlx::query_scalar("SELECT r.library_revision_id::text FROM core.fleets f JOIN core.fleet_definition_revisions r ON r.id=f.current_definition_revision_id WHERE f.id=$1::uuid")
-        .bind(fleet).fetch_one(&mut *case.base.db.acquire().await.expect("pin connection")).await.expect("installed publication pin")
+    sqlx::query_scalar(
+        "SELECT library_revision_id::text FROM authoring.drafts WHERE fleet_id=$1::uuid",
+    )
+    .bind(fleet)
+    .fetch_one(&mut *case.base.db.acquire().await.expect("pin connection"))
+    .await
+    .expect("installed publication pin")
 }
 
 /// Deletes the Library entry and proves it no longer reads back.

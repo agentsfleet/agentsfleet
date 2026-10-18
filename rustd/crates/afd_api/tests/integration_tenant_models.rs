@@ -36,7 +36,7 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ModelSeed, TestDatabase, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -233,7 +233,7 @@ impl Fixture {
         let workspace = Uuid7::parse(&mint_id()).expect("a minted id is a Uuid7");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            // Unique per run: `core.model_library` has no tenant column and
+            // Unique per run: `model.platform_models` has no tenant column and
             // this lane shares one database, so a fixed provider would be a row
             // shared with every sibling suite.
             provider: format!("live{}", tenant.replace('-', "")),
@@ -252,17 +252,17 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Live model registry', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Live model registry', now(), now()) \
                RETURNING id \
              ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, 1, 1) \
+               INSERT INTO identity.api_keys \
+                 (id, tenant_id, name, description, key_hash, created_by_subject, \
+                  created_at, updated_at) \
+               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, now(), now()) \
              ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $5::uuid, id, $5, 'test', 1 FROM tenant",
+             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+             SELECT $5::uuid, id, $5, now() FROM tenant",
         )
         .bind(&self.tenant)
         .bind(&self.key)
@@ -274,19 +274,11 @@ impl Fixture {
         .expect("the authenticated tenant and its primary workspace seed");
 
         for model in [&self.first_model, &self.second_model] {
-            sqlx::query(
-                "INSERT INTO core.model_library \
-                   (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                    cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, $4, 5, 1, 25, 1, 1)",
-            )
-            .bind(mint_id())
-            .bind(model)
-            .bind(&self.provider)
-            .bind(CAP)
-            .execute(&mut *connection)
-            .await
-            .expect("the priced model seeds");
+            ModelSeed::new(&mint_id(), &self.provider, model, CAP)
+                .rates(5, 1, 25)
+                .insert(&mut *connection)
+                .await
+                .expect("the priced model seeds");
         }
         drop(connection);
 
@@ -316,13 +308,13 @@ impl Fixture {
 
     /// Deletes the rows this fixture wrote to tables without a tenant column.
     ///
-    /// The catalogue is the shared surface: `core.model_library` is keyed by
-    /// `(provider, model_id)` alone, so rows left behind accumulate across
+    /// The catalogue is the shared surface: `model.platform_models` is keyed by
+    /// `(provider, model_name)` alone, so rows left behind accumulate across
     /// `KEEP_TEST_STATE=1` inner-loop runs even though their unique names never
     /// collide. Tenant-keyed rows are left to the lane's schema reset.
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.model_library WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_models WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await

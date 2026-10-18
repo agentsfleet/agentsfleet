@@ -69,7 +69,7 @@ impl Case {
 
     pub(super) async fn raw(&self, name: &str, plaintext: &[u8]) {
         let sealed = crate::harness::raw_secret_envelope(&self.base.workspace, name, plaintext);
-        let changed = sqlx::query("UPDATE vault.secrets SET encrypted_dek=$3,dek_nonce=$4,dek_tag=$5,nonce=$6,ciphertext=$7,tag=$8,kek_version=$9 WHERE workspace_id=$1::uuid AND key_name=$2")
+        let changed = sqlx::query("UPDATE vault.secrets SET dek_ciphertext=$3,dek_nonce=$4,dek_tag=$5,secret_nonce=$6,secret_ciphertext=$7,secret_tag=$8,kek_version=$9 WHERE workspace_id=$1::uuid AND key_name=$2")
             .bind(self.base.workspace.as_str()).bind(name)
             .bind(sealed.wrapped_dek()).bind(sealed.dek_nonce().as_slice())
             .bind(sealed.dek_tag().as_slice()).bind(sealed.payload_nonce().as_slice())
@@ -104,7 +104,7 @@ impl Case {
 
     pub(super) async fn remove_install(&self, id: &Uuid7) {
         let removed = sqlx::query(
-            "DELETE FROM core.connector_installs WHERE id=$1::uuid AND workspace_id=$2::uuid",
+            "DELETE FROM connector.installs WHERE id=$1::uuid AND workspace_id=$2::uuid",
         )
         .bind(id.as_str())
         .bind(self.base.workspace.as_str())

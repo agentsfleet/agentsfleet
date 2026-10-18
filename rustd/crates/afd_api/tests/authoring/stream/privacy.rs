@@ -38,7 +38,7 @@ async fn revoking_the_person_closes_an_existing_private_stream() {
     let mut open = Open::create().await;
     assert!(open.frame().await.contains("event: message.accepted"));
     assert!(open.frame().await.contains("event: candidate.changed"));
-    sqlx::query("DELETE FROM core.users WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
         .bind(open.fixture.owner.as_str())
         .execute(
             &mut *open

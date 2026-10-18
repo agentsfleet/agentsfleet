@@ -227,8 +227,8 @@ impl Fixture {
         self.seed_tenant().await;
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'tenant-provider', $3, 1)",
+            "INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+             VALUES ($1::uuid, $2::uuid, 'tenant-provider', now())",
         )
         .bind(self.workspace.as_str())
         .bind(&self.tenant)
@@ -245,20 +245,20 @@ impl Fixture {
 
     /// The half both seeds share: a tenant and the key that authenticates as it.
     ///
-    /// No `core.users` row: `SELECT_TENANT_API_KEY` reads `created_by` off the
+    /// No `identity.users` row: `SELECT_TENANT_API_KEY` reads `created_by_subject` off the
     /// key itself, so the subject needs no person to join to.
     async fn seed_tenant(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Live tenant provider', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Live tenant provider', now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, now(), now())",
         )
         .bind(&self.tenant)
         .bind(&self.key)
@@ -308,7 +308,7 @@ impl Fixture {
     /// tenant-keyed or workspace-keyed, and the lane's schema reset owns those.
     ///
     /// `integration_tenant_models.rs` deletes rows here because it seeds
-    /// `core.model_library`, which has no tenant column and so survives into
+    /// `model.platform_models`, which has no tenant column and so survives into
     /// the next `KEEP_TEST_STATE=1` run. This fixture touches no such table.
     fn cleanup(self) {
         drop(self.lane);

@@ -32,7 +32,7 @@ use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{InstallSeed, TestDatabase, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -41,7 +41,7 @@ use self::harness::{Fleet, json_body, send};
 
 /// What this suite's person is named before its own identifier is appended.
 ///
-/// A prefix rather than a constant subject: `core.users.oidc_subject` is unique
+/// A prefix rather than a constant subject: `identity.users.oidc_subject` is unique
 /// deployment-wide, so a fixture spelling it once would collide with its own
 /// leftovers the moment a run failed before cleanup.
 const SUBJECT_PREFIX: &str = "user_live_connector_status_";
@@ -130,20 +130,10 @@ impl Fixture {
     /// Routes `account` to this workspace, as a landed connect would have.
     async fn route(&self, provider: Provider, account: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.connector_installs \
-               (id, provider, external_account_id, workspace_id, installed_by, \
-                scopes, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4::uuid, $5, ARRAY[]::TEXT[], 1, 1)",
-        )
-        .bind(mint_id())
-        .bind(provider.id())
-        .bind(account)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .execute(&mut *connection)
-        .await
-        .expect("the routing row seeds");
+        InstallSeed::new(provider.id(), account, self.workspace.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("the routing row seeds");
     }
 
     /// Names `provider`'s grant key from a model entry, the reference the vault
@@ -152,9 +142,9 @@ impl Fixture {
         let id = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.tenant_model_entries \
-               (id, tenant_id, model_id, secret_ref, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, 1, 1)",
+            "INSERT INTO model.tenant_models \
+               (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, now(), now())",
         )
         .bind(&id)
         .bind(&self.tenant)
@@ -168,7 +158,7 @@ impl Fixture {
     /// Removes the entry [`Self::reference_handle`] wrote.
     async fn drop_entry(&self, id: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenant_model_entries WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.tenant_models WHERE id = $1::uuid")
             .bind(id)
             .execute(&mut *connection)
             .await
@@ -179,7 +169,7 @@ impl Fixture {
     async fn routed(&self, provider: Provider, account: &str) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT count(*) FROM core.connector_installs \
+            "SELECT count(*) FROM connector.installs \
              WHERE provider = $1 AND external_account_id = $2 AND workspace_id = $3::uuid",
         )
         .bind(provider.id())
@@ -209,20 +199,20 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector status live', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Connector status live', now(), now()) \
              ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connector-status', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'connector-status', now()) \
              ), person AS ( \
-               INSERT INTO core.users \
+               INSERT INTO identity.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'connector-status@example.test', 1, 1) \
+               VALUES ($4::uuid, $1::uuid, $3, 'connector-status@example.test', now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -266,7 +256,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed handles clean up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

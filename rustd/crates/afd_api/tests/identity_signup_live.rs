@@ -137,7 +137,7 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
         );
 
         let stored: Option<String> =
-            sqlx::query_scalar("SELECT display_name FROM core.users WHERE oidc_subject = $1")
+            sqlx::query_scalar("SELECT display_name FROM identity.users WHERE oidc_subject = $1")
                 .bind(&subject)
                 .fetch_one(&mut *database.acquire().await.expect("a read connection"))
                 .await

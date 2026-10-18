@@ -19,7 +19,6 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_vault::{SecretBody, SecretName};
-use sqlx::Row as _;
 
 use super::PLATFORM_SECRET;
 use super::harness;
@@ -38,11 +37,10 @@ const APPROVAL_KEY: &str = afd_http::services::APPROVAL_IDENTITY;
 /// then finds empty, which is `UZ-WH-020` — the same answer as storing nothing.
 const SECRET_FIELD: &str = "webhook_secret";
 
-/// The sweeper deadline the seeded gates carry.
-///
-/// Far past this fixture's `created_at` of 1, so no test here races the timeout
-/// sweeper into writing a decision no person made. No assertion reads it back.
-const GATE_TIMEOUT_AT: i64 = 10_000;
+/// The expiry the seeded gates carry: 2100-01-01, far past any run, so no test
+/// here races the expiry sweeper or a locking validity check into a decision no
+/// person made. No assertion reads it back.
+const GATE_EXPIRES_AT: &str = "2100-01-01T00:00:00Z";
 
 /// The event type a continuation is written under.
 const EVENT_CONTINUATION: &str = "continuation";
@@ -130,22 +128,22 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Approval callback live', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Approval callback live', now(), now()) \
              ), workspaces AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'callback', $3, 1), \
-                      ($4::uuid, $1::uuid, 'dashboard', $3, 1), \
-                      ($5::uuid, $1::uuid, 'platform-admin', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'callback', now()), \
+                      ($4::uuid, $1::uuid, 'dashboard', now()), \
+                      ($5::uuid, $1::uuid, 'platform-admin', now()) \
              ), person AS ( \
-               INSERT INTO core.users \
+               INSERT INTO identity.users \
                  (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($6::uuid, $1::uuid, $3, 'callback-live@example.test', 1, 1) \
+               VALUES ($6::uuid, $1::uuid, $3, 'callback-live@example.test', now(), now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($7::uuid, $1::uuid, 'fixture', '', $8, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($7::uuid, $1::uuid, 'fixture', '', $8, $3, now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -181,16 +179,16 @@ impl Fixture {
     async fn seed_gates(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.fleet_approval_gates \
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
-                proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
+            "INSERT INTO fleet.approval_gates \
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
+                proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $9, '', 'pending', \
-                     '', 1, NULL, $5, 0, 32), \
+                     'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
+                     'pending', '', now(), now(), $5, 0, 32), \
                     ($6::uuid, $7::uuid, $8::uuid, $10, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $9, '', 'pending', \
-                     '', 1, NULL, $11, 0, 32)",
+                     'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
+                     'pending', '', now(), now(), $11, 0, 32)",
         )
         .bind(&self.gate)
         .bind(&self.fleet)
@@ -200,7 +198,7 @@ impl Fixture {
         .bind(&self.other_gate)
         .bind(&self.other_fleet)
         .bind(self.other_workspace.as_str())
-        .bind(GATE_TIMEOUT_AT)
+        .bind(GATE_EXPIRES_AT)
         .bind(&self.other_action)
         .bind(&self.other_event)
         .execute(&mut *connection)
@@ -237,14 +235,14 @@ impl Fixture {
     /// The gate's state and the door that answered it.
     pub(super) async fn gate_state(&self, gate: &str) -> (String, String) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let row = sqlx::query(
-            "SELECT status, resolved_by FROM core.fleet_approval_gates WHERE id = $1::uuid",
+        sqlx::query_as(
+            "SELECT status, coalesce(resolved_by, '') FROM fleet.approval_gates \
+             WHERE id = $1::uuid",
         )
         .bind(gate)
         .fetch_one(&mut *connection)
         .await
-        .expect("the seeded gate is readable");
-        (row.get("status"), row.get("resolved_by"))
+        .expect("the seeded gate is readable")
     }
 
     /// How many continuations resumed `event`.
@@ -255,8 +253,8 @@ impl Fixture {
     /// row.
     pub(super) async fn continuations(&self, event: &str) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "SELECT COUNT(*) AS n FROM core.fleet_events \
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM fleet.events \
              WHERE resumes_event_id = $1 AND event_type = $2",
         )
         .bind(event)
@@ -264,7 +262,6 @@ impl Fixture {
         .fetch_one(&mut *connection)
         .await
         .expect("the continuation count reads")
-        .get("n")
     }
 
     pub(super) async fn cleanup(self) {
@@ -272,16 +269,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("SET LOCAL fleet.allow_gate_purge = 'on'")
-            .execute(&mut *transaction)
-            .await
-            .expect("the fixture opts into the guarded approval purge");
         sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
             .bind(self.admin.as_str())
             .execute(&mut *transaction)
             .await
             .expect("the sealed signing secret cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

@@ -73,7 +73,7 @@ fn edit(base: &str, revision: &str, end: usize, text: &str, activity: u32) -> St
 
 async fn instructions(r: &Running, candidate: &str) -> String {
     sqlx::query_scalar(
-        "SELECT definition->>'instructions_md' FROM core.authoring_candidates WHERE id=$1::uuid",
+        "SELECT definition->>'instructions_md' FROM authoring.candidates WHERE id=$1::uuid",
     )
     .bind(candidate)
     .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
@@ -82,7 +82,7 @@ async fn instructions(r: &Running, candidate: &str) -> String {
 }
 
 async fn candidates(r: &Running) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM core.authoring_candidates WHERE draft_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1::uuid")
         .bind(&r.draft)
         .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
         .await

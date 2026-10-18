@@ -22,7 +22,6 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_tenant::workspace::access::Grant;
 use afd_vault::{SecretBody, SecretName};
-use sqlx::Row as _;
 
 use super::fake_provider::FakeProvider;
 use super::harness;
@@ -58,7 +57,7 @@ pub(crate) struct Fixture {
     /// The provider account this fixture's grant is scoped to.
     ///
     /// Minted per fixture for the same reason [`SUBJECT_PREFIX`] is:
-    /// `core.connector_installs` is unique on `(provider, external_account_id)`
+    /// `connector.installs` is unique on `(provider, external_account_id)`
     /// deployment-wide, and these tests run in parallel against one database.
     /// A team id named once for the file makes every fixture contend for a
     /// single row — the first to land holds it, and a sibling asserting that
@@ -143,12 +142,12 @@ impl Fixture {
         fleet.router()
     }
 
-    /// The workspaces `core.connector_installs` routes `account` to, for
+    /// The workspaces `connector.installs` routes `account` to, for
     /// `provider` — empty when nothing routes it.
     pub(crate) async fn routed_to(&self, provider: Provider, account: &str) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "SELECT workspace_id::text FROM core.connector_installs \
+        sqlx::query_scalar(
+            "SELECT workspace_id::text FROM connector.installs \
              WHERE provider = $1 AND external_account_id = $2 ORDER BY workspace_id",
         )
         .bind(provider.id())
@@ -156,9 +155,6 @@ impl Fixture {
         .fetch_all(&mut *connection)
         .await
         .expect("the routing rows read")
-        .iter()
-        .map(|row| row.get("workspace_id"))
-        .collect()
     }
 
     /// The admin workspace's id — the "other workspace" of the exclusive
@@ -172,10 +168,10 @@ impl Fixture {
     pub(crate) async fn route_elsewhere(&self, provider: Provider, account: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.connector_installs \
-               (id, provider, external_account_id, workspace_id, installed_by, \
-                scopes, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4::uuid, '', ARRAY[]::TEXT[], 1, 1)",
+            "INSERT INTO connector.installs \
+               (id, provider, external_account_id, workspace_id, scopes, created_at, \
+                updated_at) \
+             VALUES ($1::uuid, $2, $3, $4::uuid, ARRAY[]::TEXT[], now(), now())",
         )
         .bind(mint_id())
         .bind(provider.id())

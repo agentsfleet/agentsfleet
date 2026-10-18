@@ -76,13 +76,12 @@ async fn proposal_router_rejects_person_tokens_unknown_authority_and_bad_counter
     )
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let candidates: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM core.authoring_candidates WHERE draft_id=$1::uuid",
-    )
-    .bind(&r.draft)
-    .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
-    .await
-    .expect("owned candidates");
+    let candidates: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1::uuid")
+            .bind(&r.draft)
+            .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
+            .await
+            .expect("owned candidates");
     assert_eq!(candidates, 0);
     r.f.cleanup().await;
 }

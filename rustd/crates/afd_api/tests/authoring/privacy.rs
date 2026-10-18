@@ -175,7 +175,7 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
     let (item, tag) = create(&router, &f, &member.token).await;
     let before = send(&router, Method::GET, &item, Some(&member.token), "").await;
     assert_eq!(before.status(), StatusCode::OK);
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(member.id.as_str())
         .execute(&mut *f.db.acquire().await.expect("revocation connection"))
@@ -208,13 +208,12 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
         StatusCode::NOT_FOUND,
         "no new private state either"
     );
-    let kept: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM core.authoring_drafts WHERE workspace_id=$1::uuid",
-    )
-    .bind(f.workspace.as_str())
-    .fetch_one(&mut *f.db.acquire().await.expect("count connection"))
-    .await
-    .expect("owned drafts");
+    let kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid")
+            .bind(f.workspace.as_str())
+            .fetch_one(&mut *f.db.acquire().await.expect("count connection"))
+            .await
+            .expect("owned drafts");
     assert_eq!(
         kept, 1,
         "revocation hides the draft; it neither deletes nor adds one"

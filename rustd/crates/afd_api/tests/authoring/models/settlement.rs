@@ -41,7 +41,7 @@ async fn runner_renews_and_accounts_after_creator_deletes_private_text() {
     let input = json!({"kind":"accounting","fence":"1","deletion_generation":"0","report_id":mint(),"outcome":"completed","usage":usage});
     replay_accounting(&model, &reports, &input).await;
     let private: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM core.authoring_messages WHERE draft_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1::uuid")
             .bind(&r.draft)
             .fetch_one(&mut *r.f.db.acquire().await.expect("private read"))
             .await
@@ -89,7 +89,7 @@ async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
     )
     .await;
     assert_eq!(reply.status(), StatusCode::BAD_REQUEST);
-    let count:i64=sqlx::query_scalar("SELECT count(*) FROM billing.authoring_report_receipts r JOIN fleet.authoring_attempts a ON a.id=r.attempt_id WHERE a.draft_id=$1::uuid")
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM billing.authoring_report_receipts r JOIN authoring.attempts a ON a.id=r.attempt_id WHERE a.draft_id=$1::uuid")
         .bind(&r.draft).fetch_one(&mut *r.f.db.acquire().await.expect("receipt read")).await.expect("no effects on refusal");
     assert_eq!(count, 0);
     model.running.f.cleanup().await;

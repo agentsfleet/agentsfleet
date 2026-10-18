@@ -12,7 +12,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ModelSeed, TestDatabase, mint_id};
 use http::{Method, StatusCode, header};
 use serde_json::Value;
 
@@ -30,7 +30,7 @@ const FIRST_CHARGE: &str = "/v1/tenants/me/billing/charges?limit=1";
 
 /// The fleet the seeded charges name, and the name they captured.
 ///
-/// Neither row has a `core.fleets` row behind it, which is the state slot 915
+/// Neither row has a `fleet.fleets` row behind it, which is the state slot 915
 /// made writable: `fleet_id` stopped being a foreign key, so a charge may name
 /// a fleet that is gone. Distinct from each other on purpose — a handler that
 /// mapped the identifier into the name field would pass an equality check
@@ -222,17 +222,16 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Money lifecycle', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Money lifecycle', now(), now()) \
              ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, 1, 1) \
+               INSERT INTO identity.api_keys \
+                 (id, tenant_id, name, description, key_hash, created_by_subject, \
+                  created_at, updated_at) \
+               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, now(), now()) \
              ) \
-             INSERT INTO billing.tenant_wallet \
-               (tenant_id, balance_nanos, grant_source, created_at, updated_at) \
-             VALUES ($1::uuid, $5, 'fixture:seed', 10, 10)",
+             INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at) \
+             VALUES ($1::uuid, $5, now(), now())",
         )
         .bind(&self.tenant)
         .bind(&self.key)
@@ -244,19 +243,11 @@ impl Fixture {
         .expect("the authenticated tenant and wallet seed");
 
         for (index, id) in self.model_rows.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO core.model_library \
-                   (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                    cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, $4)",
-            )
-            .bind(id)
-            .bind(format!("model-{index}"))
-            .bind(&self.provider)
-            .bind(1_745_884_800_000_i64 + i64::try_from(index).unwrap_or_default())
-            .execute(&mut *connection)
-            .await
-            .expect("the priced model seeds");
+            ModelSeed::new(id, &self.provider, &format!("model-{index}"), 200_000)
+                .rates(5, 1, 25)
+                .insert(&mut *connection)
+                .await
+                .expect("the priced model seeds");
         }
 
         for (index, id) in self.ledger_rows.iter().enumerate() {
@@ -285,7 +276,7 @@ impl Fixture {
 
     async fn remove_wallet(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -299,12 +290,12 @@ impl Fixture {
             .execute(&mut *connection)
             .await
             .expect("the scoped ledger cleans up");
-        sqlx::query("DELETE FROM core.model_library WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_models WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await
             .expect("the scoped catalogue cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

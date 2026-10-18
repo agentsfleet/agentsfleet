@@ -5,6 +5,7 @@ use afd_api::Services as _;
 use afd_auth::Scope;
 use afd_core::clock;
 use afd_core::money::NANOS_PER_USD;
+use afd_db::test_util::ModelSeed;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -15,6 +16,14 @@ pub(super) const INPUT_NANOS_PER_MTOK: i64 = NANOS_PER_USD;
 const CACHED_INPUT_NANOS_PER_MTOK: i64 = NANOS_PER_USD / 10;
 /// See [`INPUT_NANOS_PER_MTOK`].
 pub(super) const OUTPUT_NANOS_PER_MTOK: i64 = 2 * NANOS_PER_USD;
+
+/// The fixture model's context window.
+const CONTEXT_CAP_TOKENS: i32 = 128_000;
+
+/// The fixture model's saved inference settings: the Responses API at a
+/// stand-in base URL, with the output limit the setup-chat cases assert on.
+const MODEL_INFERENCE: &str =
+    r#"{"api":"responses","base_url":"https://models.example.com/v1","max_output_tokens":8192}"#;
 
 /// The account's API key, the credential the router's requests present.
 const API_KEY: &str = "\
@@ -48,16 +57,16 @@ pub(super) async fn account(f: &Fixture, digest: &str) {
 pub(super) async fn model(f: &Fixture) {
     let mut connection = f.db.acquire().await.expect("model connection");
     let model = format!("workspace-model-{}", f.catalogue);
-    sqlx::query("INSERT INTO model.platform_models(id,model_name,provider,context_cap_tokens,input_nanos_per_mtok, \
-        cached_input_nanos_per_mtok,output_nanos_per_mtok,inference,created_at,updated_at) \
-        VALUES ($1::uuid,$2,'openai',128000,$3,$4,$5,$6,now(),now())")
-        .bind(f.catalogue.as_str()).bind(&model)
-        .bind(INPUT_NANOS_PER_MTOK).bind(CACHED_INPUT_NANOS_PER_MTOK).bind(OUTPUT_NANOS_PER_MTOK)
-        .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
-            api: afd_wire::inference::InferenceApi::Responses,
-            base_url: "https://models.example.com/v1".into(), dialect: None, max_output_tokens: 8192,
-        }))
-        .execute(&mut *connection).await.expect("seed isolated priced model");
+    ModelSeed::new(f.catalogue.as_str(), "openai", &model, CONTEXT_CAP_TOKENS)
+        .rates(
+            INPUT_NANOS_PER_MTOK,
+            CACHED_INPUT_NANOS_PER_MTOK,
+            OUTPUT_NANOS_PER_MTOK,
+        )
+        .inference(MODEL_INFERENCE)
+        .insert(&mut *connection)
+        .await
+        .expect("seed isolated priced model");
     sqlx::query(
         "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \
         VALUES ($1::uuid,$2::uuid,$3,'authoring-model',now(),now())",

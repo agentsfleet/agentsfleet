@@ -120,20 +120,18 @@ impl Fleet {
     }
 
     async fn revision_count(&self) -> i64 {
-        sqlx::query_scalar(
-            "SELECT count(*) FROM core.fleet_definition_revisions WHERE fleet_id=$1::uuid",
-        )
-        .bind(self.saved["id"].as_str().expect("fleet ID"))
-        .fetch_one(
-            &mut *self
-                .case
-                .base
-                .db
-                .acquire()
-                .await
-                .expect("revision connection"),
-        )
-        .await
-        .expect("revision count")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
+            .bind(self.saved["id"].as_str().expect("fleet ID"))
+            .fetch_one(
+                &mut *self
+                    .case
+                    .base
+                    .db
+                    .acquire()
+                    .await
+                    .expect("revision connection"),
+            )
+            .await
+            .expect("revision count")
     }
 }

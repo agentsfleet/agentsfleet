@@ -187,16 +187,16 @@ impl Fixture {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Memory operator', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'Memory operator', now(), now()) \
              ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'memory', $3, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($2::uuid, $1::uuid, 'memory', now()) \
              ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, TRUE, NULL, 1, 1)",
+             INSERT INTO identity.api_keys \
+               (id, tenant_id, name, description, key_hash, created_by_subject, \
+                created_at, updated_at) \
+             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, now(), now())",
         )
         .bind(&self.tenant)
         .bind(self.workspace.as_str())
@@ -242,9 +242,11 @@ impl Fixture {
         {
             let instant = 10_i64 + i64::try_from(index).unwrap_or_default();
             sqlx::query(
-                "INSERT INTO memory.memory_entries \
-                   (id, key, content, category, fleet_id, workspace_id, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, $7, $7)",
+                "INSERT INTO memory.entries \
+                   (id, key, content, category, fleet_id, workspace_id, workspace_visible, \
+                    created_at, updated_at) \
+                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, false, \
+                         to_timestamp($7::bigint / 1000.0), to_timestamp($7::bigint / 1000.0))",
             )
             .bind(id)
             .bind(key)
@@ -262,7 +264,7 @@ impl Fixture {
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
