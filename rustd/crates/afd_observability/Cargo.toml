@@ -19,7 +19,7 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the labelled sample of every refusal, so a caller's suite
 # can grade this crate's error surface without a census on disk.
-test-util = []
+test-util = ["afd_core/test-util"]
 
 [dependencies]
 # A runner's last-seen stamp arrives as a `jiff::Timestamp`.

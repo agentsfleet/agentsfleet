@@ -15,6 +15,9 @@ mod clock;
 mod env;
 #[path = "error_code.rs"]
 mod error_code;
+#[cfg(feature = "test-util")]
+#[path = "error_surface.rs"]
+mod error_surface;
 #[path = "id.rs"]
 mod id;
 #[path = "limits.rs"]
