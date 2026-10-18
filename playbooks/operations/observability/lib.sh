@@ -150,28 +150,26 @@ obs_write_json() {
 obs_runner_offline_seconds() {
   # Read from `afd_core::timing` because that is the constant the daemon
   # judges by: `afd_runner/src/sweep/liveness/mod.rs` marks a runner offline once
-  # `RUNNER_OFFLINE_AFTER_MS` passes without a heartbeat. Deriving the alert
+  # `RUNNER_OFFLINE_AFTER` passes without a heartbeat. Deriving the alert
   # threshold from the same line keeps the alert and the sweep from disagreeing
   # about when a runner is gone.
   local constants="$OBS_REPO_ROOT/rustd/crates/afd_core/src/timing.rs"
-  local lease_ms multiplier
-  lease_ms="$(
+  local lease_seconds multiplier
+  lease_seconds="$(
     sed -n \
-      's/^pub const LEASE_TTL_MS: i64 = \([0-9_]*\);/\1/p' \
+      's/^pub const LEASE_TTL: Duration = Duration::from_secs(\([0-9_]*\));/\1/p' \
       "$constants" | tr -d '_'
   )"
   multiplier="$(
     sed -n \
-      's/^pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS \* \([0-9]*\);/\1/p' \
+      's/^pub const RUNNER_OFFLINE_AFTER: Duration = LEASE_TTL.saturating_mul(\([0-9]*\));/\1/p' \
       "$constants"
   )"
-  if [[ ! "$lease_ms" =~ ^[0-9]+$ ]] ||
-    [[ ! "$multiplier" =~ ^[0-9]+$ ]] ||
-    [ $((lease_ms % 1000)) -ne 0 ]; then
+  if [[ ! "$lease_seconds" =~ ^[0-9]+$ ]] || [[ ! "$multiplier" =~ ^[0-9]+$ ]]; then
     echo "ERROR: cannot derive runner offline threshold" >&2
     exit 1
   fi
-  printf '%d' "$((lease_ms / 1000 * multiplier))"
+  printf '%d' "$((lease_seconds * multiplier))"
 }
 
 obs_admission_replay_floor_seconds() {

@@ -18,7 +18,7 @@ services:
       retries: 20
 
   dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
     entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
     command: ["serve"]
     environment:

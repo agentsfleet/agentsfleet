@@ -8,7 +8,7 @@
 # bump changed: RESP3 null encoding for blocking commands, the `XREAD BLOCK` map
 # shape, and cluster migration finalization. `deploy-dev.yml` fires on push to
 # main, so merging is what puts this on the dev cluster.
-FROM docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+FROM docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
 
 # The same four-process cluster the integration lane runs, from the same
 # script. Copied rather than mounted: compose can bind-mount from the
