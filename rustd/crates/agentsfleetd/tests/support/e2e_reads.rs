@@ -180,19 +180,38 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
         .map(|row| row.try_get(0).expect("the balance is a bigint"))
 }
 
-/// How many ledger rows the scenario's event has, across every charge type.
+/// How many usage lines the scenario's event has logged: one per slice that
+/// measured something, the report's final slice among them.
 pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
+    count_lines(run, "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1").await
+}
+
+/// How many of those lines the biller has not yet settled.
+///
+/// Zero once a report has answered: the lease path settles its lines after
+/// commit and before it replies, and only a failed settle leaves one for the
+/// billing sweeper.
+pub(crate) async fn unsettled_lines(run: &Scenario) -> i64 {
+    count_lines(
+        run,
+        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1 AND settled_at IS NULL",
+    )
+    .await
+}
+
+/// One count over the scenario event's usage lines.
+async fn count_lines(run: &Scenario, statement: &'static str) -> i64 {
     let mut connection = run
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM billing.usage_ledger WHERE event_id = $1")
+    sqlx::query(statement)
         .bind(&run.event_id)
         .fetch_one(&mut *connection)
         .await
-        .expect("the ledger count must run")
+        .expect("the usage count must run")
         .try_get(0)
         .expect("a count is a bigint")
 }

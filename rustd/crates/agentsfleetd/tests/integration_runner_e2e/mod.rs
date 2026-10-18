@@ -42,7 +42,9 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
-use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
+use crate::reads::{
+    balance, counter_column, event_column, lease_column, lease_rows, ledger_rows, unsettled_lines,
+};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
     assert_no_lease_for_fleet_under_test, capable_beat, field, fleet_poll, get, json,
@@ -229,11 +231,14 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
         after < before,
         "a priced run draws the tenant's wallet down: {before:?} → {after:?}"
     );
+    assert!(
+        ledger_rows(run).await >= 1,
+        "the run's usage is logged, at least the report's final slice"
+    );
     assert_eq!(
-        ledger_rows(run).await,
-        2,
-        "one receive row and one stage row — the two-rows-per-event invariant, \
-         proven here across the two REQUESTS that write them rather than within one store call"
+        unsettled_lines(run).await,
+        0,
+        "and every line is settled before the report answers"
     );
     assert_eq!(
         counter_column(run, "succeeded_count").await.as_deref(),
@@ -265,6 +270,7 @@ async fn assert_replay_returns_the_stored_outcome(
     report: &Value,
 ) {
     let drawn = balance(run).await;
+    let logged = ledger_rows(run).await;
     let replay = post(http, run, "/v1/runners/me/reports", report).await;
     assert_eq!(
         replay.status().as_u16(),
@@ -279,8 +285,8 @@ async fn assert_replay_returns_the_stored_outcome(
     );
     assert_eq!(
         ledger_rows(run).await,
-        2,
-        "and it stays at two rows: nothing claimed, so nothing charged"
+        logged,
+        "and logs no line: nothing claimed, so nothing charged"
     );
     assert_eq!(
         balance(run).await,

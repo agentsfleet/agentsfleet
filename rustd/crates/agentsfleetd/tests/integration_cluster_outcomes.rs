@@ -43,7 +43,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, dragonfly_config, scenario};
-use crate::reads::{balance, counter_column, lease_column, ledger_rows};
+use crate::reads::{balance, counter_column, lease_column, ledger_rows, unsettled_lines};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
     capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
@@ -63,9 +63,6 @@ const CHUNK_TEXT: &str = "the cluster carried this across a shard";
 /// a test that guessed it would agree with nothing.
 const CHANNEL_PREFIX: &str = "fleet:";
 const CHANNEL_SUFFIX: &str = ":activity";
-
-/// Rows one settled event writes: one receive, one stage.
-const LEDGER_ROWS_PER_EVENT: i64 = 2;
 
 /// A runner that has proven its capabilities is leasable; one that has not
 /// reads degraded and is correctly answered no-work, which would make every
@@ -222,10 +219,12 @@ async fn a_report_settles_once_across_both_stores(
         after < before,
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
+    let logged = ledger_rows(run).await;
+    assert!(logged >= 1, "the run's usage is logged, at least its final slice");
     assert_eq!(
-        ledger_rows(run).await,
-        LEDGER_ROWS_PER_EVENT,
-        "one receive row and one stage row, and no third from a redelivery"
+        unsettled_lines(run).await,
+        0,
+        "and settled before the report answered"
     );
 
     let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
@@ -243,8 +242,8 @@ async fn a_report_settles_once_across_both_stores(
     );
     assert_eq!(
         ledger_rows(run).await,
-        LEDGER_ROWS_PER_EVENT,
-        "with no ledger row behind it either"
+        logged,
+        "with no usage line behind it either"
     );
     assert_eq!(
         counter_column(run, "succeeded_count").await.as_deref(),

@@ -87,7 +87,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("query", query("settle usage")(sqlx::Error::RowNotFound)),
         (
             "row malformed",
-            row_malformed("billing.usage_ledger", "tenant_id")(
+            row_malformed("billing.usage_lines", "tenant_id")(
                 afd_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
             ),
         ),

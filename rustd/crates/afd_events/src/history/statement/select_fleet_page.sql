@@ -3,7 +3,7 @@ SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
        failure_reason, failure_detail, resumes_event_id,
        created_at, updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
-          FROM billing.fleet_charges charge
+          FROM billing.usage_lines charge
          WHERE charge.event_id = fleet.events.event_id
            AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos
 FROM fleet.events

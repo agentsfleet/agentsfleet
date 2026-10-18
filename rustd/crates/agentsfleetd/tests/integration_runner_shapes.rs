@@ -64,33 +64,41 @@ const LEASE_SHAPE: &[&str] = &[
 /// The columns the narrative log's rows carry.
 const EVENT_SHAPE: &[&str] = &["id", "runner_id", "event_type", "metadata", "created_at"];
 
-/// The columns a `stage` ledger row carries after a settle.
+/// The columns the report's usage line carries once the biller settled it.
 ///
-/// `fleet_name` joined the list at schema/915. It is the fleet's name as it
-/// stood when the charge was written, captured by subselect inside each
-/// charging statement rather than bound by a caller — so its presence HERE, on
-/// a row the booted daemon wrote through the real settle path, is what proves
-/// the capture reaches production and not merely the statement text. A row
-/// whose fleet could not be read carries NULL and drops out of this list, which
-/// is why the fixture charges a fleet that exists.
+/// `fleet_name` is the fleet's name as it stood when the line was written, and
+/// `platform_model_price_id` the catalogue row it was priced at — so their
+/// presence HERE, on a line the booted daemon wrote through the real report
+/// and settle path, proves both reach production rather than merely the
+/// statement text. `authoring_attempt_id` belongs to setup chat and stays
+/// empty on a fleet line.
 const LEDGER_SHAPE: &[&str] = &[
     "id",
+    "work_type",
+    "work_id",
+    "seq",
     "tenant_id",
     "workspace_id",
     "fleet_id",
-    "event_id",
-    "charge_type",
-    "posture",
-    "model",
-    "credit_deducted_nanos",
-    "token_count_input",
-    "token_count_cached_input",
-    "token_count_output",
-    "wall_ms",
-    "event_created_at",
-    "created_at",
-    "last_charged_at",
     "fleet_name",
+    "event_id",
+    "provider",
+    "model",
+    "posture",
+    "requested_at",
+    "input_token_count",
+    "cached_input_token_count",
+    "cache_write_token_count",
+    "cache_write_5m_token_count",
+    "cache_write_1h_token_count",
+    "output_token_count",
+    "runtime_ms",
+    "platform_model_price_id",
+    "unpriced_token_count",
+    "charged_nanos",
+    "settled_at",
+    "created_at",
+    "updated_at",
 ];
 
 /// The columns one captured memory entry carries.
@@ -182,8 +190,8 @@ async fn test_seeded_row_shapes() {
     .await;
     assert_shape(
         &run,
-        "billing.usage_ledger",
-        "event_id = $1 AND charge_type = 'stage'",
+        "billing.usage_lines",
+        "event_id = $1 AND seq = (SELECT max(seq) FROM billing.usage_lines WHERE event_id = $1)",
         &run.event_id,
         LEDGER_SHAPE,
     )

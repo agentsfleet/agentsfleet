@@ -51,7 +51,7 @@ impl Setup {
                 .bind(attempt)
                 .execute(&mut *connection).await.expect("settled obligation");
         }
-        sqlx::query("UPDATE billing.fleet_charges SET created_at=to_timestamp(101) WHERE tenant_id=$1::uuid")
+        sqlx::query("UPDATE billing.usage_lines SET created_at=to_timestamp(101) WHERE tenant_id=$1::uuid")
             .bind(&owner.tenant)
             .execute(&mut *connection)
             .await
