@@ -6,7 +6,7 @@ import { NavItem, SectionLabel } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
-type RecentFleet = { id: string; name: string };
+type RecentFleet = { id: string; description: string | null };
 type RecentRegistry = Record<string, RecentFleet[]>;
 type Remember = (workspace: string, fleets: RecentFleet[], visited: boolean) => void;
 const RECENT_LIMIT = 12;
@@ -14,7 +14,7 @@ const EMPTY_FLEETS: RecentFleet[] = [];
 const RecentContext = createContext<RecentRegistry>({});
 const RememberContext = createContext<Remember>(() => {});
 
-// Session memory only: no private fleet names survive logout or cross accounts.
+// Session memory only: saved purposes do not survive logout or cross accounts.
 export function RecentFleetsProvider({ children }: { children: ReactNode }) {
   const [recent, setRecent] = useState<RecentRegistry>({});
   const remember = useCallback<Remember>((workspace, fleets, visited) => {
@@ -24,7 +24,7 @@ export function RecentFleetsProvider({ children }: { children: ReactNode }) {
       const ordered = visited ? [...fleets, ...previous] : [...previous.map((fleet) => incoming.get(fleet.id) ?? fleet), ...fleets];
       const seen = new Set<string>();
       const next = ordered.filter((fleet) => !seen.has(fleet.id) && seen.add(fleet.id)).slice(0, RECENT_LIMIT);
-      if (next.length === previous.length && next.every((fleet, index) => fleet.id === previous[index]?.id && fleet.name === previous[index].name)) return current;
+      if (next.length === previous.length && next.every((fleet, index) => fleet.id === previous[index]?.id && fleet.description === previous[index].description)) return current;
       return { ...current, [workspace]: next };
     });
   }, []);
@@ -36,9 +36,9 @@ export function useRememberFleets(workspace: string, fleets: RecentFleet[], visi
   useEffect(() => { remember(workspace, fleets, visited); }, [remember, workspace, fleets, visited]);
 }
 
-export function RecentFleetVisit({ workspace, id, name }: { workspace: string; id: string; name: string }) {
+export function RecentFleetVisit({ workspace, id, description }: { workspace: string; id: string; description: string | null }) {
   const remember = useContext(RememberContext);
-  useEffect(() => { remember(workspace, [{ id, name }], true); }, [remember, workspace, id, name]);
+  useEffect(() => { remember(workspace, [{ id, description }], true); }, [remember, workspace, id, description]);
   return null;
 }
 
@@ -50,9 +50,9 @@ export function RecentFleets({ workspaceId, pathname, onNavigate }: { workspaceI
     {workspaceId && fleets.length ? fleets.map((fleet) => {
       const href = workspacePath(workspaceId, `fleets/${fleet.id}`);
       return <NavItem key={fleet.id} asChild active={pathname === href || pathname.startsWith(`${href}/`)} onClick={onNavigate}>
-        <Link href={href} prefetch={false} title={fleet.name} aria-label={agentDisplayName(fleet.id)}>
+        <Link href={href} prefetch={false} title={fleet.description ?? agentDisplayName(fleet.id)} aria-label={agentDisplayName(fleet.id)}>
           <span className="min-w-0"><span className="block truncate">{agentDisplayName(fleet.id)}</span>
-            <span className="block truncate text-label text-muted-foreground">{fleet.name}</span></span>
+            {fleet.description !== null ? <span className="block truncate text-label text-muted-foreground">{fleet.description}</span> : null}</span>
         </Link>
       </NavItem>;
     }) : <p className="px-md text-body-sm text-muted-foreground">Fleets you open appear here.</p>}

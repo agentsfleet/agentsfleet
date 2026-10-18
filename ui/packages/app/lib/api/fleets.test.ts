@@ -1,15 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FLEET_DETAIL, FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { ApiError } from "./errors";
+import { FleetListSchema } from "./fleet-detail";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" };
+const fleet = { id: "zom_1", name: "platform-ops", description: null, status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" };
 
 describe("listFleets", () => {
+  it.each([{description: null}, {description: "Watch production errors"}])("preserves the saved purpose $description", async ({description}) => {
+    fetchMock.mockResolvedValue({ok: true, status: 200, json: async () => ({items: [{...fleet, description}], total: null, next_cursor: null})});
+    const {listFleets} = await import("./fleets");
+    expect((await listFleets("ws_1", "tok")).items[0]?.description).toBe(description);
+  });
+
+  it.each([{description: undefined}, {description: 7}, {description: {}}, {description: ""}])("refuses malformed saved purpose $description", ({description}) => {
+    const parsed = FleetListSchema.safeParse({items: [{...fleet, description}], total: null, next_cursor: null});
+    expect(parsed).toMatchObject({success: false, error: {issues: [expect.objectContaining({path: ["items", 0, "description"]})]}});
+  });
+
   it("GET /v1/workspaces/:ws/fleets with bearer, returns envelope", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [fleet], total: null, next_cursor: null }) });
     const { listFleets } = await import("./fleets");

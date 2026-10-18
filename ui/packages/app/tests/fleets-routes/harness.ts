@@ -102,6 +102,7 @@ export function detailBody(over: Record<string, unknown> = {}) {
   return {
     ...FLEET_DETAIL,
     name: "platform-ops",
+    description: FLEET_DETAIL.definition.description,
     status: "active",
     events_processed: "0",
     budget_used_nanos: "0",

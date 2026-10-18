@@ -42,12 +42,14 @@ This request log belongs to the existing schema clean-slate milestone.
 
 The UI continues with explicit loaded-title search, available setup state, and safe destination checking while these requests are open.
 
-### Saved fleet purpose on lists — open
+### Saved fleet purpose on lists — verified in server and application
 
 - Endpoint: `GET /v1/workspaces/{workspace_id}/fleets`.
-- Field: `description` containing the saved fleet purpose; nullability to be published by the server.
+- Field: `description: string | null`, always sent by server commit `18ac1e074`; null means no saved purpose.
 - Why: the detail already describes what the fleet does, but list summaries do not. Cards and recents should show the stable agent callsign with useful purpose text.
-- Screens: Your fleets and sidebar recents.
+- Screens: Your fleets and sidebar recents. Both lead with the agent callsign and show the saved purpose beneath it; the technical slug stays out of the display.
+- Proof: the list decoder preserves a purpose or null and rejects missing, malformed or empty values. Recents update changed purposes without changing visit order, workspace isolation or the twelve-item bound. App lint passes; canonical app coverage reports 402 files / 3791 tests and 100% on all four measures (/tmp/m229-purpose-coverage-all.txt). Native source review found no must-fix defect.
+- Size: production build and all 25 budgets plus the server-module guard pass. Shared compressed JavaScript is 275318 / 276480 bytes; new-fleet total is 334590 bytes and fleet-detail total is 365323 bytes (/tmp/m229-purpose-size.json).
 
 ### Exact monetary wire values — verified in server and clients
 

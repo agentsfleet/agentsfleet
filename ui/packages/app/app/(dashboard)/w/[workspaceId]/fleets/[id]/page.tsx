@@ -120,7 +120,7 @@ export default async function FleetDetailPage({
         claimsViewport && "h-full min-h-0 overflow-clip",
       )}
     >
-      <RecentFleetVisit workspace={workspaceId} id={fleet.id} name={fleet.name} />
+      <RecentFleetVisit workspace={workspaceId} id={fleet.id} description={fleet.definition.description} />
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <FleetHeader
         workspaceId={workspaceId}
