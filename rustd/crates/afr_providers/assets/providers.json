@@ -1,6 +1,8 @@
 [
   {"name": "anthropic", "aliases": [], "wire": "messages", "base_url": "https://api.anthropic.com"},
   {"name": "openai", "aliases": [], "wire": "responses", "base_url": "https://api.openai.com/v1"},
+  {"name": "gemini", "aliases": [], "wire": "gemini", "base_url": "https://generativelanguage.googleapis.com"},
+  {"name": "ollama", "aliases": [], "wire": "ollama", "base_url": "https://ollama.com"},
   {"name": "openrouter", "aliases": [], "wire": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter"},
   {"name": "groq", "aliases": [], "wire": "chat", "base_url": "https://api.groq.com/openai/v1", "dialect": "groq"},
   {"name": "mistral", "aliases": [], "wire": "chat", "base_url": "https://api.mistral.ai", "dialect": "mistral"},

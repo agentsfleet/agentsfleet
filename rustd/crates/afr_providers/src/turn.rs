@@ -2,9 +2,9 @@
 //!
 //! Text and reasoning go out as they arrive; a tool call goes out whole once
 //! its arguments end; when the stream is done, the turn's usage and its end
-//! follow: the reasoning the provider wants back, and whether the turn stopped
-//! at its output limit. A call the provider sent with no id is given one, so
-//! the result it is answered with still matches.
+//! follow: the continuation the provider wants back, and whether the turn
+//! stopped at its output limit. Rig gives an idless call a local identity;
+//! that same identity stays on the call, replay and result.
 //!
 //! A turn the provider ends early, after its reply began but before anything
 //! visible went out, is opened again under the same bound the transport's
@@ -18,7 +18,6 @@
 
 use std::fmt;
 use std::ops::ControlFlow;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use afd_wire::activity::StreamTextKind;
 use afr_telemetry::labels::{Provider as ProviderLabel, RetryReason};
@@ -28,7 +27,7 @@ use futures_util::stream::{self, BoxStream};
 use rig_core::DynModel;
 use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, CallId};
+use rig_core::message::AssistantContent;
 use rig_core::operation::Completion;
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 
@@ -40,8 +39,6 @@ use crate::retry::ATTEMPTS;
 
 /// The log line a turn opened again writes.
 const EVENT_REOPENED: &str = "provider_turn_reopened";
-/// The prefix a call the provider sent without an id is given, numbered.
-const UNNAMED_CALL: &str = "call_";
 
 /// One lease's provider: a rig model and the wire it speaks.
 pub(crate) struct Turns {
@@ -50,7 +47,6 @@ pub(crate) struct Turns {
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
-    unnamed: AtomicU64,
 }
 
 impl fmt::Debug for Turns {
@@ -76,7 +72,6 @@ impl Turns {
             wire,
             lease_id: lease_id.into(),
             provider: provider.into(),
-            unnamed: AtomicU64::new(0),
         }
     }
 
@@ -87,23 +82,6 @@ impl Turns {
             raise::blocked_endpoint(&self.provider)
         } else {
             raise::provider(failure)
-        }
-    }
-
-    /// A call to `name` with `arguments`, under a stable id when `id` is
-    /// blank.
-    fn call(&self, id: &CallId, name: String, arguments: serde_json::Value) -> Call {
-        let wire_id = id.wire();
-        let id = if wire_id.is_empty() {
-            let number = self.unnamed.fetch_add(1, Ordering::Relaxed) + 1;
-            format!("{UNNAMED_CALL}{number}")
-        } else {
-            wire_id.into_owned()
-        };
-        Call {
-            id,
-            name,
-            arguments,
         }
     }
 
@@ -204,7 +182,7 @@ impl Reading {
     /// Reads the stream's next item.
     async fn step(mut self, turns: &Turns) -> Step {
         match self.stream.next().await {
-            Some(Ok(Item::Event(event))) => match chunk(turns, event) {
+            Some(Ok(Item::Event(event))) => match chunk(event) {
                 Some(chunk) => {
                     self.shown = true;
                     Step::Break((Ok(chunk), Pass::Reading(self)))
@@ -218,7 +196,7 @@ impl Reading {
             }
             Some(Err(failure)) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             None => match self.stream.finish().await {
-                Ok(response) => Step::Continue(Pass::Ending(ending(response))),
+                Ok(response) => Step::Continue(Pass::Ending(ending(response, turns.wire))),
                 Err(failure) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             },
         }
@@ -226,7 +204,7 @@ impl Reading {
 }
 
 /// The chunk one event is, when it is one the seam carries.
-fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
+fn chunk(event: StreamEvent) -> Option<Chunk> {
     match event {
         StreamEvent::Text { text, .. } => Some(Chunk::Text {
             kind: StreamTextKind::Answer,
@@ -247,7 +225,11 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
                 Some(raw) => serde_json::Value::String(raw),
                 None => serde_json::Value::Object(call.function.arguments),
             };
-            Some(Chunk::Call(turns.call(&call.id, name, arguments)))
+            Some(Chunk::Call(Call {
+                id: call.id.wire().into_owned(),
+                name,
+                arguments,
+            }))
         }
         StreamEvent::Start { .. } | StreamEvent::Arguments { .. } | StreamEvent::End { .. } => None,
     }
@@ -265,7 +247,7 @@ fn reopens(failure: &ProviderError) -> bool {
 }
 
 /// The chunks a finished turn ends on: what it spent, then its end.
-fn ending(response: CompletionResponse) -> Ending {
+fn ending(response: CompletionResponse, wire: Wire) -> Ending {
     let usage = response.usage;
     // rig counts cache reads inside `input_tokens` on every wire; the daemon
     // bills `input` and `cached_input` as two disjoint counts, so the reads
@@ -278,16 +260,19 @@ fn ending(response: CompletionResponse) -> Ending {
         output: usage.output_tokens.unwrap_or(0),
     };
     let cut = response.finish_reason() == Some(FinishReason::Length);
-    let reasoning = response
-        .choice
-        .into_iter()
-        .filter(|content| matches!(content, AssistantContent::Reasoning(_)));
+    let continuation = response.choice.into_iter().filter(|content| {
+        wire == Wire::Gemini || matches!(content, AssistantContent::Reasoning(_))
+    });
     let end = End {
         replay: Replay {
-            content: reasoning.collect(),
+            content: continuation.collect(),
             origin: Some(response.origin),
         },
         cut,
     };
     [Chunk::Usage(spent), Chunk::End(end)].into_iter()
 }
+
+#[cfg(test)]
+#[path = "turn/tests.rs"]
+mod tests;

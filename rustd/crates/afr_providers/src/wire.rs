@@ -13,6 +13,8 @@
 use rig_core::DynModel;
 use rig_core::operation::Completion;
 use rig_core::providers::anthropic::AnthropicConfig;
+use rig_core::providers::gemini::GeminiConfig;
+use rig_core::providers::ollama::OllamaConfig;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::wire::{Dialect, by_name};
 
@@ -49,6 +51,17 @@ pub(crate) fn model(
             .with_base_url(base)
             .connect(transport)
             .responses(model)
+            .erase(),
+        Wire::Gemini => GeminiConfig::new(key)
+            .with_base_url(base)
+            .connect(transport)
+            .completion(model)
+            .erase(),
+        Wire::Ollama => OllamaConfig::new()
+            .with_base_url(base)
+            .with_api_key(key)
+            .connect(transport)
+            .native_completion(model)
             .erase(),
         Wire::Chat => {
             let dialect = route

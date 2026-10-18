@@ -88,22 +88,14 @@ fn should_dial_kimi_at_the_international_endpoint_it_is_priced_for() {
 
 /// Each name is left out for a reason the chat wire cannot absorb: `bedrock`
 /// signs every request with AWS Signature Version 4 and streams AWS
-/// event-stream frames; `gemini` expects Gemini 3's thought signatures back on
-/// each tool call, a field rig's chat wire does not carry; `dashscope` is the
+/// event-stream frames; `dashscope` is the
 /// mainland-China endpoint, which the catalogue never prices; `lmstudio` is a
 /// loopback host; `copilot` needs a token exchange; and names match exactly.
 #[test]
 fn should_refuse_a_name_the_table_leaves_out() {
     let registry = Registry::builtin().unwrap();
 
-    for left_out in [
-        "bedrock",
-        "gemini",
-        "dashscope",
-        "lmstudio",
-        "copilot",
-        "Anthropic",
-    ] {
+    for left_out in ["bedrock", "dashscope", "lmstudio", "copilot", "Anthropic"] {
         let refused = registry.route(left_out).unwrap_err();
         assert_eq!(refused.unhosted_provider(), Some(left_out));
     }

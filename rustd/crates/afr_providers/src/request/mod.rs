@@ -63,7 +63,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
                 Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
         }
         // The Chat wire's gateways refuse a field they do not know.
-        Wire::Chat => {}
+        Wire::Chat | Wire::Gemini | Wire::Ollama => {}
     }
     Ok(built
         .model(request.model)
@@ -81,7 +81,7 @@ fn hosted(wire: Wire, tool: Hosted) -> Option<ProviderToolDefinition> {
                 .with_config(FIELD_NAME, serde_json::Value::from(tool.name())),
         ),
         (Hosted::WebSearch, Wire::Responses) => Some(ProviderToolDefinition::new(tool.name())),
-        (Hosted::WebSearch, Wire::Chat) => None,
+        (Hosted::WebSearch, Wire::Chat | Wire::Gemini | Wire::Ollama) => None,
     }
 }
 
@@ -90,7 +90,7 @@ fn hosted(wire: Wire, tool: Hosted) -> Option<ProviderToolDefinition> {
 /// names it without a second check.
 #[derive(Debug, Default)]
 struct Conversation<'a> {
-    tools: HashMap<&'a str, ToolName>,
+    tools: HashMap<&'a str, (ToolName, CallId)>,
 }
 
 impl<'a> Conversation<'a> {
@@ -134,19 +134,42 @@ impl<'a> Conversation<'a> {
         calls: &'a [Call],
         replay: &[AssistantContent],
     ) -> Result<Vec<AssistantContent>> {
-        let mut content = replay.to_vec();
+        let built_calls = calls
+            .iter()
+            .map(|call| self.call(call, replay))
+            .collect::<Result<Vec<_>>>()?;
+        if unchanged(replay, text, &built_calls) {
+            return Ok(replay.to_vec());
+        }
+        let mut content: Vec<_> = replay
+            .iter()
+            .filter(|item| matches!(item, AssistantContent::Reasoning(_)))
+            .cloned()
+            .collect();
         if !text.is_empty() {
             content.push(AssistantContent::text(text.to_owned()));
         }
-        for call in calls {
-            let name = ToolName::new(call.name.clone())
-                .map_err(|source| raise::unnamed(&call.id, source))?;
-            self.tools.insert(&call.id, name.clone());
-            let function = ToolFunction::new(name, call.arguments.clone());
-            let id = CallId::from_wire(call.id.clone());
-            content.push(AssistantContent::ToolCall(ToolCall::new(id, function)));
-        }
+        content.extend(built_calls);
         Ok(content)
+    }
+
+    /// Keeps rig's call identity so its native fingerprint and result still agree.
+    fn call(&mut self, call: &'a Call, replay: &[AssistantContent]) -> Result<AssistantContent> {
+        let name =
+            ToolName::new(call.name.clone()).map_err(|source| raise::unnamed(&call.id, source))?;
+        let original = replay.iter().find_map(|item| match item {
+            AssistantContent::ToolCall(original) if original.id.wire() == call.id => Some(original),
+            _ => None,
+        });
+        let id = original.map_or_else(
+            || CallId::from_wire(call.id.clone()),
+            |original| original.id.clone(),
+        );
+        let function = ToolFunction::new(name.clone(), call.arguments.clone());
+        let mut built = ToolCall::new(id.clone(), function);
+        built.native = original.and_then(|original| original.native.clone());
+        self.tools.insert(&call.id, (name, id));
+        Ok(AssistantContent::ToolCall(built))
     }
 
     /// One call's result, under the tool its call named: its text, then the
@@ -157,19 +180,31 @@ impl<'a> Conversation<'a> {
         output: &str,
         image: Option<&ImageInput>,
     ) -> Result<UserContent> {
-        let name = self
+        let (name, id) = self
             .tools
             .get(call_id)
             .cloned()
             .ok_or_else(|| raise::unsendable(call_id))?;
         let mut content = vec![ToolResultContent::text(output.to_owned())];
         content.extend(image.map(image_input::content));
-        Ok(UserContent::tool_result(
-            CallId::from_wire(call_id.to_owned()),
-            name,
-            content,
-        ))
+        Ok(UserContent::tool_result(id, name, content))
     }
+}
+
+/// Native parts keep their order and signatures while their public fields agree.
+fn unchanged(replay: &[AssistantContent], text: &str, calls: &[AssistantContent]) -> bool {
+    let answer: String = replay
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::Text(part) => Some(part.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    answer == text
+        && replay
+            .iter()
+            .filter(|item| matches!(item, AssistantContent::ToolCall(_)))
+            .eq(calls.iter())
 }
 
 /// Adds `content` to the user turn the history ends on, or opens one.

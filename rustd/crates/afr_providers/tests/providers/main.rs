@@ -20,6 +20,7 @@ mod ends;
 mod hosted;
 mod hosts;
 mod images;
+mod native;
 mod retries;
 mod turns;
 
