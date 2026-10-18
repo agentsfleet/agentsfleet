@@ -124,7 +124,8 @@ pub struct Lease<C> {
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
     /// Original attempt deadline; renewal cannot extend it.
-    pub deadline: i64,
+    #[serde(with = "crate::instant")]
+    pub deadline: jiff::Timestamp,
     /// Non-secret selected model metadata.
     pub model: SelectedModel,
     /// Daemon invocation authority, bound to this exact attempt.
@@ -148,3 +149,7 @@ impl<C> fmt::Debug for Lease<C> {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+#[path = "lease_tests.rs"]
+mod tests;

@@ -23,7 +23,7 @@ pub struct Renew {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Renewed {
-    /// Extended Unix-millisecond deadline.
+    /// The lease's extended expiry.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
     /// Whether the runner must stop private work.

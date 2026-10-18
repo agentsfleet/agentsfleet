@@ -20,8 +20,7 @@ pub(super) async fn keep(
     observed: &Observed,
 ) -> Result<()> {
     let mut expiry = deadline(lease.expires_at, clock);
-    let maximum =
-        deadline(attempt_ends(lease), clock).min(Instant::now() + Duration::from_secs(300));
+    let maximum = deadline(lease.deadline, clock).min(Instant::now() + Duration::from_secs(300));
     let mut pause = INTERVAL;
     loop {
         let renew_at = (Instant::now() + pause).min(expiry).min(maximum);
@@ -50,14 +49,6 @@ pub(super) async fn keep(
             Err(failure) => return Err(failure),
         }
     }
-}
-
-/// When the attempt itself ends; renewal cannot extend it.
-///
-/// The wire still spells this instant as epoch milliseconds. One out of
-/// jiff's range is a broken lease, read as already over.
-pub(super) fn attempt_ends(lease: &Lease<Value>) -> Timestamp {
-    Timestamp::from_millisecond(lease.deadline).unwrap_or(Timestamp::MIN)
 }
 
 pub(super) fn deadline(at: Timestamp, clock: &dyn Clock) -> Instant {

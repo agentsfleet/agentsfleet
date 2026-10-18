@@ -36,8 +36,7 @@ pub(super) fn build(
         fence: FENCE.to_string(),
         deletion_generation: crate::lease::guard::DELETION_GENERATION.to_string(),
         expires_at: placement.until,
-        // The runner protocol still carries this deadline as epoch milliseconds.
-        deadline: placement.deadline.as_millisecond(),
+        deadline: placement.deadline,
         model: selected_model(model)?,
         model_access: ModelAccess {
             token: placement.token.clone(),

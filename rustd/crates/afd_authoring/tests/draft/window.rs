@@ -73,7 +73,7 @@ pub(super) async fn receipts(f: &Fixture, resource: &str) -> i64 {
         .expect("receipt census")
 }
 
-async fn send(
+pub(super) async fn send(
     f: &Fixture,
     draft: &Uuid7,
     key: &Uuid7,

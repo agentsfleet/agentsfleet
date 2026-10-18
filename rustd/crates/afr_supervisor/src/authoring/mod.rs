@@ -58,7 +58,7 @@ impl Lessee {
             clock: self.clock.as_ref(),
             observed: &observed,
         };
-        let deadline = renew::deadline(renew::attempt_ends(lease), self.clock.as_ref())
+        let deadline = renew::deadline(lease.deadline, self.clock.as_ref())
             .min(tokio::time::Instant::now() + std::time::Duration::from_secs(300));
         let ending = tokio::select! {
             result = turn.run() => match result {

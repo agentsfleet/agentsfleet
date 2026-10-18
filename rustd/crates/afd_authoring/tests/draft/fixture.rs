@@ -13,14 +13,28 @@ use afd_db::{
     test_util::{OwnedRows, TestDatabase},
 };
 use afd_observability::{Analytics, Recorded, Telemetry};
+use serde_json::Value;
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
+use std::sync::LazyLock;
+
+/// One recorder for every fixture in the suite.
+///
+/// A maintenance pass expires and finishes every lane's stale work, so a step
+/// about one fixture can be reported through another fixture's `Drafts`. Every
+/// fixture reports here, and [`Fixture::reported`] keeps the steps about its
+/// own workspace, so a fixture sees its steps whichever pass reported them.
+/// Test binaries run one at a time, so no other process reports about it.
+static RECORDING: LazyLock<(Analytics, Recorded)> = LazyLock::new(Analytics::recording);
+
+/// The property every authoring step names its workspace under.
+const WORKSPACE: &str = "workspace_id";
 
 pub(super) struct Fixture {
     pub(super) db: Db,
     pub(super) drafts: Drafts,
-    /// Every funnel step the drafts, and every service built over them, reported.
-    pub(super) recorded: Recorded,
+    /// The suite's [`RECORDING`], read only through [`Fixture::reported`].
+    recorded: Recorded,
     pub(super) owner: Uuid7,
     pub(super) member: Uuid7,
     pub(super) workspace: Uuid7,
@@ -38,7 +52,7 @@ impl Fixture {
     pub(super) async fn create() -> Self {
         let lane = TestDatabase::shared();
         let db = lane.open(DbRole::Api, &[]).await;
-        let (analytics, recorded) = Analytics::recording();
+        let (analytics, recorded) = RECORDING.clone();
         let mut fixture = Self {
             drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics),
             recorded,
@@ -75,10 +89,18 @@ impl Fixture {
         }
     }
 
-    /// The steps reported so far under the funnel event `name`, in order.
+    /// The steps about this fixture's workspace reported so far under the
+    /// funnel event `name`, in order, by any fixture's pass.
     pub(super) fn reported(&self, name: &str) -> Vec<Telemetry> {
         let events = self.recorded.events().into_iter();
-        events.filter(|event| event.name() == name).collect()
+        let mine = |event: &Telemetry| {
+            let event = event.event();
+            let workspace = event.properties().get(WORKSPACE).and_then(Value::as_str);
+            workspace == Some(self.workspace.as_str())
+        };
+        events
+            .filter(|event| event.name() == name && mine(event))
+            .collect()
     }
 
     pub(super) fn member_access(&self) -> Access<'_> {

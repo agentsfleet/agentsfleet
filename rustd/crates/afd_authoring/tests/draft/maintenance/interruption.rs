@@ -46,8 +46,9 @@ async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing
     f.cleanup().await;
 }
 
-/// A maintenance pass expires every lane's stale attempts, so the proof reads
-/// only the steps about its own draft.
+/// A maintenance pass expires every lane's stale attempts, so another lane's
+/// pass may be the one that expires this attempt; the suite's shared recorder
+/// sees its step either way, and the count is over every pass.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
