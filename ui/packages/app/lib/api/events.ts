@@ -12,7 +12,7 @@ function fleetScope(workspaceId: string, fleetId: string): string {
   return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
 }
 
-// Operator-visible event rows from `core.fleet_events`. Mirrors the
+// Operator-visible event rows from `fleet.events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
 // dashboard renders the same shape it queries.
 //

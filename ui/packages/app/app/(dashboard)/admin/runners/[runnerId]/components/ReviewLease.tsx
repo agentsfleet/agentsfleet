@@ -40,7 +40,7 @@ import { agentDisplayName } from "@/lib/fleets/agent-label";
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 const METER_SEPARATOR = " · ";
 
-// Per-lease panel: every field is a column on fleet.runner_leases or its
+// Per-lease panel: every field is a column on runner.leases or its
 // joined Fleet event. The request payload is deliberately absent — under any
 // outcome — and nothing here is a secret; credentials resolve per lease and
 // are never stored on the row.

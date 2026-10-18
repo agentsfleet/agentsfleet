@@ -23,7 +23,7 @@ PlanetScale-dev (`account_teardown`). No manual SQL needed.
    ```
 
    ```sql
-   SELECT tenant_id FROM core.users WHERE oidc_subject = '<clerk_user_id>';  -- value of $CLERK_USER_ID
+   SELECT tenant_id FROM identity.users WHERE oidc_subject = '<clerk_user_id>';  -- value of $CLERK_USER_ID
    ```
 
 3. **If rows remain** (webhook didn't fire): Clerk → Webhooks → the `user.deleted`

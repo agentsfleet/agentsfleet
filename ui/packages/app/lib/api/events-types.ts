@@ -118,7 +118,7 @@ export function streamWorkspaceEventsUrl(workspaceId: string): string {
 }
 
 // Same-origin URL for the workspace-scoped reconnect backfill list. The wall
-// recovers a gap by paging `core.fleet_events` for the whole workspace (or one
+// recovers a gap by paging `fleet.events` for the whole workspace (or one
 // fleet via `fleet_id`), the same durable source the per-fleet client uses.
 export function backfillWorkspaceEventsUrl(
   workspaceId: string,
