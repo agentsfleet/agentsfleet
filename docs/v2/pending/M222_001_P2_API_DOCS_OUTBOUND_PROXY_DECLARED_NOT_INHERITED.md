@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** pending — record the full comparison commit at CHORE(open)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M218_001 — it lands `afd_identity::direct`, `rustd/clippy.toml`'s `disallowed-methods` list, and the two suites (`schedule_proxy`, `github_proxy`) proving today's environment-proxy behaviour that this spec replaces
+**Depends on:** M218_001 — it lands `afd_identity::direct`, `rustd/clippy.toml`'s `disallowed-methods` list, and the `schedule_proxy` suite proving today's environment-proxy behaviour that this spec replaces
 **Provenance:** LLM-drafted (claude-opus-5-5, Oct 11, 2026) from Indy's M218 review decision; client facts read from `feat/m218-shared-crates` at `b41496274`
 **Canonical architecture:** `docs/architecture/scaling.md` §Tuneup knobs and when to turn them
 
@@ -32,11 +32,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** With `OUTBOUND_PROXY_URL` set, the scheduler's management calls and the GitHub library fetch reach their hosts through that proxy, every other daemon client connects directly, and `HTTPS_PROXY` in the environment changes no daemon route.
+**Goal (testable):** With `OUTBOUND_PROXY_URL` set, the scheduler's management calls reach their host through that proxy, every other daemon client connects directly, and `HTTPS_PROXY` in the environment changes no daemon route.
 
-**Problem:** After M218, two `agentsfleetd` clients (the QStash scheduler client and the GitHub library fetch) send through whatever proxy `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` names. The four credential-bearing clients ignore those variables. An operator can't tell from the daemon's configuration which calls leave through a proxy. A proxy variable exported for some other tool on the host silently reroutes the scheduler. A deployment that needs a proxy for a vendor call can't name one without also exporting a variable that every process on the host reads.
+**Problem:** After M218, the QStash scheduler client sends through whatever proxy `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` names. The four credential-bearing clients ignore those variables. An operator can't tell from the daemon's configuration which calls leave through a proxy. A proxy variable exported for some other tool on the host silently reroutes the scheduler. A deployment that needs a proxy for a vendor call can't name one without also exporting a variable that every process on the host reads.
 
-**Solution summary:** A new owner, `afd_identity::proxy`, beside `afd_identity::direct`, builds the only clients allowed to take a proxy. It takes the proxy URL from a new boot knob, `OUTBOUND_PROXY_URL`, and the passthrough hosts as an explicit list. The list is built at boot from the scheduler's configured API base host and the two GitHub hosts. A request to a listed host goes through the proxy. A request to any other host connects directly. Every environment proxy variable is ignored. `rustd/clippy.toml` adds `reqwest::ClientBuilder::proxy` to `disallowed-methods`, so a proxy added anywhere outside the owner fails `make lint-rustd`. When the knob is unset, every daemon client connects directly. This is a behaviour change for any deployment that relied on `HTTPS_PROXY`, and the changelog says so.
+**Solution summary:** A new owner, `afd_identity::proxy`, beside `afd_identity::direct`, builds the only clients allowed to take a proxy. It takes the proxy URL from a new boot knob, `OUTBOUND_PROXY_URL`, and the passthrough hosts as an explicit list. The list is built at boot from the scheduler's configured API base host. A request to a listed host goes through the proxy. A request to any other host connects directly. Every environment proxy variable is ignored. `rustd/clippy.toml` adds `reqwest::ClientBuilder::proxy` to `disallowed-methods`, so a proxy added anywhere outside the owner fails `make lint-rustd`. When the knob is unset, every daemon client connects directly. This is a behaviour change for any deployment that relied on `HTTPS_PROXY`, and the changelog says so.
 
 ## PR Intent & comprehension handshake
 
@@ -49,9 +49,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `rustd/crates/afd_identity/src/lib.rs` — the crate that gains the `proxy` owner. On the merged base, read its `direct` module first: the one-owner shape this spec mirrors (a builder, a caller-named deadline, the owner's `#[expect(clippy::disallowed_methods)]`).
 2. `rustd/crates/agentsfleetd/src/credentials.rs` — `schedule_client`, the scheduler builder this spec rewires; on the merged base, `serve/clients.rs` beside it opens every outbound client at boot.
 3. `rustd/crates/agentsfleetd/src/preflight/knobs.rs` — how a boot knob is declared, documented and read through `afd_core::env`.
-4. `rustd/crates/afd_library/src/github.rs` — `GithubSource::new`, the GitHub fetch builder, and `validate_redirect`'s two hosts.
 
-These pointers resolve on `main` today. M218_001 adds what this spec builds on: the workspace `clippy.toml` with its `disallowed-methods` list, and the single-test binaries `schedule_proxy` (agentsfleetd) and `github_proxy` (afd_library), which keep environment writes sound under edition 2024. Read all three on the merged base at CHORE(open).
+These pointers resolve on `main` today. M218_001 adds what this spec builds on: the workspace `clippy.toml` with its `disallowed-methods` list, and the single-test binary `schedule_proxy` (agentsfleetd), which keeps environment writes sound under edition 2024. Read all three on the merged base at CHORE(open).
 
 ## Files Changed (blast radius)
 
@@ -64,26 +63,21 @@ These pointers resolve on `main` today. M218_001 adds what this spec builds on: 
 | `rustd/crates/afd_identity/Cargo.toml` | EDIT | `url` dependency if the parsed type needs it (workspace pin, no new version) |
 | `rustd/clippy.toml` | EDIT | Add `reqwest::ClientBuilder::proxy`; reword the `Client::builder` reason to name both owners |
 | `rustd/crates/agentsfleetd/src/preflight/knobs.rs` | EDIT | Declare `OUTBOUND_PROXY_URL_KNOB` |
-| `rustd/crates/agentsfleetd/src/preflight.rs` | EDIT | Read and validate the knob at boot |
+| `rustd/crates/agentsfleetd/src/preflight/mod.rs` | EDIT | Read and validate the knob at boot |
 | `rustd/crates/agentsfleetd/src/preflight/config.rs` | EDIT | Carry the parsed proxy on the boot config |
 | `rustd/crates/agentsfleetd/tests/preflight_optional.rs` | EDIT | Knob unset, valid, wrong scheme, userinfo present |
 | `rustd/crates/agentsfleetd/src/credentials.rs` | EDIT | `schedule_client` builds through `afd_identity::proxy`; its `#[expect]` goes |
 | `rustd/crates/agentsfleetd/src/serve/clients.rs` | EDIT | Hand the boot proxy to the scheduler builder; module doc names the declared route |
 | `rustd/crates/agentsfleetd/src/serve/runtime.rs` | EDIT | Pass the parsed proxy from config into `Clients::open` |
 | `rustd/crates/agentsfleetd/tests/schedule_proxy.rs` | EDIT | Prove the scheduler goes through the knob's proxy and ignores `HTTPS_PROXY` |
-| `rustd/crates/afd_library/src/github.rs` | EDIT | `GithubSource::new` takes the proxy; its `#[expect]` goes |
-| `rustd/crates/afd_library/src/catalogue/import.rs` | EDIT | Thread the proxy to `GithubSource::new` |
-| `rustd/crates/afd_library/tests/github_proxy.rs` | EDIT | Prove the GitHub fetch goes through the knob's proxy and ignores `HTTPS_PROXY` |
-| `rustd/crates/afd_library/src/github/tests.rs` | EDIT | Constructor call sites |
-| `rustd/crates/afd_library/src/github/tests/transport.rs` | EDIT | Constructor call sites |
 | `docs/architecture/scaling.md` | EDIT | `OUTBOUND_PROXY_URL` row in §Tuneup knobs |
 | `docs/architecture/runner_fleet.md` | EDIT | One line under §Traps: the daemon-side proxy is not the runner sandbox's egress, which still takes no forward proxy |
 
-The `GithubSource::new` and `schedule_client` caller lists come from `git grep -n 'GithubSource::new\|schedule_client'` on `feat/m218-shared-crates`. Re-run the grep on the merged base at CHORE(open) and extend this table before any edit.
+The `schedule_client` caller list comes from `git grep -n 'schedule_client'` on `feat/m218-shared-crates`. Re-run the grep on the merged base at CHORE(open) and extend this table before any edit.
 
 ## Applicable Rules
 
-- **`.orly/docs/greptile-learnings/RULES.md`** — NDC (the two `#[expect]` annotations and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), UFS (knob name, host names and log event names are named constants), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error), TCF (each proxy test fails when the route is wrong, proven by a red run).
+- **`.orly/docs/greptile-learnings/RULES.md`** — NDC (the `schedule_client` `#[expect]` annotation and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), UFS (knob name, host names and log event names are named constants), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error), TCF (each proxy test fails when the route is wrong, proven by a red run).
 - `.orly/dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — the knob's parse failure is a new `ErrorKind` variant through `afd_core::error_shell!`, never a hand-written error type.
 - `.orly/docs/LOGGING_STANDARD.md` — the boot line naming the proxy host carries no userinfo and uses `error_code` on refusal.
 
@@ -93,7 +87,7 @@ The `GithubSource::new` and `schedule_client` caller lists come from `git grep -
 |------|--------|-----------------------|
 | `write_rust` | yes — every edit is `*.rs` | Owner module, `garde`-free (a boot knob, not request input), error kinds via `error_shell!` |
 | `write_any` — LOGGING | yes — new boot log line | Event name constant; proxy logged as scheme + host + port only |
-| `write_any` — UFS | yes | Knob name, GitHub host constants reused from `afd_library`, no inline literals |
+| `write_any` — UFS | yes | Knob name and host names are named constants, no inline literals |
 | `write_any` — MILESTONE ID | yes | No `M222` in test names or code comments |
 | `write_documentation` | yes — architecture docs edited | `DOCUMENTATION_RULES.md` voice; the docs-repo page is a separate branch |
 | File & Function Length (≤350/≤50/≤70) | yes | `proxy.rs` holds the builder and host list only; parse lives in `preflight.rs`'s existing knob readers |
@@ -123,22 +117,20 @@ The knob is declared in `preflight/knobs.rs` and read through `afd_core::env`. I
 - **Dimension 2.3** — `http://user:pass@proxy:3128` refuses boot, and neither `user` nor `pass` appears in the error or the log → Test `a_proxy_knob_with_credentials_refuses_boot_without_echoing_them`
 - **Dimension 2.4** — A valid knob logs one boot line with scheme, host and port → Test `a_valid_proxy_knob_logs_its_host_once`
 
-### §3 — The scheduler and the GitHub fetch take the declared proxy
+### §3 — The scheduler takes the declared proxy
 
-`schedule_client` builds through `afd_identity::proxy` with the host from the configured scheduler API base, which `QSTASH_URL` or the default sets. `GithubSource::new` builds through it with `api.github.com` and `codeload.github.com`. Both lose their `#[expect(clippy::disallowed_methods)]`. The M218 suites `schedule_proxy` and `github_proxy` are rewritten so they prove the knob's route and also prove that `HTTPS_PROXY` alone routes nothing. The four `afd_identity::direct` clients (broker, plane, outbound, vendor exchange) are untouched and stay direct with the knob set. **Implementation default:** a GitHub redirect to `codeload.github.com` stays on the proxy because both hosts are listed; `validate_redirect` still refuses any other host.
+`schedule_client` builds through `afd_identity::proxy` with the host from the configured scheduler API base, which `QSTASH_URL` or the default sets, and loses its `#[expect(clippy::disallowed_methods)]`. The M218 suite `schedule_proxy` is rewritten so it proves the knob's route and also proves that `HTTPS_PROXY` alone routes nothing. The four `afd_identity::direct` clients (broker, plane, outbound, vendor exchange) are untouched and stay direct with the knob set.
 
 - **Dimension 3.1** — With the knob set, a scheduler management call arrives at the proxy → Test `the_scheduler_goes_through_the_declared_proxy`
 - **Dimension 3.2** — With only `HTTPS_PROXY` set, the scheduler connects directly → Test `the_scheduler_ignores_an_environment_proxy`
-- **Dimension 3.3** — With the knob set, the GitHub library fetch and its codeload redirect arrive at the proxy → Test `the_github_fetch_goes_through_the_declared_proxy`
-- **Dimension 3.4** — With only `HTTPS_PROXY` set, the GitHub fetch connects directly → Test `the_github_fetch_ignores_an_environment_proxy`
-- **Dimension 3.5** — With the knob set, the vendor exchange client still connects directly → Test `a_credential_bearing_client_never_takes_the_proxy`
-- **Dimension 3.6** — A client that will not build still refuses boot once `Clients::open` takes the proxy (regression) → Test `a_vendor_client_that_cannot_build_refuses_boot`
+- **Dimension 3.3** — With the knob set, the vendor exchange client still connects directly → Test `a_credential_bearing_client_never_takes_the_proxy`
+- **Dimension 3.4** — A client that will not build still refuses boot once `Clients::open` takes the proxy (regression) → Test `a_vendor_client_that_cannot_build_refuses_boot`
 
 ### §4 — The route is documented where operators look
 
 `docs/architecture/scaling.md` §Tuneup knobs gains the `OUTBOUND_PROXY_URL` row: what it routes, what it never routes, that `HTTPS_PROXY` is ignored, and that credentials in the URL refuse boot. `docs/architecture/runner_fleet.md` §Traps gains one line separating this daemon-side proxy from the runner sandbox's egress, which keeps "no forward proxy". The changelog entry and the docs-repo page land on `chore/m222-outbound-proxy-changelog` in `~/Projects/docs`.
 
-- **Dimension 4.1** — The knob row exists and names both routed surfaces → Test `the_scaling_doc_names_the_proxy_knob`
+- **Dimension 4.1** — The knob row exists and names the scheduler as the routed surface → Test `the_scaling_doc_names_the_proxy_knob`
 - **Dimension 4.2** — The runner trap line distinguishes the daemon proxy → Test `the_runner_trap_separates_the_daemon_proxy`
 
 ## Interfaces
@@ -173,7 +165,7 @@ OUTBOUND_PROXY_URL = "http://egress-proxy.internal:3128"   // unset → no proxy
 | Wrong scheme | `OUTBOUND_PROXY_URL=socks5://…` | Boot refuses, `error_code` names the knob; process exits non-zero before serving |
 | Credentials in URL | `http://u:p@host` | Boot refuses; the error and the log carry the knob name, never the userinfo |
 | Unparseable value | `OUTBOUND_PROXY_URL=::` | Boot refuses with the knob name |
-| Proxy unreachable | Proxy host down at request time | The scheduler write fails within `SCHEDULE_TIMEOUT` with a connect error and the tenant's schedule write returns its existing failure; the GitHub import fails with its existing `Github` error; neither falls back to direct |
+| Proxy unreachable | Proxy host down at request time | The scheduler write fails within `SCHEDULE_TIMEOUT` with a connect error and the tenant's schedule write returns its existing failure; it never falls back to direct |
 | Environment proxy only | `HTTPS_PROXY` set, knob unset | Every daemon client connects directly, as a test asserts; the changelog names the change |
 | Unlisted host through proxied client | A future caller sends to a host off its list | Direct connect, never the proxy, as Dimension 1.2 asserts |
 
@@ -181,7 +173,7 @@ OUTBOUND_PROXY_URL = "http://egress-proxy.internal:3128"   // unset → no proxy
 
 1. Only `afd_identity::proxy` adds a proxy to a reqwest client — `clippy.toml` `disallowed-methods` on `reqwest::ClientBuilder::proxy`, denied in `make lint-rustd`.
 2. No daemon client reads an environment proxy — every builder starts from `afd_identity::direct`'s `no_proxy()`, and `reqwest::Client::new`/`builder` stay disallowed outside the owners.
-3. A credential-bearing client never takes the proxy — the four are built by `vendor_exchange_client`, which calls `direct` and never `proxied`; Dimension 3.5 fails if that changes.
+3. A credential-bearing client never takes the proxy — the four are built by `vendor_exchange_client`, which calls `direct` and never `proxied`; Dimension 3.3 fails if that changes.
 4. Proxy credentials never enter configuration — `OutboundProxy::parse` refuses userinfo, and it is the knob's only parser.
 
 ## Metrics & Observability
@@ -207,12 +199,10 @@ No product analytics change; no funnel playbook update.
 | 2.4 | unit | `a_valid_proxy_knob_logs_its_host_once` | `http://h:3128` → exactly one `outbound_proxy_configured` line with host `h`, port `3128` |
 | 3.1 | integration (own binary) | `the_scheduler_goes_through_the_declared_proxy` | knob → loopback proxy, scheduler base `http://scheduler.invalid` → proxy reads the request line |
 | 3.2 | integration (own binary) | `the_scheduler_ignores_an_environment_proxy` | `HTTPS_PROXY` → listener, knob unset → listener accepts zero connections |
-| 3.3 | integration (own binary) | `the_github_fetch_goes_through_the_declared_proxy` | knob → loopback proxy → proxy reads requests for `api.github.com` and `codeload.github.com` |
-| 3.4 | integration (own binary) | `the_github_fetch_ignores_an_environment_proxy` | `HTTPS_PROXY` only → listener accepts zero connections |
-| 3.5 | integration (own binary) | `a_credential_bearing_client_never_takes_the_proxy` | knob set, vendor exchange client to a loopback origin → proxy accepts zero connections |
+| 3.3 | integration (own binary) | `a_credential_bearing_client_never_takes_the_proxy` | knob set, vendor exchange client to a loopback origin → proxy accepts zero connections |
+| 3.4 | integration | `a_vendor_client_that_cannot_build_refuses_boot` | existing `serve/clients.rs` test: a builder that will not build still refuses boot with the new `open` signature (regression) |
 | 4.1 | manual | `the_scaling_doc_names_the_proxy_knob` | `grep -c 'OUTBOUND_PROXY_URL' docs/architecture/scaling.md` ≥ 1 |
 | 4.2 | manual | `the_runner_trap_separates_the_daemon_proxy` | `grep -c 'OUTBOUND_PROXY_URL' docs/architecture/runner_fleet.md` ≥ 1 |
-| 3.6 | integration | `a_vendor_client_that_cannot_build_refuses_boot` | existing `serve/clients.rs` test: a builder that will not build still refuses boot with the new `open` signature (regression) |
 
 Every "accepts zero connections" assertion is proven able to fail by a red run that lists the host, recorded in Discovery (RULE TCF).
 
@@ -222,7 +212,7 @@ Every "accepts zero connections" assertion is proven able to fail by a red run t
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Proxied clients route listed hosts only (§1) | `cd rustd && cargo test -p afd_identity --all-features --test proxied_client` | exit 0 | P0 | |
 | R2 | The knob refuses bad values without echoing them (§2) | `cd rustd && cargo test -p agentsfleetd --all-features --test preflight_optional` | exit 0 | P0 | |
-| R3 | Scheduler and GitHub fetch take the declared proxy, ignore the environment (§3) | `cd rustd && cargo test -p agentsfleetd --all-features --test schedule_proxy && cargo test -p afd_library --all-features --test github_proxy` | exit 0 | P0 | |
+| R3 | The scheduler takes the declared proxy and ignores the environment (§3) | `cd rustd && cargo test -p agentsfleetd --all-features --test schedule_proxy` | exit 0 | P0 | |
 | R4 | No proxy added outside the owner (§1) | `git grep -n '\.proxy(' -- rustd/crates ':!rustd/crates/afd_identity/src/proxy.rs' ':!**/tests/**'` | 0 matches | P0 | |
 | R5 | Operators find the knob (§4) | `grep -c 'OUTBOUND_PROXY_URL' docs/architecture/scaling.md docs/architecture/runner_fleet.md` | both counts ≥ 1 | P1 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -255,7 +245,7 @@ A MOVED row is never rendered ✅. The criterion has not been met; it has change
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no files deleted; the two M218 proxy suites are rewritten in place.
+N/A — no files deleted; the M218 `schedule_proxy` suite is rewritten in place.
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -277,10 +267,10 @@ N/A — no files deleted; the two M218 proxy suites are rewritten in place.
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — An operator behind a corporate egress proxy sets `OUTBOUND_PROXY_URL`, boots the daemon, sees one `outbound_proxy_configured` line naming the proxy host, and a tenant's schedule write succeeds through it while the proxy log shows no credential-bearing vendor call.
-2. **Preserved user behaviour** — A deployment with no proxy variables behaves exactly as today. Tenants' schedule writes and library imports keep their existing error shapes.
+2. **Preserved user behaviour** — A deployment with no proxy variables behaves exactly as today. Tenants' schedule writes keep their existing error shape.
 3. **Optimal-way check** — The unconstrained optimum is a per-surface declared route with authenticated proxies. One proxy plus a code-declared host list delivers moment #1. The gap is proxy auth, which is listed Out of Scope with its own spec.
 4. **Rebuild-vs-iterate** — Iterate. M218 already centralised client building in `afd_identity::direct`, and this adds the second owner beside it.
-5. **What we build** — `afd_identity::proxy`, one knob, two rewired builders, one `clippy.toml` line, two architecture doc rows, changelog.
+5. **What we build** — `afd_identity::proxy`, one knob, one rewired builder, one `clippy.toml` line, two architecture doc rows, changelog.
 6. **What we do NOT build** — Proxy auth, because it needs a vault design. Credential-bearing routes, because they are direct by rule. An operator host list, because the code owns the route. Runner proxies, because the architecture refuses them.
 7. **Fit with existing features** — It builds on M218's `direct` owner and `disallowed-methods` gate. It must not destabilise the scheduler write path, so the 10 s `SCHEDULE_TIMEOUT` stays.
 8. **Surface order** — Operator environment knob only; no CLI or UI surface.
@@ -289,13 +279,14 @@ N/A — no files deleted; the two M218 proxy suites are rewritten in place.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** owner → knob → callers → docs, so the owner and its lint exist before any caller moves, and each caller's tests flip from "honours the environment" to "honours the knob" in one Section.
+- **Chosen shape:** owner → knob → caller → docs, so the owner and its lint exist before the caller moves, and its tests flip from "honours the environment" to "honours the knob" in one Section.
 - **Alternatives considered:** (a) keep honouring `HTTPS_PROXY` but restrict hosts with a custom matcher. This was rejected because the route would still be inherited from the environment. (b) Read the host list from a second knob. This was rejected because Indy's decision is that the code declares which calls route through a proxy.
-- **Patch-vs-refactor verdict:** this is a **patch** because it adds one owner beside an existing one and rewires two builders; no client topology changes.
+- **Patch-vs-refactor verdict:** this is a **patch** because it adds one owner beside an existing one and rewires one builder; no client topology changes.
 
 ## Discovery (consult log)
 
 - **Consults** — Indy (Oct 11, 2026, M218 review, recorded in the M218 checkpoint): "Proxy — test, then add": tests proving the QStash scheduler and GitHub fetch honour `HTTPS_PROXY` land in M218; an explicit proxy (`proxy.rs` with a passthrough-host list) is a new follow-up spec. Agent choices made at authoring, open to Indy at PLAN: knob name `OUTBOUND_PROXY_URL`; the passthrough list means the hosts that **may** use the proxy, all others direct; userinfo refused rather than redacted; `HTTPS_PROXY` ignored once this lands, which is a behaviour change for deployments that relied on it. Architecture consult: `docs/architecture/runner_fleet.md` §Traps forbids a forward proxy for runner egress; this spec is daemon-side and adds a line saying so.
+- **Rescope (Oct 19, 2026, issue #755)** — PR #752 (M227) deleted `afd_library`, so the GitHub-fetch half of this spec targeted code that no longer exists; dropped. The scheduler proxy work and the `OUTBOUND_PROXY_URL` knob are unchanged. The grep for a successor outbound caller found `afd_connector`'s GitHub probe, which rides `vendor_exchange_client` — an `afd_identity::direct` client that ignores environment proxies — so no caller took over the fetch role and the proxy rule has nothing to repoint to. `preflight.rs` is now `preflight/mod.rs`; the Files Changed row is repointed.
 - **Metrics review** — two boot log lines added (`outbound_proxy_configured`, `outbound_proxy_refused`); no analytics/funnel playbook update required, no product event exists for boot configuration.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
