@@ -134,8 +134,9 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 - **Dimension 4.4** — `tenant provider set` writes one `tenant_models` row and points the selection at it; reset stores NULL; a pointer to another tenant's model is refused → Test `test_tenant_selection_points_at_model`
 - **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the runner and its report spool decode without it; the draft message response still carries `operation_id`, joined from the receipt → Test `test_runner_wire_drops_deletion_generation`
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
-- **Dimension 4.7** — the API, the CLI and the UI send and read every instant as an RFC 3339 string in UTC with three fraction digits; the device-flow window is `expires_at` → Test `test_api_instants_are_rfc3339`
+- **Dimension 4.7** — the API, the CLI and the UI send and read every instant as an RFC 3339 string in UTC through jiff's standard serialization (`…:49Z`, `…:49.123Z`); clients order instants by parsed value, never by text; the device-flow window is `expires_at` → Test `test_api_instants_are_rfc3339`
 - **Dimension 4.8** — every locking validity check (lease renew, report fence, draft and schedule reads under lock) refuses a row that expired while it waited on the lock → Test `test_expiry_checks_read_clock_after_lock`
+- **Dimension 4.9** — an admission event's `event_id` is its `fleet.admissions` row `id` (UUIDv7, minted in Rust before the insert); delivery, reply and inherit lookups key on it, and the history keyset `(created_at, event_id)` stays newest-first → Test `test_admission_event_id_is_row_id`
 
 ### §6 — Docs
 
@@ -150,6 +151,7 @@ Every query is rewritten here, so three fixes land with it rather than touching 
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
 - **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
 - **Dimension 7.3** — a request waiting on a held wallet lock fails within the lock limit with a retryable error, and the pool serves the next request → Test `test_lock_wait_is_bounded`
+- **Dimension 7.5** — every multi-column read decodes into a `#[derive(sqlx::FromRow)]` struct through `query_as`, instants through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]`, single columns through `query_scalar`; no `try_get` remains (373 across 13 crates at `331c0afc8`) → Test `test_rows_decode_into_typed_structs`
 
 ### §5 — Rebuilt from empty, proven locally, migrated on merge
 
@@ -221,8 +223,9 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one row, selection points at it; reset → NULL row; another tenant's model id → refused |
 | 4.5 | unit | `test_runner_wire_drops_deletion_generation` | lease payload and report spool entry without the field → decode; message response → has `operation_id` |
 | 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
-| 4.7 | unit | `test_api_instants_are_rfc3339` | every published `_at` field → `type: string, format: date-time`; a response instant → `…:49.000Z`; the CLI and UI parse it |
+| 4.7 | unit | `test_api_instants_are_rfc3339` | every published `_at` field → `type: string, format: date-time`; a whole-second response instant → `…:49Z`, a millisecond one → `…:49.123Z`; the CLI and UI parse both and order `…:49Z` before `…:49.123Z` |
 | 4.8 | integration | `test_expiry_checks_read_clock_after_lock` | per locking shape: hold the row lock past its expiry, release → the check refuses |
+| 4.9 | integration | `test_admission_event_id_is_row_id` | admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
 | 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
 | 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
@@ -230,6 +233,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
 | 7.3 | integration | `test_lock_wait_is_bounded` | wallet row held in another transaction → request fails under 3 s, retryable; next request succeeds |
+| 7.5 | unit | `test_rows_decode_into_typed_structs` | scan of `rustd/crates/*/src` → 0 matches for `try_get`; a seeded `row.try_get(0)` fails the scan naming its file |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -322,6 +326,13 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **octocrab replaced in this PR** — Indy (2026-10-18), via AskUserQuestion: "Replace inside M229" — context: the workspace uses three slices of its 75,205 lines (App JWT, two calls, two webhook payloads) and already bypasses its typed request and response; it brings eight crates nothing else uses and holds `jsonwebtoken` at 10. Lands with afd_credential and afd_api_ingress in §3 (Dimension 3.3), and `jsonwebtoken` moves to 11 in the same commit.
 - **Integer milliseconds** — > Indy (2026-10-18): "confirm in every crate there are not handrolled serde millisecons, any mills still available, or i64 based milliseconds, or i64 millisecond constants being used and so on - on a per crate level" — context: Dimension 3.4; spans become `std::time::Duration`, `afd_core::clock::{add_millis, millis_between, from_millis}` are deleted for `after` and `before`.
 - **Memory flip removed** — Indy (2026-10-18), asked "are there production callers, you said there we none, if so why keep", then via AskUserQuestion: "Delete it" — context: `Memories::flip` had no caller outside its tests, `InMemory` compiled only under `test-util`, and `PgStore` was the only production `MemoryStore`. The flip, its route table (`arc-swap`), the `dyn` trait (`async-trait`), the in-memory store, the flip-only error kinds (`Moving`, `MissedWrite`, `Refused`) and the `test-util` feature are deleted; `Memories` holds `PgStore` directly per M-DI-HIERARCHY. `runner_fleet.md` §"Memory backends and scope" keeps the vendor-store decision and records that the trait and flip return with the first vendor store.
+- **Per-batch sign-off** — Indy (2026-10-18), via AskUserQuestion: "Pre and post" — context: before each §3 batch a plan per crate, after it a write-up (shape before and after, helpers, millisecond edges kept, tests and coverage with commands).
+- **API instant shape** — Indy (2026-10-18), via AskUserQuestion: "jiff standard" — context: `afd_wire::instant` serializes through jiff (`…:49Z`, `…:49.123Z`) and keeps the sub-millisecond refusal (REST guide §4 rule 6); evidence: GitHub's `created_at` reads `2026-10-17T13:24:54Z` (`gh api repos/agentsfleet/agentsfleet/pulls/769`). The fixed-width form was dropped, so text order is no longer time order and clients compare parsed values (`cli/src/commands/billing.ts:143` is the first such site, still `number` until 4.7 lands).
+- **§3 batch plans** — Indy (2026-10-18), via AskUserQuestion: "Approve all" (afd_tenant, fleet lifecycle/ops/admission, afd_credential, the instant module), then for the re-spawned forks "Approve all three" — context: a stored provider `mode` stays a permanent fault when decoded as text inside a typed row; a GitHub 2xx body that does not decode is permanent; Dragonfly-held connector deadlines keep their time-to-live; `REPLAY_TOMBSTONE_MS` is live (`afd_authoring/src/replay/mod.rs:116`) and moves with authoring; `GATE_PURGE_*` has no reader and is deleted.
+- **Clock owner** — Indy (2026-10-18), via AskUserQuestion: "SQL owns it" — context: lifecycle stamps and expiry checks read the database clock; Rust passes `now` only where it mints an identifier.
+- **No-expiry credential** — Indy (2026-10-18), via AskUserQuestion: "Far-future date"; > Indy: "i donot like null" — context: `NEVER_EXPIRES = Timestamp::constant(253_402_207_200, 999_000_000)` (`9999-12-30T22:00:00.999Z`); the lease-ceiling option was rejected.
+- **Typed rows** — Indy (2026-10-18), via AskUserQuestion: "Yes, all crates" — context: Dimension 7.5; baseline 373 `try_get` across 13 crates at `331c0afc8`, 264 positional.
+- **Admission event identifier** — Indy (2026-10-18), via AskUserQuestion: "Re-key it", then on the plan "UUIDv7 row id" — context: Dimension 4.9; the `created_at_ms || '-' || seq` key tied the identifier to the database clock and could not be known before the insert. No published page or OpenAPI example spells the old shape (grep of `~/Projects/docs` and the repository; one hit in `docs/v2/done/M42_001…`, frozen). Readers outside afd_admission change in the downstream batch.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.

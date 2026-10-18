@@ -1,5 +1,5 @@
-//! Instants on the wire: three fraction digits in UTC, any offset in, nothing
-//! finer than a millisecond accepted.
+//! Instants on the wire: jiff's standard RFC 3339 in UTC, any offset in,
+//! nothing finer than a millisecond accepted.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -19,9 +19,14 @@ struct Stamped {
     revoked_at: Option<Timestamp>,
 }
 
-/// Ascending instants whose digit counts differ, so a variable-width print
-/// would sort them wrong.
-const ASCENDING_MS: [i64; 4] = [1_000, 1_001, 1_120, 2_000];
+/// Instants whose fractions jiff writes at different widths.
+const SAMPLE_MS: [i64; 5] = [
+    1_760_725_609_000,
+    1_760_725_609_100,
+    1_760_725_609_120,
+    1_760_725_609_123,
+    -1,
+];
 
 /// The instant `millis` after the epoch.
 fn at(millis: i64) -> Timestamp {
@@ -29,10 +34,11 @@ fn at(millis: i64) -> Timestamp {
 }
 
 #[test]
-fn test_an_instant_always_prints_three_fraction_digits_in_utc() {
+fn test_an_instant_prints_jiff_standard_rfc3339_in_utc() {
     for (millis, text) in [
-        (1_760_725_609_000, "2025-10-17T18:26:49.000Z"),
-        (1_760_725_609_120, "2025-10-17T18:26:49.120Z"),
+        (1_760_725_609_000, "2025-10-17T18:26:49Z"),
+        (1_760_725_609_100, "2025-10-17T18:26:49.1Z"),
+        (1_760_725_609_120, "2025-10-17T18:26:49.12Z"),
         (1_760_725_609_123, "2025-10-17T18:26:49.123Z"),
         (-1, "1969-12-31T23:59:59.999Z"),
     ] {
@@ -50,14 +56,18 @@ fn test_an_instant_always_prints_three_fraction_digits_in_utc() {
 }
 
 #[test]
-fn test_written_instants_sort_in_time_order() {
-    let texts: Vec<String> = ASCENDING_MS
-        .into_iter()
-        .map(|millis| serde_json::to_string(&afd_instant(at(millis))).unwrap())
-        .collect();
-    let mut sorted = texts.clone();
-    sorted.sort();
-    assert_eq!(sorted, texts, "string order is time order");
+fn test_a_written_instant_matches_jiff_and_reads_back_unchanged() {
+    for millis in SAMPLE_MS {
+        let written = afd_instant(at(millis));
+        assert_eq!(written, at(millis).to_string(), "{millis}ms");
+        let read: Stamped = serde_json::from_value(serde_json::json!({
+            "created_at": written,
+            "revoked_at": written,
+        }))
+        .unwrap();
+        assert_eq!(read.created_at, at(millis), "{millis}ms");
+        assert_eq!(read.revoked_at, Some(at(millis)), "{millis}ms");
+    }
 }
 
 /// `instant` alone, as one JSON string.
@@ -82,7 +92,7 @@ fn test_an_offset_instant_reads_as_utc_and_writes_back_with_z() {
     assert_eq!(read.revoked_at, Some(at(1_760_725_609_000)));
     assert_eq!(
         serde_json::to_string(&read).unwrap(),
-        r#"{"created_at":"2025-10-17T18:26:49.123Z","revoked_at":"2025-10-17T18:26:49.000Z"}"#
+        r#"{"created_at":"2025-10-17T18:26:49.123Z","revoked_at":"2025-10-17T18:26:49Z"}"#
     );
 }
 

@@ -260,8 +260,8 @@ mod tests {
                     "metered_cached_tokens": 17,
                     "metered_output_tokens": 29,
                     "wall_ms": 1_250,
-                    "lease_expires_at":"2024-08-30T06:40:30.000Z",
-                    "created_at":"2024-08-30T06:40:00.000Z"
+                    "lease_expires_at":"2024-08-30T06:40:30Z",
+                    "created_at":"2024-08-30T06:40:00Z"
                 }],
                 "total": 3,
                 "next_cursor": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010"
