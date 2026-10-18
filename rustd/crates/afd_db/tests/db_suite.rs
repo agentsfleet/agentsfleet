@@ -29,12 +29,14 @@ mod config_tls;
 mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
+mod integration_catalogue_seeder;
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]
 mod integration_migrate_batch;
 mod integration_migrate_faults;
 #[path = "integration_platform_default.rs"]
 mod integration_platform_default;
+mod integration_platform_model;
 #[path = "integration_pool.rs"]
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]

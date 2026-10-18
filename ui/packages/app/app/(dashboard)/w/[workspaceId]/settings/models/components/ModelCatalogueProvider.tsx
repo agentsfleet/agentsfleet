@@ -6,98 +6,60 @@ import type { LibraryModel } from "@/lib/api/model-library-types";
 import { getModelLibraryAction } from "../actions";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 
-// The global model library, loaded on INTENT rather than on mount.
-//
-// It used to ride a single client-side fetch in a mount effect, so every visit
-// to the Models page paid for a catalogue most visits never consulted: the
-// registry rows carry their own server-provided rates, and the catalogue is
-// only a fallback for a row the server did not price. The pickers that truly
-// need it live inside the Add and Edit dialogs, so it now loads when a user
-// shows intent to open one.
-//
-// The read still goes through the token-minting Server Action — GET /v1/models
-// is bearer-authed and the token never reaches the browser. A 401 means the
-// session, not the catalogue, so the user routes to sign-in. Any other failure
-// degrades pickers to free-text model entry.
-
-// CATALOGUE_STATUS lives in ./catalogue-status — ProviderModelSelect keys its
-// control shape off it, and this module gets stubbed wholesale in tests.
-
 export type ModelCatalogueState = {
   models: LibraryModel[];
   status: CatalogueStatus;
-  /** Request the catalogue. Idempotent, single-flight, safe to call on hover. */
   preload: () => void;
+  preloadAdvanced: () => void;
 };
 
-// Consumers rendered outside a provider degrade to free-text entry rather than
-// throwing — the catalogue is an enhancement, never a hard dependency.
 const FALLBACK_STATE: ModelCatalogueState = {
-  models: [],
-  status: CATALOGUE_STATUS.error,
-  preload: () => {},
+  models: [], status: CATALOGUE_STATUS.error, preload: () => {}, preloadAdvanced: () => {},
 };
-
 const ModelCatalogueContext = createContext<ModelCatalogueState | null>(null);
 
+/** Authenticated catalogue reads start on intent; advanced entries require a request. */
 export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
-  const [models, setModels] = useState<LibraryModel[]>([]);
-  const [status, setStatus] = useState<CatalogueStatus>(CATALOGUE_STATUS.idle);
-  const router = useRouter();
-
-  // Single-flight, held in a ref because a hover storm must not re-render on
-  // every attempt.
-  //
-  // This is also what delivers the ordering property, which is why there is no
-  // request id beside it: a monotonic generation resolves a race between two
-  // in-flight reads, and this guard means there is never a second one to race.
-  // `inFlight` is only cleared in `.finally`, which runs after `.then`/`.catch`
-  // — so every handler below is provably the newest request's. `useStoredSecrets`
-  // is the sibling case that does need a generation: open/close/reopen genuinely
-  // overlap there, because it takes no single-flight guard.
-  const inFlight = useRef(false);
-
-  const preload = useCallback(() => {
-    // Hover, focus, and open all call this, often within the same gesture.
-    // Without the guard one deliberate click could issue three identical
-    // catalogue reads.
-    if (inFlight.current) return;
-    if (status === CATALOGUE_STATUS.ready) return;
-
-    inFlight.current = true;
-    setStatus(CATALOGUE_STATUS.loading);
-
-    getModelLibraryAction()
-      .then((res) => {
-        if (res.ok) {
-          setModels(res.data.models);
-          setStatus(CATALOGUE_STATUS.ready);
-          return;
-        }
-        // An expired session must not become a silent free-text degrade — the
-        // user would hand-type model ids into a signed-out page.
-        if (res.status === 401) {
-          router.push("/sign-in");
-          return;
-        }
-        setStatus(CATALOGUE_STATUS.error);
-      })
-      .catch(() => {
-        setStatus(CATALOGUE_STATUS.error);
-      })
-      .finally(() => {
-        inFlight.current = false;
-      });
-  }, [router, status]);
-
-  return (
-    <ModelCatalogueContext.Provider value={{ models, status, preload }}>
-      {children}
-    </ModelCatalogueContext.Provider>
-  );
+  const state = useCatalogueState();
+  return <ModelCatalogueContext.Provider value={state}>{children}</ModelCatalogueContext.Provider>;
 }
 
-/** Read the catalogue. Returns a safe degraded state if no provider is mounted. */
+function useCatalogueState(): ModelCatalogueState {
+  const [models, setModels] = useState<LibraryModel[]>([]);
+  const [status, setStatus] = useState<CatalogueStatus>(CATALOGUE_STATUS.idle);
+  const [advancedLoaded, setAdvancedLoaded] = useState(false);
+  const inFlight = useRef<boolean | null>(null);
+  const pendingAdvanced = useRef(false);
+  const router = useRouter();
+  const load = useCallback(function load(advanced: boolean) {
+    if (inFlight.current !== null) {
+      if (advanced && !inFlight.current) pendingAdvanced.current = true;
+      return;
+    }
+    if (status === CATALOGUE_STATUS.ready && (!advanced || advancedLoaded)) return;
+    inFlight.current = advanced;
+    setStatus(CATALOGUE_STATUS.loading);
+    getModelLibraryAction(advanced).then((response) => {
+      if (response.ok) {
+        setModels(response.data.models);
+        setAdvancedLoaded(advanced);
+        setStatus(CATALOGUE_STATUS.ready);
+      } else if (response.status === 401) router.push("/sign-in");
+      else setStatus(CATALOGUE_STATUS.error);
+    }).catch(() => {
+      setStatus(CATALOGUE_STATUS.error);
+    }).finally(() => {
+      inFlight.current = null;
+      // Serialize an advanced request made while the default read was in flight.
+      if (pendingAdvanced.current) {
+        pendingAdvanced.current = false;
+        load(true);
+      }
+    });
+  }, [advancedLoaded, router, status]);
+  return { models, status, preload: () => load(false), preloadAdvanced: () => load(true) };
+}
+
 export function useModelCatalogue(): ModelCatalogueState {
   return useContext(ModelCatalogueContext) ?? FALLBACK_STATE;
 }

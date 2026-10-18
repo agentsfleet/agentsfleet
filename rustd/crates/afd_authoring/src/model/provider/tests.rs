@@ -22,6 +22,9 @@ const INPUT_TOKENS: &str = "input_tokens";
 const USAGE: &str = "usage";
 const TEXT: &str = "text";
 const TYPE: &str = "type";
+const MODEL: &str = "workspace/model-next";
+const MODEL_KEY: &str = "model";
+const STOP: &str = "stop";
 
 #[derive(Debug)]
 struct Physical {
@@ -55,7 +58,7 @@ fn outbound(api: InferenceApi) -> Outbound {
             dialect: None,
             max_output_tokens: 37,
         },
-        model: "workspace/model-next".into(),
+        model: MODEL.into(),
         context_tokens: 128_000,
         timeout: Duration::from_millis(1234),
     }
@@ -64,7 +67,7 @@ fn outbound(api: InferenceApi) -> Outbound {
 fn reply(api: InferenceApi) -> Value {
     match api {
         InferenceApi::Chat => {
-            json!({"choices":[{(MESSAGE):{(ROLE):ASSISTANT,(CONTENT):ANSWER},"finish_reason":"stop"}],(USAGE):{"prompt_tokens":3,"completion_tokens":2}})
+            json!({"choices":[{(MESSAGE):{(ROLE):ASSISTANT,(CONTENT):ANSWER},"finish_reason":STOP}],(USAGE):{"prompt_tokens":3,"completion_tokens":2}})
         }
         InferenceApi::Responses => {
             json!({"status":"completed","output":[{(TYPE):MESSAGE,(CONTENT):[{(TYPE):"output_text",(TEXT):ANSWER}]}],(USAGE):{(INPUT_TOKENS):3,(OUTPUT_TOKENS):2}})
@@ -72,6 +75,59 @@ fn reply(api: InferenceApi) -> Value {
         InferenceApi::Messages => {
             json!({(TYPE):MESSAGE,(ROLE):ASSISTANT,(CONTENT):[{(TYPE):TEXT,(TEXT):ANSWER}],"stop_reason":"end_turn",(USAGE):{(INPUT_TOKENS):3,(OUTPUT_TOKENS):2}})
         }
+        InferenceApi::Gemini => {
+            json!({"candidates":[{(CONTENT):{(ROLE):MODEL_KEY,"parts":[{(TEXT):ANSWER}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2}})
+        }
+        InferenceApi::Ollama => {
+            json!({(MODEL_KEY):MODEL,(MESSAGE):{(ROLE):ASSISTANT,(CONTENT):ANSWER},"done":true,"done_reason":STOP,"prompt_eval_count":3,"eval_count":2})
+        }
+    }
+}
+
+// Value: protects=the native Gemini and Ollama APIs dispatch through the same
+// saved-settings route as the other three, one physical send each, with the
+// credential where each provider's SDK wire places it and never in diagnostics;
+// fails_when=a native API falls back to another wire, retries, drops usage or
+// leaks the key into Debug; why_new=§8 adds both APIs to InferenceApi;
+// seam=none; no_claim=live providers.
+#[tokio::test]
+async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
+    // rig's GenerateContent wire authenticates by a `key` query parameter, not
+    // a header; Ollama's native chat sends a bearer header.
+    for (api, path, header) in [
+        (
+            InferenceApi::Gemini,
+            "/v1/v1beta/models/workspace/model-next:generateContent",
+            None,
+        ),
+        (InferenceApi::Ollama, "/v1/api/chat", Some("authorization")),
+    ] {
+        let physical = Arc::new(Physical {
+            requests: Mutex::new(Vec::new()),
+            status: 200,
+            body: serde_json::to_vec(&reply(api)).expect("response JSON"),
+            fail: false,
+        });
+        let (status, response) = complete(outbound(api), Arc::<Physical>::clone(&physical))
+            .await
+            .expect("SDK response");
+        assert_eq!(status, 200);
+        assert_eq!(response.usage.input_tokens, Some(3), "{api:?}");
+        assert_eq!(response.usage.output_tokens, Some(2), "{api:?}");
+        let requests = physical.requests.lock().expect("recorded requests");
+        assert_eq!(requests.len(), 1, "{api:?}");
+        let sent = requests.first().expect("one physical request");
+        assert_eq!(sent.request.uri().path(), path, "{api:?}");
+        match header {
+            Some(header) => assert!(sent.request.headers().contains_key(header), "{api:?}"),
+            None => assert!(
+                sent.request.uri().query().is_some_and(|query| query.starts_with("key=")),
+                "{api:?}"
+            ),
+        }
+        assert!(!format!("{sent:?}").contains("private-"), "{api:?}");
+        let body: Value = serde_json::from_slice(sent.body()).expect("SDK request");
+        assert!(body.to_string().contains("private-prompt"), "{api:?}");
     }
 }
 
@@ -112,7 +168,7 @@ async fn every_api_uses_the_configured_model_credential_limit_and_one_physical_s
         assert!(diagnostic.contains("1.234s"), "{diagnostic}");
         let body: Value = serde_json::from_slice(sent.body()).expect("SDK request");
         assert!(body.to_string().contains("private-prompt"));
-        assert_eq!(body.get("model"), Some(&json!("workspace/model-next")));
+        assert_eq!(body.get(MODEL_KEY), Some(&json!(MODEL)));
         assert_eq!(
             body.get("max_tokens")
                 .or_else(|| body.get("max_output_tokens")),

@@ -52,11 +52,13 @@ export function PlatformManagedMark() {
  */
 export function ModelName({
   modelId,
+  displayName,
   managedByPlatform = false,
   trimmed = false,
   trailing,
 }: {
   modelId: string;
+  displayName?: string;
   /** A fixed name width, so what follows the name lines up down the table. */
   trimmed?: boolean;
   /** Marks the row as a platform admin's, which a tenant admin cannot edit. */
@@ -74,7 +76,7 @@ export function ModelName({
           className={cn("block min-w-0 truncate", trimmed && "sm:min-w-trim sm:max-w-trim", managedByPlatform && MUTED)}
           title={modelId}
         >
-          {modelLabel(modelId)}
+          {modelLabel(modelId, displayName)}
         </span>
         <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} />
       </span>

@@ -141,6 +141,7 @@ export type TenantProvider = {
 export type TenantModelEntry = {
   id: string;
   model_id: string;
+  display_name?: string;
   secret_ref: string;
   provider?: string;
   kind: SecretKind;
@@ -159,6 +160,7 @@ export type TenantModelEntry = {
 export type TenantPlatformDefault = {
   provider: string;
   model: string;
+  display_name: string;
   context_cap_tokens: number;
   input_nanos_per_mtok?: number;
   cached_input_nanos_per_mtok?: number;

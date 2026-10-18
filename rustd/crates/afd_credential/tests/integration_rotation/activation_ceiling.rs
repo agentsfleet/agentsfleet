@@ -1,6 +1,6 @@
 //! What an applied activation reports: the catalogue's ceiling, never the
-//! request's, clamped where the catalogue is negative and borrowed where the
-//! endpoint is the tenant's own.
+//! request's, with invalid contexts refused by the schema and the smallest
+//! published context borrowed for a custom endpoint.
 
 use afd_credential::provider::Activation;
 
@@ -41,36 +41,33 @@ async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_negative_catalogue_ceiling_is_stored_as_zero() {
-    // model.platform_models.context_cap_tokens is INTEGER NOT NULL with no
-    // nonnegative CHECK — bounds live in the application (RULE STS) — so a
-    // negative ceiling is a row the schema permits. The activation statement
-    // clamps it with GREATEST(…, 0), so a -1 catalogue row reads as 0, the
-    // unknown/auto sentinel, rather than as a negative ceiling.
+async fn a_nonpositive_catalogue_ceiling_is_refused_without_an_identity() {
+    use std::error::Error as _;
     let fixture = Fixture::create().await;
     let model = unique_model();
-    catalogue(&fixture, NAMED_PROVIDER, &model, -1).await;
-    fixture
-        .seed_with_shape(
-            "tenant-key",
-            br#"{"provider":"openai","api_key":"sk-live"}"#,
-            Some(NAMED_PROVIDER),
-            Some(true),
-        )
-        .await;
-
-    let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
-        .await
-        .expect("a catalogued model activates whatever its ceiling reads");
-
-    let Activation::Applied(stored) = outcome else {
-        panic!("the row is catalogued, so the gate passes: {outcome:?}");
-    };
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
+    let refused = afd_db::test_util::ModelSeed::new(
+        &afd_db::test_util::mint_id(),
+        NAMED_PROVIDER,
+        &model,
+        -1,
+    )
+    .insert(&mut *connection)
+    .await
+    .expect_err("contexts must be positive");
+    let database = refused
+        .source()
+        .and_then(|source| source.downcast_ref::<sqlx::Error>())
+        .and_then(sqlx::Error::as_database_error)
+        .expect("the check failure retains its SQL source");
+    assert_eq!(database.code().as_deref(), Some("23514"));
     assert_eq!(
-        stored.context_cap_tokens, 0,
-        "a negative catalogue ceiling stores as the sentinel, not as itself"
+        database.constraint(),
+        Some("ck_platform_models_context_positive")
     );
+    drop(connection);
+    assert_eq!(written(&fixture).await, (0, 0));
+    fixture.cleanup().await;
 }
 
 #[tokio::test]

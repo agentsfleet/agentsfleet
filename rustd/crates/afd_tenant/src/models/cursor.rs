@@ -26,7 +26,7 @@ pub const CURSOR_VERSION: u8 = struct_cursor::VERSION;
 
 /// The catalogue page's cursor payload, in the spec's fixed key order.
 ///
-/// `provider` and `limit` bind the cursor to the query that issued it — the
+/// `provider`, `advanced` and `limit` bind the cursor to the query that issued it — the
 /// handler refuses a resume under different ones as `UZ-LIBRARY-002`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,6 +41,8 @@ pub struct Cursor {
     pub id: String,
     /// The provider filter the page was issued under, or `null`.
     pub provider: Option<String>,
+    /// Whether advanced entries were requested on the first page.
+    pub advanced: bool,
     /// The page size the walk was issued under.
     pub limit: u32,
 }
@@ -78,6 +80,7 @@ mod tests {
             vendor_key: "anthropic".to_owned(),
             id: "0195b4ba-8d3a-7f13-8abc-cd0000000002".to_owned(),
             provider: None,
+            advanced: false,
             limit: 50,
         }
     }
@@ -98,7 +101,7 @@ mod tests {
         use base64::Engine as _;
         let json = "{\"v\":2,\"display_key\":\"claude-sonnet-5\",\
 \"vendor_key\":\"anthropic\",\"id\":\"0195b4ba-8d3a-7f13-8abc-cd0000000002\",\
-\"provider\":null,\"limit\":50}";
+\"provider\":null,\"advanced\":false,\"limit\":50}";
         let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json);
         assert_eq!(render(&sample()), token);
         assert_eq!(parse(&token), Ok(sample()));

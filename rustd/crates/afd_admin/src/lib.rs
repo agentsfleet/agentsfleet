@@ -12,5 +12,5 @@ mod platform_key;
 mod sql;
 
 pub use error::{Error, Result};
-pub use model::{CreateModel, DeleteModel, Model, ModelInput, ModelRates, Models};
+pub use model::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
 pub use platform_key::{PlatformKey, PlatformKeyInput, PlatformKeys, SetPlatformKey};

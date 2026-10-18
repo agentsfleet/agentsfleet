@@ -14,13 +14,20 @@ pub enum InferenceApi {
     Responses,
     /// Anthropic Messages.
     Messages,
+    /// Google's native `GenerateContent` API.
+    Gemini,
+    /// Ollama's native chat API.
+    Ollama,
 }
 
 impl InferenceApi {
-    /// Messages and Responses accept images in tool results.
+    /// Every API but chat completions accepts images in tool results.
     #[must_use]
     pub const fn carries_images(self) -> bool {
-        matches!(self, Self::Messages | Self::Responses)
+        matches!(
+            self,
+            Self::Messages | Self::Responses | Self::Gemini | Self::Ollama
+        )
     }
 }
 
@@ -35,7 +42,8 @@ pub struct ModelInference {
     /// HTTPS provider base. Host safety is proven by the credential service.
     #[garde(length(bytes, min = 1, max = 2048))]
     pub base_url: String,
-    /// Registered rig dialect, or absent for a plain compatible gateway.
+    /// Registered rig dialect, or absent for a plain compatible gateway. The
+    /// native Gemini and Ollama APIs take none.
     #[garde(inner(length(bytes, min = 1, max = 64)))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialect: Option<String>,

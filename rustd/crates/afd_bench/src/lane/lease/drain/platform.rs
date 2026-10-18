@@ -21,7 +21,7 @@ use std::sync::Arc;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_db::test_util::{DefaultSeed, PlatformModelSeed, Prices};
+use afd_db::test_util::{DefaultSeed, ModelSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::value::RawValue;
 
@@ -47,12 +47,11 @@ const CREDENTIAL_BODY: &str = r#"{"api_key":"bench-not-a-credential"}"#;
 /// The context window the catalogue row advertises; the column is required.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
 
-/// Catalogue prices, Anthropic-shaped so the estimate floor prices above zero.
-const PRICES: Prices = Prices {
-    input_nanos_per_mtok: 3_000_000_000,
-    cached_input_nanos_per_mtok: 300_000_000,
-    output_nanos_per_mtok: 15_000_000_000,
-};
+/// Catalogue prices, Anthropic-shaped so the estimate floor prices above zero, in
+/// nanos per million tokens: uncached input, cached input, output.
+const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
+const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
+const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 
 /// A key minted for this run alone, so nothing it seals opens anywhere else.
 ///
@@ -75,8 +74,13 @@ pub(super) fn minted_kek() -> Result<Kek> {
 pub(super) async fn stage(stores: &Datastores, kek: &Arc<Kek>) -> Result<()> {
     let workspace = source_workspace();
     let mut connection = stores.database.acquire().await?;
-    PlatformModelSeed::new(&model_row(), PROVIDER, MODEL, CONTEXT_CAP_TOKENS, PRICES)
-        .at(SEEDED_AT)
+    ModelSeed::new(&model_row(), PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+        .rates(
+            INPUT_NANOS_PER_MTOK,
+            CACHED_INPUT_NANOS_PER_MTOK,
+            OUTPUT_NANOS_PER_MTOK,
+        )
+        .verified_at(SEEDED_AT)
         .insert(&mut *connection)
         .await
         .map_err(seed_refused)?;
@@ -130,7 +134,7 @@ pub(super) async fn release(stores: &Datastores) -> Result<()> {
     DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace())
         .await
         .map_err(seed_refused)?;
-    PlatformModelSeed::remove(&mut *connection, &model_row())
+    ModelSeed::remove(&mut *connection, &model_row())
         .await
         .map_err(seed_refused)?;
     Ok(())

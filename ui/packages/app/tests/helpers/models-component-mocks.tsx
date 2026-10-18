@@ -60,6 +60,9 @@ export function designSystemStub() {
       );
     },
     Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => React.createElement("input", props),
+    Switch: ({ checked, onCheckedChange, ...props }: { checked: boolean; onCheckedChange: (checked: boolean) => void; id: string }) =>
+      React.createElement("input", { ...props, type: "checkbox", role: "switch", checked,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => onCheckedChange(event.target.checked) }),
     Label: ({ children, htmlFor }: React.PropsWithChildren<{ htmlFor?: string }>) =>
       React.createElement("label", { htmlFor }, children),
     Spinner: ({ srLabel }: { srLabel?: string }) =>

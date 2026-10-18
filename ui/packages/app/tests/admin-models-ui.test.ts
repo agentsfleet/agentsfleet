@@ -63,8 +63,8 @@ async function loadedEditDialog(label: string) {
 }
 
 const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
+  { id: "u1", provider: "fireworks", model_id: "glm-5.2", display_name: "GLM 5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
+  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", display_name: "Opus 4.8", advanced: false, context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
 ];
 
 beforeEach(() => vi.clearAllMocks());

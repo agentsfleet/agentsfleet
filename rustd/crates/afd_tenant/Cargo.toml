@@ -52,7 +52,7 @@ jiff-sqlx.workspace = true
 # by a digest of address, agent and id.
 sha2.workspace = true
 # `derive` for `FromRow`: a row with nothing to parse decodes by column name.
-sqlx = { workspace = true, features = ["derive"] }
+sqlx = { workspace = true, features = ["derive", "json"] }
 thiserror.workspace = true
 tracing.workspace = true
 # The invite domain rule reads a host the way browsers do: a name, never an
@@ -79,6 +79,8 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The catalogue proof seeds through the real administrator service.
+afd_admin.workspace = true
 # The device-flow suite needs REAL parallelism: its state races — two approves,
 # a verify against an approve — are worthless on a single-threaded runtime,
 # because the interleaving they exist to force cannot happen.

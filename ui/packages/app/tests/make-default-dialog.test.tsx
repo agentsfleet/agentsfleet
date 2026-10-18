@@ -14,6 +14,8 @@ const MODEL: AdminModel = {
   id: "m1",
   provider: "atlas-cloud",
   model_id: "deepseek-v4p1-flash",
+  display_name: "DeepSeek V4.1 Flash",
+  advanced: false,
   context_cap_tokens: 1_048_576,
   input_nanos_per_mtok: 300_000_000,
   cached_input_nanos_per_mtok: 30_000_000,

@@ -86,7 +86,7 @@ async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() 
 async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_rates() {
     let f = funded(2).await;
     let dear = f.catalogue.get(1).expect("second owned model");
-    sqlx::query("UPDATE model.platform_models SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE platform_model_id=$1::uuid")
         .bind(dear.as_str()).bind(DEAR_INPUT).bind(DEAR_OUTPUT)
         .execute(&mut *f.connection().await).await.expect("the second model costs three times as much");
     let cheap = queue(&f, "Cheap turn").await;

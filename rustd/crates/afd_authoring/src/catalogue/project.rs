@@ -11,6 +11,7 @@ pub(super) struct Row {
     pub(super) reference: String,
     provider: String,
     model: String,
+    display_name: String,
     inference: Option<sqlx::types::Json<afd_wire::inference::ModelInference>>,
     base_url: Option<String>,
     has_key: bool,
@@ -40,7 +41,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
         None => true,
     };
     allowed.then(|| WorkspaceModel {
-        label: format!("{} · {}", row.model, row.provider),
+        label: row.display_name,
         reference: row.reference,
         provider: row.provider,
         model: row.model,
@@ -57,3 +58,6 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
         },
     })
 }
+
+#[cfg(test)]
+mod tests;

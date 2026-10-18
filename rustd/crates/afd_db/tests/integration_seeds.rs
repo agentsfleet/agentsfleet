@@ -15,7 +15,7 @@
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
-    DefaultSeed, PlatformModelSeed, Prices, SEEDED_AT, TenantSeed, TestDatabase, WalletSeed,
+    DefaultSeed, ModelSeed, SEEDED_AT, TenantSeed, TestDatabase, WalletSeed,
     WorkspaceSeed, mint_id,
 };
 
@@ -28,12 +28,11 @@ const MODEL: &str = "seed-model";
 /// The context ceiling the catalogue row carries.
 const CAP: i32 = 1_000;
 
-/// Prices no real catalogue row carries, so the read-back is unmistakable.
-const PRICES: Prices = Prices {
-    input_nanos_per_mtok: 7,
-    cached_input_nanos_per_mtok: 3,
-    output_nanos_per_mtok: 11,
-};
+/// Prices no real catalogue row carries, so the read-back is unmistakable, in
+/// nanos per million tokens: uncached input, cached input, output.
+const INPUT_NANOS_PER_MTOK: i64 = 7;
+const CACHED_INPUT_NANOS_PER_MTOK: i64 = 3;
+const OUTPUT_NANOS_PER_MTOK: i64 = 11;
 
 /// A tenant and workspace of one case's own, and a provider nobody else names.
 struct Scene {
@@ -118,8 +117,13 @@ async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
     let scene = Scene::seed().await;
     let mut connection = scene.database.acquire().await.expect("a connection");
     let model_row = mint_id();
-    PlatformModelSeed::new(&model_row, &scene.provider, MODEL, CAP, PRICES)
-        .at(SEEDED_AT)
+    ModelSeed::new(&model_row, &scene.provider, MODEL, CAP)
+        .rates(
+            INPUT_NANOS_PER_MTOK,
+            CACHED_INPUT_NANOS_PER_MTOK,
+            OUTPUT_NANOS_PER_MTOK,
+        )
+        .verified_at(SEEDED_AT)
         .insert(&mut *connection)
         .await
         .expect("the priced row seeds");
@@ -151,18 +155,19 @@ async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
         "the default names the priced row, not a zero-priced one"
     );
     let output: i64 = sqlx::query_scalar(
-        "SELECT output_nanos_per_mtok FROM model.platform_models WHERE id = $1::uuid",
+        "SELECT output_nanos_per_mtok FROM model.platform_model_prices \
+         WHERE platform_model_id = $1::uuid",
     )
     .bind(&model_row)
     .fetch_one(&mut *connection)
     .await
     .expect("the priced row reads back");
-    assert_eq!(output, PRICES.output_nanos_per_mtok);
+    assert_eq!(output, OUTPUT_NANOS_PER_MTOK);
 
     DefaultSeed::release(&mut *connection, &scene.provider, &scene.workspace)
         .await
         .expect("the default releases");
-    PlatformModelSeed::remove(&mut *connection, &model_row)
+    ModelSeed::remove(&mut *connection, &model_row)
         .await
         .expect("the priced row removes once nothing names it");
     drop(connection);

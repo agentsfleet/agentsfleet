@@ -65,8 +65,8 @@ async function loadedEditDialog(label: string) {
 }
 
 const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
+  { id: "u1", provider: "fireworks", model_id: "glm-5.2", display_name: "GLM 5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
+  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", display_name: "Opus 4.8", advanced: false, context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
 ];
 
 const DEFAULT_FIREWORKS: PlatformKey = {
@@ -193,7 +193,7 @@ it("CatalogueList — Make default (★ minimal key dialog) > treats a whitespac
 it("CatalogueList — Make default (★ minimal key dialog) > uses the saved inference URL for an openai-compatible default", async () => {
   setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
   const custom: AdminModel[] = [
-    { id: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0, inference: { api: "chat", base_url: "https://endpoint.example/v1", max_output_tokens: 8192 } },
+    { id: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", display_name: "glm-5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0, inference: { api: "chat", base_url: "https://endpoint.example/v1", max_output_tokens: 8192 } },
   ];
   renderWithTooltipProvider(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
@@ -291,7 +291,7 @@ it("ModelsView > passes the active default through so the matching row is badged
 
 it("ModelsView > appends a newly created model to the catalogue without a round-trip", async () => {
   const created: AdminModel = {
-    id: "u3", provider: "moonshot", model_id: "kimi-k2.6", context_cap_tokens: 256000,
+    id: "u3", provider: "moonshot", model_id: "kimi-k2.6", display_name: "Kimi K2.6", advanced: false, context_cap_tokens: 256000,
     input_nanos_per_mtok: 600_000_000, cached_input_nanos_per_mtok: 150_000_000, output_nanos_per_mtok: 2_300_000_000,
   };
   createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
