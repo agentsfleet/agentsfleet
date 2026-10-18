@@ -31,7 +31,15 @@ impl Setup {
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:platform-library:create:{}", access.workspace, person.id);
         let digest = replay::digest(&*request)?;
-        let existing = replay::find(&mut tx, &scope, operation, &person.id, &digest).await?;
+        let existing = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::LibraryRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?;
         let result = if let Some(revision) = existing {
             platform::read::receipt(&mut tx, &revision).await?
         } else {
@@ -64,9 +72,16 @@ impl Setup {
                 .await?;
                 platform::read::receipt(&mut tx, &revision).await?
             } else {
-                let revision = replay::find(&mut tx, &scope, operation, &person.id, &digest)
-                    .await?
-                    .ok_or(ErrorKind::Gone)?;
+                let revision = replay::find(
+                    &mut tx,
+                    &scope,
+                    replay::Resource::LibraryRevision,
+                    operation,
+                    &person.id,
+                    &digest,
+                )
+                .await?
+                .ok_or(ErrorKind::Gone)?;
                 platform::read::receipt(&mut tx, &revision).await?
             }
         };

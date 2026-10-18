@@ -1,6 +1,8 @@
 //! Replay checks follow current authorization and precede lifecycle mutation.
 
 mod sql;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     Result,
@@ -55,39 +57,84 @@ fn sorted(value: Value) -> Value {
     }
 }
 
+/// The kind of resource an operation's receipt names: the table [`find`]
+/// checks it still exists in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Resource {
+    /// `fleet.fleets`: a Save.
+    Fleet,
+    /// `fleet.revisions`: an applied improvement.
+    FleetRevision,
+    /// `authoring.drafts`: a started setup chat.
+    Draft,
+    /// `authoring.messages`: an accepted message.
+    Message,
+    /// `authoring.library_revisions`: a Library publication.
+    LibraryRevision,
+}
+
+impl Resource {
+    /// The spelling [`sql::READ`]'s `CASE` matches.
+    const fn kind(self) -> &'static str {
+        match self {
+            Self::Fleet => "fleet",
+            Self::FleetRevision => "fleet_revision",
+            Self::Draft => "draft",
+            Self::Message => "message",
+            Self::LibraryRevision => "library_revision",
+        }
+    }
+}
+
 /// [`sql::READ`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Receipt {
     user_id: String,
     request_digest: String,
     resource_id: String,
+    /// Whether the named resource still exists.
+    live: bool,
 }
 
 /// The resource this operation already created inside [`REPLAY_WINDOW`], when
 /// it created one.
 ///
-/// A receipt names its resource even after that resource was deleted; the
-/// caller that resolves it answers a missing resource as Gone. A receipt past
-/// the window reads as no receipt, so the key is new.
+/// A receipt outlives the resource it names, so a retry after deletion answers
+/// Gone here, in the same statement that reads the receipt. A receipt past the
+/// window reads as no receipt, so the key is new.
+///
+/// # Errors
+/// [`ErrorKind::Replay`] for another actor or a changed body, checked first;
+/// [`ErrorKind::Gone`] when the named resource was deleted.
 pub(crate) async fn find(
     connection: &mut PgConnection,
     scope: &str,
+    resource: Resource,
     operation: &Uuid7,
     actor: &Uuid7,
     digest: &str,
 ) -> Result<Option<Uuid7>> {
-    let Some(receipt) = sqlx::query_as::<_, Receipt>(sql::READ)
+    let receipt = sqlx::query_as::<_, Receipt>(sql::READ)
         .bind(scope)
         .bind(operation.as_str())
         .bind(REPLAY_WINDOW)
+        .bind(resource.kind())
         .fetch_optional(connection)
         .await
-        .map_err(query(CONTEXT))?
-    else {
+        .map_err(query(CONTEXT))?;
+    decide(receipt, actor, digest)
+}
+
+/// What a read receipt answers for `actor` sending `digest`.
+fn decide(receipt: Option<Receipt>, actor: &Uuid7, digest: &str) -> Result<Option<Uuid7>> {
+    let Some(receipt) = receipt else {
         return Ok(None);
     };
     if receipt.user_id != actor.as_str() || receipt.request_digest != digest {
         return Err(ErrorKind::Replay.into());
+    }
+    if !receipt.live {
+        return Err(ErrorKind::Gone.into());
     }
     Ok(Some(Uuid7::parse(&receipt.resource_id)?))
 }

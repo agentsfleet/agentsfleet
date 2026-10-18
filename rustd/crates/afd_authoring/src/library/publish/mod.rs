@@ -60,6 +60,7 @@ impl Replay<'_> {
         let found = replay::find(
             connection,
             self.scope,
+            replay::Resource::LibraryRevision,
             self.operation,
             &self.person.id,
             self.digest,

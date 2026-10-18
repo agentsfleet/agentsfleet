@@ -1,12 +1,14 @@
 //! Content-free replay identity is retained independently from private state.
 //!
 //! A receipt has no foreign key: it outlives the resource it names, so a retry
-//! after deletion finds the receipt and a missing resource, which its caller
-//! answers as Gone (`schema/1980_authoring_replay_receipts.sql`). Every
-//! statement here reads the window against `statement_timestamp()`, so a key
-//! the read calls expired is one the delete and the sweep call expired too.
+//! after deletion finds the receipt and a missing resource, which the read
+//! reports as `live = false` and the caller answers as Gone
+//! (`schema/1980_authoring_replay_receipts.sql`). Every statement here reads
+//! the window against `statement_timestamp()`, so a key the read calls expired
+//! is one the delete and the sweep call expired too.
 
-/// `$1` scope, `$2` operation, `$3` the replay window.
+/// `$1` scope, `$2` operation, `$3` the replay window, `$4` the resource kind
+/// (a [`super::Resource`] spelling) whose table `live` checks.
 pub(super) const READ: &str = include_str!("read.sql");
 
 /// Deletes the key's receipt once it is outside the window, so the unique
