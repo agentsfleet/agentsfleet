@@ -15,7 +15,6 @@
 //! build the first one.
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -137,7 +136,7 @@ impl Fixture {
                 &self.admin,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture bag is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture bag {key} seals: {sealed:?}");

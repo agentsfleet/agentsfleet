@@ -104,7 +104,7 @@ pub(crate) async fn verified<D: Services>(
         presented,
         timestamp,
         &body,
-        services.now().as_seconds(),
+        services.now().as_second(),
     ) {
         Verdict::Verified => Ok(Verified { binding, body }),
         Verdict::Refused(refusal) => Err(wall(refusal)),

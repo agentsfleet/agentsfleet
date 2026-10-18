@@ -112,7 +112,7 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(plane.models(), &plane.admin.models));
     assert!(same(plane.platform_keys(), &plane.admin.platform_keys));
     assert_eq!(plane.deployment(), "https://api.fixture.test");
-    assert!(plane.now().as_millis() > 0);
+    assert!(plane.now() > jiff::Timestamp::UNIX_EPOCH);
 }
 
 /// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a

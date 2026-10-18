@@ -9,6 +9,7 @@
 
 use afd_core::id::Uuid7;
 use afd_core::spelling::from_spelling;
+use jiff::Timestamp;
 
 use crate::sql::invite as sql;
 use crate::team::Team;
@@ -106,6 +107,10 @@ impl Team {
     /// Records what became of `attempt`, unless a later send has begun. A send
     /// the relay accepted is stamped with the database clock.
     ///
+    /// Answers the invite's stored send instant once this attempt is recorded,
+    /// so a response shows the row's stamp; `None` when no send is stamped or a
+    /// later attempt has begun.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer.
     pub async fn record_email(
@@ -113,17 +118,18 @@ impl Team {
         invite: &Uuid7,
         attempt: i32,
         status: EmailStatus,
-    ) -> Result<()> {
+    ) -> Result<Option<Timestamp>> {
         let mut connection = self.database.acquire().await?;
-        sqlx::query(sql::RECORD_EMAIL_RESULT)
-            .bind(invite.as_str())
-            .bind(attempt)
-            .bind(status.wire())
-            .bind(status == EmailStatus::Sent)
-            .execute(&mut *connection)
-            .await
-            .map_err(error::query(CONTEXT_RECORD))?;
-        Ok(())
+        let stamped =
+            sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(sql::RECORD_EMAIL_RESULT)
+                .bind(invite.as_str())
+                .bind(attempt)
+                .bind(status.wire())
+                .bind(status == EmailStatus::Sent)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(error::query(CONTEXT_RECORD))?;
+        Ok(stamped.flatten().map(jiff_sqlx::Timestamp::to_jiff))
     }
 }
 

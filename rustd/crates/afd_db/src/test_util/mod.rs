@@ -55,6 +55,7 @@ use sqlx::AssertSqlSafe;
 use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
+mod connector;
 mod fleet;
 mod fleet_event;
 mod identity;
@@ -63,6 +64,7 @@ mod rows;
 mod runner;
 mod unreachable;
 
+pub use self::connector::{GrantSeed, InstallSeed};
 pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
@@ -73,6 +75,10 @@ pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
 pub use self::unreachable::unreachable_db;
+
+/// The fixed instant fixtures stamp on the rows they seed: one millisecond past
+/// the epoch, so it survives `TIMESTAMPTZ(3)` unchanged.
+pub const SEEDED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 1_000_000);
 
 /// The environment knob naming the lane's admin connection.
 const LANE_KNOB: &str = "TEST_DATABASE_URL";

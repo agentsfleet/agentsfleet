@@ -23,10 +23,10 @@
 //! one. So activation is a single verb, [`TenantProviders::activate`], and the
 //! ladder's refusals come back as outcome VALUES rather than as errors.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{Activation, PlatformDefault, Providers, Selection};
+use jiff::Timestamp;
 
 /// Everything the tenant provider routes act through.
 ///
@@ -64,22 +64,11 @@ pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
         &self,
     ) -> impl Future<Output = CredentialResult<Option<PlatformDefault>>> + Send;
 
-    /// Writes this tenant's selection, last-write-wins on its single row.
-    ///
-    /// Takes the coherent pair it is given. Platform mode naming a credential,
-    /// and self-managed mode naming none, are refused where a request BECOMES a
-    /// selection — so there is one place that says what a coherent selection
-    /// is, and it is the one that can answer a client with a sentence.
+    /// Points this tenant back at the platform default.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a context ceiling wider
-    /// than the column holds.
-    fn upsert(
-        &self,
-        tenant: &Uuid7,
-        selection: &Selection,
-        now: UnixMillis,
-    ) -> impl Future<Output = CredentialResult<()>> + Send;
+    /// Reports a datastore that would not answer.
+    fn reset(&self, tenant: &Uuid7) -> impl Future<Output = CredentialResult<()>> + Send;
 
     /// Activates a stored credential as this tenant's provider.
     ///
@@ -99,7 +88,7 @@ pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
         tenant: &Uuid7,
         secret_ref: &str,
         model: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Activation>> + Send;
 }
 
@@ -118,13 +107,8 @@ impl TenantProviders for Providers {
         Self::platform_default(self)
     }
 
-    fn upsert(
-        &self,
-        tenant: &Uuid7,
-        selection: &Selection,
-        now: UnixMillis,
-    ) -> impl Future<Output = CredentialResult<()>> + Send {
-        Self::upsert(self, tenant, selection, now)
+    fn reset(&self, tenant: &Uuid7) -> impl Future<Output = CredentialResult<()>> + Send {
+        Self::reset(self, tenant)
     }
 
     fn activate(
@@ -132,7 +116,7 @@ impl TenantProviders for Providers {
         tenant: &Uuid7,
         secret_ref: &str,
         model: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Activation>> + Send {
         Self::activate(self, tenant, secret_ref, model, now)
     }

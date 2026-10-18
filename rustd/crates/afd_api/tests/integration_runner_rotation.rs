@@ -10,7 +10,6 @@ use crate::harness;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -19,12 +18,13 @@ use afd_db::test_util::TestDatabase;
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
+use jiff::Timestamp;
 use std::borrow::Cow;
 
 use self::harness::{Fleet, json_body, send};
 
 const OPERATOR: &str = "fixture:platform-operator";
-const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

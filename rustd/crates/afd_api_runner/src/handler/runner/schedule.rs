@@ -28,7 +28,6 @@
 use std::sync::Arc;
 
 use afd_api_wire::schedule::Page;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_cron::model::DEFAULT_TIMEZONE;
@@ -120,14 +119,7 @@ pub(crate) async fn create<D: Services>(
     let request: ScheduleCreateRequest<'_> =
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let now = services.now();
-    let lease = standing(
-        &*services,
-        runner.id(),
-        &lease_id,
-        request.fencing_token,
-        now,
-    )
-    .await?;
+    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
     let timezone = request.timezone.as_deref().unwrap_or(DEFAULT_TIMEZONE);
     checked_for(
         &lease,
@@ -138,7 +130,7 @@ pub(crate) async fn create<D: Services>(
         },
     )?;
     let message = masked(&*services, &lease, &request.message).await?;
-    let guard = write_fence(runner.id(), &lease_id, request.fencing_token, now)?;
+    let guard = write_fence(runner.id(), &lease_id, request.fencing_token)?;
     let created = services
         .schedules()
         .create_guarded(
@@ -146,7 +138,7 @@ pub(crate) async fn create<D: Services>(
             NewSchedule {
                 fleet: &lease.fleet_id,
                 source: Source::Fleet,
-                source_key: None,
+                provider_schedule_id: None,
                 cron: &request.cron,
                 timezone,
                 message: &message,
@@ -196,9 +188,8 @@ pub(crate) async fn list<D: Services>(
     Path(lease_id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
-    let now = services.now();
     let token = fence(query.as_deref())?;
-    let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
+    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
     let schedules = services
         .schedules()
         .list(&lease.workspace_id, &lease.fleet_id)
@@ -216,11 +207,10 @@ pub(super) async fn standing<D: Services>(
     runner: &Uuid7,
     lease_id: &str,
     token: u64,
-    now: UnixMillis,
 ) -> Result<Standing, Refusal> {
     services
         .leases()
-        .standing(runner, lease(lease_id)?, token, now)
+        .standing(runner, lease(lease_id)?, token)
         .await
         .map_err(Refusal::at(EVENT_FAILED))
 }
@@ -231,14 +221,8 @@ pub(super) fn write_fence(
     runner: &Uuid7,
     lease_id: &str,
     token: u64,
-    now: UnixMillis,
 ) -> Result<WriteFence, Refusal> {
-    Ok(WriteFence::new(
-        runner.clone(),
-        lease(lease_id)?,
-        token,
-        now,
-    ))
+    Ok(WriteFence::new(runner.clone(), lease(lease_id)?, token))
 }
 
 /// A refusal of a write the fleet asked for, logged against its lease.

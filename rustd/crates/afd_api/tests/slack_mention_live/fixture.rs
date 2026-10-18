@@ -14,12 +14,16 @@
 
 use afd_admission::Producer;
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    FIXTURE_SETUP_MODEL_REF, FleetSeed, InstallSeed, SetupRevision, TestDatabase, WorkspaceSeed,
+    mint_id,
+};
 use afd_dragonfly::Dragonfly;
+use afd_fleet_runtime::test_util::FixtureSetup;
+use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -142,38 +146,30 @@ impl Fixture {
     /// The tenant, both workspaces, the person, the app bag, the install row
     /// and the workspace's sealed grant.
     pub(super) async fn seed(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Slack mention live', 1, 1) \
-             ), admin AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'platform-admin', $3, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($4::uuid, $1::uuid, 'slack-team', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, $3, 'mention-live@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.connector_installs \
-               (id, provider, external_account_id, workspace_id, installed_by, scopes, \
-                created_at, updated_at) \
-             VALUES ($6::uuid, $7, $8, $4::uuid, $3, ARRAY['app_mentions:read']::text[], 1, 1)",
+        sign_up(
+            &self.database,
+            &Signup {
+                tenant: &self.tenant,
+                user: &self.user,
+                subject: &self.subject,
+                email: "mention-live@example.test",
+                name: "slack-team",
+                display_name: None,
+                workspace: self.workspace.as_str(),
+            },
         )
-        .bind(&self.tenant)
-        .bind(self.admin.as_str())
-        .bind(&self.subject)
-        .bind(self.workspace.as_str())
-        .bind(&self.user)
-        .bind(mint_id())
-        .bind(Provider::Slack.id())
-        .bind(&self.team)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant, workspaces, person and install seed");
+        .await;
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+            .name("platform-admin")
+            .insert(&mut *connection)
+            .await
+            .expect("the admin workspace seeds");
+        InstallSeed::new(Provider::Slack.id(), &self.team, self.workspace.as_str())
+            .scopes(&["app_mentions:read"])
+            .insert(&mut *connection)
+            .await
+            .expect("the install seeds");
         drop(connection);
 
         let secret = str::from_utf8(SIGNING_SECRET).expect("the fixture secret is text");
@@ -211,12 +207,17 @@ impl Fixture {
         let parsed = afd_fleet_runtime::FleetConfig::authored(config)
             .expect("the fixture configuration parses");
         let fleet = Uuid7::parse(&mint_id()).expect("a minted fleet is canonical");
+        let setup = FixtureSetup::new(config);
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(fleet.as_str(), workspace.as_str(), &self.tenant, status)
             .name(parsed.name().as_str())
-            .config(config)
-            .at(1)
-            .native_setup()
+            .at(afd_db::test_util::SEEDED_AT)
+            .unplaced_setup(SetupRevision {
+                definition: &setup.definition,
+                digest: &setup.digest,
+                semantics: setup.semantics(),
+                model_ref: Some(FIXTURE_SETUP_MODEL_REF),
+            })
             .insert(&mut *connection)
             .await
             .expect("the fleet row seeds");
@@ -239,7 +240,7 @@ impl Fixture {
         >(
             "SELECT fleet_id::text, actor, event_type, request_json, reply_provider, \
                     reply_address \
-             FROM core.fleet_admissions WHERE producer = $1 AND producer_key = $2",
+             FROM fleet.admissions WHERE producer = $1 AND producer_key = $2",
         )
         .bind(Producer::SlackMention.as_str())
         .bind(key)
@@ -262,7 +263,7 @@ impl Fixture {
     pub(super) async fn admissions(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM core.fleet_admissions \
+            "SELECT COUNT(*) FROM fleet.admissions \
              WHERE producer = $1 AND producer_key LIKE $2 || ':%'",
         )
         .bind(Producer::SlackMention.as_str())
@@ -280,7 +281,7 @@ impl Fixture {
                 workspace,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture bag is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture bag {key} seals: {sealed:?}");
@@ -296,7 +297,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed bags clean up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

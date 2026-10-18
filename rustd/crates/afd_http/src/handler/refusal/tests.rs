@@ -37,7 +37,7 @@ fn already_resolved() -> Refusal {
             gate_id: "g".to_owned(),
             action_id: "a".to_owned(),
             outcome: "approved".to_owned(),
-            resolved_at: 1,
+            resolved_at: jiff::Timestamp::UNIX_EPOCH,
             resolved_by: "someone".to_owned(),
         },
     )

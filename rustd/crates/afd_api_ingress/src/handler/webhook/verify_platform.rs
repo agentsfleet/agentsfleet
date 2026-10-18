@@ -114,7 +114,7 @@ fn checked<D: Services>(
         presented,
         timestamp,
         &body,
-        services.now().as_seconds(),
+        services.now().as_second(),
     ) {
         Verdict::Verified => Ok(ProvenApp { body }),
         Verdict::Refused(refusal) => Err(wall(refusal)),

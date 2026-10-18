@@ -99,7 +99,7 @@ pub(crate) struct ResolvePath {
         afd_http::openapi::path::Workspace,
         ("status" = Option<String>, Query, description = "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state."),
         ("fleet_id" = Option<String>, Query),
-        ("gate_kind" = Option<String>, Query),
+        ("gate_type" = Option<String>, Query),
         ("limit" = Option<String>, Query),
         ("cursor" = Option<String>, Query),
     ),
@@ -127,7 +127,7 @@ pub(crate) async fn list<D: Services>(
             Filter {
                 status: asked.status,
                 fleet_id: asked.fleet_id.as_deref(),
-                gate_kind: asked.gate_kind.as_deref(),
+                gate_type: asked.gate_type.as_deref(),
             },
             resume,
             asked.limit,
@@ -153,7 +153,7 @@ fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
     let last = gates.last()?;
     (i64::try_from(gates.len()).is_ok_and(|read| read == limit)).then(|| {
         CoreCursor::Timestamp {
-            at_ms: last.created_at,
+            at: last.created_at,
             id: last.gate_id.clone(),
         }
         .to_string()
@@ -222,16 +222,16 @@ fn summary(gate: &GateRow) -> ApprovalSummary<'_> {
         action_id: Cow::Borrowed(&gate.action_id),
         tool_name: Cow::Borrowed(&gate.tool_name),
         action_name: Cow::Borrowed(&gate.action_name),
-        gate_kind: Cow::Borrowed(&gate.gate_kind),
+        gate_type: Cow::Borrowed(&gate.gate_type),
         proposed_action: Cow::Borrowed(&gate.proposed_action),
         blast_radius: Cow::Borrowed(&gate.blast_radius),
         status: Cow::Borrowed(&gate.status),
         detail: Cow::Borrowed(&gate.detail),
         created_at: gate.created_at,
-        timeout_at: gate.timeout_at,
-        updated_at: gate.updated_at,
-        resolved_by: Cow::Borrowed(&gate.resolved_by),
-        resolved_by_name: Cow::Borrowed(&gate.resolved_by_name),
+        expires_at: gate.expires_at,
+        resolved_at: gate.resolved_at,
+        resolved_by: Cow::Borrowed(gate.resolved_by.as_deref().unwrap_or_default()),
+        resolved_by_name: Cow::Borrowed(gate.resolved_by_name.as_deref().unwrap_or_default()),
         // `None` on a row that will not parse — see the field's own note on
         // why a corrupt gate is still shown rather than failing the queue.
         evidence: serde_json::from_str::<&RawValue>(&gate.evidence_json).ok(),

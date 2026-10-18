@@ -3335,7 +3335,7 @@
           {
             "name": "since",
             "in": "query",
-            "description": "Lower bound on occurred_at, epoch milliseconds (inclusive).",
+            "description": "Lower bound on occurred_at, an RFC 3339 instant (inclusive).",
             "required": false,
             "schema": {
               "type": "string"
@@ -3344,7 +3344,7 @@
           {
             "name": "until",
             "in": "query",
-            "description": "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since.",
+            "description": "Upper bound on occurred_at, an RFC 3339 instant (inclusive). Must be >= since.",
             "required": false,
             "schema": {
               "type": "string"
@@ -4917,10 +4917,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/HeartbeatRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/HeartbeatRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -5394,10 +5394,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/RenewRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/RenewRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -8390,7 +8390,7 @@
           "Tenant"
         ],
         "summary": "Reset tenant LLM provider to platform default",
-        "description": "Equivalent to `PUT {mode: \"platform\"}`. Writes the explicit mode=platform row so the dashboard can distinguish \"never configured\" from \"explicitly reset\". ",
+        "description": "Equivalent to `PUT {mode: \"platform\"}`. Writes an explicit platform selection so the dashboard can distinguish \"never configured\" from \"explicitly reset\". ",
         "operationId": "delete_tenant_provider",
         "responses": {
           "200": {
@@ -9388,10 +9388,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/CreateWorkspaceRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/CreateWorkspaceRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -9533,7 +9533,7 @@
             }
           },
           {
-            "name": "gate_kind",
+            "name": "gate_type",
             "in": "query",
             "required": false,
             "schema": {
@@ -13002,7 +13002,7 @@
           {
             "name": "starting_after",
             "in": "query",
-            "description": "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.",
+            "description": "Opaque page token from a prior response's `next_cursor` field. Omit for the first page.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17212,11 +17212,11 @@
           "failure_reason": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/FailureReason",
                 "description": "Required for `failed`/`timed_out` and absent otherwise."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17520,8 +17520,8 @@
             "description": "Whether it still authenticates."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was minted."
           },
           "id": {
@@ -17534,10 +17534,10 @@
           },
           "revoked_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
           }
         }
@@ -17626,13 +17626,13 @@
           "action_id",
           "tool_name",
           "action_name",
-          "gate_kind",
+          "gate_type",
           "proposed_action",
           "blast_radius",
           "status",
           "detail",
           "created_at",
-          "timeout_at",
+          "expires_at",
           "resolved_by",
           "resolved_by_name"
         ],
@@ -17650,8 +17650,8 @@
             "description": "How far the consequences reach."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was raised."
           },
           "detail": {
@@ -17665,6 +17665,11 @@
             ],
             "description": "The evidence behind the proposal, verbatim."
           },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops waiting."
+          },
           "fleet_id": {
             "type": "string",
             "description": "The fleet that raised it."
@@ -17677,13 +17682,21 @@
             "type": "string",
             "description": "The gate's own row id — what a decision addresses it by."
           },
-          "gate_kind": {
+          "gate_type": {
             "type": "string",
             "description": "Which family of gate this is."
           },
           "proposed_action": {
             "type": "string",
             "description": "What the fleet proposes, in a person's words."
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was resolved, or `null` while pending."
           },
           "resolved_by": {
             "type": "string",
@@ -17697,22 +17710,9 @@
             "type": "string",
             "description": "Where the gate stands."
           },
-          "timeout_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops waiting."
-          },
           "tool_name": {
             "type": "string",
             "description": "The tool asking."
-          },
-          "updated_at": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "When it was resolved, or `null` while pending."
           },
           "workspace_id": {
             "type": "string",
@@ -17841,11 +17841,11 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CandidateVersion",
                 "description": "Originally committed version, independent of the current head."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17915,10 +17915,10 @@
           },
           "exhausted_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When it did, or `null` while money remains — emitted either way, for\nthe module's null rule."
           },
           "is_exhausted": {
@@ -17926,8 +17926,8 @@
             "description": "Whether the balance has reached zero."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the balance last moved."
           }
         }
@@ -18086,8 +18086,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "description": {
@@ -18139,8 +18139,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "description": {
@@ -18339,8 +18339,8 @@
             "description": "Whose model bill the tokens landed on."
           },
           "recorded_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the row was written — the walk's sort key, and what its cursor\nhalf is rendered from."
           },
           "tenant_id": {
@@ -18604,11 +18604,11 @@
               "accepted": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DraftMessageAccepted",
                     "description": "Present only when creation accepted an initial message."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -18718,8 +18718,8 @@
               ],
               "properties": {
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "UTC milliseconds."
                 },
                 "description": {
@@ -18801,10 +18801,10 @@
                 },
                 "expires_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
+                  "format": "date-time",
                   "description": "Private retention deadline, Unix milliseconds."
                 },
                 "id": {
@@ -18827,8 +18827,8 @@
                   "description": "Human display title."
                 },
                 "updated_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "Last mutation, Unix milliseconds."
                 }
               }
@@ -18881,27 +18881,27 @@
                   "description": "Accepted assistant proposal, when present."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "Acceptance time, Unix milliseconds."
                 },
                 "failure": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/Failure",
                       "description": "Daemon-derived bounded failure and recovery action."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
                 "finished_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
+                  "format": "date-time",
                   "description": "Terminal time, Unix milliseconds."
                 },
                 "operation_id": {
@@ -18930,11 +18930,11 @@
                 "usage": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/Usage",
                       "description": "Provider usage and cumulative runtime charge, when recorded."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 }
@@ -18984,8 +18984,8 @@
                   "description": "Content identity."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "UTC milliseconds."
                 },
                 "id": {
@@ -19268,22 +19268,22 @@
           "context_cap_tokens": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "The most tokens a run's assembled context may hold."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "memory_checkpoint_every": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "How often a run saves its memory."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19300,11 +19300,11 @@
           "tool_window": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "How much of the context tool output may fill."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -19513,11 +19513,11 @@
           "context": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContext",
                 "description": "Context-size settings for each run."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19537,11 +19537,11 @@
           "gates": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionGates",
                 "description": "Which tool actions need a person's approval, and which repeated actions stop a run."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19556,11 +19556,11 @@
           "network": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionNetwork",
                 "description": "The hosts this fleet may reach."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19581,11 +19581,11 @@
           "repository_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionRepositoryAccess",
                 "description": "How far those credentials reach. Set together with `repositories`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19669,11 +19669,11 @@
               "signature": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DefinitionWebhookSignature",
                     "description": "How the delivery proves it came from the provider."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -19820,20 +19820,20 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Candidate_Value",
                 "description": "Latest accepted setup, absent before the first candidate."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "closed_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Closing time in Unix milliseconds."
           },
           "etag": {
@@ -19842,10 +19842,10 @@
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Private retention deadline in Unix milliseconds."
           },
           "id": {
@@ -19862,11 +19862,11 @@
           "publication": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Publication",
                 "description": "Explicit publication receipt, never synthesized by Save."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19904,10 +19904,10 @@
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Private retention deadline, Unix milliseconds."
           },
           "id": {
@@ -19930,8 +19930,8 @@
             "description": "Human display title."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last mutation, Unix milliseconds."
           }
         }
@@ -20040,20 +20040,20 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Candidate_Value",
                 "description": "Latest accepted setup, absent before the first candidate."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "closed_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Closing time in Unix milliseconds."
           },
           "etag": {
@@ -20062,10 +20062,10 @@
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Private retention deadline in Unix milliseconds."
           },
           "id": {
@@ -20082,11 +20082,11 @@
           "publication": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Publication",
                 "description": "Explicit publication receipt, never synthesized by Save."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20161,9 +20161,9 @@
             "description": "What this event actually cost, summed over its telemetry rows."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row was created."
           },
           "event_id": {
             "type": "string",
@@ -20224,20 +20224,20 @@
           "tool_calls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ToolTrace",
                 "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded. That is a run older than this field,\na runner that does not record calls, or a trace dropped for breaking a\nbound. `null` never means no tools ran."
+              },
+              {
+                "type": "null"
               }
             ],
             "description": "Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row last changed."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row last changed."
           },
           "wall_ms": {
             "type": [
@@ -20272,9 +20272,9 @@
             "description": "Who or what produced the event."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds at which the event was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event was created."
           },
           "event_id": {
             "type": "string",
@@ -20325,9 +20325,9 @@
             "description": "What this event actually cost, summed over its telemetry rows."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row was created."
           },
           "event_id": {
             "type": "string",
@@ -20375,9 +20375,9 @@
             "description": "Tokens the run spent, absent until a runner reports."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row last changed."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row last changed."
           },
           "wall_ms": {
             "type": [
@@ -20500,11 +20500,11 @@
           "repository_binding": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RepositoryBinding",
                 "description": "Repositories the run is bound to, when it is bound to any."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20699,8 +20699,8 @@
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Creation time in Unix milliseconds."
           },
           "definition": {
@@ -20768,8 +20768,8 @@
             "description": "Current lifecycle state."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last mutation in Unix milliseconds."
           },
           "webhook_urls": {
@@ -20841,8 +20841,8 @@
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Creation time in Unix milliseconds."
           },
           "events_processed": {
@@ -20869,8 +20869,8 @@
             "description": "Authored trigger projection."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last mutation in Unix milliseconds."
           }
         }
@@ -20919,15 +20919,15 @@
         "properties": {
           "approved_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When a person approved it, or `null`."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the grant was raised."
           },
           "id": {
@@ -20940,10 +20940,10 @@
           },
           "revoked_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When a person took that back, or `null`."
           },
           "service": {
@@ -20989,11 +20989,11 @@
           "capability_report": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "What this host can enforce, when the probe result is being reported."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21014,11 +21014,11 @@
           "selftest": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SelftestReport",
                 "description": "A verdict produced since the last beat, by request or by startup probe."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -21251,9 +21251,9 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was issued, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was issued."
           },
           "email": {
             "type": "string",
@@ -21261,20 +21261,20 @@
           },
           "email_sent_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+            "format": "date-time",
+            "description": "When the relay last accepted its email; `null` if\nit never has."
           },
           "email_status": {
             "type": "string",
             "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops being acceptable, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops being acceptable."
           },
           "id": {
             "type": "string",
@@ -21308,8 +21308,8 @@
             "description": "Whether new tenant discovery and installation are allowed."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last metadata mutation, in Unix milliseconds."
           }
         }
@@ -21332,8 +21332,8 @@
             "description": "Whether new tenant discovery and installation are allowed."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last metadata mutation, in Unix milliseconds."
           }
         }
@@ -21402,9 +21402,9 @@
             "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
           },
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds after which the event becomes reclaimable."
+            "type": "string",
+            "format": "date-time",
+            "description": "The instant after which the event becomes reclaimable."
           },
           "lease_id": {
             "type": "string",
@@ -21413,11 +21413,11 @@
           "limits": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SandboxLimits",
                 "description": "The sandbox to run in; null uses this runner's configured defaults."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21471,11 +21471,11 @@
           "lease": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TaggedLease_Value",
                 "description": "The work, when there is any."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21528,8 +21528,8 @@
             "description": "Current immutable candidate, including its identity and revision."
           },
           "deadline": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Original attempt deadline; renewal cannot extend it."
           },
           "deletion_generation": {
@@ -21541,9 +21541,9 @@
             "description": "Private source conversation identity."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Lease deadline in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "The lease deadline."
           },
           "fence": {
             "type": "string",
@@ -21717,9 +21717,9 @@
             "description": "Their address."
           },
           "joined_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When they joined the account, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When they joined the account."
           },
           "role": {
             "type": "string",
@@ -21872,9 +21872,9 @@
             "description": "The stable key the fleet remembers this under."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds, as a JSON NUMBER — never a decimal string."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last written."
           },
           "visibility": {
             "$ref": "#/components/schemas/Visibility",
@@ -22018,27 +22018,27 @@
             "description": "Accepted assistant proposal, when present."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Acceptance time, Unix milliseconds."
           },
           "failure": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Failure",
                 "description": "Daemon-derived bounded failure and recovery action."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "finished_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Terminal time, Unix milliseconds."
           },
           "operation_id": {
@@ -22067,11 +22067,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Usage",
                 "description": "Provider usage and cumulative runtime charge, when recorded."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -22233,13 +22233,13 @@
         "description": "`POST /v1/runners/me/credentials/mint` reply.",
         "required": [
           "token",
-          "expires_at_ms"
+          "expires_at"
         ],
         "properties": {
-          "expires_at_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds after which it stops working, so the caller re-mints\nbefore expiry rather than on failure."
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops working, so the caller re-mints before expiry rather than\non failure. A credential with no upstream expiry carries the far-future\ninstant `9999-12-30T22:00:00.999Z`, so the caller's one comparison covers\nit."
           },
           "token": {
             "type": "string",
@@ -22276,8 +22276,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was minted."
           },
           "id": {
@@ -22332,8 +22332,8 @@
         ],
         "properties": {
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Current lease expiry, capped by the attempt deadline."
           },
           "invocation_path": {
@@ -22417,11 +22417,11 @@
           "platform_default": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PlatformDefaultRow",
                 "description": "The default's identity, when there is one."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -22482,9 +22482,9 @@
             "minimum": 0
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
           },
           "has_key": {
             "type": "boolean",
@@ -22942,11 +22942,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Status",
                 "description": "Replacement firing intent."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23003,8 +23003,8 @@
                   "description": "Whether it still authenticates."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "When it was minted."
                 },
                 "id": {
@@ -23017,10 +23017,10 @@
                 },
                 "revoked_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
+                  "format": "date-time",
                   "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
                 }
               }
@@ -23065,9 +23065,9 @@
               ],
               "properties": {
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it was issued, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it was issued."
                 },
                 "email": {
                   "type": "string",
@@ -23075,20 +23075,20 @@
                 },
                 "email_sent_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
-                  "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+                  "format": "date-time",
+                  "description": "When the relay last accepted its email; `null` if\nit never has."
                 },
                 "email_status": {
                   "type": "string",
                   "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
                 },
                 "expires_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it stops being acceptable, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it stops being acceptable."
                 },
                 "id": {
                   "type": "string",
@@ -23152,9 +23152,9 @@
                   "description": "Their address."
                 },
                 "joined_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When they joined the account, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When they joined the account."
                 },
                 "role": {
                   "type": "string",
@@ -23206,9 +23206,9 @@
                   "description": "The account accepting it joins."
                 },
                 "expires_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it stops being acceptable, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it stops being acceptable."
                 },
                 "id": {
                   "type": "string",
@@ -23316,11 +23316,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PatchStatus",
                 "description": "Supported lifecycle target, omitted to keep current state."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -23439,9 +23439,9 @@
             "description": "Workspace holding the key."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last mutation instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last mutation instant."
           }
         },
         "additionalProperties": false
@@ -23581,17 +23581,17 @@
           "status",
           "cli_public_key",
           "token_name",
-          "expires_at_ms"
+          "expires_at"
         ],
         "properties": {
           "cli_public_key": {
             "type": "string",
             "description": "The public key the command line presented, echoed back."
           },
-          "expires_at_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When the window closes, in milliseconds since the epoch."
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the window closes."
           },
           "status": {
             "type": "string",
@@ -23716,10 +23716,10 @@
           },
           "resolved_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "On that 409 only: when the standing answer was given."
           },
           "resolved_by": {
@@ -24055,9 +24055,9 @@
         ],
         "properties": {
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of the new deadline."
+            "type": "string",
+            "format": "date-time",
+            "description": "The new deadline."
           }
         }
       },
@@ -24072,13 +24072,13 @@
         ],
         "properties": {
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Extended Unix-millisecond deadline."
+            "type": "string",
+            "format": "date-time",
+            "description": "The lease's extended expiry."
           },
           "model_access_expires_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "The original capability remains bound to the renewed lease."
           },
           "remaining_output_tokens": {
@@ -24230,11 +24230,11 @@
           "failure_reason": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/FailureClass",
                 "description": "The granular cause when the run failed."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24244,13 +24244,13 @@
             "description": "Monotonic guard, verified against the fleet's live sequence.",
             "minimum": 0
           },
-          "held_until_ms": {
+          "held_until": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "Epoch milliseconds until which this runner holds the run's sandbox,\nfrozen, for the fleet's next event. Absent when it holds none."
+            "format": "date-time",
+            "description": "Until when this runner holds the run's sandbox, frozen, for the\nfleet's next event. Absent when it holds none."
           },
           "input_tokens": {
             "type": "integer",
@@ -24289,11 +24289,11 @@
           "tool_calls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ToolTrace",
                 "description": "Every tool call the run made, kept with its answer. Absent from\nrunners that do not record one. A trace that is not one, or that\nbreaks a bound, is dropped and the report still settles."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -24459,8 +24459,8 @@
             "description": "Where it now stands."
           },
           "resolved_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was decided."
           },
           "resolved_by": {
@@ -24502,8 +24502,8 @@
             "description": "Content identity."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "id": {
@@ -24535,8 +24535,8 @@
             "description": "Canonical content identity."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "definition": {
@@ -24583,8 +24583,8 @@
             "description": "The key's identifier."
           },
           "revoked_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the row records it stopped working."
           }
         }
@@ -24607,22 +24607,22 @@
           "action": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RunnerAdminAction",
                 "description": "A state transition, token rotation, or self-test request. Sent alone."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "assigned_policy": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AssignedPolicy",
                 "description": "A policy re-assignment, which reaches the host on its next heartbeat."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24644,21 +24644,17 @@
         "description": "`PATCH /v1/fleets/runners/{id}` reply.",
         "required": [
           "id",
-          "admin_state"
+          "status"
         ],
         "properties": {
-          "admin_state": {
-            "$ref": "#/components/schemas/AdminState",
-            "description": "Its state after the change."
-          },
           "assigned_policy": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AssignedPolicy",
                 "description": "The assignment as stored, on the policy-update path."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24678,11 +24674,15 @@
           },
           "selftest_requested_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "When the self-test request was recorded, epoch milliseconds.\n\nThe reply is the REQUEST, never a verdict — the daemon picks the ask up\non its next beat, so a result cannot exist yet. Returning the instant\nlets a reader age the pending state instead of spinning with no clock."
+            "format": "date-time",
+            "description": "When the self-test request was recorded.\n\nThe reply is the REQUEST, never a verdict — the daemon picks the ask up\non its next beat, so a result cannot exist yet. Returning the instant\nlets a reader age the pending state instead of spinning with no clock."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AdminState",
+            "description": "Its operator state after the change."
           }
         },
         "additionalProperties": false
@@ -24737,28 +24737,28 @@
               "selftest": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/SelftestReport",
                     "description": "Latest complete self-test report."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
               "selftest_completed_at": {
                 "type": [
-                  "integer",
+                  "string",
                   "null"
                 ],
-                "format": "int64",
+                "format": "date-time",
                 "description": "Latest self-test completion instant."
               },
               "selftest_requested_at": {
                 "type": [
-                  "integer",
+                  "string",
                   "null"
                 ],
-                "format": "int64",
+                "format": "date-time",
                 "description": "Outstanding self-test request instant."
               }
             }
@@ -24789,9 +24789,9 @@
             "description": "Event-specific detail. Free-form by design."
           },
           "occurred_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When."
           },
           "runner_id": {
             "type": "string",
@@ -24854,7 +24854,7 @@
           "id",
           "host_id",
           "sandbox_tier",
-          "admin_state",
+          "status",
           "liveness",
           "labels",
           "last_seen_at",
@@ -24866,26 +24866,22 @@
           "achievable": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "Capability report most recently supplied by the host."
+              },
+              {
+                "type": "null"
               }
             ]
-          },
-          "admin_state": {
-            "$ref": "#/components/schemas/AdminState",
-            "description": "Operator-controlled admission state."
           },
           "assigned_policy": {
             "$ref": "#/components/schemas/AssignedPolicy",
             "description": "Policy currently assigned to the host."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Enrolment instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Enrolment instant."
           },
           "degraded": {
             "type": "boolean",
@@ -24914,9 +24910,9 @@
             "description": "Placement labels."
           },
           "last_seen_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last heartbeat instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last heartbeat instant."
           },
           "liveness": {
             "$ref": "#/components/schemas/RunnerLiveness",
@@ -24925,6 +24921,10 @@
           "sandbox_tier": {
             "type": "string",
             "description": "Assigned isolation tier spelling."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AdminState",
+            "description": "Operator-controlled admission state."
           }
         },
         "additionalProperties": false
@@ -24957,9 +24957,9 @@
             "description": "Actor recorded on the Fleet event."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Claim instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Claim instant."
           },
           "event_id": {
             "type": "string",
@@ -25008,9 +25008,9 @@
             "description": "Whether this was the first claim or a reclaim."
           },
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Holder deadline in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Holder deadline."
           },
           "metered_cached_tokens": {
             "type": "integer",
@@ -25315,22 +25315,22 @@
           "override": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Override",
                 "description": "Present null restores inherited setup; an object replaces the overlay."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Status",
                 "description": "Independent-schedule firing intent."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25469,9 +25469,9 @@
             "description": "The custom endpoint, where one may be displayed."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
           },
           "kind": {
             "type": "string",
@@ -25555,11 +25555,11 @@
           "achievable": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "What the host reported it can actually enforce."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25587,9 +25587,9 @@
             "description": "The runner's identifier."
           },
           "last_seen_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of the last beat; zero when never seen."
+            "type": "string",
+            "format": "date-time",
+            "description": "The last beat; the Unix epoch when never seen."
           },
           "sandbox_tier": {
             "type": "string",
@@ -25682,9 +25682,9 @@
             "description": "The key its writer stored it under."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of its last write."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last written."
           },
           "writer_fleet_id": {
             "type": "string",
@@ -25950,9 +25950,9 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
           },
           "id": {
             "type": "string",
@@ -26621,8 +26621,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was created."
           },
           "cron": {
@@ -26656,11 +26656,11 @@
           "override": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Override",
                 "description": "Explicit instance overlay, omitted when the pinned recipe is inherited."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -26686,8 +26686,8 @@
             "description": "The zone that expression is read in."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was last changed."
           }
         }
@@ -26714,9 +26714,9 @@
             "description": "The account accepting it joins."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops being acceptable, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops being acceptable."
           },
           "id": {
             "type": "string",
@@ -26855,8 +26855,8 @@
             "description": "The account it belongs to, which is how a dashboard groups the list."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was created; the walk's sort key."
           },
           "id": {

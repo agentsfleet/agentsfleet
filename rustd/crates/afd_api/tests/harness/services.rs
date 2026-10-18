@@ -16,7 +16,6 @@ use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use afd_events::{History, Steer};
@@ -33,6 +32,7 @@ use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_vault::Vault as SecretVault;
+use jiff::Timestamp;
 
 use super::HarnessProviders;
 use super::stubs_runner::NoWork;
@@ -217,7 +217,7 @@ impl Services for Fleet {
         DEPLOYMENT
     }
 
-    fn now(&self) -> UnixMillis {
+    fn now(&self) -> Timestamp {
         self.now
     }
 }

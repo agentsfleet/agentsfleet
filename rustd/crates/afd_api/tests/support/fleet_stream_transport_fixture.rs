@@ -17,6 +17,10 @@ use crate::harness::{self, Fleet};
 
 pub(super) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
+/// The completed event's stamps, its update a millisecond after its creation.
+const EVENT_CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 10_000_000);
+const EVENT_UPDATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 11_000_000);
+
 /// The sequence a control frame rides.
 ///
 /// Zero, and deliberately not a number from the connection's counter:
@@ -248,8 +252,8 @@ pub(super) fn completion(event_id: &str) -> Value {
             failure_label: None,
             failure_detail: None,
             resumes_event_id: None,
-            created_at: 10,
-            updated_at: 11,
+            created_at: EVENT_CREATED_AT,
+            updated_at: EVENT_UPDATED_AT,
             cost_nanos: None,
         }),
         final_reply: None,

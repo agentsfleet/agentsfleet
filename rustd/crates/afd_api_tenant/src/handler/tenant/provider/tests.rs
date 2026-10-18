@@ -3,15 +3,15 @@
 //! Split out of [`super`] rather than written in it: that file is at the length
 //! cap, and its remaining half is three async handlers whose refusals are the
 //! router suite's to prove. What is here is the part that decides a SHAPE from
-//! values already read — which mode a posture spells, which fields a fallback
-//! carries, and what "nothing configured" looks like — and none of it needs a
-//! pool to reach.
+//! values already read — what an own entry carries, which fields the platform
+//! default carries, and what "nothing configured" looks like — and none of it
+//! needs a pool to reach.
 //!
 //! The header of [`super`] names the composition these three implement:
 //!
-//!   row?                → the stored row, whatever its mode
-//!   no row + default    → the live default, rendered as platform mode
-//!   no row + no default → the empty view — "not configured", never a 404
+//!   own entry           → the entry, rendered as self-managed
+//!   platform + default  → the live default, rendered as platform mode
+//!   platform, no default → the empty view — "not configured", never a 404
 //!
 //! One test per rung, so a rung that started rendering as another is a named
 //! failure rather than a diff in a larger assertion.
@@ -37,28 +37,28 @@ fn workspace() -> Uuid7 {
         .expect("the fixture workspace id is canonical")
 }
 
-/// A stored selection in `posture`, naming a credential where one applies.
-fn selection(posture: Posture, secret_ref: Option<&str>) -> Selection {
-    Selection {
-        posture,
-        provider: "openai".into(),
+/// A tenant's own entry, its credential naming `provider`.
+fn own(provider: Option<&str>) -> OwnModel {
+    OwnModel {
+        tenant_model_id: Uuid7::parse("019329c5-0000-7000-8000-0000000000c1")
+            .expect("the fixture entry id is canonical"),
         model: "gpt-5.1".into(),
+        secret_ref: "openai-prod".into(),
+        provider: provider.map(Into::into),
         context_cap_tokens: 400_000,
-        secret_ref: secret_ref.map(Into::into),
     }
 }
 
-/// A self-managed row renders as self-managed, and keeps the credential it
-/// names.
+/// An own entry renders as self-managed, and keeps the credential it names.
 ///
 /// The `secret_ref` is the half a client acts on — it is what the Models page
 /// shows as "your key" — so a mode that survived a rename while the reference
 /// was dropped would still look right in the mode field alone.
 #[test]
-fn should_render_a_self_managed_row_with_the_credential_it_names() {
-    let own = selection(Posture::SelfManaged, Some("openai-prod"));
+fn should_render_an_own_entry_with_the_credential_it_names() {
+    let entry = own(Some("openai"));
 
-    let view = from_selection(&own, true);
+    let view = from_own(&entry, true);
 
     assert_eq!(view.mode, ProviderMode::SelfManaged);
     assert_eq!(view.provider, "openai");
@@ -68,22 +68,21 @@ fn should_render_a_self_managed_row_with_the_credential_it_names() {
     assert!(view.platform_default_available);
 }
 
-/// An explicit platform row renders as platform mode and carries no credential.
-///
-/// The pair with the case above is the point: the same function, the same
-/// fields, and the posture is the only input that differs.
+/// An entry whose credential names no provider renders the empty name, and
+/// passes availability through rather than inferring it.
 #[test]
-fn should_render_an_explicit_platform_row_without_a_credential() {
-    let own = selection(Posture::Platform, None);
+fn should_render_an_entry_whose_credential_names_no_provider_with_the_empty_name() {
+    let entry = own(None);
 
-    let view = from_selection(&own, false);
+    let view = from_own(&entry, false);
 
-    assert_eq!(view.mode, ProviderMode::Platform);
-    assert_eq!(view.secret_ref, None);
+    assert_eq!(view.mode, ProviderMode::SelfManaged);
+    assert_eq!(view.provider, NOT_CONFIGURED);
+    assert_eq!(view.secret_ref, Some("openai-prod"));
     assert!(
         !view.platform_default_available,
         "availability is read independently and passed through, not inferred \
-         from the row's own mode"
+         from the entry"
     );
 }
 

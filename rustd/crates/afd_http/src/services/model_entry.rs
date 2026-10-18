@@ -28,10 +28,10 @@
 //! authenticated tenant and the requested limit, so only the handler can make
 //! that comparison — the store is handed the boundary it already trusts.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{Added, Boundary, Providers, RegistryPage, Removed, Retargeted};
+use jiff::Timestamp;
 
 /// Everything the tenant model registry routes act through.
 pub trait TenantModelEntries: Send + Sync + std::fmt::Debug + 'static {
@@ -60,7 +60,7 @@ pub trait TenantModelEntries: Send + Sync + std::fmt::Debug + 'static {
         tenant: &Uuid7,
         model_id: &str,
         secret_ref: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Added>> + Send;
 
     /// Points an entry at a different model, keeping its credential.
@@ -73,7 +73,6 @@ pub trait TenantModelEntries: Send + Sync + std::fmt::Debug + 'static {
         tenant: &Uuid7,
         entry_id: &Uuid7,
         model_id: &str,
-        now: UnixMillis,
     ) -> impl Future<Output = CredentialResult<Retargeted>> + Send;
 
     /// Removes an entry, unless it is what the tenant is running on.
@@ -106,7 +105,7 @@ impl TenantModelEntries for Providers {
         tenant: &Uuid7,
         model_id: &str,
         secret_ref: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Added>> + Send {
         Self::add_entry(self, tenant, model_id, secret_ref, now)
     }
@@ -116,9 +115,8 @@ impl TenantModelEntries for Providers {
         tenant: &Uuid7,
         entry_id: &Uuid7,
         model_id: &str,
-        now: UnixMillis,
     ) -> impl Future<Output = CredentialResult<Retargeted>> + Send {
-        Self::set_entry_model(self, tenant, entry_id, model_id, now)
+        Self::set_entry_model(self, tenant, entry_id, model_id)
     }
 
     fn remove_entry(

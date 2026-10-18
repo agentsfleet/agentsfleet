@@ -61,7 +61,7 @@ pub(super) fn resume_from(
         )
     })?;
     Ok(Some(Boundary {
-        created_at_ms: cursor.created_at,
+        created_at: cursor.created_at,
         id,
     }))
 }

@@ -181,11 +181,15 @@ async fn an_empty_cursor_is_the_first_page() {
     assert_reached_the_verb(response, "empty cursor").await;
 }
 
-/// A base64url `<millis>:<id>` token parses at this boundary — the cursor
+/// A token the charges page issues parses at this boundary — the cursor
 /// claim, made where a client would actually present it.
 #[tokio::test]
-async fn a_millis_and_id_cursor_is_accepted() {
-    let path = format!("{CHARGES}?cursor=MTcxMjkyNDQwMDAwMDphYmMxMjM");
+async fn an_issued_cursor_is_accepted() {
+    let token = afd_billing::tenant::cursor::render(
+        jiff::Timestamp::constant(1_712_924_400, 0),
+        "01924f4e-0000-7000-8000-00000000c4a1",
+    );
+    let path = format!("{CHARGES}?cursor={token}");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-    assert_reached_the_verb(response, "millis:id cursor").await;
+    assert_reached_the_verb(response, "issued cursor").await;
 }

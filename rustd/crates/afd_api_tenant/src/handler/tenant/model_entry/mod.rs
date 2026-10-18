@@ -122,7 +122,8 @@ pub(super) struct Cursor {
     /// The payload generation this cursor was issued under.
     v: u8,
     /// The boundary row's creation instant.
-    created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    created_at: jiff::Timestamp,
     /// The boundary row's id, breaking ties within a millisecond.
     id: String,
     /// The tenant the walk was issued for.

@@ -29,9 +29,9 @@ use afd_connector::{
     Catalogued, Connection, Connectors, Finishing, Forgotten, Landed, Provider, Rejected,
     Result as ConnectorResult, Spent, Started, Starting, Verified,
 };
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::{SecretBytes, SecretString};
+use jiff::Timestamp;
 
 /// Everything the connector routes act through.
 pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
@@ -45,7 +45,7 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
     fn start(
         &self,
         starting: Starting<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = ConnectorResult<Started>> + Send;
 
     /// Verifies a presented state and that this is the person who started it.
@@ -59,7 +59,7 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
         secret: &SecretBytes,
         presented: &str,
         subject: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Verified, Rejected>;
 
     /// Spends this round-trip's single-use slot, once.
@@ -85,7 +85,7 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
     fn finish(
         &self,
         finishing: Finishing<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = ConnectorResult<Landed>> + Send;
 
     /// What `provider` signs its deliveries to this deployment with.
@@ -174,7 +174,7 @@ impl WorkspaceConnectors for Connectors {
     fn start(
         &self,
         starting: Starting<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = ConnectorResult<Started>> + Send {
         Self::start(self, starting, now)
     }
@@ -185,7 +185,7 @@ impl WorkspaceConnectors for Connectors {
         secret: &SecretBytes,
         presented: &str,
         subject: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Verified, Rejected> {
         Self::verify(self, provider, secret, presented, subject, now)
     }
@@ -201,7 +201,7 @@ impl WorkspaceConnectors for Connectors {
     fn finish(
         &self,
         finishing: Finishing<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = ConnectorResult<Landed>> + Send {
         Self::finish(self, finishing, now)
     }

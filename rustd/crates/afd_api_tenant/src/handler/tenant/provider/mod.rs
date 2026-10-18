@@ -33,8 +33,7 @@
 use std::sync::Arc;
 
 use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderResponse};
-use afd_billing::Posture;
-use afd_credential::provider::{PlatformDefault, Selection};
+use afd_credential::provider::{OwnModel, PlatformDefault, Selection};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -133,32 +132,30 @@ pub(crate) async fn view<D: Services>(
 
     let available = default.is_some();
     Ok(match (&selection, &default) {
-        (Some(own), _) => Json(from_selection(own, available)).into_response(),
-        (None, Some(fallback)) => Json(from_default(fallback, available)).into_response(),
-        (None, None) => Json(empty_view()).into_response(),
+        (Some(Selection::SelfManaged(own)), _) => Json(from_own(own, available)).into_response(),
+        (_, Some(fallback)) => Json(from_default(fallback, available)).into_response(),
+        (_, None) => Json(empty_view()).into_response(),
     })
 }
 
-/// The stored row, rendered.
-pub(super) fn from_selection(
-    own: &Selection,
+/// The tenant's own registry entry, rendered. A credential whose projection
+/// names no provider renders the empty name.
+pub(super) fn from_own(
+    own: &OwnModel,
     platform_default_available: bool,
 ) -> TenantProviderResponse<'_> {
     TenantProviderResponse {
-        mode: match own.posture {
-            Posture::Platform => ProviderMode::Platform,
-            Posture::SelfManaged => ProviderMode::SelfManaged,
-        },
-        provider: &own.provider,
+        mode: ProviderMode::SelfManaged,
+        provider: own.provider.as_deref().unwrap_or(NOT_CONFIGURED),
         model: &own.model,
         context_cap_tokens: own.context_cap_tokens,
-        secret_ref: own.secret_ref.as_deref(),
+        secret_ref: Some(&own.secret_ref),
         platform_default_available,
     }
 }
 
-/// The live platform default, rendered for a tenant with no row of its own.
-fn from_default(
+/// The live platform default, rendered for a tenant on it.
+pub(super) fn from_default(
     fallback: &PlatformDefault,
     platform_default_available: bool,
 ) -> TenantProviderResponse<'_> {

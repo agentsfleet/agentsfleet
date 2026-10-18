@@ -160,7 +160,7 @@ pub(crate) async fn update<D: Services>(
 
     let outcome = services
         .tenant_providers()
-        .set_entry_model(&tenant, &entry, model, services.now())
+        .set_entry_model(&tenant, &entry, model)
         .await
         .map_err(Refusal::at(EVENT_UPDATE))?;
 

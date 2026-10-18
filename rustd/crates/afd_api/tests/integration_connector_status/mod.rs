@@ -29,7 +29,6 @@ use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -251,7 +250,7 @@ impl Fixture {
                 &self.workspace,
                 &name,
                 &SecretBody::parse(&raw).expect("the fixture handle is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture handle seals: {sealed:?}");

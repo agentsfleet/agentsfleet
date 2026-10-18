@@ -19,9 +19,9 @@ use super::Cursor;
 pub(super) fn stored(entry: &afd_credential::provider::Entry) -> StoredModelEntry<'_> {
     StoredModelEntry {
         id: entry.id.as_str(),
-        model_id: &entry.model_id,
+        model_id: &entry.model_name,
         secret_ref: &entry.secret_ref,
-        created_at: entry.created_at_ms,
+        created_at: entry.created_at,
     }
 }
 
@@ -39,7 +39,7 @@ pub(super) fn rendered<'p>(
         next_cursor: page.next.as_ref().map(|boundary| {
             struct_cursor::render(&Cursor {
                 v: struct_cursor::VERSION,
-                created_at: boundary.created_at_ms,
+                created_at: boundary.created_at,
                 id: boundary.id.as_str().to_owned(),
                 tenant_uuid: tenant.as_str().to_owned(),
                 limit,
@@ -60,7 +60,7 @@ fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
     let rate = entry.rate.as_ref();
     ModelEntryRow {
         id: entry.entry.id.as_str(),
-        model_id: &entry.entry.model_id,
+        model_id: &entry.entry.model_name,
         secret_ref: &entry.entry.secret_ref,
         provider: entry.credential.as_ref().and_then(Descriptor::provider),
         kind: entry
@@ -76,7 +76,7 @@ fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
         cached_input_nanos_per_mtok: rate.map(|rate| rate.cached_input_nanos_per_mtok),
         output_nanos_per_mtok: rate.map(|rate| rate.output_nanos_per_mtok),
         active: entry.active,
-        created_at: entry.entry.created_at_ms,
+        created_at: entry.entry.created_at,
     }
 }
 
@@ -109,6 +109,9 @@ mod tests {
     /// spelled twice can drift on one side and still read as a passing test.
     const DEFAULT_CAP_TOKENS: u32 = 1_000_000;
 
+    /// When every fixture row was stored.
+    const STORED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
+
     /// The tenant every fixture row belongs to.
     fn tenant() -> Uuid7 {
         Uuid7::parse("019329c5-0000-7000-8000-000000000001")
@@ -119,9 +122,9 @@ mod tests {
     fn entry(id: &str, model: &str) -> Entry {
         Entry {
             id: Uuid7::parse(id).expect("the fixture entry id is canonical"),
-            model_id: model.into(),
+            model_name: model.into(),
             secret_ref: "openai-prod".into(),
-            created_at_ms: 1_760_000_000_000,
+            created_at: STORED_AT,
         }
     }
 
@@ -153,7 +156,7 @@ mod tests {
         assert_eq!(rendered.id, written.id.as_str());
         assert_eq!(rendered.model_id, "gpt-5.1");
         assert_eq!(rendered.secret_ref, "openai-prod");
-        assert_eq!(rendered.created_at, 1_760_000_000_000);
+        assert_eq!(rendered.created_at, STORED_AT);
     }
 
     /// A fully described row carries its vault labels and its catalogue prices.
@@ -255,7 +258,7 @@ mod tests {
     #[test]
     fn should_issue_a_cursor_bound_to_its_tenant_and_page_size() {
         let boundary = Boundary {
-            created_at_ms: 1_760_000_000_000,
+            created_at: STORED_AT,
             id: Uuid7::parse("019329c5-0000-7000-8000-0000000000e3")
                 .expect("the fixture boundary id is canonical"),
         };
@@ -273,7 +276,7 @@ mod tests {
             struct_cursor::parse(&token).expect("the page issues a parseable token");
 
         assert_eq!(decoded.v, struct_cursor::VERSION);
-        assert_eq!(decoded.created_at, boundary.created_at_ms);
+        assert_eq!(decoded.created_at, boundary.created_at);
         assert_eq!(decoded.id, boundary.id.as_str());
         assert_eq!(decoded.tenant_uuid, tenant().as_str());
         assert_eq!(decoded.limit, 25);

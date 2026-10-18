@@ -56,21 +56,31 @@ fn query<'p>(pairs: &'p [(&'p str, &'static str)]) -> impl Fn(&str) -> Option<&'
 }
 
 #[test]
-fn a_timestamp_cursor_round_trips_through_its_millis_spelling() {
+fn a_timestamp_cursor_round_trips_through_its_rfc3339_spelling() {
     let cursor = Cursor::Timestamp {
         at: jiff::Timestamp::constant(1_744_000_000, 0),
         id: "019abc".to_owned(),
     };
-    assert_eq!(cursor.to_string(), "1744000000000:019abc");
-    assert_eq!(Cursor::parse("1744000000000:019abc"), Ok(cursor));
+    assert_eq!(cursor.to_string(), "2025-04-07T04:26:40Z:019abc");
+    assert_eq!(Cursor::parse("2025-04-07T04:26:40Z:019abc"), Ok(cursor));
 }
 
 #[test]
-fn a_timestamp_cursor_past_the_representable_range_is_refused() {
-    // An integer that parses but names no instant jiff can hold is as foreign
-    // as one that does not parse at all.
-    let raw = format!("{}:019abc", i64::MAX);
-    assert_eq!(Cursor::parse(&raw), Err(InvalidCursor));
+fn a_timestamp_cursor_keeps_its_millisecond_and_an_identifier_holding_the_separator() {
+    let cursor = Cursor::Timestamp {
+        at: jiff::Timestamp::constant(1_744_000_000, 250_000_000),
+        id: "writer:goal:current".to_owned(),
+    };
+    let wire = cursor.to_string();
+    assert_eq!(wire, "2025-04-07T04:26:40.25Z:writer:goal:current");
+    assert_eq!(Cursor::parse(&wire), Ok(cursor));
+}
+
+#[test]
+fn a_timestamp_cursor_finer_than_a_millisecond_or_in_epoch_digits_is_refused() {
+    for raw in ["2025-04-07T04:26:40.0001Z:019abc", "1744000000000:019abc"] {
+        assert_eq!(Cursor::parse(raw), Err(InvalidCursor), "cursor {raw:?}");
+    }
 }
 
 #[test]
@@ -90,8 +100,8 @@ fn a_text_cursor_survives_a_value_holding_the_separator() {
 fn a_cursor_that_is_not_one_is_refused_without_saying_why() {
     for raw in [
         "",
-        "1744000000000",
-        "1744000000000:",
+        "2025-04-07T04:26:40Z",
+        "2025-04-07T04:26:40Z:",
         "abc:019abc",
         "s:019abc",
         "s:!!!!:019abc",
@@ -156,7 +166,7 @@ fn a_cursor_from_another_ordering_is_refused() {
     // is not the one asked for or the one the cursor came from.
     let timestamp_under_name = query(&[
         (QUERY_SORT, "key_name"),
-        (QUERY_STARTING_AFTER, "1744000000000:019abc"),
+        (QUERY_STARTING_AFTER, "2025-04-07T04:26:40Z:019abc"),
     ]);
     assert_eq!(
         Page::<ByName>::parse(timestamp_under_name, CEILING).err(),

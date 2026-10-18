@@ -22,11 +22,11 @@ pub(super) fn summary(invite: &Invitation, link: String) -> InviteSummary<'_> {
         id: Cow::Borrowed(invite.id.as_str()),
         email: Cow::Borrowed(&invite.email),
         role: Cow::Borrowed(invite.role.wire()),
-        expires_at: invite.expires_at_ms,
-        created_at: invite.created_at_ms,
+        expires_at: invite.expires_at,
+        created_at: invite.created_at,
         link: Cow::Owned(link),
         email_status: Cow::Borrowed(invite.email_status.wire()),
-        email_sent_at: invite.email_sent_at_ms,
+        email_sent_at: invite.email_sent_at,
     }
 }
 

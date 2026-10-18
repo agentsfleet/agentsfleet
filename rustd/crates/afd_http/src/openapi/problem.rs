@@ -44,7 +44,7 @@ pub struct ProblemBody {
     /// On that 409 only: the answer that stands.
     pub outcome: Option<String>,
     /// On that 409 only: when the standing answer was given.
-    pub resolved_at: Option<i64>,
+    pub resolved_at: Option<jiff::Timestamp>,
     /// On that 409 only: who gave it.
     pub resolved_by: Option<String>,
     /// A curated sentence for end users, where the code has one.

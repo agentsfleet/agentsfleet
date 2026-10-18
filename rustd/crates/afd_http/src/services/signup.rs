@@ -14,10 +14,10 @@
 //! ingress secret is.
 
 use afd_auth::principal::Subject;
-use afd_core::clock::UnixMillis;
 use afd_crypto::secret::SecretBytes;
 use afd_identity::MetadataUnwritten;
 use afd_tenant::Result as TenantResult;
+use jiff::Timestamp;
 
 // Re-exported so a handler names this seam rather than the store crate behind
 // it: the ingress plane has no business depending on `afd_tenant` to spell the
@@ -39,7 +39,7 @@ pub trait Signups: Send + Sync + std::fmt::Debug + 'static {
         &self,
         account: NewAccount<'_>,
         tenant_name: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = TenantResult<Bootstrapped>> + Send;
 }
 
@@ -58,7 +58,7 @@ impl Signups for afd_tenant::signup::Signups {
         &self,
         account: NewAccount<'_>,
         tenant_name: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = TenantResult<Bootstrapped>> + Send {
         Self::bootstrap(self, account, tenant_name, now)
     }

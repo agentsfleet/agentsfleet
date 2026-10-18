@@ -3,9 +3,9 @@
 //! The App surface is the one that cannot be addressed: a provider App posts
 //! every event for every repository it can see to ONE endpoint, carrying no
 //! fleet, no workspace and no principal. Everything about where a delivery goes
-//! is looked up — `core.connector_installs` maps the installation to a
-//! workspace, and `core.integration_grants` plus each fleet's stored document
-//! decide which fleets in it subscribed.
+//! is looked up — `connector.installs` maps the installation to a workspace,
+//! and `connector.integration_grants` plus each fleet's setup revision decide
+//! which fleets in it subscribed.
 //!
 //! That lookup is `afd_ingress::app`, and it read almost no covered lines,
 //! because every suite in front of it injects a stub that answers the routing
@@ -20,14 +20,20 @@
 //! workspace serving both would let a fixture pass while the daemon read the
 //! wrong one.
 
-use afd_core::clock::UnixMillis;
+use afd_api_wire::grant::status as grant_status;
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    FIXTURE_SETUP_MODEL_REF, FleetSeed, GrantSeed, InstallSeed, SetupRevision, TestDatabase,
+    WorkspaceSeed, mint_id,
+};
 use afd_dragonfly::Dragonfly;
+use afd_fleet_runtime::test_util::FixtureSetup;
+use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
+use jiff::Timestamp;
 
 use super::harness;
 
@@ -49,10 +55,10 @@ pub(super) const WRONG_SECRET: &[u8] = b"fixture-github-app-other-secret";
 /// The installation the CAPTURED payload names.
 ///
 /// Substituted per fixture by [`Fixture::delivery`], never used as-is:
-/// `core.connector_installs` is unique on `(provider, external_account_id)`
+/// `connector.installs` is unique on `(provider, external_account_id)`
 /// DEPLOYMENT-wide, so a fixture mapping the captured id would collide with its
 /// own leftovers and — worse — let the unmapped case find a mapping some other
-/// test wrote. The same trap `core.users.oidc_subject` sets one table over.
+/// test wrote. The same trap `identity.users.oidc_subject` sets one table over.
 const CAPTURED_INSTALLATION: &str = "48765123";
 
 /// The repository the fixture delivery names, from the captured payload.
@@ -143,31 +149,27 @@ impl Fixture {
     /// approved grant for the provider is not a subscriber however its document
     /// reads, which is the relational half of the narrowing.
     async fn seed_rows(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'App ingress live', 1, 1) \
-             ), admin AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'platform-admin', $3, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($4::uuid, $1::uuid, 'app-ingress', $3, 1) \
-             ) \
-             INSERT INTO core.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, $3, 'app-ingress@example.test', 1, 1)",
+        let email = format!("{}@example.test", self.subject);
+        sign_up(
+            &self.database,
+            &Signup {
+                tenant: &self.tenant,
+                user: &self.user,
+                subject: &self.subject,
+                email: &email,
+                name: "app-ingress",
+                display_name: None,
+                workspace: self.workspace.as_str(),
+            },
         )
-        .bind(&self.tenant)
-        .bind(self.admin.as_str())
-        .bind(&self.subject)
-        .bind(self.workspace.as_str())
-        .bind(&self.user)
-        .execute(&mut *connection)
-        .await
-        .expect("the deployment and tenant seed");
-        let config = document();
+        .await;
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+            .name("platform-admin")
+            .insert(&mut *connection)
+            .await
+            .expect("the admin workspace seeds");
+        let setup = FixtureSetup::new(&document());
         FleetSeed::new(
             self.fleet.as_str(),
             self.workspace.as_str(),
@@ -175,43 +177,29 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("app-ingress-fleet")
-        .config(&config)
-        .at(1)
-        .native_setup()
+        .unplaced_setup(SetupRevision {
+            definition: &setup.definition,
+            digest: &setup.digest,
+            semantics: setup.semantics(),
+            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
+        })
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
-        sqlx::query(
-            "INSERT INTO core.integration_grants \
-               (id, fleet_id, service, status, requested_reason, approved_at, \
-                revoked_at, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3, 'approved', 'fixture', 1, NULL, 1)",
-        )
-        .bind(mint_id())
-        .bind(self.fleet.as_str())
-        .bind(PROVIDER)
-        .execute(&mut *connection)
-        .await
-        .expect("the grant seeds");
+        GrantSeed::new(self.fleet.as_str(), PROVIDER, grant_status::APPROVED)
+            .approved(Timestamp::UNIX_EPOCH)
+            .insert(&mut *connection)
+            .await
+            .expect("the grant seeds");
     }
 
     /// Maps the delivery's installation to the tenant workspace.
     async fn map_installation(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO core.connector_installs \
-               (id, provider, external_account_id, workspace_id, installed_by, \
-                scopes, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4::uuid, $5, ARRAY[]::TEXT[], 1, 1)",
-        )
-        .bind(mint_id())
-        .bind(PROVIDER)
-        .bind(&self.installation)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .execute(&mut *connection)
-        .await
-        .expect("the installation maps to a workspace");
+        InstallSeed::new(PROVIDER, &self.installation, self.workspace.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("the installation maps to a workspace");
     }
 
     /// The captured delivery, addressed to THIS fixture's installation.
@@ -233,7 +221,7 @@ impl Fixture {
                 &self.admin,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture App secret seals: {sealed:?}");
@@ -246,8 +234,8 @@ impl Fixture {
     pub(super) async fn fleet_events(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM core.fleet_events e \
-             JOIN core.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
+            "SELECT COUNT(*) FROM fleet.events e \
+             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
         )
         .bind(&self.tenant)
         .fetch_one(&mut *connection)
@@ -265,7 +253,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed App secret cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await
@@ -280,7 +268,7 @@ impl Fixture {
 /// A unique installation identifier, as the provider's JSON carries one.
 ///
 /// A decimal NUMBER, and the two constraints are both load-bearing. It must be
-/// unique because `core.connector_installs` is unique on
+/// unique because `connector.installs` is unique on
 /// `(provider, external_account_id)` deployment-wide; and it must not lead with
 /// a zero, because it is substituted into `installation.id` — a JSON number,
 /// which a leading zero makes unparseable, and the route then answers

@@ -90,11 +90,7 @@ pub(crate) async fn create<D: Services>(
             NewSchedule {
                 fleet: &fleet,
                 source: afd_cron::Source::Api,
-                // A placeholder key until the first successful push records
-                // `fleet-schedule-{id}`, the id it is registered under. It has
-                // to be unique per fleet, which the fleet's own identifier plus
-                // the instant already is.
-                source_key: Some(&format!("{fleet_id}-{}", services.now().as_millis())),
+                provider_schedule_id: None,
                 cron: &input.cron,
                 timezone: &timezone,
                 message: &input.message,
@@ -165,14 +161,16 @@ pub(crate) async fn patch<D: Services>(
     let expected = crate::handler::input::expected(&headers)?;
     let changed = services
         .schedules()
-        .edit(afd_cron::EditRequest {
-            workspace: &owned.workspace,
-            fleet: &fleet,
-            schedule: &schedule,
-            expected,
-            patch: &input,
-            now: services.now(),
-        })
+        .edit(
+            afd_cron::EditRequest {
+                workspace: &owned.workspace,
+                fleet: &fleet,
+                schedule: &schedule,
+                expected,
+                patch: &input,
+            },
+            services.now(),
+        )
         .await
         .map_err(afd_http::handler::schedule::edit_refusal)?;
     rendered(changed, StatusCode::OK)

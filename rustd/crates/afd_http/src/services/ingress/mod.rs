@@ -13,13 +13,13 @@
 //! would notice. [`Binding`] is resolved once and every later step takes it, so
 //! the pairing is made in one place and cannot be re-made wrongly.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_ingress::slack::{
     BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
 };
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use jiff::Timestamp;
 
 /// Everything the signed-ingress routes act through.
 pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
@@ -158,7 +158,7 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         team: &str,
         channel: &ChannelId,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
 
     /// What a workspace holds under a resident's name, when it holds anything:
@@ -182,7 +182,7 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
     fn owe_notice(
         &self,
         owed: NoticeOwed<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = IngressResult<bool>> + Send;
 }
 
@@ -278,7 +278,7 @@ impl WebhookIngress for Ingress {
         team: &str,
         channel: &ChannelId,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send {
         Self::bind_resident(self, workspace, provider, team, channel, fleet, now)
     }
@@ -294,7 +294,7 @@ impl WebhookIngress for Ingress {
     fn owe_notice(
         &self,
         owed: NoticeOwed<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = IngressResult<bool>> + Send {
         Self::owe_notice(self, owed, now)
     }

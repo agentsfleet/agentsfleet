@@ -39,13 +39,21 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use agentsfleetd::serve::Booted;
+use jiff::Timestamp;
 
 use crate::e2e::{MODEL, PROVIDER};
-use afd_db::test_util::{DefaultSeed, FleetSeed, PlatformDefault};
+use afd_db::test_util::{DefaultSeed, FleetSeed, PlatformDefault, TenantSeed, WorkspaceSeed};
+use jiff_sqlx::ToSqlx as _;
+
+use crate::e2e_native::Stored;
+
+/// Whether a scenario's workspace is already seeded, so a second fleet in it
+/// shares the account rather than refusing on the tenant's key.
+pub(crate) const WORKSPACE_EXISTS: &str =
+    "SELECT EXISTS (SELECT 1 FROM identity.workspaces WHERE id = $1::uuid)";
 
 /// A pool deep enough that no gate under test clamps against it.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
@@ -142,72 +150,61 @@ pub(crate) async fn seed_fleet(
     workspace: &str,
     tenant: &str,
     config: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) {
-    let at = now.as_millis();
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $3)
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(tenant)
-    .bind("e2e-tenant")
-    .bind(at)
-    .execute(&mut *connection)
-    .await
-    .expect("the tenant row must insert");
-
-    sqlx::query(
-        "INSERT INTO core.workspaces (id, tenant_id, name, created_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4)
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(workspace)
-    .bind(tenant)
-    .bind("e2e-workspace")
-    .bind(at)
-    .execute(&mut *connection)
-    .await
-    .expect("the workspace row must insert");
-
+    let seeded: bool = sqlx::query_scalar(WORKSPACE_EXISTS)
+        .bind(workspace)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the workspace probe must run");
+    if !seeded {
+        TenantSeed::new(tenant)
+            .name("e2e-tenant")
+            .at(now)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant row must insert");
+        WorkspaceSeed::new(workspace, tenant)
+            .name("e2e-workspace")
+            .at(now)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace row must insert");
+    }
     let tag = scenario_tag(fleet);
     let tags = [tag.as_str()];
+    let stored = Stored::of(&crate::e2e_native::definition(config, FIXTURE_INSTRUCTIONS));
     FleetSeed::new(fleet, workspace, tenant, FLEET_STATUS_ACTIVE)
         .name(name)
-        .config(config)
         .tags(&tags)
-        .at(at)
+        .at(now)
+        .setup(stored.revision())
         .insert(&mut *connection)
         .await
         .expect("the fleet row must insert");
-    let definition = crate::e2e_native::definition(config, FIXTURE_INSTRUCTIONS);
-    crate::e2e_native::select(&mut connection, fleet, &definition, at).await;
 }
 
 /// Gives a tenant a credit pool of `nanos`.
-pub(crate) async fn seed_wallet(booted: &Booted, tenant: &str, nanos: i64, now: UnixMillis) {
-    let at = now.as_millis();
+pub(crate) async fn seed_wallet(booted: &Booted, tenant: &str, nanos: i64, now: Timestamp) {
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO billing.tenant_wallet
-           (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4, $4)
+        "INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3, $3)
          ON CONFLICT (tenant_id) DO UPDATE
            SET balance_nanos = EXCLUDED.balance_nanos, updated_at = EXCLUDED.updated_at",
     )
     .bind(tenant)
     .bind(nanos)
-    .bind("fixture:seed")
-    .bind(at)
+    .bind(now.to_sqlx())
     .execute(&mut *connection)
     .await
     .expect("the wallet seed must run");
@@ -218,20 +215,19 @@ pub(crate) async fn seed_wallet(booted: &Booted, tenant: &str, nanos: i64, now: 
 /// Without it the estimate is unpriceable, its floor is zero, and every money
 /// assertion downstream reads a charge of nothing — which would make the ledger
 /// row this scenario writes indistinguishable from one the gate never priced.
-pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
-    let at = now.as_millis();
+pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.model_library
-           (id, model_id, provider, context_cap_tokens,
+        "INSERT INTO model.platform_models
+           (id, model_name, provider, context_cap_tokens,
             input_nanos_per_mtok, cached_input_nanos_per_mtok,
             output_nanos_per_mtok, created_at, updated_at)
          VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
-         ON CONFLICT (provider, model_id) DO UPDATE
+         ON CONFLICT (provider, model_name) DO UPDATE
            SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
                cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
                output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
@@ -244,7 +240,7 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
     .bind(INPUT_NANOS_PER_MTOK)
     .bind(CACHED_INPUT_NANOS_PER_MTOK)
     .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(at)
+    .bind(now.to_sqlx())
     .execute(&mut *connection)
     .await
     .expect("the catalogue seed must run");
@@ -254,7 +250,7 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
 ///
 /// The last precondition the pull path needs and the store suites do not.
 /// Under `platform` posture the money pass resolves the tenant's provider
-/// through `core.platform_provider_defaults`, and with no active row the lease
+/// through `model.platform_defaults`, and with no active row the lease
 /// fails with "no active platform provider default is configured" — a 500
 /// rather than a refusal, because a deployment with no default is an operator
 /// gap and not something a runner can act on.
@@ -285,7 +281,7 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
 pub(crate) async fn seed_platform_default(
     booted: &Booted,
     workspace: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> PlatformDefault {
     PlatformDefault::hold(
         &booted.database,
@@ -294,7 +290,7 @@ pub(crate) async fn seed_platform_default(
             source_workspace_id: workspace,
             model: MODEL,
             context_cap_tokens: CONTEXT_CAP_TOKENS,
-            created_at: now.as_millis(),
+            created_at: now,
         },
     )
     .await

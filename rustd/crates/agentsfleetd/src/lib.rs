@@ -20,8 +20,8 @@
 use {
     afd_fleet_runtime as _, afd_wire as _, afr_agent as _, afr_egress as _, afr_executor as _,
     afr_providers as _, afr_sandbox as _, afr_supervisor as _, afr_telemetry as _, afr_tools as _,
-    futures_util as _, rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _,
-    tokio_rustls as _,
+    futures_util as _, jiff_sqlx as _, rcgen as _, rustls as _, serde_json as _, sqlx as _,
+    tempfile as _, tokio_rustls as _,
 };
 
 pub mod banner;

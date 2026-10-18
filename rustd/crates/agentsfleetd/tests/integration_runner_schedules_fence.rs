@@ -27,9 +27,8 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
     let leased = Leased::boot(&mut supervisor, &qstash).await;
     let lease = Uuid7::parse(&leased.lease_id).expect("a lease id");
     let runner = leased.run.runner_id.clone();
-    let now = afd_core::clock::now();
-    let held = WriteFence::new(runner.clone(), lease.clone(), leased.fence, now);
-    let stale = WriteFence::new(runner, lease, leased.fence + 1, now);
+    let held = WriteFence::new(runner.clone(), lease.clone(), leased.fence);
+    let stale = WriteFence::new(runner, lease, leased.fence + 1);
     let mut connection = leased
         .run
         .booted

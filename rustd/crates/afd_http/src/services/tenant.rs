@@ -2,7 +2,6 @@
 //! and terminal credentials.
 
 use afd_auth::principal::{Person, Principal};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::Page;
 use afd_tenant::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
@@ -10,6 +9,7 @@ use afd_tenant::workspace::access::Access;
 use afd_tenant::workspace::accounts::Accounts;
 use afd_tenant::workspace::directory::{After, Created, WorkspacePage};
 use afd_tenant::workspace::name::Chosen;
+use jiff::Timestamp;
 // Renamed at the import, not at the definition: `afd_tenant::apikey` already
 // spells `MintRequest`, `Revealed` and `Revoked` for the api-key family, and
 // this file names both families. The `Cli` prefix belongs to the collision, so
@@ -112,8 +112,7 @@ pub trait TenantWorkspaces: Send + Sync + std::fmt::Debug + 'static {
         &self,
         tenant: &Uuid7,
         chosen: Option<Chosen>,
-        created_by: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Created>> + Send;
 }
 
@@ -140,10 +139,9 @@ impl TenantWorkspaces for afd_tenant::workspace::Workspaces {
         &self,
         tenant: &Uuid7,
         chosen: Option<Chosen>,
-        created_by: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Created>> + Send {
-        Self::create(self, tenant, chosen, created_by, now)
+        Self::create(self, tenant, chosen, now)
     }
 }
 
@@ -172,7 +170,7 @@ pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
     fn mint(
         &self,
         request: &CliMintRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<CliRevealed>> + Send;
 
     /// Revokes one of this user's credentials.
@@ -183,7 +181,6 @@ pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
         &self,
         user: &Uuid7,
         credential: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<CliRevoked>> + Send;
 }
 
@@ -198,7 +195,7 @@ impl TerminalCredentials for afd_tenant::cli_credential::CliCredentials {
     fn mint(
         &self,
         request: &CliMintRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<CliRevealed>> + Send {
         Self::mint(self, request, now)
     }
@@ -207,9 +204,8 @@ impl TerminalCredentials for afd_tenant::cli_credential::CliCredentials {
         &self,
         user: &Uuid7,
         credential: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<CliRevoked>> + Send {
-        Self::revoke(self, user, credential, now)
+        Self::revoke(self, user, credential)
     }
 }
 
@@ -228,7 +224,7 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
     fn mint(
         &self,
         request: &MintRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Revealed>> + Send;
 
     /// One page of this tenant's keys, and its whole key count.
@@ -250,7 +246,6 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
         tenant: &Uuid7,
         key: &Uuid7,
         intent: Deactivation,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Revoked>> + Send;
 
     /// Deletes one already-revoked key.
@@ -269,7 +264,7 @@ impl TenantKeys for afd_tenant::apikey::ApiKeys {
     fn mint(
         &self,
         request: &MintRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Revealed>> + Send {
         Self::mint(self, request, now)
     }
@@ -287,9 +282,8 @@ impl TenantKeys for afd_tenant::apikey::ApiKeys {
         tenant: &Uuid7,
         key: &Uuid7,
         intent: Deactivation,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<Revoked>> + Send {
-        Self::revoke(self, tenant, key, intent, now)
+        Self::revoke(self, tenant, key, intent)
     }
 
     fn delete(

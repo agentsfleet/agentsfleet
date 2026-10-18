@@ -105,7 +105,7 @@ impl Fixture {
             fleet.as_str(),
         )
         .name("qstash-fire-fleet")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await

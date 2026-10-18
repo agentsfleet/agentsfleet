@@ -18,25 +18,28 @@ use super::{checked, held_or, not_fleet_owned, not_found, refused, rendered};
 /// What a fixture identifier must be.
 const CANONICAL: &str = "a canonical UUIDv7";
 
+/// When the fixture schedule was made and last written.
+const MADE_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
+
 /// A schedule a fleet made, as a reconcile hands it back.
 fn schedule() -> Schedule {
     Schedule {
         schedule_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000001").expect(CANONICAL),
         fleet_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000002").expect(CANONICAL),
         source: Source::Fleet,
-        source_key: "1700000000000-0-1700000000001".to_owned(),
+        provider_schedule_id: "provider-schedule-1".to_owned(),
         cron: "0 9 * * 1".to_owned(),
         timezone: "Asia/Kolkata".to_owned(),
         message: "weekly check".to_owned(),
         once: true,
         desired_status: DesiredStatus::Active,
         sync_status: SyncStatus::Synced,
-        generation: 1,
+        resource_version: 1,
         sync_token: None,
-        sync_lease_until: None,
+        sync_lease_expires_at: None,
         last_error: None,
-        created_at: 1_700_000_000_000,
-        updated_at: 1_700_000_000_000,
+        created_at: MADE_AT,
+        updated_at: MADE_AT,
         fire_at: None,
         recipe: None,
     }

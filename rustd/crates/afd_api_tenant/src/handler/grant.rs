@@ -158,7 +158,7 @@ pub(crate) async fn revoke<D: Services>(
 
     let outcome = services
         .grants()
-        .revoke(&owned.workspace, &fleet, &grant, services.now())
+        .revoke(&owned.workspace, &fleet, &grant)
         .await
         .map_err(Refusal::at(EVENT_REVOKE))?;
 
