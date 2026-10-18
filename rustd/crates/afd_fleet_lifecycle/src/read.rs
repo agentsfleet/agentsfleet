@@ -59,6 +59,9 @@ pub struct FleetRow {
     pub created_at: Timestamp,
     /// When it last changed. Doubles as the config revision a PATCH echoes.
     pub updated_at: Timestamp,
+    /// What it is for: the head revision's `description`. `None` while the
+    /// fleet has no saved setup to describe it.
+    pub description: Option<String>,
     /// What may wake it, projected from the head revision's configuration.
     pub triggers: Option<Triggers>,
     /// Lifetime event count, from the maintained counter row.
@@ -164,6 +167,7 @@ struct PageRow {
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     updated_at: Timestamp,
+    description: Option<String>,
     triggers: Option<String>,
     event_count: i64,
     budget_used_nanos: i64,
@@ -182,6 +186,7 @@ impl TryFrom<PageRow> for FleetRow {
             name: row.name,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            description: row.description,
             triggers: row.triggers.map(|text| Triggers(text.into_boxed_str())),
             events_processed: row.event_count,
             budget_used_nanos: row.budget_used_nanos,

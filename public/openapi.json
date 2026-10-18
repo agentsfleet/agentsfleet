@@ -21106,7 +21106,14 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Creation time in Unix milliseconds."
+            "description": "Creation time."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The saved purpose, as the fleet's setup describes it; null while the\nfleet has no saved setup."
           },
           "events_processed": {
             "type": "string",
@@ -21134,7 +21141,7 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Last mutation in Unix milliseconds."
+            "description": "Last mutation."
           }
         }
       },

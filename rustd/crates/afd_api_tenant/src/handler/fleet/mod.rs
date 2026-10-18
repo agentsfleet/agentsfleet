@@ -160,6 +160,7 @@ fn summary(row: &FleetRow) -> FleetSummary<'_> {
         status: Cow::Borrowed(row.status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
+        description: row.description.as_deref().map(Cow::Borrowed),
         triggers: triggers(row.triggers.as_ref()),
         events_processed: row.events_processed.to_string(),
         budget_used_nanos: row.budget_used_nanos.to_string(),

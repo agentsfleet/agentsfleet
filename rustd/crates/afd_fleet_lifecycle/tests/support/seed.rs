@@ -45,6 +45,26 @@ impl Lane {
         self.fleet_at(&self.workspace, NOW).await
     }
 
+    /// One fleet in the lane's own workspace with no saved setup, so no head
+    /// revision describes it.
+    pub(crate) async fn fleet_without_setup(&self) -> Uuid7 {
+        let id = mint();
+        let name = format!("fleet-{id}");
+        FleetSeed::new(
+            id.as_str(),
+            self.workspace.as_str(),
+            self.tenant.as_str(),
+            ACTIVE,
+        )
+        .name(&name)
+        .versions(INITIAL_VERSION, INITIAL_VERSION)
+        .at(NOW)
+        .insert(&mut *self.connection().await)
+        .await
+        .expect("seeding a fleet with no setup");
+        id
+    }
+
     /// Takes the fleet to `killed` and answers the tag a purge must present,
     /// as the native status PATCH advances the resource version.
     pub(crate) async fn kill(&self, fleet: &Uuid7) -> String {
