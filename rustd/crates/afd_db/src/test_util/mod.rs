@@ -297,6 +297,16 @@ pub fn mint_id() -> String {
     )
 }
 
+/// [`mint_id`] as the typed identifier, for the suites that hold a `Uuid7`.
+///
+/// # Panics
+/// Never in practice: [`mint_id`] spells a canonical `UUIDv7` by construction.
+#[must_use]
+pub fn mint_uuid7() -> afd_core::id::Uuid7 {
+    afd_core::id::Uuid7::parse(&mint_id())
+        .unwrap_or_else(|failure| panic!("mint_id spells a canonical UUIDv7: {failure}"))
+}
+
 /// The lane's connection URL, or a panic naming the knob that is unset.
 fn lane_url() -> String {
     ProcessEnv.get(LANE_KNOB).unwrap_or_else(|| {

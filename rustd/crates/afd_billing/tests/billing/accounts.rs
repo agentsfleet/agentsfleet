@@ -18,7 +18,9 @@ use afd_billing::{
 };
 use jiff::Timestamp;
 
-use crate::lane::{FLEET_NAME, Lane, PROVIDER, mint};
+use afd_db::test_util::mint_uuid7;
+
+use crate::lane::{FLEET_NAME, Lane, PROVIDER};
 
 /// The instant the receive debits below mint their rows at.
 const NOW: Timestamp = Timestamp::constant(1_783_699_440, 0);
@@ -42,7 +44,7 @@ async fn should_resolve_the_payer_and_answer_none_for_an_unknown_workspace() {
     let payer = lane.accounts.payer(&lane.workspace).await.expect("answers");
     assert_eq!(payer, Some(lane.tenant.clone()));
 
-    let stranger = lane.accounts.payer(&mint()).await.expect("answers");
+    let stranger = lane.accounts.payer(&mint_uuid7()).await.expect("answers");
     assert_eq!(stranger, None, "a workspace with no row has no payer");
 }
 
@@ -116,7 +118,7 @@ async fn should_price_a_catalogued_model_and_refuse_to_price_an_unknown_one() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_record_one_receive_row_per_event_with_the_fleet_name() {
     let lane = Lane::create().await;
-    let event = mint();
+    let event = mint_uuid7();
     let charged = Charged {
         tenant_id: &lane.tenant,
         workspace_id: &lane.workspace,
@@ -156,8 +158,8 @@ async fn should_record_one_receive_row_per_event_with_the_fleet_name() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_refuse_a_charge_for_a_fleet_that_has_no_row() {
     let lane = Lane::create().await;
-    let missing = mint();
-    let event = mint();
+    let missing = mint_uuid7();
+    let event = mint_uuid7();
     let charged = Charged {
         tenant_id: &lane.tenant,
         workspace_id: &lane.workspace,

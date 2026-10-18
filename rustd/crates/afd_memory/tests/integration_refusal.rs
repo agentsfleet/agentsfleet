@@ -11,10 +11,9 @@
 use afd_core::error_code::{
     INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE, INTERNAL_OPERATION_FAILED, MEM_UNAVAILABLE,
 };
-use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id, unreachable_db};
+use afd_db::test_util::{TestDatabase, mint_uuid7, unreachable_db};
 use afd_memory::error::detail::{DATABASE_ERROR, LIST_FAILED, OPERATION_FAILED};
 use afd_memory::page::View;
 use afd_memory::{Memories, Owner, PgStore};
@@ -25,10 +24,6 @@ use crate::workspace::delta;
 /// The instant every write here is stamped with.
 const AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
-fn minted() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("a minted id is canonical")
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_runner_statement_the_database_refuses_answers_the_query_code() {
@@ -36,7 +31,7 @@ async fn test_a_runner_statement_the_database_refuses_answers_the_query_code() {
     let database = lane.open(DbRole::Api, &[]).await;
     let store = PgStore::new(database.clone(), Entropy::new());
     // Neither row exists, so the entry's foreign keys refuse the insert.
-    let (workspace, fleet) = (minted(), minted());
+    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -62,7 +57,7 @@ async fn test_an_operator_statement_the_database_refuses_answers_its_operation_s
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
     let store = PgStore::new(database.clone(), Entropy::new());
-    let (workspace, fleet) = (minted(), minted());
+    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -90,7 +85,7 @@ async fn test_an_upsert_whose_identifier_cannot_be_minted_answers_operation_fail
     let (entropy, ctrl) = Entropy::new_mocked();
     ctrl.fail_next();
     let store = PgStore::new(database.clone(), entropy);
-    let (workspace, fleet) = (minted(), minted());
+    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -116,7 +111,7 @@ async fn test_a_capture_whose_grants_cannot_be_read_reports_the_datastore_refusa
     let pushed = [delta("never_stored", PINNED_CATEGORY, Visibility::Fleet)];
 
     let refused = memories
-        .capture(&minted(), &pushed, AT)
+        .capture(&mint_uuid7(), &pushed, AT)
         .await
         .expect_err("a capture whose grants cannot be read is refused");
 

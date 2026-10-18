@@ -29,7 +29,7 @@ use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};
 use afd_vault::{Directory, SecretBody, SecretName, Vault};
 use jiff::Timestamp;
 use serde_json::value::RawValue;
@@ -68,8 +68,8 @@ impl Lane {
         let pool = database.open(DbRole::Api, &[]).await;
         let kek = Arc::new(Kek::from_hex(KEK_HEX).expect("the fixture key is well formed"));
         let lane = Self {
-            tenant: mint(),
-            workspace: mint(),
+            tenant: mint_uuid7(),
+            workspace: mint_uuid7(),
             vault: Vault::new(pool.clone(), Arc::clone(&kek), Entropy::new()),
             database,
             pool,
@@ -91,7 +91,7 @@ impl Lane {
 
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
-        let workspace = mint();
+        let workspace = mint_uuid7();
         WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
             .insert(&mut *self.connection().await)
             .await
@@ -214,7 +214,7 @@ impl Lane {
         )
         .bind(self.workspace.as_str())
         .bind(borrow_envelope_from)
-        .bind(mint().as_str())
+        .bind(mint_uuid7().as_str())
         .bind(name)
         .bind(kind)
         .bind(provider)
@@ -232,7 +232,7 @@ impl Lane {
                (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
              VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())",
         )
-        .bind(mint().as_str())
+        .bind(mint_uuid7().as_str())
         .bind(self.tenant.as_str())
         .bind(model_id)
         .bind(secret_ref)
@@ -315,13 +315,4 @@ pub(crate) fn named(name: &str) -> SecretName {
 pub(crate) fn body(json: &str) -> SecretBody {
     let raw = RawValue::from_string(json.to_owned()).expect("the fixture body is valid JSON");
     SecretBody::parse(&raw).expect("the fixture body is a non-empty object within bounds")
-}
-
-/// A fresh identifier, so no two fixtures can name each other's rows.
-pub(crate) fn mint() -> Uuid7 {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host draws entropy");
-    Uuid7::encode(Lane::now(), bytes).expect("a well-formed identifier")
 }

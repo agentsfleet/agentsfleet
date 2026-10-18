@@ -5,10 +5,9 @@ const WORKSPACE: &str = "0199f0c0-0000-7000-8000-000000000002";
 const TENANT: &str = "0199f0c0-0000-7000-8000-000000000003";
 const STATUS: &str = "active";
 
-/// The instant `millis` after the epoch, for a fixture.
-fn instant(millis: i64) -> jiff::Timestamp {
-    jiff::Timestamp::from_millisecond(millis).unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-}
+/// When the seeded fleet was created, and when it was last updated.
+const CREATED: jiff::Timestamp = jiff::Timestamp::constant(0, 10_000_000);
+const UPDATED: jiff::Timestamp = jiff::Timestamp::constant(0, 20_000_000);
 
 /// The text between `open` and the next `close`, when the statement has both.
 fn between<'a>(text: &'a str, open: &str, close: char) -> Option<&'a str> {
@@ -55,11 +54,11 @@ fn an_unnamed_fleet_takes_its_id_so_two_seeds_in_a_workspace_never_collide() {
 #[test]
 fn a_later_update_moves_updated_at_and_leaves_created_at() {
     let seed = FleetSeed::new(ID, WORKSPACE, TENANT, STATUS)
-        .at(instant(10))
-        .updated(instant(20));
+        .at(CREATED)
+        .updated(UPDATED);
 
     assert_eq!(
         (seed.created_at, seed.updated_at),
-        (Some(instant(10)), Some(instant(20)))
+        (Some(CREATED), Some(UPDATED))
     );
 }
