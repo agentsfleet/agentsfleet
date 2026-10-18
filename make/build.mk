@@ -85,7 +85,7 @@ _dist-daemons: _builder-image
 	    -e CARGO_TARGET_DIR="/w/rustd/target/musl-$$out" \
 	    -v "$(CURDIR):/w" -w /w/rustd $(BUILDER_IMAGE) \
 	    sh -c 'set -e; \
-	      cargo build --profile dist --bin agentsfleetd; \
+	      cargo build --profile dist -p agentsfleetd --bin agentsfleetd; \
 	      bin="$$CARGO_TARGET_DIR/dist/agentsfleetd"; \
 	      if readelf -d "$$bin" | grep -q " (NEEDED)"; then echo "FAIL: dynamic NEEDED entries"; exit 1; fi; \
 	      if readelf -l "$$bin" | grep -q INTERP; then echo "FAIL: INTERP present"; exit 1; fi; \
