@@ -4,11 +4,11 @@
 //! with no membership resolves to no workspace, and a tenant with no wallet
 //! answers 500 on every billing read with no path back.
 //!
-//!   1. `core.tenants`          — one per person
-//!   2. `core.users`            — the OIDC subject, unique
-//!   3. `core.memberships`      — owner, linking the two
-//!   4. `core.workspaces`       — a default, named by [`super::workspace::name`]
-//!   5. `billing.tenant_wallet` — the starter grant
+//!   1. `identity.tenants`     — one per person
+//!   2. `identity.users`       — the OIDC subject, unique
+//!   3. `identity.memberships` — owner, linking the two
+//!   4. `identity.workspaces`  — a default, named by [`super::workspace::name`]
+//!   5. `billing.wallets`      — the starter grant
 //!
 //! # Why this lives in the tenant crate
 //!
@@ -39,12 +39,12 @@
 //! healthy wallet including a spent-down balance is untouched and a missing one
 //! comes back.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers;
+use jiff::Timestamp;
 
 use crate::sql::signup as sql;
 use crate::workspace::access::ROLE_OWNER;
@@ -55,19 +55,12 @@ use crate::{Result, error};
 const CONTEXT_EXISTING: &str = "read an existing account";
 const CONTEXT_OPEN: &str = "open a personal account";
 
-/// Stamped into the workspace row so analytics can tell a bootstrapped
-/// workspace from one a person created.
-const BOOTSTRAP_ACTOR: &str = "signup_bootstrap";
-
 /// The one-time starter balance a new tenant opens with, in nanos.
 ///
 /// The only credit INFLOW this daemon has. Every other movement of
 /// `balance_nanos` is a drain and happens in SQL, in the lease renew and settle
 /// writable CTEs.
 pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
-
-/// What the starter grant is recorded as having come from.
-const BOOTSTRAP_GRANT_SOURCE: &str = "bootstrap_starter_grant";
 
 /// How many workspace names are tried before the attempt is abandoned.
 ///
@@ -108,10 +101,10 @@ impl Signups {
         &self,
         account: NewAccount<'_>,
         tenant_name: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Bootstrapped> {
         if let Some(existing) = self.existing(account.oidc_subject).await? {
-            return self.replay(existing, now).await;
+            return self.replay(existing).await;
         }
 
         match self.open(account, tenant_name, now).await {
@@ -126,7 +119,7 @@ impl Signups {
                             event = "signup_replay_after_race",
                             "a concurrent delivery opened this account first"
                         );
-                        self.replay(existing, now).await
+                        self.replay(existing).await
                     }
                     // Nothing committed, so the failure was real. The original
                     // error is returned rather than a fresh one, keeping the
@@ -140,32 +133,28 @@ impl Signups {
     /// The account this subject already owns, if it owns one.
     async fn existing(&self, oidc_subject: &str) -> Result<Option<Bootstrapped>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query_as::<_, (String, String, String, String)>(sql::SELECT_EXISTING)
+        let row: Option<ExistingRow> = sqlx::query_as(sql::SELECT_EXISTING)
             .bind(oidc_subject)
             .bind(ROLE_OWNER)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_EXISTING))?;
 
-        Ok(row.map(
-            |(user_id, tenant_id, workspace_id, workspace_name)| Bootstrapped {
-                user_id,
-                tenant_id,
-                workspace_id,
-                workspace_name,
-                created: false,
-            },
-        ))
+        Ok(row.map(|row| Bootstrapped {
+            user_id: row.user_id,
+            tenant_id: row.tenant_id,
+            workspace_id: row.workspace_id,
+            workspace_name: row.workspace_name,
+            created: false,
+        }))
     }
 
     /// Answers an already-provisioned account, healing its wallet on the way.
-    async fn replay(&self, existing: Bootstrapped, now: UnixMillis) -> Result<Bootstrapped> {
+    async fn replay(&self, existing: Bootstrapped) -> Result<Bootstrapped> {
         let mut connection = self.database.acquire().await?;
         let healed = sqlx::query(sql::INSERT_WALLET)
             .bind(&existing.tenant_id)
             .bind(STARTER_CREDIT_NANOS)
-            .bind(BOOTSTRAP_GRANT_SOURCE)
-            .bind(now.as_millis())
             .execute(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_EXISTING))?;
@@ -189,7 +178,7 @@ impl Signups {
         &self,
         account: NewAccount<'_>,
         tenant_name: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Bootstrapped> {
         let tenant_id = self.entropy.uuid7(now)?;
         let user_id = self.entropy.uuid7(now)?;
@@ -208,7 +197,6 @@ impl Signups {
         sqlx::query(sql::INSERT_TENANT)
             .bind(tenant_id.as_str())
             .bind(tenant_name)
-            .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
@@ -219,19 +207,16 @@ impl Signups {
             &tenant_id,
             &user_id,
             &membership_id,
-            now,
         )
         .await?;
 
         let workspace_name = self
-            .name_a_workspace(&mut transaction, &tenant_id, &workspace_id, now)
+            .name_a_workspace(&mut transaction, &tenant_id, &workspace_id)
             .await?;
 
         sqlx::query(sql::INSERT_WALLET)
             .bind(tenant_id.as_str())
             .bind(STARTER_CREDIT_NANOS)
-            .bind(BOOTSTRAP_GRANT_SOURCE)
-            .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
@@ -260,7 +245,6 @@ impl Signups {
         tenant_id: &Uuid7,
         user_id: &Uuid7,
         membership_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<()> {
         let raise = error::query(CONTEXT_OPEN);
         sqlx::query(sql::INSERT_USER)
@@ -269,7 +253,6 @@ impl Signups {
             .bind(account.oidc_subject)
             .bind(account.email)
             .bind(account.display_name)
-            .bind(now.as_millis())
             .execute(&mut **transaction)
             .await
             .map_err(&raise)?;
@@ -279,7 +262,6 @@ impl Signups {
             .bind(tenant_id.as_str())
             .bind(user_id.as_str())
             .bind(ROLE_OWNER)
-            .bind(now.as_millis())
             .execute(&mut **transaction)
             .await
             .map_err(&raise)?;
@@ -297,7 +279,6 @@ impl Signups {
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         tenant: &Uuid7,
         workspace: &Uuid7,
-        now: UnixMillis,
     ) -> Result<String> {
         let raise = error::query(CONTEXT_OPEN);
         for _attempt in 0..GENERATED_ATTEMPTS {
@@ -306,8 +287,6 @@ impl Signups {
                 .bind(workspace.as_str())
                 .bind(tenant.as_str())
                 .bind(&candidate)
-                .bind(BOOTSTRAP_ACTOR)
-                .bind(now.as_millis())
                 .execute(&mut **transaction)
                 .await
                 .map_err(&raise)?;
@@ -317,4 +296,13 @@ impl Signups {
         }
         Err(error::workspace_name_exists())
     }
+}
+
+/// The account a subject already owns, by the names the statement aliases.
+#[derive(Debug, sqlx::FromRow)]
+struct ExistingRow {
+    user_id: String,
+    tenant_id: String,
+    workspace_id: String,
+    workspace_name: String,
 }

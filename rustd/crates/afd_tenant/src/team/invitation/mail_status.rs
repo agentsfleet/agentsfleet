@@ -7,7 +7,6 @@
 //! never reused, and [`Team::record_email`] writes the result only while that
 //! attempt is still the latest.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::spelling::from_spelling;
 
@@ -69,7 +68,7 @@ impl EmailStatus {
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct EmailAttempt {
     /// Which send this is: the first is 1.
-    #[sqlx(rename = "email_attempts")]
+    #[sqlx(rename = "email_attempt_count")]
     pub attempt: i32,
     /// The invitee's address, lowercased.
     #[sqlx(rename = "email")]
@@ -93,20 +92,19 @@ impl Team {
         &self,
         tenant: &Uuid7,
         invite: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Option<EmailAttempt>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as(sql::BEGIN_EMAIL_ATTEMPT)
             .bind(tenant.as_str())
             .bind(invite.as_str())
-            .bind(now.as_millis())
             .bind(ROLE_OWNER)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_BEGIN))
     }
 
-    /// Records what became of `attempt`, unless a later send has begun.
+    /// Records what became of `attempt`, unless a later send has begun. A send
+    /// the relay accepted is stamped with the database clock.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -115,16 +113,13 @@ impl Team {
         invite: &Uuid7,
         attempt: i32,
         status: EmailStatus,
-        now: UnixMillis,
     ) -> Result<()> {
-        let sent_at = (status == EmailStatus::Sent).then(|| now.as_millis());
         let mut connection = self.database.acquire().await?;
         sqlx::query(sql::RECORD_EMAIL_RESULT)
             .bind(invite.as_str())
             .bind(attempt)
             .bind(status.wire())
-            .bind(sent_at)
-            .bind(now.as_millis())
+            .bind(status == EmailStatus::Sent)
             .execute(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_RECORD))?;

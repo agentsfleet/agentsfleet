@@ -29,12 +29,12 @@ pub mod parse;
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::{SecretBody, SecretName, Vault};
+use jiff::Timestamp;
 
 use sqlx::Acquire as _;
 
@@ -55,7 +55,8 @@ const CONTEXT_INSTALL: &str = "record a connector install";
 const HANDLE_IS_ALWAYS_SERIALIZABLE: &str =
     "a JSON object of strings and integers always serializes";
 
-/// The last connect stamp this process handed out.
+/// The last connect stamp this process handed out, in epoch milliseconds: the
+/// unit the handle stores it in, and the step a strictly later one moves by.
 ///
 /// It exists for a subtle reason: the broker's credential cache is keyed on a
 /// fingerprint over the handle's non-rotating fields, and several of those are
@@ -67,18 +68,21 @@ static LAST_CONNECT_STAMP: AtomicI64 = AtomicI64::new(0);
 
 /// A connect stamp strictly later than every one this process has handed out.
 ///
-/// Monotonic rather than merely wall-clock — see [`LAST_CONNECT_STAMP`].
-fn connected_at(now: UnixMillis) -> UnixMillis {
+/// Monotonic rather than merely wall-clock — see [`LAST_CONNECT_STAMP`]. The
+/// daemon's clock, not the database's: the stamp goes into the sealed handle,
+/// which no statement writes. A stamp past the end of jiff's range, which only
+/// a broken clock reaches, falls back to `now` rather than wrapping.
+fn connected_at(now: Timestamp) -> Timestamp {
     let mut previous = LAST_CONNECT_STAMP.load(Ordering::Relaxed);
     loop {
-        let next = now.as_millis().max(previous.saturating_add(1));
+        let next = now.as_millisecond().max(previous.saturating_add(1));
         match LAST_CONNECT_STAMP.compare_exchange_weak(
             previous,
             next,
             Ordering::AcqRel,
             Ordering::Relaxed,
         ) {
-            Ok(_won) => return UnixMillis::from_millis(next),
+            Ok(_won) => return Timestamp::from_millisecond(next).unwrap_or(now),
             // A stale read costs one retry; the exchange re-validates.
             Err(current) => previous = current,
         }
@@ -141,7 +145,7 @@ impl Grants {
 
     /// A connect stamp for a grant about to be sealed — see [`connected_at`].
     #[must_use]
-    pub fn stamp(&self, now: UnixMillis) -> UnixMillis {
+    pub fn stamp(&self, now: Timestamp) -> Timestamp {
         connected_at(now)
     }
 
@@ -160,7 +164,7 @@ impl Grants {
         workspace: &Uuid7,
         provider: Provider,
         grant: &Grant,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let name = SecretName::parse(provider.grant_key())?;
         let body = handle_body(grant)?;
@@ -223,7 +227,7 @@ impl Grants {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         match self
             .vault
@@ -233,7 +237,7 @@ impl Grants {
             Ok(()) => Ok(()),
             Err(refused) if refused.code() == error_code::SECRET_NAME_TAKEN => {
                 self.vault
-                    .replace_in(transaction, workspace, name, body, now)
+                    .replace_in(transaction, workspace, name, body)
                     .await?;
                 Ok(())
             }
@@ -263,13 +267,14 @@ impl Grants {
     /// this row and the vaulted grant have to land together — see [`Self::land`]
     /// on why either ordering alone leaves a state a reader cannot detect.
     /// Associated rather than a method so the borrow of `self.vault` in `seal`
-    /// does not collide with a `&self` held across this call.
+    /// does not collide with a `&self` held across this call. `now` mints the
+    /// row's identifier; its stamps are the database clock's.
     async fn route_in(
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         workspace: &Uuid7,
         provider: Provider,
         install: &Install,
-        now: UnixMillis,
+        now: Timestamp,
         entropy: &Entropy,
     ) -> Result<()> {
         let id = entropy.uuid7(now)?;
@@ -298,9 +303,7 @@ impl Grants {
             .bind(provider.id())
             .bind(&install.external_account_id)
             .bind(workspace.as_str())
-            .bind(&install.installed_by)
             .bind(&install.scopes)
-            .bind(now.as_millis())
             .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_INSTALL))?;

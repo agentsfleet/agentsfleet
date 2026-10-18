@@ -29,12 +29,9 @@ use afd_auth::scope::Scope;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use self::access::{Access, Grant, Role};
 use crate::sql::workspace as sql;
-use crate::sql::{COLUMN_ROLE, COLUMN_TENANT_ID};
 use crate::{Result, error, stored};
 
 /// The context an access read's failure reports under.
@@ -104,7 +101,7 @@ impl Workspaces {
     async fn membership(&self, person: &Person, workspace: &Uuid7) -> Result<Option<Access>> {
         let binds = TenantBinds::of(person);
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::AUTHORIZE_WORKSPACE)
+        let row: Option<HeldRow> = sqlx::query_as(sql::AUTHORIZE_WORKSPACE)
             .bind(workspace.as_str())
             .bind(binds.subject)
             .bind(binds.claim)
@@ -112,7 +109,7 @@ impl Workspaces {
             .await
             .map_err(error::query(CONTEXT_AUTHORIZE))?;
         row.map(|row| {
-            let (tenant, role) = held_row(&row, CONTEXT_AUTHORIZE)?;
+            let (tenant, role) = row.parse()?;
             Ok(Access {
                 tenant,
                 grant: Grant::Membership(role),
@@ -171,13 +168,13 @@ impl Workspaces {
         }
 
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String,)> = sqlx::query_as(sql::SELECT_USER_TENANT_BY_SUBJECT)
+        let tenant: Option<String> = sqlx::query_scalar(sql::SELECT_USER_TENANT_BY_SUBJECT)
             .bind(person.subject().as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("resolve subject tenant"))?;
-        match row {
-            Some((tenant,)) => stored::tenant(&tenant).map(Some),
+        match tenant {
+            Some(tenant) => stored::tenant(&tenant).map(Some),
             // The claim stands when no user row exists, which is the same
             // fallback the `COALESCE` above encodes.
             None => Ok(Some(person.tenant().clone())),
@@ -227,14 +224,22 @@ fn reads_user_row(person: &Person) -> bool {
     }
 }
 
-/// The tenant an access row names and the role it is held with, failures
-/// reported under `context`.
-///
-/// A row with no stored role is the caller's own account admitted without a
-/// membership row, and it is held as its owner.
-fn held_row(row: &PgRow, context: &'static str) -> Result<(Uuid7, Role)> {
-    let unreadable = error::query(context);
-    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
-    let role: Option<String> = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
-    Ok((stored::tenant(&tenant)?, Role::held(role.as_deref())?))
+/// The tenant an access row names and the role it is held with.
+#[derive(Debug, sqlx::FromRow)]
+struct HeldRow {
+    tenant_id: String,
+    role: Option<String>,
+}
+
+impl HeldRow {
+    /// The tenant and the role it is held with.
+    ///
+    /// A row with no stored role is the caller's own account admitted without
+    /// a membership row, and it is held as its owner.
+    fn parse(self) -> Result<(Uuid7, Role)> {
+        Ok((
+            stored::tenant(&self.tenant_id)?,
+            Role::held(self.role.as_deref())?,
+        ))
+    }
 }

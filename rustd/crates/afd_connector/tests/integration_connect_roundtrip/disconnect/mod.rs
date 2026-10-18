@@ -26,7 +26,7 @@ pub(super) const ACCOUNT_B: &str = "T0FIXTUREB";
 async fn a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     round
         .grants()
         .land(
@@ -93,7 +93,6 @@ pub(super) fn grant(account: &str) -> Grant {
         handle,
         install: Some(Install {
             external_account_id: account.to_owned(),
-            installed_by: SUBJECT.to_owned(),
             scopes: Vec::new(),
             claim: InstallClaim::Repoint,
         }),
@@ -104,7 +103,7 @@ pub(super) fn grant(account: &str) -> Grant {
 async fn routing_rows(round: &Round) -> i64 {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query_scalar(
-        "SELECT count(*) FROM core.connector_installs \
+        "SELECT count(*) FROM connector.installs \
          WHERE provider = $1 AND workspace_id = $2::uuid",
     )
     .bind(PROVIDER.id())
@@ -130,14 +129,13 @@ async fn reference_grant(round: &Round) -> String {
     let id = mint_id();
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.tenant_model_entries \
-           (id, tenant_id, model_id, secret_ref, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, $4, $4)",
+        "INSERT INTO model.tenant_models \
+           (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
+         VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, now(), now())",
     )
     .bind(&id)
     .bind(&round.tenant)
     .bind(PROVIDER.grant_key())
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the model entry inserts");
@@ -147,7 +145,7 @@ async fn reference_grant(round: &Round) -> String {
 /// Removes the entry [`reference_grant`] wrote.
 async fn drop_entry(round: &Round, id: &str) {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id = $1::uuid")
         .bind(id)
         .execute(&mut *connection)
         .await

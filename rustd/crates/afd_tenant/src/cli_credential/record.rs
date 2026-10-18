@@ -73,5 +73,5 @@ pub struct Revoked {
     /// The credential row's identifier.
     pub id: Uuid7,
     /// When the row records it stopped working.
-    pub revoked_at_ms: i64,
+    pub revoked_at: jiff::Timestamp,
 }

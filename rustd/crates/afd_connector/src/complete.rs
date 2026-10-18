@@ -15,10 +15,10 @@
 //! spend it — see [`crate::jira`]. The call happens BEFORE the vault write, so
 //! a site listing that fails leaves nothing half-connected.
 
-use afd_core::clock::UnixMillis;
 use afd_core::credential::FIELD_ACCOUNTS_BASE;
 use afd_core::id::Uuid7;
 use afd_core::json::non_empty_str;
+use jiff::Timestamp;
 use serde_json::{Map, Value};
 
 use crate::connect::{Connectors, Spent};
@@ -85,7 +85,7 @@ impl Connectors {
     /// Reports a provider that could not be reached, one that answered and
     /// refused, an answer carrying no readable grant, and a vault or datastore
     /// that would not take the write.
-    pub async fn finish(&self, finishing: Finishing<'_>, now: UnixMillis) -> Result<Landed> {
+    pub async fn finish(&self, finishing: Finishing<'_>, now: Timestamp) -> Result<Landed> {
         let Finishing {
             admin,
             provider,
@@ -121,7 +121,7 @@ impl Connectors {
         exchanged: &Exchanged,
         location: Option<&str>,
         installation_id: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Grant> {
         let body: Value = serde_json::from_str(exchanged.body())
             .map_err(|_unreadable| error::exchange_unreadable())?;
@@ -173,7 +173,7 @@ impl Connectors {
         &self,
         body: &Value,
         installation_id: Option<&str>,
-        connected_at: UnixMillis,
+        connected_at: Timestamp,
     ) -> Result<Grant> {
         let token = github::access_token(body).ok_or_else(error::exchange_unreadable)?;
         let found = github::resolve(
@@ -185,7 +185,7 @@ impl Connectors {
         .await?;
         let reason = found.reason();
         match found {
-            Found::One(installation) => Ok(github::grant(&installation, connected_at.as_millis())),
+            Found::One(installation) => Ok(github::grant(&installation, connected_at)),
             Found::None | Found::Several => {
                 // Hoisted: the `log` bridge duplicates field expressions and
                 // llvm-cov scores the dead copy.
@@ -203,7 +203,7 @@ impl Connectors {
     }
 
     /// Jira's grant, with the site it is scoped to resolved first.
-    async fn read_jira(&self, body: &Value, connected_at: UnixMillis) -> Result<Grant> {
+    async fn read_jira(&self, body: &Value, connected_at: Timestamp) -> Result<Grant> {
         let access_token =
             non_empty_str(body, "access_token").ok_or_else(error::exchange_unreadable)?;
         let site =

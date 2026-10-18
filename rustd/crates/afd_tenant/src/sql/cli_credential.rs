@@ -1,4 +1,4 @@
-//! The `afc_` command-line credential statements — `core.cli_credentials`.
+//! The `afc_` command-line credential statements — `identity.cli_credentials`.
 //!
 //! `credential_hash` is derived and never accepted: [`INSERT_CLI_CREDENTIAL`]
 //! is the only writer, and the digest it binds is taken over the value the same
@@ -20,34 +20,26 @@
 /// NULL` is the guard: a caller that inserts without first revoking this
 /// machine's live row fails here, rather than leaving two live credentials an
 /// operator cannot tell apart.
-pub const INSERT_CLI_CREDENTIAL: &str = "\
-INSERT INTO core.cli_credentials \
-(id, user_id, tenant_id, machine_name, credential_hash, \
-credential_prefix, deployment, created_from_address, created_at) \
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)";
+pub const INSERT_CLI_CREDENTIAL: &str = include_str!("cli_credential/insert_cli_credential.sql");
 
 /// Revoke this machine's live credential ahead of minting its replacement.
 ///
 /// Scoped to one `(user, machine)`: another machine's credential is untouched,
 /// which is what lets a second laptop keep working across a re-login.
-pub const REVOKE_CLI_CREDENTIAL_FOR_MACHINE: &str = "\
-UPDATE core.cli_credentials \
-SET revoked_at = $3 \
-WHERE user_id = $1::uuid AND machine_name = $2 AND revoked_at IS NULL";
+pub const REVOKE_CLI_CREDENTIAL_FOR_MACHINE: &str =
+    include_str!("cli_credential/revoke_cli_credential_for_machine.sql");
 
 /// Revoke one credential by id, scoped to its owner.
 ///
 /// A credential belonging to somebody else is indistinguishable from one that
 /// does not exist, so an identifier cannot be probed for existence.
-pub const REVOKE_CLI_CREDENTIAL_BY_ID: &str = "\
-UPDATE core.cli_credentials \
-SET revoked_at = $3 \
-WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL";
+pub const REVOKE_CLI_CREDENTIAL_BY_ID: &str =
+    include_str!("cli_credential/revoke_cli_credential_by_id.sql");
 
 /// Resolve an authenticated subject to the user row these endpoints write
 /// against.
 ///
-/// `core.cli_credentials.user_id` is a foreign key to `core.users(id)`, while a
+/// `identity.cli_credentials.user_id` is a foreign key to `identity.users(id)`, while a
 /// principal carries the identity provider's subject — so the two are one
 /// lookup apart.
 ///
@@ -63,10 +55,5 @@ WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL";
 ///
 /// The `::text` casts are load-bearing: both identifier columns are `UUID`, and
 /// a driver reading one as text without the cast hands back raw bytes.
-pub const SELECT_USER_IDENTITY_BY_SUBJECT: &str = "\
-SELECT users.id::text, users.tenant_id::text, users.email, \
-users.display_name, tenants.name \
-FROM core.users AS users \
-JOIN core.tenants AS tenants ON tenants.id = users.tenant_id \
-WHERE users.oidc_subject = $1 \
-LIMIT 1";
+pub const SELECT_USER_IDENTITY_BY_SUBJECT: &str =
+    include_str!("cli_credential/select_user_identity_by_subject.sql");

@@ -1,12 +1,10 @@
 //! Listing an account's members, and removing one without leaving it ownerless.
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
+use jiff::Timestamp;
 
 use super::{Member, Removal, Team};
 use crate::sql::member as sql;
-use crate::sql::{COLUMN_EMAIL, COLUMN_ROLE};
 use crate::workspace::access::{ROLE_OWNER, Role};
 use crate::{Result, error, stored};
 
@@ -15,7 +13,7 @@ const CONTEXT_LIST: &str = "list members";
 const CONTEXT_REMOVE: &str = "remove member";
 
 /// Where a member's user identifier comes from, as a malformed one names it.
-const TABLE_MEMBERSHIPS: &str = "core.memberships";
+const TABLE_MEMBERSHIPS: &str = "identity.memberships";
 const COLUMN_USER_ID: &str = "user_id";
 
 impl Team {
@@ -26,12 +24,12 @@ impl Team {
     /// build cannot read.
     pub async fn members(&self, tenant: &Uuid7) -> Result<Vec<Member>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_MEMBERS)
+        let rows: Vec<MemberRow> = sqlx::query_as(sql::SELECT_MEMBERS)
             .bind(tenant.as_str())
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
-        rows.iter().map(member).collect()
+        rows.into_iter().map(MemberRow::parse).collect()
     }
 
     /// Removes `user`'s membership in the account.
@@ -86,20 +84,29 @@ impl Team {
     }
 }
 
-/// One member from its row, read by column name.
-///
-/// Mapped by hand rather than derived: the user identifier and the role each
-/// parse, and a role this build does not know must surface as its own error.
-fn member(row: &PgRow) -> Result<Member> {
-    let unreadable = error::query(CONTEXT_LIST);
-    let user: String = row.try_get(COLUMN_USER_ID).map_err(&unreadable)?;
-    let role: String = row.try_get(COLUMN_ROLE).map_err(&unreadable)?;
-    Ok(Member {
-        user: stored::uuid(TABLE_MEMBERSHIPS, COLUMN_USER_ID, &user)?,
-        display_name: row.try_get("display_name").map_err(&unreadable)?,
-        email: row.try_get(COLUMN_EMAIL).map_err(&unreadable)?,
-        subject: row.try_get("oidc_subject").map_err(&unreadable)?,
-        role: Role::parse(&role)?,
-        joined_at_ms: row.try_get("joined_at").map_err(&unreadable)?,
-    })
+/// One member's row, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct MemberRow {
+    user_id: String,
+    display_name: Option<String>,
+    email: String,
+    oidc_subject: String,
+    role: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    joined_at: Timestamp,
+}
+
+impl MemberRow {
+    /// The member this row stores. The user identifier and the role each
+    /// parse, and a role this build does not know surfaces as its own error.
+    fn parse(self) -> Result<Member> {
+        Ok(Member {
+            user: stored::uuid(TABLE_MEMBERSHIPS, COLUMN_USER_ID, &self.user_id)?,
+            display_name: self.display_name,
+            email: self.email,
+            subject: self.oidc_subject,
+            role: Role::parse(&self.role)?,
+            joined_at: self.joined_at,
+        })
+    }
 }

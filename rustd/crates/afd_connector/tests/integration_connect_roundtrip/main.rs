@@ -49,7 +49,6 @@ use afd_connector::exchange::Exchange;
 use afd_connector::grant::Grants;
 use afd_connector::provider::Provider;
 use afd_connector::{Finishing, Landed};
-use afd_core::clock::UnixMillis;
 use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
@@ -61,14 +60,16 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_vault::{SecretName, Vault};
+use jiff::Timestamp;
 
 use self::vendor::FakeAtlassian;
 
 /// The key every fixture in this lane seals and opens under.
 const FIXTURE_KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// The instant the round trip is driven at.
-const NOW_MS: i64 = 1_700_000_000_000;
+/// The instant the round trip is driven at: what the daemon's clock would read
+/// for the state and the connect stamp. Every row's stamp is the database's.
+const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The Jira app an operator registered for this deployment.
 const JIRA_APP_BAG: &str =
@@ -192,7 +193,7 @@ impl Round {
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         for workspace in [self.admin.as_str(), self.workspace.as_str()] {
-            sqlx::query("DELETE FROM core.workspaces WHERE id = $1::uuid")
+            sqlx::query("DELETE FROM identity.workspaces WHERE id = $1::uuid")
                 .bind(workspace)
                 .execute(&mut *connection)
                 .await
@@ -225,22 +226,20 @@ async fn queue() -> Dragonfly {
 async fn seed_rows(database: &Db, tenant: &str, workspaces: &[&str]) {
     let mut connection = database.acquire().await.expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-         VALUES ($1::uuid, 'a connect fixture', $2, $2)",
+        "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+         VALUES ($1::uuid, 'a connect fixture', now(), now())",
     )
     .bind(tenant)
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the tenant row must insert");
     for workspace in workspaces {
         sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3)",
+            "INSERT INTO identity.workspaces (id, tenant_id, created_at) \
+             VALUES ($1::uuid, $2::uuid, now())",
         )
         .bind(workspace)
         .bind(tenant)
-        .bind(NOW_MS)
         .execute(&mut *connection)
         .await
         .expect("the workspace row must insert");
@@ -257,9 +256,9 @@ async fn insert_secret(
     let mut connection = database.acquire().await.expect("a pooled connection");
     sqlx::query(
         "INSERT INTO vault.secrets \
-           (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, \
-            nonce, ciphertext, tag, kek_version, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)",
+           (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, \
+            secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, updated_at) \
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
     )
     .bind(mint_id())
     .bind(workspace)
@@ -271,7 +270,6 @@ async fn insert_secret(
     .bind(sealed.payload_ciphertext())
     .bind(sealed.payload_tag().as_slice())
     .bind(sealed.kek_version())
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the sealed row must insert");

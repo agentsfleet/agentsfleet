@@ -10,13 +10,12 @@
 //! authority order to save one round trip would be two places for that order
 //! to drift apart, and the wire answer is byte-identical either way.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::sql::workspace as sql;
-use crate::sql::{COLUMN_ID, COLUMN_TENANT_ID};
 use crate::{Result, error, stored};
 
 use super::Workspaces;
@@ -24,9 +23,6 @@ use super::name::{self, Chosen};
 
 /// The context a datastore failure on the page walk reports under.
 const CONTEXT_PAGE: &str = "list tenant workspaces";
-
-/// The context a row this daemon cannot read reports under.
-const CONTEXT_ROW: &str = "read workspace row";
 
 /// The context the create's insert reports under.
 const CONTEXT_CREATE: &str = "create workspace";
@@ -36,7 +32,7 @@ const CONTEXT_TENANT: &str = "check tenant exists";
 
 /// The index that arbitrates a per-tenant name.
 ///
-/// Must equal the name in `schema/210_workspaces.sql`, because classification
+/// Must equal the name in `schema/1110_identity_workspaces.sql`, because classification
 /// is by exact constraint: a rename landing on one side turns a duplicate-name
 /// conflict into a 500.
 const NAME_CONSTRAINT: &str = "uq_workspaces_tenant_id_name";
@@ -56,7 +52,7 @@ pub struct WorkspaceRow {
     /// Its name — `NULL` on rows older than naming, and serialized as null.
     pub name: Option<String>,
     /// When it was created; the walk's sort key.
-    pub created_at_ms: i64,
+    pub created_at: Timestamp,
     /// The account it belongs to, one of those the page was asked for.
     pub tenant_id: Uuid7,
 }
@@ -82,7 +78,7 @@ pub struct WorkspacePage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct After {
     /// The boundary row's `created_at`.
-    pub created_at_ms: i64,
+    pub created_at: Timestamp,
     /// The boundary row's identifier, breaking ties within one instant.
     pub id: Uuid7,
 }
@@ -121,23 +117,23 @@ impl Workspaces {
         let fetch = i64::from(limit).saturating_add(1);
         let mut connection = self.database.acquire().await?;
         let query = match (filter, after) {
-            (None, None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
+            (None, None) => sqlx::query_as::<_, PageRow>(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
                 .bind(tenants)
                 .bind(fetch),
-            (None, Some(boundary)) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
+            (None, Some(boundary)) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
                 .bind(tenants)
-                .bind(boundary.created_at_ms)
+                .bind(boundary.created_at.to_sqlx())
                 .bind(boundary.id.as_str())
                 .bind(fetch),
-            (Some(name), None) => sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
+            (Some(name), None) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
                 .bind(tenants)
                 .bind(name)
                 .bind(fetch),
             (Some(name), Some(boundary)) => {
-                sqlx::query(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
+                sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
                     .bind(tenants)
                     .bind(name)
-                    .bind(boundary.created_at_ms)
+                    .bind(boundary.created_at.to_sqlx())
                     .bind(boundary.id.as_str())
                     .bind(fetch)
             }
@@ -148,8 +144,8 @@ impl Workspaces {
             .map_err(error::query(CONTEXT_PAGE))?;
 
         let mut rows = fetched
-            .iter()
-            .map(read_row)
+            .into_iter()
+            .map(PageRow::parse)
             .collect::<Result<Vec<WorkspaceRow>>>()?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
@@ -157,6 +153,8 @@ impl Workspaces {
     }
 
     /// Creates one workspace, naming it when the caller did not.
+    ///
+    /// `now` mints the identifier; the creation stamp is the database clock's.
     ///
     /// # Errors
     /// Refuses a session whose tenant has no row behind it, and a chosen name
@@ -168,14 +166,13 @@ impl Workspaces {
         &self,
         tenant: &Uuid7,
         chosen: Option<Chosen>,
-        created_by: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Created> {
         let mut connection = self.database.acquire().await?;
         // Asked before the insert because a stale session can name a deleted
         // tenant, and this sentence beats the foreign key's 500. The race
         // between check and insert stays, and loses only a clearer refusal.
-        let exists: Option<(i32,)> = sqlx::query_as(sql::SELECT_TENANT_EXISTS)
+        let exists: Option<i32> = sqlx::query_scalar(sql::SELECT_TENANT_EXISTS)
             .bind(tenant.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -187,7 +184,7 @@ impl Workspaces {
         if let Some(name) = chosen {
             let id = self.entropy.uuid7(now)?;
             return match self
-                .insert(&mut connection, &id, tenant, name.as_str(), created_by, now)
+                .insert(&mut connection, &id, tenant, name.as_str())
                 .await
             {
                 Ok(()) => Ok(Created {
@@ -205,10 +202,7 @@ impl Workspaces {
         loop {
             let name = name::generate(&self.entropy)?;
             let id = self.entropy.uuid7(now)?;
-            match self
-                .insert(&mut connection, &id, tenant, &name, created_by, now)
-                .await
-            {
+            match self.insert(&mut connection, &id, tenant, &name).await {
                 Ok(()) => return Ok(Created { id, name }),
                 Err(source)
                     if violates_unique(&source, NAME_CONSTRAINT)
@@ -230,30 +224,35 @@ impl Workspaces {
         id: &Uuid7,
         tenant: &Uuid7,
         name: &str,
-        created_by: &str,
-        now: UnixMillis,
     ) -> std::result::Result<(), sqlx::Error> {
         sqlx::query(sql::INSERT_WORKSPACE)
             .bind(id.as_str())
             .bind(tenant.as_str())
             .bind(name)
-            .bind(created_by)
-            .bind(now.as_millis())
             .execute(connection.as_mut())
             .await
             .map(|_outcome| ())
     }
 }
 
-/// Reads one row by column name, through [`error::query`] with one context —
-/// a `try_get` failure already names the column and the type it refused.
-fn read_row(row: &sqlx::postgres::PgRow) -> Result<WorkspaceRow> {
-    let unreadable = error::query(CONTEXT_ROW);
-    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
-    Ok(WorkspaceRow {
-        id: row.try_get(COLUMN_ID).map_err(&unreadable)?,
-        name: row.try_get("name").map_err(&unreadable)?,
-        created_at_ms: row.try_get("created_at").map_err(&unreadable)?,
-        tenant_id: stored::tenant(&tenant)?,
-    })
+/// One page row, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct PageRow {
+    id: String,
+    name: Option<String>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    tenant_id: String,
+}
+
+impl PageRow {
+    /// The workspace this row stores; its tenant parses here.
+    fn parse(self) -> Result<WorkspaceRow> {
+        Ok(WorkspaceRow {
+            id: self.id,
+            name: self.name,
+            created_at: self.created_at,
+            tenant_id: stored::tenant(&self.tenant_id)?,
+        })
+    }
 }

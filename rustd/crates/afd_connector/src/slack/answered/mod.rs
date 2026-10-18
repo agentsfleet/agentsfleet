@@ -25,7 +25,6 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -57,6 +56,9 @@ pub const ANSWER_CHECK_DEADLINE: Duration = Duration::from_secs(3);
 /// Slack's; five minutes covers any skew between the two by a wide margin
 /// and still spares an old thread every page before it.
 const CLOCK_SKEW_SECONDS: i64 = 300;
+
+/// Milliseconds in a second, for reading the instant an event id opens with.
+const MILLIS_PER_SECOND: i64 = 1_000;
 
 /// Which owed answer a posted message is: the obligation's own key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -189,13 +191,13 @@ pub async fn holds_answer(
 ///
 /// `None` for an id that does not open with milliseconds, which reads the
 /// whole thread — slower, never wrong.
+// M229: event-id re-key. The `{millis}-{seq}` shape this parses is being
+// re-keyed to a UUIDv7 in its own batch; only the retired `UnixMillis` read is
+// replaced here, with the same truncating division it did.
 fn since(event_id: &str) -> Option<String> {
     let (millis, _sequence) = event_id.split_once('-')?;
-    let admitted = UnixMillis::from_millis(millis.parse().ok()?);
-    let seconds = admitted
-        .as_seconds()
-        .saturating_sub(CLOCK_SKEW_SECONDS)
-        .max(0);
+    let admitted = millis.parse::<i64>().ok()? / MILLIS_PER_SECOND;
+    let seconds = admitted.saturating_sub(CLOCK_SKEW_SECONDS).max(0);
     Some(format!("{seconds}.000000"))
 }
 

@@ -1,8 +1,10 @@
 //! Metadata-only API key pages and their cursor boundaries.
-use super::{ApiKeySort, COLUMN_REVOKED_AT, row_unreadable};
+use super::{ApiKeySort, row_unreadable};
 use crate::Result;
 use afd_core::paging::{Boundary, BoundaryKind, Cursor, SortOrder as _};
-use sqlx::Row as _;
+use jiff::Timestamp;
+use sqlx::FromRow as _;
+use sqlx::postgres::PgRow;
 
 impl Boundary<ApiKeySort> for KeyRow {
     /// Switches on the SORT's declared boundary kind, not on its variants.
@@ -13,7 +15,7 @@ impl Boundary<ApiKeySort> for KeyRow {
     fn cursor(&self, sort: ApiKeySort) -> Cursor {
         match sort.boundary() {
             BoundaryKind::Timestamp => Cursor::Timestamp {
-                at_ms: self.created_at_ms,
+                at: self.created_at,
                 id: self.id.clone(),
             },
             BoundaryKind::Text => Cursor::Text {
@@ -42,8 +44,10 @@ impl Listing {
     /// The join guarantees at least one row even for an empty page — a marker
     /// carrying the real total and null key columns — so the total is read from
     /// the first row and a null identifier means "no keys" rather than a
-    /// malformed one.
-    pub(super) fn of(rows: &[sqlx::postgres::PgRow]) -> Result<Self> {
+    /// malformed one. Each row is decoded in two steps for that reason: the
+    /// marker's columns first, then the key's, only where an identifier says
+    /// a key is there.
+    pub(super) fn of(rows: &[PgRow]) -> Result<Self> {
         let Some(first) = rows.first() else {
             // Unreachable while the lateral join stands, and answered rather
             // than reported: a tenant with no keys and a statement that
@@ -51,11 +55,15 @@ impl Listing {
             // list is empty.
             return Ok(Self::default());
         };
-        let total: i64 = first.try_get("total").map_err(row_unreadable)?;
+        let total = MarkerRow::from_row(first).map_err(row_unreadable)?.total;
         let mut keys = Vec::with_capacity(rows.len());
         for row in rows {
-            if let Some(key) = KeyRow::of(row)? {
-                keys.push(key);
+            if MarkerRow::from_row(row)
+                .map_err(row_unreadable)?
+                .id
+                .is_some()
+            {
+                keys.push(ListedRow::from_row(row).map_err(row_unreadable)?.into());
             }
         }
         Ok(Self { keys, total })
@@ -73,27 +81,45 @@ pub struct KeyRow {
     pub id: String,
     /// What it is called.
     pub name: String,
-    /// Whether it still authenticates.
-    pub active: bool,
     /// When it was minted.
-    pub created_at_ms: i64,
+    pub created_at: jiff::Timestamp,
     /// When it stopped working, if it has.
-    pub revoked_at_ms: Option<i64>,
+    pub revoked_at: Option<jiff::Timestamp>,
 }
 
 impl KeyRow {
-    /// One row, or `None` for the empty-page marker.
-    fn of(row: &sqlx::postgres::PgRow) -> Result<Option<Self>> {
-        let id: Option<String> = row.try_get("id").map_err(row_unreadable)?;
-        let Some(id) = id else {
-            return Ok(None);
-        };
-        Ok(Some(Self {
-            id,
-            name: row.try_get("key_name").map_err(row_unreadable)?,
-            active: row.try_get("active").map_err(row_unreadable)?,
-            created_at_ms: row.try_get("created_at").map_err(row_unreadable)?,
-            revoked_at_ms: row.try_get(COLUMN_REVOKED_AT).map_err(row_unreadable)?,
-        }))
+    /// Whether it still authenticates: a key is live until it is revoked.
+    #[must_use]
+    pub const fn active(&self) -> bool {
+        self.revoked_at.is_none()
+    }
+}
+
+/// What every row of a page carries, the empty-page marker included: the
+/// tenant's total, and the key identifier that is NULL only on the marker.
+#[derive(Debug, sqlx::FromRow)]
+struct MarkerRow {
+    id: Option<String>,
+    total: i64,
+}
+
+/// One key's columns, read only from a row that holds a key.
+#[derive(Debug, sqlx::FromRow)]
+struct ListedRow {
+    id: String,
+    name: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    revoked_at: Option<jiff_sqlx::Timestamp>,
+}
+
+impl From<ListedRow> for KeyRow {
+    fn from(row: ListedRow) -> Self {
+        Self {
+            id: row.id,
+            name: row.name,
+            created_at: row.created_at,
+            revoked_at: row.revoked_at.map(jiff_sqlx::Timestamp::to_jiff),
+        }
     }
 }

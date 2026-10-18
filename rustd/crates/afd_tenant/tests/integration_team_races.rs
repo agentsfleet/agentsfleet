@@ -8,18 +8,18 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::Removal;
 use afd_tenant::test_util::hold;
 use afd_tenant::workspace::access::ROLE_OWNER;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
 
 /// Now, for every call a case makes.
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// How many times each race runs. Two concurrent removals that lock in
 /// different orders deadlock in most rounds, so a dozen shows it.
@@ -96,18 +96,18 @@ async fn accept_against_revoke(fixture: &Fixture, round: usize) {
     let carol = fixture.carol.invitee();
     let (accepted, revoked) = tokio::join!(
         fixture.team.accept(&invite, &carol, NOW),
-        fixture.team.revoke_invitation(&tenant, &invite, NOW),
+        fixture.team.revoke_invitation(&tenant, &invite),
     );
     let joined = fixture.memberships_in_johns(&fixture.carol).await;
-    let (accepted_at, revoked_at) = fixture.stamps(&invite).await;
+    let (status, resolved) = fixture.stamps(&invite).await;
     assert!(
-        accepted_at.is_none() || revoked_at.is_none(),
-        "round {round}: an invite is accepted or revoked, never both"
+        resolved && (status == "accepted" || status == "revoked"),
+        "round {round}: an invite resolves once, accepted or revoked: {status}"
     );
     assert_eq!(
         joined == 1,
-        accepted_at.is_some() && revoked_at.is_none(),
-        "round {round}: a membership only from an accepted, unrevoked invite"
+        status == "accepted",
+        "round {round}: a membership only from an accepted invite"
     );
     let revoke_refused = revoked.err().map(|refusal| refusal.invite_conflict());
     match accepted {
@@ -160,7 +160,7 @@ async fn should_refuse_new_invite_when_it_races_an_accept_for_the_same_address()
         let refusal = issued.expect_err("no new invite for a member");
         assert_eq!(refusal.code(), error_code::INVITE_CONFLICT, "round {round}");
         assert!(
-            fixture.johns_invites(NOW).await.is_empty(),
+            fixture.johns_invites().await.is_empty(),
             "round {round}: nothing left pending for Carol"
         );
         fixture

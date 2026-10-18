@@ -28,7 +28,7 @@ async fn a_subject_with_no_user_row_resolves_to_nothing() {
     let lane = Lane::create().await;
 
     // The fail-closed half of the preference surface: a subject authenticated
-    // against no `core.users` row gets `None`, not an invented user. Inventing
+    // against no `identity.users` row gets `None`, not an invented user. Inventing
     // one here would fork identity ownership away from the signup bootstrap.
     let absent = lane
         .preferences

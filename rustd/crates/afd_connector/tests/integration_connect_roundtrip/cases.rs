@@ -8,7 +8,7 @@ async fn a_jira_connect_lands_a_grant_naming_the_site_it_was_scoped_to() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
     round.configure_jira().await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     let secret = signing_secret();
 
     let consent = consent_of(
@@ -89,7 +89,7 @@ async fn a_spent_nonce_cannot_be_spent_again() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
     round.configure_jira().await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     let secret = signing_secret();
 
     let consent = consent_of(
@@ -165,7 +165,7 @@ async fn an_unconfigured_provider_starts_nothing() {
                 redirect_uri: REDIRECT_URI,
                 secret: &secret,
             },
-            UnixMillis::from_millis(NOW_MS),
+            NOW,
         )
         .await
         .expect("an unconfigured provider is not a fault");

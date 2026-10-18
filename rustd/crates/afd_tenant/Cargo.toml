@@ -44,6 +44,10 @@ afd_db.workspace = true
 afd_dragonfly.workspace = true
 # Lower-case hex for the fingerprint digest, rather than a hand-written render.
 hex.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to and bind from `jiff::Timestamp`
+# through jiff-sqlx.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The device-flow fingerprint: a session is bound to the caller that opened it
 # by a digest of address, agent and id.
 sha2.workspace = true

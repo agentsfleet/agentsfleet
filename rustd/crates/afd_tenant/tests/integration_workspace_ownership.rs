@@ -192,18 +192,18 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenants AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'own', 1, 1), ($2::uuid, 'other', 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, 'own', now(), now()), ($2::uuid, 'other', now(), now()) \
              ), own_workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($3::uuid, $1::uuid, 'own', $5, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($3::uuid, $1::uuid, 'own', now()) \
              ), other_workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($4::uuid, $2::uuid, 'other', $5, 1) \
+               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+               VALUES ($4::uuid, $2::uuid, 'other', now()) \
              ) \
-             INSERT INTO core.users \
+             INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, $5, 'fixture@example.test', NULL, 1, 1)",
+             VALUES ($6::uuid, $1::uuid, $5, 'fixture@example.test', NULL, now(), now())",
         )
         .bind(&self.own_tenant)
         .bind(&self.other_tenant)
@@ -218,7 +218,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id IN ($1::uuid, $2::uuid)")
+        sqlx::query("DELETE FROM identity.tenants WHERE id IN ($1::uuid, $2::uuid)")
             .bind(&self.own_tenant)
             .bind(&self.other_tenant)
             .execute(&mut *connection)

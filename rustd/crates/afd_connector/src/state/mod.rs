@@ -47,11 +47,13 @@ pub mod nonce;
 #[cfg(test)]
 mod tests;
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64URL;
+use jiff::Timestamp;
 
 use crate::registry::{STATE_TTL_SECONDS, StateBinding};
 
@@ -67,9 +69,6 @@ const MAC_SEP: char = '.';
 /// over the same bytes: the two are computed under one secret and would
 /// otherwise be one construction serving two purposes.
 const SUBJECT_TAG_PREFIX: &str = "subject:v1:";
-
-/// Milliseconds in a second, for the expiry arithmetic.
-const MS_PER_SECOND: i64 = 1_000;
 
 /// A state that was minted, and the nonce that makes it single-use.
 ///
@@ -182,13 +181,13 @@ pub fn sign(
     workspace: &str,
     subject: &str,
     nonce: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> String {
-    let expiry = now.saturating_add_millis(i64::from(STATE_TTL_SECONDS) * MS_PER_SECOND);
+    let expiry = afd_core::clock::after(now, Duration::from_secs(u64::from(STATE_TTL_SECONDS)));
     let tag = subject_tag(binding, secret, subject).to_hex();
     let payload = format!(
         "{workspace}{FIELD_SEP}{tag}{FIELD_SEP}{nonce}{FIELD_SEP}{}",
-        expiry.as_millis(),
+        expiry.as_millisecond(),
     );
     let mac = mac(binding, secret, payload.as_bytes()).to_hex();
     format!("{}{MAC_SEP}{mac}", BASE64URL.encode(payload.as_bytes()))
@@ -206,7 +205,7 @@ pub fn verify(
     binding: StateBinding,
     secret: &SecretBytes,
     presented: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> Result<Verified, Rejected> {
     let (encoded, tag) = presented.rsplit_once(MAC_SEP).ok_or(Rejected::Malformed)?;
     let payload = BASE64URL
@@ -236,7 +235,7 @@ pub fn verify(
     };
 
     let expiry: i64 = expiry.parse().map_err(|_digits| Rejected::Malformed)?;
-    if now.as_millis() > expiry {
+    if now.as_millisecond() > expiry {
         return Err(Rejected::Expired);
     }
 
