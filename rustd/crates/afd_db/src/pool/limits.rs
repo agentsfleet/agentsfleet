@@ -28,6 +28,26 @@ pub const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 /// that outlives it has already failed the request it serves.
 pub const STATEMENT_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// SQLSTATE `lock_not_available`: a statement outwaited [`LOCK_TIMEOUT`].
+const LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// Whether `error`, or anything in its cause chain, is a statement that gave
+/// up waiting on a lock.
+///
+/// The one retryable refusal the limit produces: the row was busy, nothing
+/// was written, and the same request may be sent again. Walks the chain so a
+/// crate's own error type answers without unwrapping itself first.
+#[must_use]
+pub fn gave_up_on_lock(error: &(dyn std::error::Error + 'static)) -> bool {
+    std::iter::successors(Some(error), |current| current.source()).any(|current| {
+        current
+            .downcast_ref::<sqlx::Error>()
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(sqlx::error::DatabaseError::code)
+            .is_some_and(|code| code == LOCK_NOT_AVAILABLE)
+    })
+}
+
 /// `options` with both limits added, unless `role` is the migrator.
 pub(crate) fn bounded(role: DbRole, options: PgConnectOptions) -> PgConnectOptions {
     if role == DbRole::Migrator {
@@ -46,11 +66,19 @@ fn setting(span: Duration) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{LOCK_TIMEOUT, STATEMENT_TIMEOUT, setting};
+    use super::{LOCK_TIMEOUT, STATEMENT_TIMEOUT, gave_up_on_lock, setting};
 
     #[test]
     fn a_lock_wait_gives_up_well_inside_the_statement_budget() {
         assert!(LOCK_TIMEOUT * 2 <= STATEMENT_TIMEOUT);
+    }
+
+    /// The true arm needs a driver-made `DatabaseError` carrying 55P03; the
+    /// billing and authoring live suites hold it.
+    #[test]
+    fn a_failure_with_no_database_behind_it_is_not_a_lock_wait() {
+        assert!(!gave_up_on_lock(&sqlx::Error::PoolTimedOut));
+        assert!(!gave_up_on_lock(&std::io::Error::other("unrelated")));
     }
 
     #[test]

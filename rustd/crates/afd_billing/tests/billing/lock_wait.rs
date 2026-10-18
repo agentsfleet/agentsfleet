@@ -13,16 +13,12 @@ use std::time::{Duration, Instant};
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::pool::{LOCK_TIMEOUT, STATEMENT_TIMEOUT};
+use afd_db::pool::{LOCK_TIMEOUT, STATEMENT_TIMEOUT, gave_up_on_lock};
 use afd_db::test_util::TestDatabase;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
 use crate::lane::Lane;
-
-/// SQLSTATE `lock_not_available`: the wait outlived `lock_timeout`. Class 55
-/// is "object not in prerequisite state", which a caller may retry.
-const LOCK_NOT_AVAILABLE: &str = "55P03";
 
 /// Holds the wallet row the way a debit in flight does.
 const LOCK_WALLET: &str = "SELECT 1 FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE";
@@ -77,11 +73,7 @@ async fn test_lock_wait_is_bounded() {
         .expect_err("a write behind a held row must give up, not wait");
     let waited = started.elapsed();
 
-    let code = refused
-        .as_database_error()
-        .and_then(sqlx::error::DatabaseError::code)
-        .map(String::from);
-    assert_eq!(code.as_deref(), Some(LOCK_NOT_AVAILABLE), "{refused}");
+    assert!(gave_up_on_lock(&refused), "{refused}");
     assert!(waited >= LOCK_TIMEOUT, "gave up after {waited:?}");
     assert!(waited < LOCK_TIMEOUT + OVERRUN, "waited {waited:?}");
     assert!(waited < STATEMENT_TIMEOUT);
