@@ -40,6 +40,21 @@ pub(crate) enum ErrorKind {
     OutputLimit,
     #[error("complete inference input exhausts the model context window")]
     ContextLimit,
+    #[error("the Gemini API key is not a valid header value")]
+    KeyHeader {
+        #[source]
+        source: http::header::InvalidHeaderValue,
+    },
+    #[error("the Gemini request line does not parse once its key is lifted out")]
+    KeyPath {
+        #[source]
+        source: http::uri::InvalidUri,
+    },
+    #[error("the Gemini request URI does not reassemble once its key is lifted out")]
+    KeyUri {
+        #[source]
+        source: http::uri::InvalidUriParts,
+    },
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
@@ -47,6 +62,9 @@ afd_core::error_lifts!(Error, ErrorKind:
     rig_core::ProviderError => Request,
     garde::Report => Bounds,
     url::ParseError => Url,
+    http::header::InvalidHeaderValue => KeyHeader,
+    http::uri::InvalidUri => KeyPath,
+    http::uri::InvalidUriParts => KeyUri,
 );
 
 impl Error {

@@ -815,6 +815,7 @@ dependencies = [
  "afd_core",
  "afd_wire",
  "bytes",
+ "futures-util",
  "garde",
  "http",
  "rig-core",
