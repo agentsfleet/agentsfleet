@@ -51,12 +51,12 @@ pub(crate) fn billing_wallet_missing() -> Error {
     ErrorKind::WalletMissing.into()
 }
 
-/// Refuses a charges cursor this daemon never issued.
 /// A priced line or balance past what a signed 64-bit nano count holds.
 pub(crate) fn charge_overflow() -> Error {
     ErrorKind::ChargeOverflow.into()
 }
 
+/// Refuses a charges cursor this daemon never issued.
 pub(crate) fn charges_cursor_invalid() -> Error {
     ErrorKind::ChargesCursorInvalid.into()
 }

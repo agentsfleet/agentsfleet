@@ -33,7 +33,7 @@ const RUNTIME_MS: u32 = 2_500;
 /// Sub-cent rates (0.006, 0.0375, 0.1875 USD per million) in hundredths
 /// of a cent, and the exact nanos per million each must store and bill.
 const SUB_CENT_RATES: [(i64, i64); 3] = [(60, 6_000_000), (375, 37_500_000), (1_875, 187_500_000)];
-/// A long-context threshold: OpenAI's 272,000 prompt tokens.
+/// A long-context threshold: 272,000 prompt tokens.
 const THRESHOLD: i32 = 272_000;
 /// Hundredths of a cent per million tokens, as nanos per million tokens.
 const fn usd_per_mtok(cents_hundredths: i64) -> i64 {

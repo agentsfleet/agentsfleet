@@ -127,6 +127,15 @@ pub const SELECT_PLATFORM_MODEL_PRICES: &str = include_str!("select_platform_mod
 /// tier and the date, so one read serves every line of a piece of work.
 pub const SELECT_PRICE_BOOK: &str = include_str!("select_price_book.sql");
 
+/// The stored spellings of `billing.usage_lines.work_type` and
+/// `billing.holds.work_type` (RULE STS: the schema names none of them).
+pub mod work {
+    /// A fleet run's lease.
+    pub const FLEET_LEASE: &str = "fleet_lease";
+    /// A setup-chat attempt.
+    pub const AUTHORING_ATTEMPT: &str = "authoring_attempt";
+}
+
 /// The `billing.fleet_charges.charge_type` values this crate writes and counts.
 ///
 /// Two spellings, declared once (RULE UFS): the budget drain counts BOTH, so a charge type spelled
