@@ -118,12 +118,10 @@ impl Case {
     }
 
     pub(super) async fn save(&self, key: &Uuid7, request: SaveFleet) -> SavedFleet {
-        crate::draft::retried(|| {
-            self.creations
-                .save(self.base.access(), key, request.clone(), now())
-        })
-        .await
-        .expect("retained Save")
+        self.creations
+            .save(self.base.access(), key, request.clone(), now())
+            .await
+            .expect("retained Save")
     }
 
     pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<(String, Option<String>)> {

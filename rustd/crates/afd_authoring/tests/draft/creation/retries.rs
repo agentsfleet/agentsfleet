@@ -52,22 +52,11 @@ async fn retained(c: &Case, key: &Uuid7, request: SaveFleet) -> Uuid7 {
 }
 
 /// The Save the installed refusal fails.
-///
-/// Every refusal fixture's trigger DDL queues a table lock, and a Save behind
-/// one is refused for the lock under the same `INTERNAL_DB_QUERY` code the
-/// refusal carries, before the step the fault targets. Only those lock
-/// refusals are retried, so the error returned is the fixture's own.
 async fn refused(c: &Case, key: &Uuid7, request: &SaveFleet, why: &str) -> afd_authoring::Error {
-    let save = || {
-        c.creations
-            .save(c.base.access(), key, request.clone(), now())
-    };
-    let refused = crate::draft::retried(save).await.expect_err(why);
-    assert!(
-        !afd_db::pool::gave_up_on_lock(&refused),
-        "{why}: the fixture refused it, not a lock wait"
-    );
-    refused
+    c.creations
+        .save(c.base.access(), key, request.clone(), now())
+        .await
+        .expect_err(why)
 }
 
 /// Receipts written under `key`: a spent Save key has exactly one.
@@ -218,13 +207,10 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_str
             );
             tokio::spawn(async move {
                 barrier.wait().await;
-                // Every retry either resumes or meets the retryable lock
-                // limit, and the limited ones converge on their own retry.
-                crate::draft::retried(|| {
-                    c.creations
-                        .save(c.base.access(), &key, request.clone(), now())
-                })
-                .await
+                // Every retry waits its turn on the key and resumes.
+                c.creations
+                    .save(c.base.access(), &key, request.clone(), now())
+                    .await
             })
         })
         .collect();

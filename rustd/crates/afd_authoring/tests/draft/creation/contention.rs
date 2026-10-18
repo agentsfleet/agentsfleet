@@ -1,6 +1,6 @@
 //! Duplicate requests contend on real rows and converge on one retained identity.
 
-use super::super::{fixture::now, mint, retried};
+use super::super::{fixture::now, mint};
 use super::fixture::Case;
 use afd_authoring::types::Start;
 use std::sync::{
@@ -30,27 +30,11 @@ async fn one_hundred_concurrent_saves_converge_on_one_retained_fleet() {
         tasks.push(tokio::spawn(async move {
             entered.fetch_add(1, Ordering::SeqCst);
             barrier.wait().await;
-            let first = c
-                .creations
+            // Every caller waits its turn on the key and resumes the same fleet.
+            c.creations
                 .save(c.base.access(), &key, request.clone(), now())
-                .await;
-            // A caller either resumes or meets the retryable lock limit, and
-            // a refused caller's retry converges on the same fleet.
-            match first {
-                Ok(saved) => saved,
-                Err(error) => {
-                    assert!(
-                        afd_db::pool::gave_up_on_lock(&error),
-                        "only the retryable lock limit may refuse: {error:?}"
-                    );
-                    retried(|| {
-                        c.creations
-                            .save(c.base.access(), &key, request.clone(), now())
-                    })
-                    .await
-                    .expect("a refused caller's retry converges")
-                }
-            }
+                .await
+                .expect("a concurrent caller resumes")
         }));
     }
     let mut identities = Vec::new();
