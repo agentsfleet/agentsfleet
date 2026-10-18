@@ -31,9 +31,11 @@ use crate::config::{DbRole, PoolConfig};
 use crate::error::Result;
 
 mod acquire;
+mod limits;
 mod open;
 mod roles;
 
+pub use self::limits::{LOCK_TIMEOUT, STATEMENT_TIMEOUT};
 pub use self::roles::Pools;
 
 /// How long a connection may sit idle before the reaper closes it.
@@ -103,7 +105,7 @@ impl Db {
         // [`MAX_LIFETIME`] pin both to `Some` — which buys the reaper this
         // pool wants and costs the one-shot warm-up it would otherwise have
         // had.
-        let pool = builder.connect_lazy_with(config.connect_options());
+        let pool = builder.connect_lazy_with(limits::bounded(role, config.connect_options()));
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let role_tag = role.tag();
