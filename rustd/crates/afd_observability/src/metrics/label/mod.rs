@@ -16,6 +16,7 @@
 //! `None`, never a `not_applicable` member: a member would make that
 //! non-decision occupy a series.
 
+pub mod billing;
 pub mod cost;
 pub mod fleet;
 pub mod http;

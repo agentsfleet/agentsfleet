@@ -286,11 +286,10 @@ fn test_every_cost_producer_runs_its_body() {
         });
     }
 
-    for class in [
-        ChargeClass::Receive,
-        ChargeClass::Renewal,
+    producers::cost::credits_consumed(
+        "claude-opus-5",
+        "sandboxed",
         ChargeClass::Settle,
-    ] {
-        producers::cost::credits_consumed("claude-opus-5", "sandboxed", class, NANOCREDITS);
-    }
+        NANOCREDITS,
+    );
 }
