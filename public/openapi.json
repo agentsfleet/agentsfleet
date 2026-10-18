@@ -3446,7 +3446,7 @@
           "Fleet"
         ],
         "summary": "List a runner's leases",
-        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. A settled lease outlives a fleet purge and its event's retention: its fleet and event fields are then null, and `destination` says whether the caller can open the fleet (`available`), the fleet was purged (`fleet_deleted`), or it sits in an account the caller is not acting in (`not_permitted`). Stripe-style keyset pagination —`starting_after` is a lease id from a previous page's `next_cursor`. Settled leases are retained for 30 days. The window is measured from settlement, not from acquisition. A lease acquired long ago and settled yesterday keeps its full window. A background sweep deletes them past that window. A lease still running or renewing is never swept. The per-lease activity records (`lease_acquired`, `lease_released`) are swept on the same 30-day window. Each record ages from when it occurred, not from its lease's settlement. A long run's opening record can therefore be pruned shortly before its lease row. The runner's lifecycle activity is kept at any age, so a long-lived runner's feed never empties. A lease whose runner died without reporting is marked expired once it passes the same window. It then keeps its own window, like any settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected by any of this. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns. ",
+        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. A settled lease outlives a fleet purge and its event's retention. Its fleet and event fields are then null. `destination` is `available` when the fleet exists in the caller's own account. It is `fleet_deleted` after a purge, and `not_permitted` for a fleet in another account. Stripe-style keyset pagination —`starting_after` is a lease id from a previous page's `next_cursor`. Settled leases are retained for 30 days. The window is measured from settlement, not from acquisition. A lease acquired long ago and settled yesterday keeps its full window. A background sweep deletes them past that window. A lease still running or renewing is never swept. The per-lease activity records (`lease_acquired`, `lease_released`) are swept on the same 30-day window. Each record ages from when it occurred, not from its lease's settlement. A long run's opening record can therefore be pruned shortly before its lease row. The runner's lifecycle activity is kept at any age, so a long-lived runner's feed never empties. A lease whose runner died without reporting is marked expired once it passes the same window. It then keeps its own window, like any settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected by any of this. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns. ",
         "operationId": "list_fleet_runner_leases",
         "parameters": [
           {
@@ -19033,6 +19033,14 @@
                 "updated_at"
               ],
               "properties": {
+                "candidate_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The current candidate's revision; null before the chat proposes one."
+                },
                 "etag": {
                   "type": "string",
                   "description": "Strong resource version."
@@ -19043,7 +19051,7 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Private retention deadline, Unix milliseconds."
+                  "description": "Private retention deadline."
                 },
                 "id": {
                   "type": "string",
@@ -19056,6 +19064,22 @@
                   ],
                   "description": "Related fleet, when available."
                 },
+                "publication_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The Library revision this chat published; null until it publishes."
+                },
+                "setup_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The saved fleet's current setup revision; null while no fleet is saved."
+                },
                 "state": {
                   "type": "string",
                   "description": "editing, saving or closed."
@@ -19067,7 +19091,7 @@
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Last mutation, Unix milliseconds."
+                  "description": "Last mutation."
                 }
               }
             },
@@ -20138,6 +20162,14 @@
           "updated_at"
         ],
         "properties": {
+          "candidate_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The current candidate's revision; null before the chat proposes one."
+          },
           "etag": {
             "type": "string",
             "description": "Strong resource version."
@@ -20148,7 +20180,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Private retention deadline, Unix milliseconds."
+            "description": "Private retention deadline."
           },
           "id": {
             "type": "string",
@@ -20161,6 +20193,22 @@
             ],
             "description": "Related fleet, when available."
           },
+          "publication_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The Library revision this chat published; null until it publishes."
+          },
+          "setup_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The saved fleet's current setup revision; null while no fleet is saved."
+          },
           "state": {
             "type": "string",
             "description": "editing, saving or closed."
@@ -20172,7 +20220,7 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Last mutation, Unix milliseconds."
+            "description": "Last mutation."
           }
         }
       },

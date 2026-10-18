@@ -88,6 +88,12 @@ pub struct DraftCard {
     /// Private retention deadline.
     #[serde(with = "afd_wire::instant::option")]
     pub expires_at: Option<Timestamp>,
+    /// The current candidate's revision, before the chat proposes one.
+    pub candidate_revision: Option<i64>,
+    /// The saved fleet's current setup revision, while a fleet is saved.
+    pub setup_revision: Option<i64>,
+    /// The Library revision this chat published, once it has.
+    pub publication_revision: Option<i64>,
 }
 
 /// Immutable normalized setup accepted from the drawer or proposal tool.
