@@ -27,6 +27,10 @@ afd_crypto.workspace = true
 afd_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
 afd_wire.workspace = true
+# `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
+async-trait.workspace = true
+# Only the conformance suite races two reservations on one task.
+futures-util = { workspace = true, optional = true }
 # A month window is a CALENDAR question — `afd_core::clock` is the instant type
 # and the clock source, and carries no calendar. Same division the events
 # crate's `since=` draws.
@@ -43,7 +47,7 @@ garde.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util"]
+test-util = ["afd_core/test-util", "afd_db/test-util", "dep:futures-util"]
 
 [dev-dependencies]
 serde_json.workspace = true

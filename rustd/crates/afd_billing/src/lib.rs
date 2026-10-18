@@ -31,6 +31,7 @@
 
 pub mod error;
 
+pub mod biller;
 pub mod budget;
 pub mod charge;
 pub mod meter;

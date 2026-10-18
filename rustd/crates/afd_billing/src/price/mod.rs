@@ -106,7 +106,7 @@ impl PriceBook {
 
 /// `model.platform_model_prices` read by column name.
 #[derive(Debug, sqlx::FromRow)]
-pub struct PriceColumns {
+pub(crate) struct PriceColumns {
     id: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     effective_from: Timestamp,
@@ -129,7 +129,7 @@ impl PriceColumns {
     ///
     /// # Errors
     /// The row's id is not a `UUIDv7`.
-    pub fn tier(self) -> Result<Tier> {
+    pub(crate) fn tier(self) -> Result<Tier> {
         let id = Uuid7::parse(&self.id).map_err(row_malformed(TABLE_PRICES, COLUMN_ID))?;
         Ok(Tier {
             id,
