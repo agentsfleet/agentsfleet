@@ -1,14 +1,13 @@
 //! Provider identity evidence and dated token prices shared by catalogue readers.
 //!
-//! HTTP handlers validate untrusted inputs before constructing these records.
-//! Database readers deserialize explicitly projected JSON into the same shape.
+//! The HTTP input types prove every bound before these records are built
+//! (`afd_api_wire::catalogue`), and database readers decode the columns by
+//! name into them (`afd_admin::catalogue`).
 
 use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
 
 /// Evidence and labels belonging to one exact provider/model identity.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Metadata {
     /// Human-readable label; never used to route a request.
     pub display_name: String,
@@ -27,8 +26,7 @@ pub struct Metadata {
 /// Every rate is integer nanodollars per million tokens. A missing cache-write
 /// rate is unknown or unsupported, never zero. Unspecified lifetimes must not
 /// be folded into either of the duration-specific categories.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Price {
     /// First instant this quote applies.
     pub effective_from: Timestamp,

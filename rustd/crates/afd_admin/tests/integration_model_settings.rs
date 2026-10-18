@@ -91,7 +91,7 @@ async fn saved_inference_round_trips_preserves_on_rates_only_updates_and_refuses
     assert_eq!(read(&models, &model.id).await, model);
     assert!(
         models
-            .update(&model.id, rates(128_000, 2, None))
+            .update(&model.id, rates(128_000, 2, None), NOW)
             .await
             .expect("rates only")
     );
@@ -107,7 +107,7 @@ async fn saved_inference_round_trips_preserves_on_rates_only_updates_and_refuses
     );
     assert!(
         !models
-            .update(&model.id, rates(128_000, 3, None))
+            .update(&model.id, rates(128_000, 3, None), NOW)
             .await
             .expect("missing row")
     );
@@ -143,7 +143,7 @@ async fn assert_invalid_updates(models: &Models, db: &Db, id: &Uuid7) {
         },
     ] {
         let error = models
-            .update(id, rates(128_000, 999, Some(&invalid)))
+            .update(id, rates(128_000, 999, Some(&invalid)), NOW)
             .await
             .expect_err("invalid settings refuse");
         assert_eq!(error.code(), error_code::INVALID_REQUEST);
@@ -161,7 +161,8 @@ async fn replace_inference(models: &Models, id: &Uuid7) {
         models
             .update(
                 id,
-                rates(128_000, 3, Some(&settings(InferenceApi::Messages, 65536)),),
+                rates(128_000, 3, Some(&settings(InferenceApi::Messages, 65536))),
+                NOW,
             )
             .await
             .expect("API and limit change")
@@ -171,7 +172,7 @@ async fn replace_inference(models: &Models, id: &Uuid7) {
         Some(&settings(InferenceApi::Messages, 65536))
     );
     assert!(
-        models.update(id, rates(1, 3, None)).await.is_err(),
+        models.update(id, rates(1, 3, None), NOW).await.is_err(),
         "a context-only edit must validate saved output limits"
     );
 }
@@ -185,8 +186,8 @@ async fn concurrent_rate_and_inference_updates_keep_a_valid_saved_pair() {
     let model = create(&models, InferenceApi::Chat, 65536).await;
     let replacement = settings(InferenceApi::Responses, 32768);
     let (rate_update, setting_update) = tokio::join!(
-        models.update(&model.id, rates(64_000, 2, None)),
-        models.update(&model.id, rates(128_000, 3, Some(&replacement))),
+        models.update(&model.id, rates(64_000, 2, None), NOW),
+        models.update(&model.id, rates(128_000, 3, Some(&replacement)), NOW),
     );
     assert!(setting_update.expect("explicit configuration update"));
     let final_model = read(&models, &model.id).await;

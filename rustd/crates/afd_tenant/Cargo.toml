@@ -35,6 +35,9 @@ afd_core.workspace = true
 # `Minted` — a credential drawn once and zeroed — plus the classifier that
 # supplies its marker, and the principal a verb acts for.
 afd_auth.workspace = true
+# The catalogue's identity and price columns, decoded the one way the admin
+# service writes them (`afd_admin::catalogue`).
+afd_admin.workspace = true
 # Entropy for the identifiers these stores mint.
 afd_crypto.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
@@ -79,8 +82,6 @@ test-util = [
 ]
 
 [dev-dependencies]
-# The catalogue proof seeds through the real administrator service.
-afd_admin.workspace = true
 # The device-flow suite needs REAL parallelism: its state races — two approves,
 # a verify against an approve — are worthless on a single-threaded runtime,
 # because the interleaving they exist to force cannot happen.

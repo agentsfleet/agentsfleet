@@ -16,6 +16,7 @@
 
 pub mod cursor;
 
+use afd_admin::catalogue::{MetadataColumns, prices_for};
 use afd_core::catalogue::{Metadata, Price};
 use afd_db::Db;
 use jiff::Timestamp;
@@ -68,13 +69,31 @@ impl Models {
             .take(limit as usize)
             .map(|row| CatalogueRow::from_row(row).map_err(unreadable_row))
             .collect::<Result<Vec<_>>>()?;
-        let max_updated = served.iter().map(|row| row.updated_at).max();
+        let ids: Vec<String> = served.iter().map(|row| row.id.clone()).collect();
+        let mut connection = self.database.acquire().await?;
+        let mut prices = prices_for(connection.as_mut(), &ids)
+            .await
+            .map_err(error::library_page_unavailable)?;
+        let max_updated = served
+            .iter()
+            .map(|row| {
+                prices
+                    .changed(&row.id)
+                    .map_or(row.updated_at, |at| at.max(row.updated_at))
+            })
+            .max();
         let boundary = served.last().map(|row| Boundary {
             display_key: row.display_key.clone(),
             vendor_key: row.vendor_key.clone(),
             id: row.id.clone(),
         });
-        let models = served.into_iter().map(CatalogueRow::served).collect();
+        let models = served
+            .into_iter()
+            .map(|row| {
+                let schedule = prices.take(&row.id);
+                row.served(schedule)
+            })
+            .collect();
         Ok(LibraryPage {
             models,
             max_updated,
@@ -171,14 +190,15 @@ fn unreadable_row(source: sqlx::Error) -> crate::Error {
     error::query(CONTEXT_ROW)(source)
 }
 
-/// One catalogue row, by column name: the six wire columns, the version input,
-/// and the walk position the next cursor is built from.
+/// One catalogue row, by column name: the wire columns, the version input,
+/// and the walk position the next cursor is built from. Prices arrive by a
+/// second read ([`prices_for`]), keyed by `id`.
 #[derive(Debug, sqlx::FromRow)]
 struct CatalogueRow {
     model_name: String,
     provider: String,
-    metadata: sqlx::types::Json<Metadata>,
-    prices: sqlx::types::Json<Vec<Price>>,
+    #[sqlx(flatten)]
+    metadata: MetadataColumns,
     context_cap_tokens: i32,
     input_nanos_per_mtok: i64,
     cached_input_nanos_per_mtok: i64,
@@ -191,13 +211,13 @@ struct CatalogueRow {
 }
 
 impl CatalogueRow {
-    /// The row as the library read serves it.
-    fn served(self) -> LibraryRow {
+    /// The row as the library read serves it, with its price schedule.
+    fn served(self, prices: Vec<Price>) -> LibraryRow {
         LibraryRow {
             model_id: self.model_name,
             provider: self.provider,
-            metadata: self.metadata.0,
-            prices: self.prices.0,
+            metadata: Metadata::from(self.metadata),
+            prices,
             context_cap_tokens: self.context_cap_tokens,
             input_nanos_per_mtok: self.input_nanos_per_mtok,
             cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,

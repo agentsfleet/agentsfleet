@@ -43,7 +43,8 @@ const CONTEXT_PAGE: &str = "tenant model registry page";
 struct RateRow {
     provider: String,
     model_name: String,
-    metadata: sqlx::types::Json<afd_core::catalogue::Metadata>,
+    #[sqlx(flatten)]
+    metadata: afd_admin::catalogue::MetadataColumns,
     context_cap_tokens: i32,
     input_nanos_per_mtok: i64,
     cached_input_nanos_per_mtok: i64,
@@ -273,7 +274,7 @@ impl RateRow {
         (
             (self.provider, self.model_name),
             CatalogueRate {
-                metadata: self.metadata.0,
+                metadata: self.metadata.into(),
                 context_cap_tokens: cap::stored(self.context_cap_tokens),
                 input_nanos_per_mtok: self.input_nanos_per_mtok,
                 cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,

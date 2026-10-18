@@ -171,6 +171,7 @@ pub(crate) async fn update<D: Services>(
         .update(
             &id,
             details(request.metadata, request.prices, request.inference),
+            services.now(),
         )
         .await
     {

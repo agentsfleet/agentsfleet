@@ -16,7 +16,7 @@ async fn failed_price_writes_roll_back_identity_and_generation_then_retry_heals(
         .expect("a fixture price")
         .input_nanos_per_mtok = -1;
     lane.models
-        .update(&model.id, invalid.clone())
+        .update(&model.id, invalid.clone(), NOW)
         .await
         .expect_err("a negative rate is refused by the store");
     assert_eq!(lane.models.list().await.expect("list"), vec![model.clone()]);
@@ -32,7 +32,7 @@ async fn failed_price_writes_roll_back_identity_and_generation_then_retry_heals(
     assert_eq!(version(&lane).await, before);
     assert!(
         lane.models
-            .update(&model.id, details(true))
+            .update(&model.id, details(true), NOW)
             .await
             .expect("retry")
     );
@@ -53,7 +53,7 @@ async fn a_complete_replacement_prunes_tiers_and_keeps_the_retained_price_id() {
     tiered.prices.push(upper);
     assert!(
         lane.models
-            .update(&model.id, tiered.clone())
+            .update(&model.id, tiered.clone(), NOW)
             .await
             .expect("add tier")
     );
@@ -61,12 +61,43 @@ async fn a_complete_replacement_prunes_tiers_and_keeps_the_retained_price_id() {
     assert_eq!(price_ids(&lane).await.len(), 2);
     assert!(
         lane.models
-            .update(&model.id, details(false))
+            .update(&model.id, details(false), NOW)
             .await
             .expect("prune tier")
     );
     assert_eq!(price_ids(&lane).await, retained);
     assert_eq!(listed(&lane).await, details(false));
+    lane.cleanup().await;
+}
+
+/// One day, the length of the range the fixture closes.
+const CLOSED_RANGE: jiff::SignedDuration = jiff::SignedDuration::from_secs(86_400);
+
+/// Every price column survives the typed-array write and the by-name read:
+/// a closed range, unknown cache-write rates and a second tier. A column
+/// misnamed on either side fails here instead of reading back as NULL.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn every_price_column_round_trips_through_the_typed_reads_and_writes() {
+    let lane = Lane::create().await;
+    let model = lane.file_model().await;
+    let mut schedule = details(true);
+    let base = schedule.prices.first_mut().expect("a fixture price");
+    base.effective_until = Some(NOW.checked_add(CLOSED_RANGE).expect("a later instant"));
+    base.cache_write_nanos_per_mtok = None;
+    base.cache_write_1h_nanos_per_mtok = None;
+    let mut upper = base.clone();
+    upper.prompt_tokens_above = 200_000;
+    upper.cache_write_5m_nanos_per_mtok = None;
+    upper.conditions = "prompts above 200k tokens".to_owned();
+    schedule.prices.push(upper);
+    assert!(
+        lane.models
+            .update(&model.id, schedule.clone(), NOW)
+            .await
+            .expect("replace schedule")
+    );
+    assert_eq!(listed(&lane).await, schedule);
     lane.cleanup().await;
 }
 

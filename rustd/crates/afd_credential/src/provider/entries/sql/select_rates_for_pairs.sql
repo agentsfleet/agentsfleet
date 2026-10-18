@@ -1,7 +1,5 @@
 SELECT m.provider, m.model_name, m.context_cap_tokens,
-       jsonb_build_object('display_name', m.display_name, 'context_cap_tokens', m.context_cap_tokens,
-           'context_source_url', m.context_source_url, 'context_verified_at', m.context_verified_at,
-           'advanced', m.advanced) AS metadata,
+       m.display_name, m.context_source_url, m.context_verified_at, m.advanced,
        p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok, p.output_nanos_per_mtok
   FROM model.platform_models m
   JOIN model.platform_model_prices p ON p.platform_model_id = m.id
