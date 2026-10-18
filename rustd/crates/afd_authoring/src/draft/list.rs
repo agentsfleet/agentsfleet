@@ -7,6 +7,7 @@ use crate::{
     types::{DraftCard, DraftState, ListQuery, Page},
 };
 use afd_core::id::Uuid7;
+use afd_db::statement::{LIKE_ANY, like_escape};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
@@ -35,7 +36,12 @@ impl Drafts {
     ///
     /// # Errors
     /// Refuses invalid or foreign continuations and inaccessible workspaces.
-    pub async fn list(&self, access: Access<'_>, request: ListQuery) -> Result<Page<DraftCard>> {
+    pub async fn list(
+        &self,
+        access: Access<'_>,
+        mut request: ListQuery,
+    ) -> Result<Page<DraftCard>> {
+        request.q = request.q.map(|text| text.trim().to_owned());
         let request = garde::Unvalidated::new(request).validate()?;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
@@ -47,6 +53,7 @@ impl Drafts {
             request.limit,
             request.state,
             &request.linked_fleet_id,
+            &request.q,
         ))?;
         let after = paging::boundary(request.starting_after.as_deref(), &binding)?;
         let rows: Vec<Stored> = sqlx::query_as(sql::draft::PAGE)
@@ -57,6 +64,7 @@ impl Drafts {
             .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
             .bind(after.as_ref().map(|(_, id)| id.as_str()))
             .bind(i64::from(request.limit) + 1)
+            .bind(request.q.as_deref().map(contains))
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -64,6 +72,11 @@ impl Drafts {
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }
+}
+
+/// `text` as a case-insensitive contains-pattern, its LIKE metacharacters escaped.
+fn contains(text: &str) -> String {
+    format!("{LIKE_ANY}{}{LIKE_ANY}", like_escape(text))
 }
 
 fn project(rows: Vec<Stored>, limit: usize, binding: &str) -> Result<Page<DraftCard>> {
