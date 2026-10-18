@@ -4,8 +4,8 @@ import { listMembers, listWorkspaceMembers, removeMember } from "./tenant-member
 import { ACCOUNT_ROLE } from "./workspaces-types";
 
 const TOKEN = "tok_owner";
-const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: 1 };
-const MEMBER = { user_id: "user_bob", display_name: null, email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: 2 };
+const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: "1970-01-01T00:00:00.001Z" };
+const MEMBER = { user_id: "user_bob", display_name: null, email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: "1970-01-01T00:00:00.002Z" };
 
 afterEach(() => vi.restoreAllMocks());
 

@@ -24,8 +24,8 @@ function row(overrides: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     failure_detail: null,
     cost_nanos: null,
-    created_at: 1_777_507_200_000,
-    updated_at: 1_777_507_200_100,
+    created_at: "2026-04-30T00:00:00Z",
+    updated_at: "2026-04-30T00:00:00.1Z",
     ...overrides,
   } as EventRow;
 }

@@ -59,7 +59,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: RECORDED_AT_MS,
+    recorded_at: new Date(RECORDED_AT_MS).toISOString(),
     ...over,
   };
 }
@@ -79,7 +79,7 @@ describe("BillingUsageTab charge cell", () => {
     const time = container.querySelector("time");
     expect(time).not.toBeNull();
     // Visible text is still the approved ledger string ("MMM DD, YYYY · HH:MM").
-    expect(time?.textContent).toBe(formatChargeTimestamp(RECORDED_AT_MS));
+    expect(time?.textContent).toBe(formatChargeTimestamp(new Date(RECORDED_AT_MS).toISOString()));
     // The datetime attribute is the canonical ISO instant.
     expect(time?.getAttribute("datetime")).toBe(
       new Date(RECORDED_AT_MS).toISOString(),

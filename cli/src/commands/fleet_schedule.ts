@@ -54,8 +54,8 @@ interface ScheduleRow {
   readonly status?: string | null;
   readonly sync?: string | null;
   readonly last_error?: string | null;
-  readonly created_at?: number | null;
-  readonly updated_at?: number | null;
+  readonly created_at?: string | null;
+  readonly updated_at?: string | null;
 }
 
 interface ScheduleListResponse {

@@ -62,8 +62,8 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     status: "active",
     liveness: "busy",
     labels: [],
-    last_seen_at: Date.now(),
-    created_at: Date.now(),
+    last_seen_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
@@ -141,7 +141,7 @@ describe("RunnerHeader self-test control", () => {
   // Dimension 1.1 (pending face) — an unanswered ask has to read as outstanding
   // and refuse a second click, or an operator re-asks into a queue of one.
   it("test_selftest_control_requests_and_reflects_pending (pending face)", () => {
-    render(<RunnerHeader runner={detail({ selftest_requested_at: Date.now() })} grafanaHref={null} canWrite />);
+    render(<RunnerHeader runner={detail({ selftest_requested_at: new Date().toISOString() })} grafanaHref={null} canWrite />);
     const button = screen.getByRole("button", { name: SELFTEST_PENDING_LABEL });
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: SELFTEST_LABEL })).toBeNull();

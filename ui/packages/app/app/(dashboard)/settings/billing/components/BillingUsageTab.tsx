@@ -73,7 +73,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     // The label already IS the precise instant, so no hover tooltip is added.
     cell: (c) => (
       <Time
-        value={new Date(c.recorded_at)}
+        value={c.recorded_at}
         label={formatChargeTimestamp(c.recorded_at)}
         className="font-mono text-mono leading-mono"
       />

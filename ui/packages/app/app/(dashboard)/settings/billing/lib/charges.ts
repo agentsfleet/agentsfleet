@@ -58,7 +58,7 @@ export function displayModelName(model: string): string {
   return modelId.replaceAll(/[-_]/g, " ");
 }
 
-// recorded_at is epoch **milliseconds** (`ChargeSummary::recorded_at` in
+// recorded_at is an RFC 3339 instant (`ChargeSummary::recorded_at` in
 // rustd/crates/afd_api_wire/src/tenant.rs, read from the ledger's `created_at`).
 // "Jun 15, 2026 · 17:33" mirrors the ledger date format in the approved mockup —
 // the en-US date format already yields "MMM DD, YYYY"; the mono separator joins
@@ -74,9 +74,9 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   hour12: false,
 });
 
-/** Format a charge's recorded_at (epoch ms) as "MMM DD, YYYY · HH:MM". */
-export function formatChargeTimestamp(recordedAtMs: number): string {
-  const at = new Date(recordedAtMs);
+/** Format a charge's recorded_at (an RFC 3339 instant) as "MMM DD, YYYY · HH:MM". */
+export function formatChargeTimestamp(recordedAt: string): string {
+  const at = new Date(recordedAt);
   return `${DATE_FORMATTER.format(at)} · ${TIME_FORMATTER.format(at)}`;
 }
 

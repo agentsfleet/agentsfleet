@@ -256,7 +256,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
 
   it("requestRunnerSelftestAction returns the recorded request, never a verdict, when the scope holds", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    const recorded = { id: "runner-1", status: "active", selftest_requested_at: 1_760_000_000_000 };
+    const recorded = { id: "runner-1", status: "active", selftest_requested_at: "2025-10-09T08:53:20Z" };
     requestRunnerSelftestMock.mockResolvedValueOnce(recorded);
     const r = await requestRunnerSelftestAction("runner-1");
     expect(r).toEqual({ ok: true, data: recorded });

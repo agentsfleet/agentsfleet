@@ -22,7 +22,7 @@ import {
 } from "./workspace-guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
-import { ui, AGE_KEY, EMPTY_CELL } from "../output/index.ts";
+import { ui, AGE_KEY, EMPTY_CELL, instantCell } from "../output/index.ts";
 import {
   GATE_COLUMN,
   GATE_FIELD,
@@ -44,8 +44,8 @@ export interface ApprovalGate {
   readonly status?: string | null;
   readonly proposed_action?: string | null;
   readonly blast_radius?: string | null;
-  readonly created_at?: number | string | null;
-  readonly expires_at?: number | string | null;
+  readonly created_at?: string | null;
+  readonly expires_at?: string | null;
   /** Who decided it. `resolved_by_name` is a display name the daemon may not
    *  have, and answers `""` when it does not; `resolved_by` is the subject and
    *  is the one that is always there. api-dev returns exactly that pair. */
@@ -112,9 +112,6 @@ export const APPROVALS_LIST_HINT =
 const cell = (value: string | null | undefined): string =>
   value && value.length > 0 ? value : EMPTY_CELL;
 
-const isoOrDash = (value: number | string | null | undefined): string =>
-  value ? new Date(value).toISOString() : EMPTY_CELL;
-
 /** The gate a command was asked to act on. The shared presence guard with this
  *  command's two strings bound to it. */
 export const requireGateId = (
@@ -160,7 +157,7 @@ export const approvalsListEffectFromArgs = (
         kind: cell(g.gate_type),
         status: cell(g.status),
         action: cell(g.proposed_action ?? g.tool_name),
-        [AGE_KEY]: typeof g.created_at === "number" ? g.created_at : undefined,
+        [AGE_KEY]: g.created_at,
       })),
     );
     if (gates.some((g) => g.status === GATE_STATUS.pending)) {
@@ -202,8 +199,8 @@ export const approvalsShowEffectFromArgs = (
       status: cell(gate.status),
       proposed: cell(gate.proposed_action),
       blast_radius: cell(gate.blast_radius),
-      created_at: isoOrDash(gate.created_at),
-      expires_at: isoOrDash(gate.expires_at),
+      created_at: instantCell(gate.created_at),
+      expires_at: instantCell(gate.expires_at),
       resolved_by: cell(gate.resolved_by_name || gate.resolved_by),
     });
   });

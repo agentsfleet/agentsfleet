@@ -10,11 +10,11 @@ const MARY = { tenant_id: "tenant_mary", owner_name: "Mary" };
 const OTHER_JOHN = { tenant_id: "tenant_john_2", owner_name: JOHN.owner_name };
 
 function own(id: string): TenantWorkspace {
-  return { id, name: id, created_at: 1, account: OWN, role: ACCOUNT_ROLE.owner };
+  return { id, name: id, created_at: "1970-01-01T00:00:00.001Z", account: OWN, role: ACCOUNT_ROLE.owner };
 }
 
 function joined(id: string, account: typeof JOHN): TenantWorkspace {
-  return { id, name: id, created_at: 1, account, role: ACCOUNT_ROLE.member };
+  return { id, name: id, created_at: "1970-01-01T00:00:00.001Z", account, role: ACCOUNT_ROLE.member };
 }
 
 describe("switcherSections", () => {

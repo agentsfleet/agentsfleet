@@ -40,9 +40,9 @@ describe("logs (paginated event tail)", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
-              { created_at: 1700000000000, actor: "user",   status: "processed", response_text: "Hello, world." },
-              { created_at: 1700000060000, actor: "fleet",  status: "processed", response_text: "Acknowledged. Working on it." },
-              { created_at: 1700000120000, actor: "system", status: "gate_blocked", response_text: null },
+              { created_at: "2023-11-14T22:13:20Z", actor: "user",   status: "processed", response_text: "Hello, world." },
+              { created_at: "2023-11-14T22:14:20Z", actor: "fleet",  status: "processed", response_text: "Acknowledged. Working on it." },
+              { created_at: "2023-11-14T22:15:20Z", actor: "system", status: "gate_blocked", response_text: null },
             ],
             next_cursor: "cur_next_page",
           }),
@@ -81,7 +81,7 @@ describe("logs (paginated event tail)", () => {
           () => jsonResponse(200, {
             items: [
               { created_at: "not-a-real-date", actor: "user", status: "processed", response_text: "still rendered" },
-              { created_at: 1700000000000, actor: "fleet", status: "processed", response_text: "valid row" },
+              { created_at: "2023-11-14T22:13:20Z", actor: "fleet", status: "processed", response_text: "valid row" },
             ],
             next_cursor: null,
           }),

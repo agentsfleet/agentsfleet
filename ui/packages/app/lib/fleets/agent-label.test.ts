@@ -12,7 +12,7 @@ function charge(fleetId: string) {
     fleet_id: fleetId,
     charge_type: "run",
     debit_nanos: 0,
-    recorded_at: 0,
+    recorded_at: "1970-01-01T00:00:00Z",
   } as unknown as Parameters<typeof chargeAgentLabel>[0];
 }
 

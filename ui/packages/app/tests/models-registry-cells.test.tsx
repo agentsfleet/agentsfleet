@@ -20,7 +20,7 @@ const ENTRY: TenantModelEntry = {
   kind: "provider_key",
   has_key: true,
   active: false,
-  created_at: 1_777_507_200_000,
+  created_at: "2026-04-30T00:00:00Z",
 };
 
 /** The default's context window; any value, the cells under test ignore it. */

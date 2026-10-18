@@ -64,7 +64,7 @@ const CATALOGUE: AdminModel[] = [
 ];
 
 const DEFAULT_FIREWORKS: PlatformKey = {
-  provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1,
+  provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: "1970-01-01T00:00:00.001Z",
 };
 
 beforeEach(() => vi.clearAllMocks());

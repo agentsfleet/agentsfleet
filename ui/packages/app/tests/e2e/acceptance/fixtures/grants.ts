@@ -167,8 +167,8 @@ export interface IntegrationGrant {
   readonly id: string;
   readonly service: string;
   readonly status: string;
-  readonly approved_at: number | null;
-  readonly revoked_at: number | null;
+  readonly approved_at: string | null;
+  readonly revoked_at: string | null;
   readonly reason: string | null;
 }
 

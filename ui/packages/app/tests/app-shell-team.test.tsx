@@ -27,7 +27,7 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 
 
 const NOTICE = 'data-testid="invite-notice"';
-const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 1 }];
+const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.001Z" }];
 
 function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> = {}): string {
   return renderToStaticMarkup(<ShellFrame {...props}><div /></ShellFrame>);

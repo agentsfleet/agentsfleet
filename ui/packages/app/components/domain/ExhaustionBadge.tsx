@@ -1,10 +1,10 @@
 import { AlertTriangleIcon } from "lucide-react";
 import { Badge, formatTimeAbsolute } from "@agentsfleet/design-system";
 
-type Props = { exhaustedAt: number | null };
+type Props = { exhaustedAt: string | null };
 
 export default function ExhaustionBadge({ exhaustedAt }: Props) {
-  const when = exhaustedAt ? formatTimeAbsolute(new Date(exhaustedAt)) : null;
+  const when = exhaustedAt ? formatTimeAbsolute(exhaustedAt) : null;
   return (
     <Badge
       variant="destructive"

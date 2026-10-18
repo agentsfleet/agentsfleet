@@ -100,7 +100,7 @@ const provide = (
 // Ninety seconds ago, so the rendered age is a real one. A fixed future
 // instant renders the empty cell on purpose — `ago` refuses to invent an age
 // for clock disagreement — and that is not what this row is proving.
-const SCHEDULE_CREATED_AT = Date.now() - 90_000;
+const SCHEDULE_CREATED_AT = new Date(Date.now() - 90_000).toISOString();
 
 const scheduleRow = {
   schedule_id: SCHEDULE_ID,

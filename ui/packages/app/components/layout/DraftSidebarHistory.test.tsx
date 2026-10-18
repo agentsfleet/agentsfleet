@@ -19,7 +19,7 @@ const NEXT_DRAFT_ID = "0199a801-1000-7000-8000-00000000000a";
 
 it("keeps loaded chats visible while a page is pending and after it fails", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null};
   const next = Promise.withResolvers<Response>();
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -131,7 +131,7 @@ it("removes unfinished history when leaving chat and retains completed cards wit
 });
 
 it("deduplicates the current draft and preserves the other loaded titles", () => {
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null};
   render(tree({...initial, cards: [card, {...card, id: "another-chat", title: "Another setup"}]}));
   expect(screen.getAllByRole("link")).toHaveLength(2);
   expect(screen.getAllByRole("link", {name: DRAFT.title})).toHaveLength(1);
@@ -146,7 +146,7 @@ function LiveBridge({current}: {current: DraftClient}) {
 
 it("loads the next chat page on demand and makes its title searchable", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null};
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.includes("/models?")) return response({items: [], next_cursor: null});

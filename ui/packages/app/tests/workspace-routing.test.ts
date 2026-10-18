@@ -34,8 +34,8 @@ vi.mock("@/components/layout/NoWorkspaceEmptyState", () => ({
 
 const OWNED = {
   items: [
-    { id: "ws_first", name: "Alpha", created_at: 0 },
-    { id: "ws_second", name: "Beta", created_at: 1 },
+    { id: "ws_first", name: "Alpha", created_at: "1970-01-01T00:00:00Z" },
+    { id: "ws_second", name: "Beta", created_at: "1970-01-01T00:00:00.001Z" },
   ],
   total: 2,
 };

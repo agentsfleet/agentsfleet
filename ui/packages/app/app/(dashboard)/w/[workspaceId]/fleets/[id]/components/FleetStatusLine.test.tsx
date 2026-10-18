@@ -32,8 +32,8 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: 40_000_000,
-    created_at: 1_700_000_000_000,
-    updated_at: 1_700_000_000_000,
+    created_at: "2023-11-14T22:13:20Z",
+    updated_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
@@ -144,7 +144,7 @@ describe("FleetStatusLine", () => {
   it("omits the time rather than printing a broken one", () => {
     // A row whose stored timestamp does not read as a date still renders its
     // outcome; the line drops the time instead of showing "Invalid Date".
-    renderLine(event({ created_at: Number.NaN }));
+    renderLine(event({ created_at: "not-an-instant" }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.queryByText(/invalid/i)).toBeNull();
     expect(line().querySelector("time")).toBeNull();
@@ -156,7 +156,7 @@ describe("FleetStatusLine", () => {
     // The relative label answers the question actually being asked, and the
     // absolute instant stays in the element's `dateTime` and its tooltip.
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
-    renderLine(event({ created_at: at }));
+    renderLine(event({ created_at: new Date(at).toISOString() }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     const stamp = line().querySelector("time");
     expect(stamp?.getAttribute("datetime")).toBe(new Date(at).toISOString());

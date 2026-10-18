@@ -20,6 +20,7 @@ import { CHARGE_TYPE, formatDollars } from "../constants/billing.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import { EMPTY_CELL } from "../output/index.ts";
+import { byInstant, instantMs } from "../lib/instant.ts";
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
@@ -40,7 +41,7 @@ interface ChargeRow {
   readonly event_id?: string;
   readonly posture?: string;
   readonly model?: string;
-  readonly recorded_at?: number | null;
+  readonly recorded_at?: string | null;
   readonly charge_type?: string;
   readonly credit_deducted_nanos?: number;
   readonly token_count_input?: number | null;
@@ -57,7 +58,7 @@ interface EventSummary {
   event_id: string | undefined;
   posture: string | undefined;
   model: string | undefined;
-  recorded_at: number | null;
+  recorded_at: string | null;
   receive_nanos: number;
   stage_nanos: number;
   token_count_input: number | null;
@@ -140,14 +141,14 @@ const groupRowsByEvent = (
     // the two so sort-by-time matches the event's gate-pass moment.
     if (
       r.recorded_at != null &&
-      (entry.recorded_at == null || r.recorded_at < entry.recorded_at)
+      (entry.recorded_at == null || byInstant(r.recorded_at, entry.recorded_at) < 0)
     ) {
       entry.recorded_at = r.recorded_at;
     }
     entry.total_nanos = entry.receive_nanos + entry.stage_nanos;
   }
   return Array.from(byEvent.values()).sort(
-    (a, b) => (b.recorded_at ?? 0) - (a.recorded_at ?? 0),
+    (a, b) => (instantMs(b.recorded_at) ?? 0) - (instantMs(a.recorded_at) ?? 0),
   );
 };
 

@@ -28,7 +28,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: 1_700_000_000_000,
+    recorded_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
@@ -50,9 +50,9 @@ describe("formatChargeAmount", () => {
 });
 
 describe("formatChargeTimestamp", () => {
-  it("formats epoch-ms as 'MMM DD, YYYY · HH:MM' (timezone-agnostic structure)", () => {
+  it("formats an RFC 3339 instant as 'MMM DD, YYYY · HH:MM' (timezone-agnostic structure)", () => {
     // Exact date/time shift by the runner's TZ; the structure is fixed.
-    expect(formatChargeTimestamp(1_700_000_000_000)).toMatch(
+    expect(formatChargeTimestamp("2023-11-14T22:13:20Z")).toMatch(
       /^[A-Z][a-z]{2} \d{2}, \d{4} · \d{2}:\d{2}$/,
     );
   });

@@ -42,8 +42,8 @@ describe("fleets routes — detail header and summary", () => {
       failure_label: null,
       failure_detail: null,
       cost_nanos: null,
-      created_at: 1_777_507_200_000,
-      updated_at: 1_777_507_200_000,
+      created_at: "2026-04-30T00:00:00Z",
+      updated_at: "2026-04-30T00:00:00Z",
     };
     const respond = mockFetchBilling(happyBilling);
     fetchMock.mockImplementation(async (url: string) => {

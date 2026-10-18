@@ -74,8 +74,8 @@ function lease(overrides: Partial<RunnerLease>): RunnerLease {
     metered_cached_tokens: 4096,
     metered_output_tokens: 2881,
     wall_ms: 242_000,
-    lease_expires_at: Date.now(),
-    created_at: Date.now(),
+    lease_expires_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -372,8 +372,8 @@ describe("LeaseTable", () => {
       <LeaseTable
         initial={{
           items: [
-            lease({ id: "older", fleet_id: "fleet-older", created_at: OLDER_INSTANT_MS, outcome: "succeeded" }),
-            lease({ id: "newer", fleet_id: "fleet-newer", created_at: NEWER_INSTANT_MS, outcome: "succeeded" }),
+            lease({ id: "older", fleet_id: "fleet-older", created_at: new Date(OLDER_INSTANT_MS).toISOString(), outcome: "succeeded" }),
+            lease({ id: "newer", fleet_id: "fleet-newer", created_at: new Date(NEWER_INSTANT_MS).toISOString(), outcome: "succeeded" }),
           ],
           // total unknown (null) — the pager renders without a fabricated count.
           total: null,

@@ -80,7 +80,7 @@ async function pickCustomProvider(user: ReturnType<typeof userEvent.setup>, dial
 beforeEach(() => {
   vi.clearAllMocks();
   createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway", created_at: 1 } });
+  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway", created_at: "1970-01-01T00:00:00.001Z" } });
   setProviderSelfManagedActionMock.mockResolvedValue({
     ok: true,
     data: { mode: "self_managed", provider: "openai-compatible", model: "vllm-model", context_cap_tokens: 32000, secret_ref: "vllm-gateway", platform_default_available: true },
@@ -196,7 +196,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
   });
 
   it("errors without writing when the name is owned by a named provider's key (name-collision guard)", async () => {
-    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 };
+    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" };
     const { user } = await renderDialog([anthropicSecret]);
     const dialog = screen.getByRole("dialog");
 
@@ -219,7 +219,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
     const { user } = await renderDialog([endpointSecret]);
@@ -247,7 +247,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
     const { user } = await renderDialog([endpointSecret]);
@@ -269,7 +269,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });

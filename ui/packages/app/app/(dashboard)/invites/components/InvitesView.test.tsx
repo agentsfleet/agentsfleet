@@ -15,7 +15,7 @@ import { accountLabel } from "@/components/layout/workspace-groups";
 import { DASHBOARD_ROOT_PATH, DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import { InvitesView } from "./InvitesView";
 
-const FROM_JOHN: WaitingInvite = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: Date.UTC(2026, 9, 7) };
+const FROM_JOHN: WaitingInvite = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: new Date(Date.UTC(2026, 9, 7)).toISOString() };
 const ACCEPT_JOHN = `Accept invite into ${accountLabel(FROM_JOHN.account.owner_name)}`;
 const MISMATCH = "This invite was sent to a different email address. Sign in with that address to accept it.";
 const MISMATCH_REFUSED = { ok: false, status: 403, errorCode: "UZ-INV-002", error: MISMATCH };

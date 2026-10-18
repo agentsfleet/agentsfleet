@@ -48,7 +48,7 @@ export type MemoryEntry = {
   content: string;
   category: string;
   /** epoch milliseconds */
-  updated_at: number;
+  updated_at: string;
   visibility: MemoryVisibility;
   /** The fleet that wrote it; another fleet's id marks an entry this fleet
    * reads and cannot forget. */
@@ -75,9 +75,9 @@ export const NANOS_PER_USD = 1_000_000_000;
 // straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
   balance_nanos: number;
-  updated_at: number;
+  updated_at: string;
   is_exhausted: boolean;
-  exhausted_at: number | null;
+  exhausted_at: string | null;
 };
 
 // ── Tenant LLM provider ──
@@ -153,7 +153,7 @@ export type TenantModelEntry = {
   cached_input_nanos_per_mtok?: number;
   output_nanos_per_mtok?: number;
   active: boolean;
-  created_at: number;
+  created_at: string;
 };
 
 /** The active platform default's identity — rides the registry list so the
@@ -178,7 +178,7 @@ export type TenantModelEntryWriteResult = {
   id: string;
   model_id: string;
   secret_ref: string;
-  created_at: number;
+  created_at: string;
 };
 
 export type TenantBillingChargesResponse = {
@@ -202,7 +202,7 @@ export type TenantBillingChargesResponse = {
     token_count_input: number | null;
     token_count_output: number | null;
     wall_ms: number | null;
-    recorded_at: number;
+    recorded_at: string;
   }>;
   next_cursor: string | null;
 };

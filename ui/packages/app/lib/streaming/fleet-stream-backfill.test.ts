@@ -45,7 +45,7 @@ describe("the recovery walk hands its rows over once", () => {
   it("test_backfill_walk_notifies_once: a three-page walk merges every page and notifies its thread once", async () => {
     threePages();
     const listener = vi.fn();
-    const release = subscribe(WS, Z_A, [row({ event_id: SEED, created_at: SEED_AT_MS })], listener);
+    const release = subscribe(WS, Z_A, [row({ event_id: SEED, created_at: new Date(SEED_AT_MS).toISOString() })], listener);
     reconnect();
     const heardBefore = listener.mock.calls.length;
     await flushBackfill();

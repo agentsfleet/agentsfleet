@@ -92,7 +92,7 @@ describe("listTenantModelEntries", () => {
 
 describe("createTenantModelEntry", () => {
   it("POSTs {model_id, secret_ref}", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ id: "e1", model_id: "m1", secret_ref: "s1", created_at: 1 }));
+    fetchMock.mockResolvedValue(jsonResponse({ id: "e1", model_id: "m1", secret_ref: "s1", created_at: "1970-01-01T00:00:00.001Z" }));
     const { createTenantModelEntry } = await import("./tenant_model_entries");
     await createTenantModelEntry({ model_id: "m1", secret_ref: "s1" }, "tok");
     const [, init] = fetchMock.mock.calls[0]!;
@@ -103,7 +103,7 @@ describe("createTenantModelEntry", () => {
 
 describe("updateTenantModelEntry", () => {
   it("PATCHes /v1/tenants/me/models/{id} with the new model_id", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ id: "e1", model_id: "m2", secret_ref: "s1", created_at: 1 }));
+    fetchMock.mockResolvedValue(jsonResponse({ id: "e1", model_id: "m2", secret_ref: "s1", created_at: "1970-01-01T00:00:00.001Z" }));
     const { updateTenantModelEntry } = await import("./tenant_model_entries");
     await updateTenantModelEntry("e1", { model_id: "m2" }, "tok");
     const [url, init] = fetchMock.mock.calls[0]!;

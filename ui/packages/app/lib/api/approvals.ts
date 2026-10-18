@@ -33,11 +33,11 @@ export type ApprovalGate = {
   status: ApprovalStatusValue;
   detail: string;
   /** epoch ms */
-  created_at: number;
+  created_at: string;
   /** epoch ms — sweeper auto-denies after this */
-  expires_at: number;
+  expires_at: string;
   /** epoch ms; null when still pending */
-  resolved_at: number | null;
+  resolved_at: string | null;
   resolved_by: string;
   /**
    * The decider's name, joined from this deployment's own user rows. Empty
@@ -56,7 +56,7 @@ export type ResolveResponse = {
   gate_id: string;
   action_id: string;
   outcome: ApprovalStatus;
-  resolved_at: number;
+  resolved_at: string;
   resolved_by: string;
 };
 

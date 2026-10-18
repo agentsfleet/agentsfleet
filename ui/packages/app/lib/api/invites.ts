@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { decodeOnePage, isEpochMs, isNonEmptyString, isRecord } from "./decode";
+import { decodeOnePage, isInstant, isNonEmptyString, isRecord } from "./decode";
 import { EMAIL_STATUS, type EmailStatus } from "./invites-types";
 import { decodeWorkspaceAccount, type WorkspaceAccount } from "./workspaces";
 
@@ -24,15 +24,15 @@ export type InviteSummary = {
   email: string;
   role: string;
   /** Epoch milliseconds. */
-  expires_at: number;
+  expires_at: string;
   /** Epoch milliseconds. */
-  created_at: number;
+  created_at: string;
   /** The dashboard page the invitee opens to accept it. */
   link: string;
   /** What became of its most recent email. */
   email_status: EmailStatus;
   /** When the relay last accepted its email, epoch milliseconds; null if never. */
-  email_sent_at: number | null;
+  email_sent_at: string | null;
 };
 
 /** One invite waiting for the caller's address. */
@@ -40,7 +40,7 @@ export type WaitingInvite = {
   id: string;
   account: WorkspaceAccount;
   /** Epoch milliseconds. */
-  expires_at: number;
+  expires_at: string;
 };
 
 /** The account an accepted invite joined, and the workspaces now open. */
@@ -55,11 +55,11 @@ const decodeInvite = (value: unknown): InviteSummary => {
     !isNonEmptyString(value.id) ||
     !isNonEmptyString(value.email) ||
     !isNonEmptyString(value.role) ||
-    !isEpochMs(value.expires_at) ||
-    !isEpochMs(value.created_at) ||
+    !isInstant(value.expires_at) ||
+    !isInstant(value.created_at) ||
     !isNonEmptyString(value.link) ||
     !isEmailStatus(value.email_status) ||
-    !(value.email_sent_at === null || isEpochMs(value.email_sent_at))
+    !(value.email_sent_at === null || isInstant(value.email_sent_at))
   ) {
     throw new Error("invite is invalid");
   }
@@ -76,7 +76,7 @@ const decodeInvite = (value: unknown): InviteSummary => {
 };
 
 const decodeWaiting = (value: unknown): WaitingInvite => {
-  if (!isRecord(value) || !isNonEmptyString(value.id) || !isEpochMs(value.expires_at)) {
+  if (!isRecord(value) || !isNonEmptyString(value.id) || !isInstant(value.expires_at)) {
     throw new Error("waiting invite is invalid");
   }
   return {

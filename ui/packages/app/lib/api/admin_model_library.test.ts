@@ -119,8 +119,8 @@ describe("admin model catalogue client", () => {
 
 // ── Active-default selection: the one active row (or null) drives the badge ───
 describe("activePlatformDefault", () => {
-  const active: PlatformKey = { provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 2 };
-  const inactive: PlatformKey = { provider: "anthropic", source_workspace_id: "ws1", model: null, active: false, updated_at: 1 };
+  const active: PlatformKey = { provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: "1970-01-01T00:00:00.002Z" };
+  const inactive: PlatformKey = { provider: "anthropic", source_workspace_id: "ws1", model: null, active: false, updated_at: "1970-01-01T00:00:00.001Z" };
 
   it("returns the single active row when one is set", () => {
     expect(activePlatformDefault({ keys: [inactive, active] })).toBe(active);

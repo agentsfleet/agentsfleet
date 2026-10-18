@@ -212,8 +212,8 @@ export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: 1,
-    created_at: now,
-    updated_at: now,
+    created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
     ...over,
   };
 }

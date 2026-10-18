@@ -32,7 +32,7 @@ function item(overrides: Partial<RunnerEventItem>): RunnerEventItem {
     id: `evt-${Math.random().toString(36).slice(2)}`,
     runner_id: "r-1",
     event_type: "runner_online",
-    occurred_at: Date.now(),
+    occurred_at: new Date().toISOString(),
     metadata: {},
     ...overrides,
   };
@@ -129,8 +129,8 @@ describe("ActivityTable", () => {
       <ActivityTable
         initial={{
           items: [
-            item({ id: "older", event_type: "runner_online", occurred_at: OLDER_INSTANT_MS }),
-            item({ id: "newer", event_type: "runner_offline", occurred_at: NEWER_INSTANT_MS }),
+            item({ id: "older", event_type: "runner_online", occurred_at: new Date(OLDER_INSTANT_MS).toISOString() }),
+            item({ id: "newer", event_type: "runner_offline", occurred_at: new Date(NEWER_INSTANT_MS).toISOString() }),
           ],
           // total unknown (null) — the pager renders without a fabricated count.
           total: null,
@@ -169,7 +169,7 @@ describe("ActivityTable", () => {
             item({
               id: "offline-1",
               event_type: "runner_offline",
-              occurred_at: SWEEPER_NOTICED_MS,
+              occurred_at: new Date(SWEEPER_NOTICED_MS).toISOString(),
               metadata: { last_seen_at: WENT_DARK_MS },
             }),
           ],
@@ -193,7 +193,7 @@ describe("ActivityTable", () => {
             item({
               id: "online-1",
               event_type: "runner_online",
-              occurred_at: LAST_HEARD_MS + 3_600_000,
+              occurred_at: new Date(LAST_HEARD_MS + 3_600_000).toISOString(),
               metadata: { last_seen_at: LAST_HEARD_MS },
             }),
           ],

@@ -129,7 +129,7 @@ export const RECEIVE_ROW = {
   credit_deducted_nanos: ONE_CENT_NANOS,
   token_count_input: null,
   token_count_output: null,
-  recorded_at: TEST_RECORDED_AT_MS,
+  recorded_at: new Date(TEST_RECORDED_AT_MS).toISOString(),
 };
 export const STAGE_ROW = {
   event_id: "evt_1",
@@ -139,5 +139,5 @@ export const STAGE_ROW = {
   credit_deducted_nanos: 2 * ONE_CENT_NANOS,
   token_count_input: 820,
   token_count_output: 1040,
-  recorded_at: 1_000_005,
+  recorded_at: "1970-01-01T00:16:40.005Z",
 };

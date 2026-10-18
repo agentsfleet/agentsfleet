@@ -29,16 +29,16 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 const MEMBERS_PATH = "/v1/tenants/me/members";
 const INVITES_PATH = "/v1/tenants/me/invites";
-const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: 1 };
+const OWNER = { user_id: "user_john", display_name: "John", email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: "1970-01-01T00:00:00.001Z" };
 const INVITE = {
   id: "inv_1",
   email: "bob@example.com",
   role: ACCOUNT_ROLE.member,
-  expires_at: 2,
-  created_at: 1,
+  expires_at: "1970-01-01T00:00:00.002Z",
+  created_at: "1970-01-01T00:00:00.001Z",
   link: "https://app.agentsfleet.net/invites/inv_1",
   email_status: "sent",
-  email_sent_at: 1,
+  email_sent_at: "1970-01-01T00:00:00.001Z",
 };
 
 function json(status: number, body?: unknown): Response {

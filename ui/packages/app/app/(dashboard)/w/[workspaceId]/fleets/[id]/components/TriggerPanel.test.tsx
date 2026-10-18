@@ -46,7 +46,7 @@ describe("TriggerPanel", () => {
     render(
       <TriggerPanel
         triggers={[trigger]}
-        lastDeliveryByKey={{ [triggerKey(trigger)]: Date.now() - RECENT_DELIVERY_AGE_MS }}
+        lastDeliveryByKey={{ [triggerKey(trigger)]: new Date(Date.now() - RECENT_DELIVERY_AGE_MS).toISOString() }}
       />,
     );
     expect(screen.getByText("linear")).toBeTruthy();

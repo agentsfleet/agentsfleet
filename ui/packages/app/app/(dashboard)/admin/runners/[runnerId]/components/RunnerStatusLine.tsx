@@ -1,6 +1,6 @@
 import { HeartPulseIcon } from "lucide-react";
 import { cn, StatusLine, StatusLineItem, Time } from "@agentsfleet/design-system";
-import type { RunnerDetail } from "@/lib/api/runners";
+import { hasBeenSeen, type RunnerDetail } from "@/lib/api/runners";
 import {
   STRIP_FAILED_UNIT,
   STRIP_HEARTBEAT_LABEL,
@@ -31,9 +31,9 @@ export default function RunnerStatusLine({
   runner: RunnerDetail;
   className?: string;
 }) {
-  // last_seen_at = 0 is the never-connected sentinel: an honest dash, no
+  // A runner that never connected reads the epoch: an honest dash, no
   // fabricated relative time.
-  const seen = runner.last_seen_at > 0;
+  const seen = hasBeenSeen(runner.last_seen_at);
   return (
     <StatusLine
       aria-label={STRIP_LABEL}
@@ -43,7 +43,7 @@ export default function RunnerStatusLine({
         <HeartPulseIcon size={ICON_SIZE} aria-hidden="true" className="shrink-0" />
         <span className="sr-only">{STRIP_HEARTBEAT_LABEL} </span>
         {seen ? (
-          <Time value={new Date(runner.last_seen_at)} format="relative" tooltip={false} />
+          <Time value={runner.last_seen_at} format="relative" tooltip={false} />
         ) : (
           STRIP_VALUE_UNKNOWN
         )}

@@ -239,7 +239,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
       // the only credential — the env slot carries it to the wire.
       await saveWorkspaces(process.env, {
         current_workspace_id: WS_PERSISTED,
-        items: [{ workspace_id: WS_PERSISTED, name: "ws", created_at: Date.now() }],
+        items: [{ workspace_id: WS_PERSISTED, name: "ws", created_at: new Date().toISOString() }],
       });
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();

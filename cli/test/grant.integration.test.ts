@@ -17,9 +17,9 @@ describe("grant (integration grant) commands", () => {
           () => jsonResponse(200, {
             items: [
               { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
-                created_at: 1700000000000, approved_at: 1700000000500 },
+                created_at: "2023-11-14T22:13:20Z", approved_at: "2023-11-14T22:13:20.5Z" },
               { id: "grant_2", service: "slack", status: "pending",
-                created_at: 1700000001000, approved_at: null },
+                created_at: "2023-11-14T22:13:21Z", approved_at: null },
             ],
           }),
       };
@@ -57,7 +57,7 @@ describe("grant (integration grant) commands", () => {
           () => jsonResponse(200, {
             items: [
               { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
-                created_at: 1700000000000, approved_at: 1700000000000 },
+                created_at: "2023-11-14T22:13:20Z", approved_at: "2023-11-14T22:13:20Z" },
             ],
           }),
       };
@@ -70,7 +70,7 @@ describe("grant (integration grant) commands", () => {
         );
         expect(code).toBe(0);
         const payload = JSON.parse(out.read()) as {
-          items: ReadonlyArray<{ service: string; status: string; approved_at: number | null }>;
+          items: ReadonlyArray<{ service: string; status: string; created_at: string; approved_at: string | null }>;
         };
         expect(payload.items).toHaveLength(1);
         const [grant] = payload.items;
@@ -79,7 +79,7 @@ describe("grant (integration grant) commands", () => {
         expect(grant?.approved_at).not.toBeNull();
         // Answered at the instant it was written: nobody was asked, so the
         // moment the row landed IS the moment it was answered.
-        expect(grant?.approved_at).toBe(grant ? 1700000000000 : -1);
+        expect(grant?.approved_at).toBe(grant?.created_at);
       });
     });
   });

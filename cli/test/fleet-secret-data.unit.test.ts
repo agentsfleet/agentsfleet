@@ -71,7 +71,7 @@ const makeWsLayer = (wsId: string): Layer.Layer<Workspaces> =>
   Layer.succeed(Workspaces, {
     load: Effect.succeed({
       current_workspace_id: wsId,
-      items: [{ workspace_id: wsId, name: "test-ws", created_at: Date.now() }],
+      items: [{ workspace_id: wsId, name: "test-ws", created_at: new Date().toISOString() }],
     }),
     save: () => Effect.void,
   });

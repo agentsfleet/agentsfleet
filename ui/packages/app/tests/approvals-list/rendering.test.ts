@@ -162,7 +162,7 @@ describe("ApprovalsTable — states this build has no arm for", () => {
         initialItems: [
           gate({
             status: "approved",
-            resolved_at: SETTLED_AT_MS,
+            resolved_at: new Date(SETTLED_AT_MS).toISOString(),
             resolved_by: DECIDER_SUBJECT,
             resolved_by_name: DECIDER_NAME,
           }),
@@ -185,7 +185,7 @@ describe("ApprovalsTable — states this build has no arm for", () => {
         initialItems: [
           gate({
             status: "approved",
-            resolved_at: SETTLED_AT_MS,
+            resolved_at: new Date(SETTLED_AT_MS).toISOString(),
             resolved_by: DECIDER_SUBJECT,
             resolved_by_name: "",
           }),

@@ -45,7 +45,7 @@ export function FleetHeader({
 }: {
   workspaceId: string;
   fleet: FleetDetail;
-  exhaustedAt?: number | null;
+  exhaustedAt?: string | null;
 }) {
   return (
     <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">

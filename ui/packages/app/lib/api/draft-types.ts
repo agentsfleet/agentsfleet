@@ -1,6 +1,7 @@
 // Native setup is validated by the daemon; browser reads are parsed independently.
 
 import { z } from "zod";
+import { Instant } from "./decode";
 
 export const DRAFT_STATE = {editing: "editing", saving: "saving", closed: "closed"} as const;
 export const MESSAGE_ROLE = {user: "user", assistant: "assistant"} as const;
@@ -41,7 +42,7 @@ export const ReviewSchema = z.object({
     source_revision: z.string().optional(), target_setup_revision: decimal.optional(),
   }),
   requirements: record, readiness: z.array(CheckSchema), review_digest: z.string(),
-  policy_semantics: z.string(), observed_at: z.number().int(),
+  policy_semantics: z.string(), observed_at: Instant,
 });
 export const AcceptedSchema = z.object({status: z.literal("accepted"), sequence: decimal, replayed: z.boolean()});
 export const CancellationSchema = z.object({cancelled_through: decimal,
@@ -55,7 +56,7 @@ export const DraftSchema = z.object({
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
-  text: z.string().optional(), created_at: z.number().int(), candidate_id: z.uuidv7().optional(),
+  text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
@@ -86,7 +87,7 @@ export const ModelsSchema = z.object({items: z.array(z.object({
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
-  linked_fleet_id: z.uuidv7().nullable(), updated_at: z.number().int(), expires_at: z.number().int().nullable(),
+  linked_fleet_id: z.uuidv7().nullable(), updated_at: Instant, expires_at: Instant.nullable(),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;

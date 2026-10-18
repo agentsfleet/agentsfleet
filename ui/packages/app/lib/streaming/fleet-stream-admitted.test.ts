@@ -20,7 +20,7 @@ function admitted(message: string | null = TYPED): LiveFrame {
     actor: TEAMMATE,
     event_type: "chat",
     ...(message === null ? {} : { message }),
-    created_at: ADMITTED_AT,
+    created_at: new Date(ADMITTED_AT).toISOString(),
   };
 }
 
@@ -30,7 +30,7 @@ function received(message?: string): LiveFrame {
     event_id: EVENT_ID,
     actor: TEAMMATE,
     event_type: "chat",
-    created_at: RECEIVED_AT,
+    created_at: new Date(RECEIVED_AT).toISOString(),
     ...(message === undefined ? {} : { message }),
   };
 }
@@ -95,7 +95,7 @@ describe("a message waiting for a runner", () => {
 
   it("stamps a waiting row with the browser clock when the frame has no instant", () => {
     const before = Date.now();
-    const { created_at: _dropped, ...undated } = admitted() as Extract<LiveFrame, { created_at?: number }>;
+    const { created_at: _dropped, ...undated } = admitted() as Extract<LiveFrame, { created_at?: string }>;
     const [row] = fold([undated as LiveFrame]);
     expect(row?.createdAt.getTime()).toBeGreaterThanOrEqual(before);
   });

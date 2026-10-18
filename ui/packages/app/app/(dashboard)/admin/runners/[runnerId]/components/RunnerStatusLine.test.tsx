@@ -12,8 +12,8 @@ const RUNNER: RunnerDetail = {
   status: "active",
   liveness: "busy",
   labels: [],
-  last_seen_at: Date.now() - 8_000,
-  created_at: Date.now() - 86_400_000,
+  last_seen_at: new Date(Date.now() - 8_000).toISOString(),
+  created_at: new Date(Date.now() - 86_400_000).toISOString(),
   assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
   achievable: null,
   degraded: false,
@@ -57,7 +57,7 @@ describe("RunnerStatusLine", () => {
   });
 
   it("should dash the heartbeat for a never-seen runner and quiet an idle one", () => {
-    render(<RunnerStatusLine runner={{ ...RUNNER, last_seen_at: 0, active_lease_count: 0 }} />);
+    render(<RunnerStatusLine runner={{ ...RUNNER, last_seen_at: "1970-01-01T00:00:00Z", active_lease_count: 0 }} />);
     // last_seen_at = 0 is the never-connected sentinel: an honest dash, no
     // fabricated relative time.
     expect(screen.getByText("—")).toBeTruthy();

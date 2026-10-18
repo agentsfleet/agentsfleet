@@ -18,11 +18,11 @@ describe("hydrateWorkspacesAfterLogin — paging and tenant ownership", () => {
         {
           workspace_id: "ws_previous",
           name: "previous",
-          created_at: 1,
+          created_at: "1970-01-01T00:00:00.001Z",
         },
       ],
     };
-    const items = [{ id: "ws_current", name: "current", created_at: 2 }];
+    const items = [{ id: "ws_current", name: "current", created_at: "1970-01-01T00:00:00.002Z" }];
     const exit = await Effect.runPromiseExit(
       hydrateWorkspacesAfterLogin(tok).pipe(
         Effect.provide(
@@ -50,7 +50,7 @@ describe("hydrateWorkspacesAfterLogin — paging and tenant ownership", () => {
         {
           workspace_id: "ws_current",
           name: "current",
-          created_at: 2,
+          created_at: "1970-01-01T00:00:00.002Z",
         },
       ],
     });

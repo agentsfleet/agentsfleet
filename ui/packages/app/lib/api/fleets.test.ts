@@ -7,7 +7,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: 0, updated_at: 0, events_processed: "0", budget_used_nanos: "0" };
+const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" };
 
 describe("listFleets", () => {
   it("GET /v1/workspaces/:ws/fleets with bearer, returns envelope", async () => {

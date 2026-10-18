@@ -23,7 +23,7 @@ describe("fleet stream durable final read", () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_late_activity", response_text: "Durable answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_late_activity", status: "processed", actor: "fleet", created_at: Date.now() });
+    source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_late_activity", status: "processed", actor: "fleet", created_at: new Date().toISOString() });
     await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer"));
     source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_late_activity", text: "PRIVATE late draft", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     source.emit({ call_id: "late_tool", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_late_activity", name: "late_tool", args_redacted: true });
@@ -188,8 +188,8 @@ describe("fleet stream durable final read", () => {
 
   it("recovers a late subscriber from history when the completion frame is also missed", async () => {
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_late_gap", response_text: "History answer" }) });
-    fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_late_gap", created_at: MISSED_AT_MS, response_text: null })]));
-    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    fetchSpy.mockResolvedValueOnce(pageWith([row({ event_id: "evt_late_gap", created_at: new Date(MISSED_AT_MS).toISOString(), response_text: null })]));
+    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     sourceAt(0).emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_late_gap", text: "PRIVATE mid-tool", stream_start: false });
     reconnect();
     await flushBackfill();
@@ -245,15 +245,15 @@ describe("a body-less row a backfill brings in", () => {
   const STEER_ID = "evt_while_away";
   const ASKED = "Deploy the preview";
   const ANSWERED = "Deployed.";
-  const listRow = { ...row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: MISSED_AT_MS }), request_json: undefined, response_text: undefined };
+  const listRow = { ...row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: new Date(MISSED_AT_MS).toISOString() }), request_json: undefined, response_text: undefined };
 
   it("reads its saved row once, and shows the message and the answer", async () => {
     getFleetEventActionMock.mockResolvedValue({
       ok: true,
-      data: row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: MISSED_AT_MS, request_json: JSON.stringify({ message: ASKED }), response_text: ANSWERED }),
+      data: row({ event_id: STEER_ID, actor: "steer:user_abc", status: "processed", created_at: new Date(MISSED_AT_MS).toISOString(), request_json: JSON.stringify({ message: ASKED }), response_text: ANSWERED }),
     });
     fetchSpy.mockResolvedValue(pageWith([listRow]));
-    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const source = reconnect();
     await flushBackfill();
     await vi.advanceTimersByTimeAsync(0);

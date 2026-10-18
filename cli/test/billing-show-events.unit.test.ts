@@ -152,8 +152,8 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     const rec = makeRecorder();
     const items: Array<Record<string, unknown>> = [];
     for (const eid of ["evt_a", "evt_b", "evt_c"]) {
-      items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: items.length });
-      items.push({ ...STAGE_ROW, event_id: eid, recorded_at: items.length });
+      items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
+      items.push({ ...STAGE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
     }
     const program = billingShowEffectFromArgs({
       limit: "2",

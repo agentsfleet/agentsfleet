@@ -29,7 +29,7 @@ const ENTRY: MemoryEntry = {
   category: "style",
   visibility: "fleet",
   writer_fleet_id: "agt_1",
-  updated_at: 1_700_000_000_000,
+  updated_at: "2023-11-14T22:13:20Z",
 };
 
 beforeEach(() => {
@@ -97,7 +97,7 @@ describe("MemoryPanel", () => {
     view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
     expect(screen.queryByText(ENTRY.content)).toBeNull();
 
-    const relearned = { ...ENTRY, content: "Use spaces in generated configs", updated_at: ENTRY.updated_at + 1 };
+    const relearned = { ...ENTRY, content: "Use spaces in generated configs", updated_at: new Date(Date.parse(ENTRY.updated_at) + 1).toISOString() };
     view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[relearned]} />);
     await waitFor(() => expect(screen.getByText(relearned.content)).toBeTruthy());
   });

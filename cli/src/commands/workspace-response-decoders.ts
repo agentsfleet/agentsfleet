@@ -1,11 +1,12 @@
 import { isString } from "../lib/guards.ts";
+import { isInstant } from "../lib/instant.ts";
 
 const WORKSPACE_LIST_PAGE_LIMIT = 100;
 
 export interface WorkspaceWireItem {
   readonly id: string;
   readonly name: string | null;
-  readonly created_at: number;
+  readonly created_at: string;
 }
 
 export interface WorkspacePageResponse {
@@ -34,14 +35,14 @@ const decodeWorkspaceItem = (value: unknown): WorkspaceWireItem | null => {
   if (
     !isNonEmptyString(value.id) ||
     (value.name !== null && !isString(value.name)) ||
-    !Number.isSafeInteger(value.created_at)
+    !isInstant(value.created_at)
   ) {
     return null;
   }
   return {
     id: value.id,
     name: value.name,
-    created_at: value.created_at as number,
+    created_at: value.created_at,
   };
 };
 

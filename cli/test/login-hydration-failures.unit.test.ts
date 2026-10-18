@@ -66,7 +66,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
     const previous: WorkspacesValue = {
       tenant_id: "tenant_previous",
       current_workspace_id: "ws_previous",
-      items: [{ workspace_id: "ws_previous", name: "previous", created_at: 1 }],
+      items: [{ workspace_id: "ws_previous", name: "previous", created_at: "1970-01-01T00:00:00.001Z" }],
     };
     const exit = await Effect.runPromiseExit(
       hydrateWorkspacesAfterLogin(tok).pipe(
@@ -102,7 +102,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
         Effect.provide(
           httpLayer(() =>
             Effect.succeed({
-              items: [{ id: "ws_new", name: "new", created_at: 2 }],
+              items: [{ id: "ws_new", name: "new", created_at: "1970-01-01T00:00:00.002Z" }],
               total: null,
               next_cursor: null,
             }),
@@ -123,7 +123,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
     const items = [
       null,
       {},
-      { id: "ws_valid", name: "valid", created_at: 2 },
+      { id: "ws_valid", name: "valid", created_at: "1970-01-01T00:00:00.002Z" },
     ];
     const exit = await Effect.runPromiseExit(
       hydrateWorkspacesAfterLogin(tok).pipe(
@@ -149,7 +149,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
 
   test("workspace load failure falls back before saving hydrated items", async () => {
     const rec = makeRec();
-    const items = [{ id: "ws_valid", name: "valid", created_at: 2 }];
+    const items = [{ id: "ws_valid", name: "valid", created_at: "1970-01-01T00:00:00.002Z" }];
     const failingLoad = Effect.fail(
       new UnexpectedError({ detail: "read failed", suggestion: "retry" }),
     );
@@ -179,7 +179,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
     const failingSave = Effect.fail(
       new UnexpectedError({ detail: "disk full", suggestion: "free space" }),
     );
-    const items = [{ id: "ws_1", name: "n", created_at: 1 }];
+    const items = [{ id: "ws_1", name: "n", created_at: "1970-01-01T00:00:00.001Z" }];
     const exit = await Effect.runPromiseExit(
       hydrateWorkspacesAfterLogin(tok).pipe(
         Effect.provide(
@@ -202,7 +202,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
 
   test("canonical workspace item fields are persisted without fallbacks", async () => {
     const rec = makeRec();
-    const items = [{ id: "ws_id_form", name: "from-id", created_at: 3 }];
+    const items = [{ id: "ws_id_form", name: "from-id", created_at: "1970-01-01T00:00:00.003Z" }];
     const exit = await Effect.runPromiseExit(
       hydrateWorkspacesAfterLogin(tok).pipe(
         Effect.provide(
@@ -231,8 +231,8 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
       tenant_id: "tenant_same",
       current_workspace_id: "ws_middle",
       items: [
-        { workspace_id: "ws_oldest", name: "old", created_at: 1 },
-        { workspace_id: "ws_middle", name: "middle", created_at: 2 },
+        { workspace_id: "ws_oldest", name: "old", created_at: "1970-01-01T00:00:00.001Z" },
+        { workspace_id: "ws_middle", name: "middle", created_at: "1970-01-01T00:00:00.002Z" },
       ],
     };
     const exit = await Effect.runPromiseExit(
@@ -247,9 +247,9 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
                       {
                         id: "ws_middle",
                         name: "middle updated",
-                        created_at: 2,
+                        created_at: "1970-01-01T00:00:00.002Z",
                       },
-                      { id: "ws_newest", name: "new", created_at: 3 },
+                      { id: "ws_newest", name: "new", created_at: "1970-01-01T00:00:00.003Z" },
                     ],
                     tenant_id: "tenant_same",
                     total: null,
@@ -260,7 +260,7 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
                       {
                         id: "ws_oldest",
                         name: "updated",
-                        created_at: 1,
+                        created_at: "1970-01-01T00:00:00.001Z",
                       },
                     ],
                     tenant_id: "tenant_same",
@@ -284,13 +284,13 @@ describe("hydrateWorkspacesAfterLogin — a failed or partial read", () => {
     ]);
     expect(rec.savedValue?.current_workspace_id).toBe("ws_middle");
     expect(rec.savedValue?.items).toEqual([
-      { workspace_id: "ws_oldest", name: "updated", created_at: 1 },
+      { workspace_id: "ws_oldest", name: "updated", created_at: "1970-01-01T00:00:00.001Z" },
       {
         workspace_id: "ws_middle",
         name: "middle updated",
-        created_at: 2,
+        created_at: "1970-01-01T00:00:00.002Z",
       },
-      { workspace_id: "ws_newest", name: "new", created_at: 3 },
+      { workspace_id: "ws_newest", name: "new", created_at: "1970-01-01T00:00:00.003Z" },
     ]);
   });
 });

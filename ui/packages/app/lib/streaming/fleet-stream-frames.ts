@@ -1,3 +1,4 @@
+import { instantMs, isInstant } from "@/lib/api/decode";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import {
@@ -80,7 +81,7 @@ function applyEventReceived(
   // The daemon stamps the frame with the row's own instant; a frame without
   // one (a malformed payload) falls back to now rather than to an invalid
   // date, so the row still sorts and renders.
-  const createdAt = figure(frame.created_at);
+  const createdAt = instantMs(frame.created_at);
   const index = prev.findIndex((e) => e.id === frame.event_id);
   const existing = prev[index];
   // A row the browser already holds — the operator's own steer, reconciled
@@ -194,7 +195,7 @@ function applyEventComplete(
   // until reload. The class rides alongside so guidance renders live too.
   const label = text(frame.failure_label);
   const detail = text(frame.failure_detail);
-  const createdAt = figure(frame.created_at);
+  const createdAt = instantMs(frame.created_at);
   const updated = [...prev];
   // A call still open when its turn ends was cut off, so it reads interrupted.
   updated[index] = closeReasoningSpan(interruptOpenCalls({
@@ -229,8 +230,7 @@ function openFromCompletion(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
 ): FleetEvent[] {
-  const createdAt = figure(frame.created_at);
-  if (typeof frame.actor !== "string" || createdAt === null) return prev;
+  if (typeof frame.actor !== "string" || !isInstant(frame.created_at)) return prev;
   const row: EventRow = {
     fleet_id: "",
     workspace_id: "",
@@ -243,8 +243,8 @@ function openFromCompletion(
     failure_label: text(frame.failure_label) || null,
     failure_detail: text(frame.failure_detail) || null,
     resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
-    created_at: createdAt,
-    updated_at: figure(frame.updated_at) ?? createdAt,
+    created_at: frame.created_at,
+    updated_at: isInstant(frame.updated_at) ? frame.updated_at : frame.created_at,
     cost_nanos: figure(frame.cost_nanos),
   };
   return [...prev, rowToEvent(row)];
@@ -325,9 +325,8 @@ export function maxServerCreatedAt(
 ): number | null {
   let max = current;
   for (const r of rows) {
-    if (typeof r.created_at === "number" && (max === null || r.created_at > max)) {
-      max = r.created_at;
-    }
+    const at = instantMs(r.created_at);
+    if (at !== null && (max === null || at > max)) max = at;
   }
   return max;
 }

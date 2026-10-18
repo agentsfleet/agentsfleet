@@ -9,7 +9,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 import { SECRETS_LOAD } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load";
 import { useStoredSecrets } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/use-stored-secrets";
 
-const secret = (name: string) => ({ name, provider: "anthropic", created_at: 1_777_507_200_000 });
+const secret = (name: string) => ({ name, provider: "anthropic", created_at: "2026-04-30T00:00:00Z" });
 
 /** A promise plus the handles to settle it later — the only way to hold two
  *  reads in flight at once and choose which one answers first. */

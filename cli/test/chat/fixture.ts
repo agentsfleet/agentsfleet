@@ -19,7 +19,7 @@ export const TOKEN = Redacted.make("local-chat-test");
 export const REVIEW: Review = {
   effective: {definition: {schema_version: 1, description: "Watch Argo deployments", instructions_md: "Inspect the deployment", config: {}},
     instance_name: "argo", runtime_model_ref: "owner/runtime"},
-  requirements: {}, readiness: [], review_digest: "reviewed-setup", policy_semantics: "native-v1", observed_at: 1,
+  requirements: {}, readiness: [], review_digest: "reviewed-setup", policy_semantics: "native-v1", observed_at: "1970-01-01T00:00:00.001Z",
 };
 export const DRAFT: Draft = {
   id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Argo", etag: '"draft-1"', authoring_model_ref: MODEL,
@@ -46,7 +46,7 @@ export const SCHEDULE_UNCONFIRMED =
   `Schedule ${SCHEDULE_ID} is saved but its registration was not confirmed, so it may not fire. Retry in a minute with: ${SCHEDULE_RETRY}`;
 export const ACCEPTED = {status: "accepted", sequence: "1", replayed: false} as const;
 export const MESSAGE = {sequence: "1", operation_id: DRAFT_ID, role: MESSAGE_ROLE.user,
-  state: MESSAGE_STATE.completed, text: PRIVATE_TEXT, created_at: 1};
+  state: MESSAGE_STATE.completed, text: PRIVATE_TEXT, created_at: "1970-01-01T00:00:00.001Z"};
 export const EMPTY_PAGE = {items: [], next_cursor: null};
 export const PUBLICATION = {library_id: LIBRARY_ID, revision_id: REVISION_ID, head_revision_id: REVISION_ID, etag: '"library-1"'};
 export const JSON_TYPE = "application/json";

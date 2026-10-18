@@ -123,7 +123,7 @@ describe("admin/models page", () => {
     mockAuth();
     listAdminModelsMock.mockResolvedValueOnce({ models: [{ model_id: "glm-5.2" }] });
     listPlatformKeysMock.mockResolvedValueOnce({
-      keys: [{ provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1 }],
+      keys: [{ provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: "1970-01-01T00:00:00.001Z" }],
     });
     const { default: Page } = await import("../app/(dashboard)/admin/models/page");
     const html = renderToStaticMarkup(await Page());

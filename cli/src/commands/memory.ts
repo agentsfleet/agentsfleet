@@ -69,7 +69,7 @@ interface MemoryRow {
   readonly key?: string | null;
   readonly content?: string | null;
   readonly category?: string | null;
-  readonly updated_at?: number | null;
+  readonly updated_at?: string | null;
   readonly writer_fleet_id?: string | null;
 }
 

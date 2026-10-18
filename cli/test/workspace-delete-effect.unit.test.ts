@@ -29,8 +29,8 @@ describe("workspaceDeleteEffectFromArgs", () => {
       value: {
         current_workspace_id: WS_ID,
         items: [
-          { workspace_id: WS_ID, name: "main", created_at: 0 },
-          { workspace_id: WS_ID_2, name: "other", created_at: 0 },
+          { workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00Z" },
+          { workspace_id: WS_ID_2, name: "other", created_at: "1970-01-01T00:00:00Z" },
         ],
       } as WorkspacesValue,
     };
@@ -72,7 +72,7 @@ describe("workspaceDeleteEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 0 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00Z" }],
       } as WorkspacesValue,
     };
     const original = workspacesState.value.items;
@@ -92,7 +92,7 @@ describe("workspaceDeleteEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 0 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceDeleteEffectFromArgs(WS_ID, undefined).pipe(

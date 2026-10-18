@@ -72,7 +72,7 @@ const makeWsLayer = (wsId: string): Layer.Layer<Workspaces> =>
   Layer.succeed(Workspaces, {
     load: Effect.succeed({
       current_workspace_id: wsId,
-      items: [{ workspace_id: wsId, name: "test-ws", created_at: Date.now() }],
+      items: [{ workspace_id: wsId, name: "test-ws", created_at: new Date().toISOString() }],
     }),
     save: () => Effect.void,
   });
@@ -294,7 +294,7 @@ describe("secretListEffect non-empty list (lines 260-263)", () => {
     const http = makeHttpLayer(() =>
       Effect.succeed({
         secrets: [
-          { name: "alpha", created_at: 1700000000000 },
+          { name: "alpha", created_at: "2023-11-14T22:13:20Z" },
           { name: "beta", created_at: null },
         ],
       }),

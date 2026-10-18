@@ -27,7 +27,7 @@ interface ResolutionResponse {
   readonly gate_id: string;
   readonly action_id: string;
   readonly outcome: string;
-  readonly resolved_at: number;
+  readonly resolved_at: string;
   readonly resolved_by: string;
 }
 

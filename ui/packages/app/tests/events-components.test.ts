@@ -72,8 +72,8 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    created_at: now,
-    updated_at: now,
+    created_at: new Date(now).toISOString(),
+    updated_at: new Date(now).toISOString(),
     ...over,
   };
 }
@@ -497,8 +497,8 @@ describe("EventsList — the standard workspace events table", () => {
   it("renders relative <time> with a standard datetime when created_at is valid; omits when invalid", () => {
     const { container } = renderList({
       items: [
-        row({ event_id: "ok", created_at: Date.UTC(2026, 0, 2, 3, 4, 0) }),
-        row({ event_id: "bad", created_at: Number.NaN as unknown as number }),
+        row({ event_id: "ok", created_at: new Date(Date.UTC(2026, 0, 2, 3, 4, 0)).toISOString() }),
+        row({ event_id: "bad", created_at: "not-an-instant" }),
       ],
       next_cursor: null,
     });

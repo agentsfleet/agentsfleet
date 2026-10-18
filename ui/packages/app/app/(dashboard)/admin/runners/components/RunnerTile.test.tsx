@@ -22,8 +22,8 @@ function runner(overrides: Partial<RunnerListItem> = {}): RunnerListItem {
     status: "active",
     liveness: "online",
     labels: ["gpu"],
-    last_seen_at: Date.now(),
-    created_at: Date.now(),
+    last_seen_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
@@ -173,7 +173,7 @@ describe("RunnerTile", () => {
   });
 
   it("should read never-connected for a freshly minted runner", () => {
-    render(<RunnerTile runner={runner({ liveness: "registered", last_seen_at: 0 })} />);
+    render(<RunnerTile runner={runner({ liveness: "registered", last_seen_at: "1970-01-01T00:00:00Z" })} />);
     // The sentence appears in both the work line and the last-seen line —
     // present is what matters, and no lease read ever fires for it.
     expect(screen.getAllByText("Never connected.").length).toBeGreaterThan(0);
@@ -220,7 +220,7 @@ it("keeps refreshed activity when the old request rejects afterwards", async () 
   listRunnerLeasesActionMock.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ok: true,
     data: {items: [lease("Current Fleet")], total: 1, next_cursor: null}});
   const view = render(<RunnerTile runner={runner({liveness: "busy"})} />);
-  view.rerender(<RunnerTile runner={runner({liveness: "busy", last_seen_at: Date.now() + 1})} />);
+  view.rerender(<RunnerTile runner={runner({liveness: "busy", last_seen_at: new Date(Date.now() + 1).toISOString()})} />);
   await screen.findByText("1 lease · Current Fleet");
   await act(async () => {older.reject(new Error("old request failed"));});
   expect(screen.getByText("1 lease · Current Fleet")).toBeTruthy();
