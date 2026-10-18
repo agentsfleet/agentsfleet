@@ -23,7 +23,7 @@ it.each([false, true])("returns to the first page without changing library scope
   });
   vi.stubGlobal("fetch", fetcher);
   render(<LibraryBrowser {...PROPS} />);
-  const scope = screen.getByRole("tab", {name: owned ? "This workspace" : "All"});
+  const scope = screen.getByRole("tab", {name: owned ? "Workspace" : "All"});
   if (owned) fireEvent.mouseDown(scope);
   await screen.findByText(LIBRARY_CARD.name);
   expect(screen.queryByRole("button", {name: firstPageLabel})).toBeNull();
@@ -52,9 +52,9 @@ it("keeps empty later pages distinct and resets the cursor when changing tabs", 
   fireEvent.click(await screen.findByRole("button", {name: "Next page"}));
   await waitFor(() => expect(fetcher.mock.calls.some(([input]) => new URL(input, "https://app.test").searchParams.get("starting_after") === "later")).toBe(true));
   await screen.findByText("No published setups on this page. Check another page or change the library scope.");
-  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "Workspace"}));
   await screen.findByText(/No setups have been published by this workspace/);
-  expect(screen.getByRole("tab", {name: "This workspace"}).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", {name: "Workspace"}).getAttribute("aria-selected")).toBe("true");
   const last = fetcher.mock.calls.at(-1)?.[0];
   expect(last && new URL(last, "https://app.test").searchParams.has("starting_after")).toBe(false);
 });
@@ -171,7 +171,7 @@ it("confirms owned recipe removal and keeps a refused recipe visible", async () 
   render(<LibraryBrowser {...PROPS} />);
   await screen.findByText(LIBRARY_CARD.name);
   expect(screen.queryByRole("button", {name: "Remove from this workspace"})).toBeNull();
-  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "Workspace"}));
   fireEvent.click(await screen.findByRole("button", {name: "Remove from this workspace"}));
   expect(removeEntry).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
@@ -234,7 +234,7 @@ it("retains a removal failure inside the dialog and removes the row after succes
   vi.stubGlobal("fetch", vi.fn(async () => response({items: removed ? [] : [{...LIBRARY_CARD, visibility: "tenant"}], next_cursor: null})));
   render(<LibraryBrowser {...PROPS} />);
   await screen.findByText(LIBRARY_CARD.name);
-  fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "Workspace"}));
   fireEvent.click(await screen.findByRole("button", {name: "Remove from this workspace"}));
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
   await screen.findByText("Removal could not be confirmed. Refresh the Library before trying again.");
@@ -243,4 +243,16 @@ it("retains a removal failure inside the dialog and removes the row after succes
   expect(screen.queryByRole("alertdialog")).toBeNull();
   fireEvent.mouseDown(screen.getByRole("tab", {name: "All"}));
   await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
+});
+
+
+it("explains library ownership and offers a new fleet from an empty library", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => response(EMPTY_HISTORY)));
+  render(<LibraryBrowser {...PROPS} />);
+  expect(screen.getByText(/Private setups from other accounts are never included/)).toBeTruthy();
+  const link = await screen.findByRole("link", {name: "New fleet"});
+  expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new`);
+  fireEvent.mouseDown(screen.getByRole("tab", {name: "Workspace"}));
+  await screen.findByText(/No setups have been published by this workspace/);
+  expect(screen.getByText("Setups published by your account, available in this workspace.")).toBeTruthy();
 });
