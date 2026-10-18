@@ -137,17 +137,14 @@ async fn test_every_list_route_refuses_its_limit_out_of_range() {
                 "{path}: {detail:?}"
             );
         }
+        // At the ceiling the request passes every gate and reaches the store,
+        // which answers the harness's unreachable datastore with a 503.
         let at_ceiling = route.with_limit(route.ceiling);
-        let (status, _code, _detail) = answer(&at_ceiling).await;
-        assert_ne!(
+        let (status, _code, detail) = answer(&at_ceiling).await;
+        assert_eq!(
             status,
-            StatusCode::BAD_REQUEST,
-            "{at_ceiling} is inside its ceiling"
-        );
-        assert_ne!(
-            status,
-            StatusCode::FORBIDDEN,
-            "{at_ceiling} passed its rung"
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{at_ceiling} is inside its ceiling and reaches the store: {detail:?}"
         );
     }
 }

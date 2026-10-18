@@ -120,13 +120,6 @@ async fn a_limit_that_is_not_a_number_is_refused() {
 }
 
 #[tokio::test]
-async fn the_limit_cap_is_inside_the_range() {
-    let path = format!("{CHARGES}?limit=200");
-    let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-    assert_reached_the_verb(response, "limit=200").await;
-}
-
-#[tokio::test]
 async fn a_cursor_this_daemon_never_issued_is_refused() {
     let path = format!("{CHARGES}?cursor=!!not-a-token");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
