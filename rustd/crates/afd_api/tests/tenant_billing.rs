@@ -173,6 +173,23 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
     );
 }
 
+/// A well-formed token whose id half is not a `UUIDv7` is refused here, as a
+/// 400, before the statement that binds the id as `uuid` could fail inside
+/// Postgres and answer as a server fault.
+#[tokio::test]
+async fn a_cursor_naming_no_row_id_is_refused_before_the_datastore() {
+    use base64::Engine as _;
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("2026-01-01T00:00:00Z|x");
+    let path = format!("{CHARGES}?cursor={token}");
+    let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+    assert_eq!(
+        detail_of(response).await,
+        afd_tenant::error::detail::DETAIL_CHARGES_CURSOR_INVALID,
+        "the same undifferentiated refusal as any other malformed cursor"
+    );
+}
+
 /// `?cursor=` with nothing after it is the first page, not a malformed token.
 #[tokio::test]
 async fn an_empty_cursor_is_the_first_page() {
