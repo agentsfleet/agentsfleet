@@ -3,18 +3,13 @@
 use super::lane::Lane;
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
+use afd_core::test_util::trace::Capture;
 use afd_dragonfly::{
     Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
 use afd_wire::event::EventType;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, PoisonError},
-    time::Duration,
-};
-use tracing::field::{Field, Visit};
-use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
+use std::{collections::HashMap, time::Duration};
 
 /// Who the fixture's admission says raised it.
 const ACTOR: &str = "fixture:receipt";
@@ -78,28 +73,17 @@ pub(super) async fn confirm(
 /// `rules`, recording what the admission logged on this thread.
 pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
     let (server, admissions) = over_fake(lane, rules).await;
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let outcome = {
-        let _scoped = tracing::subscriber::set_default(
-            tracing_subscriber::registry().with(Recorder(Arc::clone(&events))),
-        );
-        admissions
-            .admit(Admission {
-                producer: Producer::Steer,
-                key: Key::Repeated(&lane.fleet),
-                fleet: &lane.fleet,
-                workspace: &lane.workspace,
-                actor: ACTOR,
-                event_type: EventType::Chat,
-                request_json: REQUEST_JSON,
-                reply: ReplyTo::None,
-            })
-            .await
-    };
-    let events = events
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone();
+    let (outcome, events) = recording(admissions.admit(Admission {
+        producer: Producer::Steer,
+        key: Key::Repeated(&lane.fleet),
+        fleet: &lane.fleet,
+        workspace: &lane.workspace,
+        actor: ACTOR,
+        event_type: EventType::Chat,
+        request_json: REQUEST_JSON,
+        reply: ReplyTo::None,
+    }))
+    .await;
     Run {
         outcome,
         seen: server.seen(),
@@ -129,46 +113,15 @@ pub(crate) async fn replay_against(
 /// Runs `work` on this thread with every event it logs recorded, and answers
 /// both. Concurrent futures joined inside `work` log to the same record.
 pub(super) async fn recording<F: Future>(work: F) -> (F::Output, Vec<HashMap<String, String>>) {
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let output = {
-        let _scoped = tracing::subscriber::set_default(
-            tracing_subscriber::registry().with(Recorder(Arc::clone(&events))),
-        );
-        work.await
-    };
-    let events = events
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone();
+    let capture = Capture::install();
+    let output = work.await;
+    let events = capture
+        .events()
+        .into_iter()
+        .map(|event| event.fields)
+        .collect();
     (output, events)
 }
 
 /// Rows one replay reaches, so the shared lane's other rows cannot crowd out this one's.
 const REPLAY_LIMIT: i64 = 10_000;
-
-/// Keeps every event's fields as text.
-struct Recorder(Arc<Mutex<Vec<HashMap<String, String>>>>);
-
-impl<S: tracing::Subscriber> Layer<S> for Recorder {
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
-        let mut fields = Fields(HashMap::new());
-        event.record(&mut fields);
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(fields.0);
-    }
-}
-
-/// One event's fields, as text.
-struct Fields(HashMap<String, String>);
-
-impl Visit for Fields {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.0.insert(field.name().to_owned(), value.to_owned());
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.0.insert(field.name().to_owned(), format!("{value:?}"));
-    }
-}
