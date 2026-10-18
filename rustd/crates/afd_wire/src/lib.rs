@@ -68,3 +68,4 @@ pub mod runner;
 pub mod schedule_verb;
 pub mod tool_detail;
 pub mod tool_trace;
+pub mod usage;
