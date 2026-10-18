@@ -22,8 +22,8 @@ async fn timestamp_wallet_and_authoring_selection_do_not_change_reviewed_meaning
             .iter()
             .any(|check| check.kind == CheckKind::Wallet && check.state == CheckState::Missing)
     );
-    sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'review-fixture',$2,$2)")
-        .bind(f.tenant.as_str()).bind(now().as_millis()).bind(crate::draft::FUNDED_NANOS).execute(&mut *f.connection().await).await.expect("fund owner wallet");
+    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
+        .bind(f.tenant.as_str()).bind(crate::draft::FUNDED_NANOS).execute(&mut *f.connection().await).await.expect("fund owner wallet");
     let patch: DraftPatch = serde_json::from_value(
         json!({"authoring_model_ref":f.other_model,"title":"Display title"}),
     )
@@ -79,7 +79,7 @@ async fn model_generation_changes_digest_and_deleted_selection_never_falls_back(
     let draft = draft(&f, false).await;
     let first = review(&f, &draft, false).await;
     sqlx::query(
-        "UPDATE core.model_library SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1::uuid",
+        "UPDATE model.platform_models SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1::uuid",
     )
     .bind(f.catalogue[0].as_str())
     .execute(&mut *f.connection().await)
@@ -87,7 +87,7 @@ async fn model_generation_changes_digest_and_deleted_selection_never_falls_back(
     .expect("model generation drift");
     let changed = review(&f, &draft, false).await;
     assert_ne!(first.review_digest, changed.review_digest);
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await

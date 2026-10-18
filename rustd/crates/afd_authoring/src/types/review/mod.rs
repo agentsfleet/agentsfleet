@@ -40,7 +40,8 @@ pub struct Review {
     /// Versioned policy interpretation.
     pub policy_semantics: String,
     /// Observation time excluded from the digest.
-    pub observed_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub observed_at: jiff::Timestamp,
 }
 
 impl Review {

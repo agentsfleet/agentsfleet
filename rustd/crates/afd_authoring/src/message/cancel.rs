@@ -7,7 +7,7 @@ use crate::{
     sql,
     types::{CANCELLED, QUEUED, RUNNING},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
 use serde::Serialize;
 use sqlx::Connection as _;
@@ -43,31 +43,28 @@ impl Drafts {
         access: Access<'_>,
         id: &Uuid7,
         through: i64,
-        now: UnixMillis,
     ) -> Result<Cancellation> {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let draft = read::lock(&mut tx, access, &person, id).await?;
-        if through < 0 || through > draft.last_sequence {
+        if through < 0 || through > draft.last_message_sequence {
             return Err(invalid(CUTOFF_INVALID));
         }
-        let cutoff = through.max(draft.cancelled_through);
+        let cutoff = through.max(draft.cancelled_through_sequence);
         let stopped: Vec<i64> = sqlx::query_scalar(sql::message::CANCEL)
             .bind(id.as_str())
             .bind(cutoff)
             .bind(CANCELLED)
-            .bind(now.as_millis())
             .bind(QUEUED)
             .bind(RUNNING)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        if cutoff > draft.cancelled_through {
+        if cutoff > draft.cancelled_through_sequence {
             sqlx::query(sql::draft::CANCEL)
                 .bind(id.as_str())
                 .bind(cutoff)
-                .bind(now.as_millis())
                 .execute(&mut *tx)
                 .await
                 .map_err(query(CONTEXT))?;

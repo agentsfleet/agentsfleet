@@ -54,7 +54,7 @@ async fn retained(c: &Case, key: &Uuid7, request: SaveFleet) -> Uuid7 {
 /// Receipts written under `key`: a spent Save key has exactly one.
 async fn receipts(c: &Case, key: &Uuid7) -> i64 {
     sqlx::query_scalar(
-        "SELECT count(*) FROM core.authoring_replay_receipts WHERE workspace_id=$1::uuid AND operation_id=$2::uuid",
+        "SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND operation_id=$2::uuid",
     )
     .bind(c.base.workspace.as_str())
     .bind(key.as_str())
@@ -64,13 +64,11 @@ async fn receipts(c: &Case, key: &Uuid7) -> i64 {
 }
 
 async fn revisions(c: &Case, fleet: &Uuid7) -> i64 {
-    sqlx::query_scalar(
-        "SELECT count(*) FROM core.fleet_definition_revisions WHERE fleet_id=$1::uuid",
-    )
-    .bind(fleet.as_str())
-    .fetch_one(&mut *c.base.connection().await)
-    .await
-    .expect("definition revisions")
+    sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
+        .bind(fleet.as_str())
+        .fetch_one(&mut *c.base.connection().await)
+        .await
+        .expect("definition revisions")
 }
 
 async fn groups(c: &Case, fleet: &Uuid7) -> Vec<String> {
@@ -85,18 +83,18 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
     let c = Case::create().await;
     let (draft, request) = c.request("reservation-fault", run_now()).await;
     let key = mint();
-    // The reservation inserts the fleet row, then points it at its first
-    // revision; refusing that pointer aborts the transaction with the row
-    // already written. Keyed by the fixture's own workspace, because the fleet
-    // ID is minted inside the transaction under test.
+    // The reservation writes the fleet row and its first revision, then links
+    // the draft to the fleet; refusing that link aborts the transaction with
+    // the row already written. Keyed by the fixture's own workspace, because
+    // the fleet ID is minted inside the transaction under test.
     let workspace = &c.base.workspace;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleets",
-        "revision",
+        "authoring.drafts",
+        "link",
         workspace.as_str(),
         &format!(
-            "NEW.workspace_id='{workspace}'::uuid AND OLD.current_definition_revision_id IS NULL"
+            "NEW.workspace_id='{workspace}'::uuid AND OLD.fleet_id IS NULL AND NEW.fleet_id IS NOT NULL"
         ),
     )
     .await;
@@ -130,7 +128,7 @@ async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry()
     let fleet = retained(&c, &key, request.clone()).await;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleets",
+        "fleet.fleets",
         "stream_ready",
         fleet.as_str(),
         &format!(
@@ -180,7 +178,7 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_str
     let fleet = retained(&c, &key, request.clone()).await;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleets",
+        "fleet.fleets",
         "activate",
         fleet.as_str(),
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
@@ -203,9 +201,13 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_str
             );
             tokio::spawn(async move {
                 barrier.wait().await;
-                c.creations
-                    .save(c.base.access(), &key, request, now())
-                    .await
+                // Every retry either resumes or meets the retryable lock
+                // limit, and the limited ones converge on their own retry.
+                crate::draft::retried(|| {
+                    c.creations
+                        .save(c.base.access(), &key, request.clone(), now())
+                })
+                .await
             })
         })
         .collect();

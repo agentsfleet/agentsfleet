@@ -33,7 +33,6 @@ pub(super) async fn apply(
             draft: &guarded.draft.id,
             revision,
             definition: &definition,
-            now: guarded.now,
         },
     )
     .await?;
@@ -50,7 +49,7 @@ async fn replacement(
 ) -> Result<Definition> {
     let draft = &guarded.draft;
     match proposal {
-        Proposal::Initialize { definition } if draft.current_candidate_id.is_none() => {
+        Proposal::Initialize { definition } if draft.head_candidate_id.is_none() => {
             definition.validate_initial_generation()?;
             Ok(definition.as_ref().clone())
         }
@@ -60,15 +59,12 @@ async fn replacement(
             config_ops,
             instruction_edits,
         } if draft
-            .current_candidate_id
+            .head_candidate_id
             .as_ref()
             .is_some_and(|id| id.as_str() == base_candidate_id)
             && draft.candidate_revision.to_string() == *base_candidate_revision =>
         {
-            let id = draft
-                .current_candidate_id
-                .as_ref()
-                .ok_or(ErrorKind::Fence)?;
+            let id = draft.head_candidate_id.as_ref().ok_or(ErrorKind::Fence)?;
             let candidate = candidate::read(connection, &draft.id, id).await?;
             Ok(candidate.definition.edit(EditBatch {
                 config_ops: config_ops.clone(),

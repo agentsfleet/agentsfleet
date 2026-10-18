@@ -7,11 +7,12 @@ use crate::{
     candidate,
     error::{ErrorKind, raise::query},
     message, model, replay, sql,
-    types::{Accepted, CreateDraft, Created, EDITING},
+    types::{Accepted, CreateDraft, Created, EDITING, Source, SourcePin},
 };
-use afd_core::{clock::UnixMillis, error_code::AUTHORING_NOT_FOUND, id::Uuid7};
+use afd_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
 use afd_fleet_runtime::Definition;
 use afd_observability::AuthoringStep;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "create private draft";
@@ -29,7 +30,7 @@ impl Drafts {
         &self,
         access: Access<'_>,
         request: CreateDraft,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Created> {
         let mut request = garde::Unvalidated::new(request).validate()?.into_inner();
         request.message = request.message.map(|text| message::normalize(&text));
@@ -57,18 +58,14 @@ impl Drafts {
             )
             .await?
         };
-        // Receipt reads do not lock ahead of the draft: deletion holds the
-        // draft before updating receipts. Recheck a missing replay after a
-        // concurrent purge commits so its accepted key returns Gone.
+        // A receipt outlives its draft, so a replayed key whose draft is
+        // gone was accepted and then deleted: Gone, never a new draft.
         let locked = match read::lock(&mut tx, access, &person, &id).await {
             Ok(locked) => locked,
-            Err(error) => {
-                if replayed && error.code() == AUTHORING_NOT_FOUND {
-                    replay::find(&mut tx, &scope, &request.operation_id, &person.id, &digest)
-                        .await?;
-                }
-                return Err(error);
+            Err(error) if replayed && error.code() == AUTHORING_NOT_FOUND => {
+                return Err(ErrorKind::Gone.into());
             }
+            Err(error) => return Err(error),
         };
         let draft = read::project(&mut tx, locked).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
@@ -104,7 +101,6 @@ impl Drafts {
                 operation: &new.request.operation_id,
                 digest: new.digest,
                 resource: &id,
-                now: new.now,
             },
         )
         .await?;
@@ -120,14 +116,7 @@ impl Drafts {
             .ok_or(ErrorKind::Hidden)?;
             return Ok((existing, true));
         }
-        write_draft(
-            connection,
-            &id,
-            &new,
-            captured.fleet.as_ref(),
-            captured.instance_name.as_deref(),
-        )
-        .await?;
+        write_draft(connection, &id, &new, &captured).await?;
         self.seed(connection, &id, &new, captured.definition.as_ref())
             .await?;
         Ok((id, false))
@@ -150,7 +139,6 @@ impl Drafts {
                     draft: id,
                     revision: FIRST_REVISION,
                     definition,
-                    now: new.now,
                 },
             )
             .await?;
@@ -160,12 +148,14 @@ impl Drafts {
                 connection,
                 message::Insertion {
                     id: &self.mint(new.now)?,
+                    receipt: &self.mint(new.now)?,
+                    workspace: new.access.workspace,
+                    person: new.person,
                     draft: id,
                     sequence: FIRST_REVISION,
                     operation: &new.request.operation_id,
                     text,
                     model: &new.request.authoring_model_ref,
-                    now: new.now,
                 },
             )
             .await?;
@@ -180,34 +170,34 @@ struct New<'a> {
     request: &'a garde::Valid<CreateDraft>,
     scope: &'a str,
     digest: &'a str,
-    now: UnixMillis,
+    now: Timestamp,
 }
 
 async fn write_draft(
     connection: &mut PgConnection,
     id: &Uuid7,
     new: &New<'_>,
-    fleet: Option<&Uuid7>,
-    instance_name: Option<&str>,
+    captured: &candidate::Captured,
 ) -> Result<()> {
+    let pin = SourcePin::from(&new.request.source);
+    let library_revision = match &new.request.source {
+        Source::Library { revision_id, .. } => Some(revision_id.as_str()),
+        Source::Blank | Source::Definition { .. } | Source::Fleet { .. } => None,
+    };
     sqlx::query(sql::draft::CREATE)
         .bind(id.as_str())
         .bind(new.access.workspace.as_str())
         .bind(new.person.owner.as_str())
         .bind(new.person.id.as_str())
-        .bind(new.request.operation_id.as_str())
-        .bind(new.digest)
         .bind(DEFAULT_TITLE)
         .bind(EDITING)
-        .bind(&new.request.authoring_model_ref)
+        .bind(model::tenant_model(&new.request.authoring_model_ref))
+        .bind(pin.source_type())
+        .bind(library_revision)
+        .bind(captured.fleet_revision.as_ref().map(Uuid7::as_str))
+        .bind(captured.instance_name.as_deref())
+        .bind(captured.fleet.as_ref().map(Uuid7::as_str))
         .bind(INITIAL_COUNTER)
-        .bind(fleet.map(Uuid7::as_str))
-        .bind(new.now.as_millis())
-        .bind(
-            serde_json::to_string(&crate::types::SourcePin::from(&new.request.source))
-                .map_err(crate::error::raise::stored)?,
-        )
-        .bind(instance_name)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

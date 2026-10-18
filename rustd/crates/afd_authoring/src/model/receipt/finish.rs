@@ -4,7 +4,9 @@ use afd_core::{error_code, id::Uuid7};
 use afd_wire::authoring::ModelUsage;
 use sqlx::{Connection as _, PgConnection};
 
-use super::super::{ModelCallInput, ModelCallResult, dispatch::CONTEXT, provider::Decoded, sql};
+use super::super::{
+    ModelCallInput, ModelCallResult, dispatch::CONTEXT, dispatch_status, provider::Decoded, sql,
+};
 use crate::{
     Drafts, Error, Result,
     error::{
@@ -12,7 +14,7 @@ use crate::{
         raise::{query, stored},
     },
     funnel::Owed,
-    lease::{failure, guard},
+    lease::{Status, failure, guard},
 };
 
 pub(in crate::model) async fn finish(
@@ -27,12 +29,11 @@ pub(in crate::model) async fn finish(
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
     let mut owed = Owed::default();
-    let Publication { now, denied } =
-        authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
+    let denied = authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
     let decoded = match decoded {
         Ok(known) => known,
         Err(error) => {
-            write(&mut tx, attempt, request, None, None, now).await?;
+            write(&mut tx, attempt, request, None, None).await?;
             tx.commit().await.map_err(query(CONTEXT))?;
             owed.settle(&drafts.analytics);
             return Err(denied.unwrap_or_else(|| {
@@ -49,7 +50,7 @@ pub(in crate::model) async fn finish(
     } else {
         None
     };
-    write(&mut tx, attempt, request, private, Some(&decoded), now).await?;
+    write(&mut tx, attempt, request, private, Some(&decoded)).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     owed.settle(&drafts.analytics);
     if let Some(error) = denied {
@@ -58,11 +59,7 @@ pub(in crate::model) async fn finish(
     decoded.result.ok_or_else(|| ErrorKind::Provider.into())
 }
 
-struct Publication {
-    now: i64,
-    denied: Option<Error>,
-}
-
+/// Whether the late result may publish, as the refusal that withholds it.
 async fn authorization(
     connection: &mut PgConnection,
     runner: &Uuid7,
@@ -70,14 +67,9 @@ async fn authorization(
     counters: &guard::Counters,
     attempt: &guard::Attempt,
     owed: &mut Owed,
-) -> Result<Publication> {
+) -> Result<Option<Error>> {
     let denied = match guard::publication(connection, runner, lease, counters).await {
-        Ok(guarded) => {
-            return Ok(Publication {
-                now: guarded.now.as_millis(),
-                denied: None,
-            });
-        }
+        Ok(_guarded) => return Ok(None),
         Err(error)
             if [
                 error_code::AUTHORING_NOT_FOUND,
@@ -100,14 +92,7 @@ async fn authorization(
         return Err(ErrorKind::Hidden.into());
     }
     failure::record(connection, attempt, &denied, owed).await?;
-    let now = sqlx::query_scalar(crate::sql::CLOCK)
-        .fetch_one(connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    Ok(Publication {
-        now,
-        denied: Some(denied),
-    })
+    Ok(Some(denied))
 }
 
 async fn write(
@@ -116,12 +101,11 @@ async fn write(
     request: &garde::Valid<ModelCallInput>,
     result: Option<&ModelCallResult>,
     decoded: Option<&Decoded>,
-    now: i64,
 ) -> Result<()> {
     let status = match decoded {
-        Some(decoded) if decoded.result.is_some() => "completed",
-        Some(_) => "failed",
-        None => "unknown",
+        Some(decoded) if decoded.result.is_some() => dispatch_status::COMPLETED,
+        Some(_) => dispatch_status::FAILED,
+        None => dispatch_status::UNKNOWN,
     };
     let usage = decoded.map_or(&ModelUsage::Unknown, |decoded| &decoded.usage);
     let changed = sqlx::query(sql::COMPLETE)
@@ -135,7 +119,8 @@ async fn write(
                 .map_err(stored)?,
         )
         .bind(serde_json::to_string(usage).map_err(stored)?)
-        .bind(now)
+        .bind(dispatch_status::PENDING)
+        .bind(dispatch_status::UNKNOWN)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -144,10 +129,11 @@ async fn write(
     }
     sqlx::query(sql::METER)
         .bind(attempt.id.as_str())
-        .bind(decoded.map_or(0, |decoded| decoded.input))
         .bind(decoded.map_or(0, |decoded| decoded.output))
-        .bind(now)
         .bind(decoded.is_none())
+        .bind(Status::AwaitingAccounting.as_str())
+        .bind(dispatch_status::PENDING)
+        .bind(dispatch_status::UNKNOWN)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

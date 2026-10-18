@@ -61,7 +61,7 @@ async fn credential_revocation_denies_completed_result_replay() {
         .call(&f.runner, &attempt.lease, request.clone())
         .await
         .expect("saved result");
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await

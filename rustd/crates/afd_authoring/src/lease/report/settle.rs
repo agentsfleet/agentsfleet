@@ -1,7 +1,9 @@
 //! Final settlement, actual wallet debit and replay acknowledgement commit together.
 
-use afd_core::clock::UnixMillis;
+use afd_core::clock;
 use afd_wire::authoring::{Knowledge, Outcome, Report, Reported};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
 
 use super::{
@@ -17,7 +19,8 @@ use crate::{
         raise::{query, stored},
     },
     funnel::Owed,
-    lease::{guard, meter},
+    lease::{Status, guard, meter},
+    types::RUNNING,
 };
 
 pub(super) struct Settlement<'a> {
@@ -26,7 +29,7 @@ pub(super) struct Settlement<'a> {
     pub(super) verified: &'a meter::Verified,
     pub(super) verdict: &'a Verdict,
     pub(super) private: Option<&'a guard::Guarded>,
-    pub(super) now: i64,
+    pub(super) now: Timestamp,
     pub(super) acknowledgement: Acknowledgement,
 }
 
@@ -47,12 +50,10 @@ pub(super) async fn commit(
     owed: &mut Owed,
 ) -> Result<Reported> {
     let known = settlement.verified.usage.knowledge == Knowledge::Known;
-    let charged = if known {
-        debit(drafts, connection, &settlement).await?
-    } else {
-        0
-    };
-    update_attempt(connection, &settlement, charged, known).await?;
+    if known {
+        debit(drafts, connection, &settlement).await?;
+    }
+    update_attempt(connection, &settlement, known).await?;
     if known {
         reconcile(connection, &settlement).await?;
     }
@@ -82,14 +83,12 @@ pub(super) async fn commit(
 
 async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
     use afd_wire::authoring::FailureReason;
-    sqlx::query(sql::RESOLVED_USAGE)
+    sqlx::query(sql::RESOLVED_REASON)
         .bind(s.attempt.draft_id.as_str())
         .bind(s.attempt.message_sequence)
-        .bind(serde_json::to_string(&s.verified.usage).map_err(stored)?)
         .bind(verdict::reason(
             s.verdict.reason.unwrap_or(FailureReason::ProviderFailed),
         ))
-        .bind(s.now)
         .bind(verdict::reason(FailureReason::ProviderUsageUnknown))
         .execute(connection)
         .await
@@ -97,7 +96,7 @@ async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<
     Ok(())
 }
 
-async fn debit(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<i64> {
+async fn debit(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
     let provider = if s.attempt.model_snapshot.platform_managed {
         s.verified.provider_nanos
     } else {
@@ -111,16 +110,16 @@ async fn debit(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_
     let charged: i64 = sqlx::query_scalar(sql::DEBIT)
         .bind(s.attempt.tenant_id.as_str())
         .bind(due)
-        .bind(s.now)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
         .ok_or(ErrorKind::Balance)?;
     let usage = serde_json::json!({"knowledge":"known","calls":s.verified.calls,
         "input_tokens":s.verified.usage.input_tokens,"output_tokens":s.verified.usage.output_tokens,
-        "runtime_ms":s.verified.runtime_ms,"provider_cost_nanos":s.verified.provider_nanos.to_string()});
+        "runtime_ms":clock::saturating_millis_signed(s.verified.runtime),
+        "provider_cost_nanos":s.verified.provider_nanos.to_string()});
     sqlx::query(sql::SETTLEMENT)
-        .bind(drafts.mint(UnixMillis::from_millis(s.now))?.as_str())
+        .bind(drafts.mint(s.now)?.as_str())
         .bind(s.attempt.id.as_str())
         .bind(s.prepared.report_id.as_str())
         .bind(&s.prepared.digest)
@@ -128,30 +127,30 @@ async fn debit(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_
         .bind(s.verdict.reason.map(verdict::reason))
         .bind(serde_json::to_string(&usage).map_err(stored)?)
         .bind(charged)
-        .bind(s.now)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
-    Ok(charged)
+    Ok(())
 }
 
 async fn update_attempt(
     connection: &mut PgConnection,
     s: &Settlement<'_>,
-    charged: i64,
     known: bool,
 ) -> Result<()> {
     sqlx::query(sql::ATTEMPT)
         .bind(s.attempt.id.as_str())
-        .bind(if known {
-            "settled"
-        } else {
-            "awaiting_accounting"
-        })
-        .bind(charged)
+        .bind(
+            if known {
+                Status::Settled
+            } else {
+                Status::AwaitingAccounting
+            }
+            .as_str(),
+        )
         .bind(!known)
-        .bind(s.verified.runtime_ms)
-        .bind(s.now)
+        .bind(clock::saturating_millis_signed(s.verified.runtime))
+        .bind(s.now.to_sqlx())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -166,10 +165,10 @@ async fn publish(
     owed: &mut Owed,
 ) -> Result<()> {
     let state = verdict::outcome(s.verdict.outcome);
-    if write_message(connection, s, private, sql::MESSAGE).await? {
+    if write_message(connection, s, private, false).await? {
         owed.finished(connection, s.attempt.into(), state).await?;
     } else {
-        write_message(connection, s, private, sql::LATE_MESSAGE).await?;
+        write_message(connection, s, private, true).await?;
     }
     if s.verdict.answer_allowed {
         receipt::answer(drafts, connection, s.attempt, s.prepared, s.now).await?;
@@ -177,12 +176,13 @@ async fn publish(
     Ok(())
 }
 
-/// Writes the verdict onto the message through `statement`; whether it matched.
+/// Writes the verdict onto the message, as its first finish or as the late
+/// rewrite of an unknown-usage failure; whether it matched.
 async fn write_message(
     connection: &mut PgConnection,
     s: &Settlement<'_>,
     private: &guard::Guarded,
-    statement: &'static str,
+    late: bool,
 ) -> Result<bool> {
     let answer = match &*s.prepared.request {
         Report::Terminal { answer, .. }
@@ -192,7 +192,12 @@ async fn write_message(
         }
         _ => None,
     };
-    let written = sqlx::query(statement)
+    let statement = if late {
+        sql::LATE_MESSAGE
+    } else {
+        sql::MESSAGE
+    };
+    let mut write = sqlx::query(statement)
         .bind(s.attempt.draft_id.as_str())
         .bind(s.attempt.message_sequence)
         .bind(verdict::outcome(s.verdict.outcome))
@@ -200,15 +205,17 @@ async fn write_message(
         .bind(
             private
                 .draft
-                .current_candidate_id
+                .head_candidate_id
                 .as_ref()
                 .map(afd_core::id::Uuid7::as_str),
         )
-        .bind(serde_json::to_string(&s.verified.usage).map_err(stored)?)
         .bind(s.verdict.reason.map(verdict::reason))
-        .bind(s.now)
-        .execute(connection)
-        .await
-        .map_err(query(CONTEXT))?;
+        .bind(RUNNING);
+    if late {
+        write = write.bind(verdict::reason(
+            afd_wire::authoring::FailureReason::ProviderUsageUnknown,
+        ));
+    }
+    let written = write.execute(connection).await.map_err(query(CONTEXT))?;
     Ok(written.rows_affected() == 1)
 }

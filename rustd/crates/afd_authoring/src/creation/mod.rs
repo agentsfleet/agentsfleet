@@ -57,6 +57,8 @@ const INSTALLING: &str = "installing";
 const ACTIVE: &str = "active";
 const KILLED: &str = "killed";
 const INITIAL_VERSION: i64 = 1;
+/// How long a closed draft's private transcript outlives activation.
+const PRIVATE_RETENTION: std::time::Duration = afd_core::timing::DAY.saturating_mul(30);
 
 fn etag(id: &afd_core::id::Uuid7, version: i64) -> String {
     crate::draft::etag(id, version)

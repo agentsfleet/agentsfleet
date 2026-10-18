@@ -20,7 +20,7 @@ async fn expiry_during_observed_wallet_wait_denies_renewal_without_meter_advance
     let mut connection = f.connection().await;
     let mut held = connection.begin().await.expect("wallet blocker");
     let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM billing.tenant_wallet WHERE tenant_id=$1::uuid FOR UPDATE",
+        "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE",
     )
     .bind(f.tenant.as_str())
     .fetch_one(&mut *held)

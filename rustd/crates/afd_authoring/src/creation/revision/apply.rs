@@ -7,7 +7,8 @@ use crate::{
     replay, review,
     types::{AppliedRevision, ApplyRevision, SaveSource},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 
 impl Creations {
@@ -23,7 +24,7 @@ impl Creations {
         expected: Option<&str>,
         operation: &Uuid7,
         request: ApplyRevision,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<AppliedRevision> {
         let request = garde::Unvalidated::new(request).validate()?;
         let revision = self
@@ -41,7 +42,7 @@ impl Creations {
         expected: Option<&str>,
         operation: &Uuid7,
         request: &garde::Valid<ApplyRevision>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Uuid7> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
@@ -72,7 +73,7 @@ impl Creations {
             &mut tx,
             &captured.context,
             &captured.candidate,
-            now.as_millis(),
+            now,
         )
         .await?;
         checked.require_digest(&request.review_digest)?;
@@ -87,7 +88,6 @@ impl Creations {
                 operation,
                 digest: &digest,
                 resource: &revision,
-                now,
             },
         )
         .await?;

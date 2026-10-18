@@ -4,11 +4,7 @@ mod fencing;
 mod replay;
 mod validation;
 
-use super::{
-    attempt::Attempt,
-    fixture::{Fixture, now},
-    mint,
-};
+use super::{attempt::Attempt, fixture::Fixture, mint};
 use afd_authoring::{ActivityInput, types::Source};
 use afd_wire::authoring::{ActivityEvent, CandidateVersion, Proposal};
 use serde_json::json;

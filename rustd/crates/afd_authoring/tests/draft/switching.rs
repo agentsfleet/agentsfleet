@@ -24,13 +24,13 @@ const LIMIT: Duration = Duration::from_secs(10);
 const WITHDRAWALS: [(&str, &str); 2] = [
     (
         "entry removed",
-        "DELETE FROM core.tenant_model_entries WHERE id=$1::uuid",
+        "DELETE FROM model.tenant_models WHERE id=$1::uuid",
     ),
     (
         "credential removed",
         "DELETE FROM vault.secrets WHERE key_name='authoring-model' \
-         AND workspace_id=(SELECT w.id FROM core.workspaces w \
-         JOIN core.tenant_model_entries e ON e.tenant_id=w.tenant_id WHERE e.id=$1::uuid)",
+         AND workspace_id=(SELECT w.id FROM identity.workspaces w \
+         JOIN model.tenant_models e ON e.tenant_id=w.tenant_id WHERE e.id=$1::uuid)",
     ),
 ];
 
@@ -129,7 +129,7 @@ async fn a_switch_waits_until_no_request_is_queued() {
     assert_eq!(queued.authoring_model_ref, f.model.to_string());
 
     f.drafts
-        .cancel(f.access(), &created.id, 1, now())
+        .cancel(f.access(), &created.id, 1)
         .await
         .expect("stop the queued request");
     let idle = f.drafts.read(f.access(), &created.id).await.expect("read");
@@ -159,7 +159,7 @@ async fn send_and_stop_race_in_either_order_without_stopping_the_later_request()
         let id = draft(&f, Some("first")).await.id;
         // Boxed: each operation's future is tens of kilobytes, and the pair
         // would otherwise sit inline in this test's own future.
-        let stop = Box::pin(f.drafts.cancel(f.access(), &id, 1, now()));
+        let stop = Box::pin(f.drafts.cancel(f.access(), &id, 1));
         let later = Box::pin(f.drafts.send(f.access(), &id, send("second"), now()));
         let (stopped, sent) = if stop_first {
             in_order(&f, &id, stop, later).await
@@ -187,7 +187,7 @@ async fn send_and_stop_race_in_either_order_without_stopping_the_later_request()
     }
 
     let id = draft(&f, Some("first")).await.id;
-    let early = Box::pin(f.drafts.cancel(f.access(), &id, 2, now()));
+    let early = Box::pin(f.drafts.cancel(f.access(), &id, 2));
     let later = Box::pin(f.drafts.send(f.access(), &id, send("second"), now()));
     let (early, sent) = in_order(&f, &id, early, later).await;
     let early = early.expect_err("sequence 2 was not yet accepted");
@@ -220,7 +220,7 @@ async fn in_order<A: Future, B: Future>(
         .fetch_one(&mut *lock)
         .await
         .expect("lock owner");
-    sqlx::query("SELECT id FROM core.authoring_drafts WHERE id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
         .bind(draft.as_str())
         .fetch_one(&mut *lock)
         .await

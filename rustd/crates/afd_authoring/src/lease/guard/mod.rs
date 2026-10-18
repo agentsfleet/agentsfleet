@@ -1,53 +1,115 @@
 //! Publication is checked before replay, using database time after every lock wait.
 
+use std::time::Duration;
+
 use crate::{
     Access, Result, access,
-    draft::{read, value},
+    draft::{read, value, word},
     error::{ErrorKind, raise::query},
     model,
     types::{DraftState, RUNNING},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_credential::provider::RegisteredModel;
-use serde::Deserialize;
+use afd_wire::authoring::FailureReason;
+use jiff::Timestamp;
 use sqlx::PgConnection;
 
 use super::{Status, sql};
 
 mod counters;
-pub(crate) use counters::Counters;
+pub(crate) use counters::{Counters, DELETION_GENERATION};
 
 const CONTEXT: &str = "authorize authoring lease publication";
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub(crate) struct Attempt {
     pub(crate) id: Uuid7,
     pub(crate) workspace_id: Uuid7,
     pub(crate) tenant_id: Uuid7,
-    pub(crate) creator_id: Uuid7,
+    pub(crate) user_id: Uuid7,
     pub(crate) draft_id: Uuid7,
     pub(crate) message_sequence: i64,
-    pub(crate) fence: i64,
-    pub(crate) deletion_generation: i64,
+    pub(crate) fencing_token: i64,
     pub(crate) model_snapshot: RegisteredModel,
     pub(crate) status: Status,
-    pub(crate) lease_expires_at: i64,
-    pub(crate) deadline: i64,
-    pub(crate) activity_sequence: i64,
-    pub(crate) capability_hash: String,
-    pub(crate) calls: i32,
-    pub(crate) output_tokens: i64,
+    pub(crate) lease_expires_at: Timestamp,
+    /// The attempt's wall-clock deadline; renewal never moves it.
+    pub(crate) expires_at: Timestamp,
+    pub(crate) last_activity_sequence: i64,
+    pub(crate) model_token_hash: String,
+    pub(crate) call_count: i32,
+    pub(crate) output_token_count: i64,
     pub(crate) usage_unknown: bool,
     pub(crate) reserved_nanos: i64,
-    pub(crate) created_at: i64,
-    pub(crate) reported_runtime_ms: i64,
-    pub(crate) daemon_failure: Option<afd_wire::authoring::FailureReason>,
+    pub(crate) created_at: Timestamp,
+    /// The runner's last verified runtime, stored as whole milliseconds.
+    pub(crate) reported_runtime: Duration,
+    /// The daemon's observed refusal, which outranks any runner report.
+    pub(crate) failure_reason: Option<FailureReason>,
+}
+
+/// One `authoring.attempts` row, by column name.
+#[derive(sqlx::FromRow)]
+pub(crate) struct AttemptRow {
+    id: String,
+    workspace_id: String,
+    tenant_id: String,
+    user_id: String,
+    draft_id: String,
+    message_sequence: i64,
+    fencing_token: i64,
+    model_snapshot: String,
+    status: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    lease_expires_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    expires_at: Timestamp,
+    last_activity_sequence: i64,
+    model_token_hash: String,
+    call_count: i32,
+    output_token_count: i64,
+    usage_unknown: bool,
+    reserved_nanos: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    reported_runtime_ms: i64,
+    failure_reason: Option<String>,
+}
+
+impl AttemptRow {
+    pub(crate) fn decode(self) -> Result<Attempt> {
+        Ok(Attempt {
+            id: Uuid7::parse(&self.id)?,
+            workspace_id: Uuid7::parse(&self.workspace_id)?,
+            tenant_id: Uuid7::parse(&self.tenant_id)?,
+            user_id: Uuid7::parse(&self.user_id)?,
+            draft_id: Uuid7::parse(&self.draft_id)?,
+            message_sequence: self.message_sequence,
+            fencing_token: self.fencing_token,
+            model_snapshot: value(&self.model_snapshot)?,
+            status: word(&self.status)?,
+            lease_expires_at: self.lease_expires_at,
+            expires_at: self.expires_at,
+            last_activity_sequence: self.last_activity_sequence,
+            model_token_hash: self.model_token_hash,
+            call_count: self.call_count,
+            output_token_count: self.output_token_count,
+            usage_unknown: self.usage_unknown,
+            reserved_nanos: self.reserved_nanos,
+            created_at: self.created_at,
+            reported_runtime: Duration::from_millis(
+                u64::try_from(self.reported_runtime_ms).unwrap_or(0),
+            ),
+            failure_reason: self.failure_reason.as_deref().map(word).transpose()?,
+        })
+    }
 }
 
 pub(crate) struct Guarded {
     pub(crate) attempt: Attempt,
     pub(crate) draft: read::Locked,
-    pub(crate) now: UnixMillis,
+    pub(crate) now: Timestamp,
 }
 
 pub(crate) async fn publication(
@@ -79,15 +141,12 @@ pub(crate) async fn bound(
     if !running {
         return Err(ErrorKind::Fence.into());
     }
-    let now: i64 = sqlx::query_scalar(sql::CLOCK)
-        .fetch_one(connection)
-        .await
-        .map_err(query(CONTEXT))?;
+    let now = crate::sql::clock(connection, CONTEXT).await?;
     check(&locked, &draft, counters, now, Purpose::Invocation)?;
     Ok(Guarded {
         attempt: locked,
         draft,
-        now: UnixMillis::from_millis(now),
+        now,
     })
 }
 
@@ -126,14 +185,9 @@ pub(crate) async fn accounting(
 
 /// Reads a saved cancellation fence without requiring access to private content.
 pub(crate) async fn cancelled(connection: &mut PgConnection, attempt: &Attempt) -> Result<bool> {
-    const CANCELLED: &str = "\
-SELECT NOT EXISTS(SELECT 1 FROM core.authoring_drafts WHERE id=$1::uuid)
-OR EXISTS(SELECT 1 FROM core.authoring_drafts WHERE id=$1::uuid
-AND (cancelled_through >= $2 OR deletion_generation > $3 OR state != $4))";
-    sqlx::query_scalar(CANCELLED)
+    sqlx::query_scalar(sql::CANCELLED)
         .bind(attempt.draft_id.as_str())
         .bind(attempt.message_sequence)
-        .bind(attempt.deletion_generation)
         .bind(crate::types::EDITING)
         .fetch_one(connection)
         .await
@@ -176,11 +230,8 @@ pub(crate) async fn refresh(
     connection: &mut PgConnection,
     guarded: &Guarded,
     counters: &Counters,
-) -> Result<UnixMillis> {
-    let now: i64 = sqlx::query_scalar(sql::CLOCK)
-        .fetch_one(connection)
-        .await
-        .map_err(query(CONTEXT))?;
+) -> Result<Timestamp> {
+    let now = crate::sql::clock(connection, CONTEXT).await?;
     check(
         &guarded.attempt,
         &guarded.draft,
@@ -188,7 +239,7 @@ pub(crate) async fn refresh(
         now,
         Purpose::Invocation,
     )?;
-    Ok(UnixMillis::from_millis(now))
+    Ok(now)
 }
 
 async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<read::Locked> {
@@ -197,8 +248,8 @@ async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<rea
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    let subject: Option<String> = sqlx::query_scalar(sql::SUBJECT)
-        .bind(attempt.creator_id.as_str())
+    let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
+        .bind(attempt.user_id.as_str())
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -208,7 +259,7 @@ async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<rea
         subject: &subject,
     };
     let person = access::current(connection, access).await?;
-    if person.id != attempt.creator_id || person.owner != attempt.tenant_id {
+    if person.id != attempt.user_id || person.owner != attempt.tenant_id {
         return Err(ErrorKind::Hidden.into());
     }
     read::lock(connection, access, &person, &attempt.draft_id).await
@@ -220,34 +271,33 @@ async fn attempt(
     runner: &Uuid7,
     lease: &Uuid7,
 ) -> Result<Attempt> {
-    let raw: Option<String> = sqlx::query_scalar(statement)
+    let row: Option<AttemptRow> = sqlx::query_as(statement)
         .bind(lease.as_str())
         .bind(runner.as_str())
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    value(&raw.ok_or(ErrorKind::Hidden)?)
+    row.ok_or(ErrorKind::Hidden)?.decode()
 }
 
 fn check(
     attempt: &Attempt,
     draft: &read::Locked,
     counters: &Counters,
-    now: i64,
+    now: Timestamp,
     purpose: Purpose,
 ) -> Result<()> {
-    if attempt.fence != counters.fence
-        || attempt.deletion_generation != counters.generation
-        || attempt.deletion_generation != draft.deletion_generation
+    if attempt.fencing_token != counters.fence
+        || counters.generation != DELETION_GENERATION
         || counters
             .sequence
             .is_some_and(|sequence| attempt.message_sequence != sequence)
-        || attempt.message_sequence <= draft.cancelled_through
+        || attempt.message_sequence <= draft.cancelled_through_sequence
         || !purpose.accepts(attempt)
-        || attempt.daemon_failure.is_some()
+        || attempt.failure_reason.is_some()
         || attempt.lease_expires_at <= now
-        || attempt.deadline <= now
-        || draft.state != DraftState::Editing
+        || attempt.expires_at <= now
+        || draft.status != DraftState::Editing
     {
         return Err(ErrorKind::Fence.into());
     }

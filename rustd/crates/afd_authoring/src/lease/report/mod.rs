@@ -60,7 +60,7 @@ struct Basis<'a> {
     attempt: &'a guard::Attempt,
     prepared: &'a prepare::Prepared,
     private: Option<&'a guard::Guarded>,
-    now: i64,
+    now: jiff::Timestamp,
     verified: meter::Verified,
 }
 
@@ -71,10 +71,7 @@ impl<'a> Basis<'a> {
         prepared: &'a prepare::Prepared,
         private: Option<&'a guard::Guarded>,
     ) -> Result<Self> {
-        let now: i64 = sqlx::query_scalar(crate::sql::CLOCK)
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
+        let now = crate::sql::clock(connection, CONTEXT).await?;
         let observed =
             garde::Unvalidated::new(prepared.request.accounting().usage.clone()).validate()?;
         let verified = meter::verify(connection, attempt, &observed, now).await?;

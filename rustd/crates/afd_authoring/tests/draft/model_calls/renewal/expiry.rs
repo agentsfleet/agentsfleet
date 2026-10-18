@@ -6,17 +6,11 @@ use afd_authoring::types::Source;
 use afd_core::error_code;
 use std::sync::Arc;
 
-/// How long the shortened lease stays live: long enough to renew, short enough
-/// that a renewal visibly extends it.
-const LIVE_FOR_MS: i64 = 10_000;
-/// Leaves the attempt [`LIVE_FOR_MS`] from database time.
-const SHORTEN: &str = const_format::concatcp!(
-    "UPDATE fleet.authoring_attempts SET lease_expires_at=",
-    afd_db::statement::NOW_MS,
-    "+",
-    LIVE_FOR_MS,
-    " WHERE id=$1::uuid"
-);
+/// Leaves the attempt ten seconds live from database time: long enough to
+/// renew, short enough that a renewal visibly extends it.
+const SHORTEN: &str = "UPDATE authoring.attempts \
+SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '10 seconds' \
+WHERE id=$1::uuid";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

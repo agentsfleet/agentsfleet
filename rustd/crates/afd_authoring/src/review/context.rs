@@ -41,10 +41,10 @@ impl From<&Locked> for Context {
             },
             workspace_id: draft.workspace_id.clone(),
             tenant_id: draft.tenant_id.clone(),
-            creator_id: Some(draft.creator_id.clone()),
+            creator_id: Some(draft.user_id.clone()),
             instance_name: draft.instance_name.clone(),
             source_pin: draft.source_pin.clone(),
-            linked_fleet_id: draft.linked_fleet_id.clone(),
+            linked_fleet_id: draft.fleet_id.clone(),
         }
     }
 }

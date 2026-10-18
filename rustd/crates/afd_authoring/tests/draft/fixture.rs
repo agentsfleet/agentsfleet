@@ -119,14 +119,14 @@ impl Fixture {
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         let mut connection = self.connection().await;
         let mut tx = connection.begin().await.expect("counts transaction");
-        sqlx::query("SELECT id FROM core.authoring_drafts WHERE workspace_id=$1::uuid FOR UPDATE")
+        sqlx::query("SELECT id FROM authoring.drafts WHERE workspace_id=$1::uuid FOR UPDATE")
             .bind(self.workspace.as_str())
             .fetch_all(&mut *tx)
             .await
             .expect("wait out a concurrent purge");
-        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM core.authoring_drafts WHERE workspace_id=$1::uuid), \
-            (SELECT count(*) FROM core.authoring_candidates c JOIN core.authoring_drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1::uuid), \
-            (SELECT count(*) FROM core.authoring_messages m JOIN core.authoring_drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1::uuid)")
+        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid), \
+            (SELECT count(*) FROM authoring.candidates c JOIN authoring.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1::uuid), \
+            (SELECT count(*) FROM authoring.messages m JOIN authoring.drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1::uuid)")
             .bind(self.workspace.as_str()).fetch_one(&mut *tx)
             .await.expect("scoped durable counts");
         tx.commit().await.expect("counts commit");
@@ -135,31 +135,33 @@ impl Fixture {
 
     fn arm_cleanup(&mut self) {
         self.cleanup.record(
-            "SELECT set_config('fleet.allow_gate_purge','on',true) WHERE $1::text IS NOT NULL",
+            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1::uuid",
+            self.workspace.as_str(),
+        );
+        // Attempts carry no foreign key to the workspace (money outlives it),
+        // so no cascade removes them; their dispatches, receipts and
+        // settlements go with them.
+        self.cleanup.record(
+            "DELETE FROM authoring.attempts WHERE workspace_id=$1::uuid",
             self.workspace.as_str(),
         );
         self.cleanup.record(
-            "DELETE FROM core.authoring_replay_receipts WHERE workspace_id=$1::uuid",
-            self.workspace.as_str(),
-        );
-        self.cleanup.record(
-            "DELETE FROM core.fleets WHERE tenant_id=$1::uuid",
+            "DELETE FROM fleet.fleets WHERE tenant_id=$1::uuid",
             self.tenant.as_str(),
         );
-        self.cleanup.record("DELETE FROM core.fleet_library_revisions WHERE library_id IN (SELECT id FROM core.fleet_libraries WHERE tenant_id=$1::uuid)", self.tenant.as_str());
         for tenant in [&self.tenant, &self.member_tenant] {
             self.cleanup.record(
-                "DELETE FROM core.tenants WHERE id=$1::uuid",
+                "DELETE FROM identity.tenants WHERE id=$1::uuid",
                 tenant.as_str(),
             );
         }
         self.cleanup.record(
-            "DELETE FROM fleet.runners WHERE id=$1::uuid",
+            "DELETE FROM runner.runners WHERE id=$1::uuid",
             self.runner.as_str(),
         );
         for id in &self.catalogue {
             self.cleanup.record(
-                "DELETE FROM core.model_library WHERE id=$1::uuid",
+                "DELETE FROM model.platform_models WHERE id=$1::uuid",
                 id.as_str(),
             );
         }
@@ -177,12 +179,12 @@ impl Fixture {
 
     pub(super) fn own_library(&mut self, library: &str) {
         self.cleanup.record(
-            "DELETE FROM core.fleet_library_revisions WHERE library_id=$1::uuid",
+            "DELETE FROM authoring.library_entries WHERE id=$1::uuid",
             library,
         );
     }
 }
 
-pub(super) fn now() -> clock::UnixMillis {
+pub(super) fn now() -> jiff::Timestamp {
     clock::now()
 }

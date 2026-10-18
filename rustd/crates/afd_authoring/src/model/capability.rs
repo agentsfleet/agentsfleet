@@ -11,7 +11,7 @@ pub(super) fn check(attempt: &Attempt, request: &garde::Valid<ModelCallInput>) -
     if attempt.id.as_str() != request.attempt_id
         || !bool::from(
             attempt
-                .capability_hash
+                .model_token_hash
                 .as_bytes()
                 .ct_eq(presented.as_bytes()),
         )

@@ -14,7 +14,7 @@ WITH RECURSIVE blocked(pid) AS (
  SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid=ANY(pg_blocking_pids(a.pid))
 )
 SELECT count(*) FROM pg_stat_activity WHERE pid IN (SELECT pid FROM blocked WHERE pid<>$1)
-AND query LIKE '%FROM core.authoring_drafts d%'";
+AND query LIKE '%FROM authoring.drafts%'";
 const LIMIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
@@ -36,12 +36,12 @@ async fn deletion_before_creation_replay_neither_deadlocks_nor_recreates_text() 
         .fetch_one(&mut *lock)
         .await
         .expect("lock owner");
-    sqlx::query("SELECT id FROM core.authoring_drafts WHERE id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
         .bind(created.draft.id.as_str())
         .fetch_one(&mut *lock)
         .await
         .expect("hold private row");
-    let delete = f.drafts.delete(f.access(), &created.draft.id, now());
+    let delete = f.drafts.delete(f.access(), &created.draft.id);
     let replay = async {
         waiting(&f, pid, 1).await;
         let replay = f.drafts.create(f.access(), request, now());

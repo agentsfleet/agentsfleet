@@ -1,18 +1,44 @@
 //! Gallery and owned walks use the same tenant authority with distinct cursors.
 
-use super::{CONTEXT, Entry, PLATFORM, read};
+use super::{CONTEXT, EntryRow, PLATFORM, Revision, RevisionRow, sql};
 use crate::{
-    Access, Result, Setup, access, draft,
+    Access, Result, Setup, access,
     error::raise::query,
     paging, replay,
     types::{LibraryCard, LibraryQuery, Page},
 };
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
-const PAGE: &str = "SELECT to_jsonb(l)::text FROM core.fleet_libraries l WHERE
-(l.tenant_id=$1::uuid AND (NOT $2 OR l.visibility=$7) OR (NOT $2 AND l.visibility=$3))
-AND ($4::bigint IS NULL OR (l.created_at,l.id)<($4,$5::uuid))
-ORDER BY l.created_at DESC,l.id DESC LIMIT $6";
+/// [`sql::PAGE`]'s row: an entry and its head revision, by column name.
+#[derive(sqlx::FromRow)]
+struct Listed {
+    #[sqlx(flatten)]
+    entry: EntryRow,
+    head_revision: i64,
+    head_definition: String,
+    head_canonical_digest: String,
+    head_policy_semantics: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    head_created_at: Timestamp,
+}
+
+impl Listed {
+    fn card(self) -> Result<(Timestamp, afd_core::id::Uuid7, LibraryCard)> {
+        let entry = self.entry.decode()?;
+        let head: Revision = RevisionRow {
+            id: entry.head_revision_id.to_string(),
+            revision: self.head_revision,
+            definition: self.head_definition,
+            canonical_digest: self.head_canonical_digest,
+            policy_semantics: self.head_policy_semantics,
+            created_at: self.head_created_at,
+        }
+        .decode()?;
+        Ok((entry.created_at, entry.id.clone(), entry.card(&head)))
+    }
+}
 
 impl Setup {
     /// Lists native Library cards visible to this workspace; owned excludes platform.
@@ -37,27 +63,26 @@ impl Setup {
             request.limit,
         ))?;
         let after = paging::boundary(request.starting_after.as_deref(), &binding)?;
-        let rows: Vec<String> = sqlx::query_scalar(PAGE)
+        let rows: Vec<Listed> = sqlx::query_as(sql::PAGE)
             .bind(person.owner.as_str())
             .bind(owned)
             .bind(PLATFORM)
-            .bind(after.as_ref().map(|(at, _)| *at))
+            .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
             .bind(after.as_ref().map(|(_, id)| id.as_str()))
             .bind(i64::from(request.limit) + 1)
             .bind(super::TENANT)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
+        tx.commit().await.map_err(query(CONTEXT))?;
         let more = rows.len() > request.limit as usize;
         let mut items = Vec::new();
         let mut next_cursor = None;
         for row in rows.into_iter().take(request.limit as usize) {
-            let entry: Entry = draft::value(&row)?;
-            let head = read::revision(&mut tx, &entry.id, &entry.head_revision_id).await?;
-            next_cursor = Some(paging::cursor(&binding, entry.created_at, &entry.id));
-            items.push(entry.card(&head));
+            let (at, id, card) = row.card()?;
+            next_cursor = Some(paging::cursor(&binding, at, &id));
+            items.push(card);
         }
-        tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Page {
             items,
             total: None,

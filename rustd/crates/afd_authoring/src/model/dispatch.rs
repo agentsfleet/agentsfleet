@@ -1,14 +1,14 @@
 //! Commit the physical call identity before crossing the provider boundary.
 
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use sqlx::{Connection as _, PgConnection};
 use std::sync::Arc;
 use tokio::time::Instant;
 
 use super::{
-    ModelCallInput, ModelCallResult, ProviderRequest, Transport, budget, capability, prepare,
-    provider, receipt, sql,
+    ModelCallInput, ModelCallResult, ProviderRequest, Transport, budget, capability,
+    dispatch_status, prepare, provider, receipt, sql,
 };
 use crate::{
     Drafts, Error, Result,
@@ -76,9 +76,8 @@ impl ModelCalls {
             mut outbound,
             authorized_at,
         } = *intent;
-        let elapsed = u64::try_from(authorized_at.elapsed().as_millis()).unwrap_or(u64::MAX);
-        outbound.timeout_ms = outbound.timeout_ms.saturating_sub(elapsed);
-        let decoded = if outbound.timeout_ms == 0 {
+        outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
+        let decoded = if outbound.timeout.is_zero() {
             Err(ErrorKind::Unknown.into())
         } else {
             self.transport
@@ -157,13 +156,13 @@ impl ModelCalls {
         if guarded.attempt.usage_unknown {
             return Err(ErrorKind::Unknown.into());
         }
-        if guarded.attempt.calls.checked_add(1).map(i64::from)
+        if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {
             return Err(ErrorKind::Replay.into());
         }
         if i64::from(request.request.max_output_tokens)
-            > budget::OUTPUT_PER_TURN - guarded.attempt.output_tokens
+            > budget::OUTPUT_PER_TURN - guarded.attempt.output_token_count
         {
             return Err(ErrorKind::Token.into());
         }
@@ -180,16 +179,19 @@ impl ModelCalls {
             .ok_or(ErrorKind::Model)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
-        insert(connection, request, &guarded.attempt, digest, now).await?;
-        let timeout_ms = (guarded.attempt.deadline - now.as_millis())
-            .min(budget::PROVIDER_TIMEOUT_MS)
-            .cast_unsigned();
+        insert(connection, request, &guarded.attempt, digest).await?;
+        let remaining = guarded
+            .attempt
+            .expires_at
+            .duration_since(now)
+            .try_into()
+            .unwrap_or(std::time::Duration::ZERO);
         Ok(Decision::Send(Box::new(Intent {
             attempt: guarded.attempt,
             outbound: ProviderRequest {
                 key,
                 body,
-                timeout_ms,
+                timeout: remaining.min(budget::PROVIDER_TIMEOUT),
             },
             authorized_at,
         })))
@@ -201,16 +203,14 @@ async fn insert(
     request: &garde::Valid<ModelCallInput>,
     attempt: &guard::Attempt,
     digest: &str,
-    now: UnixMillis,
 ) -> Result<()> {
     let inserted = sqlx::query(sql::INSERT)
         .bind(&request.dispatch_id)
         .bind(attempt.id.as_str())
         .bind(i64::from(request.call_index))
         .bind(digest)
-        .bind(i64::from(request.request.max_output_tokens))
-        .bind(now.as_millis() + budget::PRIVATE_TTL_MS)
-        .bind(now.as_millis())
+        .bind(dispatch_status::PENDING)
+        .bind(budget::PRIVATE_TTL)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -219,7 +219,6 @@ async fn insert(
     }
     sqlx::query(sql::ADVANCE)
         .bind(attempt.id.as_str())
-        .bind(now.as_millis())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

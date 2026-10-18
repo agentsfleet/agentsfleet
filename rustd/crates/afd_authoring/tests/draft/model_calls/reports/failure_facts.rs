@@ -56,7 +56,7 @@ async fn a_revoked_model_is_durable_and_accounting_cannot_restore_its_answer() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -103,7 +103,7 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -119,7 +119,7 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
         error_code::AUTHORING_FENCE
     );
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT daemon_failure FROM fleet.authoring_attempts WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1::uuid")
             .bind(a.id.as_str())
             .fetch_one(&mut *f.connection().await)
             .await

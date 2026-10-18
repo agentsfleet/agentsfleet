@@ -23,18 +23,18 @@ const BOUND: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(20);
 /// The wallet row activation locks after its unlocked readiness reads.
 const HOLD_WALLET: &str =
-    "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid FOR UPDATE";
+    "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE";
 /// The linked draft row activation closes while it holds the fleet row.
-const HOLD_DRAFT: &str = "SELECT id FROM core.authoring_drafts WHERE id=$1::uuid FOR NO KEY UPDATE";
+const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR NO KEY UPDATE";
 /// One backend waiting on any of the given holders while running a statement
 /// that starts with the given text.
 const WAITER: &str = "SELECT pid FROM pg_stat_activity \
 WHERE pg_blocking_pids(pid) && $1::int[] AND starts_with(query,$2) ORDER BY pid LIMIT 1";
 /// Where activation waits when the wallet row is held: past every unlocked check.
-const AT_WALLET: &str = "SELECT balance_nanos FROM billing.tenant_wallet";
+const AT_WALLET: &str = "SELECT balance_nanos FROM billing.wallets";
 /// Where activation waits when its draft row is held: holding the fleet row it
 /// has just activated, before its transaction commits.
-const AT_CLOSE: &str = "UPDATE core.authoring_drafts SET state=$2,closed_at";
+const AT_CLOSE: &str = "UPDATE authoring.drafts\n   SET status = $2, closed_at";
 /// Kill's fleet row lock, the only read that could wait on an activation.
 const AT_LOCK: &str = "SELECT";
 

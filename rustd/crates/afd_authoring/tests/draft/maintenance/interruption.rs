@@ -9,14 +9,14 @@ use afd_wire::authoring::FailureReason;
 async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing_its_bound() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET reserved_nanos=30000000,lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=30000000,lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str()).execute(&mut *f.connection().await).await.expect("interrupted worker");
     f.drafts
         .maintain()
         .await
         .expect("production maintenance pass");
     let saved: (String, i64, i32) = sqlx::query_as(
-        "SELECT status,reserved_nanos,calls FROM fleet.authoring_attempts WHERE id=$1::uuid",
+        "SELECT status,reserved_nanos,call_count FROM authoring.attempts WHERE id=$1::uuid",
     )
     .bind(a.id.as_str())
     .fetch_one(&mut *f.connection().await)
@@ -54,7 +54,7 @@ async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
     use super::super::funnel::{FINISHED, about, only, property};
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await

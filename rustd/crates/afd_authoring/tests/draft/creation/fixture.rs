@@ -112,20 +112,22 @@ impl Case {
     }
 
     pub(super) async fn fund(&self) {
-        sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'setup-fixture',$2,$2)")
-            .bind(self.base.tenant.as_str()).bind(now().as_millis()).bind(crate::draft::FUNDED_NANOS)
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
+            .bind(self.base.tenant.as_str()).bind(crate::draft::FUNDED_NANOS)
             .execute(&mut *self.base.connection().await).await.expect("wallet covers activation");
     }
 
     pub(super) async fn save(&self, key: &Uuid7, request: SaveFleet) -> SavedFleet {
-        self.creations
-            .save(self.base.access(), key, request, now())
-            .await
-            .expect("retained Save")
+        crate::draft::retried(|| {
+            self.creations
+                .save(self.base.access(), key, request.clone(), now())
+        })
+        .await
+        .expect("retained Save")
     }
 
     pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<(String, Option<String>)> {
-        sqlx::query_as("SELECT created_at::text||'-'||seq::text,receipt FROM core.fleet_admissions WHERE fleet_id=$1::uuid ORDER BY seq")
+        sqlx::query_as("SELECT id::text,receipt FROM fleet.admissions WHERE fleet_id=$1::uuid ORDER BY sequence")
             .bind(fleet.as_str()).fetch_all(&mut *self.base.connection().await).await.expect("durable admissions")
     }
 
@@ -146,7 +148,7 @@ impl Case {
     }
 
     pub(super) async fn fleet_count(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM core.fleets WHERE workspace_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
             .bind(self.base.workspace.as_str())
             .fetch_one(&mut *self.base.connection().await)
             .await
@@ -155,7 +157,7 @@ impl Case {
 
     pub(super) async fn cleanup(self) {
         let fleets: Vec<String> =
-            sqlx::query_scalar("SELECT id::text FROM core.fleets WHERE workspace_id=$1::uuid")
+            sqlx::query_scalar("SELECT id::text FROM fleet.fleets WHERE workspace_id=$1::uuid")
                 .bind(self.base.workspace.as_str())
                 .fetch_all(&mut *self.base.connection().await)
                 .await

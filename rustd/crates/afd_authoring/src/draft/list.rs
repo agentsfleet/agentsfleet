@@ -2,37 +2,29 @@
 
 use crate::{
     Access, Drafts, Result, access,
-    error::{ErrorKind, raise::query},
-    replay,
+    error::raise::query,
+    paging, replay, sql,
     types::{DraftCard, DraftState, ListQuery, Page},
 };
-use afd_core::{id::Uuid7, paging::Cursor};
-use serde::Deserialize;
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "list creator's private drafts";
 const RESOURCE: &str = "private-drafts-updated-desc";
-const PAGE: &str = const_format::concatcp!(
-    "\
-SELECT to_jsonb(d)::text FROM core.authoring_drafts d
-WHERE workspace_id=$1::uuid AND creator_id=$2::uuid
-AND (expires_at IS NULL OR expires_at>",
-    afd_db::statement::NOW_MS,
-    ")
-AND ($3::text IS NULL OR state=$3) AND ($4::uuid IS NULL OR linked_fleet_id=$4::uuid)
-AND ($5::bigint IS NULL OR (updated_at,id)<($5,$6::uuid))
-ORDER BY updated_at DESC,id DESC LIMIT $7",
-);
 
-#[derive(Deserialize)]
+/// [`sql::draft::PAGE`]'s row, by column name.
+#[derive(sqlx::FromRow)]
 struct Stored {
-    id: Uuid7,
+    id: String,
     title: String,
-    state: DraftState,
+    status: String,
     resource_version: i64,
-    linked_fleet_id: Option<Uuid7>,
-    updated_at: i64,
-    expires_at: Option<i64>,
+    fleet_id: Option<String>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+    expires_at: Option<jiff_sqlx::Timestamp>,
 }
 
 impl Drafts {
@@ -53,13 +45,13 @@ impl Drafts {
             request.state,
             &request.linked_fleet_id,
         ))?;
-        let after = boundary(request.starting_after.as_deref(), &binding)?;
-        let rows: Vec<String> = sqlx::query_scalar(PAGE)
+        let after = paging::boundary(request.starting_after.as_deref(), &binding)?;
+        let rows: Vec<Stored> = sqlx::query_as(sql::draft::PAGE)
             .bind(access.workspace.as_str())
             .bind(person.id.as_str())
             .bind(request.state.map(DraftState::as_str))
             .bind(request.linked_fleet_id.as_ref().map(Uuid7::as_str))
-            .bind(after.as_ref().map(|(at, _)| *at))
+            .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
             .bind(after.as_ref().map(|(_, id)| id.as_str()))
             .bind(i64::from(request.limit) + 1)
             .fetch_all(&mut *tx)
@@ -71,27 +63,21 @@ impl Drafts {
     }
 }
 
-fn project(rows: Vec<String>, limit: usize, binding: &str) -> Result<Page<DraftCard>> {
+fn project(rows: Vec<Stored>, limit: usize, binding: &str) -> Result<Page<DraftCard>> {
     let more = rows.len() > limit;
     let mut items = Vec::new();
     let mut next_cursor = None;
     for row in rows.into_iter().take(limit) {
-        let row: Stored = super::value(&row)?;
-        next_cursor = Some(
-            Cursor::Text {
-                value: binding.to_owned(),
-                id: format!("{}:{}", row.updated_at, row.id),
-            }
-            .to_string(),
-        );
+        let id = Uuid7::parse(&row.id)?;
+        next_cursor = Some(paging::cursor(binding, row.updated_at, &id));
         items.push(DraftCard {
-            etag: super::etag(&row.id, row.resource_version),
-            id: row.id,
+            etag: super::etag(&id, row.resource_version),
+            id,
             title: row.title,
-            state: row.state,
-            linked_fleet_id: row.linked_fleet_id,
+            state: super::word(&row.status)?,
+            linked_fleet_id: super::read::optional(row.fleet_id.as_deref())?,
             updated_at: row.updated_at,
-            expires_at: row.expires_at,
+            expires_at: row.expires_at.map(jiff_sqlx::Timestamp::to_jiff),
         });
     }
     Ok(Page {
@@ -99,19 +85,4 @@ fn project(rows: Vec<String>, limit: usize, binding: &str) -> Result<Page<DraftC
         total: None,
         next_cursor: if more { next_cursor } else { None },
     })
-}
-
-fn boundary(raw: Option<&str>, binding: &str) -> Result<Option<(i64, Uuid7)>> {
-    let Some(raw) = raw else { return Ok(None) };
-    let Cursor::Text { value, id } = Cursor::parse(raw).map_err(|_invalid| ErrorKind::Cursor)?
-    else {
-        return Err(ErrorKind::Cursor.into());
-    };
-    if value != binding {
-        return Err(ErrorKind::Cursor.into());
-    }
-    let (at, id) = id.split_once(':').ok_or(ErrorKind::Cursor)?;
-    let at = at.parse().map_err(|_invalid| ErrorKind::Cursor)?;
-    let id = Uuid7::parse(id).map_err(|_invalid| ErrorKind::Cursor)?;
-    Ok(Some((at, id)))
 }

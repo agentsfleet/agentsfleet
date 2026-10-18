@@ -30,9 +30,9 @@ async fn fixture_unwind_removes_only_registered_account_and_private_rows() {
     assert!(failed.is_panic());
     let remaining: (i64, i64, i64) = sqlx::query_as(
         "SELECT \
-        (SELECT count(*) FROM core.tenants WHERE id=$1::uuid), \
-        (SELECT count(*) FROM core.authoring_drafts WHERE workspace_id=$2::uuid), \
-        (SELECT count(*) FROM core.authoring_replay_receipts WHERE workspace_id=$2::uuid)",
+        (SELECT count(*) FROM identity.tenants WHERE id=$1::uuid), \
+        (SELECT count(*) FROM authoring.drafts WHERE workspace_id=$2::uuid), \
+        (SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$2::uuid)",
     )
     .bind(tenant.as_str())
     .bind(workspace.as_str())

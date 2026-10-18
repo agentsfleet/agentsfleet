@@ -12,7 +12,7 @@ use std::sync::Arc;
 #[ignore = "requires live Postgres"]
 async fn a_small_context_window_is_rejected_before_any_dispatch() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE core.model_library SET context_cap_tokens=64 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=64 WHERE id=$1::uuid")
         .bind(f.catalogue.first().expect("owned model").as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -40,7 +40,7 @@ async fn spent_output_cannot_create_a_dispatch() {
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET output_tokens=8192 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET output_token_count=8192 WHERE id=$1::uuid")
         .bind(attempt.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -65,7 +65,7 @@ async fn a_missing_wallet_cannot_create_a_dispatch() {
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
-    sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .execute(&mut *f.connection().await)
         .await

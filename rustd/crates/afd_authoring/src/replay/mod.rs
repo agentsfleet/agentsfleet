@@ -10,11 +10,11 @@ use crate::{
         raise::{query, stored},
     },
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
 
 const CONTEXT: &str = "check authoring operation replay";
 const HASH_PREFIX: &str = "authoring:v1:sha256:";
@@ -45,6 +45,18 @@ fn sorted(value: Value) -> Value {
     }
 }
 
+/// [`sql::READ`]'s row, by column name.
+#[derive(sqlx::FromRow)]
+struct Receipt {
+    user_id: String,
+    request_digest: String,
+    resource_id: String,
+}
+
+/// The resource this operation already created, when it created one.
+///
+/// A receipt names its resource even after that resource was deleted; the
+/// caller that resolves it answers a missing resource as Gone.
 pub(crate) async fn find(
     connection: &mut PgConnection,
     scope: &str,
@@ -52,13 +64,7 @@ pub(crate) async fn find(
     actor: &Uuid7,
     digest: &str,
 ) -> Result<Option<Uuid7>> {
-    sqlx::query(sql::EXPIRE)
-        .bind(scope)
-        .bind(operation.as_str())
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    let Some(row) = sqlx::query(sql::READ)
+    let Some(receipt) = sqlx::query_as::<_, Receipt>(sql::READ)
         .bind(scope)
         .bind(operation.as_str())
         .fetch_optional(connection)
@@ -67,17 +73,10 @@ pub(crate) async fn find(
     else {
         return Ok(None);
     };
-    let accepted_actor: String = row.try_get(0).map_err(query(CONTEXT))?;
-    let accepted_digest: String = row.try_get(1).map_err(query(CONTEXT))?;
-    if accepted_actor != actor.as_str() || accepted_digest != digest {
+    if receipt.user_id != actor.as_str() || receipt.request_digest != digest {
         return Err(ErrorKind::Replay.into());
     }
-    let purged: Option<i64> = row.try_get(3).map_err(query(CONTEXT))?;
-    if purged.is_some() {
-        return Err(ErrorKind::Gone.into());
-    }
-    let resource: String = row.try_get(2).map_err(query(CONTEXT))?;
-    Ok(Some(Uuid7::parse(&resource)?))
+    Ok(Some(Uuid7::parse(&receipt.resource_id)?))
 }
 
 pub(crate) struct Reservation<'a> {
@@ -88,7 +87,6 @@ pub(crate) struct Reservation<'a> {
     pub(crate) operation: &'a Uuid7,
     pub(crate) digest: &'a str,
     pub(crate) resource: &'a Uuid7,
-    pub(crate) now: UnixMillis,
 }
 
 pub(crate) async fn reserve(
@@ -103,19 +101,8 @@ pub(crate) async fn reserve(
         .bind(reservation.operation.as_str())
         .bind(reservation.digest)
         .bind(reservation.resource.as_str())
-        .bind(reservation.now.as_millis())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
     Ok(inserted.rows_affected() == 1)
-}
-
-pub(crate) async fn purge(connection: &mut PgConnection, resource: &Uuid7) -> Result<()> {
-    sqlx::query(sql::PURGE)
-        .bind(resource.as_str())
-        .bind(afd_wire::authoring::REPLAY_TOMBSTONE_MS)
-        .execute(connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    Ok(())
 }

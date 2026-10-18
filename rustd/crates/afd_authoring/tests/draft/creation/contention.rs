@@ -1,6 +1,6 @@
 //! Duplicate requests contend on real rows and converge on one retained identity.
 
-use super::super::{fixture::now, mint};
+use super::super::{fixture::now, lock_limited, mint, retried};
 use super::fixture::Case;
 use afd_authoring::types::Start;
 use std::sync::{
@@ -30,24 +30,34 @@ async fn one_hundred_concurrent_saves_converge_on_one_retained_fleet() {
         tasks.push(tokio::spawn(async move {
             entered.fetch_add(1, Ordering::SeqCst);
             barrier.wait().await;
-            c.creations
-                .save(c.base.access(), &key, request, now())
-                .await
+            let first = c
+                .creations
+                .save(c.base.access(), &key, request.clone(), now())
+                .await;
+            // A caller either resumes or meets the retryable lock limit, and
+            // a refused caller's retry converges on the same fleet.
+            match first {
+                Ok(saved) => saved,
+                Err(error) => {
+                    assert!(
+                        lock_limited(&error),
+                        "only the retryable lock limit may refuse: {error:?}"
+                    );
+                    retried(|| {
+                        c.creations
+                            .save(c.base.access(), &key, request.clone(), now())
+                    })
+                    .await
+                    .expect("a refused caller's retry converges")
+                }
+            }
         }));
     }
     let mut identities = Vec::new();
-    let mut failures = Vec::new();
     for task in tasks {
-        match task.await.expect("request task") {
-            Ok(saved) => identities.push(saved.id),
-            Err(error) => failures.push(error),
-        }
+        identities.push(task.await.expect("request task").id);
     }
     assert_eq!(entered.load(Ordering::SeqCst), CALLERS);
-    assert!(
-        failures.is_empty(),
-        "identical callers must resume: {failures:?}"
-    );
     assert_eq!(identities.len(), CALLERS);
     assert!(identities.iter().all(|id| id == &identities[0]));
     assert_eq!(c.fleet_count().await, 1);

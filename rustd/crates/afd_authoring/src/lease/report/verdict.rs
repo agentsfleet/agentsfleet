@@ -21,7 +21,7 @@ pub(super) fn derive(
     verified: &meter::Verified,
     private: Option<&guard::Guarded>,
     cancelled: bool,
-    now: i64,
+    now: jiff::Timestamp,
 ) -> Result<Verdict> {
     if verified.usage.knowledge == Knowledge::Unknown {
         return Ok(Verdict {
@@ -31,7 +31,7 @@ pub(super) fn derive(
         });
     }
     let input = prepared.request.accounting();
-    if let Some(reason) = attempt.daemon_failure {
+    if let Some(reason) = attempt.failure_reason {
         return Ok(Verdict {
             outcome: Outcome::Failed,
             reason: Some(reason),
@@ -64,10 +64,11 @@ fn validate_known(
     input: &afd_wire::authoring::Accounting,
     verified: &meter::Verified,
     cancelled: bool,
-    now: i64,
+    now: jiff::Timestamp,
 ) -> Result<()> {
     if input.outcome == Outcome::TimedOut
-        && (now < attempt.deadline || input.failure_reason != Some(FailureReason::AttemptTimedOut))
+        && (now < attempt.expires_at
+            || input.failure_reason != Some(FailureReason::AttemptTimedOut))
     {
         return Err(invalid("A timed_out report requires the attempt deadline"));
     }

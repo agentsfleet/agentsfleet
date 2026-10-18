@@ -1,6 +1,6 @@
 //! Replay returns its accepted setup revision even after a later improvement.
 
-use super::super::{CONTEXT, Creations, etag, read};
+use super::super::{CONTEXT, Creations, etag, read, sql};
 use crate::{
     Access, Result, access,
     error::{ErrorKind, raise::query},
@@ -8,9 +8,6 @@ use crate::{
 };
 use afd_core::id::Uuid7;
 use sqlx::Connection as _;
-
-const ACCEPTED: &str =
-    "SELECT revision FROM core.fleet_definition_revisions WHERE id=$1::uuid AND fleet_id=$2::uuid";
 
 impl Creations {
     pub(super) async fn applied(
@@ -24,7 +21,7 @@ impl Creations {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         access::current(&mut tx, access).await?;
         let current = read::lock(&mut tx, access.workspace, fleet).await?;
-        let number: Option<i64> = sqlx::query_scalar(ACCEPTED)
+        let number: Option<i64> = sqlx::query_scalar(sql::ACCEPTED)
             .bind(revision.as_str())
             .bind(fleet.as_str())
             .fetch_optional(&mut *tx)

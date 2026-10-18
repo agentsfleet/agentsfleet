@@ -2,6 +2,7 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const EDITING: &str = "editing";
@@ -81,10 +82,12 @@ pub struct DraftCard {
     pub etag: String,
     /// Related fleet, when available.
     pub linked_fleet_id: Option<Uuid7>,
-    /// Last mutation time, Unix milliseconds.
-    pub updated_at: i64,
-    /// Private retention deadline, Unix milliseconds.
-    pub expires_at: Option<i64>,
+    /// Last mutation time.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: Timestamp,
+    /// Private retention deadline.
+    #[serde(with = "afd_wire::instant::option")]
+    pub expires_at: Option<Timestamp>,
 }
 
 /// Immutable normalized setup accepted from the drawer or proposal tool.
@@ -129,12 +132,14 @@ pub struct Draft {
     /// Receipt of an explicit publication of this creator's candidate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publication: Option<super::Publication>,
-    /// Time activation closed the draft, in UTC milliseconds.
+    /// Time activation closed the draft.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub closed_at: Option<i64>,
-    /// Private retention deadline, in UTC milliseconds.
+    #[serde(with = "afd_wire::instant::option")]
+    pub closed_at: Option<Timestamp>,
+    /// Private retention deadline.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option")]
+    pub expires_at: Option<Timestamp>,
 }
 
 /// Durable message acceptance, independent of execution or completion.
@@ -182,11 +187,13 @@ pub struct Message {
     /// Bounded persistent recovery action on `failed`/`timed_out` messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<super::Failure>,
-    /// Request acceptance time, UTC milliseconds.
-    pub created_at: i64,
+    /// Request acceptance time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
     /// Terminal time, absent while queued/running.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub finished_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option")]
+    pub finished_at: Option<Timestamp>,
 }
 
 /// A bounded keyset page; absence of a total is explicitly represented as null.

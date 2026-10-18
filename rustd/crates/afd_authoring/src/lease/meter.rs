@@ -1,5 +1,7 @@
 //! Daemon receipts are authoritative; runner observations only advance runtime.
 
+use std::time::Duration;
+
 use afd_billing::RUN_NANOS_PER_SEC;
 use afd_wire::authoring::{Knowledge, Meter, Usage};
 use sqlx::PgConnection;
@@ -11,23 +13,16 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
+    model::dispatch_status,
 };
 
-pub(crate) const INITIAL_RUNTIME_MS: i64 = 0;
 const MILLIS_PER_SECOND: i128 = 1000;
 const CONTEXT: &str = "verify authoring cumulative usage";
-const TOTALS: &str = "\
-SELECT count(*)::bigint AS calls,coalesce(sum((usage->>'input_tokens')::bigint),0)::bigint AS input,
-coalesce(sum((usage->>'output_tokens')::bigint),0)::bigint AS output,
-coalesce(sum((usage->>'provider_cost_nanos')::bigint),0)::bigint AS provider,
-coalesce(bool_and(usage->>'knowledge'='known'),true)
-AND count(*) FILTER(WHERE status IN ('pending','unknown'))=0 AS known,
-count(*) FILTER(WHERE status='failed')::bigint AS failed_calls
-FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid";
+const TOTALS: &str = include_str!("sql/totals.sql");
 
 pub(crate) struct Verified {
     pub(crate) calls: i64,
-    pub(crate) runtime_ms: i64,
+    pub(crate) runtime: Duration,
     pub(crate) provider_nanos: i64,
     pub(crate) runtime_nanos: i64,
     pub(crate) usage: Usage,
@@ -48,42 +43,61 @@ pub(crate) async fn verify(
     connection: &mut PgConnection,
     attempt: &Attempt,
     reported: &garde::Valid<Meter>,
-    now: i64,
+    now: jiff::Timestamp,
 ) -> Result<Verified> {
     let totals: Totals = sqlx::query_as(TOTALS)
         .bind(attempt.id.as_str())
+        .bind(dispatch_status::KNOWN)
+        .bind(dispatch_status::PENDING)
+        .bind(dispatch_status::UNKNOWN)
+        .bind(dispatch_status::FAILED)
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))?;
-    let runtime_ms = observations(attempt, reported, &totals, now)?;
+    let runtime = observations(attempt, reported, &totals, now)?;
     check_cost(reported, totals.provider)?;
-    let runtime_nanos = i64::try_from(
-        (i128::from(runtime_ms) * i128::from(RUN_NANOS_PER_SEC) + MILLIS_PER_SECOND - 1)
-            / MILLIS_PER_SECOND,
-    )
-    .map_err(|_overflow| ErrorKind::Balance)?;
+    let runtime_nanos = runtime_nanos(runtime)?;
     Ok(Verified {
         calls: totals.calls,
-        runtime_ms,
+        runtime,
         provider_nanos: totals.provider,
         runtime_nanos,
         failed_calls: totals.failed_calls,
-        usage: totals.usage(runtime_nanos)?,
+        usage: usage(
+            totals.known,
+            totals.input,
+            totals.output,
+            totals.provider,
+            runtime_nanos,
+        )?,
     })
+}
+
+/// The runtime charge for `runtime`, rounded up to the nano.
+fn runtime_nanos(runtime: Duration) -> Result<i64> {
+    i64::try_from(
+        (i128::try_from(runtime.as_millis()).map_err(|_overflow| ErrorKind::Balance)?
+            * i128::from(RUN_NANOS_PER_SEC)
+            + MILLIS_PER_SECOND
+            - 1)
+            / MILLIS_PER_SECOND,
+    )
+    .map_err(|_overflow| ErrorKind::Balance.into())
 }
 
 fn observations(
     attempt: &Attempt,
     reported: &garde::Valid<Meter>,
     totals: &Totals,
-    now: i64,
-) -> Result<i64> {
-    let runtime_ms = i64::try_from(reported.runtime_ms).map_err(|_overflow| ErrorKind::Token)?;
+    now: jiff::Timestamp,
+) -> Result<Duration> {
+    let runtime = Duration::from_millis(reported.runtime_ms);
     let elapsed = now
-        .saturating_sub(attempt.created_at)
-        .max(INITIAL_RUNTIME_MS);
-    if runtime_ms < attempt.reported_runtime_ms
-        || runtime_ms > elapsed
+        .duration_since(attempt.created_at)
+        .try_into()
+        .unwrap_or(Duration::ZERO);
+    if runtime < attempt.reported_runtime
+        || runtime > elapsed
         || i64::from(reported.calls) > totals.calls
         || reported
             .input_tokens
@@ -96,30 +110,55 @@ fn observations(
             "Authoring usage exceeds receipts or regresses its runtime",
         ));
     }
-    Ok(runtime_ms)
+    Ok(runtime)
 }
 
-impl Totals {
-    fn usage(&self, runtime: i64) -> Result<Usage> {
-        Ok(Usage {
-            knowledge: if self.known {
-                Knowledge::Known
-            } else {
-                Knowledge::Unknown
-            },
-            input_tokens: self
-                .known
-                .then(|| u64::try_from(self.input))
-                .transpose()
-                .map_err(|_negative| ErrorKind::Token)?,
-            output_tokens: self
-                .known
-                .then(|| u64::try_from(self.output))
-                .transpose()
-                .map_err(|_negative| ErrorKind::Token)?,
-            provider_cost_nanos: self.known.then(|| self.provider.to_string()),
-            runtime_cost_nanos: runtime.to_string(),
-        })
+/// The usage a message reports, from its attempt's dispatch receipts.
+fn usage(known: bool, input: i64, output: i64, provider: i64, runtime: i64) -> Result<Usage> {
+    Ok(Usage {
+        knowledge: if known {
+            Knowledge::Known
+        } else {
+            Knowledge::Unknown
+        },
+        input_tokens: known
+            .then(|| u64::try_from(input))
+            .transpose()
+            .map_err(|_negative| ErrorKind::Token)?,
+        output_tokens: known
+            .then(|| u64::try_from(output))
+            .transpose()
+            .map_err(|_negative| ErrorKind::Token)?,
+        provider_cost_nanos: known.then(|| provider.to_string()),
+        runtime_cost_nanos: runtime.to_string(),
+    })
+}
+
+/// A message's usage columns: the dispatch receipts of its attempt, summed in
+/// SQL, once a report was acknowledged. All absent before that.
+#[derive(sqlx::FromRow)]
+pub(crate) struct Metered {
+    reported_runtime_ms: Option<i64>,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    provider_nanos: Option<i64>,
+    known: Option<bool>,
+}
+
+impl Metered {
+    pub(crate) fn usage(&self) -> Result<Option<Usage>> {
+        let Some(runtime_ms) = self.reported_runtime_ms else {
+            return Ok(None);
+        };
+        let runtime = Duration::from_millis(u64::try_from(runtime_ms).unwrap_or(0));
+        usage(
+            self.known.unwrap_or(false),
+            self.input_tokens.unwrap_or(0),
+            self.output_tokens.unwrap_or(0),
+            self.provider_nanos.unwrap_or(0),
+            runtime_nanos(runtime)?,
+        )
+        .map(Some)
     }
 }
 

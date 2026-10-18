@@ -1,14 +1,12 @@
 //! Eligibility reuses the dispatch predicate and the runtime endpoint registry.
 
 use crate::{
-    Result,
-    draft::value,
     model,
     types::{ModelEligibility, ModelPricing, ModelPurpose, WorkspaceModel},
 };
-use serde::Deserialize;
 
-#[derive(Deserialize)]
+/// [`super::sql::PAGE`]'s row, by column name.
+#[derive(sqlx::FromRow)]
 pub(super) struct Row {
     pub(super) reference: String,
     provider: String,
@@ -18,10 +16,6 @@ pub(super) struct Row {
     context: i32,
     input: i64,
     output: i64,
-}
-
-pub(super) fn decode(raw: &str) -> Result<Row> {
-    value(raw)
 }
 
 pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<WorkspaceModel> {
