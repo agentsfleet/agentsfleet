@@ -66,17 +66,17 @@ export default function AddModelDialog({
     const v = schema.parse(values);
     startTransition(async () => {
       try {
-      const r = await createAdminModelAction({
-        provider: v.provider,
-        model_id: v.model_id,
-        ...modelSettings(v),
-      });
-      if (!r.ok) {
-        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "create the model" }));
-        return;
-      }
-      onCreated(r.data);
-      handleOpenChange(false);
+        const r = await createAdminModelAction({
+          provider: v.provider,
+          model_id: v.model_id,
+          ...modelSettings(v),
+        });
+        if (!r.ok) {
+          setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "create the model" }));
+          return;
+        }
+        onCreated(r.data);
+        handleOpenChange(false);
       } catch { setApiError("Could not create the model. Your entries are retained; try again."); }
     });
   }

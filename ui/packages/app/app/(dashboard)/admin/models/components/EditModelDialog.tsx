@@ -46,15 +46,15 @@ export default function EditModelDialog({
     const rates: ModelRatesInput = modelSettings(v);
     startTransition(async () => {
       try {
-      const r = await updateAdminModelAction(model.id, rates);
-      if (!r.ok) {
-        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "update the model" }));
-        return;
-      }
-      // The PATCH returns {id, updated}; the row's new shape is its identity plus
-      // the edited rates — hand that to the parent so the table updates in place.
-      onUpdated({ ...model, ...rates, inference: rates.inference ?? model.inference });
-      onOpenChange(false);
+        const r = await updateAdminModelAction(model.id, rates);
+        if (!r.ok) {
+          setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "update the model" }));
+          return;
+        }
+        // The PATCH returns {id, updated}; the row's new shape is its identity plus
+        // the edited rates — hand that to the parent so the table updates in place.
+        onUpdated({ ...model, ...rates, inference: rates.inference ?? model.inference });
+        onOpenChange(false);
       } catch { setApiError("Could not update the model. Your entries are retained; try again."); }
     });
   }

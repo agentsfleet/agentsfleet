@@ -24,10 +24,17 @@ export function PriceScheduleFields() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "prices" });
   const error = form.formState.errors.prices;
   const message = error?.root?.message ?? error?.message;
+  const rowMessages = fields.flatMap((_, index) => PRICE_FIELDS.flatMap(([name, label]) => {
+    const detail = error?.[index]?.[name]?.message;
+    return detail ? [`Price ${index + 1}: ${label}: ${detail}`] : [];
+  }));
   return <div className="space-y-md">
     <SectionHeader as="p">Price schedule</SectionHeader>
     <Alert>{UNKNOWN_NOTE}</Alert>
-    {message ? <Alert variant="destructive">{message}</Alert> : null}
+    {message || rowMessages.length > 0 ? <Alert variant="destructive">
+      {message}
+      {rowMessages.map((detail) => <div key={detail}>{detail}</div>)}
+    </Alert> : null}
     <Accordion type="multiple" defaultValue={["price-0"]}>
       {fields.map((field, index) => <AccordionItem key={field.id} value={`price-${index}`}>
         <AccordionTrigger>Price {index + 1}</AccordionTrigger>

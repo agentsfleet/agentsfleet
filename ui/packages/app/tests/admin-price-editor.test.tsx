@@ -57,7 +57,7 @@ describe("admin price array editor", () => {
     change("Prompt tokens above", "1");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Include a base tier/)).toBeTruthy();
-    expect(screen.getByLabelText("Prompt tokens above").getAttribute("value")).toBe("1");
+    expect((screen.getByLabelText("Prompt tokens above") as HTMLInputElement).value).toBe("1");
     expect(save).not.toHaveBeenCalled();
   });
   it("shows field-level precision and reversed-date refusals", async () => {
@@ -79,4 +79,19 @@ describe("admin price array editor", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Advanced model" }));
     expect(screen.getByRole("switch", { name: "Advanced model" }).getAttribute("aria-checked")).toBe("true");
   });
+});
+
+it("summarizes an overlapping tier even while that price row is collapsed", async () => {
+  const save = vi.fn();
+  render(<Harness onSave={save} defaults={{ ...DEFAULTS, prices: [DEFAULTS.prices[0]!, DEFAULTS.prices[0]!] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/Price 2: Effective from: Date ranges for the same prompt threshold must not overlap/)).toBeTruthy();
+  expect(save).not.toHaveBeenCalled();
+});
+it("caps the editor at 64 prices and permits another only after removing a row", () => {
+  const prices = Array.from({ length: 64 }, (_, index) => ({ ...DEFAULTS.prices[0]!, prompt_tokens_above: String(index) }));
+  render(<Harness onSave={vi.fn()} defaults={{ ...DEFAULTS, prices }} />);
+  expect(screen.getByRole("button", { name: "Add price" })).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByRole("button", { name: "Remove price 1" }));
+  expect(screen.getByRole("button", { name: "Add price" })).toHaveProperty("disabled", false);
 });
