@@ -11,6 +11,8 @@ mod lane;
 
 #[path = "billing/accounts.rs"]
 mod accounts;
+#[path = "billing/lock_wait.rs"]
+mod lock_wait;
 #[path = "billing/reads.rs"]
 mod reads;
 #[path = "billing/spend.rs"]
