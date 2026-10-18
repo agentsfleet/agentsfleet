@@ -98,7 +98,7 @@ pub(crate) async fn update<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
         .map_err(refused_for(&lease))?;
-    held_or(changed, StatusCode::OK)
+    held_or(changed, StatusCode::OK, services.now())
 }
 
 /// Retires a schedule the fleet made.
@@ -159,5 +159,5 @@ pub(crate) async fn remove<D: Services>(
     if matches!(removed, Some(Reconciled::Removed)) {
         log_written(&lease, &schedule, EVENT_DELETED);
     }
-    held_or(removed, StatusCode::OK)
+    held_or(removed, StatusCode::OK, services.now())
 }

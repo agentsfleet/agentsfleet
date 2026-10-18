@@ -54,12 +54,38 @@ pub struct View<'s> {
     #[serde(borrow)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<Cow<'s, str>>,
+    /// The expression in words, with the zone it is read in, for example
+    /// `At 9:00 AM (Asia/Kolkata)`.
+    pub description: String,
+    /// Whether the schedule will run, as the server reads it now.
+    pub run_state: RunState,
+    /// When it next runs, computed by the server from the expression and its
+    /// zone. Null unless `run_state` is `scheduled`.
+    #[serde(with = "afd_wire::instant::option")]
+    pub next_run_at: Option<jiff::Timestamp>,
     /// When it was created.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When it was last changed.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
+}
+
+/// Whether a schedule will run, so a client never computes a run time for one
+/// that is paused, unregistered or unreadable.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunState {
+    /// Registered and active; `next_run_at` names the next run.
+    Scheduled,
+    /// Stored without firing until it is resumed.
+    Paused,
+    /// Saved but not yet registered with the scheduler.
+    ActivationPending,
+    /// It will not run on its own: registration failed, it is being deleted,
+    /// a one-off's instant has passed, or its expression has no future match.
+    NextRunUnavailable,
 }
 
 /// A page of schedules.

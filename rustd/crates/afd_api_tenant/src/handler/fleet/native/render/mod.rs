@@ -45,7 +45,7 @@ pub(super) async fn response<D: Services>(
         definition: saved.definition,
         setup: saved.setup,
         start: saved.start,
-        schedules: schedules.iter().map(afd_cron::Schedule::view).collect(),
+        schedules: crate::handler::schedule::views(&schedules, services.now()),
         webhook_urls,
         created_at: saved.created_at,
         updated_at: saved.updated_at,

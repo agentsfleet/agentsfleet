@@ -153,7 +153,7 @@ pub(crate) async fn create<D: Services>(
     if let Reconciled::Synced(schedule) | Reconciled::Failed(schedule) = &reconciled {
         log_written(&lease, &schedule.schedule_id, EVENT_CREATED);
     }
-    rendered(reconciled, StatusCode::CREATED)
+    rendered(reconciled, StatusCode::CREATED, now)
 }
 
 /// Lists every schedule of the fleet the lease runs.
@@ -195,8 +195,12 @@ pub(crate) async fn list<D: Services>(
         .list(&lease.workspace_id, &lease.fleet_id)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
+    let now = services.now();
     Ok(Json(Page {
-        schedules: schedules.iter().map(afd_cron::Schedule::view).collect(),
+        schedules: schedules
+            .iter()
+            .map(|schedule| schedule.view(now))
+            .collect(),
     })
     .into_response())
 }

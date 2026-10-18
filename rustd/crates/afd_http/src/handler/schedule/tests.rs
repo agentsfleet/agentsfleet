@@ -64,13 +64,34 @@ async fn code_of(refusal: super::Refusal) -> String {
 
 #[tokio::test]
 async fn a_reconciled_row_answers_its_view_with_source_and_once() {
-    let response = rendered(Reconciled::Synced(schedule()), StatusCode::CREATED)
+    let response = rendered(Reconciled::Synced(schedule()), StatusCode::CREATED, MADE_AT)
         .expect("a synced row renders");
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = body_of(response).await;
     assert_eq!(body["source"], "fleet");
     assert_eq!(body["once"], true);
     assert_eq!(body["sync"], "synced");
+}
+
+/// A registered weekly schedule names its next run in RFC 3339, read in its
+/// own zone: Monday 09:00 in Kolkata is 03:30 UTC.
+#[tokio::test]
+async fn a_registered_recurring_schedule_answers_its_next_run_and_words() {
+    let weekly = Schedule {
+        once: false,
+        ..schedule()
+    };
+    let response = rendered(Reconciled::Synced(weekly), StatusCode::OK, MADE_AT).expect("renders");
+    let body = body_of(response).await;
+    assert_eq!(body["run_state"], "scheduled");
+    assert_eq!(body["next_run_at"], "2023-11-20T03:30:00Z");
+    let words = body["description"]
+        .as_str()
+        .expect("a schedule always carries its description");
+    assert!(
+        words.ends_with(" (Asia/Kolkata)"),
+        "the words name the zone the expression is read in: {words}"
+    );
 }
 
 /// Saved and not registered is still the row, with its sync state showing.
@@ -80,20 +101,26 @@ async fn a_failed_push_still_answers_the_row() {
         sync_status: SyncStatus::Failed,
         ..schedule()
     };
-    let response = rendered(Reconciled::Failed(failed), StatusCode::OK).expect("renders");
+    let response = rendered(Reconciled::Failed(failed), StatusCode::OK, MADE_AT).expect("renders");
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(body_of(response).await["sync"], "failed");
+    let body = body_of(response).await;
+    assert_eq!(body["sync"], "failed");
+    assert_eq!(
+        body["run_state"], "next_run_unavailable",
+        "a schedule registered nowhere never shows a run time"
+    );
+    assert_eq!(body["next_run_at"], serde_json::Value::Null);
 }
 
 #[test]
 fn a_removed_row_is_a_no_content() {
-    let response = rendered(Reconciled::Removed, StatusCode::OK).expect("renders");
+    let response = rendered(Reconciled::Removed, StatusCode::OK, MADE_AT).expect("renders");
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
 async fn a_superseded_reconcile_is_a_conflict_to_retry() {
-    let refusal = rendered(Reconciled::Superseded, StatusCode::OK).expect_err("refused");
+    let refusal = rendered(Reconciled::Superseded, StatusCode::OK, MADE_AT).expect_err("refused");
     assert_eq!(refusal.status(), StatusCode::CONFLICT);
     let body = body_of(refusal.into_response()).await;
     assert_eq!(body["error_code"], error_code::SCHEDULE_SYNCING.as_str());
@@ -102,14 +129,15 @@ async fn a_superseded_reconcile_is_a_conflict_to_retry() {
 
 #[tokio::test]
 async fn no_row_is_not_found() {
-    let refusal = held_or(None, StatusCode::OK).expect_err("refused");
+    let refusal = held_or(None, StatusCode::OK, MADE_AT).expect_err("refused");
     assert_eq!(refusal.status(), StatusCode::NOT_FOUND);
     assert_eq!(
         code_of(refusal).await,
         error_code::SCHEDULE_NOT_FOUND.as_str()
     );
     assert_eq!(not_found().status(), StatusCode::NOT_FOUND);
-    let removed = held_or(Some(Reconciled::Removed), StatusCode::OK).expect("a removed row");
+    let removed =
+        held_or(Some(Reconciled::Removed), StatusCode::OK, MADE_AT).expect("a removed row");
     assert_eq!(removed.status(), StatusCode::NO_CONTENT);
 }
 
