@@ -13,6 +13,7 @@ use afd_billing::biller::{
     WithOutagePolicy, WorkKey,
 };
 use afd_billing::ledger::{LedgerBiller, log_lines};
+use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
 use afd_core::clock::SystemClock;
@@ -179,4 +180,37 @@ async fn test_unsettled_lines_are_resettled() {
     assert_eq!(resettled.charged, LINE, "the logged line is charged once");
     let again = biller.settle(&lines).await.expect("a second retry answers");
     assert_eq!(again.charged, Nanos::ZERO, "a second pass charges nothing");
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_fleets_spend_is_the_sum_of_its_lines() {
+    let (lane, payer) = funded_lane().await;
+    let biller = ledger(&lane);
+    let work = WorkKey::FleetLease(mint_uuid7());
+    biller
+        .settle(&settlement(
+            &lane,
+            &payer,
+            &work,
+            vec![rated(0), rated(1), rated(2)],
+        ))
+        .await
+        .expect("settles");
+    let spend = fleet_spend(
+        &mut *lane.pool.acquire().await.expect("the lane answers"),
+        &lane.workspace,
+        &lane.fleet,
+    )
+    .await
+    .expect("reads the spend");
+    assert_eq!(
+        spend.day.as_i64(),
+        LINE.as_i64() * 3,
+        "today's spend is every line"
+    );
+    assert_eq!(
+        spend.month, spend.day,
+        "this month's spend includes today's"
+    );
 }

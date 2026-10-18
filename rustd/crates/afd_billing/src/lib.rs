@@ -35,6 +35,7 @@ pub mod biller;
 pub mod budget;
 pub mod charge;
 pub mod ledger;
+pub mod limits;
 pub mod meter;
 pub mod nanos;
 pub mod price;
