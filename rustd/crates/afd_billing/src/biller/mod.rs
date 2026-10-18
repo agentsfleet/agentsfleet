@@ -148,12 +148,20 @@ pub struct Settlement {
 }
 
 /// What one [`Biller::settle`] charged.
+///
+/// `charged` is what the newly settled lines cost; `taken` is what the balance
+/// could give. A balance that cannot cover its lines is clamped at zero, and
+/// the difference is `written_off`, never silent: the biller logs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Receipt {
     /// Lines this call charged; lines charged before are not counted again.
     pub settled_lines: usize,
-    /// What this call took from the balance.
+    /// What the newly settled lines cost.
     pub charged: Nanos,
+    /// What this call actually took from the balance.
+    pub taken: Nanos,
+    /// What the balance could not cover: `charged` less `taken`.
+    pub written_off: Nanos,
 }
 
 /// Why a piece of work's hold is released.

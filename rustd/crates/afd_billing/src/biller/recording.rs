@@ -153,13 +153,17 @@ impl Biller for RecordingBiller {
                 receipt.settled_lines += 1;
             }
         }
-        if let Some(slot) = state.balances.get_mut(index) {
-            *slot = (*slot - total).max(0);
-        }
+        let taken = state.balances.get_mut(index).map_or(0, |slot| {
+            let taken = total.min(*slot);
+            *slot -= taken;
+            taken
+        });
         if let Some(held) = state.holds.get_mut(&settlement.work) {
-            held.captured += total;
+            held.captured += taken;
         }
         receipt.charged = Nanos::from_i64(total);
+        receipt.taken = Nanos::from_i64(taken);
+        receipt.written_off = Nanos::from_i64(total - taken);
         Ok(receipt)
     }
 

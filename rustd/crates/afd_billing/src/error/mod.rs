@@ -139,9 +139,19 @@ impl Error {
     /// failure and never decides what to do about one, because fail-open and
     /// fail-closed belong beside the gate's name rather than beside the
     /// connection — the separation this crate is built around.
+    ///
+    /// Two shapes of one outage: the pool could not hand out a connection, or a
+    /// statement's connection was lost mid-flight (a failover, a reset socket, a
+    /// shutdown answer) as `afd_db::error::is_connection_lost` decides. A
+    /// statement that failed on its own terms (a constraint, a syntax or decode
+    /// error) is a defect, not an outage.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Datastore { .. })
+        match self.kind() {
+            ErrorKind::Datastore { .. } => true,
+            ErrorKind::Query { source, .. } => afd_db::error::is_connection_lost(source),
+            _ => false,
+        }
     }
 }
 
