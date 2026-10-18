@@ -7,13 +7,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::clock::saturating_millis;
+use afd_core::clock::after;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
 use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afd_wire::lease::{LeasePayload, SandboxLimits};
 use bytes::Bytes;
 use futures_util::FutureExt as _;
+use jiff::Timestamp;
 
 use crate::client::{Call, Verb};
 use crate::error;
@@ -32,8 +33,8 @@ const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
 const BUSY_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 /// The event every release is logged under.
 const RELEASED: &str = "sandbox_hold_released";
-/// The report field that says where the hold lapses, in epoch milliseconds.
-const HELD_UNTIL_MS: &str = "held_until_ms";
+/// The report field that says when the hold lapses.
+const HELD_UNTIL: &str = "held_until";
 /// The daemon's answer to a memory push it stored.
 const STORED: &[u8] = br#"{"stored":1,"skipped":0}"#;
 
@@ -134,7 +135,10 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
     // The rig's clock stands at zero, so the hold lapses one idle window in.
-    assert_eq!(report[HELD_UNTIL_MS], saturating_millis(SANDBOX_HOLD_IDLE));
+    assert_eq!(
+        report[HELD_UNTIL],
+        after(Timestamp::UNIX_EPOCH, SANDBOX_HOLD_IDLE).to_string()
+    );
     assert_eq!(
         counted.read(),
         (1, 1, 0, 0),
@@ -299,5 +303,5 @@ async fn test_a_lease_on_the_last_free_worker_releases_other_holds() {
 
 /// The report asks the daemon to hold nothing for its fleet.
 pub(super) fn holds_nothing(report: &serde_json::Value) {
-    assert!(report.get(HELD_UNTIL_MS).is_none(), "{report}");
+    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
 }

@@ -165,6 +165,6 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
             last_response: Cow::Borrowed(RESPONSE),
         },
         tool_calls: None,
-        held_until_ms: None,
+        held_until: None,
     }
 }
