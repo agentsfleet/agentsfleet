@@ -29,7 +29,7 @@ use jiff::Timestamp;
 
 /// The instant every fixture identifier is minted at, and the fleet stamped
 /// with. The rows this crate writes are stamped by the database clock.
-const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
+pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status the seeded fleet carries.
 const FLEET_ACTIVE: &str = "active";
@@ -75,11 +75,6 @@ impl Lane {
         };
         lane.seed_person().await;
         lane
-    }
-
-    /// The instant this suite mints identifiers at.
-    pub(crate) const fn now() -> Timestamp {
-        NOW
     }
 
     /// Puts one fleet in the workspace, so `has_fleet` turns true.
@@ -171,5 +166,5 @@ pub(crate) fn mint() -> Uuid7 {
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host draws entropy");
-    Uuid7::encode(Lane::now(), bytes).expect("a well-formed identifier")
+    Uuid7::encode(NOW, bytes).expect("a well-formed identifier")
 }

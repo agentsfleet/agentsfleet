@@ -160,11 +160,6 @@ impl Lane {
         lane
     }
 
-    /// The instant this suite mints identifiers at.
-    pub(crate) const fn now() -> Timestamp {
-        NOW
-    }
-
     /// One pooled connection, for the fixture's own reads and writes.
     pub(super) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool

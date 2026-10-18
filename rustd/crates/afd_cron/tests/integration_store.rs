@@ -25,7 +25,7 @@ mod support;
 use afd_cron::model::MAX_SCHEDULES_PER_FLEET;
 use afd_cron::{DesiredStatus, Refused, Source, SyncStatus};
 
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
 /// An expression every fixture registers under.
 const NIGHTLY: &str = "0 3 * * *";
@@ -124,7 +124,7 @@ async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
                 once: false,
             },
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
         )
         .await
         .expect("the lane answers");

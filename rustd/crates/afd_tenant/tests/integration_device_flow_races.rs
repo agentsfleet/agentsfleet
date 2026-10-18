@@ -14,7 +14,7 @@ use afd_core::error_code;
 use afd_tenant::session::Fingerprint;
 use afd_tenant::session::input::{Code, Opening};
 
-use crate::device_flow_lane::{APPROVER, CODE, approval, now, origin, surface};
+use crate::device_flow_lane::{APPROVER, CODE, NOW, approval, origin, surface};
 use crate::dragonfly_harness::DragonflyHarness;
 
 /// Dimension 1.3 — two dashboards click Approve, and exactly one wins.
@@ -25,7 +25,7 @@ async fn test_device_flow_state_races_on_approve() {
     let sessions = surface(&harness);
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
 
@@ -36,7 +36,7 @@ async fn test_device_flow_state_races_on_approve() {
         let session_id = opened.session_id.clone();
         tokio::spawn(async move {
             sessions
-                .approve(&session_id, &approval(), APPROVER, now())
+                .approve(&session_id, &approval(), APPROVER, NOW)
                 .await
         })
     });
@@ -68,11 +68,11 @@ async fn test_device_flow_state_races_on_verify() {
     let sessions = surface(&harness);
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
 
@@ -86,7 +86,7 @@ async fn test_device_flow_state_races_on_verify() {
                     &session_id,
                     &Code::parse(CODE).expect("digits"),
                     &Fingerprint::of("203.0.113.7", &agent, &session_id),
-                    now(),
+                    NOW,
                 )
                 .await
         })
@@ -113,18 +113,18 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
     let sessions = surface(&harness);
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
 
     let code = Code::parse(CODE).expect("digits");
     let first = origin(&opened.session_id);
     let redeemed = sessions
-        .verify(&opened.session_id, &code, &first, now())
+        .verify(&opened.session_id, &code, &first, NOW)
         .await
         .expect("verify");
     assert!(!redeemed.repeated);
@@ -132,7 +132,7 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
     // The same request again, inside the window: the same envelope, flagged as
     // a repeat for the audit trail and identical on the wire.
     let again = sessions
-        .verify(&opened.session_id, &code, &first, now())
+        .verify(&opened.session_id, &code, &first, NOW)
         .await
         .expect("replay");
     assert!(again.repeated);
@@ -141,7 +141,7 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
     // Anybody else asking is told it is gone.
     let stranger = Fingerprint::of("198.51.100.4", "curl/8", &opened.session_id);
     let refusal = sessions
-        .verify(&opened.session_id, &code, &stranger, now())
+        .verify(&opened.session_id, &code, &stranger, NOW)
         .await
         .expect_err("consumed");
     assert_eq!(refusal.code(), error_code::SESSION_CONSUMED);
@@ -155,7 +155,7 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
     let sessions = surface(&harness);
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     let code = Code::parse(CODE).expect("digits");
@@ -163,7 +163,7 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
 
     for _ in 0..5 {
         let refusal = sessions
-            .verify(&opened.session_id, &code, &fingerprint, now())
+            .verify(&opened.session_id, &code, &fingerprint, NOW)
             .await
             .expect_err("not approved");
         assert_eq!(refusal.code(), error_code::SESSION_NOT_APPROVED);
@@ -172,11 +172,11 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
     // Five early attempts must not have spent the attempt ceiling: no code was
     // ever checked, so nothing was wrong to count.
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("still approvable");
     sessions
-        .verify(&opened.session_id, &code, &fingerprint, now())
+        .verify(&opened.session_id, &code, &fingerprint, NOW)
         .await
         .expect("redeems normally");
 }
@@ -189,11 +189,11 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
     let sessions = surface(&harness);
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
 
@@ -204,13 +204,13 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
     // ones before it, so a command line stops prompting.
     for _ in 0..4 {
         let refusal = sessions
-            .verify(&opened.session_id, &wrong, &fingerprint, now())
+            .verify(&opened.session_id, &wrong, &fingerprint, NOW)
             .await
             .expect_err("rejected");
         assert_eq!(refusal.code(), error_code::VERIFICATION_FAILED);
     }
     let refusal = sessions
-        .verify(&opened.session_id, &wrong, &fingerprint, now())
+        .verify(&opened.session_id, &wrong, &fingerprint, NOW)
         .await
         .expect_err("ceiling");
     assert_eq!(refusal.code(), error_code::SESSION_ABORTED);
@@ -221,7 +221,7 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &fingerprint,
-            now(),
+            NOW,
         )
         .await
         .expect_err("aborted");

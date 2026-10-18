@@ -1,7 +1,7 @@
 //! Grant-card ownership, contention, and release against the real schema.
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use crate::lane::{Lane, mint, sweeper_exclusive};
+use crate::lane::{Lane, NOW, mint, sweeper_exclusive};
 use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
 use afd_crypto::entropy::Entropy;
 
@@ -18,7 +18,7 @@ async fn request(lane: &Lane, service: &str) -> Requested {
                 credential: service,
                 origin: Origin::Park,
             },
-            Lane::now(),
+            NOW,
         )
         .await
         .expect("request runs")
@@ -132,7 +132,7 @@ async fn a_card_insert_failure_rolls_back_the_new_grant() {
                 credential: SERVICE,
                 origin: Origin::Park,
             },
-            Lane::now(),
+            NOW,
         )
         .await;
     assert!(

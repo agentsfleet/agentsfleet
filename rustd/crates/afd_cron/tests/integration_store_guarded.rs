@@ -19,7 +19,7 @@ use afd_cron::{Change, DesiredStatus, NewSchedule, Refused, Source};
 use afd_db::Precondition;
 use sqlx::PgConnection;
 
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
 /// A guard that answers its verdict every time it is asked.
 struct Verdict(bool);
@@ -59,7 +59,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
             &lane.workspace_id(),
             fleet_made(&fleet),
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
             &Verdict(false),
         )
         .await
@@ -73,7 +73,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
             &lane.workspace_id(),
             fleet_made(&fleet),
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
             &Verdict(true),
         )
         .await

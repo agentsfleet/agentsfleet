@@ -77,10 +77,6 @@ fn foreign_secret() -> SecretBytes {
     SecretBytes::new(b"fixture-connector-other-secret".to_vec())
 }
 
-const fn now() -> Timestamp {
-    NOW
-}
-
 /// The production connect flow over stores that are not there.
 #[expect(
     clippy::disallowed_methods,
@@ -123,7 +119,7 @@ fn state_for(provider: Provider, subject: &str) -> String {
         WORKSPACE,
         subject,
         NONCE,
-        now(),
+        NOW,
     )
 }
 
@@ -132,7 +128,7 @@ async fn the_person_who_started_the_round_trip_may_finish_it() {
     let presented = state_for(Provider::Slack, STARTER);
 
     let verified = connectors()
-        .verify(Provider::Slack, &secret(), &presented, STARTER, now())
+        .verify(Provider::Slack, &secret(), &presented, STARTER, NOW)
         .expect("the starter's own state verifies for them");
 
     assert_eq!(verified.workspace(), WORKSPACE);
@@ -156,7 +152,7 @@ async fn an_authenticated_bystander_cannot_finish_somebody_elses_connect() {
     let presented = state_for(Provider::Slack, STARTER);
 
     let rejected = connectors()
-        .verify(Provider::Slack, &secret(), &presented, BYSTANDER, now())
+        .verify(Provider::Slack, &secret(), &presented, BYSTANDER, NOW)
         .expect_err("a state is not a bearer token");
 
     assert_eq!(
@@ -176,12 +172,12 @@ async fn a_state_signed_under_a_secret_this_deployment_does_not_hold_is_a_bad_si
         WORKSPACE,
         STARTER,
         NONCE,
-        now(),
+        NOW,
     );
 
     assert_eq!(
         connectors()
-            .verify(Provider::Slack, &secret(), &presented, STARTER, now())
+            .verify(Provider::Slack, &secret(), &presented, STARTER, NOW)
             .expect_err("a foreign secret does not sign for this deployment"),
         Rejected::BadSignature
     );
@@ -197,7 +193,7 @@ async fn a_state_minted_for_one_connector_does_not_verify_as_another() {
 
     assert_eq!(
         connectors()
-            .verify(Provider::Jira, &secret(), &presented, STARTER, now())
+            .verify(Provider::Jira, &secret(), &presented, STARTER, NOW)
             .expect_err("the binding separates the connectors"),
         Rejected::BadSignature
     );
@@ -222,7 +218,7 @@ async fn a_state_past_its_window_is_expired_rather_than_forged() {
 async fn nothing_that_is_not_a_state_verifies_as_one() {
     for candidate in ["", "not-a-state", "a.b", "....", "%%%"] {
         let rejected = connectors()
-            .verify(Provider::Slack, &secret(), candidate, STARTER, now())
+            .verify(Provider::Slack, &secret(), candidate, STARTER, NOW)
             .expect_err("`{candidate}` is not a state");
         assert!(
             matches!(rejected, Rejected::Malformed | Rejected::BadSignature),

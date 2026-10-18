@@ -31,7 +31,7 @@ use afd_cron::{Change, DesiredStatus, NewSchedule, Reconciled, Schedule, Source}
 use jiff::tz::TimeZone;
 
 use self::live_qstash::{against_live, live};
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
 /// 09:05 UTC on 15 March: the one-off's minute, whichever year is next.
 const SET_FOR_CRON: &str = "5 9 15 3 *";
@@ -58,7 +58,7 @@ async fn one_off(lane: &CronLane, token: &Uuid7) -> Schedule {
                 once: true,
             },
             token,
-            CronLane::now(),
+            SEED_AT,
         )
         .await
         .expect("the lane's Postgres must answer")
