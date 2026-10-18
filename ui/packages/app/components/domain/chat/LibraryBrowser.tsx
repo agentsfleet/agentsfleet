@@ -11,7 +11,7 @@ import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-lib
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
 import { SOURCE_KIND } from "@/lib/api/draft-types";
-import { SetupReviewDetails } from "./SetupReviewDetails";
+import { FleetSetupDetails } from "./FleetSetupDetails";
 import { LibraryRemoval } from "./LibraryRemoval";
 
 type Page = {readonly items: readonly LibraryCard[]; readonly next_cursor: string | null};
@@ -128,7 +128,7 @@ function LibraryHistory({workspace, library, onSelect, onError}: {workspace: str
 function LibraryInspection({entry, onUse}: {entry: Library; onUse: () => void}) {
   return <div className="space-y-md border-t border-border pt-lg">
     <h3 className="font-medium">{entry.card.name} · revision {entry.head.revision}</h3>
-    <SetupReviewDetails review={entry.review} />
+    <FleetSetupDetails review={entry.review} />
     <Button onClick={onUse}>Start chat from this revision</Button>
   </div>;
 }

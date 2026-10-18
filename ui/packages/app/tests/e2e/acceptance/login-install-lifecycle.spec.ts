@@ -46,7 +46,7 @@ test.describe("login → install → lifecycle", () => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Save through the private chat's Review setup. A killed-but-not-deleted
+    // Save through the private chat's inline setup. A killed-but-not-deleted
     // row from an interrupted run is the server's to suffix around. The chat
     // targets the fixture's default workspace — the one active in the
     // browser here.

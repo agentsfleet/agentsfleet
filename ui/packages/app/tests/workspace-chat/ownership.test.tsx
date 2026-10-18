@@ -28,12 +28,11 @@ it.each([200, 403, undefined])("retains the platform staging outcome in the owni
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} canPublishPlatform
     source={{kind: "definition", definition: REVIEW.effective.definition}} />);
   await screen.findByText("Your setup is ready.");
-  fireEvent.click(screen.getByRole("button", {name: "Review setup"}));
-  const dialog = await screen.findByRole("dialog", {name: "Review fleet setup"});
+  const dialog = await screen.findByRole("region", {name: "Fleet setup"});
+  fireEvent.click(within(dialog).getByRole("button", {name: "Publish to Fleet library"}));
   fireEvent.click(await within(dialog).findByRole("button", {name: "Stage platform entry"}));
   if (status === 200) {
     await screen.findAllByText(/is staged/);
-    fireEvent.click(within(dialog).getByRole("button", {name: "Close"}));
     expect(screen.getByRole("status").textContent).toContain("Publish it explicitly");
   } else if (status === 403) {
     await screen.findAllByText(/doesn’t have access here/);

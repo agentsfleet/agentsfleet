@@ -4,7 +4,7 @@ import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, respons
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 // Load the real dynamic children before interaction deadlines start.
 import "@/components/domain/chat/DraftConversation";
-import "@/components/domain/chat/ReviewSetup";
+import "@/components/domain/chat/FleetSetup";
 
 export type Call = {path: string; method: string; body: unknown; headers: Headers};
 const auth = vi.hoisted(() => ({isLoaded: true, isSignedIn: true, userId: "creator"}));

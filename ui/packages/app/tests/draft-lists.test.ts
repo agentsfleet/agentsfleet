@@ -5,7 +5,7 @@ import { DraftLists } from "@/lib/api/draft-lists";
 import { DraftClient } from "@/lib/api/drafts";
 import { DRAFT_LIST, LIST_PAGE_LIMIT } from "@/lib/api/draft-list-types";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
-import { APP_ORIGIN, DRAFT_ID, MODEL, MODEL_REF, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { APP_ORIGIN, DRAFT, DRAFT_ID, MODEL, MODEL_REF, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 type Page = {items: unknown[]; next_cursor: string | null};
 type Route = (url: URL) => Response | Promise<Response>;
@@ -223,4 +223,23 @@ it("retains the newer opening when an earlier opening resolves last", async () =
   await expect(first).resolves.toEqual(latest);
   expect(lists.view.models.map(({ref}) => ref)).toEqual(["model:new"]);
   expect(lists.view.moreModels).toBe(false);
+});
+
+it("private chat lists > never restores a deleted chat from an already pending page", async () => {
+  const next = Promise.withResolvers<Response>();
+  drafts = (url) => url.searchParams.has("starting_after") ? next.promise : page([FIRST_CARD], CURSOR);
+  const list = new DraftLists(`/live/v1/workspaces/${WORKSPACE}`);
+  await list.open(new AbortController().signal);
+  const pending = list.more(DRAFT_LIST.chats, new AbortController().signal);
+  expect(list.remove(FIRST_CARD.id).cards).toEqual([]);
+  next.resolve(page([FIRST_CARD, SECOND_CARD], null));
+  expect((await pending)?.cards).toEqual([SECOND_CARD]);
+});
+
+it("private chat lists > retains a renamed chat and its saved state after navigating away", async () => {
+  const list = new DraftLists(`/live/v1/workspaces/${WORKSPACE}`);
+  await list.open(new AbortController().signal);
+  const saved = list.updateDraft({...DRAFT, title: "Build repair", state: "closed", linked_fleet_id: SECOND_CARD.id});
+  expect(saved.cards[0]).toMatchObject({title: "Build repair", state: "closed", linked_fleet_id: SECOND_CARD.id});
+  expect(list.view.cards).toEqual(saved.cards);
 });

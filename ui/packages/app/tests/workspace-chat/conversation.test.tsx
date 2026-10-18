@@ -20,11 +20,11 @@ beforeEach(async () => {
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function LiveConversation() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <DraftConversation client={client} view={view} onReview={() => {}} />;
+  return <DraftConversation client={client} view={view} />;
 }
 
 it("keeps saved setup actions inside the conversation history", () => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}} onReview={() => {}}>
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}}>
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
@@ -35,7 +35,7 @@ it("keeps saved setup actions inside the conversation history", () => {
 });
 
 it.each([false, true])("shows the new-fleet entrance only before an empty draft is saved (%s)", (saved) => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [], fleet: saved ? FLEET : null}} onReview={() => {}}>
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [], fleet: saved ? FLEET : null}}>
     {saved ? <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} /> : null}
   </DraftConversation>);
@@ -76,7 +76,7 @@ it.each([
 ])("shows a recovery explanation for failed replies (%s)", (recovery_action, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
     text: undefined, failure: {reason: "Authoring failed", error_code: "UZ-TEST-001", recovery_action}}]};
-  render(<DraftConversation client={client} view={view} onReview={() => {}} />);
+  render(<DraftConversation client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
   expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
   expect(screen.getByText(/Showing the latest conversation messages/)).toBeTruthy();
@@ -100,7 +100,7 @@ it("loads more eligible authoring models and removes the control when the list e
 });
 
 it("does not offer more models after losing access, even when an older view had a cursor", () => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} onReview={() => {}} />);
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} />);
   expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull();
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
 });

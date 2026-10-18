@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SetupProgress } from "@/components/domain/chat/SetupProgress";
 import { SetupChecks } from "@/components/domain/chat/SetupChecks";
-import { SetupReviewDetails } from "@/components/domain/chat/SetupReviewDetails";
+import { FleetSetupDetails } from "@/components/domain/chat/FleetSetupDetails";
 import { initialDefinition, safeActionHref } from "@/components/domain/chat/chat-defaults";
 import { FLEET, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -74,7 +74,7 @@ it("calls an active fleet ready only when every schedule is registered, and retr
 it("shows unresolved defaults and the exact source and fleet revisions under review", () => {
   const definition = initialDefinition();
   expect(definition.config["x-agentsfleet"]).toMatchObject({tools: [], budget: {daily_nanos: String(NANOS_PER_USD)}});
-  render(<SetupReviewDetails review={{...REVIEW, effective: {...REVIEW.effective, definition, runtime_model_ref: null, source_revision: "source-2", target_setup_revision: "3"}}} />);
+  render(<FleetSetupDetails review={{...REVIEW, effective: {...REVIEW.effective, definition, runtime_model_ref: null, source_revision: "source-2", target_setup_revision: "3"}}} />);
   expect(screen.getByText("Account default is not resolved")).toBeTruthy();
   expect(screen.getByText("source-2")).toBeTruthy();
   expect(screen.getByText("Fleet setup revision")).toBeTruthy();
