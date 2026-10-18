@@ -21,6 +21,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod rules;
+pub mod spans;
 
 mod limit;
 mod sentences;

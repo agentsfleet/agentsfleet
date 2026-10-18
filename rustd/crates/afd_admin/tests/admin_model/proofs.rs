@@ -10,19 +10,24 @@ async fn failed_price_writes_roll_back_identity_and_generation_then_retry_heals(
     let model = lane.file_model().await;
     let before = version(&lane).await;
     let mut invalid = details(true);
-    invalid.prices[0].input_nanos_per_mtok = -1;
-    assert!(
-        lane.models
-            .update(&model.id, invalid.clone())
-            .await
-            .is_err()
-    );
+    invalid
+        .prices
+        .first_mut()
+        .expect("a fixture price")
+        .input_nanos_per_mtok = -1;
+    lane.models
+        .update(&model.id, invalid.clone())
+        .await
+        .expect_err("a negative rate is refused by the store");
     assert_eq!(lane.models.list().await.expect("list"), vec![model.clone()]);
     assert_eq!(version(&lane).await, before);
     let mut input = lane.input();
     input.model_name.push_str("-refused");
     input.details = invalid;
-    assert!(lane.models.create(input, NOW).await.is_err());
+    lane.models
+        .create(input, NOW)
+        .await
+        .expect_err("a negative rate is refused by the store");
     assert_eq!(lane.models.list().await.expect("list"), vec![model.clone()]);
     assert_eq!(version(&lane).await, before);
     assert!(
@@ -32,10 +37,7 @@ async fn failed_price_writes_roll_back_identity_and_generation_then_retry_heals(
             .expect("retry")
     );
     assert_eq!(version(&lane).await, before + 1);
-    assert_eq!(
-        lane.models.list().await.expect("list")[0].details,
-        details(true)
-    );
+    assert_eq!(listed(&lane).await, details(true));
     lane.cleanup().await;
 }
 
@@ -46,7 +48,7 @@ async fn a_complete_replacement_prunes_tiers_and_keeps_the_retained_price_id() {
     let model = lane.file_model().await;
     let retained = price_ids(&lane).await;
     let mut tiered = details(true);
-    let mut upper = tiered.prices[0].clone();
+    let mut upper = tiered.prices.first().expect("a fixture price").clone();
     upper.prompt_tokens_above = 272_000;
     tiered.prices.push(upper);
     assert!(
@@ -55,7 +57,7 @@ async fn a_complete_replacement_prunes_tiers_and_keeps_the_retained_price_id() {
             .await
             .expect("add tier")
     );
-    assert_eq!(lane.models.list().await.expect("list")[0].details, tiered);
+    assert_eq!(listed(&lane).await, tiered);
     assert_eq!(price_ids(&lane).await.len(), 2);
     assert!(
         lane.models
@@ -64,10 +66,7 @@ async fn a_complete_replacement_prunes_tiers_and_keeps_the_retained_price_id() {
             .expect("prune tier")
     );
     assert_eq!(price_ids(&lane).await, retained);
-    assert_eq!(
-        lane.models.list().await.expect("list")[0].details,
-        details(false)
-    );
+    assert_eq!(listed(&lane).await, details(false));
     lane.cleanup().await;
 }
 
@@ -116,4 +115,16 @@ async fn price_ids(lane: &Lane) -> Vec<String> {
     .fetch_all(&mut *connection)
     .await
     .expect("price ids")
+}
+
+/// The one model the lane files, as the store lists it.
+async fn listed(lane: &Lane) -> afd_admin::ModelUpdate {
+    lane.models
+        .list()
+        .await
+        .expect("list")
+        .into_iter()
+        .next()
+        .expect("the filed model")
+        .details
 }

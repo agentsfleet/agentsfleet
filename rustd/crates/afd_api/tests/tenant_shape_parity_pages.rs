@@ -158,6 +158,11 @@ fn a_catalogue_model_carries_all_three_rates() {
             input_nanos_per_mtok: 0,
             cached_input_nanos_per_mtok: 0,
             output_nanos_per_mtok: 0,
+            display_name: Cow::Borrowed(TEXT),
+            advanced: false,
+            context_source_url: Cow::Borrowed(TEXT),
+            context_verified_at: WHEN,
+            prices: Vec::new(),
         },
         "CatalogueModel",
         &[
@@ -167,6 +172,11 @@ fn a_catalogue_model_carries_all_three_rates() {
             "input_nanos_per_mtok",
             "cached_input_nanos_per_mtok",
             "output_nanos_per_mtok",
+            "display_name",
+            "advanced",
+            "context_source_url",
+            "context_verified_at",
+            "prices",
         ],
     );
 }

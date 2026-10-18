@@ -1,4 +1,8 @@
 //! Labels come from the catalogue; eligibility follows the shared predicates.
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
 
 use super::{Row, eligible};
 use crate::types::ModelPurpose;

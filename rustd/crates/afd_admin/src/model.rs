@@ -88,8 +88,9 @@ impl ModelRow {
 /// Create outcome kept distinct from datastore failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateModel {
-    /// The new row, including its minted identifier.
-    Created(Model),
+    /// The new row, including its minted identifier; boxed because a price
+    /// schedule makes it far larger than the duplicate answer beside it.
+    Created(Box<Model>),
     /// A row already has the provider/model identity.
     Duplicate,
 }
@@ -160,12 +161,12 @@ impl Models {
         }
         write_prices(&mut transaction, &id, &input.details.prices, CONTEXT_CREATE).await?;
         transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
-        Ok(CreateModel::Created(Model {
+        Ok(CreateModel::Created(Box::new(Model {
             id,
             provider: input.provider,
             model_name: input.model_name,
             details: input.details,
-        }))
+        })))
     }
 
     /// Replaces identity evidence and all prices, and the inference settings

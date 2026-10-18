@@ -1,5 +1,9 @@
 //! The operational seeder against the registered schema and real Postgres.
 #![cfg(feature = "test-util")]
+#![expect(
+    clippy::panic,
+    reason = "a seeder the lane cannot run fails the test loudly"
+)]
 
 use std::path::Path;
 use std::time::Duration;

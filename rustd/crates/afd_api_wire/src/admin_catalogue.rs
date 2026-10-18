@@ -6,6 +6,8 @@ use afd_wire::inference::ModelInference;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use crate::catalogue::{CatalogueMetadata, CataloguePrice, PRICES_MAX, price_schedule};
+
 /// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
@@ -106,25 +108,6 @@ pub struct PlatformKeyDeactivateResponse<'a> {
     pub request_id: Cow<'a, str>,
 }
 
-/// Mutable rate fields shared by admin model create and patch.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ModelRates {
-    /// Maximum context tokens.
-    #[garde(range(min = CONTEXT_CAP_MIN))]
-    pub context_cap_tokens: i32,
-    /// Input-token nanos per million tokens.
-    #[garde(range(min = RATE_NANOS_MIN))]
-    pub input_nanos_per_mtok: i64,
-    /// Cached-input nanos per million tokens.
-    #[garde(range(min = RATE_NANOS_MIN))]
-    pub cached_input_nanos_per_mtok: i64,
-    /// Output-token nanos per million tokens.
-    #[garde(range(min = RATE_NANOS_MIN))]
-    pub output_nanos_per_mtok: i64,
-}
-
 /// The longest provider name a platform key may carry.
 ///
 /// Shorter than the catalogue's [`PROVIDER_MAX_BYTES`] on purpose: this one is
@@ -150,7 +133,8 @@ pub const PROVIDER_MAX_BYTES: usize = 64;
 /// The longest provider-native model identity the catalogue stores.
 pub const MODEL_ID_MAX_BYTES: usize = 256;
 
-/// `POST /v1/admin/models` input.
+/// `POST /v1/admin/models` input: one identity, its evidence, its complete
+/// price schedule and, optionally, its inference settings.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -163,32 +147,42 @@ pub struct AdminModelCreate<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
     pub model_id: Cow<'a, str>,
-    /// Rates and context cap flattened on the existing wire.
-    #[serde(flatten)]
+    /// Label and context evidence.
+    #[serde(borrow)]
     #[garde(dive)]
-    pub rates: ModelRates,
+    pub metadata: CatalogueMetadata<'a>,
+    /// Every prompt tier across every date range, in integer nanos per
+    /// million tokens.
+    #[serde(borrow)]
+    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    pub prices: Vec<CataloguePrice<'a>>,
     /// Explicit inference settings; omitted rows remain unavailable for inference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub inference: Option<ModelInference>,
 }
 
-/// Mutable model rates and optional replacement inference settings.
+/// `PATCH /v1/admin/models/{id}` input: a complete replacement of the
+/// evidence and the price schedule, and optionally of the inference settings.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
-pub struct AdminModelPatch {
-    /// Existing rate fields remain flattened on the wire.
-    #[serde(flatten)]
+pub struct AdminModelPatch<'a> {
+    /// Label and context evidence.
+    #[serde(borrow)]
     #[garde(dive)]
-    pub rates: ModelRates,
+    pub metadata: CatalogueMetadata<'a>,
+    /// The whole schedule; a range absent here is removed.
+    #[serde(borrow)]
+    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    pub prices: Vec<CataloguePrice<'a>>,
     /// Omission preserves the current inference settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub inference: Option<ModelInference>,
 }
 
-/// One priced model row in the admin list.
+/// One model in the admin list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -202,9 +196,12 @@ pub struct AdminModelItem<'a> {
     /// Provider-native model identity.
     #[serde(borrow)]
     pub model_id: Cow<'a, str>,
-    /// Rates and context cap flattened on the existing wire.
-    #[serde(flatten)]
-    pub rates: ModelRates,
+    /// Label and context evidence.
+    #[serde(borrow)]
+    pub metadata: CatalogueMetadata<'a>,
+    /// The complete schedule, ordered by tier then start.
+    #[serde(borrow)]
+    pub prices: Vec<CataloguePrice<'a>>,
     /// Non-secret settings used by setup chat and runtime leases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inference: Option<ModelInference>,

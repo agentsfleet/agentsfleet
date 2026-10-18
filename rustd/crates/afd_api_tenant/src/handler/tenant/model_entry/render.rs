@@ -71,6 +71,7 @@ fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
             }),
         base_url: entry.credential.as_ref().and_then(Descriptor::base_url),
         has_key: entry.credential.as_ref().is_some_and(|held| held.has_key),
+        display_name: rate.map(|rate| rate.metadata.display_name.as_str()),
         context_cap_tokens: rate.map(|rate| rate.context_cap_tokens),
         input_nanos_per_mtok: rate.map(|rate| rate.input_nanos_per_mtok),
         cached_input_nanos_per_mtok: rate.map(|rate| rate.cached_input_nanos_per_mtok),
@@ -86,6 +87,7 @@ fn default_row(priced: &PricedDefault) -> PlatformDefaultRow<'_> {
     PlatformDefaultRow {
         provider: &priced.default.provider,
         model: &priced.default.model,
+        display_name: rate.map(|rate| rate.metadata.display_name.as_str()),
         context_cap_tokens: priced.default.context_cap_tokens,
         input_nanos_per_mtok: rate.map(|rate| rate.input_nanos_per_mtok),
         cached_input_nanos_per_mtok: rate.map(|rate| rate.cached_input_nanos_per_mtok),
@@ -130,6 +132,13 @@ mod tests {
 
     fn rate() -> CatalogueRate {
         CatalogueRate {
+            metadata: afd_core::catalogue::Metadata {
+                display_name: "GPT fixture".into(),
+                context_cap_tokens: 200_000,
+                context_source_url: "https://example.test/models".into(),
+                context_verified_at: STORED_AT,
+                advanced: false,
+            },
             context_cap_tokens: 200_000,
             input_nanos_per_mtok: 3_000,
             cached_input_nanos_per_mtok: 300,

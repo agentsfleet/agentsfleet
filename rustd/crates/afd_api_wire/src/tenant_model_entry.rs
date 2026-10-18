@@ -61,6 +61,9 @@ pub struct ModelEntryRow<'a> {
     pub has_key: bool,
     // A blank cell, which is different from a zero window and must not render
     // as one.
+    /// The catalogue's label for the model, or `null` for a model the
+    /// catalogue does not carry, which a picker shows by its `model_id`.
+    pub display_name: Option<&'a str>,
     /// The context window this model is priced at, in tokens.
     ///
     /// Absent when the catalogue carries no rate for this model. An absent
@@ -91,6 +94,9 @@ pub struct PlatformDefaultRow<'a> {
     pub provider: &'a str,
     /// The model it selects.
     pub model: &'a str,
+    /// The catalogue's label for the model, or `null` when the catalogue
+    /// carries no price for it.
+    pub display_name: Option<&'a str>,
     /// The context window the catalogue prices it at.
     pub context_cap_tokens: u32,
     /// The input rate, in nanos per million tokens.
@@ -198,6 +204,7 @@ mod tests {
             kind: "custom_secret",
             base_url: None,
             has_key: false,
+            display_name: None,
             context_cap_tokens: None,
             input_nanos_per_mtok: None,
             cached_input_nanos_per_mtok: None,
@@ -250,6 +257,7 @@ mod tests {
             platform_default: Some(PlatformDefaultRow {
                 provider: "anthropic",
                 model: "claude-sonnet-5",
+                display_name: Some("Sonnet 5"),
                 context_cap_tokens: 200_000,
                 input_nanos_per_mtok: Some(3_000_000),
                 cached_input_nanos_per_mtok: None,
