@@ -129,7 +129,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","service":"slack","status":"pending","created_at":"2026-04-30T00:00:00.000Z","approved_at":null,"revoked_at":null,"reason":"Declared by the fleet's setup at install"}"#
+            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","service":"slack","status":"pending","created_at":"2026-04-30T00:00:00Z","approved_at":null,"revoked_at":null,"reason":"Declared by the fleet's setup at install"}"#
         );
     }
 
@@ -151,7 +151,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"01924f4e-0000-7000-8000-0000000000a2","service":"github","status":"revoked","created_at":"1970-01-01T00:00:01.000Z","approved_at":"1970-01-01T00:00:02.000Z","revoked_at":"1970-01-01T00:00:03.000Z","reason":"asked at install"}"#
+            r#"{"id":"01924f4e-0000-7000-8000-0000000000a2","service":"github","status":"revoked","created_at":"1970-01-01T00:00:01Z","approved_at":"1970-01-01T00:00:02Z","revoked_at":"1970-01-01T00:00:03Z","reason":"asked at install"}"#
         );
     }
 

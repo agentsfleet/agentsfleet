@@ -165,7 +165,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"secrets":[{"name":"stripe","created_at":"2026-04-30T00:00:00.000Z","kind":"custom_secret"}]}"#
+            r#"{"secrets":[{"name":"stripe","created_at":"2026-04-30T00:00:00Z","kind":"custom_secret"}]}"#
         );
     }
 
@@ -182,7 +182,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"name":"gateway","created_at":"1970-01-01T00:00:01.000Z","kind":"custom_endpoint","provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
+            r#"{"name":"gateway","created_at":"1970-01-01T00:00:01Z","kind":"custom_endpoint","provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
         );
     }
 

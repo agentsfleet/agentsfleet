@@ -216,7 +216,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00.000Z"}"#
+            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00Z"}"#
         );
     }
 

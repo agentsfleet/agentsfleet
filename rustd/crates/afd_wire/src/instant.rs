@@ -1,32 +1,32 @@
-//! Instants on the wire: RFC 3339 in UTC with exactly three fraction digits.
+//! Instants on the wire: RFC 3339 in UTC, nothing finer than a millisecond.
 //!
 //! Every `_at` field is a `jiff::Timestamp` carrying `#[serde(with =
-//! "crate::instant")]` (or [`option`] for an optional one). The output is
-//! always the same length, `2026-10-17T18:06:49.123Z`, so the strings sort in
-//! time order and match the millisecond precision Postgres stores
-//! (`TIMESTAMPTZ(3)`). jiff's own serialization drops trailing zeros, so a
-//! whole-second instant would print `…:49Z` and sort after `…:49.123Z`.
+//! "crate::instant")]` (or [`option`] for an optional one). Output is jiff's
+//! standard serialization (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4):
+//! `2026-10-17T18:06:49.123Z`, and `2026-10-17T18:06:49Z` for a whole second,
+//! the shape GitHub's API and JavaScript's `Date` parse alike. The strings are
+//! not fixed-width, so a client orders instants by value, never by text.
 //!
 //! A request may carry any RFC 3339 offset; the instant is held in UTC and
-//! written back with `Z` (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4). An
-//! instant finer than a millisecond is refused rather than rounded, because
-//! the database would store a different value than the one the caller sent.
+//! written back with `Z`. An instant finer than a millisecond is refused
+//! rather than rounded, because Postgres stores `TIMESTAMPTZ(3)` and would
+//! keep a different value than the one the caller sent.
 
 use std::borrow::Cow;
 
 use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize as _, Serializer};
 
 /// The refusal for an instant finer than the millisecond the API carries.
 pub const SUB_MILLISECOND: &str = "instant must carry at most millisecond precision";
 
-/// Writes `at` as RFC 3339 in UTC with three fraction digits.
+/// Writes `at` through jiff's standard serialization: RFC 3339 in UTC.
 ///
 /// # Errors
 /// Whatever the serializer reports; formatting itself cannot fail.
 pub fn serialize<S: Serializer>(at: &Timestamp, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.collect_str(&format_args!("{at:.3}"))
+    at.serialize(serializer)
 }
 
 /// Reads an RFC 3339 instant, refusing one finer than a millisecond.

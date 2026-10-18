@@ -296,7 +296,7 @@ fn should_carry_the_typed_message_on_an_admitted_frame() {
     assert_eq!(value["event_id"], json!("1725000000000-3"), "{text}");
     assert_eq!(value["actor"], json!(STEER_ACTOR), "{text}");
     assert_eq!(value["message"], json!("check the tests"), "{text}");
-    assert_eq!(value["created_at"], json!("2024-08-30T06:40:00.000Z"), "{text}");
+    assert_eq!(value["created_at"], json!("2024-08-30T06:40:00Z"), "{text}");
     assert!(value.get("events_processed").is_none(), "{text}");
 }
 
