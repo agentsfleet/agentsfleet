@@ -79,6 +79,7 @@ pub struct TailRow<'a> {
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
+    #[serde(with = "afd_wire::nanos::option")]
     pub cost_nanos: Option<i64>,
 }
 
@@ -137,6 +138,7 @@ pub struct FleetCounters {
     /// Lifetime event count. Server truth, never client arithmetic.
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
+    #[serde(with = "afd_wire::nanos")]
     pub budget_used_nanos: i64,
 }
 

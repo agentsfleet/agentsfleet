@@ -376,7 +376,7 @@ async fn activate_after_the_ladder_refuses(
         "the selection and the entry agree on (secret_ref, model_id)"
     );
     assert!(
-        rows[0]["input_nanos_per_mtok"].is_i64(),
+        rows[0]["input_nanos_per_mtok"].is_string(),
         "the catalogue row prices the entry: {page}"
     );
 }

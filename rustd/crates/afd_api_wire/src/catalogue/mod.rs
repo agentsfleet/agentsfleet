@@ -1,9 +1,10 @@
 //! A model's evidence and dated prices, as both API planes spell them.
 //!
-//! Every rate is integer nanos (10⁻⁹ US dollars) per million tokens. Amounts
-//! are exact integers on the wire, never decimals, so a client converts what an
-//! operator types to nanos once and never round-trips a stored amount through
-//! a float. A cache-write rate that is `null` is unknown or unsupported, never
+//! Every rate is integer nanos (10⁻⁹ US dollars) per million tokens, written as
+//! a decimal string of whole nanos ([`afd_wire::nanos`]), so a client converts
+//! what an operator types to nanos once and never round-trips a stored amount
+//! through a float. Parsing refuses a negative or non-canonical rate, so garde
+//! has no bound left to prove on one. A cache-write rate that is `null` is unknown or unsupported, never
 //! free.
 
 use std::borrow::Cow;
@@ -12,7 +13,7 @@ use afd_validate::spans::{Span, disjoint};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::admin_catalogue::{CONTEXT_CAP_MIN, RATE_NANOS_MIN};
+use crate::admin_catalogue::CONTEXT_CAP_MIN;
 
 /// The longest label a model shows.
 pub const DISPLAY_NAME_MAX_BYTES: usize = 128;
@@ -71,25 +72,34 @@ pub struct CataloguePrice<'a> {
     #[garde(range(min = BASE_TIER))]
     pub prompt_tokens_above: i32,
     /// Uncached input.
-    #[garde(range(min = RATE_NANOS_MIN))]
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[garde(skip)]
     pub input_nanos_per_mtok: i64,
     /// Input read from the provider's cache.
-    #[garde(range(min = RATE_NANOS_MIN))]
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[garde(skip)]
     pub cached_input_nanos_per_mtok: i64,
     /// Cache writes whose provider reports no lifetime.
-    #[serde(default)]
-    #[garde(inner(range(min = RATE_NANOS_MIN)))]
+    #[serde(with = "afd_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[garde(skip)]
     pub cache_write_nanos_per_mtok: Option<i64>,
     /// Cache writes with a five-minute lifetime.
-    #[serde(default)]
-    #[garde(inner(range(min = RATE_NANOS_MIN)))]
+    #[serde(with = "afd_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[garde(skip)]
     pub cache_write_5m_nanos_per_mtok: Option<i64>,
     /// Cache writes with a one-hour lifetime.
-    #[serde(default)]
-    #[garde(inner(range(min = RATE_NANOS_MIN)))]
+    #[serde(with = "afd_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[garde(skip)]
     pub cache_write_1h_nanos_per_mtok: Option<i64>,
     /// Output, reasoning included once where the provider bills it.
-    #[garde(range(min = RATE_NANOS_MIN))]
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[garde(skip)]
     pub output_nanos_per_mtok: i64,
     /// The provider's pricing page or response the quote came from.
     #[serde(borrow)]

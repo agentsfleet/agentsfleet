@@ -17985,8 +17985,7 @@
         ],
         "properties": {
           "balance_nanos": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "What remains, in nanos — one thousand-millionth of a dollar."
           },
           "exhausted_at": {
@@ -18343,8 +18342,7 @@
             "description": "Listed only when the caller asks for advanced models."
           },
           "cached_input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The cached-input rate, likewise."
           },
           "context_cap_tokens": {
@@ -18370,13 +18368,11 @@
             "description": "The model identifier a tenant selects by."
           },
           "input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The input rate, in nanos per million tokens."
           },
           "output_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The output rate, likewise."
           },
           "prices": {
@@ -18407,32 +18403,40 @@
         ],
         "properties": {
           "cache_write_1h_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Cache writes with a one-hour lifetime."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes with a one-hour lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cache_write_5m_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Cache writes with a five-minute lifetime."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes with a five-minute lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cache_write_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Cache writes whose provider reports no lifetime."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes whose provider reports no lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cached_input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Input read from the provider's cache."
           },
           "conditions": {
@@ -18453,13 +18457,11 @@
             "description": "The first instant it no longer applies, or `null` for an open range."
           },
           "input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Uncached input."
           },
           "output_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Output, reasoning included once where the provider bills it."
           },
           "prompt_tokens_above": {
@@ -18541,8 +18543,7 @@
             "description": "`receive`, `stage`, or `authoring` (a settled setup-chat attempt)."
           },
           "credit_deducted_nanos": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "What this row drained, in nanos."
           },
           "event_id": {
@@ -20392,12 +20393,15 @@
             "description": "Who or what produced the event."
           },
           "cost_nanos": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "What this event actually cost, summed over its telemetry rows."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -20556,12 +20560,15 @@
             "description": "Who or what produced the event."
           },
           "cost_nanos": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "What this event actually cost, summed over its telemetry rows."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -20951,7 +20958,7 @@
         ],
         "properties": {
           "budget_used_nanos": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
@@ -21093,7 +21100,7 @@
         ],
         "properties": {
           "budget_used_nanos": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
@@ -22732,12 +22739,15 @@
             "description": "The custom endpoint, where one may be displayed."
           },
           "cached_input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The cached-input rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The cached-input rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "context_cap_tokens": {
             "type": [
@@ -22769,12 +22779,15 @@
             "description": "The entry's identity."
           },
           "input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The input rate, in nanos per million tokens."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The input rate, in nanos per million tokens."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "kind": {
             "type": "string",
@@ -22785,12 +22798,15 @@
             "description": "The model this entry configures."
           },
           "output_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The output rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The output rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider": {
             "type": [
@@ -22926,15 +22942,15 @@
         ],
         "properties": {
           "input_nanos_per_million": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Input nanos per million tokens."
           },
           "output_nanos_per_million": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Output nanos per million tokens."
           },
           "runtime_nanos_per_second": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Runtime nanos per second."
           }
         }
@@ -23065,6 +23081,11 @@
           }
         ],
         "description": "Provider usage is either authoritative or unknown; estimates cannot clear liability."
+      },
+      "Nanos": {
+        "type": "string",
+        "description": "A whole number of nanos (10⁻⁹ US dollars) as a decimal string.",
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "NetworkPolicy": {
         "type": "object",
@@ -23620,12 +23641,15 @@
         ],
         "properties": {
           "cached_input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The cached-input rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The cached-input rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "context_cap_tokens": {
             "type": "integer",
@@ -23641,24 +23665,30 @@
             "description": "The catalogue's label for the model. Absent when the catalogue\ncarries no price for it."
           },
           "input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The input rate, in nanos per million tokens."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The input rate, in nanos per million tokens."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model": {
             "type": "string",
             "description": "The model it selects."
           },
           "output_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The output rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The output rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider": {
             "type": "string",

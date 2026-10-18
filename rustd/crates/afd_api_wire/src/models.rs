@@ -31,10 +31,16 @@ pub struct CatalogueModel<'a> {
     /// The context window the price is quoted for.
     pub context_cap_tokens: i32,
     /// The input rate, in nanos per million tokens.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub input_nanos_per_mtok: i64,
     /// The cached-input rate, likewise.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub cached_input_nanos_per_mtok: i64,
     /// The output rate, likewise.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub output_nanos_per_mtok: i64,
     /// The label a picker shows; never used to route a request.
     pub display_name: Cow<'a, str>,

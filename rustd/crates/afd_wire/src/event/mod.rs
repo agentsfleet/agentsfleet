@@ -171,6 +171,8 @@ pub struct EventSummary<'a> {
     // as UNKNOWN and never as a zero charge — an unbilled run and a free run
     // are different facts. Cost is server truth: a client must not derive it
     // from `tokens`.
+    #[serde(with = "crate::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<crate::nanos::Decimal>))]
     pub cost_nanos: Option<i64>,
 }
 
@@ -263,6 +265,8 @@ pub struct EventDetail<'a> {
     //
     // `null` when the event recorded no telemetry — see [`EventSummary`] on
     // why that is never rendered as a zero charge.
+    #[serde(with = "crate::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<crate::nanos::Decimal>))]
     pub cost_nanos: Option<i64>,
 }
 

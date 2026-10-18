@@ -153,7 +153,7 @@ fn should_carry_the_whole_terminal_row_on_a_completion() {
     }
     assert_eq!(value["fleet_status"], json!("paused"));
     assert_eq!(value["pending_approvals"], json!(2));
-    assert_eq!(value["cost_nanos"], json!(40_000_000));
+    assert_eq!(value["cost_nanos"], json!("40000000"));
     assert_eq!(value["final_reply"], json!("Done."));
 }
 
@@ -227,7 +227,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
         );
         assert_eq!(
             value["budget_used_nanos"],
-            json!(40_000_000),
+            json!("40000000"),
             "{kind} dropped its spend: {text}"
         );
     }

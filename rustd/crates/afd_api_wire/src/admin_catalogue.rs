@@ -120,13 +120,6 @@ pub const KEY_PROVIDER_MAX_BYTES: usize = 32;
 /// refused rather than stored and discovered later by a run that cannot start.
 pub const CONTEXT_CAP_MIN: i32 = 1;
 
-/// The floor a price may not go under.
-///
-/// Zero is legal — a free model is a real thing — and negative is not: a
-/// negative rate credits a tenant for spending, which the ledger has no reading
-/// for.
-pub const RATE_NANOS_MIN: i64 = 0;
-
 /// The longest provider identity the catalogue stores.
 pub const PROVIDER_MAX_BYTES: usize = 64;
 

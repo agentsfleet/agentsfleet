@@ -95,7 +95,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
         "so does its token count"
     );
     assert!(
-        field(&closed, "cost_nanos").is_i64(),
+        field(&closed, "cost_nanos").is_string(),
         "the settle's ledger rows are summed into the frame, as the events list sums them"
     );
     assert_eq!(

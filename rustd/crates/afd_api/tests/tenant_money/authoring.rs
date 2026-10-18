@@ -38,7 +38,12 @@ fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
     );
     assert_eq!(
         rows.iter()
-            .map(|r| r["credit_deducted_nanos"].as_i64().expect("amount"))
+            .map(|r| {
+                r["credit_deducted_nanos"]
+                    .as_str()
+                    .and_then(|amount| amount.parse::<i64>().ok())
+                    .expect("an amount is a decimal string")
+            })
             .sum::<i64>(),
         50
     );
@@ -123,7 +128,7 @@ fn assert_setup_row(rows: &[Value], setup: &Setup) {
     assert_eq!(row["token_count_output"], 29);
     assert_eq!(row["wall_ms"], 31);
     assert_eq!(
-        row["credit_deducted_nanos"], 17,
+        row["credit_deducted_nanos"], "17",
         "serve the actual debit, not a recalculated price"
     );
     let mut expected = setup.settlements.clone().to_vec();

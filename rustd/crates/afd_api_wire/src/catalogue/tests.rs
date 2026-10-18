@@ -61,11 +61,15 @@ fn a_schedule_needs_a_base_tier_and_disjoint_ranges() {
 }
 
 #[test]
-fn a_negative_rate_or_tier_breaks_its_own_bound() {
-    let mut negative = price(BASE_TIER, 0, None);
-    negative.cache_write_1h_nanos_per_mtok = Some(-1);
-    assert!(negative.validate().is_err());
+fn a_negative_tier_breaks_its_bound_and_a_negative_rate_never_decodes() {
     assert!(price(-1, 0, None).validate().is_err());
+    let mut wire = serde_json::to_value(price(BASE_TIER, 0, None)).expect("a price serializes");
+    wire["cache_write_1h_nanos_per_mtok"] = serde_json::json!("-1");
+    let text = wire.to_string();
+    let refusal = serde_json::from_str::<CataloguePrice<'_>>(&text)
+        .map(|_| ())
+        .expect_err("a negative rate never decodes");
+    assert!(refusal.to_string().contains(afd_wire::nanos::NOT_CANONICAL));
 }
 
 #[test]

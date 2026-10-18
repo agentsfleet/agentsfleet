@@ -15,8 +15,8 @@ use afd_db::test_util::{PlatformDefault, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
-const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
-const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":6,"cached_input_nanos_per_mtok":2,"output_nanos_per_mtok":30}"#;
+const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","output_nanos_per_mtok":"25"}"#;
+const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","output_nanos_per_mtok":"30"}"#;
 #[path = "integration_admin/model_refusals.rs"]
 mod model_refusals;
 #[tokio::test]

@@ -171,7 +171,7 @@ fn hello_carries_the_counters_a_late_subscriber_missed() {
     );
     assert_eq!(
         parsed.pointer("/counters/z1/budget_used_nanos"),
-        Some(&serde_json::json!(21))
+        Some(&serde_json::json!("21"))
     );
     assert!(
         parsed.pointer("/counters/z2").is_none(),
