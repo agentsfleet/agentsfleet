@@ -44,7 +44,7 @@ use std::time::Duration;
 
 use afd_crypto::entropy::Entropy;
 
-use crate::lane::{Lane, mint};
+use crate::lane::{Lane, NOW, mint};
 
 /// How long the forged card stands, from the database's clock.
 const FORGED_WINDOW: Duration = Duration::from_hours(1);
@@ -85,7 +85,7 @@ async fn raise_honest_grant(lane: &Lane) {
                 credential: "gh",
                 origin: Origin::Install,
             },
-            Lane::now(),
+            NOW,
         )
         .await
         .expect("the honest request must land");

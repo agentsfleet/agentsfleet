@@ -14,7 +14,7 @@
 
 use afd_core::error_code;
 
-use crate::support::Lane;
+use crate::support::{Lane, NOW};
 
 /// The resource version a seeded fleet starts at, which a kill moves past.
 const SEEDED_VERSION: i64 = 1;
@@ -74,7 +74,7 @@ async fn a_live_fleet_is_refused_until_it_is_killed() {
 async fn another_workspaces_fleet_is_not_found() {
     let lane = Lane::without_queue().await;
     let neighbour = lane.another_workspace().await;
-    let theirs = lane.fleet_at(&neighbour, Lane::now()).await;
+    let theirs = lane.fleet_at(&neighbour, NOW).await;
     let tag = lane.kill(&theirs).await;
 
     let refused = lane

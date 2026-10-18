@@ -15,7 +15,7 @@ use afd_api_wire::tail::FleetCounters;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 
-use crate::support::{Lane, mint};
+use crate::support::{Lane, NOW, mint};
 
 /// The page size the reads below ask for; larger than any lane seeds.
 const PAGE: u32 = 50;
@@ -149,7 +149,7 @@ async fn a_neighbours_fleet_is_not_answered_for() {
     let lane = Lane::create().await;
     let own = lane.fleet().await;
     let neighbour = lane.another_workspace().await;
-    let theirs = lane.fleet_at(&neighbour, Lane::now()).await;
+    let theirs = lane.fleet_at(&neighbour, NOW).await;
     seed_counters(&lane, &theirs, RAN).await;
 
     let counters = lane

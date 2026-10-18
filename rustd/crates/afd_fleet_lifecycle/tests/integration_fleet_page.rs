@@ -16,7 +16,7 @@ use afd_fleet_lifecycle::{After, FleetRow};
 use jiff::SignedDuration;
 
 use crate::integration_wall_counters::{RAN, seed_counters};
-use crate::support::Lane;
+use crate::support::{Lane, NOW};
 
 /// A page larger than the lane seeds, so one read holds the whole workspace.
 const WHOLE_PAGE: u32 = 50;
@@ -44,8 +44,7 @@ async fn the_fleet_page_walks_one_workspace_and_both_statements_read_rows_alike(
     let theirs = lane
         .fleet_at(
             &neighbour,
-            Lane::now()
-                .checked_sub(SignedDuration::from_millis(1))
+            NOW.checked_sub(SignedDuration::from_millis(1))
                 .expect("the lane's instant has a millisecond before it"),
         )
         .await;

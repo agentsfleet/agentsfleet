@@ -13,7 +13,7 @@
 
 use afd_tenant::preference::{PrefKey, bag_is_true};
 
-use crate::preference_lane::Lane;
+use crate::preference_lane::{Lane, NOW};
 
 /// A value with formatting a re-serializing implementation would normalise.
 ///
@@ -89,7 +89,7 @@ async fn a_written_value_comes_back_byte_for_byte() {
             &lane.workspace,
             PrefKey::GettingStartedCollapsed,
             FORMATTED,
-            Lane::now(),
+            NOW,
         )
         .await
         .expect("the write must land");
@@ -123,7 +123,7 @@ async fn a_second_write_replaces_the_first_and_adds_no_row() {
 
     for value in ["true", "false"] {
         lane.preferences
-            .upsert(&lane.user, &lane.workspace, key, value, Lane::now())
+            .upsert(&lane.user, &lane.workspace, key, value, NOW)
             .await
             .expect("the write must land");
     }
@@ -162,7 +162,7 @@ async fn one_persons_bag_is_invisible_to_another() {
             &mine.workspace,
             PrefKey::GettingStartedDismissed,
             "true",
-            Lane::now(),
+            NOW,
         )
         .await
         .expect("the write must land");

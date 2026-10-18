@@ -42,7 +42,7 @@ use jiff::Timestamp;
 
 /// The instant the seeded rows are stamped with, and the one a create mints
 /// its id from. Postgres stamps the schedules themselves.
-const SEED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
+pub(crate) const SEED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";
@@ -96,11 +96,6 @@ impl CronLane {
     /// A fresh syncer token, which is just a minted identifier.
     pub(crate) fn token() -> Uuid7 {
         Uuid7::parse(&mint_id()).expect("a minted token is canonical")
-    }
-
-    /// The instant a create mints its schedule id from.
-    pub(crate) const fn now() -> Timestamp {
-        SEED_AT
     }
 
     /// Creates one schedule on this lane's fleet, expecting it to be admitted.
@@ -171,7 +166,7 @@ impl CronLane {
                     once: false,
                 },
                 token,
-                Self::now(),
+                SEED_AT,
             )
             .await
             .expect("the lane's Postgres must answer")

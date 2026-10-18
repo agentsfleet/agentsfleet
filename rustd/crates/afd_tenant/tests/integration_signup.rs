@@ -30,10 +30,6 @@ const SEED: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// The address every case opens an account under.
 const EMAIL: &str = "ada@example.test";
 
-const fn now() -> Timestamp {
-    SEED
-}
-
 /// A subject nothing else in the lane addresses.
 fn subject() -> String {
     format!("user_{}", mint_id().replace('-', ""))
@@ -62,7 +58,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
                 display_name: Some("Ada Lovelace"),
             },
             tenant_name,
-            now(),
+            SEED,
         )
         .await
         .expect("the lane's Postgres must answer");
@@ -149,11 +145,11 @@ async fn a_replayed_delivery_answers_as_the_first_one_did() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let first = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
     let second = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success, never an error");
 
@@ -183,7 +179,7 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let opened = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
 
@@ -200,7 +196,7 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
         .expect("the fixture removes the wallet it is about to have healed");
 
     signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success");
 
@@ -230,7 +226,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let opened = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
 
@@ -249,7 +245,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .expect("the fixture spends the grant down");
 
     signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success");
 
@@ -290,7 +286,7 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
                         display_name: None,
                     },
                     tenant_name,
-                    now(),
+                    SEED,
                 )
                 .await
             },
@@ -302,7 +298,7 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
                         display_name: None,
                     },
                     tenant_name,
-                    now(),
+                    SEED,
                 )
                 .await
             }

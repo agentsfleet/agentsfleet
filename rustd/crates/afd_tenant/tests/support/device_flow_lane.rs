@@ -26,7 +26,7 @@ pub(crate) const APPROVER: &str = "user_2abcDEF";
 
 /// A fixed instant, so nothing here depends on when it runs. The session
 /// lives in Dragonfly, so the daemon's clock stamps it, and this stands in.
-const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
+pub(crate) const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The login surface, over the lane's queue.
 pub(crate) fn surface(harness: &DragonflyHarness) -> Sessions {
@@ -36,11 +36,6 @@ pub(crate) fn surface(harness: &DragonflyHarness) -> Sessions {
         Entropy::new(),
         APP_URL,
     )
-}
-
-/// The instant every write in one of these tests is stamped with.
-pub(crate) const fn now() -> Timestamp {
-    NOW
 }
 
 /// An approval carrying this suite's fixed envelope.

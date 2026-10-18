@@ -29,7 +29,7 @@ use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ReadyIndex;
 use jiff::Timestamp;
 
-use crate::lane::Lane;
+use crate::lane::{Lane, NOW};
 
 /// The service every request in this suite asks about.
 const SERVICE: &str = "github";
@@ -43,7 +43,7 @@ const CREDENTIAL: &str = "gh";
 
 /// How many consecutive polls stand in for a parked delivery redelivering.
 ///
-/// Ten, which at `NO_WORK_RETRY_AFTER_MS` is ten seconds of a parked event.
+/// Ten, which at `NO_WORK_RETRY_AFTER` is ten seconds of a parked event.
 const POLLS: usize = 10;
 
 /// Who the fixture records as answering a card.
@@ -66,7 +66,7 @@ const fn wanted() -> Wanted<'static> {
 /// Requests one grant on `lane`'s fleet.
 async fn request(lane: &Lane) -> Requested {
     grants(lane)
-        .request(&lane.workspace, &lane.fleet, wanted(), Lane::now())
+        .request(&lane.workspace, &lane.fleet, wanted(), NOW)
         .await
         .expect("the request must run")
 }

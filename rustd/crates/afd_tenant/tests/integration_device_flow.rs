@@ -23,7 +23,7 @@ use afd_dragonfly::SessionStore;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};
 
-use crate::device_flow_lane::{APPROVER, CODE, approval, now, origin, surface};
+use crate::device_flow_lane::{APPROVER, CODE, NOW, approval, origin, surface};
 use crate::dragonfly_harness::DragonflyHarness;
 
 /// Dimension 1.1 — create, approve, verify, and the envelope comes back whole.
@@ -41,7 +41,7 @@ async fn test_device_flow_happy_path() {
     let opened = sessions
         .open(
             &Opening::parse("cli-key", "Indy's laptop").expect("bounds"),
-            now(),
+            NOW,
         )
         .await
         .expect("open");
@@ -60,7 +60,7 @@ async fn test_device_flow_happy_path() {
     assert_eq!(waiting.token_name, "Indy's laptop");
 
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
 
@@ -75,7 +75,7 @@ async fn test_device_flow_happy_path() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &origin(&opened.session_id),
-            now(),
+            NOW,
         )
         .await
         .expect("verify");
@@ -99,11 +99,11 @@ async fn test_device_flow_stores_only_the_code_digest() {
     let store = SessionStore::new(harness.redis.clone());
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
 
@@ -153,7 +153,7 @@ async fn test_device_flow_rejects_malformed() {
 
     // Approving a session that is not there is not-found, not a conflict.
     let refusal = sessions
-        .approve(stranger, &approval(), APPROVER, now())
+        .approve(stranger, &approval(), APPROVER, NOW)
         .await
         .expect_err("refused");
     assert_eq!(refusal.code(), error_code::SESSION_NOT_FOUND);
@@ -161,7 +161,7 @@ async fn test_device_flow_rejects_malformed() {
     // A code presented before any human approved is a CONFLICT rather than a
     // rejection: the session is still approvable, so the caller waits.
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     let refusal = sessions
@@ -169,7 +169,7 @@ async fn test_device_flow_rejects_malformed() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &origin(&opened.session_id),
-            now(),
+            NOW,
         )
         .await
         .expect_err("refused");
@@ -178,7 +178,7 @@ async fn test_device_flow_rejects_malformed() {
     // A wrong code against an approved session is retryable, and says so with a
     // different code from every terminal state above.
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), APPROVER, NOW)
         .await
         .expect("approve");
     let refusal = sessions
@@ -186,7 +186,7 @@ async fn test_device_flow_rejects_malformed() {
             &opened.session_id,
             &Code::parse("000000").expect("digits"),
             &origin(&opened.session_id),
-            now(),
+            NOW,
         )
         .await
         .expect_err("refused");

@@ -177,11 +177,6 @@ impl Lane {
             .flatten()
     }
 
-    /// The instant this suite stamps writes with.
-    pub(crate) const fn now() -> Timestamp {
-        NOW
-    }
-
     /// Drops the database. Dragonfly keys are namespaced per fleet and age out.
     pub(crate) async fn cleanup(self) {
         self.database.cleanup().await;
@@ -229,5 +224,5 @@ pub(crate) fn mint() -> Uuid7 {
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host draws entropy");
-    Uuid7::encode(Lane::now(), bytes).expect("a well-formed identifier")
+    Uuid7::encode(NOW, bytes).expect("a well-formed identifier")
 }

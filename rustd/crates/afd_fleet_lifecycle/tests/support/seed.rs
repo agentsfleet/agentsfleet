@@ -8,7 +8,7 @@ use afd_core::id::Uuid7;
 use afd_db::test_util::FleetSeed;
 use jiff::Timestamp;
 
-use super::{Lane, mint};
+use super::{Lane, NOW, mint};
 
 /// The status a fixture fleet is born in: leasable, as activation leaves it.
 const ACTIVE: &str = "active";
@@ -42,7 +42,7 @@ impl Lane {
 
     /// One active fleet in the lane's own workspace.
     pub(crate) async fn fleet(&self) -> Uuid7 {
-        self.fleet_at(&self.workspace, Self::now()).await
+        self.fleet_at(&self.workspace, NOW).await
     }
 
     /// Takes the fleet to `killed` and answers the tag a purge must present,

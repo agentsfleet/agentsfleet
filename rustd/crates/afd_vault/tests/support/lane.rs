@@ -102,7 +102,7 @@ impl Lane {
     /// Stores one secret through the production write path.
     pub(crate) async fn store(&self, name: &str, data: &str) {
         self.vault
-            .create(&self.workspace, &named(name), &body(data), Self::now())
+            .create(&self.workspace, &named(name), &body(data), MINTED_AT)
             .await
             .expect("the fixture secret must store");
     }
@@ -262,11 +262,6 @@ impl Lane {
             .expect("counting secrets")
             .try_get::<i64, _>(0)
             .expect("a count is a bigint")
-    }
-
-    /// The instant this suite mints identifiers at.
-    pub(crate) const fn now() -> Timestamp {
-        MINTED_AT
     }
 
     /// Releases the lane handle. A no-op on the shared database, and called

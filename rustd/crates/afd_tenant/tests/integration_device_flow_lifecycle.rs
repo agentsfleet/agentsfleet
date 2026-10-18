@@ -14,7 +14,7 @@ use afd_core::error_code;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};
 
-use crate::device_flow_lane::{CODE, approval, now, origin, owner, surface};
+use crate::device_flow_lane::{CODE, NOW, approval, origin, owner, surface};
 use crate::dragonfly_harness::DragonflyHarness;
 
 /// Dimension 1.2 — a redeemed session is terminal, and reads as gone.
@@ -26,11 +26,11 @@ async fn test_device_flow_terminal_states_are_terminal() {
     let approver = owner("terminal");
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), &approver, now())
+        .approve(&opened.session_id, &approval(), &approver, NOW)
         .await
         .expect("approve");
     sessions
@@ -38,7 +38,7 @@ async fn test_device_flow_terminal_states_are_terminal() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &origin(&opened.session_id),
-            now(),
+            NOW,
         )
         .await
         .expect("verify");
@@ -70,11 +70,11 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
     let approver = owner("idempotent");
 
     let opened = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), &approver, now())
+        .approve(&opened.session_id, &approval(), &approver, NOW)
         .await
         .expect("approve");
 
@@ -114,21 +114,21 @@ async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
     let mut mine = Vec::new();
     for _ in 0..3 {
         let opened = sessions
-            .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+            .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
             .await
             .expect("open");
         sessions
-            .approve(&opened.session_id, &approval(), &owner, now())
+            .approve(&opened.session_id, &approval(), &owner, NOW)
             .await
             .expect("approve");
         mine.push(opened.session_id);
     }
     let theirs = sessions
-        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
+        .open(&Opening::parse("cli-key", "laptop").expect("bounds"), NOW)
         .await
         .expect("open");
     sessions
-        .approve(&theirs.session_id, &approval(), &other, now())
+        .approve(&theirs.session_id, &approval(), &other, NOW)
         .await
         .expect("approve");
 
