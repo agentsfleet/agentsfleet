@@ -26,7 +26,7 @@ function Details({ target }: { target: TenantModelEntry }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{modelLabel(target.model_id)}</DialogTitle>
+        <DialogTitle>{modelLabel(target.model_id, target.display_name)}</DialogTitle>
         {/* Creation time and key presence are header context, not rows: the rows
             say what the entry is, the header says when it landed and whether a
             key backs it. */}

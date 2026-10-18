@@ -69,12 +69,12 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe("provider server actions — thin forwarders", () => {
-  it("getModelLibraryAction threads only the token through withToken to the library client", async () => {
+  it.each([undefined, false, true])("getModelLibraryAction forwards advanced=%s with the server-side token", async (advanced) => {
     const library = { version: "2026-04-29", models: [] };
     getModelLibraryMock.mockResolvedValueOnce(library);
-    const r = await getModelLibraryAction();
+    const r = await getModelLibraryAction(advanced);
     expect(r).toEqual({ ok: true, data: library });
-    expect(getModelLibraryMock).toHaveBeenCalledWith("tok");
+    expect(getModelLibraryMock).toHaveBeenCalledWith("tok", advanced ?? false);
   });
 
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {

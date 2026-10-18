@@ -20,6 +20,8 @@ const LIBRARY_OK: ModelLibrary = {
     {
       id: "claude-sonnet-4-6",
       provider: "anthropic",
+      display_name: "Sonnet 4.6",
+      advanced: false,
       context_cap_tokens: 256000,
       input_nanos_per_mtok: 3000000000,
       cached_input_nanos_per_mtok: 300000000,
@@ -29,6 +31,13 @@ const LIBRARY_OK: ModelLibrary = {
 };
 
 describe("getModelLibrary", () => {
+  it("includes advanced models only when requested", async () => {
+    requestMock.mockResolvedValue(LIBRARY_OK);
+    await getModelLibrary("token_abc", true);
+    // pin test: literal is the contract
+    expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true", { method: "GET" }, "token_abc");
+  });
+
   it("GETs /v1/models through the authed request helper and returns the library", async () => {
     requestMock.mockResolvedValue(LIBRARY_OK);
     const res = await getModelLibrary("token_abc");
@@ -56,6 +65,8 @@ describe("getModelLibrary", () => {
 const model = (id: string, provider: string) => ({
   id,
   provider,
+  display_name: id,
+  advanced: false,
   context_cap_tokens: 1,
   input_nanos_per_mtok: 1,
   cached_input_nanos_per_mtok: 1,
@@ -98,6 +109,7 @@ describe("providerLabel", () => {
   it("maps the known provider ids to the vendor's own spelling", () => {
     expect(providerLabel("anthropic")).toBe("Anthropic");
     expect(providerLabel("openai")).toBe("OpenAI");
+    expect(providerLabel("gemini")).toBe("Google");
     expect(providerLabel("openai-compatible")).toBe("Custom — OpenAI-compatible");
     expect(providerLabel("fireworks")).toBe("Fireworks");
     expect(providerLabel("openrouter")).toBe("OpenRouter");

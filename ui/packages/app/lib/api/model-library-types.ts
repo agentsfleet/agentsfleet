@@ -1,9 +1,14 @@
 // The model library's row shape and the catalogue helpers the model pickers share. Dependency-free on purpose: client components read these
 // without pulling the transport, whose retry policy is server-only.
 
+export const OLLAMA_PROVIDER = "ollama";
+export const OPENAI_PROVIDER = "openai";
+
 export interface LibraryModel {
   id: string;
   provider: string;
+  display_name: string;
+  advanced: boolean;
   context_cap_tokens: number;
   input_nanos_per_mtok: number;
   cached_input_nanos_per_mtok: number;
@@ -56,6 +61,7 @@ const PROVIDER_LABELS: ReadonlyMap<string, string> = new Map([
   ["byteplus-plan", "BytePlus Plan"],
   ["deepseek", "DeepSeek"],
   ["evolink", "EvoLink"],
+  ["gemini", "Google"],
   ["glm", "GLM"],
   ["huggingface", "Hugging Face"],
   ["hunyuan", "Tencent Hunyuan"],
@@ -65,7 +71,7 @@ const PROVIDER_LABELS: ReadonlyMap<string, string> = new Map([
   ["nearai", "NEAR AI"],
   ["novita", "Novita AI"],
   ["nvidia", "NVIDIA"],
-  ["openai", "OpenAI"],
+  [OPENAI_PROVIDER, "OpenAI"],
   ["openai-compatible", "Custom — OpenAI-compatible"],
   ["opencode", "OpenCode"],
   ["openrouter", "OpenRouter"],
