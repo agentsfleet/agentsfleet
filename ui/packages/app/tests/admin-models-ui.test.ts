@@ -57,8 +57,8 @@ async function loadedEditDialog(label: string) {
 }
 
 const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
+  { id: "u1", provider: "fireworks", model_id: "glm-5.2", display_name: "GLM 5.2", advanced: false, context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
+  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", display_name: "Opus 4.8", advanced: false, context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
 ];
 
 beforeEach(() => vi.clearAllMocks());
@@ -170,8 +170,8 @@ describe("CatalogueList — rows + rates + empty state", () => {
     const kimi = "accounts/fireworks/models/kimi-k3";
     const haiku = "claude-haiku-5-5";
     const models = [
-      { ...base, id: "k", model_id: kimi },
-      { ...base, id: "h", model_id: haiku },
+      { ...base, id: "k", model_id: kimi, display_name: "Kimi K3" },
+      { ...base, id: "h", model_id: haiku, display_name: "Haiku 5.5" },
     ];
     renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 

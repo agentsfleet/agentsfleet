@@ -16,7 +16,7 @@ import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library
 import {
   CONTEXT_HEADER,
   RATES_HEADER,
-  compareModelIds,
+  compareModels,
   formatContextTokens,
   formatRatesPerMtok,
 } from "@/lib/models/display";
@@ -42,6 +42,7 @@ function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey |
     <ModelName
       trimmed
       modelId={model.model_id}
+      displayName={model.display_name}
       trailing={isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     />
   );
@@ -130,7 +131,7 @@ function buildColumns({
       key: "model", primary: true,
       header: "Model",
       sortValue: (m) => m.model_id,
-      compare: (a, b) => compareModelIds(a.model_id, b.model_id),
+      compare: compareModels,
       cell: (m) => <ModelCell model={m} active={active} />,
     },
     {

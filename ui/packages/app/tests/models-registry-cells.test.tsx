@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
+import { OLLAMA_PROVIDER } from "@/lib/api/model-library-types";
+import { PRICE_UNKNOWN } from "@/lib/models/display";
 import {
   ModelCell,
   RatesCell,
@@ -15,6 +17,7 @@ afterEach(() => cleanup());
 const ENTRY: TenantModelEntry = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   model_id: "claude-sonnet-5-5",
+  display_name: "Sonnet 5.5",
   secret_ref: "anthropic-prod",
   provider: "anthropic",
   kind: "provider_key",
@@ -30,6 +33,7 @@ const DEFAULT_CONTEXT_TOKENS = 1_000_000;
 const UNPRICED_DEFAULT: TenantPlatformDefault = {
   provider: "anthropic",
   model: "claude-opus-5-5",
+  display_name: "Opus 5.5",
   context_cap_tokens: DEFAULT_CONTEXT_TOKENS,
 };
 
@@ -38,6 +42,14 @@ function renderCell(cell: React.ReactNode) {
 }
 
 describe("workspace model cells", () => {
+  it("keeps Ollama pricing unknown even if a response supplies zero rates", () => {
+    const entry = { ...ENTRY, provider: OLLAMA_PROVIDER, input_nanos_per_mtok: 0,
+      cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 };
+    renderCell(<RatesCell row={{ kind: "entry", entry }} platformDefault={null} libraryModels={[]} />);
+    expect(screen.getByText(PRICE_UNKNOWN)).toBeTruthy();
+    expect(screen.queryByText("0.00 / 0.00 / 0.00")).toBeNull();
+  });
+
   it("the workspace model cell shows the name and keeps the id on hover", () => {
     renderCell(<ModelCell row={{ kind: "entry", entry: ENTRY }} platformDefault={null} />);
     expect(screen.getByTitle("claude-sonnet-5-5").textContent).toBe("Sonnet 5.5");
