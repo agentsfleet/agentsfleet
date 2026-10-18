@@ -1,86 +1,45 @@
 #!/bin/bash
-# 01_credential_check.sh - Verify credentials and approvals before Dragonfly teardown
+# 01_credential_check.sh - Verify tools, Fly access and approval before Dragonfly teardown
+#
+# No vault read happens here or later: the verbs run inside the Dragonfly app
+# over `flyctl ssh console` (fly_exec.sh), where the cluster's own password
+# lives, so no connection string is fetched to this machine.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../lib/common.sh
-source "${SCRIPT_DIR}/../../../lib/common.sh"
-
-# Reads the vault (op:// refs below), so it carries the same approval + auth
-# gates as every other script under playbooks/operations/ (enforced by
-# `make check-playbooks`). Teardown is destructive, so this is on top of the
-# ALLOW_*_TEARDOWN approval, not instead of it.
-playbooks_require_vault_read_approval
-playbooks_require_op_auth
+# shellcheck source=fly_exec.sh
+source "${SCRIPT_DIR}/fly_exec.sh"
 
 echo ""
-echo "== dragonfly-teardown Section 1: credential and approval check =="
+echo "== dragonfly-teardown Section 1: tool, access and approval check =="
 echo ""
 
-# Check required tools
-playbooks_require_tool op
-playbooks_require_tool docker
-
-# Check approval
 if [ "${ALLOW_DRAGONFLY_TEARDOWN:-0}" != "1" ]; then
 	echo "❌ MISSING APPROVAL: ALLOW_DRAGONFLY_TEARDOWN=1 required for destructive operation" >&2
-	echo "   WARNING: This will PERMANENTLY FLUSH all keys from the Dragonfly cluster!" >&2
-	echo "   Set this environment variable to proceed with teardown" >&2
+	echo "   WARNING: This will PERMANENTLY FLUSH all keys from every Dragonfly cluster member!" >&2
 	exit 1
 fi
-
 echo "✓ ALLOW_DRAGONFLY_TEARDOWN=1 approved"
 
-# Verify vault items exist. The root `url` field may flush the database;
-# the restricted runtime `api-url` may not.
-vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
-vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 env_mode="${ENV:-}"
-
-# Validate ENV - must be explicitly dev or prod, no "all" allowed
 if [ -z "$env_mode" ]; then
 	echo "❌ ERROR: ENV must be set explicitly" >&2
 	echo "   Usage: ENV=dev ./00_gate.sh   or   ENV=prod ./00_gate.sh" >&2
 	exit 1
 fi
-
 if [ "$env_mode" != "dev" ] && [ "$env_mode" != "prod" ]; then
 	echo "❌ ERROR: ENV must be 'dev' or 'prod' (destructive operations require explicit targeting)" >&2
 	exit 1
 fi
 
-missing=0
+dragonfly_require_fly_auth
+echo "✓ flyctl authenticated"
 
-check_ref() {
-	local ref="$1"
-	local value
-	value=$(playbooks_read_ref_or_empty "$ref")
-	if [ -z "$value" ]; then
-		echo "✗ MISSING: $ref"
-		missing=$((missing + 1))
-	else
-		echo "✓ $ref"
-	fi
-}
-
-if [ "$env_mode" = "dev" ]; then
-	echo ""
-	echo "-- checking DEV vault: $vault_dev"
-	check_ref "op://$vault_dev/dragonfly-dev/api-url"
-fi
-
-if [ "$env_mode" = "prod" ]; then
-	echo ""
-	echo "-- checking PROD vault: $vault_prod"
-	check_ref "op://$vault_prod/dragonfly-prod/api-url"
-fi
-
-if [ "$missing" -gt 0 ]; then
-	echo ""
-	echo "❌ section 1 failed: $missing credential(s) missing"
-	exit 1
-fi
+app="$(dragonfly_app_for_env "$env_mode")"
+echo ""
+echo "-- the cluster's own view, read inside $app (read-only)"
+dragonfly_cluster_run "$app" members
 
 echo ""
-echo "✅ section 1 passed - all credentials present and approvals granted"
+echo "✅ section 1 passed - approval granted, $app reachable, every member online"
