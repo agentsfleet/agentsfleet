@@ -19,7 +19,8 @@ use std::time::Duration;
 /// Every ordering finishes inside this, or the test fails rather than hangs.
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
 
-const HOLD_HOST: &str = "SELECT pg_backend_pid() FROM fleet.runners WHERE id = $1::uuid FOR UPDATE";
+const HOLD_HOST: &str =
+    "SELECT pg_backend_pid() FROM runner.runners WHERE id = $1::uuid FOR UPDATE";
 /// Transitive: a second row-lock waiter queues behind the first, not the holder.
 const WAITERS: &str = "\
 WITH RECURSIVE blocked(pid) AS (

@@ -37,6 +37,8 @@ mod report_reads;
 mod report_seed;
 #[path = "support/fleet_requests.rs"]
 mod requests;
+#[path = "support/fleet_rows.rs"]
+mod rows;
 #[path = "support/fleet_lease_seed.rs"]
 mod seed;
 #[path = "../../afd_dragonfly/tests/support/subscriber.rs"]
@@ -74,6 +76,8 @@ mod integration_lease_plan;
 mod integration_lease_ready;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
+#[path = "integration_lease_verbs.rs"]
+mod integration_lease_verbs;
 mod integration_lease_wake;
 #[path = "integration_ledger_fleet_name.rs"]
 mod integration_ledger_fleet_name;

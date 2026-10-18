@@ -21,7 +21,6 @@
 
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_dragonfly::streams::FLEET_CONSUMER_GROUP;
-use sqlx::Row as _;
 
 use afd_fleet::lease::runner_consumer;
 use afd_runner::sweep::rebuild::rebuild;
@@ -29,6 +28,7 @@ use afd_runner::sweep::reclaim::Reclaim;
 
 use crate::queue;
 use crate::report_seed::held;
+use crate::rows::{LAPSE, Row};
 use crate::support::Fixtures;
 
 /// A stored config the runtime parser accepts.
@@ -76,7 +76,12 @@ async fn test_completed_event_redelivery_does_not_execute() {
 
     arrange_the_redelivery(&held).await;
 
-    let lapsed = held.now.saturating_add_millis(LONG_AFTER_MS);
+    let lapsed = afd_core::clock::after(
+        held.now,
+        std::time::Duration::from_millis(
+            u64::try_from(LONG_AFTER_MS).expect("a fixture span is not negative"),
+        ),
+    );
     poll_until_acknowledged(&held, lapsed).await;
     assert_eq!(
         pending_on(&held.fixtures, &held.fleet).await,
@@ -107,7 +112,11 @@ async fn test_completed_event_redelivery_does_not_execute() {
 async fn arrange_the_redelivery(held: &crate::report_seed::Held) {
     queue::mark_ready(held.fixtures.queue(), &held.fleet).await;
     install_config(&held.fixtures, &held.fleet).await;
-    expire_lease(&held.fixtures, held.issued.lease_id.as_str()).await;
+    let lease = Row::Lease(held.issued.lease_id.as_str());
+    held.fixtures.age(lease, "lease_expires_at", LAPSE).await;
+    held.fixtures
+        .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
+        .await;
     let reclaim = Reclaim::new(
         held.fixtures.database.clone(),
         held.fixtures.queue().clone(),
@@ -140,10 +149,7 @@ async fn arrange_the_redelivery(held: &crate::report_seed::Held) {
 ///
 /// Every answer must issue no lease: the fleet's only event has finished, so
 /// the poll that finds it suppresses the redelivery and the rest find nothing.
-async fn poll_until_acknowledged(
-    held: &crate::report_seed::Held,
-    now: afd_core::clock::UnixMillis,
-) {
+async fn poll_until_acknowledged(held: &crate::report_seed::Held, now: jiff::Timestamp) {
     // The readiness partition cursor is GLOBAL to the process, so
     // `READY_PARTITIONS` polls are one rotation only when nothing else is
     // polling. The measured sixteenth-poll probe that set that budget ran on a
@@ -195,25 +201,6 @@ async fn install_config(fixtures: &Fixtures, fleet: &str) {
     fixtures.native_config(fleet, STORED_CONFIG).await;
 }
 
-/// Writes the lease's expiry into the past.
-///
-/// The sweeper compares `lease_expires_at` against the wall clock it carries,
-/// not the `now` a poll is asked about, so a lapse has to be recorded rather
-/// than passed in -- and `backdate_lease` moves `created_at`, which is a
-/// different question.
-async fn expire_lease(fixtures: &Fixtures, lease: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query("UPDATE fleet.runner_leases SET lease_expires_at = 1 WHERE id = $1::uuid")
-        .bind(lease)
-        .execute(&mut *connection)
-        .await
-        .expect("the expiry must run");
-}
-
 /// Entries the lease group has handed out and not had acknowledged.
 async fn pending_on(fixtures: &Fixtures, fleet: &str) -> usize {
     let key = afd_dragonfly::fleet_stream_key(fleet);
@@ -238,11 +225,9 @@ async fn leases_on(fixtures: &Fixtures, fleet: &str) -> i64 {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM fleet.runner_leases WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid")
         .bind(fleet)
         .fetch_one(&mut *connection)
         .await
         .expect("the count must run")
-        .try_get(0)
-        .expect("count answers a bigint")
 }

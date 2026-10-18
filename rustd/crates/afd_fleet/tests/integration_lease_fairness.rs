@@ -14,7 +14,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::ready::{Doorbell, Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
 use afd_fleet::lease::{Acquired, Leases};
@@ -91,13 +90,7 @@ impl Population {
                 usize::try_from(n).expect("the hot count fits a usize"),
             );
             fixtures
-                .seed_fleet(
-                    &fleet,
-                    &self.workspace,
-                    &self.tenant,
-                    HOT_TAG,
-                    fixtures.enrolled_at(),
-                )
+                .seed_fleet(&fleet, &self.workspace, &self.tenant, HOT_TAG)
                 .await;
             index
                 .mark(&fleet)
@@ -125,13 +118,7 @@ impl Population {
             let fleet = fleet_in(&self.base, partition, 0);
             let tag = placement_tag(&fleet);
             fixtures
-                .seed_fleet(
-                    &fleet,
-                    &self.workspace,
-                    &self.tenant,
-                    &tag,
-                    fixtures.enrolled_at(),
-                )
+                .seed_fleet(&fleet, &self.workspace, &self.tenant, &tag)
                 .await;
             request.labels.push(Cow::Owned(tag));
             queue::enqueue(
@@ -173,17 +160,16 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
     let (expected, request) = population.seed_cold(&fixtures, &index).await;
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed")
         .runner_id;
 
     let store = fixtures.leases().with_ready_prefix(prefix);
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let mut leased = BTreeSet::new();
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = store
-            .select(&runner, &[], now)
+            .select(&runner, &[])
             .await
             .expect("a poll must not fault")
         {
@@ -215,7 +201,7 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
 async fn test_the_cursor_partition_leases_before_the_rung_one() {
     let fixtures = Fixtures::create_with_queue().await;
     let population = Population::from(unique_ids());
-    let run = afd_core::clock::now().as_millis();
+    let run = afd_core::clock::now().as_millisecond();
     let prefix = ReadyPrefix::private(&format!("cursor-first-{}-{run}", std::process::id()));
     let index = ReadyIndex::under(fixtures.queue().clone(), prefix.clone());
     let rung = Partition::new(5).expect("a partition");
@@ -233,12 +219,12 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
     }
     let runner = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed")
         .runner_id;
     fixtures
-        .make_sticky(&behind_the_ring, runner.as_str(), fixtures.enrolled_at())
+        .make_sticky(&behind_the_ring, runner.as_str())
         .await;
     let doorbell = Doorbell::new();
     doorbell.ring(rung);
@@ -246,14 +232,12 @@ async fn test_the_cursor_partition_leases_before_the_rung_one() {
         .leases()
         .with_ready_prefix(prefix)
         .with_doorbell(doorbell.clone());
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-
     let first = store
-        .select(&runner, &[], now)
+        .select(&runner, &[])
         .await
         .expect("a poll must not fault");
     let rung_again = doorbell.is_rung(rung);
-    let later = leased_within(&store, &runner, now, LATER_POLLS).await;
+    let later = leased_within(&store, &runner, LATER_POLLS).await;
 
     for fleet in [&behind_the_ring, &cursor] {
         queue::clear_ready(fixtures.queue(), fleet).await;
@@ -281,13 +265,7 @@ async fn seed_marked(
 ) {
     let tag = placement_tag(fleet);
     fixtures
-        .seed_fleet(
-            fleet,
-            &population.workspace,
-            &population.tenant,
-            &tag,
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(fleet, &population.workspace, &population.tenant, &tag)
         .await;
     queue::enqueue(
         fixtures.queue(),
@@ -306,15 +284,10 @@ async fn seed_marked(
 }
 
 /// The first lease `store` hands `runner` within `polls` polls.
-async fn leased_within(
-    store: &Leases,
-    runner: &Uuid7,
-    now: UnixMillis,
-    polls: usize,
-) -> Option<Acquired> {
+async fn leased_within(store: &Leases, runner: &Uuid7, polls: usize) -> Option<Acquired> {
     for _poll in 0..polls {
         let leased = store
-            .select(runner, &[], now)
+            .select(runner, &[])
             .await
             .expect("a poll must not fault");
         if leased.is_some() {

@@ -6,16 +6,14 @@
 //! spent by the poll that leased it, and nothing re-marks it — so the ledger
 //! is the only thing that still knows work is owed.
 //!
-//! The dead holder costs nothing to stage. Every lease issued at the fixtures'
-//! instant is months behind the real clock, so a lease left unsettled is
-//! `active` and past `lease_expires_at` by the only clock the sweeper reads.
+//! The dead holder is staged by ageing its lease and its slot past their
+//! deadlines, on the database clock the sweeper and the next claim read.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
 use afd_admission::{Admission, Admissions, Key, Producer};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::{Billed, Delivery, Leases};
@@ -65,11 +63,9 @@ pub(crate) fn ledger(fixtures: &Fixtures) -> Admissions {
 /// gone, the reclaim sweeper's stream probe can vouch for nothing, so a mark
 /// can only come from the question it asks Postgres.
 pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -> Abandoned {
-    let staged_at = UnixMillis::from_millis(fixtures.enrolled_at());
+    let staged_at = fixtures.enrolled_at();
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(fixtures).await;
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
+    fixtures.seed_wallet(&tenant, DEEP_POOL).await;
     let key = format!("{fleet}:abandoned");
     let admitted = ledger(fixtures)
         .admit(admission(&fleet, &workspace, &key))
@@ -81,13 +77,13 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
     // rotation only when nothing else is polling — and the assertion below
     // pairs the acquired event with this fleet's admission, which a poll that
     // answered a sibling's work would fail for the wrong reason.
-    let acquired = select_fleet_within_rotations(leases, &holder, staged_at, &fleet)
+    let acquired = select_fleet_within_rotations(leases, &holder, &fleet)
         .await
         .expect("the fleet holding admitted work is offered within the rotations polled");
     assert_eq!(acquired.event_id, admitted.stored.id);
     assert_eq!(
         leases
-            .record_received(&acquired, staged_at)
+            .record_received(&acquired)
             .await
             .expect("the narrative log opens")
             .delivery,
@@ -111,8 +107,9 @@ pub(crate) async fn abandoned_mid_flight(fixtures: &Fixtures, leases: &Leases) -
         .expect("the claim is still held");
     // The holder dies: its lease and its claim pass their deadlines by the
     // database clock the reclaim and the next claim read.
-    fixtures.lapse_lease(issued.lease_id.as_str()).await;
-    fixtures.lapse_slot(&fleet).await;
+    fixtures
+        .lapse_holder(issued.lease_id.as_str(), &fleet)
+        .await;
 
     FleetStreams::new(fixtures.queue().clone())
         .forget(&fleet)

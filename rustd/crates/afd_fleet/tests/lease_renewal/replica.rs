@@ -9,16 +9,9 @@ use afd_crypto::entropy::Entropy;
 use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use afd_fleet::lease::{Billed, Kind, Leases};
 
-const EXPIRE: &str = const_format::concatcp!(
-    "WITH lapsed AS (SELECT ",
-    afd_db::statement::NOW_MS,
-    " - 1 AS at), lease AS (
-  UPDATE fleet.runner_leases SET lease_expires_at = (SELECT at FROM lapsed)
-  WHERE id = $1::uuid RETURNING fleet_id)
-UPDATE fleet.runner_affinity SET leased_until = (SELECT at FROM lapsed)
-WHERE fleet_id = (SELECT fleet_id FROM lease)",
-);
-const ORIGINAL: &str = "SELECT event_id, status FROM fleet.runner_leases WHERE id = $1::uuid";
+const ORIGINAL: &str = "\
+SELECT e.event_id, l.status FROM runner.leases l JOIN fleet.events e ON e.id = l.fleet_event_id
+WHERE l.id = $1::uuid";
 
 pub(super) struct Replica {
     lane: TestDatabase,
@@ -47,7 +40,6 @@ impl Replica {
         let acquired = crate::seed::select_fleet_within_rotations(
             &self.leases,
             &running.runner,
-            clock::now(),
             &running.fleet,
         )
         .await
@@ -89,16 +81,10 @@ impl Replica {
 
 /// Lapse both halves of A's lease at database time, as a stalled holder would.
 pub(super) async fn expire(running: &Running) {
-    let changed = sqlx::query(EXPIRE)
-        .bind(running.lease.as_str())
-        .execute(&mut *running.fixtures.database.acquire().await.expect("expire"))
-        .await
-        .expect("expire lease and affinity at database time");
-    assert_eq!(
-        changed.rows_affected(),
-        1,
-        "the affinity row lapsed with it"
-    );
+    running
+        .fixtures
+        .lapse_holder(running.lease.as_str(), &running.fleet)
+        .await;
 }
 
 /// The event and status of A's original lease row.

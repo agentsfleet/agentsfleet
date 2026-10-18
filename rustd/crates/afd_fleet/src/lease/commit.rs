@@ -5,7 +5,7 @@
 //! were a settle that committed on its own
 //! followed by four best-effort writes that each logged their own failure, and
 //! the gap between them is where a run's answer could be lost for good — the
-//! wallet drawn down, the lease flipped to `reported`, and `core.fleet_events`
+//! wallet drawn down, the lease flipped to `reported`, and `fleet.events`
 //! still holding the row as `received` with no response in it. Nothing
 //! recovers that: the runner's retry is refused because the lease is no longer
 //! active, and the tenant has paid for an answer the platform cannot produce.
@@ -13,8 +13,8 @@
 //! # Why the money still goes first INSIDE the transaction
 //!
 //! [`super::report`] explains why the settle precedes everything else, and the
-//! reason survives the change: a run that reaches `MAX_RUNTIME_MS` races the
-//! reclaim sweep, and `CLAIM_AND_SETTLE` takes `FOR UPDATE OF l, a` — the
+//! reason survives the change: a run that reaches `MAX_RUNTIME` races the
+//! reclaim sweep, and `METER_LEASE` takes `FOR UPDATE OF l, a` — the
 //! affinity row lock that holds the sweep off until this commits. Running it
 //! first now holds that lock for the whole transaction rather than for one
 //! statement, which is strictly stronger: the sweep that would have bumped the
@@ -35,9 +35,9 @@
 //! per statement.
 
 use afd_billing::{Meter, Nanos};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
+use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
@@ -52,7 +52,7 @@ const CONTEXT_COMMIT: &str = "report commit";
 /// Everything one terminal report commits, by name.
 ///
 /// A struct rather than eight positional parameters for the reason
-/// [`SettleRow`](crate::lease::sql::report::SettleRow) is one: two of these are
+/// [`Metering`](crate::lease::sql::meter::Metering) is one: two of these are
 /// `&str` and two are instants, and a transposition between them writes a
 /// checkpoint under a response and compiles clean.
 #[derive(Debug)]
@@ -75,9 +75,9 @@ pub struct TerminalReport<'a> {
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
     /// none when the runner holds nothing.
-    pub held_until: Option<UnixMillis>,
+    pub held_until: Option<Timestamp>,
     /// The instant every row this transaction writes is stamped with.
-    pub now: UnixMillis,
+    pub now: Timestamp,
 }
 
 /// What the report's transaction decided.
@@ -192,21 +192,15 @@ impl Leases {
         let answer = outcome.response_text;
 
         let closed = self
-            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome, now)
+            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome)
             .await?
             .map(Box::new);
         // The settling fence's records describe the run whose answer stands;
         // a reclaimed lease's are of a run that did not, so they go with it.
         self.drop_other_fences(connection, lease).await?;
-        self.checkpoint(
-            connection,
-            &lease.fleet_id,
-            last_event_id,
-            last_response,
-            now,
-        )
-        .await?;
-        self.release_through(connection, &lease.fleet_id, lease.fence, held_until, now)
+        self.checkpoint(connection, &lease.fleet_id, last_event_id, last_response)
+            .await?;
+        self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
             .await?;
         // The fifth write, and the one that closes 7.6's window: the answer is
         // owed before anything tries to send it, so a process that dies between

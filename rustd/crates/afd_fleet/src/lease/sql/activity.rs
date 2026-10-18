@@ -10,7 +10,4 @@
 /// hold.
 ///
 /// `$1` lease, `$2` runner.
-pub const SELECT_LEASE_TARGET: &str = "\
-SELECT fleet_id::text, event_id, created_at, event_created_at, status, lease_expires_at,
-       fencing_token
-FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
+pub const SELECT_LEASE_TARGET: &str = include_str!("select_lease_target.sql");

@@ -7,32 +7,29 @@ use super::{
 };
 use afd_core::{clock, id::Uuid7};
 use afd_fleet::lease::Renewed;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 
-const LIVE_HOLDERS: &str = const_format::concatcp!(
-    "SELECT id::text FROM fleet.runner_leases WHERE fleet_id = $1::uuid AND status = $2 \
-     AND lease_expires_at > ",
-    afd_db::statement::NOW_MS,
-);
-const EVENT_LEASES: &str =
-    "SELECT count(*) FROM fleet.runner_leases WHERE fleet_id = $1::uuid AND event_id = $2";
-const HOST_OCCUPANCY: &str = const_format::concatcp!(
-    "SELECT r.worker_count::bigint, \
-     (SELECT count(*) FROM fleet.runner_leases l WHERE l.runner_id = r.id AND l.status = $2 \
-       AND l.lease_expires_at > ",
-    afd_db::statement::NOW_MS,
-    ") + (SELECT count(*) FROM fleet.authoring_attempts a WHERE a.runner_id = r.id \
-       AND a.status = $2 AND a.lease_expires_at > ",
-    afd_db::statement::NOW_MS,
-    ") FROM fleet.runners r WHERE r.id = $1::uuid",
-);
+const LIVE_HOLDERS: &str = "\
+SELECT id::text FROM runner.leases
+WHERE fleet_id = $1::uuid AND status = $2 AND lease_expires_at > clock_timestamp()";
+const EVENT_LEASES: &str = "\
+SELECT count(*) FROM runner.leases l JOIN fleet.events e ON e.id = l.fleet_event_id
+WHERE l.fleet_id = $1::uuid AND e.event_id = $2";
+const HOST_OCCUPANCY: &str = "\
+SELECT r.worker_count::bigint,
+  (SELECT count(*) FROM runner.leases l WHERE l.runner_id = r.id AND l.status = $2
+     AND l.lease_expires_at > clock_timestamp())
+  + (SELECT count(*) FROM authoring.attempts a WHERE a.runner_id = r.id
+     AND a.status = $2 AND a.lease_expires_at > clock_timestamp())
+FROM runner.runners r WHERE r.id = $1::uuid";
 
 /// The state both replicas left, read back after the race.
 pub(super) struct Outcome<'a> {
     pub(super) order: &'a str,
     pub(super) original_event: &'a str,
     pub(super) readmitted: &'a Uuid7,
-    pub(super) expired: (i64, i64, i64),
+    pub(super) expired: (Timestamp, Timestamp, Timestamp),
 }
 
 /// B alone holds the work, A's row is retired untouched, and the host is full.

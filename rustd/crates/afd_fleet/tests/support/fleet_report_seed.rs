@@ -17,7 +17,6 @@
 use std::sync::Arc;
 
 use afd_billing::{Accounts, Charged, Cumulative, Meter, Posture, SliceRates};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
@@ -29,7 +28,9 @@ use afd_crypto::secret::Kek;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
 use afd_memory::Memories;
+use jiff::Timestamp;
 
+use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -47,6 +48,10 @@ pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
 /// costs. Spelled as literals they would look like one value repeated, which is
 /// exactly the reading RULE UFS exists to prevent.
 pub(crate) const SLICE_MS: i64 = 1_000;
+
+/// [`SLICE_MS`] as a span, for the instants a suite reports at.
+pub(crate) const SLICE: std::time::Duration =
+    std::time::Duration::from_millis(SLICE_MS.unsigned_abs());
 
 /// A run fee of one nano per millisecond, in the per-SECOND unit the rate
 /// column is quoted in.
@@ -101,7 +106,7 @@ pub(crate) struct Held {
     pub(crate) tenant: String,
     pub(crate) event_id: String,
     /// When the lease was issued, by the database clock.
-    pub(crate) now: UnixMillis,
+    pub(crate) now: Timestamp,
 }
 
 /// Runs §2 far enough to leave one active lease on one funded fleet.
@@ -119,17 +124,15 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
+    let now = fixtures.enrolled_at();
+    fixtures.seed_wallet(&tenant, DEEP_POOL).await;
 
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
+    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
         leases
-            .record_received(&acquired, now)
+            .record_received(&acquired)
             .await
             .expect("the narrative log must open")
             .delivery,
@@ -196,10 +199,40 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
     }
 }
 
+impl Held {
+    /// Ages the fleet's meter by one [`SLICE`], as a second of runtime would,
+    /// and answers the stamp the next settle or renewal measures from.
+    ///
+    /// Settles and renewals meter up to the database's clock, so a test runs a
+    /// slice by moving the meter's start back rather than by naming an instant.
+    pub(crate) async fn run_a_slice(&self) -> Timestamp {
+        self.fixtures
+            .age(
+                Row::Slot(&self.fleet),
+                crate::lease_reads::COLUMN_LAST_METERED,
+                SLICE,
+            )
+            .await;
+        self.fixtures.metered_since(&self.fleet).await
+    }
+
+    /// The wall time between `from` and the meter's stamp now, which is the
+    /// slice the last settle or renewal charged for.
+    pub(crate) async fn metered_from(&self, from: Timestamp) -> i64 {
+        let to = self.fixtures.metered_since(&self.fleet).await;
+        afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to))
+    }
+}
+
+/// What [`ONE_NANO_PER_MS`] charges for `wall_ms` of runtime.
+pub(crate) const fn run_fee(wall_ms: i64) -> i64 {
+    afd_billing::slice_charge(ONE_NANO_PER_MS, wall_ms, 0, 0, 0).as_i64()
+}
+
 /// The key every fixture in this lane seals and opens under.
 ///
 /// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
-/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// point of it. `model.platform_defaults` has `provider` as its PRIMARY
 /// KEY, so the row is a fact about the deployment rather than about a test, and
 /// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
 /// owns it, and the secret it names is opened by the other. Under two different
@@ -229,7 +262,7 @@ impl Fixtures {
         runner: &Uuid7,
         meter: Meter,
         succeeded: bool,
-        at: UnixMillis,
+        at: Timestamp,
     ) -> Settled {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         leases

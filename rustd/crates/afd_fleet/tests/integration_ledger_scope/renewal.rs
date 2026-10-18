@@ -53,8 +53,8 @@ async fn stage_rows(held: &Held) -> (i64, i64) {
         .await
         .expect("a pooled connection");
     let row = sqlx::query(
-        "SELECT count(*), COALESCE(SUM(credit_deducted_nanos), 0)::bigint
-         FROM billing.usage_ledger
+        "SELECT count(*), COALESCE(SUM(charged_nanos), 0)::bigint
+         FROM billing.fleet_charges
          WHERE fleet_id = $1::uuid AND event_id = $2 AND charge_type = 'stage'",
     )
     .bind(&held.fleet)

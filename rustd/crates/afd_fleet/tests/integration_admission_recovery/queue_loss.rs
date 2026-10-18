@@ -27,10 +27,8 @@ async fn queue_loss_replays_without_duplicate_settlement() {
     let streams = FleetStreams::new(fixtures.queue().clone());
     let leases = fixtures.leases();
     let live = ledger(&fixtures);
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
+    let now = fixtures.enrolled_at();
+    fixtures.seed_wallet(&tenant, DEEP_POOL).await;
 
     // Three admissions: the lease will take one and run it to settlement, and
     // the other two are the accepted work the loss must not lose.
@@ -43,7 +41,7 @@ async fn queue_loss_replays_without_duplicate_settlement() {
             .expect("a live queue admits and receipts");
         assert!(
             fixtures
-                .admission_receipt(&fleet, &event.stored.id)
+                .text(Row::Admission(&event.stored.id), "receipt")
                 .await
                 .is_some(),
             "{key} was receipted before the loss"
@@ -77,19 +75,10 @@ async fn queue_loss_replays_without_duplicate_settlement() {
 
     // ── The rebuild. Reconcile forgets the receipts whose entries are gone;
     // replay re-appends the rows that are owed again.
-    // Both passes on the REAL clock, for the reason the 2.1 test states: the
-    // ledger stamps `created_at` with `clock::now()`, so a replay cutoff built
-    // from the fixture's instant scans nothing.
-    let repairing_at = clock::now();
-    live.reconcile(
-        repairing_at,
-        EVERY_FLEET,
-        EVERY_ROW,
-        &mut Progress::default(),
-    )
-    .await
-    .expect("the reconcile pass runs against both live datastores");
-    live.replay(repairing_at, NO_GRACE, EVERY_ROW)
+    live.reconcile(EVERY_FLEET, EVERY_ROW, &mut Progress::default())
+        .await
+        .expect("the reconcile pass runs against both live datastores");
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");
 
@@ -101,15 +90,16 @@ async fn queue_loss_replays_without_duplicate_settlement() {
     // `delivered_at` exists for.
     assert_eq!(
         fixtures
-            .admission_receipt(&fleet, &completed.event_id)
+            .text(Row::Admission(&completed.event_id), "receipt")
             .await,
         Some(completed.receipt.clone()),
         "a delivered admission keeps the receipt it ran under, gone entry or not"
     );
     assert_eq!(
         fixtures
-            .admission_replays(&fleet, &completed.event_id)
-            .await,
+            .value::<i64>(Row::Admission(&completed.event_id), "replay_count")
+            .await
+            .expect("replay_count is NOT NULL"),
         0,
         "a delivered admission is never re-appended"
     );

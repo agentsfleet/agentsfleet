@@ -5,7 +5,6 @@
 //! scan and the same claim, so a fleet found either way is held to the same
 //! eligibility.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::{Partition, Ready};
 use afd_observability::producers;
@@ -60,14 +59,13 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         let ready = self.held_ready(runner_id, held, cost).await;
         if ready.is_empty() {
             return Ok(None);
         }
-        self.first_offered(runner_id, &ready, ready.len(), now, cost)
+        self.first_offered(runner_id, &ready, ready.len(), cost)
             .await
             .map(|claimed| claimed.acquired)
     }
@@ -117,7 +115,6 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         offer: Result<Offer>,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Pass> {
         let offer = offer?;
@@ -131,7 +128,7 @@ impl Leases {
         if offer.ready.is_empty() {
             return Ok(Pass::default());
         }
-        self.first_offered(runner_id, &offer.ready, offer.from_cursor, now, cost)
+        self.first_offered(runner_id, &offer.ready, offer.from_cursor, cost)
             .await
     }
 
@@ -144,19 +141,18 @@ impl Leases {
         runner_id: &Uuid7,
         ready: &[Ready],
         from_cursor: usize,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Pass> {
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
         let cursor_ids: Vec<&str> = ids.iter().take(from_cursor).copied().collect();
         cost.database_roundtrips += 1;
-        let offered = self.candidates(runner_id, &ids, &cursor_ids, now).await?;
+        let offered = self.candidates(runner_id, &ids, &cursor_ids).await?;
         let cut = offered.len() >= MAX_READY_CANDIDATES_PER_POLL;
         let mut queue = peeked(offered, ready);
         while let Some((fleet_id, token)) = queue.next() {
             cost.database_roundtrips += 1;
             if let Some(acquired) = self
-                .try_candidate(&fleet_id, token, runner_id, now, cost)
+                .try_candidate(&fleet_id, token, runner_id, cost)
                 .await?
             {
                 let untried = queue.map(|(fleet, _token)| fleet).collect();

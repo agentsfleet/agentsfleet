@@ -14,6 +14,7 @@ use afd_wire::lease::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
+use jiff::Timestamp;
 
 use super::{EVENT_HISTORY_UNAVAILABLE, Thread, turns_before, within_caps};
 
@@ -24,7 +25,11 @@ const EVENT: &str = "01924f4e-0000-7000-8000-0000000000e9";
 
 /// One thread row: `message` asked, answered `answer`, ended in `status`.
 fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDetailRow {
-    let mut row = EventDetailRow::fixture(&format!("e{index}"), index, String::new());
+    let at = afd_core::clock::after(
+        Timestamp::UNIX_EPOCH,
+        std::time::Duration::from_millis(index.unsigned_abs()),
+    );
+    let mut row = EventDetailRow::fixture(&format!("e{index}"), at, String::new());
     status.clone_into(&mut row.row.status);
     row.request_json = serde_json::json!({ "message": message }).to_string();
     row.response_text = answer.map(str::to_owned);
@@ -84,7 +89,10 @@ impl Thread for Fake {
 /// Reads `thread` for a lease whose event is `event_type`.
 async fn turns_for(thread: &Fake, event_type: EventType) -> Vec<Turn<'static>> {
     let at = Cursor {
-        created_at: 100,
+        created_at: afd_core::clock::after(
+            Timestamp::UNIX_EPOCH,
+            std::time::Duration::from_millis(100),
+        ),
         event_id: EVENT.to_owned(),
     };
     let workspace = Uuid7::parse(WORKSPACE).unwrap();

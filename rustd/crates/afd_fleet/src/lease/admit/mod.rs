@@ -33,9 +33,9 @@ mod verdict;
 
 pub use self::declined::Declined;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::event::Delivery;
@@ -106,7 +106,7 @@ pub struct Billed {
 /// Why an event was ended, and what an operator is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Refusal {
-    /// The `core.fleet_events.failure_label` value.
+    /// The `fleet.events.failure_label` value.
     pub label: &'static str,
     /// An operator-readable recovery instruction, or empty.
     ///
@@ -148,7 +148,7 @@ pub struct Request<'a> {
     /// The event being admitted.
     pub event_id: &'a str,
     /// When the producer raised it.
-    pub event_created_at: UnixMillis,
+    pub event_created_at: Timestamp,
     /// The fleet's declared ceiling, from the config resolved this lease.
     pub budget: Budget,
     /// Who supplies the provider key.
@@ -206,7 +206,7 @@ pub async fn money_gates(
     accounts: &Accounts,
     payer: Payer,
     request: Request<'_>,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> Result<Admission> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
@@ -216,7 +216,7 @@ pub async fn money_gates(
     if let Some(stop) = gates::balance(accounts, &request, &tenant_id).await {
         return Ok(stop.into());
     }
-    if let Some(stop) = gates::fleet_budget(accounts, &request, now).await {
+    if let Some(stop) = gates::fleet_budget(accounts, &request).await {
         return Ok(stop.into());
     }
 
@@ -246,7 +246,7 @@ async fn charge(
     accounts: &Accounts,
     request: &Request<'_>,
     tenant_id: &Uuid7,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> core::result::Result<Nanos, Declined> {
     match request.delivery {
         // A finished event never reaches admission — the pull path acknowledges

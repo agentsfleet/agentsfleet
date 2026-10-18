@@ -18,14 +18,14 @@
 //! one. Reading a charge without having established the claim is not a mistake
 //! to avoid; it does not compile.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _};
+use jiff::Timestamp;
+use sqlx::{FromRow as _, PgConnection};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::affinity::Fence;
 use crate::lease::sql;
-use crate::lease::sql::report::SettleRow;
+use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
 use afd_billing::{Meter, Nanos};
 
@@ -39,7 +39,7 @@ const CONTEXT_SETTLE: &str = "report claim and settle";
 const CONTEXT_DISPOSITION: &str = "report lease disposition";
 
 /// The table a malformed identifier column is reported against.
-const TABLE_LEASES: &str = "fleet.runner_leases";
+const TABLE_LEASES: &str = "runner.leases";
 
 /// The lease a report is about, as the row holds it.
 ///
@@ -118,42 +118,20 @@ impl Leases {
         runner_id: &Uuid7,
     ) -> Result<Option<Reported>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::report::SELECT_LEASE_FOR_REPORT)
+        let found: Option<LeaseForReport> = sqlx::query_as(sql::report::SELECT_LEASE_FOR_REPORT)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-
-        let Some(row) = found else {
-            return Ok(None);
-        };
-        let text = |index: usize| -> Result<String> {
-            row.try_get::<String, _>(index).map_err(query(CONTEXT_LOAD))
-        };
-        let id = |index: usize, column: &'static str| -> Result<Uuid7> {
-            Uuid7::parse(&text(index)?).map_err(row_malformed(TABLE_LEASES, column))
-        };
-        let fence: i64 = row.try_get(8).map_err(query(CONTEXT_LOAD))?;
-        Ok(Some(Reported {
-            fleet_id: id(0, "fleet_id")?,
-            workspace_id: id(1, "workspace_id")?,
-            tenant_id: id(2, "tenant_id")?,
-            event_id: text(3)?,
-            receipt: text(9)?,
-            actor: text(4)?,
-            posture: text(5)?,
-            provider: text(6)?,
-            model: text(7)?,
-            fence: Fence::from_i64(fence),
-        }))
+        found.map(LeaseForReport::into_reported).transpose()
     }
 
     /// Flip the lease to `reported` and charge its final slice, atomically.
     ///
     /// The fence check, the flip, both metering cursors, the wallet drain, the
     /// ledger row and the lifetime tally ride ONE statement. A superseded
-    /// holder writes none of them — see [`sql::report::CLAIM_AND_SETTLE`] for
+    /// holder writes none of them — see [`sql::meter::METER_LEASE`] for
     /// why fusing them is what makes the cap path safe.
     ///
     /// Runs on a connection the CALLER owns, because the money is one statement
@@ -176,36 +154,35 @@ impl Leases {
         runner_id: &Uuid7,
         meter: Meter,
         succeeded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Settled> {
         let ledger_id = self.entropy().uuid7(now)?;
 
-        let settle = SettleRow {
+        let metering = Metering {
             lease_id,
             runner_id,
-            now,
             meter,
             ledger_id: &ledger_id,
-            succeeded,
         };
-        let row = settle
-            .bind()
+        let row = metering
+            .bind(Ending::Settle { succeeded })
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_SETTLE))?;
+        let answer = SettleAnswer::from_row(&row).map_err(query(CONTEXT_SETTLE))?;
 
         // `charged` is nullable because the guard may yield no row at all; the
         // claim count is the authority on whether this holder won, and the
         // amount is only read on the arm where it did.
-        let claimed: i64 = row.try_get(1).map_err(query(CONTEXT_SETTLE))?;
-        if claimed == 0 {
+        if answer.claimed == 0 {
             return disposition(connection, lease_id, runner_id).await;
         }
-        let charged: Option<i64> = row.try_get(0).map_err(query(CONTEXT_SETTLE))?;
         // A surviving guard row always prices a charge, so a null here would
         // mean the claim flipped without `calc` — read as zero drain rather
         // than reporting a debit the wallet never took.
-        Ok(Settled::Claimed(Nanos::from_i64(charged.unwrap_or(0))))
+        Ok(Settled::Claimed(Nanos::from_i64(
+            answer.charged_nanos.unwrap_or(0),
+        )))
     }
 }
 
@@ -223,18 +200,13 @@ async fn disposition(
     lease_id: &str,
     runner_id: &Uuid7,
 ) -> Result<Settled> {
-    let found = sqlx::query(sql::report::SELECT_LEASE_DISPOSITION)
+    let status: Option<String> = sqlx::query_scalar(sql::report::SELECT_LEASE_DISPOSITION)
         .bind(lease_id)
         .bind(runner_id.as_str())
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT_DISPOSITION))?;
-
-    let Some(row) = found else {
-        return Ok(Settled::Fenced);
-    };
-    let status: String = row.try_get(0).map_err(query(CONTEXT_DISPOSITION))?;
-    Ok(if status == sql::LEASE_STATUS_REPORTED {
+    Ok(if status.as_deref() == Some(sql::LEASE_STATUS_REPORTED) {
         Settled::AlreadySettled
     } else {
         Settled::Fenced
@@ -272,5 +244,47 @@ mod tests {
             Settled::Fenced,
             "a report already settled by this runner is not a report it lost"
         );
+    }
+}
+
+/// The columns of [`sql::meter::METER_LEASE`]'s answer a settle reads.
+#[derive(sqlx::FromRow)]
+struct SettleAnswer {
+    charged_nanos: Option<i64>,
+    claimed: i64,
+}
+
+/// [`sql::report::SELECT_LEASE_FOR_REPORT`]'s row, ids still as stored text.
+#[derive(sqlx::FromRow)]
+struct LeaseForReport {
+    fleet_id: String,
+    workspace_id: String,
+    tenant_id: String,
+    event_id: String,
+    actor: String,
+    posture: String,
+    provider: String,
+    model: String,
+    fencing_token: i64,
+    receipt: String,
+}
+
+impl LeaseForReport {
+    fn into_reported(self) -> Result<Reported> {
+        let id = |text: &str, column: &'static str| {
+            Uuid7::parse(text).map_err(row_malformed(TABLE_LEASES, column))
+        };
+        Ok(Reported {
+            fleet_id: id(&self.fleet_id, "fleet_id")?,
+            workspace_id: id(&self.workspace_id, "workspace_id")?,
+            tenant_id: id(&self.tenant_id, "tenant_id")?,
+            event_id: self.event_id,
+            receipt: self.receipt,
+            actor: self.actor,
+            posture: self.posture,
+            provider: self.provider,
+            model: self.model,
+            fence: Fence::from_i64(self.fencing_token),
+        })
     }
 }

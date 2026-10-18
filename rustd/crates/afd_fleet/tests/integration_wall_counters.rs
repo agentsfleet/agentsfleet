@@ -23,7 +23,6 @@
 use std::time::Duration;
 
 use afd_api_wire::tail::FleetCounters;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::hub::Received;
 use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
@@ -76,13 +75,13 @@ async fn parked() -> Parked {
     let tail = hub.subscribe(&fleet_activity_channel(&fleet));
     await_subscribed(&fixtures, &fleet).await;
 
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    let now = fixtures.enrolled_at();
     let leases = fixtures.leases();
-    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     let received = leases
-        .record_received(&held, now)
+        .record_received(&held)
         .await
         .expect("the narrative log must open");
     assert_eq!(received.delivery, Delivery::First);
@@ -196,7 +195,7 @@ async fn a_parked_event_moves_no_budget() {
         .expect("a pooled connection");
 
     let ledger_rows: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_ledger WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT COUNT(*) FROM billing.fleet_charges WHERE fleet_id = $1::uuid")
             .bind(fleet.as_str())
             .fetch_one(&mut *connection)
             .await
@@ -213,7 +212,7 @@ async fn a_parked_event_moves_no_budget() {
     assert_eq!(after, run.counters, "nothing moved since the receive");
 
     let status: String = sqlx::query(
-        "SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid ORDER BY created_at DESC LIMIT 1",
+        "SELECT status FROM fleet.events WHERE fleet_id = $1::uuid ORDER BY created_at DESC LIMIT 1",
     )
     .bind(fleet.as_str())
     .fetch_one(&mut *connection)
@@ -235,12 +234,11 @@ async fn a_parked_event_moves_no_budget() {
 async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
-    let now = UnixMillis::from_millis(run.fixtures.enrolled_at());
 
     let again = run
         .fixtures
         .leases()
-        .record_received(&run.held, now)
+        .record_received(&run.held)
         .await
         .expect("the redelivery must not fault");
     assert_eq!(again.delivery, Delivery::Repeat);

@@ -64,7 +64,7 @@ pub(super) async fn turns(
     event_type: EventType,
 ) -> Vec<Turn<'static>> {
     let at = Cursor {
-        created_at: acquired.event_created_at.as_millis(),
+        created_at: acquired.event_created_at,
         event_id: acquired.event_id.clone(),
     };
     turns_before(
@@ -77,7 +77,7 @@ pub(super) async fn turns(
     .await
 }
 
-/// [`turns`], for the event at `at` in `workspace`'s `fleet`: what a chat
+/// `turns`, for the event at `at` in `workspace`'s `fleet`: what a chat
 /// lease carries, read through `thread`.
 pub async fn turns_before(
     thread: &dyn Thread,

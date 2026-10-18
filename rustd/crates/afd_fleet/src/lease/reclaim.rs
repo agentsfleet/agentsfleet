@@ -11,9 +11,8 @@
 //! No prior active lease means the fleet is simply free, and the caller pulls a
 //! fresh event instead.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::error::{Result, query};
 use crate::lease::sql;
@@ -28,7 +27,7 @@ const CONTEXT_RECLAIM: &str = "lease reclaim";
 /// re-derived: the original lease already debited the tenant, so a reclaim that
 /// resolved these afresh could bill twice, and a rotation between the two
 /// resolutions would bill the wrong rate. Carried, never recomputed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Reused {
     /// The tenant the original lease debited.
     pub tenant_id: String,
@@ -39,7 +38,7 @@ pub struct Reused {
 }
 
 /// A dead holder's work, re-leasable under a fresh fence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Reclaimed {
     /// The lease that was expired to release this work.
     pub lease_id: String,
@@ -55,10 +54,12 @@ pub struct Reclaimed {
     /// Its body, as stored.
     pub request_json: String,
     /// When the producer raised it.
-    pub event_created_at: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub event_created_at: Timestamp,
     /// The workspace it belongs to.
     pub workspace_id: String,
     /// The billing carried forward.
+    #[sqlx(flatten)]
     pub reused: Reused,
 }
 
@@ -77,42 +78,14 @@ impl Leases {
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn reclaim_prior_active(
-        &self,
-        fleet_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<Reclaimed>> {
+    pub async fn reclaim_prior_active(&self, fleet_id: &Uuid7) -> Result<Option<Reclaimed>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::lease::RECLAIM_PRIOR_ACTIVE)
+        sqlx::query_as(sql::lease::RECLAIM_PRIOR_ACTIVE)
             .bind(fleet_id.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_EXPIRED)
-            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
-            .map_err(query(CONTEXT_RECLAIM))?;
-
-        let Some(row) = found else {
-            return Ok(None);
-        };
-        let column = |index| {
-            row.try_get::<String, _>(index)
-                .map_err(query(CONTEXT_RECLAIM))
-        };
-        Ok(Some(Reclaimed {
-            lease_id: column(0)?,
-            event_id: column(1)?,
-            receipt: column(10)?,
-            actor: column(2)?,
-            event_type: column(3)?,
-            request_json: column(4)?,
-            event_created_at: row.try_get(5).map_err(query(CONTEXT_RECLAIM))?,
-            workspace_id: column(6)?,
-            reused: Reused {
-                tenant_id: column(7)?,
-                posture: column(8)?,
-                model: column(9)?,
-            },
-        }))
+            .map_err(query(CONTEXT_RECLAIM))
     }
 }

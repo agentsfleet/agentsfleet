@@ -26,13 +26,13 @@
 use crate::queue;
 use crate::seed;
 use crate::support;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Kind};
 use afd_observability::test_util::Capture;
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
+use crate::rows::{LAPSE, Row};
 
 /// The family the grant is counted under.
 const RUNS_STARTED: &str = "agentsfleet_fleet_runs_started_total";
@@ -57,10 +57,9 @@ async fn test_fresh_grant_counts_one_run() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let before = capture.sum(RUNS_STARTED, &[(KIND, FRESH)]);
 
-    let acquired = seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
+    let acquired = seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
     assert_eq!(acquired.kind, Kind::Fresh);
@@ -91,13 +90,13 @@ async fn test_reclaim_counts_as_reclaimed() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    let now = fixtures.enrolled_at();
 
-    let held = seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
+    let held = seed::select_fleet_within_rotations(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     leases
-        .record_received(&held, now)
+        .record_received(&held)
         .await
         .expect("the narrative log must open");
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
@@ -118,8 +117,10 @@ async fn test_reclaim_counts_as_reclaimed() {
         .expect("the claim is still held");
 
     let before = capture.sum(RUNS_STARTED, &[(KIND, RECLAIMED)]);
-    let lapsed = held.leased_until.saturating_add_millis(1);
-    let reclaimed = seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
+    fixtures
+        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .await;
+    let reclaimed = seed::select_fleet_within_rotations(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
     assert_eq!(reclaimed.kind, Kind::Reclaim);

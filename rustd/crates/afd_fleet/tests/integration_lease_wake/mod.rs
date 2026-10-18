@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture as Trace;
 use afd_observability::metrics::label::fleet::ReadyWake;
@@ -139,12 +138,7 @@ async fn test_a_lost_ring_falls_back_to_rotation() {
     scene.send_quietly(&fleet).await;
     assert!(!scene.rung(fleet.partition()), "nothing rang");
 
-    let leased = select_within_one_rotation(
-        &scene.leases,
-        &fleet.runners[0],
-        UnixMillis::from_millis(scene.fixtures.enrolled_at()),
-    )
-    .await;
+    let leased = select_within_one_rotation(&scene.leases, &fleet.runners[0]).await;
 
     assert_eq!(
         leased.map(|acquired| acquired.fleet_id.to_string()),
@@ -299,11 +293,7 @@ async fn test_held_fleet_reads_join_the_dragonfly_tally() {
 
     let (polled, cost) = scene
         .leases
-        .select_measured(
-            &fleet.runners[0],
-            &[held.clone(), held],
-            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
-        )
+        .select_measured(&fleet.runners[0], &[held.clone(), held])
         .await;
 
     assert!(polled.expect("the poll must not fault").is_none());

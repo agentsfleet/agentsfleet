@@ -1,12 +1,12 @@
 //! Owing a delivery from inside the report's transaction.
 //!
 //! The table itself lives in [`afd_outbound::obligation`], which owns every
-//! statement that touches `core.fleet_obligations`. This module is the seam: it
+//! statement that touches `fleet.obligations`. This module is the seam: it
 //! mints the row's identifier from this store's entropy, calls the owner's verb
 //! on the transaction's own connection, and hands the queue append back to the
 //! post-commit path.
 //!
-//! Not [`super::deliver`], which is the inbound half — what an admitted claim
+//! Not `super::deliver`, which is the inbound half — what an admitted claim
 //! becomes when a runner takes it. This is the outbound one: the record that an
 //! answer exists and has not reached anybody yet.
 //!
@@ -19,10 +19,10 @@
 //! one commits the obligation and then gets out of the way.
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
+use jiff::Timestamp;
 use sqlx::PgConnection;
 
 use crate::error::{Result, query};
@@ -96,14 +96,13 @@ impl Leases {
         fleet_id: &str,
         event_id: &str,
     ) -> Result<Option<ReplyDestination>> {
-        let Some((created_at, seq)) = afd_admission::logical_parts(event_id) else {
+        let Ok(admission) = Uuid7::parse(event_id) else {
             return Ok(None);
         };
         let stored: Option<(String, String)> =
             sqlx::query_as(afd_admission::sql::SELECT_REPLY_DESTINATION)
                 .bind(fleet_id)
-                .bind(created_at)
-                .bind(seq)
+                .bind(admission.as_str())
                 .fetch_optional(&mut *connection)
                 .await
                 .map_err(query(CONTEXT_REPLY))?;
@@ -141,11 +140,11 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         delivery: Delivery<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Option<Uuid7>> {
         let row_id = self.entropy().uuid7(now)?;
 
-        let written = obligation::owe(connection, row_id.as_str(), delivery, now).await?;
+        let written = obligation::owe(connection, row_id.as_str(), delivery).await?;
         Ok(written.then_some(row_id))
     }
 
@@ -160,14 +159,9 @@ impl Leases {
     /// # Errors
     /// Reports a queue that would not accept the entry, and a datastore that
     /// would not record the receipt.
-    pub async fn queue_delivery(
-        &self,
-        owed: &Uuid7,
-        delivery: Delivery<'_>,
-        now: UnixMillis,
-    ) -> Result<()> {
+    pub async fn queue_delivery(&self, owed: &Uuid7, delivery: Delivery<'_>) -> Result<()> {
         let entry = self.outbound().enqueue(OutboundJob::from(delivery)).await?;
-        obligation::receipt(self.pool(), owed.as_str(), entry.as_str(), now).await?;
+        obligation::receipt(self.pool(), owed.as_str(), entry.as_str()).await?;
         Ok(())
     }
 }

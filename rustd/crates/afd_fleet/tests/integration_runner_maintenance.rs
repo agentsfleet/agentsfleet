@@ -7,13 +7,13 @@ use crate::support;
 use afd_api_wire::admin::RunnerAdminAction;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialDirectory as _, Digest};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_state::Credentials;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::enrolment;
 use self::support::Fixtures;
+use crate::rows::Row;
 
 const ACTOR: &str = "fixture:platform-operator";
 
@@ -25,27 +25,28 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols");
 
-    let requested = fixtures
-        .runners()
-        .request_selftest(
-            &enrolled.runner_id,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 1),
-        )
-        .await
-        .expect("a live runner records the ask");
-    assert_eq!(requested.requested_at(), fixtures.enrolled_at() + 1);
-    let expected = (fixtures.enrolled_at() + 1).to_string();
+    let (requested, asked) = fixtures
+        .clock_around(fixtures.runners().request_selftest(&enrolled.runner_id))
+        .await;
+    let requested = requested.expect("a live runner records the ask");
+    assert!(
+        asked.contains(&requested.requested_at()),
+        "the ask is stamped on the database clock"
+    );
     assert_eq!(
         fixtures
-            .runner_column(enrolled.runner_id.as_str(), "selftest_requested_at")
-            .await
-            .as_deref(),
-        Some(expected.as_str())
+            .instant(
+                Row::Runner(enrolled.runner_id.as_str()),
+                "selftest_requested_at"
+            )
+            .await,
+        Some(requested.requested_at()),
+        "the answer reports the instant the row stores"
     );
 
     fixtures
@@ -54,16 +55,13 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 2),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("the runner is revoked");
     let revoked = fixtures
         .runners()
-        .request_selftest(
-            &enrolled.runner_id,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 3),
-        )
+        .request_selftest(&enrolled.runner_id)
         .await
         .expect_err("a revoked runner cannot collect an ask");
     assert_eq!(revoked.code().as_str(), "UZ-RUN-018");
@@ -72,10 +70,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .expect("the missing fixture is a UUIDv7");
     let absent = fixtures
         .runners()
-        .request_selftest(
-            &missing,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 4),
-        )
+        .request_selftest(&missing)
         .await
         .expect_err("a missing runner stays distinct from revocation");
     assert_eq!(absent.code().as_str(), "UZ-RUN-014");
@@ -91,7 +86,7 @@ async fn test_runner_rotation_takeover() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols");
@@ -110,7 +105,7 @@ async fn test_runner_rotation_takeover() {
         .rotate_token(
             &enrolled.runner_id,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 1),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("a live runner credential rotates");

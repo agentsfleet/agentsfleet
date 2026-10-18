@@ -56,7 +56,6 @@
 use std::time::Duration;
 
 use afd_admission::{Admissions, Budgets};
-use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_dragonfly::FleetStreams;
 use afd_dragonfly::ready::{READY_PARTITIONS, ReadyIndex, ReadyPrefix};
@@ -70,6 +69,7 @@ use afd_runner::sweep::replay::Replay;
 
 use crate::queue;
 use crate::recovery_seed::{abandoned_mid_flight, admission, ledger};
+use crate::rows::Row;
 use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -77,7 +77,7 @@ use crate::support::Fixtures;
 /// by the ordinary claim path inside this many reclaim passes.
 const RECLAIM_PASSES: u32 = 2;
 
-/// `fleet.runner_leases.status` while a holder still owns the work.
+/// `runner.leases.status` while a holder still owns the work.
 const LEASE_ACTIVE: &str = "active";
 
 /// The same column once the claim path has taken the work off a dead holder.
@@ -102,7 +102,7 @@ const REFUSAL_RESAMPLE_WAIT: Duration = Duration::from_millis(750);
 
 /// The lease's status column, as stored.
 async fn lease_status(fixtures: &Fixtures, lease: &str) -> Option<String> {
-    fixtures.lease_column(lease, "status").await
+    fixtures.text(Row::Lease(lease), "status").await
 }
 
 /// The ledger's answer reaches the ordinary claim path, and costs the lease
@@ -130,9 +130,7 @@ async fn recovers_an_abandoned_lease(fixtures: &Fixtures, leases: &Leases) {
             Some(LEASE_ACTIVE),
             "the sweeper marks and never flips: a flipped lease is invisible to reclaim_prior_active"
         );
-        obtained =
-            select_fleet_within_rotations(leases, &staged.poller, clock::now(), &staged.fleet)
-                .await;
+        obtained = select_fleet_within_rotations(leases, &staged.poller, &staged.fleet).await;
         if obtained.is_some() {
             break;
         }
@@ -169,7 +167,7 @@ async fn recovers_an_abandoned_lease(fixtures: &Fixtures, leases: &Leases) {
 /// test's to choose, and the property is about all of them.
 async fn every_partition_of_an_empty_index_is_free(leases: &Leases, runner: &Uuid7) {
     for _poll in 0..READY_PARTITIONS {
-        let (outcome, cost) = leases.select_measured(runner, &[], clock::now()).await;
+        let (outcome, cost) = leases.select_measured(runner, &[]).await;
         assert_eq!(
             cost.candidates_scanned, 0,
             "no writer has marked this index, so a peek offers nothing"
@@ -192,7 +190,7 @@ async fn every_partition_of_an_empty_index_is_free(leases: &Leases, runner: &Uui
 /// mark was written to.
 async fn poll_until_a_candidate(leases: &Leases, runner: &Uuid7) -> Option<PollMeasurement> {
     for _poll in 0..READY_PARTITIONS {
-        let (_outcome, cost) = leases.select_measured(runner, &[], clock::now()).await;
+        let (_outcome, cost) = leases.select_measured(runner, &[]).await;
         if cost.candidates_scanned > 0 {
             return Some(cost);
         }

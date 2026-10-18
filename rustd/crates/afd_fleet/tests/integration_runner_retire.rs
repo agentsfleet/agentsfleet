@@ -10,7 +10,6 @@
 )]
 
 use afd_api_wire::admin::RunnerAdminAction;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Billed;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
@@ -31,7 +30,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols");
@@ -54,7 +53,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 1),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("an active runner may be revoked");
@@ -94,15 +93,21 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
-    // Select finds the work; issue writes the row. The retirement predicate
-    // reads the row, so both steps are needed, as `integration_lease_issue`
-    // does them.
+    let now = afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
+    // Select finds the work, the narrative log opens, and issue writes the
+    // row. The retirement predicate reads the row, so every step is needed,
+    // as `integration_lease_issue` does them.
     // Narrowed to THIS fleet: the readiness cursor is process-global, and the
     // issue below charges this tenant's wallet for whatever was acquired.
-    let held = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
+    let held = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
+    // The lease row references the event's row, which the narrative log opens.
+    fixtures
+        .leases()
+        .record_received(&held)
+        .await
+        .expect("the narrative log opens");
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = fixtures
         .leases()
@@ -128,7 +133,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
             &runner,
             RunnerAdminAction::Revoke,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 2),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("an active runner may be revoked");

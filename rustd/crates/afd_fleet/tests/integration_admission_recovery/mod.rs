@@ -3,7 +3,7 @@
 //!
 //! The prototype suite proved the SHAPE against a `TEMP TABLE` and a raw
 //! driver, before
-//! `core.fleet_admissions` existed. This proves the real thing, and it lives in
+//! `fleet.admissions` existed. This proves the real thing, and it lives in
 //! `afd_fleet` rather than beside the ledger because the claims are about both
 //! ends at once: `Admissions::admit` and its two recovery passes on one side,
 //! and `Leases::record_received` and `claim_and_settle` on the other. Only this
@@ -45,15 +45,17 @@ use std::slice;
 use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Key, Producer, Progress};
-use afd_core::clock::{self, UnixMillis};
 use afd_core::id::Uuid7;
 use afd_dragonfly::{EventId, FleetStreams};
 use afd_fleet::lease::{Delivery, Settled};
 use afd_wire::event::{Entry, EventType};
+use jiff::Timestamp;
 use tokio::sync::Mutex;
 
+use crate::lease_reads::COLUMN_LAST_METERED;
 use crate::queue;
-use crate::report_seed::{DEEP_POOL, SLICE_MS, SLICE_NANOS, run_fee_meter};
+use crate::report_seed::{DEEP_POOL, SLICE, SLICE_NANOS, run_fee, run_fee_meter};
+use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
 
@@ -159,7 +161,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<1>(&fixtures).await;
     let streams = FleetStreams::new(fixtures.queue().clone());
     let live = ledger(&fixtures);
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    let now = fixtures.enrolled_at();
 
     // ── Stop after the receipt: a healthy admission, so the pass below has
     // something it must leave alone.
@@ -169,7 +171,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         .await
         .expect("a live queue admits and receipts in one call");
     let healthy_receipt = fixtures
-        .admission_receipt(&fleet, &healthy.stored.id)
+        .text(Row::Admission(&healthy.stored.id), "receipt")
         .await
         .expect("a live append records its receipt");
 
@@ -186,7 +188,7 @@ async fn acceptance_recovers_at_each_crash_boundary() {
     );
     assert_eq!(
         fixtures
-            .admission_receipt(&fleet, &deferred.stored.id)
+            .text(Row::Admission(&deferred.stored.id), "receipt")
             .await,
         None,
         "an append that never happened records no receipt"
@@ -203,12 +205,12 @@ async fn acceptance_recovers_at_each_crash_boundary() {
         append_as_the_dead_inserter(&streams, &fleet, &workspace, &half.stored.id, now).await;
 
     // The REAL clock, not the fixture's `now`. `replay`'s cutoff is
-    // `now - min_age` against `core.fleet_admissions.created_at`, which `admit`
+    // `now - min_age` against `fleet.admissions.created_at`, which `admit`
     // stamps with `clock::now()` — so a pass given the fixture's fixed instant
     // finds every row "newer" than its cutoff and scans nothing. The fixture
     // instant governs lease and billing arithmetic; the ledger's own rows are
     // wall-clock, and the two must not be crossed.
-    live.replay(clock::now(), NO_GRACE, EVERY_ROW)
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");
 
@@ -239,12 +241,17 @@ async fn acceptance_recovers_at_each_crash_boundary() {
 
     // The healthy row kept its receipt and was never replayed.
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &healthy.stored.id).await,
+        fixtures
+            .text(Row::Admission(&healthy.stored.id), "receipt")
+            .await,
         Some(healthy_receipt),
         "a receipted admission keeps the receipt it had"
     );
     assert_eq!(
-        fixtures.admission_replays(&fleet, &healthy.stored.id).await,
+        fixtures
+            .value::<i64>(Row::Admission(&healthy.stored.id), "replay_count")
+            .await
+            .expect("replay_count is NOT NULL"),
         0,
         "a receipted admission is invisible to the replay scan"
     );

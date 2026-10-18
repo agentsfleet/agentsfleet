@@ -42,7 +42,7 @@
 )]
 
 use afd_admission::{Admission, Admissions, Key, Producer};
-use afd_core::clock::{self, UnixMillis};
+use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::{Billed, Delivery, Leases, runner_consumer};
@@ -51,9 +51,11 @@ use afd_runner::sweep::reclaim::{BATCH_LIMIT, Reclaim};
 use afd_runner::sweep::reconcile::Reconcile;
 use afd_runner::sweep::replay::Replay;
 use afd_wire::event::EventType;
+use jiff::Timestamp;
 
 use crate::queue;
 use crate::report_seed::DEEP_POOL;
+use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -110,23 +112,22 @@ fn ledger(fixtures: &Fixtures) -> Admissions {
 
 /// A fleet whose one admission was delivered and leased at `at`, and never
 /// settled, by a holder that is still renewing it.
-async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMillis) -> Staged {
+async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: Timestamp) -> Staged {
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(fixtures).await;
-    let funded_at = at.as_millis();
-    fixtures.seed_wallet(&tenant, DEEP_POOL, funded_at).await;
+    fixtures.seed_wallet(&tenant, DEEP_POOL).await;
     let key = producer_key(&fleet);
     let admitted = ledger(fixtures)
         .admit(admission(&fleet, &workspace, &key))
         .await
         .expect("a live queue admits and receipts");
 
-    let acquired = select_fleet_within_rotations(leases, &holder, at, &fleet)
+    let acquired = select_fleet_within_rotations(leases, &holder, &fleet)
         .await
-        .expect("one rotation of polls reaches the fleet holding admitted work");
+        .expect("a poll naming the fleet holding admitted work leases it");
     assert_eq!(acquired.event_id, admitted.stored.id);
     assert_eq!(
         leases
-            .record_received(&acquired, at)
+            .record_received(&acquired)
             .await
             .expect("the narrative log opens")
             .delivery,
@@ -157,11 +158,10 @@ async fn delivered_and_leased(fixtures: &Fixtures, leases: &Leases, at: UnixMill
 }
 
 /// [`delivered_and_leased`], by a holder that died: both deadlines have passed.
-async fn dead_holder(fixtures: &Fixtures, leases: &Leases, at: UnixMillis) -> Staged {
+async fn dead_holder(fixtures: &Fixtures, leases: &Leases, at: Timestamp) -> Staged {
     let staged = delivered_and_leased(fixtures, leases, at).await;
     let lease = staged.lease_id.as_deref().expect("leased");
-    fixtures.lapse_lease(lease).await;
-    fixtures.lapse_slot(&staged.fleet).await;
+    fixtures.lapse_holder(lease, &staged.fleet).await;
     staged
 }
 
@@ -193,7 +193,7 @@ async fn admitted_unreceipted(fixtures: &Fixtures) -> Staged {
         .expect("a queue that is away defers: the row commits and the caller is answered");
     assert!(
         fixtures
-            .admission_receipt(&fleet, &admitted.stored.id)
+            .text(Row::Admission(&admitted.stored.id), "receipt")
             .await
             .is_none(),
         "nothing receipted a row the queue never saw"
@@ -236,7 +236,7 @@ async fn assert_reappended(fixtures: &Fixtures, staged: &Staged) {
     );
     assert!(
         fixtures
-            .admission_receipt(&staged.fleet, &staged.event_id)
+            .text(Row::Admission(&staged.event_id), "receipt")
             .await
             .is_some(),
         "the row names the entry it now rides"
@@ -247,7 +247,9 @@ async fn assert_reappended(fixtures: &Fixtures, staged: &Staged) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
-    let fixtures = Fixtures::create_with_queue().await;
+    // A private database: the sweepers page deployment-wide, so on the shared
+    // lane another run's expired leases would fill the pages this one counts.
+    let fixtures = Fixtures::create_isolated_with_queue().await;
     let leases = fixtures.leases();
     let streams = FleetStreams::new(fixtures.queue().clone());
 
@@ -293,10 +295,8 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
 
     // ── Recovered means OBTAINED: every stranded fleet hands its unfinished
     // event to the next poll, from the ledger, with the dead lease expired.
-    let polled_at = clock::now();
     for staged in &stranded {
-        let offered =
-            select_fleet_within_rotations(&leases, &staged.poller, polled_at, &staged.fleet).await;
+        let offered = select_fleet_within_rotations(&leases, &staged.poller, &staged.fleet).await;
         assert!(
             offered.is_some(),
             "fleet {} was marked ready and offers its work",
@@ -312,7 +312,7 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
             .as_deref()
             .expect("a stranded fleet was leased");
         assert_eq!(
-            fixtures.lease_column(dead, "status").await.as_deref(),
+            fixtures.text(Row::Lease(dead), "status").await.as_deref(),
             Some("expired"),
             "reclaim_prior_active expired the dead holder's lease on the way"
         );
@@ -326,14 +326,14 @@ async fn test_cluster_restart_and_stale_snapshot_preserve_obligations() {
     // ── A live holder is left alone: not stranded, so not marked, so the
     // other runner's poll finds nothing and the lease it holds is untouched.
     assert!(
-        select_fleet_within_rotations(&leases, &live.poller, polled_at, &live.fleet)
+        select_fleet_within_rotations(&leases, &live.poller, &live.fleet)
             .await
             .is_none(),
         "a fleet whose holder is still inside its lease offers nothing to a second runner"
     );
     let held = live.lease_id.as_deref().expect("the live fleet was leased");
     assert_eq!(
-        fixtures.lease_column(held, "status").await.as_deref(),
+        fixtures.text(Row::Lease(held), "status").await.as_deref(),
         Some("active"),
         "the rebuild never touched a lease whose holder is alive"
     );

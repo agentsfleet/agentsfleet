@@ -11,14 +11,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS, SANDBOX_HOLD_IDLE_MS};
+use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Acquired, Billed, Kind, Leases};
 use afd_observability::test_util::Capture;
+use jiff::Timestamp;
 
-use super::{at, hold, id, live};
+use super::{hold, id, live};
 use crate::queue;
+use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
@@ -35,8 +36,8 @@ const OTHER_AFTER_LAPSE: &str = "other_after_lapse";
 const CLAIMS_IN_A_ROW: u64 = 16;
 
 /// When a hold made here lapses: after every claim one test makes in a row.
-fn until(fixtures: &Fixtures) -> i64 {
-    fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS
+fn until(fixtures: &Fixtures) -> Timestamp {
+    fixtures.after(SANDBOX_HOLD_IDLE)
 }
 
 /// The series `outcome` names, read now.
@@ -44,10 +45,10 @@ fn claims(capture: &Capture, outcome: &str) -> u64 {
     capture.sum(HELD_CLAIMS, &[(OUTCOME, outcome)])
 }
 
-/// `runner` wins `fleet`'s slot at `now`.
-async fn wins(leases: &Leases, fleet: &str, runner: &Uuid7, now: i64) {
+/// `runner` wins `fleet`'s slot.
+async fn wins(leases: &Leases, fleet: &str, runner: &Uuid7) {
     leases
-        .claim(&id(fleet), runner, at(now), LEASE_TTL_MS)
+        .claim(&id(fleet), runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("the slot is won");
@@ -71,14 +72,14 @@ async fn held(fixtures: &Fixtures) -> Seeded<1> {
 
 /// The holder leases its held fleet at `now`, and the lease row is written,
 /// so the lease left to lapse is one the next claim reclaims.
-async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: UnixMillis) -> Acquired {
+async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acquired {
     let [holder] = &seeded.runners;
-    let acquired = seed::select_fleet_within_rotations(leases, holder, now, &seeded.fleet)
+    let acquired = seed::select_fleet_within_rotations(leases, holder, &seeded.fleet)
         .await
         .expect("the holder leases its held fleet");
     if acquired.kind == Kind::Fresh {
         leases
-            .record_received(&acquired, now)
+            .record_received(&acquired)
             .await
             .expect("the event's row opens");
     }
@@ -107,7 +108,7 @@ async fn test_the_holders_claim_counts_as_the_holders() {
     let seeded = held(&fixtures).await;
     let before = claims(&capture, HOLDER);
 
-    let fresh = leases_at(&fixtures.leases(), &seeded, at(fixtures.enrolled_at() + 1)).await;
+    let fresh = leases_at(&fixtures.leases(), &seeded, fixtures.enrolled_at()).await;
 
     let after = claims(&capture, HOLDER);
     assert!(fresh.resume_hold, "the fresh event resumes the hold");
@@ -127,12 +128,16 @@ async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = held(&fixtures).await;
     let leases = fixtures.leases();
-    let mut lease = leases_at(&leases, &seeded, at(fixtures.enrolled_at() + 1)).await;
+    let first = leases_at(&leases, &seeded, fixtures.enrolled_at()).await;
+    assert_eq!(first.kind, Kind::Fresh);
     let before = claims(&capture, HOLDER);
 
     for _reclaim in 0..CLAIMS_IN_A_ROW {
-        let lapsed = lease.leased_until.saturating_add_millis(1);
-        lease = leases_at(&leases, &seeded, lapsed).await;
+        // The holder's lease outlives its slot: the next claim reclaims it.
+        fixtures
+            .age(Row::Slot(&seeded.fleet), "lease_expires_at", LAPSE)
+            .await;
+        let lease = leases_at(&leases, &seeded, fixtures.enrolled_at()).await;
         assert_eq!(lease.kind, Kind::Reclaim);
         assert!(!lease.resume_hold, "a reclaim builds fresh");
     }
@@ -159,13 +164,11 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let before = claims(&capture, OTHER_AFTER_LAPSE);
 
-    wins(
-        &leases,
-        &fleet,
-        &other,
-        fixtures.enrolled_at() + RUNNER_OFFLINE_AFTER_MS + 1,
-    )
-    .await;
+    let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
+    fixtures
+        .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
+        .await;
+    wins(&leases, &fleet, &other).await;
 
     let after = claims(&capture, OTHER_AFTER_LAPSE);
     assert!(after > before, "{before} -> {after}");
@@ -188,17 +191,14 @@ async fn test_claims_on_an_unheld_fleet_count_nothing() {
     );
 
     let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
-    for (now, runner) in (fixtures.enrolled_at()..)
-        .zip(runners.iter().cycle())
-        .take(rounds)
-    {
+    for runner in runners.iter().cycle().take(rounds) {
         let claimed = leases
-            .claim(&id(&fleet), runner, at(now), LEASE_TTL_MS)
+            .claim(&id(&fleet), runner, LEASE_TTL)
             .await
             .expect("the claim answers")
             .expect("a free slot is won");
         leases
-            .release(&id(&fleet), claimed.fence, at(now))
+            .release(&id(&fleet), claimed.fence)
             .await
             .expect("an empty claim lets go");
     }

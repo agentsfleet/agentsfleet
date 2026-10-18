@@ -30,7 +30,7 @@ use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
 use afd_wire::activity::ActivityFrame;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use self::published::Published;
 use crate::error::{Result, query, row_malformed};
@@ -59,9 +59,9 @@ pub struct Target {
     pub event_id: String,
     /// Both instants are stamped by the control plane, so their differences
     /// from activity receipt do not compare clocks across hosts.
-    pub lease_created_at: i64,
+    pub lease_created_at: Timestamp,
     /// Producer event timestamp in epoch milliseconds.
-    pub event_created_at: i64,
+    pub event_created_at: Timestamp,
     /// Expired or superseded holders can publish cosmetic frames but cannot
     /// contribute a latency sample to the active-lease histogram.
     pub timing_eligible: bool,
@@ -137,34 +137,39 @@ impl Leases {
         runner_id: &Uuid7,
     ) -> Result<Option<Target>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::activity::SELECT_LEASE_TARGET)
+        let found: Option<LeaseTarget> = sqlx::query_as(sql::activity::SELECT_LEASE_TARGET)
             .bind(lease_id)
             .bind(runner_id.as_str())
+            .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TARGET))?;
-
-        let Some(row) = found else {
+        let Some(found) = found else {
             return Ok(None);
         };
-        let fleet: String = row.try_get(0).map_err(query(CONTEXT_TARGET))?;
-        let event_id: String = row.try_get(1).map_err(query(CONTEXT_TARGET))?;
-        let lease_created_at: i64 = row.try_get(2).map_err(query(CONTEXT_TARGET))?;
-        let event_created_at: i64 = row.try_get(3).map_err(query(CONTEXT_TARGET))?;
-        let status: String = row.try_get(4).map_err(query(CONTEXT_TARGET))?;
-        let lease_expires_at: i64 = row.try_get(5).map_err(query(CONTEXT_TARGET))?;
-        let fence: i64 = row.try_get(6).map_err(query(CONTEXT_TARGET))?;
         Ok(Some(Target {
-            fleet_id: Uuid7::parse(&fleet)
-                .map_err(row_malformed("fleet.runner_leases", "fleet_id"))?,
-            event_id,
-            lease_created_at,
-            event_created_at,
-            timing_eligible: status == sql::LEASE_STATUS_ACTIVE
-                && lease_expires_at > afd_core::clock::now().as_millis(),
-            fence,
+            fleet_id: Uuid7::parse(&found.fleet_id)
+                .map_err(row_malformed("runner.leases", "fleet_id"))?,
+            event_id: found.event_id,
+            lease_created_at: found.created_at,
+            event_created_at: found.event_created_at,
+            timing_eligible: found.live,
+            fence: found.fencing_token,
         }))
     }
+}
+
+/// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
+#[derive(sqlx::FromRow)]
+struct LeaseTarget {
+    fleet_id: String,
+    event_id: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    event_created_at: Timestamp,
+    fencing_token: i64,
+    live: bool,
 }
 
 impl crate::lease::pull::Plane {
@@ -203,14 +208,12 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
     let Some(first_ms) = first_visible_candidate_ms(frames) else {
         return;
     };
-    let received_at = afd_core::clock::now().as_millis();
+    let received_at = afd_core::clock::now();
     for (stage, since) in [
         (DeliveryStage::LeaseToFirstChunk, target.lease_created_at),
         (DeliveryStage::EventToFirstChunk, target.event_created_at),
     ] {
-        if let Ok(millis) = u64::try_from(received_at.saturating_sub(since)) {
-            producers::fleet::delivery_stage(stage, core::time::Duration::from_millis(millis));
-        }
+        producers::fleet::delivery_stage(stage, afd_core::clock::elapsed(since, received_at));
     }
     producers::fleet::delivery_stage(
         DeliveryStage::ZombieToFirstChunk,

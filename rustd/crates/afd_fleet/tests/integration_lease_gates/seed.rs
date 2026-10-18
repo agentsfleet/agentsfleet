@@ -3,19 +3,16 @@
 //! Split from the parent at the file-length cap, and along a real seam: the
 //! parent drives the verb, this puts the rows there.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
-use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
-use afd_db::test_util::{DefaultSeed, PlatformDefault};
+use afd_db::test_util::{DefaultSeed, PlatformDefault, mint_id};
 use afd_gate::gate::GateRef;
 
 use super::{
-    CACHED_INPUT_NANOS_PER_MTOK, CONTEXT_CAP_TOKENS, GATE_WINDOW_MS, INPUT_NANOS_PER_MTOK,
-    KIND_EVENT, KIND_REPOSITORY_WRITE, OUTPUT_NANOS_PER_MTOK, PROVIDER_KEY_BODY, PROVIDER_KEY_KIND,
-    REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
+    CONTEXT_CAP_TOKENS, GATE_WINDOW, KIND_EVENT, KIND_REPOSITORY_WRITE, PROVIDER_KEY_BODY,
+    PROVIDER_KEY_KIND, REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
 };
 use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::seed::{MODEL, PROVIDER};
@@ -24,7 +21,7 @@ use crate::support::Fixtures;
 /// The three rows `admit` needs before it will reach a gate at all.
 ///
 /// Past the event type it resolves the payer's provider, and that walk reads
-/// `core.platform_provider_defaults` → `core.model_library` (a foreign key) →
+/// `model.platform_defaults` → `model.platform_models` (a foreign key) →
 /// `vault.secrets`. Seeded in that order, because the reverse fails on the
 /// constraint rather than on anything under test.
 ///
@@ -48,7 +45,8 @@ use crate::support::Fixtures;
 /// run's provider resolution failed on it.
 pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -> PlatformDefault {
     let workspace = workspace_of(fixtures, fleet).await;
-    seed_model_rate(fixtures).await;
+    // The defaults row's foreign key requires `(PROVIDER, MODEL)` priced.
+    fixtures.seed_model_rate(PROVIDER, MODEL).await;
     seed_provider_key(fixtures, &workspace).await;
     PlatformDefault::hold(
         &fixtures.database,
@@ -61,33 +59,6 @@ pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -
         },
     )
     .await
-}
-
-/// Prices `(PROVIDER, MODEL)`, which the defaults row's foreign key requires.
-async fn seed_model_rate(fixtures: &Fixtures) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO core.model_library \
-           (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-            cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8) \
-         ON CONFLICT (provider, model_id) DO NOTHING",
-    )
-    .bind(fixture_id())
-    .bind(MODEL)
-    .bind(PROVIDER)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(INPUT_NANOS_PER_MTOK)
-    .bind(CACHED_INPUT_NANOS_PER_MTOK)
-    .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(fixtures.enrolled_at())
-    .execute(&mut *connection)
-    .await
-    .expect("the catalogue seed must run");
 }
 
 /// Seals a provider credential for `workspace` under the lane's key.
@@ -108,14 +79,14 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO vault.secrets \
-           (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, \
-            dek_tag, nonce, ciphertext, tag, created_at, updated_at, \
+           (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, \
+            dek_tag, secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at, \
             meta_kind, meta_provider, meta_has_key) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, \
-                 $12, $3, TRUE) \
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now(), \
+                 $11, $3, TRUE) \
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
-    .bind(fixture_id())
+    .bind(mint_id())
     .bind(workspace)
     .bind(PROVIDER)
     .bind(sealed.kek_version())
@@ -125,7 +96,6 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
     .bind(sealed.payload_nonce().as_slice())
     .bind(sealed.payload_ciphertext())
     .bind(sealed.payload_tag().as_slice())
-    .bind(fixtures.enrolled_at())
     .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
@@ -140,7 +110,7 @@ async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
         .await
         .expect("a pooled connection");
     sqlx::query_scalar::<_, String>(
-        "SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid",
+        "SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid",
     )
     .bind(fleet)
     .fetch_one(&mut *connection)
@@ -157,11 +127,11 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO billing.usage_ledger \
-           (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture, model, \
-            credit_deducted_nanos, event_created_at, created_at, last_charged_at) \
-         VALUES ($8::uuid, $1::uuid, $2::uuid, $3::uuid, $4, 'receive', 'platform', $5, \
-                 $6, $7, $7, $7)",
+        "INSERT INTO billing.fleet_charges \
+           (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, \
+            model, charged_nanos, event_created_at, created_at, updated_at) \
+         VALUES ($7::uuid, $1::uuid, $2::uuid, $3::uuid, $3, $4, 'receive', 'platform', $5, \
+                 $6, now(), now(), now())",
     )
     .bind(tenant)
     .bind(&workspace)
@@ -169,8 +139,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
     .bind(format!("event-lease-gates-spent-{}", ready.fleet))
     .bind(MODEL)
     .bind(nanos)
-    .bind(fixtures.enrolled_at())
-    .bind(fixture_id())
+    .bind(mint_id())
     .execute(&mut *connection)
     .await
     .expect("the spend seeds");
@@ -179,7 +148,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 /// Raises one gate over `ready`'s event, answered as `status` names.
 ///
 /// Two writes, because the gate is two things. The DECISION is a
-/// `core.fleet_approval_gates` row keyed by `action_id`; the REFERENCE that
+/// `fleet.approval_gates` row keyed by `action_id`; the REFERENCE that
 /// points a poll at it is a Dragonfly key, and `Gates::check` reads the
 /// reference FIRST — a durable row with no reference is invisible to the verb,
 /// which is what an earlier revision of this suite discovered by watching a
@@ -188,16 +157,10 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 /// The reference is written through `Gates::record`, the production writer,
 /// rather than by forging the key by hand.
 ///
-/// # Two clocks
-///
-/// The verb is driven at [`fixtures.enrolled_at()`], a fixed instant in the past, but
-/// `record` derives the key's time-to-live from the REAL clock. A deadline in
-/// fixture time would ask for a negative lifetime. So the deadline is real-now
-/// plus an hour, which is un-lapsed under both readings.
+/// The gate expires one [`GATE_WINDOW`] after the database's `now()`.
 pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> String {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
-    let action_id = fixture_id();
-    let deadline = afd_core::clock::now().as_millis() + GATE_WINDOW_MS;
+    let action_id = mint_id();
 
     let mut connection = fixtures
         .database
@@ -205,22 +168,21 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.fleet_approval_gates \
+        "INSERT INTO fleet.approval_gates \
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at, \
+            gate_type, proposed_action, evidence, blast_radius, expires_at, \
             resolved_by, status, detail, created_at, updated_at, event_id) \
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'run', \
                  $5, 'run the event', '{}'::jsonb, 'one fleet', \
-                 $6, 'fixture:human', $7, '', $8, $8, $9)",
+                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
     )
-    .bind(fixture_id())
+    .bind(mint_id())
     .bind(&ready.fleet)
     .bind(&workspace)
     .bind(&action_id)
     .bind(KIND_EVENT)
-    .bind(deadline)
+    .bind(GATE_WINDOW)
     .bind(status)
-    .bind(fixtures.enrolled_at())
     .bind(&ready.event_id)
     .execute(&mut *connection)
     .await
@@ -230,29 +192,10 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     let action = Uuid7::parse(&action_id).expect("the fixture action id parses");
     fixtures
         .gates()
-        .record(
-            &fleet,
-            &ready.event_id,
-            &GateRef::new(action, UnixMillis::from_millis(deadline)),
-        )
+        .record(&fleet, &ready.event_id, &GateRef::new(action), GATE_WINDOW)
         .await
         .expect("the gate reference must be recorded");
     action_id
-}
-
-/// A fresh version-7 identifier for a fixture row.
-///
-/// `billing.usage_ledger` constrains its primary key to the v7 spelling
-/// (`ck_usage_ledger_id_uuidv7`), so a `gen_random_uuid()` default is refused.
-fn fixture_id() -> String {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host provides entropy");
-    Uuid7::encode(afd_core::clock::now(), bytes)
-        .expect("a v7 identifier encodes")
-        .as_str()
-        .to_owned()
 }
 
 /// Raises one APPROVED `repository_write` gate over `ready`'s event.
@@ -260,13 +203,13 @@ fn fixture_id() -> String {
 /// A different table read from [`seed_gate`]'s, despite the shared row: that
 /// one is answered through `Gates::check`, which reads a Dragonfly reference
 /// first, so a durable row alone is invisible to it. This one is read by
-/// `approved_write_gate` in plain SQL off `core.fleet_approval_gates`, so no
+/// `approved_write_gate` in plain SQL off `fleet.approval_gates`, so no
 /// reference is written here — and the absence is deliberate, because a
 /// reference would also put an EVENT gate in the verb's way and the case under
 /// test would stop on that instead.
 ///
 /// Every clause the statement filters on is set rather than defaulted:
-/// `updated_at <= timeout_at`, a non-null `stated_binding`, a non-null
+/// `updated_at <= expires_at`, a non-null `stated_binding`, a non-null
 /// `spend_count`, and a `spend_ceiling` equal to the one the reader binds. A
 /// row missing any of them comes back as no row, which is indistinguishable
 /// from an unapproved gate and would make this fixture prove nothing.
@@ -280,8 +223,7 @@ pub(super) async fn seed_write_gate(
     stated_binding: &str,
 ) -> Uuid7 {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
-    let gate_id = fixture_id();
-    let deadline = afd_core::clock::now().as_millis() + GATE_WINDOW_MS;
+    let gate_id = mint_id();
 
     let mut connection = fixtures
         .database
@@ -289,24 +231,23 @@ pub(super) async fn seed_write_gate(
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.fleet_approval_gates \
+        "INSERT INTO fleet.approval_gates \
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at, \
+            gate_type, proposed_action, evidence, blast_radius, expires_at, \
             resolved_by, status, detail, created_at, updated_at, event_id, \
             stated_binding, spend_count, spend_ceiling) \
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'author', \
                  $5, 'author a branch', '{}'::jsonb, 'one repository', \
-                 $6, 'fixture:human', $7, '', $8, $8, $9, \
-                 $10::jsonb, 0, $11)",
+                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8, \
+                 $9::jsonb, 0, $10)",
     )
     .bind(&gate_id)
     .bind(&ready.fleet)
     .bind(&workspace)
-    .bind(fixture_id())
+    .bind(mint_id())
     .bind(KIND_REPOSITORY_WRITE)
-    .bind(deadline)
+    .bind(GATE_WINDOW)
     .bind(STATUS_APPROVED)
-    .bind(fixtures.enrolled_at())
     .bind(&ready.event_id)
     .bind(stated_binding)
     .bind(REPOSITORY_WRITE_SPEND_CEILING)

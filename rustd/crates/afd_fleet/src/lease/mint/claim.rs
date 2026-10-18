@@ -42,7 +42,7 @@ pub(super) enum Claim {
     Unowned,
     /// An App installation, which the workspace must have connected itself.
     Installation {
-        /// The provider, as `core.connector_installs.provider` holds it.
+        /// The provider, as `connector.installs.provider` holds it.
         provider: Provider,
         /// The installation, as the exchange would mint for it.
         id: u64,

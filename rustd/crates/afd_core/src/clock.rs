@@ -104,6 +104,17 @@ pub fn before(instant: Timestamp, span: Duration) -> Timestamp {
     instant.saturating_sub(span).unwrap_or(Timestamp::MIN)
 }
 
+/// The span from `then` to `now`; zero when `then` is not earlier.
+///
+/// Zero rather than an error: a clock that stepped back between two readings
+/// has measured nothing, and a deadline already behind the clock is one the
+/// caller gives up at once, which is exactly what a zero span does. jiff's
+/// whole range still fits a `Duration`, so the widest span reads as itself.
+#[must_use]
+pub fn elapsed(then: Timestamp, now: Timestamp) -> Duration {
+    Duration::try_from(now.duration_since(then)).unwrap_or(Duration::ZERO)
+}
+
 /// A span in whole milliseconds, saturated rather than wrapped, for the wire
 /// fields that spell a span as a count (`retry_after_ms`, a Redis `PX`).
 #[must_use]
@@ -193,5 +204,36 @@ impl FixedClock {
 impl Clock for FixedClock {
     fn now(&self) -> Timestamp {
         *self.reading()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use jiff::Timestamp;
+
+    use super::{after, before, elapsed};
+
+    const AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
+
+    #[test]
+    fn the_span_to_a_later_instant_is_its_distance() {
+        let later = after(AT, Duration::from_millis(1_250));
+        assert_eq!(elapsed(AT, later), Duration::from_millis(1_250));
+    }
+
+    #[test]
+    fn a_clock_that_stepped_back_measures_nothing() {
+        let earlier = before(AT, Duration::from_secs(1));
+        assert_eq!(elapsed(AT, earlier), Duration::ZERO);
+        assert_eq!(elapsed(AT, AT), Duration::ZERO);
+    }
+
+    /// About twenty thousand years, still a `Duration`: never read as zero.
+    #[test]
+    fn the_widest_span_does_not_wrap() {
+        const NINETEEN_THOUSAND_YEARS: Duration = crate::timing::DAY.saturating_mul(365 * 19_000);
+        assert!(elapsed(Timestamp::MIN, Timestamp::MAX) > NINETEEN_THOUSAND_YEARS);
     }
 }

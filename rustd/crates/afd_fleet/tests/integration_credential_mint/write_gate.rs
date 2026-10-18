@@ -45,7 +45,7 @@ async fn refusal_code(fixtures: &Fixtures, owner: &Bound) -> ErrorCode {
         .mint(
             &owner.runner,
             &requests::mint(&owner.lease, CONNECTOR_GITHUB),
-            UnixMillis::from_millis(NOW_MS),
+            fixtures.enrolled_at(),
         )
         .await
         .expect_err("a write mint without a usable approval must refuse")

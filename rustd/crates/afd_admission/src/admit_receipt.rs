@@ -33,7 +33,7 @@ impl Admissions {
     ) -> Result<Admitted> {
         let producer = admission.producer.as_str();
         let event_id = stored.id.as_str();
-        let created_at = stored.created_at.as_millisecond().to_string();
+        let created_at = stored.created_at.to_string();
         let entry = Entry {
             actor: admission.actor,
             event_type: admission.event_type.as_str(),

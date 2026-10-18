@@ -1,20 +1,14 @@
 //! The original deadline must still be live after a renewal waits for row locks.
 
 use super::{expiry::snapshot, fixture::Running};
+use crate::rows::{LAPSE, Row, age_on};
 use afd_fleet::lease::Renewed;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
 
-const LOCK: &str =
-    "SELECT pg_backend_pid() FROM fleet.runner_leases WHERE id = $1::uuid FOR UPDATE";
+const LOCK: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1::uuid FOR UPDATE";
 const BLOCKED: &str =
     "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
-const EXPIRE: &str = const_format::concatcp!(
-    "UPDATE fleet.runner_leases SET lease_expires_at = \
-    ",
-    afd_db::statement::NOW_MS,
-    " WHERE id = $1::uuid",
-);
 const WAIT_LIMIT: Duration = Duration::from_secs(5);
 
 #[tokio::test(flavor = "multi_thread")]
@@ -55,11 +49,8 @@ async fn expire_while_blocked(
     tokio::time::timeout(WAIT_LIMIT, wait_for_blocked(running, blocker))
         .await
         .expect("renewal reaches the held row");
-    sqlx::query(EXPIRE)
-        .bind(running.lease.as_str())
-        .execute(&mut *held)
-        .await
-        .expect("expire the lease while renewal waits");
+    let lease = Row::Lease(running.lease.as_str());
+    age_on(&mut held, lease, "lease_expires_at", LAPSE).await;
     held.commit().await.expect("release the expired row");
 }
 

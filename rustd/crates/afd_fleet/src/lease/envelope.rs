@@ -16,9 +16,9 @@
 //! the runner has no use for it — [`Kind`] exists for the audit row, not for
 //! the runner.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::{EventId, FleetEvent, ReadyToken};
+use jiff::Timestamp;
 
 use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
 use crate::lease::affinity::{Claimed, Fence};
@@ -69,7 +69,7 @@ pub struct Acquired {
     /// The claim's token, which the issued lease row carries.
     pub fence: Fence,
     /// When the claim lapses.
-    pub leased_until: UnixMillis,
+    pub leased_until: Timestamp,
     /// How the work was obtained.
     pub kind: Kind,
     /// The event to execute — the admission ledger's LOGICAL id, which the
@@ -96,7 +96,7 @@ pub struct Acquired {
     ///
     /// An instant rather than a bare `i64`, because the lease row binds four
     /// other integers beside it and two transposed compile clean.
-    pub event_created_at: UnixMillis,
+    pub event_created_at: Timestamp,
     /// The billing a reclaim carries forward. `None` on a fresh pull, which the
     /// caller bills itself.
     pub reused: Option<Reused>,
@@ -138,8 +138,8 @@ pub(crate) fn from_reclaim(
         event_type: prior.event_type,
         request_json: prior.request_json,
         workspace_id: Uuid7::parse(&prior.workspace_id)
-            .map_err(row_malformed("fleet.runner_leases", "workspace_id"))?,
-        event_created_at: UnixMillis::from_millis(prior.event_created_at),
+            .map_err(row_malformed("runner.leases", "workspace_id"))?,
+        event_created_at: prior.event_created_at,
         reused: Some(prior.reused),
         ready: ready.clone(),
         resume_hold: false,
@@ -183,10 +183,9 @@ pub(crate) fn from_fresh(
         event_type: field(FIELD_TYPE)?,
         request_json: field(FIELD_REQUEST)?,
         workspace_id: Uuid7::parse(&field(FIELD_WORKSPACE)?)
-            .map_err(row_malformed("core.fleet_events", FIELD_WORKSPACE))?,
+            .map_err(row_malformed("fleet.events", FIELD_WORKSPACE))?,
         event_created_at: field(FIELD_CREATED_AT)?
-            .parse()
-            .map(UnixMillis::from_millis)
+            .parse::<Timestamp>()
             .map_err(|_unparseable| envelope_malformed(FIELD_CREATED_AT))?,
         reused: None,
         ready: ready.clone(),
@@ -202,8 +201,13 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
     use super::Kind;
-    use afd_core::clock::UnixMillis;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use jiff::Timestamp;
+
+    /// The producer's instant, as the stream entry spells it.
+    const CREATED_AT: &str = "2026-09-04T19:27:14.853Z";
+    /// [`CREATED_AT`] as the reader decodes it.
+    const AT: Timestamp = Timestamp::constant(1_788_550_034, 853_000_000);
 
     /// A Dragonfly stream entry id: milliseconds and a sequence, as Dragonfly mints it.
     const ENTRY_ID: &str = "1788550034853-0";
@@ -223,11 +227,8 @@ mod tests {
     /// `encode` is the only constructor that cannot drift from the type's own
     /// shape rules.
     fn fleet_id() -> Uuid7 {
-        Uuid7::encode(
-            UnixMillis::from_millis(1_767_225_600_000),
-            [7u8; ENTROPY_LEN],
-        )
-        .expect("a fixed timestamp and entropy encode to a Uuid7")
+        Uuid7::encode(Timestamp::constant(1_767_225_600, 0), [7u8; ENTROPY_LEN])
+            .expect("a fixed timestamp and entropy encode to a Uuid7")
     }
 
     /// A won claim. Its values are irrelevant to decoding and are carried
@@ -235,18 +236,15 @@ mod tests {
     fn claimed() -> super::Claimed {
         super::Claimed {
             fence: super::Fence::from_i64(1),
-            leased_until: UnixMillis::from_millis(1_788_550_064_853),
+            leased_until: afd_core::clock::after(AT, afd_core::timing::LEASE_TTL),
             resume_hold: false,
         }
     }
 
     /// The generation a poll peeked, carried through unread like the claim.
     fn ready() -> super::ReadyToken {
-        super::ReadyToken::mint(
-            &afd_crypto::entropy::Entropy::new(),
-            UnixMillis::from_millis(1_788_550_034_853),
-        )
-        .expect("the host has entropy")
+        super::ReadyToken::mint(&afd_crypto::entropy::Entropy::new(), AT)
+            .expect("the host has entropy")
     }
 
     /// Both kinds spell themselves, and differently.
@@ -278,7 +276,7 @@ mod tests {
             event_type: afd_wire::event::EventType::Chat.as_str(),
             workspace_id: WORKSPACE,
             request_json: r#"{"message":"hello"}"#,
-            created_at: "1788550034853",
+            created_at: CREATED_AT,
         };
         let event = afd_dragonfly::FleetEvent {
             receipt: afd_dragonfly::EventId::of(ENTRY_ID),
@@ -297,7 +295,7 @@ mod tests {
         assert_eq!(acquired.event_type, "chat");
         assert_eq!(acquired.request_json, r#"{"message":"hello"}"#);
         assert_eq!(acquired.workspace_id.as_str(), WORKSPACE);
-        assert_eq!(acquired.event_created_at.as_millis(), 1_788_550_034_853);
+        assert_eq!(acquired.event_created_at, AT);
         assert_eq!(acquired.event_id, EVENT_ID);
         assert_eq!(acquired.receipt.as_str(), ENTRY_ID);
         assert_eq!(acquired.ready, ready, "the peeked generation rides along");
@@ -316,7 +314,7 @@ mod tests {
             event_type: afd_wire::event::EventType::Chat.as_str(),
             workspace_id: WORKSPACE,
             request_json: r#"{"message":"hello"}"#,
-            created_at: "1788550034853",
+            created_at: CREATED_AT,
         };
         // The QUEUED six, not the producer's five: with only five present the
         // reader refuses every case for the missing `event_id`, so each drop

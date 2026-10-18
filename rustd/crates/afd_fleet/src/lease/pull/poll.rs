@@ -1,7 +1,8 @@
 //! Preserve the typed placement decision until shared polling chooses an answer.
 
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_runner::capacity::choice::Ticket;
+use jiff::Timestamp;
 
 use super::Plane;
 use crate::{Result, lease::answer::no_work};
@@ -35,7 +36,7 @@ impl Plane {
         runner: &Uuid7,
         held: &[Uuid7],
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
         ticket: Option<Ticket>,
     ) -> Result<Polled> {
         let began = std::time::Instant::now();
@@ -43,7 +44,7 @@ impl Plane {
             return no_work(runner, "the runner's verdict is degraded or unreadable")
                 .map(Polled::Empty);
         }
-        let Some(acquired) = self.leases.select(runner, held, now).await? else {
+        let Some(acquired) = self.leases.select(runner, held).await? else {
             return no_work(runner, "no leasable work").map(Polled::Empty);
         };
         let mut chosen = self.clone();

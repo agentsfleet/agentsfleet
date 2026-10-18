@@ -8,15 +8,15 @@
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{Partition, Ready, ReadyToken};
+use jiff::Timestamp;
 
 use super::{MAX_READY_CANDIDATES_PER_POLL, Pass, cursor_first};
 
 /// The instant every fixture token is minted at.
-const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const AT: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// How far the walk looks; sixteen partitions are reached long before it.
 const SEARCH: u32 = 10_000;

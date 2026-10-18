@@ -77,7 +77,7 @@ async fn workspace_of(held: &Held) -> Uuid7 {
         .await
         .expect("a pooled connection");
     let workspace: String =
-        sqlx::query("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
+        sqlx::query("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
             .bind(&held.fleet)
             .fetch_one(&mut *connection)
             .await
@@ -109,7 +109,7 @@ async fn second_fleet(held: &Held, workspace: &Uuid7) -> Uuid7 {
         afd_state::sql::FLEET_STATUS_ACTIVE,
     )
     .name("ledger-scope-sibling")
-    .at(held.now.as_millis())
+    .at(held.now)
     .insert(&mut *connection)
     .await
     .expect("seeding a sibling fleet");
@@ -125,8 +125,8 @@ async fn charges_for(held: &Held, event: &str) -> Vec<(String, i64)> {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT fleet_id::text, credit_deducted_nanos
-         FROM billing.usage_ledger
+        "SELECT fleet_id::text, charged_nanos
+         FROM billing.fleet_charges
          WHERE tenant_id = $1::uuid AND event_id = $2 AND charge_type = 'receive'
          ORDER BY fleet_id",
     )
@@ -231,18 +231,16 @@ async fn ledger_refuses_null_fleet() {
         .expect("a pooled connection");
 
     let refused = sqlx::query(
-        "INSERT INTO billing.usage_ledger
-           (id, tenant_id, workspace_id, fleet_id, event_id, charge_type,
-            posture, model, credit_deducted_nanos,
-            event_created_at, created_at, last_charged_at)
-         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, NULL, $3, 'receive',
-                 'platform', $4, 1, $5, $5, $5)",
+        "INSERT INTO billing.fleet_charges
+           (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type,
+            posture, model, charged_nanos, event_created_at, created_at, updated_at)
+         VALUES (uuidv7(), $1::uuid, $2::uuid, NULL, 'nameless', $3, 'receive',
+                 'platform', $4, 1, now(), now(), now())",
     )
     .bind(&held.tenant)
     .bind(workspace.as_str())
     .bind(format!("{}-nullfleet", held.event_id))
     .bind(MODEL)
-    .bind(held.now.as_millis())
     .execute(&mut *connection)
     .await;
 

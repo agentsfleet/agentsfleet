@@ -1,6 +1,6 @@
-//! `core.fleet_sessions` — the cursor a fleet resumes from.
+//! `fleet.sessions` — the cursor a fleet resumes from.
 //!
-//! Split from the event statements when `core.fleet_events` moved to
+//! Split from the event statements when `fleet.events` moved to
 //! `afd_events`. This is a DIFFERENT table with a different lifetime: an event
 //! row records that work happened, this row records where the conversation got
 //! to, and only the lease's finalize path ever writes it. It stayed here
@@ -23,11 +23,5 @@ pub const MAX_CHECKPOINT_RESPONSE_BYTES: usize = 2048;
 /// Replaced rather than appended because only the LATEST checkpoint is ever
 /// read. A history table here would grow per run and be queried never.
 ///
-/// `$1` fleet, `$2` the context document, `$3` now.
-pub const UPSERT_FLEET_SESSION: &str = "\
-INSERT INTO core.fleet_sessions (fleet_id, context_json, checkpoint_at, created_at, updated_at)
-VALUES ($1::uuid, $2::jsonb, $3, $3, $3)
-ON CONFLICT (fleet_id) DO UPDATE
-  SET context_json = EXCLUDED.context_json,
-      checkpoint_at = EXCLUDED.checkpoint_at,
-      updated_at = EXCLUDED.updated_at";
+/// `$1` fleet, `$2` the context document; both stamps are `now()`.
+pub const UPSERT_FLEET_SESSION: &str = include_str!("upsert_fleet_session.sql");

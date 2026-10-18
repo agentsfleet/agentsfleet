@@ -17,13 +17,13 @@
 use crate::requests;
 use crate::support;
 use afd_auth::directory::Digest;
-use afd_core::clock::UnixMillis;
 use afd_runner::Verdict;
 use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::enrolment;
 use self::support::Fixtures;
+use crate::rows::Row;
 
 /// Dimension 1.3 (second half) — enrolment stores the DIGEST and never the token.
 ///
@@ -38,7 +38,7 @@ async fn test_enrolment_stores_only_the_digest() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("a well-formed enrolment against a reachable datastore");
 
@@ -58,7 +58,7 @@ async fn test_enrolment_stores_only_the_digest() {
         "the token itself must appear in no row"
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "token_hash").await,
+        fixtures.text(Row::Runner(&runner), "token_hash").await,
         Some(digest.as_str().to_owned())
     );
     // The credential is 32 random bytes rendered as hex behind its marker, so
@@ -87,33 +87,33 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("an out-of-range worker count is clamped, never refused");
 
     let runner = enrolled.runner_id.as_str().to_owned();
     assert_eq!(enrolled.worker_count, afd_core::limits::MAX_WORKERS);
     assert_eq!(
-        fixtures.runner_column(&runner, "worker_count").await,
+        fixtures.text(Row::Runner(&runner), "worker_count").await,
         Some(afd_core::limits::MAX_WORKERS.to_string()),
         "the reply and the row must agree — two values with a comment saying \
          which is authoritative is the shape this avoids"
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "sandbox_tier").await,
+        fixtures.text(Row::Runner(&runner), "sandbox_tier").await,
         Some("container_nested".to_owned())
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "network_policy").await,
+        fixtures.text(Row::Runner(&runner), "network_policy").await,
         Some("allow_list_egress".to_owned())
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "admin_state").await,
+        fixtures.text(Row::Runner(&runner), "status").await,
         Some("active".to_owned())
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "last_seen_at").await,
-        Some("0".to_owned()),
+        fixtures.instant(Row::Runner(&runner), "last_seen_at").await,
+        Some(afd_runner::sql::NEVER_SEEN),
         "a minted runner has never connected, so the fleet read must derive \
          `registered` rather than a fabricated `online`"
     );
@@ -134,7 +134,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
 
@@ -146,11 +146,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
         }
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "degraded").await,
-        Some("true".to_owned())
-    );
-    assert_eq!(
-        fixtures.runner_column(&runner, "degraded_reason").await,
+        fixtures.text(Row::Runner(&runner), "degraded_reason").await,
         Some(REASON_NO_CAPABILITY_REPORT.to_owned())
     );
     assert_eq!(
@@ -175,7 +171,7 @@ async fn test_the_self_read_never_bumps_liveness() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 2);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
 
@@ -188,7 +184,7 @@ async fn test_the_self_read_never_bumps_liveness() {
     assert_eq!(row.id, enrolled.runner_id);
     assert_eq!(row.status, "active");
     assert_eq!(row.host_id, "host-01.fixture.test");
-    assert_eq!(row.last_seen_at, 0);
+    assert_eq!(row.last_seen_at, afd_runner::sql::NEVER_SEEN);
     let assigned = row
         .assignment
         .decode()
@@ -199,8 +195,8 @@ async fn test_the_self_read_never_bumps_liveness() {
     // Read twice; still never seen.
     let runner = enrolled.runner_id.as_str().to_owned();
     assert_eq!(
-        fixtures.runner_column(&runner, "last_seen_at").await,
-        Some("0".to_owned()),
+        fixtures.instant(Row::Runner(&runner), "last_seen_at").await,
+        Some(afd_runner::sql::NEVER_SEEN),
         "the self read has no update in it, so reading it again cannot move \
          liveness however many times a status command is run"
     );

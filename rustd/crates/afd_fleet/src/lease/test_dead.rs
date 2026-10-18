@@ -12,7 +12,6 @@
 use std::sync::Arc;
 
 use afd_billing::Accounts;
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
@@ -24,6 +23,7 @@ use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, EventId, ReadyToken};
 use afd_gate::gate::Gates;
+use jiff::Timestamp;
 
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::{Acquired, Kind};
@@ -35,7 +35,7 @@ use afd_memory::Memories;
 const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// The instant every fixture here is stamped at.
-pub(crate) const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+pub(crate) const AT: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// A pool whose every acquire fails as the transport class.
 pub(crate) fn database() -> Db {
@@ -86,7 +86,7 @@ pub(crate) fn acquired() -> Acquired {
     Acquired {
         fleet_id: id(1),
         fence: Fence::from_i64(3),
-        leased_until: AT.saturating_add_millis(30_000),
+        leased_until: afd_core::clock::after(AT, afd_core::timing::LEASE_TTL),
         kind: Kind::Fresh,
         event_id: "1767225600000-1".to_owned(),
         receipt: EventId::of("1767225600000-0"),

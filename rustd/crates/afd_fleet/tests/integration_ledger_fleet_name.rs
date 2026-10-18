@@ -1,8 +1,8 @@
 //! What each charging path records about the fleet it charged, and when.
 //!
-//! Three statements write `billing.usage_ledger` — the receive debit in
+//! Three statements write `billing.fleet_charges` — the receive debit in
 //! `afd_billing`, the report's claim-and-settle, and the renewal's meter — and
-//! all three now capture `core.fleets.name` into the row. The property is not
+//! all three now capture `fleet.fleets.name` into the row. The property is not
 //! that the column holds text. It is that the name is a SNAPSHOT: read once, at
 //! the instant the money moved, and never revisited. A rename afterwards must
 //! leave the charge alone, because a ledger records what was true, not what is.
@@ -68,7 +68,7 @@ async fn captured_name(held: &Held, charge_type: &str) -> Option<Option<String>>
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT fleet_name FROM billing.usage_ledger
+        "SELECT fleet_name FROM billing.fleet_charges
          WHERE event_id = $1 AND charge_type = $2 AND fleet_id = $3::uuid",
     )
     .bind(&held.event_id)
@@ -88,7 +88,7 @@ async fn rename(held: &Held, name: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET name = $2 WHERE id = $1::uuid")
         .bind(&held.fleet)
         .bind(name)
         .execute(&mut *connection)
@@ -154,8 +154,8 @@ async fn finish(held: Held) {
 /// Dimension 2.2. Every path that writes a charge captures the fleet's name.
 ///
 /// Two lanes, because the stage row has two authors and only one of them writes
-/// it in any single run: a reported lease is settled by `CLAIM_AND_SETTLE`, a
-/// renewed one is metered by `RENEW_AND_METER`, and the second is an `ON
+/// it in any single run: a reported lease is settled by `METER_LEASE`, a
+/// renewed one is metered by it too, and the second is an `ON
 /// CONFLICT` accumulate onto whatever the first left. Driving only one would
 /// leave the other free to omit the column — which is exactly the shape of the
 /// defect slot 915 exists to end, since a charge with no captured name is

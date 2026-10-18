@@ -6,7 +6,6 @@
 //! [`super::fault`]'s, applied through the [`Gate`](super::fault::Gate)
 //! value each one names.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 
@@ -76,15 +75,8 @@ pub(super) async fn balance(
 /// Runs AFTER the tenant's credit pool and BEFORE the receive debit: a refused
 /// event must never be charged, and the two ceilings are independent — passing
 /// one says nothing about the other.
-pub(super) async fn fleet_budget(
-    accounts: &Accounts,
-    request: &Request<'_>,
-    now: UnixMillis,
-) -> Option<Declined> {
-    let spend = match accounts
-        .spend(request.workspace_id, request.fleet_id, now)
-        .await
-    {
+pub(super) async fn fleet_budget(accounts: &Accounts, request: &Request<'_>) -> Option<Declined> {
+    let spend = match accounts.spend(request.workspace_id, request.fleet_id).await {
         Ok(spend) => spend,
         Err(fault) => return BUDGET.absorb(&fault),
     };

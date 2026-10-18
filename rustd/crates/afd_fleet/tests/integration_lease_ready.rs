@@ -16,9 +16,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL_MS;
+use afd_core::timing::LEASE_TTL;
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_dragonfly::{FleetStreams, ReadyIndex, ReadyPrefix};
 use afd_fleet::lease::{Acquired, Leases};
@@ -90,9 +89,8 @@ impl Scene {
     }
 
     /// One rotation of polls by the first runner at `now`.
-    async fn poll(&self, now: i64) -> Option<Acquired> {
-        select_within_one_rotation(&self.leases, &self.runners[0], UnixMillis::from_millis(now))
-            .await
+    async fn poll(&self) -> Option<Acquired> {
+        select_within_one_rotation(&self.leases, &self.runners[0]).await
     }
 
     /// Whether the fleet holds a mark in the private index.
@@ -106,13 +104,13 @@ impl Scene {
 
     /// The run behind `acquired` finishes: its entry acknowledged, its claim
     /// freed at `now`.
-    async fn finish(&self, acquired: &Acquired, now: i64) {
+    async fn finish(&self, acquired: &Acquired) {
         self.leases
             .acknowledge(&self.fleet_id, &acquired.receipt)
             .await
             .expect("the entry acknowledges");
         self.leases
-            .release(&self.fleet_id, acquired.fence, UnixMillis::from_millis(now))
+            .release(&self.fleet_id, acquired.fence)
             .await
             .expect("the claim releases");
     }
@@ -137,14 +135,13 @@ impl Scene {
 async fn test_mark_written_during_poll_survives() {
     let capture = Capture::install();
     let scene = scene().await;
-    let mut now = scene.fixtures.enrolled_at();
 
     // A drained fleet: marked, and nothing owed. The poll that finds it so
     // clears the mark, and counts the claim that found nothing.
     scene.index.mark(&scene.fleet).await.expect("mark");
     let before = capture.sum(CLAIMS_EMPTY, &[]);
     assert!(
-        scene.poll(now).await.is_none(),
+        scene.poll().await.is_none(),
         "a drained fleet leases nothing"
     );
     assert!(!scene.marked().await, "a drained fleet's mark is cleared");
@@ -155,13 +152,12 @@ async fn test_mark_written_during_poll_survives() {
     );
 
     for _race in 0..RACES {
-        now += 1;
         scene
             .index
             .mark(&scene.fleet)
             .await
             .expect("the peeked generation");
-        let (polled, sent) = tokio::join!(scene.poll(now), scene.send());
+        let (polled, sent) = tokio::join!(scene.poll(), scene.send());
         let delivered = if let Some(acquired) = polled {
             acquired
         } else {
@@ -169,9 +165,8 @@ async fn test_mark_written_during_poll_survives() {
                 scene.marked().await,
                 "a mark written during the poll was cleared by it, stranding the event"
             );
-            now += 1;
             scene
-                .poll(now)
+                .poll()
                 .await
                 .expect("the event is leased on the next poll")
         };
@@ -179,9 +174,8 @@ async fn test_mark_written_during_poll_survives() {
             delivered.event_id, sent,
             "the event ingress sent is the one leased"
         );
-        scene.finish(&delivered, now).await;
-        now += 1;
-        assert!(scene.poll(now).await.is_none(), "the finished fleet drains");
+        scene.finish(&delivered).await;
+        assert!(scene.poll().await.is_none(), "the finished fleet drains");
         assert!(!scene.marked().await, "and its mark is cleared");
     }
 
@@ -198,7 +192,6 @@ async fn test_mark_written_during_poll_survives() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_entry_pending_elsewhere_is_delivered() {
     let scene = scene().await;
-    let now = scene.fixtures.enrolled_at();
     let event_id = scene.send().await;
     let stranded = FleetStreams::new(scene.fixtures.queue().clone())
         .read_new(&scene.fleet, DEAD_REPLICA)
@@ -207,7 +200,7 @@ async fn test_entry_pending_elsewhere_is_delivered() {
         .expect("the dead replica was handed the entry");
 
     let delivered = scene
-        .poll(now)
+        .poll()
         .await
         .expect("a won claim takes over what another consumer left pending");
     assert_eq!(delivered.event_id, event_id);
@@ -220,11 +213,8 @@ async fn test_entry_pending_elsewhere_is_delivered() {
         "a fleet with work in flight keeps its mark"
     );
 
-    scene.finish(&delivered, now).await;
-    assert!(
-        scene.poll(now + 1).await.is_none(),
-        "the finished fleet drains"
-    );
+    scene.finish(&delivered).await;
+    assert!(scene.poll().await.is_none(), "the finished fleet drains");
     assert!(!scene.marked().await, "only then is its mark cleared");
 
     scene.cleanup().await;
@@ -236,19 +226,18 @@ async fn test_entry_pending_elsewhere_is_delivered() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_candidates_skip_held_slots() {
     let scene = scene().await;
-    let now = UnixMillis::from_millis(scene.fixtures.enrolled_at());
     let [holder, other] = &scene.runners;
     scene.send().await;
     scene
         .leases
-        .claim(&scene.fleet_id, holder, now, LEASE_TTL_MS)
+        .claim(&scene.fleet_id, holder, LEASE_TTL)
         .await
         .expect("the claim must not fault")
         .expect("an unclaimed slot is winnable");
 
     let mut reached = None;
     for _poll in 0..READY_PARTITIONS {
-        let (selected, cost) = scene.leases.select_measured(other, &[], now).await;
+        let (selected, cost) = scene.leases.select_measured(other, &[]).await;
         let selected = selected.expect("the poll must not fault");
         assert!(
             selected.is_none(),
