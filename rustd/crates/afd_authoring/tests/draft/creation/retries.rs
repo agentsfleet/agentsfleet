@@ -51,6 +51,25 @@ async fn retained(c: &Case, key: &Uuid7, request: SaveFleet) -> Uuid7 {
     first.id
 }
 
+/// The Save the installed refusal fails.
+///
+/// Every refusal fixture's trigger DDL queues a table lock, and a Save behind
+/// one is refused for the lock under the same `INTERNAL_DB_QUERY` code the
+/// refusal carries, before the step the fault targets. Only those lock
+/// refusals are retried, so the error returned is the fixture's own.
+async fn refused(c: &Case, key: &Uuid7, request: &SaveFleet, why: &str) -> afd_authoring::Error {
+    let save = || {
+        c.creations
+            .save(c.base.access(), key, request.clone(), now())
+    };
+    let refused = crate::draft::retried(save).await.expect_err(why);
+    assert!(
+        !afd_db::pool::gave_up_on_lock(&refused),
+        "{why}: the fixture refused it, not a lock wait"
+    );
+    refused
+}
+
 /// Receipts written under `key`: a spent Save key has exactly one.
 async fn receipts(c: &Case, key: &Uuid7) -> i64 {
     sqlx::query_scalar(
@@ -98,11 +117,13 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
         ),
     )
     .await;
-    let aborted = c
-        .creations
-        .save(c.base.access(), &key, request.clone(), now())
-        .await
-        .expect_err("the reservation aborted after its fleet row");
+    let aborted = refused(
+        &c,
+        &key,
+        &request,
+        "the reservation aborted after its fleet row",
+    )
+    .await;
     assert_eq!(aborted.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(c.fleet_count().await, 0, "the fleet row rolled back");
     assert_eq!(receipts(&c, &key).await, 0, "the key was not spent");
@@ -137,11 +158,7 @@ async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry()
     )
     .await;
     c.fund().await;
-    let lost = c
-        .creations
-        .save(c.base.access(), &key, request.clone(), now())
-        .await
-        .expect_err("the stream record failed to save");
+    let lost = refused(&c, &key, &request, "the stream record failed to save").await;
     assert_eq!(lost.code(), error_code::INTERNAL_DB_QUERY);
     let stalled = c
         .creations
