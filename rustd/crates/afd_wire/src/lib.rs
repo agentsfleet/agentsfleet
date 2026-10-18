@@ -60,6 +60,7 @@ pub mod instant;
 pub mod lease;
 pub mod memory;
 pub mod message_verb;
+pub mod nanos;
 pub mod paths;
 pub mod policy;
 pub mod redact;

@@ -73,12 +73,18 @@ pub struct ModelEntryRow<'a> {
     pub context_cap_tokens: Option<u32>,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
     /// Whether this entry is the tenant's current selection.
     pub active: bool,
@@ -103,12 +109,18 @@ pub struct PlatformDefaultRow<'a> {
     pub context_cap_tokens: u32,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
 }
 
@@ -270,7 +282,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","display_name":"Sonnet 5","context_cap_tokens":200000,"input_nanos_per_mtok":3000000}}"#
+            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","display_name":"Sonnet 5","context_cap_tokens":200000,"input_nanos_per_mtok":"3000000"}}"#
         );
     }
 

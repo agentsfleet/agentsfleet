@@ -49,8 +49,8 @@ fn item_json() -> serde_json::Value {
         "metadata":{"display_name":"Opus 5","context_cap_tokens":200_000,"context_source_url":"https://example.test/models",
             "context_verified_at":"2025-10-09T08:53:20Z","advanced":false},
         "prices":[{"effective_from":"2025-10-09T08:53:20Z","effective_until":null,"prompt_tokens_above":0,
-            "input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"cache_write_nanos_per_mtok":null,
-            "cache_write_5m_nanos_per_mtok":6,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":25,
+            "input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,
+            "cache_write_5m_nanos_per_mtok":"6","cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25",
             "source_url":"https://example.test/pricing","verified_at":"2025-10-09T08:53:20Z","conditions":""}]})
 }
 

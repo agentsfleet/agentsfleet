@@ -30,6 +30,7 @@ pub struct FleetSummary<'a> {
     /// Exact lifetime event count.
     pub events_processed: String,
     /// Exact lifetime spend in nanos.
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub budget_used_nanos: String,
 }
 

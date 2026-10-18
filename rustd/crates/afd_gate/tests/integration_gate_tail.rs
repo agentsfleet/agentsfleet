@@ -106,7 +106,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     );
     assert_eq!(
         frame.get("budget_used_nanos"),
-        Some(&json!(counters.budget_used_nanos)),
+        Some(&json!(counters.budget_used_nanos.to_string())),
         "gate_opened carries the fleet's spend"
     );
     fixture.cleanup().await;

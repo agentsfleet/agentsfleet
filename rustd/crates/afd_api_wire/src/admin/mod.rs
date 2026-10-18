@@ -8,7 +8,7 @@ pub use crate::admin_catalogue::{
     AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelPatch, AdminModelUpdated,
     AdminModelsResponse, CONTEXT_CAP_MIN, KEY_PROVIDER_MAX_BYTES, MODEL_ID_MAX_BYTES,
     PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
-    PlatformKeySetResponse, PlatformKeysResponse, RATE_NANOS_MIN,
+    PlatformKeySetResponse, PlatformKeysResponse,
 };
 use afd_wire::runner::{AssignedPolicy, label_list};
 use garde::Validate;

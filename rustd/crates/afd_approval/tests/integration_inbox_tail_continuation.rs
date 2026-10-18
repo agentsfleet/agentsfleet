@@ -97,7 +97,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     );
     assert_eq!(
         answered.get("budget_used_nanos"),
-        Some(&json!(before.budget_used_nanos))
+        Some(&json!(before.budget_used_nanos.to_string()))
     );
 }
 

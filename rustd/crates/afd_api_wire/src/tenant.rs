@@ -129,6 +129,8 @@ pub struct ApiKeySummary<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
     /// What remains, in nanos — one thousand-millionth of a dollar.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub balance_nanos: i64,
     /// When the balance last moved.
     #[serde(with = "afd_wire::instant")]
@@ -178,6 +180,8 @@ pub struct ChargeSummary<'a> {
     /// The model used by the run or setup chat.
     pub model: Cow<'a, str>,
     /// What this row drained, in nanos.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub credit_deducted_nanos: i64,
     /// Recorded input tokens for a run or settled setup chat.
     pub token_count_input: Option<i64>,

@@ -118,8 +118,8 @@ async fn assert_wallet_reads_its_balance(router: &axum::Router, fixture: &Fixtur
     let (status, wallet) = exchange(router, Method::GET, BILLING, Some(&fixture.token), "").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        wallet.get("balance_nanos").and_then(Value::as_i64),
-        Some(BALANCE)
+        wallet.get("balance_nanos").and_then(Value::as_str),
+        Some(BALANCE.to_string().as_str())
     );
     assert_eq!(
         wallet.get("is_exhausted").and_then(Value::as_bool),
