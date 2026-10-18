@@ -23,7 +23,7 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants outside the `memory` schema** (RULE CTX; `schema/1010_roles_and_privileges.sql`). `api_runtime` takes the role with `SET LOCAL ROLE memory_runtime` inside each memory transaction, so Postgres drops it at commit or rollback and no pooled connection is left running as `memory_runtime` (`rustd/crates/afd_memory/src/sql.rs`). `fleet_id` **REFERENCES `fleet.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `fleet.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants outside the `memory` schema** (RULE CTX; `schema/1010_roles_and_privileges.sql`). `api_runtime` takes the role with `SET LOCAL ROLE memory_runtime` inside each memory transaction, so Postgres drops it at commit or rollback and no pooled connection is left running as `memory_runtime` (`rustd/crates/afd_memory/src/sql/mod.rs`). `fleet_id` **REFERENCES `fleet.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `fleet.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 
@@ -42,7 +42,7 @@ Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.*
 
 ## 5. Categories, selection, tools — see the topic docs
 
-The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`), the categories (`core` pinned, `daily` 72h auto-prune, `conversation` windowed), the byte-budget category-pinned hydration window, and cap eviction all live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. No vector search, no scoring — recall is a case-insensitive substring match on `key` and content, key matches first (`rustd/crates/afr_memory/src/hydrated.rs`, `rustd/crates/afd_memory/src/sql.rs`).
+The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`), the categories (`core` pinned, `daily` 72h auto-prune, `conversation` windowed), the byte-budget category-pinned hydration window, and cap eviction all live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. No vector search, no scoring — recall is a case-insensitive substring match on `key` and content, key matches first (`rustd/crates/afr_memory/src/hydrated.rs`, `rustd/crates/afd_memory/src/sql/mod.rs`).
 
 ## Code pointers
 

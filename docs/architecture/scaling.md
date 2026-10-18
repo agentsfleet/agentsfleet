@@ -176,7 +176,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 | Recurring read | Was | Now |
 |---|---|---|
-| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
+| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep/mod.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
 | Liveness sweep — affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | `idx_fleet_slots_last_runner_id_lease_expires_at`; also covers the unindexed `ON DELETE SET NULL` foreign key |
 | Reclaim — prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
 | Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
@@ -186,7 +186,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 **What this bounds:** idle Postgres cost now tracks the *work* an account is doing, not the number of rows it has accumulated. It does not bound cost per unit of work — that is still governed by traffic.
 
-**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
+**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql/mod.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
 **One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
 

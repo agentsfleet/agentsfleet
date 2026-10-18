@@ -222,7 +222,7 @@ A grant is **requested at Save**: when a saved fleet's readiness review finds a
 declared credential's grant missing, setup activation asks for it
 (`rustd/crates/afd_authoring/src/creation/activate.rs`). The request writes a
 `pending` `connector.integration_grants` row and raises an approval card in one
-transaction (`rustd/crates/afd_approval/src/grant_sql.rs`), and the fleet stays
+transaction (`rustd/crates/afd_approval/src/grant_sql/mod.rs`), and the fleet stays
 `installing` until every readiness check, the grant included, is ready
 (`rustd/crates/afd_authoring/src/creation/progress.rs`). The lease path asks the
 same way the first time a delivery reaches a credential with no grant
