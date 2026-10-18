@@ -51,6 +51,8 @@ mod view_heartbeat;
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
 mod integration_admission_recovery;
+#[path = "integration_billing_sweep.rs"]
+mod integration_billing_sweep;
 mod integration_credential_mint;
 #[path = "integration_delivery_lookup.rs"]
 mod integration_delivery_lookup;

@@ -117,6 +117,27 @@ async fn lock_wallet(
         .ok_or_else(billing_wallet_missing)
 }
 
+/// `tenant`'s wallet, locked for the rest of the transaction, or `None` when
+/// the tenant has no wallet row.
+///
+/// Settling and releasing take this rather than [`lock_wallet`]: usage that
+/// already happened must settle even for a tenant whose wallet was never
+/// provisioned, or its lines would stay unsettled forever and hold every
+/// newer line behind them in the sweeper's oldest-first scan. With no wallet
+/// nothing is taken and the whole charge is written off, visibly.
+async fn lock_wallet_if_any(
+    connection: &mut sqlx::PgConnection,
+    tenant: &Uuid7,
+    context: &'static str,
+) -> Result<Option<Nanos>> {
+    let balance: Option<i64> = sqlx::query_scalar(LOCK_WALLET)
+        .bind(tenant.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(context))?;
+    Ok(balance.map(Nanos::from_i64))
+}
+
 /// The wallet's balance and open holds, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct BalanceRow {
@@ -140,7 +161,7 @@ impl Biller for LedgerBiller {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SETTLE))?;
         bound(&mut transaction, CONTEXT_SETTLE).await?;
-        lock_wallet(&mut transaction, &settlement.payer.tenant, CONTEXT_SETTLE).await?;
+        lock_wallet_if_any(&mut transaction, &settlement.payer.tenant, CONTEXT_SETTLE).await?;
         log_lines(
             &mut *transaction,
             &self.entropy,

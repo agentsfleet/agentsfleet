@@ -180,6 +180,7 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::FLEET_CENSUS,
             agentsfleetd::sweepers::RECONCILE,
             agentsfleetd::sweepers::AUTHORING,
+            agentsfleetd::sweepers::BILLING,
             agentsfleetd::sweepers::REPLAY,
             agentsfleetd::inventory::HUB_PUMP,
             agentsfleetd::inventory::OUTBOUND_WORKER,

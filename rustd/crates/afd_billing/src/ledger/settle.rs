@@ -5,7 +5,7 @@ use sqlx::PgConnection;
 
 use super::{
     CAPTURE_HOLD, CONTEXT_RELEASE, CONTEXT_SETTLE, DEBIT_WALLET, RELEASE_HOLD, SELECT_WORK_TENANT,
-    SETTLE_LINES, lock_wallet,
+    SETTLE_LINES, lock_wallet_if_any,
 };
 use crate::biller::{Receipt, Settlement, WorkKey};
 use crate::error::{charge_overflow, query, row_malformed};
@@ -52,7 +52,7 @@ pub(super) async fn release(connection: &mut PgConnection, work: &WorkKey) -> Re
         return Ok(());
     };
     let tenant = Uuid7::parse(&tenant).map_err(row_malformed(TABLE_HOLDS, COLUMN_TENANT_ID))?;
-    lock_wallet(connection, &tenant, CONTEXT_RELEASE).await?;
+    lock_wallet_if_any(connection, &tenant, CONTEXT_RELEASE).await?;
     take(connection, work, &tenant, None, CONTEXT_RELEASE).await?;
     sqlx::query(RELEASE_HOLD)
         .bind(work.work_type())
@@ -92,12 +92,14 @@ async fn take(
             ..Receipt::default()
         });
     }
+    // No wallet row debits nothing: the whole charge is written off below.
     let taken: i64 = sqlx::query_scalar(DEBIT_WALLET)
         .bind(tenant.as_str())
         .bind(total)
-        .fetch_one(&mut *connection)
+        .fetch_optional(&mut *connection)
         .await
-        .map_err(query(context))?;
+        .map_err(query(context))?
+        .unwrap_or(0);
     sqlx::query(CAPTURE_HOLD)
         .bind(work.work_type())
         .bind(work.id().as_str())

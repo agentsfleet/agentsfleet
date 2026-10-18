@@ -284,3 +284,36 @@ async fn exhaustion_follows_the_balance_through_a_top_up() {
         "running dry again sets it again"
     );
 }
+
+/// Usage that happened settles even for a tenant with no wallet row: nothing
+/// is taken and the whole charge is written off, so the line never sits
+/// unsettled in front of the sweeper's oldest-first scan.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_tenant_without_a_wallet_settles_by_writing_the_charge_off() {
+    let lane = Lane::create().await;
+    let payer = Account {
+        tenant: lane.tenant.clone(),
+        workspace: lane.workspace.clone(),
+    };
+    let biller = ledger(&lane);
+    let work = WorkKey::FleetLease(mint_uuid7());
+
+    let receipt = biller
+        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
+        .await
+        .expect("a missing wallet still settles");
+    assert_eq!(receipt.settled_lines, 1);
+    assert_eq!(receipt.taken, Nanos::ZERO);
+    assert_eq!(receipt.written_off, LINE);
+
+    let again = biller
+        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
+        .await
+        .expect("a retry answers");
+    assert_eq!(again.settled_lines, 0, "the line is settled once");
+    biller
+        .release(&work, afd_billing::biller::Release::Completed)
+        .await
+        .expect("a release without a wallet completes");
+}

@@ -33,6 +33,7 @@ use afd_runner::sweep::{
 use crate::supervisor::Supervisor;
 
 mod authoring;
+mod billing;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
 // asserts the supervisor's INVENTORY, and a test spelling these as literals
@@ -59,6 +60,9 @@ pub const RECONCILE: &str = "sweeper:admission-reconcile";
 
 /// The supervised name of the private authoring recovery worker.
 pub const AUTHORING: &str = "sweeper:authoring";
+
+/// The supervised name of the billing sweeper.
+pub const BILLING: &str = "sweeper:billing";
 
 /// Starts every background sweeper under `supervisor`.
 ///
@@ -103,6 +107,10 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Dragonfly, anal
     supervisor.spawn(RECONCILE, move |token| sweep::run(reconcile, token));
 
     authoring::spawn(supervisor, database, analytics);
+
+    // Usage logged without its settlement, and holds outlived by their lease:
+    // money the request path owes and could not finish.
+    billing::spawn(supervisor, database);
 
     let replay = Replay::new(admissions);
     supervisor.spawn(REPLAY, move |token| sweep::run(replay, token));
