@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { runSeedCommand } from "./command";
 import { CATALOGUE_URL, readCatalogue } from "./catalogue";
 import { assertCompleteCatalogue } from "./curated";
-import { CATALOGUE_DATABASE_URL, openIntegrationDatabase, removeFixtureModels, snapshot, version, waitForClientCount } from "./integration-fixtures";
+import { CATALOGUE_DATABASE_URL, NO_OTHER_CLIENTS, openIntegrationDatabase, removeFixtureModels, snapshot, version, waitForClientCount } from "./integration-fixtures";
 import { seedCatalogue } from "./seed";
 import { APPLY_FLAG, catalogueFixture, MODEL_NAME, modelFixture, priceFixture } from "./test-fixtures";
 
@@ -134,7 +134,6 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
 
   test("concurrent identical applies bump one generation and produce one identity", async () => {
     const generation = BigInt(await version(database));
-    const before = await database`SELECT count(*)::integer AS clients FROM pg_stat_activity WHERE datname = current_database()`;
     const clients = Array.from({ length: CONCURRENT_CONNECTIONS }, openIntegrationDatabase);
     try {
       const results = await Promise.all(Array.from({ length: CONCURRENT_APPLIES }, (_, index) =>
@@ -143,7 +142,7 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     } finally {
       await Promise.all(clients.map((client) => client.close()));
     }
-    await waitForClientCount(database, before);
+    await waitForClientCount(database, NO_OTHER_CLIENTS);
     expect(BigInt(await version(database))).toBe(generation + 1n);
     expect(await database<unknown>`SELECT count(*)::integer AS models FROM model.platform_models`).toEqual([{ models: 1 }]);
     expect(await database<unknown>`SELECT count(*)::integer AS prices FROM model.platform_model_prices`).toEqual([{ prices: 1 }]);
@@ -153,15 +152,13 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     const path = `${TEST_FILE_PREFIX}-${crypto.randomUUID()}.json`;
     FILES.push(path);
     await Bun.write(path, JSON.stringify(catalogueFixture()));
-    const clients = () => database`SELECT count(*)::integer AS clients FROM pg_stat_activity WHERE datname = current_database()`;
-    const before = await clients();
     const lines: string[] = [];
     expect(await runSeedCommand({ args: [APPLY_FLAG], databaseUrl: CATALOGUE_DATABASE_URL, cataloguePath: path }, (line) => lines.push(line))).toBe(0);
     expect(lines.at(-1)).toBe("✓ catalogue and generation committed");
-    await waitForClientCount(database, before);
+    await waitForClientCount(database, NO_OTHER_CLIENTS);
     expect(await runSeedCommand({ args: [], databaseUrl: CATALOGUE_DATABASE_URL, cataloguePath: path }, (line) => lines.push(line))).toBe(0);
     expect(lines.at(-2)).toBe("0 added; 0 changed; 0 deleted");
-    await waitForClientCount(database, before);
+    await waitForClientCount(database, NO_OTHER_CLIENTS);
   });
 
   test("the connection leak check refuses a count that never converges", async () => {
