@@ -63,3 +63,27 @@ it("retries the selected chat after an initial read failure without showing a bl
   await screen.findByText("Your setup is ready.");
   expect(screen.queryByText("What should your fleet do?")).toBeNull();
 });
+
+it("cancels a name change without saving and reopens with the saved name", async () => {
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Rename setup chat"}));
+  fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "Abandoned name"}});
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(screen.queryByLabelText("Chat name")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Rename setup chat"}));
+  expect(screen.getByLabelText("Chat name")).toHaveProperty("value", DRAFT.title);
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("opens a pinned setup directly and cancels initialization when navigation leaves it", async () => {
+  const view = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: DRAFT.candidate!.definition}} />);
+  await screen.findByRole("heading", {name: "Your fleet setup"});
+  expect(screen.queryByText("What should your fleet do?")).toBeNull();
+  view.unmount();
+  const pending = Promise.withResolvers<Response>();
+  fixture.fetch.mockReturnValueOnce(pending.promise);
+  const next = render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  next.unmount();
+  await act(async () => pending.resolve(response({items: [], next_cursor: null})));
+  expect(screen.queryByText("Your setup is ready.")).toBeNull();
+});

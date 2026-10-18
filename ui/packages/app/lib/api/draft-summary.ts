@@ -1,5 +1,5 @@
 import type { Draft, DraftCard, Message } from "./draft-types";
-import { DRAFT_STATE, MESSAGE_ROLE } from "./draft-types";
+import { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
 
 const DEFAULT_TITLE = "new fleet";
 export const CHAT_TITLE_LIMIT = 100;

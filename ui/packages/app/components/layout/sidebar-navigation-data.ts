@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ActivityIcon, BookOpenIcon, BotIcon, BrainCircuitIcon, CircleCheckIcon, CreditCardIcon, KeyRoundIcon, LockKeyholeIcon, LibraryIcon, PlugIcon, PlusIcon, ServerIcon, UsersIcon, UserIcon } from "lucide-react";
-import { SCOPE } from "@/lib/auth/scopes";
+import { BotIcon, PlusIcon } from "lucide-react";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export type NavEntry = {
@@ -18,39 +17,6 @@ export const NAV_SURFACE = "app_sidebar";
 export const PRIMARY_NAV: NavEntry[] = [
   { label: "New fleet", path: "fleets/new", icon: PlusIcon, workspaceScoped: true },
   { label: "Your fleets", path: "fleets", icon: BotIcon, workspaceScoped: true },
-];
-
-export const WORKSPACE_NAV: NavEntry[] = [
-  { label: "Activity", path: "events", icon: ActivityIcon, workspaceScoped: true },
-  { label: "Approvals", path: "approvals", icon: CircleCheckIcon, workspaceScoped: true },
-  { label: "Models", path: "settings/models", icon: BrainCircuitIcon, workspaceScoped: true },
-  { label: "Integrations", path: "integrations", icon: PlugIcon, workspaceScoped: true },
-  { label: "Secrets", path: "secrets", icon: LockKeyholeIcon, workspaceScoped: true },
-  { label: "Fleet library", path: "library", icon: LibraryIcon, workspaceScoped: true },
-];
-
-export const PLATFORM_NAV: PlatformNavEntry[] = [
-  { label: "Runners", path: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model library", path: "/admin/models", icon: BrainCircuitIcon, scope: SCOPE.MODEL_READ },
-  {
-    label: "Fleet library",
-    path: "/admin/fleet-libraries",
-    icon: LibraryIcon,
-    scope: SCOPE.PLATFORM_LIBRARY_WRITE,
-  },
-];
-
-// Every person owns the account signup made them, so Members is always theirs
-// to manage; a joined account's people are its owner's page, not this one.
-export const ACCOUNT_NAV: NavEntry[] = [
-  { label: "Profile", path: "/settings/account", icon: UserIcon },
-  { label: "Team", path: "/settings/members", icon: UsersIcon },
-  { label: "API keys", path: "/settings/api-keys", icon: KeyRoundIcon },
-  { label: "Billing", path: "/settings/billing", icon: CreditCardIcon },
-];
-
-export const BOTTOM_NAV: NavEntry[] = [
-  { label: "Docs", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
 ];
 
 export function resolveHref(entry: NavEntry, workspaceId: string | null): string {

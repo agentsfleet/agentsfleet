@@ -1,6 +1,7 @@
 import { HeartPulseIcon } from "lucide-react";
 import { cn, StatusLine, StatusLineItem, Time } from "@agentsfleet/design-system";
-import { hasBeenSeen, type RunnerDetail } from "@/lib/api/runners";
+import { hasBeenSeen } from "@/lib/api/runners-types";
+import { type RunnerDetail } from "@/lib/api/runners";
 import {
   STRIP_FAILED_UNIT,
   STRIP_HEARTBEAT_LABEL,

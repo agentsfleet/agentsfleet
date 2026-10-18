@@ -1,6 +1,6 @@
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useDeleteDraft } from "./use-delete-draft";
 import { DRAFT_ID, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
@@ -16,7 +16,6 @@ it("deletes through the active chat owner and removes the card only after succes
   done.resolve(); await pending;
   expect(action).toHaveBeenCalledWith(DRAFT_ID, expect.any(AbortSignal));
   expect(removed).toHaveBeenCalledExactlyOnceWith(DRAFT_ID);
-  expect(result.current.pending).toBe(false);
 });
 
 it("uses the typed delete endpoint outside chat, including after strict-mode effect replay", async () => {
@@ -35,9 +34,9 @@ it("keeps a refused chat and displays the failure until a successful retry", asy
   const {result} = renderHook(() => useDeleteDraft(WORKSPACE, null, removed));
   await act(async () => {await expect(result.current.remove(DRAFT_ID)).rejects.toMatchObject({status: 409});});
   expect(result.current.error).toBe("Finish the current request first");
-  expect(result.current.pending).toBe(false); expect(removed).not.toHaveBeenCalled();
-  act(() => result.current.clearError()); expect(result.current.error).toBeNull();
+  expect(removed).not.toHaveBeenCalled();
   await act(() => result.current.remove(DRAFT_ID));
+  expect(result.current.error).toBeNull();
   expect(removed).toHaveBeenCalledOnce();
 });
 
@@ -47,6 +46,7 @@ it("aborts an outstanding delete on unmount and ignores its late success", async
   const removed = vi.fn();
   const {result, unmount} = renderHook(() => useDeleteDraft(WORKSPACE, null, removed));
   const pending = result.current.remove(DRAFT_ID);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   const signal = fetcher.mock.calls[0]?.[1]?.signal;
   unmount(); expect(signal.aborted).toBe(true);
   done.resolve(response(null, 204));
@@ -59,4 +59,26 @@ it("rejects an unexpected successful response instead of removing a card", async
   const removed = vi.fn(); const {result} = renderHook(() => useDeleteDraft(WORKSPACE, null, removed));
   await act(async () => {await expect(result.current.remove(DRAFT_ID)).rejects.toMatchObject({status: 502});});
   expect(removed).not.toHaveBeenCalled(); expect(result.current.error).toBeTruthy();
+});
+
+it("aborts a superseded delete without releasing the replacement request", async () => {
+  const first = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<void>();
+  const action = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const removed = vi.fn();
+  const {result, unmount} = renderHook(() => useDeleteDraft(WORKSPACE, action, removed));
+  let old!: Promise<void>;
+  let current!: Promise<void>;
+  act(() => {old = result.current.remove("first");});
+  const refused = expect(old).rejects.toMatchObject({name: "AbortError"});
+  act(() => {current = result.current.remove("second");});
+  expect(action.mock.calls[0]?.[1].aborted).toBe(true);
+  await act(async () => {first.resolve(); await refused;});
+  expect(action.mock.calls[1]?.[1].aborted).toBe(false);
+  expect(removed).not.toHaveBeenCalled();
+  const stopped = expect(current).rejects.toMatchObject({name: "AbortError"});
+  unmount();
+  expect(action.mock.calls[1]?.[1].aborted).toBe(true);
+  second.resolve(); await stopped;
+  expect(removed).not.toHaveBeenCalled();
 });

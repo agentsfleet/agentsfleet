@@ -25,7 +25,7 @@ This request log belongs to the existing schema clean-slate milestone.
 
 ### Historical runner leases and valid fleet destinations — open
 
-- Endpoint: `GET /v1/fleet-runners/{runner_id}/leases`.
+- Endpoint: `GET /v1/fleets/runners/{runner_id}/leases`.
 - Fields: explicit fleet existence/navigation availability and the fleet kind when the lease belongs to a private setup conversation rather than a user fleet.
 - Why: the current projection inner-joins `fleet.fleets` and `fleet.events`, so deleting a probe fleet can remove its lease from the list. A non-null name does not establish that the signed-in operator can open the tenant fleet screen. The reported setup/probe lease opens a missing fleet page.
 - Requested behavior: retain lease history within the server's retention window when the related fleet/event disappears, and expose an authorized destination or an explicit unavailable state. Do not infer this from a fleet-name prefix.
@@ -48,4 +48,11 @@ The UI continues with explicit loaded-title search, available setup state, and s
 - Field: `description` containing the saved fleet purpose; nullability to be published by the server.
 - Why: the detail already describes what the fleet does, but list summaries do not. Cards and recents should show the stable agent callsign with useful purpose text.
 - Screens: Your fleets and sidebar recents.
+
+### Exact monetary wire values — awaiting server verification
+
+- Change: `2c9c0300b` standardizes nanos fields as non-negative decimal strings matching `^(0|[1-9][0-9]*)$`.
+- Readers: billing balance and charges, event costs, catalogue rates and model-entry rates in the application and CLI.
+- Why: integer JSON loses precision beyond JavaScript's safe integer range. Catalogue readers and edits must use the same published representation as the server.
+- Handoff: Claude will publish the verified field list before client readers change. Catalogue readers already preserve decimal strings; the remaining readers await that handoff.
 

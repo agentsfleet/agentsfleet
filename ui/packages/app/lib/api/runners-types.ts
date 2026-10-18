@@ -259,3 +259,7 @@ export function isSelftestStale(runner: SelftestPolicyView): boolean {
   const assigned = runner.assigned_policy;
   return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
 }
+
+/** Whether the runner has ever beaten. The daemon writes the Unix epoch for a
+ * runner that never connected (`NEVER_SEEN` in `afd_runner`), never null. */
+export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > 0;

@@ -50,3 +50,8 @@ export function useFreshFleetChat(workspace: string | null) {
   return () => { if (history?.workspace === workspace && history.subject === userId && !history.locked) history.fresh?.(); };
 }
 
+// A late delete completion may only update the private history that owned it.
+export function removeSidebarDraft(value: DraftSidebarState | null, scope: Pick<DraftSidebarState, "workspace" | "subject">, id: string): DraftSidebarState | null {
+  if (!value || value.workspace !== scope.workspace || value.subject !== scope.subject) return value;
+  return {...value, cards: value.cards.filter(card => card.id !== id), current: value.current === id ? null : value.current};
+}

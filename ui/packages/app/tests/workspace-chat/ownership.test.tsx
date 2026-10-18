@@ -43,37 +43,62 @@ it.each([200, 403, undefined])("retains the platform staging outcome in the owni
   }
 });
 
-it("continues a saved fleet from the conversation without reopening its review", async () => {
+it("recovers a failed setup continuation from the conversation without reopening its review", async () => {
   fixture.draft = {...DRAFT, state: "saving", linked_fleet_id: FLEET_ID};
   const base = fixture.fetch.getMockImplementation()!;
   let continued = false;
+  let attempts = 0;
   fixture.fetch.mockImplementation(async (input, init) => {
     if ((typeof input === "string" ? input : input instanceof URL ? input.href : input.url).endsWith(`/fleets/${FLEET_ID}`)) {
-      if (init?.method === "PATCH") continued = true;
+      if (init?.method === "PATCH") {
+        attempts += 1;
+        if (attempts === 1) return response({user_message: "Setup retry unavailable"}, 503);
+        continued = true;
+      }
       return response(continued ? {...FLEET, status: "active", setup: {state: "ready", checks: []}} : FLEET);
     }
     return base(input, init);
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   fireEvent.click(await screen.findByRole("button", {name: "Continue setup"}));
+  await screen.findByText("Setup retry unavailable");
+  const retry = screen.getByRole("button", {name: "Continue setup"});
+  expect(retry).toHaveProperty("disabled", false);
+  expect(continued).toBe(false);
+  fireEvent.click(retry);
   await waitFor(() => expect(screen.queryByRole("button", {name: "Continue setup"})).toBeNull());
   expect(screen.getByText("repairer is ready")).toBeTruthy();
   expect(continued).toBe(true);
 });
 
-it("retries a saved fleet's unregistered schedule from the conversation", async () => {
-  fixture.draft = {...DRAFT, state: "saving", linked_fleet_id: FLEET_ID};
+it.each(["saved", "updated"])("recovers failed schedule registration from the owning %s conversation", async (source) => {
+  fixture.draft = source === "saved" ? {...DRAFT, state: "saving", linked_fleet_id: FLEET_ID}
+    : {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   const owed = {schedule_id: "sched-1", fleet_id: FLEET_ID, sync: "failed", last_error: null};
   const base = fixture.fetch.getMockImplementation()!;
   let synced = false;
+  let attempts = 0;
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`)) return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: [owed]});
     if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, status: "active", setup: {state: "ready", checks: []}, schedules: [owed]});
-    if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && init?.method === "POST") { synced = true; return response({...owed, sync: "synced"}); }
+    if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && init?.method === "POST") {
+      attempts += 1;
+      if (attempts === 1) return response({user_message: "Registration retry unavailable"}, 503);
+      synced = true;
+      return response({...owed, sync: "synced"});
+    }
     return base(input, init);
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  if (source === "updated") fireEvent.click(await screen.findByRole("button", {name: "Save changes"}));
   fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
-  await screen.findByText("repairer is ready");
+  await screen.findByText("Registration retry unavailable");
+  const retry = screen.getByRole("button", {name: "Retry registration"});
+  expect(retry).toHaveProperty("disabled", false);
+  expect(synced).toBe(false);
+  fireEvent.click(retry);
+  await waitFor(() => expect(screen.queryByRole("button", {name: "Retry registration"})).toBeNull());
+  expect(screen.queryByText("Registration retry unavailable")).toBeNull();
   expect(synced).toBe(true);
 });

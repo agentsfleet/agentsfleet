@@ -10,6 +10,7 @@ describe("catalogue validation", () => {
     const first = { ...PRICE, effective_until: "2026-12-01T00:00:00Z" };
     const next = { ...PRICE, effective_from: first.effective_until };
     expect(priceScheduleSchema.parse([first, next])).toEqual([first, next]);
+    expect(priceScheduleSchema.parse([next, first])).toEqual([next, first]);
   });
   it("treats different prompt tiers as distinct schedules", () => {
     expect(priceScheduleSchema.parse([PRICE, { ...PRICE, prompt_tokens_above: 272000 }])).toHaveLength(2);

@@ -11,7 +11,7 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { SidebarNavigation } from "@/components/layout/SidebarNavigation";
 import { NavSection } from "@/components/layout/SidebarNavigationSections";
-import { BOTTOM_NAV } from "@/components/layout/sidebar-navigation-data";
+import { BOTTOM_NAV } from "@/components/layout/account-menu-data";
 
 const WORKSPACE = { id: "ws_1", name: "My workspace", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT };
 const MENU = "Workspace and account menu";

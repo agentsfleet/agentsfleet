@@ -296,11 +296,14 @@ describe("private browser chat", () => {
     expect(instance.getSnapshot().notice).toContain("Publish it explicitly");
     expect(instance.getSnapshot().pending).toBe(false); expect(mutations()).toEqual([]);
   });
-  it("refuses staging when the current setup is incomplete", async () => {
+  it.each(["candidate", "review"] as const)("refuses staging when the current setup lacks its %s", async (missing) => {
     const publisher = vi.fn();
     const instance = await ready(true, publisher);
-    fixture.current = {...fixture.current, review: undefined};
+    fixture.current = {...fixture.current, [missing]: undefined};
     await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 409});
+    const reads = calls.length;
+    await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 409, message: "Continue chatting until a complete setup is ready."});
+    expect(calls).toHaveLength(reads);
     expect(publisher).not.toHaveBeenCalled(); expect(instance.getSnapshot().pending).toBe(false);
   });
   it("hides staging without operator capability and clears private data on a scoped refusal", async () => {
