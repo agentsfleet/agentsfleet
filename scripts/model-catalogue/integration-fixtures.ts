@@ -30,9 +30,17 @@ export async function version(database: SQL): Promise<string> {
   return z.tuple([z.object({ version: z.string() })]).parse(result)[0].version;
 }
 
-/** PostgreSQL observes the client's socket close after Bun resolves close(). */
+/** Every backend in the suite's own database except the observer's: none once clients close. */
+export const NO_OTHER_CLIENTS = [{ clients: 0 }];
+
+/**
+ * PostgreSQL observes the client's socket close after Bun resolves close(). The
+ * observer's own backend is excluded, so a baseline taken while an earlier
+ * connection was still closing can never be the target.
+ */
 export async function waitForClientCount(database: SQL, expected: unknown): Promise<void> {
-  const clients = () => database`SELECT count(*)::integer AS clients FROM pg_stat_activity WHERE datname = current_database()`;
+  const clients = () => database`SELECT count(*)::integer AS clients FROM pg_stat_activity
+    WHERE datname = current_database() AND pid <> pg_backend_pid()`;
   for (let attempt = 0; attempt < CLOSE_CHECK_ATTEMPTS; attempt++) {
     if (Bun.deepEquals(await clients(), expected)) return;
     await Bun.sleep(CLOSE_CHECK_DELAY_MS);
