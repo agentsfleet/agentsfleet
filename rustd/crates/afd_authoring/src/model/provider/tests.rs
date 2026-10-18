@@ -92,15 +92,17 @@ fn reply(api: InferenceApi) -> Value {
 // seam=none; no_claim=live providers.
 #[tokio::test]
 async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
-    // rig's GenerateContent wire authenticates by a `key` query parameter, not
-    // a header; Ollama's native chat sends a bearer header.
+    // rig's GenerateContent wire puts the key in a `key` query parameter;
+    // afd_inference moves it to `x-goog-api-key` before any transport sees the
+    // request, so the daemon's dispatch path sends it as a header too. Ollama's
+    // native chat sends a bearer header.
     for (api, path, header) in [
         (
             InferenceApi::Gemini,
             "/v1/v1beta/models/workspace/model-next:generateContent",
-            None,
+            "x-goog-api-key",
         ),
-        (InferenceApi::Ollama, "/v1/api/chat", Some("authorization")),
+        (InferenceApi::Ollama, "/v1/api/chat", "authorization"),
     ] {
         let physical = Arc::new(Physical {
             requests: Mutex::new(Vec::new()),
@@ -118,16 +120,11 @@ async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
         assert_eq!(requests.len(), 1, "{api:?}");
         let sent = requests.first().expect("one physical request");
         assert_eq!(sent.request.uri().path(), path, "{api:?}");
-        match header {
-            Some(header) => assert!(sent.request.headers().contains_key(header), "{api:?}"),
-            None => assert!(
-                sent.request
-                    .uri()
-                    .query()
-                    .is_some_and(|query| query.starts_with("key=")),
-                "{api:?}"
-            ),
-        }
+        assert!(sent.request.headers().contains_key(header), "{api:?}");
+        assert!(
+            !sent.request.uri().to_string().contains("private-"),
+            "{api:?}: the key never rides the URL"
+        );
         assert!(!format!("{sent:?}").contains("private-"), "{api:?}");
         let body: Value = serde_json::from_slice(sent.body()).expect("SDK request");
         assert!(body.to_string().contains("private-prompt"), "{api:?}");
