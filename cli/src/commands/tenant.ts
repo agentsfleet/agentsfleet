@@ -12,6 +12,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
+import { isNanos } from "../lib/nanos.ts";
 import { isNumber, isString } from "../lib/guards.ts";
 import {
   PROVIDER_MODE,
@@ -30,7 +31,7 @@ const PROVIDER_SHOWN = "Tenant provider" as const;
 const PROVIDER_ADDED = "Tenant provider added" as const;
 const PROVIDER_REMOVED = "Tenant provider removed" as const;
 
-const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
+const LOW_BALANCE_THRESHOLD_NANOS = BigInt(NANOS_PER_USD);
 
 
 interface ProviderResponse {
@@ -44,7 +45,7 @@ interface ProviderResponse {
 }
 
 interface BillingResponse {
-  readonly balance_nanos?: number;
+  readonly balance_nanos?: unknown;
 }
 
 interface ProviderAddBody {
@@ -191,8 +192,8 @@ const lowBalanceWarning: Effect.Effect<
     .pipe(Effect.orElseSucceed(() => null));
   if (billing === null) return;
   const balance =
-    isNumber(billing.balance_nanos) ? billing.balance_nanos : null;
-  if (balance !== null && balance < LOW_BALANCE_THRESHOLD_NANOS) {
+    isNanos(billing.balance_nanos) ? billing.balance_nanos : null;
+  if (balance !== null && BigInt(balance) < LOW_BALANCE_THRESHOLD_NANOS) {
     yield* output.info("");
     yield* output.error(
       `⚠ Tenant balance is low: ${formatDollars(balance)}. Top up via the dashboard before the next event.`,

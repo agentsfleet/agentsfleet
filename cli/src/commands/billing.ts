@@ -17,6 +17,7 @@ import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import { EMPTY_CELL } from "../output/index.ts";
 import { byInstant, instantMs } from "../lib/instant.ts";
+import { decodeBilling, decodeCharges, type BillingSnapshot, type ChargeRow } from "./billing-schema.ts";
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
@@ -26,43 +27,21 @@ const PURCHASE_FOOTER_LINE_2 =
 const BILLING_SHOWN = "Billing" as const;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
-
-interface BillingSnapshot {
-  readonly balance_nanos?: number;
-  readonly is_exhausted?: boolean;
-}
-
-interface ChargeRow {
-  readonly fleet_id?: string | null;
-  readonly event_id?: string | null;
-  readonly authoring_attempt_id?: string | null;
-  readonly posture?: string;
-  readonly model?: string;
-  readonly recorded_at?: string | null;
-  readonly charge_type?: string;
-  readonly credit_deducted_nanos?: number;
-  readonly token_count_input?: number | null;
-  readonly token_count_output?: number | null;
-}
-
-interface ChargesResponse {
-  readonly items?: ReadonlyArray<ChargeRow>;
-  readonly next_cursor?: string | null;
-}
+const LIMIT_LITERAL = /^\d+$/;
 
 interface EventSummary {
   fleet_id: string | null | undefined;
   event_id: string | null | undefined;
   authoring_attempt_id?: string;
-  setup_nanos?: number;
+  setup_nanos?: string;
   posture: string | undefined;
   model: string | undefined;
   recorded_at: string | null;
-  receive_nanos: number;
-  stage_nanos: number;
+  receive_nanos: string;
+  stage_nanos: string;
   token_count_input: number | null;
   token_count_output: number | null;
-  total_nanos: number;
+  total_nanos: string;
 }
 
 export interface BillingShowArgs {
@@ -74,8 +53,8 @@ const parseLimit = (
   raw: number | string | undefined,
 ): Effect.Effect<number, ValidationError> => {
   if (raw === undefined || raw === null) return Effect.succeed(DEFAULT_LIMIT);
-  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
-  if (!Number.isFinite(n) || n <= 0 || n > MAX_LIMIT) {
+  const n = typeof raw === "number" || LIMIT_LITERAL.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(n) || n <= 0 || n > MAX_LIMIT) {
     return Effect.fail(
       new ValidationError({
         detail: `--limit must be an integer between 1 and ${MAX_LIMIT}`,
@@ -102,27 +81,32 @@ const parseCursor = (
 };
 
 // A charge belongs to one fleet's event, so the key is both. NUL separates
-// them because neither a UUID nor a `<millis>-<seq>` event id can contain one,
-// which a plain concatenation could not promise.
+// them because daemon identifiers cannot contain one, unlike an ambiguous
+// plain concatenation.
 const groupKey = (row: ChargeRow): string =>
   row.authoring_attempt_id != null
     ? `${CHARGE_TYPE.authoring}\u0000${row.authoring_attempt_id}`
     : `${row.fleet_id ?? ""}\u0000${row.event_id ?? ""}`;
 
+const addNanos = (a: string, b: string): string => String(BigInt(a) + BigInt(b));
+const addCount = (a: number | null, b: number | null | undefined): number | null =>
+  a === null && b == null ? null : (a ?? 0) + (b ?? 0);
+
 const applyCharge = (entry: EventSummary, row: ChargeRow): void => {
   if (row.charge_type === CHARGE_TYPE.receive) {
-    entry.receive_nanos = row.credit_deducted_nanos ?? 0;
+    entry.receive_nanos = addNanos(entry.receive_nanos, row.credit_deducted_nanos);
   } else if (row.charge_type === CHARGE_TYPE.stage || row.charge_type === CHARGE_TYPE.authoring) {
     if (row.charge_type === CHARGE_TYPE.authoring) {
       if (row.authoring_attempt_id != null) entry.authoring_attempt_id = row.authoring_attempt_id;
-      entry.setup_nanos = row.credit_deducted_nanos ?? 0;
+      entry.setup_nanos = addNanos(entry.setup_nanos ?? "0", row.credit_deducted_nanos);
     } else {
-      entry.stage_nanos = row.credit_deducted_nanos ?? 0;
+      entry.stage_nanos = addNanos(entry.stage_nanos, row.credit_deducted_nanos);
     }
-    entry.token_count_input = row.token_count_input ?? null;
-    entry.token_count_output = row.token_count_output ?? null;
+    entry.token_count_input = addCount(entry.token_count_input, row.token_count_input);
+    entry.token_count_output = addCount(entry.token_count_output, row.token_count_output);
   }
-  entry.total_nanos = entry.receive_nanos + entry.stage_nanos + (entry.setup_nanos ?? 0);
+  // Every returned debit contributes, including a future category this client cannot label.
+  entry.total_nanos = addNanos(entry.total_nanos, row.credit_deducted_nanos);
 };
 
 const groupRowsByEvent = (
@@ -139,11 +123,11 @@ const groupRowsByEvent = (
         posture: r.posture,
         model: r.model,
         recorded_at: r.recorded_at ?? null,
-        receive_nanos: 0,
-        stage_nanos: 0,
+        receive_nanos: "0",
+        stage_nanos: "0",
         token_count_input: null,
         token_count_output: null,
-        total_nanos: 0,
+        total_nanos: "0",
       };
       byEvent.set(key, entry);
     }
@@ -162,14 +146,44 @@ const groupRowsByEvent = (
   );
 };
 
+const renderActivities = (output: Output, events: ReadonlyArray<EventSummary>) =>
+  output.printEntityTable(
+    {
+      id: { key: "event_id", label: "WORK_ID" },
+      domain: [
+        { key: "posture", label: "POSTURE" },
+        { key: "model", label: "MODEL" },
+        { key: "in_tok", label: "IN_TOK" },
+        { key: "out_tok", label: "OUT_TOK" },
+        { key: "receive", label: "RECEIVE" },
+        { key: "stage", label: "STAGE" },
+        { key: "setup", label: "SETUP" },
+        { key: "total", label: "TOTAL" },
+      ],
+      // The table groups several ledger rows under one work identifier.
+      ageKey: null,
+    },
+    events.map((e) => ({
+      event_id: e.authoring_attempt_id ?? e.event_id ?? "",
+      posture: e.posture ?? "",
+      model: e.model ?? "",
+      in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
+      out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
+      receive: formatDollars(e.receive_nanos),
+      stage: formatDollars(e.stage_nanos),
+      setup: formatDollars(e.setup_nanos ?? "0"),
+      total: formatDollars(e.total_nanos),
+    })),
+  );
+
 const renderHuman = (
-  balance: BillingSnapshot | null,
+  balance: BillingSnapshot,
   events: ReadonlyArray<EventSummary>,
   nextCursor: string | null,
 ): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
-    const balanceNanos = balance?.balance_nanos ?? 0;
+    const balanceNanos = balance.balance_nanos;
     yield* output.info(`Tenant balance:    ${formatDollars(balanceNanos)}`);
     yield* output.info("");
 
@@ -177,34 +191,7 @@ const renderHuman = (
       yield* output.info("No billable activity recorded yet.");
     } else {
       yield* output.info(`Last ${events.length} activities drained credits:`);
-      yield* output.printEntityTable(
-        {
-          id: { key: "event_id", label: "WORK_ID" },
-          domain: [
-            { key: "posture", label: "POSTURE" },
-            { key: "model", label: "MODEL" },
-            { key: "in_tok", label: "IN_TOK" },
-            { key: "out_tok", label: "OUT_TOK" },
-            { key: "receive", label: "RECEIVE" },
-            { key: "stage", label: "STAGE" },
-            { key: "setup", label: "SETUP" },
-            { key: "total", label: "TOTAL" },
-          ],
-          // The charges read carries no instant per row.
-          ageKey: null,
-        },
-        events.map((e) => ({
-          event_id: e.authoring_attempt_id ?? e.event_id ?? "",
-          posture: e.posture ?? "",
-          model: e.model ?? "",
-          in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
-          out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
-          receive: formatDollars(e.receive_nanos),
-          stage: formatDollars(e.stage_nanos),
-          setup: formatDollars(e.setup_nanos ?? 0),
-          total: formatDollars(e.total_nanos),
-        })),
-      );
+      yield* renderActivities(output, events);
     }
 
     if (nextCursor) {
@@ -214,7 +201,7 @@ const renderHuman = (
       );
     }
     yield* output.info("");
-    if (balance?.is_exhausted) {
+    if (balance.is_exhausted) {
       yield* output.error(`⚠ Out of credits. See ${BILLING_DASHBOARD_URL}`);
     } else {
       yield* output.info(`ⓘ Out of credits? See ${BILLING_DASHBOARD_URL}`);
@@ -244,19 +231,19 @@ export const billingShowEffectFromArgs = (
       : `${CHARGES_PATH}?limit=${limit}`;
     const [billing, charges] = yield* Effect.all(
       [
-        http.request<BillingSnapshot>({ path: TENANT_BILLING_PATH, token }),
-        http.request<ChargesResponse>({ path: chargesPath, token }),
+        http.request<unknown>({ path: TENANT_BILLING_PATH, token }).pipe(Effect.flatMap(decodeBilling)),
+        http.request<unknown>({ path: chargesPath, token }).pipe(Effect.flatMap(decodeCharges)),
       ],
       { concurrency: 2 },
     );
 
-    const events = groupRowsByEvent(charges?.items ?? []);
-    const nextCursor = charges?.next_cursor ?? null;
+    const events = groupRowsByEvent(charges.items);
+    const nextCursor = charges.next_cursor ?? null;
 
     if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.success(BILLING_SHOWN, {
-        balance_nanos: billing?.balance_nanos ?? 0,
-        is_exhausted: Boolean(billing?.is_exhausted),
+        balance_nanos: billing.balance_nanos,
+        is_exhausted: billing.is_exhausted,
         events,
         next_cursor: nextCursor,
       });

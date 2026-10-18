@@ -85,9 +85,14 @@ export const libraryCommand = Command.make("library", libraryPaging).pipe(
   Command.withSubcommands([libraryListCommand, libraryDeleteCommand]),
 );
 
-export const modelsCommand = Command.make("models", { provider: providerFlag }).pipe(
+export const modelsCommand = Command.make("models", {
+  provider: providerFlag,
+  advanced: Flag.Boolean("advanced").pipe(
+    Flag.withDescription("Include advanced models"), Flag.withDefault(false),
+  ),
+}).pipe(
   Command.withDescription("List the model catalogue this server serves"),
-  guardedHandler(({ provider }) => modelsEffectFromFlags({ provider: opt(provider) })),
+  guardedHandler(({ provider, advanced }) => modelsEffectFromFlags({ provider: opt(provider), advanced })),
 );
 
 const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(

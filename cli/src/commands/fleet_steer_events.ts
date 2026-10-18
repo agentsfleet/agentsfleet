@@ -11,7 +11,7 @@ import { CliConfig } from "../services/config.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import {
-  wsFleetEventsPath,
+  wsFleetEventPath,
   wsFleetEventsStreamPath,
 } from "../lib/api-paths.ts";
 import { isString, isRecord } from "../lib/guards.ts";
@@ -20,7 +20,6 @@ const MS_FIELD = "ms";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
-const FALLBACK_POLL_LIMIT = 200;
 const TOOL_PREFIX_LABEL = "[tool]" as const;
 export const STATUS_COMPLETE = "complete" as const;
 const FIELD_NAME = "name" as const;
@@ -53,8 +52,6 @@ export const SSE_FALLBACK_TIMEOUT_SECONDS = Math.round(
   SSE_FALLBACK_TIMEOUT_MS / MS_PER_SECOND,
 );
 
-
-
 export type SteerOutcome =
   | { readonly kind: typeof STATUS_COMPLETE; readonly status: string }
   | { readonly kind: typeof STATUS_TIMEOUT }
@@ -64,30 +61,12 @@ export type PolledSteerOutcome =
   | Extract<SteerOutcome, { readonly kind: typeof STATUS_COMPLETE }>
   | Extract<SteerOutcome, { readonly kind: typeof STATUS_TIMEOUT }>;
 
-interface EventsResponse {
-  readonly items?: ReadonlyArray<EventRow>;
-}
-
-interface EventRow {
-  readonly event_id?: string;
-  readonly status?: string;
-}
-
 type StreamGetFn = typeof defaultStreamGet;
 
 const isTerminal = (status: string): boolean =>
   status === EVENT_STATUS.PROCESSED ||
   status === EVENT_STATUS.FLEET_ERROR ||
   status === EVENT_STATUS.GATE_BLOCKED;
-
-const eventIdToSince = (eventId: string): string | null => {
-  const dash = eventId.indexOf("-");
-  if (dash <= 0) return null;
-  const ms = Number.parseInt(eventId.slice(0, dash), 10);
-  if (!Number.isFinite(ms)) return null;
-  const floored = ms - (ms % MS_PER_SECOND);
-  return new Date(floored).toISOString().replace(/\.\d{3}Z$/, "Z");
-};
 
 interface SteerFrameHandlers {
   readonly printLine: (line: string) => void;
@@ -291,16 +270,16 @@ export const pollEventTerminal = (
 ): Effect.Effect<PolledSteerOutcome, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    const sinceParam = eventIdToSince(eventId);
+    // Event IDs are opaque. The owned detail read avoids inferring a clock
+    // from an ID or losing this event behind a busy fleet's newest page.
+    const path = wsFleetEventPath(wsId, fleetId, eventId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
     while (Date.now() < deadline && !signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- clock + external AbortSignal terminate it
-      const path = `${wsFleetEventsPath(wsId, fleetId)}?limit=${FALLBACK_POLL_LIMIT}${sinceParam ? `&since=${encodeURIComponent(sinceParam)}` : ""}`;
-      const res = yield* http.request<EventsResponse>({ path, token }).pipe(
-        Effect.orElseSucceed((): EventsResponse => ({ items: [] })),
+      const res = yield* http.request<unknown>({ path, token }).pipe(
+        Effect.orElseSucceed(() => null),
       );
-      const match = (res.items ?? []).find((row: EventRow) => row.event_id === eventId);
-      if (match && isString(match.status) && isTerminal(match.status)) {
-        return { kind: STATUS_COMPLETE, status: match.status } as PolledSteerOutcome;
+      if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
+        return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
       if (signal?.aborted) break;
       yield* Effect.sleep(`${FALLBACK_POLL_MS} millis`);

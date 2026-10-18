@@ -20,7 +20,7 @@ import {
 import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
 import { NetworkError } from "../src/errors/index.ts";
 
-const model = (id: string, provider: string): LibraryModel => ({ id, provider });
+import { catalogueModel as model, cataloguePage } from "./helpers-catalogue.ts";
 
 const ANTHROPIC = model("claude-opus-5", "anthropic");
 const OPENAI = model("gpt-5.6-sol", "openai");
@@ -36,7 +36,7 @@ const httpLayer = (
       onPath?.(input.path);
       const page = pages[Math.min(call, pages.length - 1)];
       call += 1;
-      return Effect.succeed(page);
+      return Effect.succeed(page && cataloguePage(page.models, page.next_cursor));
     }) as HttpClient["request"],
   });
 };
@@ -102,17 +102,25 @@ test("fetchCatalogue stops at an empty-string cursor rather than looping", async
   expect(rows).toHaveLength(1);
 });
 
-test("fetchCatalogue stops at the page cap when the server never stops paging", async () => {
-  // A server that always hands back a cursor must not spin forever. The cap is
-  // 100 pages — 10,000 rows, two orders of magnitude past any real catalogue —
-  // so reaching it means the server is looping, not that the operator is large.
+test("fetchCatalogue rejects a repeated cursor without reporting a partial catalogue", async () => {
   const paths: string[] = [];
-  const rows = await run(
-    fetchCatalogue(undefined),
-    httpLayer([{ models: [ANTHROPIC], next_cursor: "never-ends" }], (p) => paths.push(p)),
-  );
+  const error = await Effect.runPromise(fetchCatalogue(undefined).pipe(
+    Effect.provide(httpLayer([{models: [ANTHROPIC], next_cursor: "repeated"}], path => paths.push(path))),
+    Effect.flip,
+  ));
+  expect(error).toMatchObject({code: "MODEL_CATALOGUE_PAGINATION_INVALID", status: 502});
+  expect(paths).toHaveLength(2);
+});
+
+test("fetchCatalogue rejects a non-terminating catalogue at the page cap", async () => {
+  const paths: string[] = [];
+  // Pin test: 100 is the reader's finite page budget.
+  const pages = Array.from({length: 100}, (_, page) => ({models: [ANTHROPIC], next_cursor: `cursor-${page}`}));
+  const error = await Effect.runPromise(fetchCatalogue(undefined).pipe(
+    Effect.provide(httpLayer(pages, path => paths.push(path))), Effect.flip,
+  ));
+  expect(error).toMatchObject({code: "MODEL_CATALOGUE_PAGINATION_INVALID", status: 502});
   expect(paths).toHaveLength(100);
-  expect(rows).toHaveLength(100);
 });
 
 test("resolveCatalogueProvider accepts a member and returns it unchanged", async () => {

@@ -70,6 +70,9 @@ export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>
 export const wsFleetEventsPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events`;
 
+export const wsFleetEventPath = (wsId: string, fleetId: string, eventId: string): string =>
+  `${wsFleetEventsPath(wsId, fleetId)}/${enc(eventId)}`;
+
 // Workspace-scoped per-fleet SSE live tail.
 export const wsFleetEventsStreamPath = (
   wsId: string,

@@ -9,16 +9,12 @@ import { withAuthedStateDir } from "./helpers-cli-state.ts";
 // tests state it as catalogue rows rather than importing a compiled-in list.
 // Two providers is enough to prove membership, non-membership, and case-folding
 // while keeping the rejection message short enough to assert on.
-export const CATALOGUE_PAGE = {
-  version: "1",
-  models: [
-    // These are wire bytes the CLI parses, not values it computes.
-    // pin test: literal is the contract
-    { id: "claude-opus-5", provider: "anthropic", context_cap_tokens: 1000000, input_nanos_per_mtok: 5000000000, cached_input_nanos_per_mtok: 500000000, output_nanos_per_mtok: 25000000000 },
-    { id: "gpt-5.6-sol", provider: "openai", context_cap_tokens: 1050000, input_nanos_per_mtok: 5000000000, cached_input_nanos_per_mtok: 500000000, output_nanos_per_mtok: 30000000000 },
-  ],
-  next_cursor: null,
-};
+import { catalogueModel, cataloguePage } from "./helpers-catalogue.ts";
+const ANTHROPIC_CONTEXT_TOKENS = 1_000_000;
+export const CATALOGUE_PAGE = cataloguePage([
+  catalogueModel("claude-opus-5", "anthropic", { context_cap_tokens: ANTHROPIC_CONTEXT_TOKENS }),
+  catalogueModel("gpt-5.6-sol", "openai", { context_cap_tokens: 1050000, output_nanos_per_mtok: "30000000000" }),
+]);
 
 export const WS_ID = "ws_custom_cred_test";
 export const SECRET_NAME = "vllm-gateway";
