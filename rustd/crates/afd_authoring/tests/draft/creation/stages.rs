@@ -97,7 +97,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
     let fleet = retained(&c, &key, request.clone()).await.id;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleets",
+        "fleet.fleets",
         "activate",
         fleet.as_str(),
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
@@ -146,7 +146,7 @@ async fn an_unsaved_receipt_answers_the_save_pending_and_the_same_key_accepts_th
     let fleet = retained(&c, &key, request.clone()).await.id;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleet_admissions",
+        "fleet.admissions",
         "receipt",
         fleet.as_str(),
         &format!("NEW.fleet_id='{fleet}'::uuid AND NEW.receipt IS NOT NULL"),
@@ -211,7 +211,7 @@ async fn a_refused_append_or_a_held_row_answers_pending_and_the_same_key_accepts
 /// The stream stage finished, then the fleet's stream key turned into a plain
 /// value: activation commits, and its append meets WRONGTYPE.
 async fn refuse_appends(c: &Case, fleet: &Uuid7) {
-    sqlx::query("UPDATE core.fleets SET setup_stream_ready=true WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET setup_stream_ready=true WHERE id=$1::uuid")
         .bind(fleet.as_str())
         .execute(&mut *c.base.connection().await)
         .await
@@ -234,7 +234,7 @@ async fn sibling_repair(c: &Case, fleet: &Uuid7) -> PgConnection {
         .expect("sibling connects");
     for step in [
         "BEGIN",
-        "SELECT id FROM core.fleet_admissions WHERE fleet_id=$1::uuid FOR UPDATE",
+        "SELECT id FROM fleet.admissions WHERE fleet_id=$1::uuid FOR UPDATE",
     ] {
         sqlx::query(step)
             .bind(fleet.as_str())

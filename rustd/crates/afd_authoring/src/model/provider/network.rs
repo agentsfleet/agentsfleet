@@ -3,7 +3,7 @@
 use super::{ProviderRequest, ProviderResponse, Transport, resolver::Guarded};
 use crate::{Result, error::ErrorKind};
 use afd_wire::authoring::ENVELOPE_BYTES_MAX;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 const ENDPOINT: &str = "https://api.openai.com/v1/responses";
 
@@ -19,13 +19,11 @@ impl Network {
     /// # Errors
     /// Reports a client/TLS initialization failure.
     pub fn new() -> Result<Self, reqwest::Error> {
-        let client = afd_identity::direct(Duration::from_millis(
-            super::super::budget::PROVIDER_TIMEOUT_MS.cast_unsigned(),
-        ))
-        .redirect(reqwest::redirect::Policy::none())
-        .retry(reqwest::retry::never())
-        .dns_resolver(Arc::new(Guarded))
-        .build()?;
+        let client = afd_identity::direct(super::super::budget::PROVIDER_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
+            .dns_resolver(Arc::new(Guarded))
+            .build()?;
         Ok(Self { client })
     }
 }
@@ -38,7 +36,7 @@ impl Transport for Network {
             .post(ENDPOINT)
             .bearer_auth(request.key.expose())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_millis(request.timeout_ms))
+            .timeout(request.timeout)
             .body(request.body)
             .send()
             .await?;

@@ -32,12 +32,12 @@ const DEAR_COST: &str = "9000";
 /// One reported millisecond of runtime at the runtime rate.
 const RUNTIME_DEBIT: i64 = 100;
 const OUTSTANDING: &str = "\
-INSERT INTO fleet.authoring_attempts(id,lease_id,runner_id,workspace_id,tenant_id,creator_id,
-draft_id,message_sequence,fence,deletion_generation,capability_hash,model_snapshot,status,
-lease_expires_at,deadline,reserved_nanos,settled_nanos,usage_unknown,calls,input_tokens,
-output_tokens,activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$1::uuid,1,1,0,$1,'{}',
-'awaiting_accounting',0,0,$6,0,true,0,0,0,0,$7,$7)";
+INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
+lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+reported_runtime_ms,last_activity_sequence,created_at,updated_at)
+VALUES($1::uuid,$1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$1::uuid,1,1,$1,'{}',
+'awaiting_accounting','epoch','epoch',$6,true,0,0,0,0,now(),now())";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -52,7 +52,6 @@ async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() 
         .bind(f.tenant.as_str())
         .bind(f.owner.as_str())
         .bind(PAST_HALF)
-        .bind(now().as_millis())
         .execute(&mut *f.connection().await)
         .await
         .expect("an unknown-usage liability that no longer holds a slot");
@@ -68,7 +67,7 @@ async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() 
         "owner_billing",
         "the overflow reads as the wallet refusal it is"
     );
-    sqlx::query("UPDATE fleet.authoring_attempts SET reserved_nanos=$2 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=$2 WHERE id=$1::uuid")
         .bind(outstanding.as_str())
         .bind(BELOW_HALF)
         .execute(&mut *f.connection().await)
@@ -87,7 +86,7 @@ async fn an_obligation_product_past_i64_refuses_admission_instead_of_wrapping() 
 async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_rates() {
     let f = funded(2).await;
     let dear = f.catalogue.get(1).expect("second owned model");
-    sqlx::query("UPDATE core.model_library SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_models SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE id=$1::uuid")
         .bind(dear.as_str()).bind(DEAR_INPUT).bind(DEAR_OUTPUT)
         .execute(&mut *f.connection().await).await.expect("the second model costs three times as much");
     let cheap = queue(&f, "Cheap turn").await;
@@ -182,15 +181,17 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
 }
 
 /// How far a turn is backdated so its attempt reads as already started.
-const AGE_MS: i64 = 1_000;
+const AGE: std::time::Duration = std::time::Duration::from_secs(1);
 
 async fn settle(f: &super::Fixture, lease: &Claimed) -> afd_wire::authoring::Reported {
-    sqlx::query("UPDATE fleet.authoring_attempts SET created_at=created_at-$2 WHERE id=$1::uuid")
-        .bind(lease.attempt_id.as_str())
-        .bind(AGE_MS)
-        .execute(&mut *f.connection().await)
-        .await
-        .expect("a second of elapsed runtime covers the reported millisecond");
+    sqlx::query(
+        "UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1::uuid",
+    )
+    .bind(lease.attempt_id.as_str())
+    .bind(AGE)
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("a second of elapsed runtime covers the reported millisecond");
     let report = Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
@@ -230,7 +231,7 @@ fn id(raw: &str) -> Uuid7 {
 }
 
 async fn fixture_balance(f: &super::Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .fetch_one(&mut *f.connection().await)
         .await

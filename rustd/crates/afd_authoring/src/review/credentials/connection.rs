@@ -6,13 +6,6 @@ use super::{
 };
 use afd_connector::{Provider, registry::Archetype};
 
-const CONNECTION: &str = "\
-WITH held AS MATERIALIZED (
- SELECT id,external_account_id,scopes FROM core.connector_installs
- WHERE workspace_id=$1::uuid AND provider=$2 AND external_account_id=$3 FOR SHARE)
-SELECT encode(sha256(convert_to(jsonb_agg(jsonb_build_array(id,external_account_id,scopes) ORDER BY id)::text,'UTF8')),'hex'),
-coalesce(bool_and(scopes @> $4::text[]),false) FROM held";
-
 pub(super) async fn observe(
     connection: &mut PgConnection,
     draft: &super::super::Context,
@@ -23,7 +16,7 @@ pub(super) async fn observe(
         return Ok(());
     };
     let (version, covered) = if let Some(id) = held.connection_id.as_deref() {
-        sqlx::query_as::<_, (Option<String>, bool)>(CONNECTION)
+        sqlx::query_as::<_, (Option<String>, bool)>(crate::review::sql::CONNECTION)
             .bind(draft.workspace_id.as_str())
             .bind(service)
             .bind(id)

@@ -9,8 +9,9 @@ use crate::{
     replay,
     types::{Candidate, PublishRevision, Published},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
 impl Setup {
@@ -25,7 +26,7 @@ impl Setup {
         expected: Option<&str>,
         operation: &Uuid7,
         request: PublishRevision,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Published> {
         let request = garde::Unvalidated::new(request).validate()?;
         let mut connection = self.drafts.database.acquire().await?;
@@ -58,16 +59,15 @@ impl Setup {
         let head = read::revision(&mut tx, &entry.id, &entry.head_revision_id).await?;
         let revision = self.drafts.mint(now)?;
         let receipt_id = self.drafts.mint(now)?;
-        let reservation = key.reservation(&receipt_id, access.workspace, &revision, now);
+        let reservation = key.reservation(&receipt_id, access.workspace, &revision);
         let fresh = replay::reserve(&mut tx, reservation).await?;
         let result = if fresh {
             let next = persist::NewRevision {
                 library: &entry.id,
-                public_id: library,
                 id: &revision,
                 number: head.revision + 1,
             };
-            advance(&mut tx, next, &draft.id, &candidate, now).await?;
+            advance(&mut tx, next, &draft.id, &candidate).await?;
             super::accepted(&mut tx, &person.owner, &revision).await?
         } else {
             key.replayed(&mut tx).await?
@@ -93,14 +93,12 @@ async fn advance(
     next: persist::NewRevision<'_>,
     draft: &Uuid7,
     candidate: &Candidate,
-    now: UnixMillis,
 ) -> Result<()> {
     let (library, revision) = (next.library, next.id);
-    persist::append(tx, next, draft, candidate, now).await?;
+    persist::append(tx, next, draft, candidate).await?;
     sqlx::query(sql::ADVANCE)
         .bind(library.as_str())
         .bind(revision.as_str())
-        .bind(now.as_millis())
         .execute(&mut *tx)
         .await
         .map_err(query(CONTEXT))?;

@@ -7,7 +7,7 @@ pub(crate) use patch::idle;
 pub(crate) mod read;
 
 use crate::{Result, error::raise::stored};
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::Analytics;
@@ -40,7 +40,7 @@ impl Drafts {
         Self { analytics, ..self }
     }
 
-    pub(crate) fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
+    pub(crate) fn mint(&self, now: jiff::Timestamp) -> Result<Uuid7> {
         Ok(self.entropy.uuid7(now)?)
     }
 }
@@ -51,4 +51,9 @@ pub(crate) fn etag(id: &Uuid7, version: i64) -> String {
 
 pub(crate) fn value<T: serde::de::DeserializeOwned>(value: &str) -> Result<T> {
     serde_json::from_str(value).map_err(stored)
+}
+
+/// A stored vocabulary word read as the enum that spells it.
+pub(crate) fn word<T: serde::de::DeserializeOwned>(word: &str) -> Result<T> {
+    serde_json::from_value(serde_json::Value::String(word.to_owned())).map_err(stored)
 }

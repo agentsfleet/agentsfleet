@@ -4,26 +4,24 @@ use super::{ACTIVE, CONTEXT, Creations, INSTALLING, progress, read, sql};
 use crate::{
     Access, Result, access,
     error::raise::query,
-    types::{CheckKind, CheckState},
+    types::{CheckKind, CheckState, DraftState},
 };
 use afd_approval::{Origin, Wanted};
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 use std::time::Duration;
 
 pub(super) const EXTERNAL_LIMIT: Duration = Duration::from_secs(5);
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
-const WALLET: &str =
-    "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid FOR UPDATE";
-const PRIVATE_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 impl Creations {
     pub(super) async fn advance(
         &self,
         access: Access<'_>,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await {
             Ok(result) => result,
@@ -39,7 +37,7 @@ impl Creations {
         &self,
         access: Access<'_>,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let (row, checked) = self.snapshot(access, fleet).await?;
         if row.status == ACTIVE {
@@ -88,11 +86,11 @@ impl Creations {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        self.activate(access, fleet, now).await?;
+        self.activate(access, fleet).await?;
         self.confirm_initial(access, fleet).await
     }
 
-    async fn activate(&self, access: Access<'_>, fleet: &Uuid7, now: UnixMillis) -> Result<()> {
+    async fn activate(&self, access: Access<'_>, fleet: &Uuid7) -> Result<()> {
         let (snapshot, _) = self.snapshot(access, fleet).await?;
         let key = super::start::key(fleet);
         let payload = super::start::payload(&snapshot.initial_start.choice)?;
@@ -102,7 +100,7 @@ impl Creations {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
-        sqlx::query_scalar::<_, i64>(WALLET)
+        sqlx::query_scalar::<_, i64>(sql::WALLET)
             .bind(person.owner.as_str())
             .fetch_optional(&mut *tx)
             .await
@@ -122,7 +120,6 @@ impl Creations {
             .bind(fleet.as_str())
             .bind(access.workspace.as_str())
             .bind(ACTIVE)
-            .bind(now.as_millis())
             .bind(INSTALLING)
             .bind(row.setup_version)
             .execute(&mut *tx)
@@ -135,12 +132,11 @@ impl Creations {
             .into());
         }
         super::start::store(&mut tx, access, fleet, &initial).await?;
-        sqlx::query(sql::CLOSE_DRAFT)
+        sqlx::query(sql::CLOSE_DRAFTS)
             .bind(fleet.as_str())
-            .bind("closed")
-            .bind(now.as_millis())
-            .bind(PRIVATE_RETENTION_MS)
-            .bind("saving")
+            .bind(DraftState::Closed.as_str())
+            .bind(super::PRIVATE_RETENTION)
+            .bind(DraftState::Saving.as_str())
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

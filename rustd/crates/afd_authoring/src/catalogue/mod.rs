@@ -10,7 +10,7 @@ use crate::{
     types::{ModelsQuery, Page, WorkspaceModel},
 };
 use afd_core::paging::Cursor;
-use afd_credential::provider::PLATFORM_MODEL_REF;
+use afd_credential::provider::{OPENAI_COMPATIBLE, PLATFORM_MODEL_REF};
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "list workspace owner's model choices";
@@ -39,15 +39,16 @@ impl Drafts {
             request.limit,
         ))?;
         let after = boundary(request.starting_after.as_deref(), &binding)?;
-        let rows: Vec<String> = sqlx::query_scalar(sql::PAGE)
+        let rows: Vec<project::Row> = sqlx::query_as(sql::PAGE)
             .bind(person.owner.as_str())
             .bind(PLATFORM_MODEL_REF)
             .bind(after)
             .bind(i64::from(request.limit) + 1)
+            .bind(OPENAI_COMPATIBLE)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let page = page(rows, &request, &binding)?;
+        let page = page(rows, &request, &binding);
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }
@@ -63,12 +64,11 @@ fn boundary(raw: Option<&str>, binding: &str) -> Result<Option<String>> {
     }
 }
 
-fn page(rows: Vec<String>, request: &ModelsQuery, binding: &str) -> Result<Page<WorkspaceModel>> {
+fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<WorkspaceModel> {
     let more = rows.len() > request.limit as usize;
     let mut items = Vec::new();
     let mut last = None;
-    for raw in rows.into_iter().take(request.limit as usize) {
-        let row = project::decode(&raw)?;
+    for row in rows.into_iter().take(request.limit as usize) {
         last = Some(
             Cursor::Text {
                 value: binding.to_owned(),
@@ -80,9 +80,9 @@ fn page(rows: Vec<String>, request: &ModelsQuery, binding: &str) -> Result<Page<
             items.push(item);
         }
     }
-    Ok(Page {
+    Page {
         items,
         total: None,
         next_cursor: if more { last } else { None },
-    })
+    }
 }

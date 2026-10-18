@@ -2,6 +2,7 @@
 
 mod attempts;
 mod privacy;
+mod sql;
 
 use crate::{Drafts, Result};
 

@@ -1,10 +1,7 @@
 //! Stop/deletion finish while the physical call waits; late usage creates no private copy.
 
 use super::{
-    super::{
-        attempt::Attempt,
-        fixture::{Fixture, now},
-    },
+    super::{attempt::Attempt, fixture::Fixture},
     fixture::{self, Provider},
 };
 use afd_authoring::types::Source;
@@ -63,7 +60,7 @@ async fn late_reply(delete: bool) {
             error_code::AUTHORING_FENCE
         }
     );
-    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL,usage->>'knowledge' FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid")
+    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
         .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("late accounting receipt");
     assert_eq!(saved, (true, "known".into()));
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
@@ -75,12 +72,12 @@ async fn late_reply(delete: bool) {
 async fn mutate(f: &Fixture, attempt: &Attempt, delete: bool) {
     if delete {
         f.drafts
-            .delete(f.access(), &attempt.draft.id, now())
+            .delete(f.access(), &attempt.draft.id)
             .await
             .expect("delete commits without provider locks");
     } else {
         f.drafts
-            .cancel(f.access(), &attempt.draft.id, 1, now())
+            .cancel(f.access(), &attempt.draft.id, 1)
             .await
             .expect("Stop commits without provider locks");
     }

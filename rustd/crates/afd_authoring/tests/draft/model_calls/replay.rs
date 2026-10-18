@@ -58,7 +58,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
 #[ignore = "requires live Postgres"]
 async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE core.model_library SET input_nanos_per_mtok=1,output_nanos_per_mtok=1 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_models SET input_nanos_per_mtok=1,output_nanos_per_mtok=1 WHERE id=$1::uuid")
         .bind(f.catalogue.first().expect("first owned model").as_str()).execute(&mut *f.connection().await).await.expect("fractional rate");
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
@@ -76,7 +76,7 @@ async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
             matches!(result.usage,ModelUsage::Known {provider_cost_nanos,..} if provider_cost_nanos=="2")
         );
     }
-    let cost: i64 = sqlx::query_scalar("SELECT sum((usage->>'provider_cost_nanos')::bigint)::bigint FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid")
+    let cost: i64 = sqlx::query_scalar("SELECT sum((usage->>'provider_cost_nanos')::bigint)::bigint FROM authoring.dispatches WHERE attempt_id=$1::uuid")
         .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("physical cost receipts");
     assert_eq!(cost, 4);
     assert_eq!(fixture::receipts(&f, &attempt).await, (2, 2, false));

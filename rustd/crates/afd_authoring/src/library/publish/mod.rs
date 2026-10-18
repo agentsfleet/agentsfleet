@@ -5,7 +5,7 @@ mod persist;
 mod platform;
 mod revision;
 
-use super::{CONTEXT, Entry, read};
+use super::{CONTEXT, Entry, read, sql};
 use crate::{
     Result,
     access::Person,
@@ -13,7 +13,7 @@ use crate::{
     replay,
     types::Published,
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use sqlx::PgConnection;
 
 async fn accepted(
@@ -21,13 +21,11 @@ async fn accepted(
     owner: &Uuid7,
     revision: &Uuid7,
 ) -> Result<Published> {
-    let library: Option<String> = sqlx::query_scalar(
-        "SELECT coalesce(l.platform_slug,l.id::text) FROM core.fleet_library_revisions r JOIN core.fleet_libraries l ON l.id=r.library_id WHERE r.id=$1::uuid",
-    )
-    .bind(revision.as_str())
-    .fetch_optional(&mut *connection)
-    .await
-    .map_err(query(CONTEXT))?;
+    let library: Option<String> = sqlx::query_scalar(sql::ACCEPTED)
+        .bind(revision.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
     let library = library.ok_or(ErrorKind::Gone)?;
     let entry = read::entry(connection, owner, &library, false).await?;
     Ok(project(&entry, revision))
@@ -87,7 +85,6 @@ impl Replay<'_> {
         receipt_id: &'r Uuid7,
         workspace: &'r Uuid7,
         resource: &'r Uuid7,
-        now: UnixMillis,
     ) -> replay::Reservation<'r> {
         replay::Reservation {
             receipt_id,
@@ -97,7 +94,6 @@ impl Replay<'_> {
             operation: self.operation,
             digest: self.digest,
             resource,
-            now,
         }
     }
 }

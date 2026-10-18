@@ -20,7 +20,7 @@ pub use review::{
     Action, ActionKind, Check, CheckKind, CheckState, Effective, Requirements, Review,
 };
 pub use revision::{AppliedRevision, ApplyRevision};
-pub(crate) use source::SourcePin;
+pub(crate) use source::{PinColumns, SourcePin};
 
 pub use input::{CreateDraft, DraftPatch, ListQuery, MessageQuery, SendMessage, Source};
 pub use library::{

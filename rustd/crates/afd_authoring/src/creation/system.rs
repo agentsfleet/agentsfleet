@@ -15,16 +15,13 @@ use crate::{
     review,
     types::{Candidate, Start},
 };
-use afd_core::{clock::UnixMillis, error_code, id::Uuid7};
+use afd_core::{error_code, id::Uuid7};
 use afd_fleet_runtime::{
     Definition,
     definition::{POLICY_SEMANTICS, canonical_digest},
 };
+use jiff::Timestamp;
 use sqlx::Connection as _;
-
-const TENANT: &str = "SELECT tenant_id::text FROM core.workspaces WHERE id=$1::uuid";
-const REMOVE: &str =
-    "DELETE FROM core.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid AND status=$3";
 
 /// One daemon-written fleet, before it exists.
 #[derive(Debug, Clone, Copy)]
@@ -43,20 +40,20 @@ impl Creations {
     /// the caller can decide whether that fleet is the one it meant. A stream
     /// that cannot be created removes the row again, so a retry starts clean.
     /// Datastore failures are preserved.
-    pub async fn materialise(&self, setup: SystemSetup<'_>, now: UnixMillis) -> Result<Uuid7> {
+    pub async fn materialise(&self, setup: SystemSetup<'_>, now: Timestamp) -> Result<Uuid7> {
         let id = self.reserve_system(setup, now).await?;
-        if let Err(unfinished) = self.open_system(setup.workspace, &id, now).await {
+        if let Err(unfinished) = self.open_system(setup.workspace, &id).await {
             self.remove_system(setup.workspace, &id).await;
             return Err(unfinished);
         }
         Ok(id)
     }
 
-    async fn reserve_system(&self, setup: SystemSetup<'_>, now: UnixMillis) -> Result<Uuid7> {
+    async fn reserve_system(&self, setup: SystemSetup<'_>, now: Timestamp) -> Result<Uuid7> {
         setup.definition.validate_for_save()?;
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let tenant: Option<String> = sqlx::query_scalar(TENANT)
+        let tenant: Option<String> = sqlx::query_scalar(sql::TENANT)
             .bind(setup.workspace.as_str())
             .fetch_optional(&mut *tx)
             .await
@@ -73,14 +70,13 @@ impl Creations {
             },
             context: review::Context::system(setup.workspace.clone(), tenant, name),
             draft: None,
-            library_revision: None,
         };
         let checked = review::build(
             &self.setup,
             &mut tx,
             &captured.context,
             &captured.candidate,
-            now.as_millis(),
+            now,
         )
         .await?;
         let id = self.setup.drafts.mint(now)?;
@@ -95,7 +91,7 @@ impl Creations {
     }
 
     /// The stream and the flip share one failure policy: both, or neither.
-    async fn open_system(&self, workspace: &Uuid7, id: &Uuid7, now: UnixMillis) -> Result<()> {
+    async fn open_system(&self, workspace: &Uuid7, id: &Uuid7) -> Result<()> {
         tokio::time::timeout(EXTERNAL_LIMIT, self.streams.ensure_group(id.as_str()))
             .await
             .map_err(|_elapsed| ErrorKind::RolledBack { source: None })?
@@ -115,7 +111,6 @@ impl Creations {
             .bind(id.as_str())
             .bind(workspace.as_str())
             .bind(ACTIVE)
-            .bind(now.as_millis())
             .bind(INSTALLING)
             .bind(INITIAL_VERSION)
             .execute(&mut *tx)
@@ -127,7 +122,7 @@ impl Creations {
     /// Best effort: the caller already holds the failure it reports.
     async fn remove_system(&self, workspace: &Uuid7, id: &Uuid7) {
         let removed = match self.setup.drafts.database.acquire().await {
-            Ok(mut connection) => sqlx::query(REMOVE)
+            Ok(mut connection) => sqlx::query(sql::REMOVE)
                 .bind(id.as_str())
                 .bind(workspace.as_str())
                 .bind(INSTALLING)

@@ -344,6 +344,8 @@ dependencies = [
  "const_format",
  "garde",
  "hex",
+ "jiff",
+ "jiff-sqlx",
  "reqwest",
  "serde",
  "serde_json",
@@ -354,6 +356,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

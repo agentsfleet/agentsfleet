@@ -36,7 +36,6 @@ struct Arguments {
 pub(in crate::model) struct Decoded {
     pub(in crate::model) result: Option<ModelCallResult>,
     pub(in crate::model) usage: ModelUsage,
-    pub(in crate::model) input: i64,
     pub(in crate::model) output: i64,
 }
 
@@ -74,7 +73,6 @@ pub(in crate::model) fn decode(
     Ok(Decoded {
         result,
         usage: known,
-        input: usage.input_tokens,
         output: usage.output_tokens,
     })
 }

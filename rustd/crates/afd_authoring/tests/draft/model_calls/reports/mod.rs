@@ -5,11 +5,7 @@ mod replay;
 mod uncertainty;
 mod validation;
 
-use super::super::{
-    attempt::Attempt,
-    fixture::{Fixture, now},
-    mint,
-};
+use super::super::{attempt::Attempt, fixture::Fixture, mint};
 use super::fixture;
 use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 
@@ -45,7 +41,7 @@ fn accounting(request: &Report) -> Report {
 }
 
 async fn balance(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .fetch_one(&mut *f.connection().await)
         .await
@@ -56,7 +52,7 @@ async fn counts(f: &Fixture, a: &Attempt) -> (i64, i64, i64) {
     sqlx::query_as(
         "SELECT (SELECT count(*) FROM billing.authoring_settlements WHERE attempt_id=$1::uuid), \
         (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1::uuid), \
-        (SELECT count(*) FROM core.authoring_answer_receipts WHERE attempt_id=$1::uuid)",
+        (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1::uuid)",
     )
     .bind(a.id.as_str())
     .fetch_one(&mut *f.connection().await)

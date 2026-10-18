@@ -44,7 +44,7 @@ async fn stop_cutoff_preserves_new_messages_and_exact_operation_replay() {
         .expect("queue second request");
     let stopped = f
         .drafts
-        .cancel(f.access(), id, 1, now())
+        .cancel(f.access(), id, 1)
         .await
         .expect("stop through first request");
     assert_eq!(stopped.cancelled_through, "1");
@@ -133,7 +133,7 @@ async fn assert_replay(f: &Fixture, id: &afd_core::id::Uuid7, operation: afd_cor
 async fn assert_cutoff_bounds(f: &Fixture, id: &afd_core::id::Uuid7) {
     assert_eq!(
         f.drafts
-            .cancel(f.access(), id, 3, now())
+            .cancel(f.access(), id, 3)
             .await
             .expect_err("Stop cannot cancel a future sequence")
             .code(),
@@ -141,7 +141,7 @@ async fn assert_cutoff_bounds(f: &Fixture, id: &afd_core::id::Uuid7) {
     );
     assert!(
         f.drafts
-            .cancel(f.access(), id, 0, now())
+            .cancel(f.access(), id, 0)
             .await
             .expect("old Stop retry")
             .stopped

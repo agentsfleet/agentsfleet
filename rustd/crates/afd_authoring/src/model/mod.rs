@@ -2,7 +2,7 @@
 
 use crate::{Result, error::ErrorKind};
 use afd_core::id::Uuid7;
-use afd_credential::provider::RegisteredModel;
+use afd_credential::provider::{PLATFORM_MODEL_REF, RegisteredModel};
 use afd_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 use sqlx::PgConnection;
 
@@ -23,6 +23,32 @@ pub type ModelCallInput = afd_wire::authoring::ModelCall<Definition, ConfigOp, I
 pub type ModelCallResult = afd_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
 
 const OPENAI: &str = "openai";
+
+/// The `authoring.dispatches.status` words, and the knowledge word a receipt's
+/// usage carries when its provider figures are authoritative.
+pub(crate) mod dispatch_status {
+    /// Intent recorded; no provider answer yet.
+    pub(crate) const PENDING: &str = "pending";
+    /// The physical request's outcome cannot be known.
+    pub(crate) const UNKNOWN: &str = "unknown";
+    /// A decoded provider result.
+    pub(crate) const COMPLETED: &str = "completed";
+    /// The provider answered with a failure and known usage.
+    pub(crate) const FAILED: &str = "failed";
+    /// `usage->>'knowledge'` of a receipt with authoritative figures.
+    pub(crate) const KNOWN: &str = "known";
+}
+
+/// The `tenant_model_id` a model reference is stored as: NULL names the
+/// platform default, any other reference is the tenant model's own id.
+pub(crate) fn tenant_model(reference: &str) -> Option<&str> {
+    (reference != PLATFORM_MODEL_REF).then_some(reference)
+}
+
+/// The model reference a stored `tenant_model_id` spells.
+pub(crate) fn reference(tenant_model: Option<String>) -> String {
+    tenant_model.unwrap_or_else(|| PLATFORM_MODEL_REF.to_owned())
+}
 
 pub(crate) async fn selected(
     connection: &mut PgConnection,

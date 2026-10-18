@@ -25,7 +25,7 @@ async fn joined_creator_reviews_owner_model_and_loses_access_after_revocation() 
         .await
         .expect_err("owner cannot read member's private draft");
     assert_eq!(foreign.code(), AUTHORING_NOT_FOUND);
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(f.member.as_str())
         .execute(&mut *f.connection().await)

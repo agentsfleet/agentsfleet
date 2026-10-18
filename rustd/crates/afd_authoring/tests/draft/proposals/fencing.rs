@@ -1,6 +1,6 @@
 //! Revocation and fences precede every mutation and receipt replay.
 
-use super::{Attempt, Fixture, Source, mint, now};
+use super::{Attempt, Fixture, Source, mint};
 use afd_core::error_code::{AUTHORING_FENCE, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
@@ -10,7 +10,7 @@ async fn foreign_forged_and_expired_attempts_cannot_publish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     refuse_foreign_and_forged(&f, &a, &request).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -39,7 +39,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         .await
         .expect("initial proposal");
     f.drafts
-        .cancel(f.access(), &a.draft.id, 1, now())
+        .cancel(f.access(), &a.draft.id, 1)
         .await
         .expect("Stop wins");
     assert_eq!(
@@ -51,7 +51,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         AUTHORING_FENCE
     );
     f.drafts
-        .delete(f.access(), &a.draft.id, now())
+        .delete(f.access(), &a.draft.id)
         .await
         .expect("private deletion");
     assert_eq!(
@@ -99,7 +99,7 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
         .activity(&f.runner, &a.lease, request.clone())
         .await
         .expect("member proposal");
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(f.member.as_str())
         .execute(&mut *f.connection().await)

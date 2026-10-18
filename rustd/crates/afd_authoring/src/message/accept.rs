@@ -1,21 +1,28 @@
 //! Acceptance pins sequence/model once and checks replay before current state.
 
 use crate::{
-    Access, Drafts, Result, access,
+    Access, Drafts, Result,
+    access::{self, Person},
     draft::read,
     error::{
         ErrorKind,
         raise::{invalid, query},
     },
-    replay, sql,
+    model, replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
-use sqlx::{Connection as _, PgConnection, Row as _};
+use jiff::Timestamp;
+use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "accept private draft message";
 const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
+
+/// The receipt scope a draft's message retry keys are filed under.
+pub(crate) fn scope(workspace: &Uuid7, draft: &Uuid7) -> String {
+    format!("{workspace}:draft:{draft}:message")
+}
 
 impl Drafts {
     /// Accepts one request without promising a runner, balance or model result.
@@ -28,7 +35,7 @@ impl Drafts {
         access: Access<'_>,
         id: &Uuid7,
         request: SendMessage,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Accepted> {
         let request = garde::Unvalidated::new(request).validate()?;
         let text = super::normalize(&request.message);
@@ -37,46 +44,44 @@ impl Drafts {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let draft = read::lock(&mut tx, access, &person, id).await?;
-        let prior = sqlx::query(sql::message::REPLAY)
-            .bind(id.as_str())
-            .bind(request.operation_id.as_str())
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        let accepted = if let Some(row) = prior {
-            let stored: String = row.try_get(1).map_err(query(CONTEXT))?;
-            if stored != digest {
-                return Err(ErrorKind::Replay.into());
-            }
+        let scope = scope(access.workspace, id);
+        let prior =
+            replay::find(&mut tx, &scope, &request.operation_id, &person.id, &digest).await?;
+        let accepted = if let Some(message) = prior {
+            let sequence: Option<i64> = sqlx::query_scalar(sql::message::SEQUENCE)
+                .bind(message.as_str())
+                .bind(id.as_str())
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(query(CONTEXT))?;
             Accepted {
                 status: super::ACCEPTED,
-                sequence: row
-                    .try_get::<i64, _>(0)
-                    .map_err(query(CONTEXT))?
-                    .to_string(),
+                sequence: sequence.ok_or(ErrorKind::Gone)?.to_string(),
                 replayed: true,
             }
         } else {
-            if draft.state != DraftState::Editing {
+            if draft.status != DraftState::Editing {
                 return Err(ErrorKind::State {
-                    current: draft.state.as_str(),
+                    current: draft.status.as_str(),
                 }
                 .into());
             }
             let sequence = draft
-                .last_sequence
+                .last_message_sequence
                 .checked_add(1)
                 .ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
             insert(
                 &mut tx,
                 Insertion {
                     id: &self.mint(now)?,
+                    receipt: &self.mint(now)?,
+                    workspace: access.workspace,
+                    person: &person,
                     draft: id,
                     sequence,
                     operation: &request.operation_id,
                     text: &text,
                     model: &draft.authoring_model_ref,
-                    now,
                 },
             )
             .await?;
@@ -98,41 +103,51 @@ impl Drafts {
 
 pub(crate) struct Insertion<'a> {
     pub(crate) id: &'a Uuid7,
+    /// The message's retry receipt.
+    pub(crate) receipt: &'a Uuid7,
+    pub(crate) workspace: &'a Uuid7,
+    pub(crate) person: &'a Person,
     pub(crate) draft: &'a Uuid7,
     pub(crate) sequence: i64,
     pub(crate) operation: &'a Uuid7,
     pub(crate) text: &'a str,
     pub(crate) model: &'a str,
-    pub(crate) now: UnixMillis,
 }
 
+/// Writes the message, files its retry key and advances the draft's sequence.
+///
+/// The caller holds the draft lock, so no concurrent request files the same
+/// key: a reservation that loses is a replay the caller already missed.
 pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'_>) -> Result<()> {
-    let Insertion {
-        id,
-        draft,
-        sequence,
-        operation,
-        text,
-        model,
-        now,
-    } = insertion;
     sqlx::query(sql::message::INSERT)
-        .bind(id.as_str())
-        .bind(draft.as_str())
-        .bind(sequence)
-        .bind(operation.as_str())
-        .bind(replay::digest(&text)?)
-        .bind(model)
+        .bind(insertion.id.as_str())
+        .bind(insertion.draft.as_str())
+        .bind(insertion.sequence)
         .bind(QUEUED)
-        .bind(text)
-        .bind(now.as_millis())
+        .bind(model::tenant_model(insertion.model))
+        .bind(insertion.text)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
+    let reserved = replay::reserve(
+        &mut *connection,
+        replay::Reservation {
+            receipt_id: insertion.receipt,
+            workspace: insertion.workspace,
+            person: insertion.person,
+            scope: &scope(insertion.workspace, insertion.draft),
+            operation: insertion.operation,
+            digest: &replay::digest(&insertion.text)?,
+            resource: insertion.id,
+        },
+    )
+    .await?;
+    if !reserved {
+        return Err(ErrorKind::Replay.into());
+    }
     sqlx::query(sql::message::ADVANCE)
-        .bind(draft.as_str())
-        .bind(sequence)
-        .bind(now.as_millis())
+        .bind(insertion.draft.as_str())
+        .bind(insertion.sequence)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

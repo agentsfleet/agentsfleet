@@ -15,9 +15,6 @@ use crate::{
 };
 
 const CONTEXT: &str = "observe reviewed integration access";
-const GRANT: &str =
-    "SELECT status FROM core.integration_grants WHERE fleet_id=$1::uuid AND service=$2 FOR SHARE";
-
 pub(super) async fn observe(
     setup: &Setup,
     connection: &mut PgConnection,
@@ -82,7 +79,7 @@ async fn grant(
     service: &str,
     observed: &mut Observed,
 ) -> Result<()> {
-    let status: Option<String> = sqlx::query_scalar(GRANT)
+    let status: Option<String> = sqlx::query_scalar(crate::review::sql::GRANT)
         .bind(
             draft
                 .linked_fleet_id

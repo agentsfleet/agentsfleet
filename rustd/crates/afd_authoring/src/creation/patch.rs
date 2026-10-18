@@ -1,7 +1,7 @@
 //! Strong tags serialize status changes, setup retries and cancellation.
 
 use super::{
-    ACTIVE, CONTEXT, Creations, INSTALLING, KILLED, SavedFleet, etag, read, stored::Stored,
+    ACTIVE, CONTEXT, Creations, INSTALLING, KILLED, SavedFleet, etag, read, sql, stored::Stored,
 };
 use crate::{
     Access, Result, access,
@@ -9,14 +9,12 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
+    types::DraftState,
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
-
-const UPDATE: &str = "UPDATE core.fleets SET status=$3,name=$4,resource_version=resource_version+1,updated_at=$5 WHERE id=$1::uuid AND workspace_id=$2::uuid";
-const RESTORE: &str = "UPDATE core.authoring_drafts SET state=$2,linked_fleet_id=NULL,closed_at=NULL,expires_at=NULL,resource_version=resource_version+1,updated_at=$3 WHERE linked_fleet_id=$1::uuid AND state=$4";
-const PENDING_NAME: &str = "UPDATE core.fleets SET setup_context=jsonb_set(setup_context,'{context,instance_name}',to_jsonb($2::text)) WHERE id=$1::uuid";
 
 impl Creations {
     /// Changes name/status or explicitly resumes a retained setup under its current tag.
@@ -31,7 +29,7 @@ impl Creations {
         expected: Option<&str>,
         status: Option<&str>,
         name: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<SavedFleet> {
         if status.is_none() && name.is_none() {
             return Err(invalid("A name or status is required"));
@@ -57,26 +55,17 @@ impl Creations {
             } else {
                 requested
             };
-            sqlx::query(UPDATE)
+            sqlx::query(sql::UPDATE)
                 .bind(fleet.as_str())
                 .bind(access.workspace.as_str())
                 .bind(written)
                 .bind(name.unwrap_or(&row.name))
-                .bind(now.as_millis())
-                .execute(&mut *tx)
-                .await
-                .map_err(query(CONTEXT))?;
-        }
-        if row.status == INSTALLING && name.is_some_and(|name| name != row.name) {
-            sqlx::query(PENDING_NAME)
-                .bind(fleet.as_str())
-                .bind(name)
                 .execute(&mut *tx)
                 .await
                 .map_err(query(CONTEXT))?;
         }
         if requested == KILLED {
-            self.cancel(&mut tx, fleet, now).await?;
+            self.cancel(&mut tx, fleet).await?;
         }
         tx.commit().await.map_err(query(CONTEXT))?;
         // Killing an installing fleet cancels its setup; a live fleet's setup
@@ -93,18 +82,12 @@ impl Creations {
         self.read(access, fleet).await
     }
 
-    async fn cancel(
-        &self,
-        connection: &mut PgConnection,
-        fleet: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<()> {
-        self.grants.cancel_setup_on(connection, fleet, now).await?;
-        sqlx::query(RESTORE)
+    async fn cancel(&self, connection: &mut PgConnection, fleet: &Uuid7) -> Result<()> {
+        self.grants.cancel_setup_on(connection, fleet).await?;
+        sqlx::query(sql::RESTORE)
             .bind(fleet.as_str())
-            .bind("editing")
-            .bind(now.as_millis())
-            .bind("saving")
+            .bind(DraftState::Editing.as_str())
+            .bind(DraftState::Saving.as_str())
             .execute(connection)
             .await
             .map_err(query(CONTEXT))?;

@@ -31,7 +31,7 @@ async fn malformed_proposal_keeps_known_usage_and_replays_a_provider_failure() {
     }
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     let knowledge: String = sqlx::query_scalar(
-        "SELECT usage->>'knowledge' FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid",
+        "SELECT usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid",
     )
     .bind(attempt.id.as_str())
     .fetch_one(&mut *f.connection().await)

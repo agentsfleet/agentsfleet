@@ -44,7 +44,7 @@ async fn settled(
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))?;
-    let state: Outcome = draft::value(&raw)?;
+    let state: Outcome = draft::word(&raw)?;
     Ok(Reported {
         settled: true,
         state,

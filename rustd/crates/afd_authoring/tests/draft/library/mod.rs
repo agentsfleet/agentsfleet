@@ -2,6 +2,7 @@
 
 mod authority;
 mod funnel;
+mod listing;
 mod publication;
 mod revisions;
 
@@ -81,9 +82,9 @@ impl Case {
     }
 
     async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM core.fleet_libraries WHERE tenant_id=$1::uuid),
-        (SELECT count(*) FROM core.fleet_library_revisions r JOIN core.fleet_libraries l ON l.id=r.library_id WHERE l.tenant_id=$1::uuid),
-        (SELECT count(*) FROM core.fleets WHERE tenant_id=$1::uuid)")
+        sqlx::query_as("SELECT (SELECT count(*) FROM authoring.library_entries WHERE tenant_id=$1::uuid),
+        (SELECT count(*) FROM authoring.library_revisions r JOIN authoring.library_entries l ON l.id=r.library_entry_id WHERE l.tenant_id=$1::uuid),
+        (SELECT count(*) FROM fleet.fleets WHERE tenant_id=$1::uuid)")
             .bind(self.base.tenant.as_str()).fetch_one(&mut *self.base.connection().await).await.expect("owned counts")
     }
 }

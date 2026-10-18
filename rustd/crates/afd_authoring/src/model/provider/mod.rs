@@ -6,6 +6,8 @@ mod request;
 mod resolver;
 mod response;
 
+use std::time::Duration;
+
 use crate::Result;
 use afd_crypto::secret::SecretString;
 
@@ -32,7 +34,7 @@ pub(super) use response::{Decoded, decode};
 pub struct ProviderRequest {
     pub(super) key: SecretString,
     pub(super) body: Vec<u8>,
-    pub(super) timeout_ms: u64,
+    pub(super) timeout: Duration,
 }
 
 impl ProviderRequest {
@@ -46,7 +48,7 @@ impl ProviderRequest {
 impl std::fmt::Debug for ProviderRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProviderRequest")
-            .field("timeout_ms", &self.timeout_ms)
+            .field("timeout", &self.timeout)
             .finish_non_exhaustive()
     }
 }

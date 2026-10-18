@@ -11,11 +11,15 @@ use crate::{
         raise::{query, stored},
     },
     replay, review,
-    types::{InitialStart, SaveFleet, Start},
+    types::{DraftState, InitialStart, SaveFleet, Start},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
+
+/// Capability tags a new fleet needs before any runner may place it: none.
+const NO_TAGS: &[&str] = &[];
 
 /// The instance a new fleet row is written as: its slug and initial start.
 pub(super) struct Instance<'a> {
@@ -34,7 +38,7 @@ impl Creations {
         access: Access<'_>,
         operation: &Uuid7,
         request: SaveFleet,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<SavedFleet> {
         let request = garde::Unvalidated::new(request).validate()?;
         afd_fleet_runtime::FleetName::parse(&request.name)?;
@@ -48,7 +52,7 @@ impl Creations {
         access: Access<'_>,
         operation: &Uuid7,
         request: &garde::Valid<SaveFleet>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Uuid7> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
@@ -80,7 +84,6 @@ impl Creations {
                 operation,
                 digest: &digest,
                 resource: &id,
-                now,
             },
         )
         .await?;
@@ -109,7 +112,7 @@ impl Creations {
         connection: &mut PgConnection,
         captured: &mut Captured,
         request: &garde::Valid<SaveFleet>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<crate::types::Review> {
         if let Some(draft) = &captured.draft {
             crate::draft::idle(connection, draft).await?;
@@ -121,7 +124,7 @@ impl Creations {
             connection,
             &captured.context,
             &captured.candidate,
-            now.as_millis(),
+            now,
         )
         .await?;
         checked.require_digest(&request.review_digest)?;
@@ -139,17 +142,18 @@ impl Creations {
         captured: &Captured,
         instance: Instance<'_>,
         checked: &crate::types::Review,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
-        insert_fleet(connection, id, captured, &instance, checked, now).await?;
-        self.insert_revision(
-            connection,
-            id,
-            captured,
-            checked.effective.runtime_model_ref.as_deref(),
-            now,
-        )
-        .await?;
+        let revision = self.setup.drafts.mint(now)?;
+        insert_fleet(connection, id, &revision, captured, &instance).await?;
+        let accepted = Accepted::from_review(captured, checked);
+        let head = Head {
+            id: &revision,
+            number: INITIAL_VERSION,
+            accepted: &accepted,
+            model: checked.effective.runtime_model_ref.as_deref(),
+        };
+        insert_revision(connection, id, &captured.candidate.definition, head).await?;
         self.replace_schedules(
             connection,
             &captured.context.workspace_id,
@@ -163,45 +167,46 @@ impl Creations {
             sqlx::query(sql::LINK)
                 .bind(draft.id.as_str())
                 .bind(id.as_str())
-                .bind("saving")
-                .bind(now.as_millis())
+                .bind(DraftState::Saving.as_str())
                 .execute(connection)
                 .await
                 .map_err(query(CONTEXT))?;
         }
         Ok(())
     }
+}
 
-    async fn insert_revision(
-        &self,
-        connection: &mut PgConnection,
-        fleet: &Uuid7,
-        captured: &Captured,
-        model: Option<&str>,
-        now: UnixMillis,
-    ) -> Result<()> {
-        let revision = self.setup.drafts.mint(now)?;
-        sqlx::query(sql::REVISION)
-            .bind(revision.as_str())
-            .bind(fleet.as_str())
-            .bind(INITIAL_VERSION)
-            .bind(serde_json::to_string(&captured.candidate.definition).map_err(stored)?)
-            .bind(&captured.candidate.canonical_digest)
-            .bind(&captured.candidate.policy_semantics)
-            .bind(captured.library_revision.as_ref().map(Uuid7::as_str))
-            .bind(now.as_millis())
-            .bind(model)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        sqlx::query(sql::SELECT_REVISION)
-            .bind(fleet.as_str())
-            .bind(revision.as_str())
-            .execute(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        Ok(())
-    }
+/// One immutable revision: which it is, the setup it accepted and the model
+/// review settled on.
+pub(super) struct Head<'a> {
+    pub(super) id: &'a Uuid7,
+    pub(super) number: i64,
+    pub(super) accepted: &'a Accepted,
+    pub(super) model: Option<&'a str>,
+}
+
+/// Writes `head` for `fleet`, with its definition.
+pub(super) async fn insert_revision(
+    connection: &mut PgConnection,
+    fleet: &Uuid7,
+    definition: &afd_fleet_runtime::Definition,
+    head: Head<'_>,
+) -> Result<()> {
+    sqlx::query(sql::REVISION)
+        .bind(head.id.as_str())
+        .bind(fleet.as_str())
+        .bind(head.number)
+        .bind(serde_json::to_string(definition).map_err(stored)?)
+        .bind(&head.accepted.canonical_digest)
+        .bind(&head.accepted.policy_semantics)
+        .bind(head.model)
+        .bind(&head.accepted.review_digest)
+        .bind(head.accepted.frozen()?)
+        .bind(head.accepted.candidate_id.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(())
 }
 
 /// The fleet row itself, `INSTALLING` under the accepted review. A name another
@@ -209,32 +214,20 @@ impl Creations {
 async fn insert_fleet(
     connection: &mut PgConnection,
     id: &Uuid7,
+    head: &Uuid7,
     captured: &Captured,
     instance: &Instance<'_>,
-    checked: &crate::types::Review,
-    now: UnixMillis,
 ) -> Result<()> {
-    let definition = &captured.candidate.definition;
-    let accepted = Accepted {
-        context: captured.context.clone(),
-        candidate_id: captured.candidate.id.clone(),
-        candidate_revision: captured.candidate.revision.clone(),
-        canonical_digest: captured.candidate.canonical_digest.clone(),
-        policy_semantics: captured.candidate.policy_semantics.clone(),
-        review_digest: checked.review_digest.clone(),
-    };
     sqlx::query(sql::INSERT)
         .bind(id.as_str())
         .bind(captured.context.workspace_id.as_str())
         .bind(captured.context.tenant_id.as_str())
         .bind(instance.name)
-        .bind(serde_json::to_string(definition.config()).map_err(stored)?)
         .bind(INSTALLING)
-        .bind(now.as_millis())
-        .bind(INITIAL_VERSION)
-        .bind(serde_json::to_string(&accepted).map_err(stored)?)
+        .bind(head.as_str())
+        .bind(NO_TAGS)
         .bind(serde_json::to_string(&InitialStart::new(instance.start.clone())).map_err(stored)?)
-        .bind(&checked.effective.runtime_model_ref)
+        .bind(INITIAL_VERSION)
         .execute(&mut *connection)
         .await
         .map_err(|source| {

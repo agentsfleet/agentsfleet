@@ -14,7 +14,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
         .create(f.access(), request.clone(), now())
         .await
         .expect("create");
-    sqlx::query("UPDATE core.authoring_drafts SET state='closed',expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
         .bind(created.draft.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -60,7 +60,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
 async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE core.authoring_drafts SET state='closed',expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.draft.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -70,7 +70,7 @@ async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry
         .await
         .expect("live lease blocks physical purge");
     assert_eq!(f.counts().await, (1, 0, 1));
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -81,7 +81,7 @@ async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry
         .expect("purge after live boundary");
     assert_eq!(f.counts().await, (0, 0, 0));
     let obligations: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.authoring_attempts WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid")
             .bind(a.id.as_str())
             .fetch_one(&mut *f.connection().await)
             .await

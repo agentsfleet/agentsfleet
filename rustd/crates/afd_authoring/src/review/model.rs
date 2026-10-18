@@ -12,13 +12,6 @@ use crate::{
 };
 
 const CONTEXT: &str = "resolve reviewed runtime selection";
-const DEFAULT: &str = "\
-SELECT CASE WHEN s.mode='self_managed' THEN (
- SELECT e.id::text FROM core.tenant_model_entries e
- WHERE e.tenant_id=$1::uuid AND e.model_id=s.model AND e.secret_ref=s.secret_ref
- ORDER BY e.id LIMIT 1) ELSE $2::text END
-FROM (SELECT) seed LEFT JOIN core.tenant_model_selection s ON s.tenant_id=$1::uuid";
-
 pub(super) async fn observe(
     connection: &mut PgConnection,
     draft: &super::Context,
@@ -27,7 +20,7 @@ pub(super) async fn observe(
 ) -> Result<Option<String>> {
     let reference = match candidate.definition.runtime().model() {
         Some(reference) => Some(reference.to_owned()),
-        None => sqlx::query_scalar(DEFAULT)
+        None => sqlx::query_scalar(super::sql::DEFAULT_MODEL)
             .bind(draft.tenant_id.as_str())
             .bind(PLATFORM_MODEL_REF)
             .fetch_one(&mut *connection)

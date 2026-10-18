@@ -34,7 +34,7 @@ pub(super) async fn read(
     selected: &Selected,
     model: &RegisteredModel,
 ) -> Result<Context> {
-    let candidate = match &selected.draft.current_candidate_id {
+    let candidate = match &selected.draft.head_candidate_id {
         Some(id) => Some(candidate::read(connection, &selected.draft.id, id).await?),
         None => None,
     };

@@ -124,12 +124,12 @@ async fn should_report_a_stopped_message_finished_once_however_often_stop_retrie
     let draft = created.draft.id;
     for _ in 0..2 {
         f.drafts
-            .cancel(f.access(), &draft, 1, now())
+            .cancel(f.access(), &draft, 1)
             .await
             .expect("Stop commits");
     }
     f.drafts
-        .cancel(f.access(), &draft, 2, now())
+        .cancel(f.access(), &draft, 2)
         .await
         .expect_err("a future cutoff is refused");
     let finished = only(f.reported(FINISHED), "the retried Stop moved nothing");
@@ -156,7 +156,7 @@ async fn should_answer_the_same_when_the_analytics_endpoint_is_unreachable() {
         ("1", false)
     );
     let stopped = drafts
-        .cancel(f.access(), &created.draft.id, 1, now())
+        .cancel(f.access(), &created.draft.id, 1)
         .await
         .expect("Stop does not wait on analytics");
     assert_eq!(stopped.stopped.len(), 1);

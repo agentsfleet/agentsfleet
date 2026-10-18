@@ -40,7 +40,7 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
     assert_eq!(text.text.as_deref(), Some("A retained private answer.\n"));
     changed_answer_refuses(&f, &a, &request).await;
     f.drafts
-        .delete(f.access(), &a.draft.id, super::now())
+        .delete(f.access(), &a.draft.id)
         .await
         .expect("private purge");
     let replay = f
@@ -63,7 +63,7 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
     let _calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
     let request = accounting(&report());
     f.drafts
-        .delete(f.access(), &a.draft.id, super::now())
+        .delete(f.access(), &a.draft.id)
         .await
         .expect("delete before first report");
     let before = balance(&f).await;
@@ -158,12 +158,12 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
 /// passed its private retention, so maintenance owns both.
 async fn expire_without_a_report(f: &Fixture, a: &Attempt) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *connection)
         .await
         .expect("the lease lapses");
-    sqlx::query("UPDATE core.authoring_drafts SET state='closed',expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.draft.id.as_str())
         .execute(&mut *connection)
         .await
@@ -171,7 +171,7 @@ async fn expire_without_a_report(f: &Fixture, a: &Attempt) {
 }
 
 async fn attempt_status(f: &Fixture, a: &Attempt) -> String {
-    sqlx::query_scalar("SELECT status FROM fleet.authoring_attempts WHERE id=$1::uuid")
+    sqlx::query_scalar("SELECT status FROM authoring.attempts WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .fetch_one(&mut *f.connection().await)
         .await

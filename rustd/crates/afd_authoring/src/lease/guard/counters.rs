@@ -5,6 +5,12 @@ use crate::{Result, error::raise::invalid, lease::ActivityInput};
 
 const COUNTER: &str = "Authoring counters must be canonical nonnegative decimal integers";
 
+/// Every draft's private deletion generation.
+///
+/// Nothing ever advanced it, so the schema keeps no column for it; the runner
+/// protocol still carries it, and a lease that echoes anything else is stale.
+pub(crate) const DELETION_GENERATION: i64 = 0;
+
 pub(crate) struct Counters {
     pub(super) fence: i64,
     pub(super) generation: i64,
@@ -43,7 +49,7 @@ impl Counters {
     }
 
     pub(super) fn binds(&self, attempt: &Attempt) -> bool {
-        self.fence == attempt.fence && self.generation == attempt.deletion_generation
+        self.fence == attempt.fencing_token && self.generation == DELETION_GENERATION
     }
 
     pub(crate) fn parse(request: &garde::Valid<ActivityInput>) -> Result<Self> {
