@@ -29,7 +29,7 @@
 //! can forget.
 
 use afd_core::id::Uuid7;
-use sqlx::{Acquire as _, Row as _, Transaction};
+use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{ErrorKind, Result, query, still_referenced};
 use crate::secret::SecretName;
@@ -150,14 +150,12 @@ async fn owning_tenant(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
     workspace: &Uuid7,
 ) -> Result<String> {
-    sqlx::query(sql::OWNING_TENANT)
+    sqlx::query_scalar(sql::OWNING_TENANT)
         .bind(workspace.as_str())
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_DELETE))?
-        .ok_or_else(|| crate::Error::from(ErrorKind::WorkspaceUnknown))?
-        .try_get(0)
-        .map_err(query(CONTEXT_DELETE))
+        .ok_or_else(|| crate::Error::from(ErrorKind::WorkspaceUnknown))
 }
 
 async fn reference_count(

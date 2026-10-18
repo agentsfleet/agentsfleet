@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use backon::{ConstantBuilder, RetryableWithContext as _};
 use sqlx::pool::PoolConnection;
-use sqlx::{Executor as _, Postgres, Row as _};
+use sqlx::{Executor as _, Postgres};
 
 use afd_core::error_code;
 
@@ -184,12 +184,10 @@ impl MigrationLock {
 
 /// One poll for the lock on `connection`.
 async fn try_lock(connection: &mut PoolConnection<Postgres>) -> Result<(), Unheld> {
-    let acquired: bool = sqlx::query(TRY_LOCK)
+    let acquired: bool = sqlx::query_scalar(TRY_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
-        .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?
-        .try_get(0)
         .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?;
     if acquired {
         Ok(())
@@ -223,11 +221,9 @@ fn exhausted(policy: RetryPolicy) -> Error {
 /// # Errors
 /// Returns a query error when the probe statement fails.
 pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Result<bool> {
-    sqlx::query(PROBE_LOCK)
+    sqlx::query_scalar(PROBE_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
-        .map_err(|source| query(OP_PROBE, source))?
-        .try_get(0)
         .map_err(|source| query(OP_PROBE, source))
 }

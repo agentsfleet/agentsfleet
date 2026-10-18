@@ -16,7 +16,6 @@ use std::collections::BTreeSet;
 
 use afd_core::error_code;
 use sqlx::Postgres;
-use sqlx::Row as _;
 use sqlx::migrate::MigrateError;
 use sqlx::pool::PoolConnection;
 
@@ -152,14 +151,12 @@ async fn applied_versions(connection: &mut PoolConnection<Postgres>) -> Result<B
     if !exists {
         return Ok(BTreeSet::new());
     }
-    sqlx::query(READ_LEDGER)
+    Ok(sqlx::query_scalar::<_, i64>(READ_LEDGER)
         .fetch_all(&mut **connection)
         .await
         .map_err(|source| query(OP_READ_LEDGER, source))?
-        .iter()
-        .map(|row| row.try_get::<i64, _>(0))
-        .collect::<Result<BTreeSet<i64>, _>>()
-        .map_err(|source| query(OP_READ_LEDGER, source))
+        .into_iter()
+        .collect())
 }
 
 /// Names what sqlx refused, logged once where it is raised.
