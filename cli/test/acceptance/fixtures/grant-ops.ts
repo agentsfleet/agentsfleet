@@ -84,7 +84,7 @@ export interface GrantRow {
 export interface GateRow {
   readonly gate_id: string;
   readonly fleet_id: string;
-  readonly gate_kind: string;
+  readonly gate_type: string;
   readonly status: string;
   readonly proposed_action: string;
   readonly resolved_by: string;
@@ -154,7 +154,7 @@ export async function pendingGateFor(
 ): Promise<GateRow | null> {
   const query = new URLSearchParams({
     fleet_id: fleetId,
-    gate_kind: KIND_INTEGRATION_GRANT,
+    gate_type: KIND_INTEGRATION_GRANT,
     status: GATE_STATUS.pending,
   });
   const items = await approvals(ctx, query.toString());

@@ -78,7 +78,7 @@ export const RUNNER = {
   id: "01J2WQ8F3K7VZ9XB4N6MTYD5AR",
   host_id: "runner-prod-ams-01.internal",
   sandbox_tier: "landlock_full",
-  admin_state: "active",
+  status: "active",
   liveness: "busy",
   labels: ["gpu"],
   last_seen_at: 10,

@@ -77,16 +77,16 @@ function idleLineFor(runner: RunnerListItem): string {
 
 export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
   "use memo";
-  const awake = runnerIsAwake(runner.admin_state, runner.liveness);
+  const awake = runnerIsAwake(runner.status, runner.liveness);
   const workLine = useWorkLine(runner);
   return (
     <Card asChild className="group min-h-52 p-xl transition-colors duration-snap hover:border-border-strong motion-reduce:transition-none">
       <Link href={runnerPath(runner.id)}
         className="flex flex-col gap-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${OPEN_RUNNER_LABEL}: ${runner.host_id} — ${runner.admin_state} ${runner.liveness}`}>
+        aria-label={`${OPEN_RUNNER_LABEL}: ${runner.host_id} — ${runner.status} ${runner.liveness}`}>
         <div className="flex flex-wrap items-center justify-between gap-md">
           <ServerGlyph awake={awake} />
-          <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+          <RunnerStatus adminState={runner.status} liveness={runner.liveness} />
         </div>
         <div className="min-w-0">
           <h3 className="truncate font-sans text-body-lg font-semibold">{runner.host_id}</h3>

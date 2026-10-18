@@ -101,8 +101,8 @@ pub struct RunnerAdminPatchResponse<'a> {
     /// The runner that changed.
     #[serde(borrow)]
     pub id: Cow<'a, str>,
-    /// Its state after the change.
-    pub admin_state: AdminState,
+    /// Its operator state after the change.
+    pub status: AdminState,
     /// The assignment as stored, on the policy-update path.
     #[serde(borrow)]
     pub assigned_policy: Option<AssignedPolicy<'a>>,

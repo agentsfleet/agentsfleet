@@ -150,7 +150,7 @@ describe("createRunner", () => {
 
 describe("updateRunnerAdminState", () => {
   it("PATCHes the operator-plane runner action body", async () => {
-    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "cordoned" });
+    requestMock.mockResolvedValueOnce({ id: "runner-1", status: "cordoned" });
     await updateRunnerAdminState("tok", "runner-1", "cordon");
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
@@ -169,7 +169,7 @@ describe("updateRunner", () => {
       worker_count: 2,
       extra_binds: [],
     };
-    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "active", assigned_policy });
+    requestMock.mockResolvedValueOnce({ id: "runner-1", status: "active", assigned_policy });
     await updateRunner("tok", "runner-1", { assigned_policy, labels: ["gpu", "us-east"] });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",

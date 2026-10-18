@@ -222,7 +222,7 @@ export const RUNNER_ADMIN_ACTION = {
 
 export type RunnerAdminAction = (typeof RUNNER_ADMIN_ACTION)[keyof typeof RUNNER_ADMIN_ACTION];
 
-// The subset that moves `admin_state`. `self_test` records a request and moves
+// The subset that moves `status`. `self_test` records a request and moves
 // nothing, so the transition map and `actionsFor` key on THIS narrower type —
 // same reasoning that keeps Delete out of ACTION_CONFIG. Widening the map to
 // every wire verb would make a transition table answer for a non-transition.

@@ -59,7 +59,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: RUNNER_ID,
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "busy",
     labels: [],
     last_seen_at: Date.now(),
@@ -88,7 +88,7 @@ describe("RunnerHeader self-test control", () => {
   it("test_selftest_control_requests_and_reflects_pending", async () => {
     requestRunnerSelftestActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { id: RUNNER_ID, admin_state: "active", selftest_requested_at: Date.now() },
+      data: { id: RUNNER_ID, status: "active", selftest_requested_at: Date.now() },
     });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
@@ -122,7 +122,7 @@ describe("RunnerHeader self-test control", () => {
       .mockResolvedValueOnce({ ok: false, errorCode: "UZ-RUN-018", error: "Runner is offline" })
       .mockResolvedValueOnce({
         ok: true,
-        data: { id: RUNNER_ID, admin_state: "active", selftest_requested_at: Date.now() },
+        data: { id: RUNNER_ID, status: "active", selftest_requested_at: Date.now() },
       });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
@@ -152,7 +152,7 @@ describe("RunnerHeader self-test control", () => {
   it("offers no self-test on a revoked runner — it will never heartbeat again to answer", () => {
     render(
       <RunnerHeader
-        runner={detail({ admin_state: "revoked", liveness: "offline" })}
+        runner={detail({ status: "revoked", liveness: "offline" })}
         grafanaHref={null}
         canWrite
       />,

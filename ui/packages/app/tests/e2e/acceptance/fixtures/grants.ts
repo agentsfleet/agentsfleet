@@ -116,7 +116,7 @@ export async function listGatesForFleet(
   workspaceId: string,
   fleetId: string,
 ): Promise<ApprovalGate[]> {
-  const query = new URLSearchParams({ fleet_id: fleetId, gate_kind: KIND_INTEGRATION_GRANT });
+  const query = new URLSearchParams({ fleet_id: fleetId, gate_type: KIND_INTEGRATION_GRANT });
   const page = await clientFor(handle).get<ApprovalsListResponse>(
     `${APPROVALS_PATH(workspaceId)}?${query.toString()}`,
   );

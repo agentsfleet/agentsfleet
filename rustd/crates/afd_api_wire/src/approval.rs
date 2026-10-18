@@ -98,7 +98,7 @@ pub struct ApprovalSummary<'a> {
     /// The verb it wants.
     pub action_name: Cow<'a, str>,
     /// Which family of gate this is.
-    pub gate_kind: Cow<'a, str>,
+    pub gate_type: Cow<'a, str>,
     /// What the fleet proposes, in a person's words.
     pub proposed_action: Cow<'a, str>,
     /// How far the consequences reach.
@@ -112,10 +112,10 @@ pub struct ApprovalSummary<'a> {
     pub created_at: jiff::Timestamp,
     /// When it stops waiting.
     #[serde(with = "afd_wire::instant")]
-    pub timeout_at: jiff::Timestamp,
+    pub expires_at: jiff::Timestamp,
     /// When it was resolved, or `null` while pending.
     #[serde(with = "afd_wire::instant::option", default)]
-    pub updated_at: Option<jiff::Timestamp>,
+    pub resolved_at: Option<jiff::Timestamp>,
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
     /// That person's display name, empty when this deployment holds no user

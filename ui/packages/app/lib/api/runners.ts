@@ -56,7 +56,7 @@ export interface RunnerListItem {
   id: string;
   host_id: string;
   sandbox_tier: SandboxTier;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
   liveness: RunnerLiveness;
   labels: string[];
   last_seen_at: number;
@@ -170,7 +170,7 @@ export interface CreatedRunner {
 
 export interface RunnerAdminStateUpdate {
   id: string;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
 }
 
 /** The self-test PATCH reply: the recorded REQUEST, never a verdict. The daemon
@@ -178,7 +178,7 @@ export interface RunnerAdminStateUpdate {
  * shows pending and ages it from `selftest_requested_at`. */
 export interface RunnerSelftestRequest {
   id: string;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
   selftest_requested_at: number;
 }
 
@@ -191,7 +191,7 @@ export type RunnerEdit = (
 /** Fields not requested by this edit are returned as null. */
 export interface RunnerEditResponse {
   id: string;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
   assigned_policy: AssignedPolicy | null;
   labels: string[] | null;
   selftest_requested_at: number | null;

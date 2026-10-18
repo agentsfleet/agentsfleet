@@ -43,7 +43,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: "runner-1",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "online",
     labels: [],
     last_seen_at: 1_760_000_000_000,

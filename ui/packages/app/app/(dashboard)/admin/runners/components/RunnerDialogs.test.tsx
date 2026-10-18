@@ -10,7 +10,7 @@ const RUNNER: RunnerListItem = {
   id: "r-dialog-1",
   host_id: "host-1",
   sandbox_tier: "landlock_full",
-  admin_state: "active",
+  status: "active",
   liveness: "online",
   labels: [],
   last_seen_at: 0,

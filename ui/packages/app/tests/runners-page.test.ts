@@ -96,7 +96,7 @@ describe("admin/runners page", () => {
           id: "a",
           host_id: "web-prod-1",
           sandbox_tier: "landlock_full",
-          admin_state: "active",
+          status: "active",
           liveness: "registered",
           labels: [],
           last_seen_at: 0,
