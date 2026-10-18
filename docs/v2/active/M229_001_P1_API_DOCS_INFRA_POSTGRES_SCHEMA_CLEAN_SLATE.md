@@ -211,13 +211,13 @@ Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed
 | 13 | Add a New fleet action to the empty workspace library. | `4662cda2a`. |
 | 14 | Show the full Secrets search focus border on the first click. | `492e115f6`: shared inset focus ring and focus border; browser regression written. |
 | 15 | Use the agent callsign across recents, fleets, leases, and billing; billing shows only the callsign. | Pending. |
-| 16 | Make the credit balance stand out with a contrasting accent. | Pending. |
+| 16 | Make the credit balance stand out with a contrasting accent. | `492e115f6`: information-blue balance treatment and stronger amount. |
 | 17 | Improve Platform menu icons, alignment, and active destinations. | Implemented: shared menu navigation, consistent icons, active destination, keyboard focus tests. |
 | 18 | Improve Settings menu icons, alignment, and active destinations. | Implemented through the same menu navigation and destination tests. |
 | 19 | Remove repeated Encrypted and hidden rows; emphasize Encrypted in the Secrets subtitle. | `492e115f6`: shared subtitle with emphasized Encrypted; repeated row text removed. |
-| 20a | Standardize runner Activity headings: Activity, Details, and Created. | Pending. Created records the activity time. |
-| 20b | Show descriptive runner activities for both existing and future rows. | Investigating recorded fields and typed presentation. |
-| 20c | Explain activity details without repeating the activity timestamp. | Pending. |
+| 20a | Standardize runner Activity headings: Activity, Details, and Occurred. | Implemented. Occurred names the recorded activity time, preserving its API meaning. |
+| 20b | Show descriptive runner activities for both existing and future rows. | Implemented: one typed formatter reads recorded facts, including access-token changes. |
+| 20c | Explain activity details without repeating the activity timestamp. | Implemented: descriptive details, current metadata keys, one timestamp column, regression tests written. |
 | 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | Investigating; live failure cause unconfirmed. |
 | 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | Implemented: one-line description, Fleet setups heading, workspace action, empty-state regression. |
 
