@@ -200,7 +200,7 @@ pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
 /// One column of the scenario runner's lifetime counters, as text.
 pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid"
+        "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1::uuid"
     ));
     let mut connection = run
         .booted
@@ -208,12 +208,11 @@ pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<Strin
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(statement)
+    sqlx::query_scalar(statement)
         .bind(run.runner_id.as_str())
         .fetch_optional(&mut *connection)
         .await
         .expect("the counter read must run")
-        .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 
 /// How many lease rows this scenario's runner holds on the fleet under test,

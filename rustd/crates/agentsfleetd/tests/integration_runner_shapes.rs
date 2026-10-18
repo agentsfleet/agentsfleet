@@ -34,33 +34,31 @@ use crate::wire::{
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
 ///
-/// `messages_posted` joined the list at schema/929. It is `NOT NULL DEFAULT 0`,
-/// so every lease carries it from the moment it is written, and the messages
-/// verb counts against it under the lease's fence.
+/// `posted_message_count` is `NOT NULL`, so every lease carries it from the
+/// moment it is written, and the messages verb counts against it under the
+/// lease's fence. The lease names its event by row id (`fleet_event_id`); the
+/// actor and type are read from the event, not copied onto the lease.
 const LEASE_SHAPE: &[&str] = &[
     "id",
     "runner_id",
     "fleet_id",
     "workspace_id",
     "tenant_id",
-    "event_id",
-    "actor",
-    "event_type",
+    "fleet_event_id",
     "event_created_at",
+    "receipt",
     "posture",
     "provider",
     "model",
-    "metered_input_tokens",
-    "metered_cached_tokens",
-    "metered_output_tokens",
-    "last_metered_at",
+    "metered_input_token_count",
+    "metered_cached_token_count",
+    "metered_output_token_count",
     "fencing_token",
     "lease_expires_at",
     "status",
+    "posted_message_count",
     "created_at",
     "updated_at",
-    "receipt",
-    "messages_posted",
 ];
 
 /// The columns the narrative log's rows carry.
@@ -97,21 +95,20 @@ const LEDGER_SHAPE: &[&str] = &[
 
 /// The columns one captured memory entry carries.
 ///
-/// No `workspace_id`, and the table has none: memory is scoped to a FLEET, and
-/// `(key, fleet_id)` is both the upsert's conflict target and the fleet's own
-/// overwrite mechanism. The write is authorised by a lease whose workspace the
-/// capture verb cross-checks, so the scope is enforced on the way in rather
-/// than denormalised onto every row.
+/// Memory is scoped to a FLEET: `(fleet_id, key)` is both the upsert's conflict
+/// target and the fleet's own overwrite mechanism. `workspace_id` rides along
+/// so a workspace-visible entry is readable by its siblings, and the capture
+/// verb cross-checks it against the lease that authorised the write.
 const MEMORY_SHAPE: &[&str] = &[
     "id",
+    "fleet_id",
+    "workspace_id",
     "key",
     "content",
     "category",
-    "fleet_id",
+    "workspace_visible",
     "created_at",
     "updated_at",
-    "workspace_id",
-    "workspace_visible",
 ];
 
 /// Dimension 7.2 — four tables, one scenario, four recorded shapes.
@@ -169,7 +166,7 @@ async fn test_seeded_row_shapes() {
 
     assert_shape(
         &run,
-        "fleet.runner_leases",
+        "runner.leases",
         "id = $1::uuid",
         &lease_id,
         LEASE_SHAPE,
@@ -177,7 +174,7 @@ async fn test_seeded_row_shapes() {
     .await;
     assert_shape(
         &run,
-        "fleet.runner_events",
+        "runner.events",
         "runner_id = $1::uuid",
         run.runner_id.as_str(),
         EVENT_SHAPE,
@@ -193,7 +190,7 @@ async fn test_seeded_row_shapes() {
     .await;
     assert_shape(
         &run,
-        "memory.memory_entries",
+        "memory.entries",
         "fleet_id = $1::uuid",
         &run.fleet,
         MEMORY_SHAPE,

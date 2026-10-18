@@ -130,8 +130,8 @@ impl Fixture {
 
     async fn assert_replaced(&self, first: &str, replacement: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let rows: Vec<(String, Option<i64>)> = sqlx::query_as(
-            "SELECT id::text, revoked_at FROM identity.cli_credentials \
+        let rows: Vec<(String, bool)> = sqlx::query_as(
+            "SELECT id::text, revoked_at IS NOT NULL FROM identity.cli_credentials \
              WHERE user_id = $1::uuid AND machine_name = $2 ORDER BY created_at, id",
         )
         .bind(&self.user)
@@ -142,13 +142,12 @@ impl Fixture {
 
         assert_eq!(rows.len(), 2, "one replacement retains one audit row");
         assert!(
-            rows.iter()
-                .any(|(id, revoked)| id == first && revoked.is_some()),
+            rows.iter().any(|(id, revoked)| id == first && *revoked),
             "the first credential is revoked atomically"
         );
         assert!(
             rows.iter()
-                .any(|(id, revoked)| id == replacement && revoked.is_none()),
+                .any(|(id, revoked)| id == replacement && !*revoked),
             "the replacement is the sole live credential"
         );
     }

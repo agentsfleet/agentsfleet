@@ -247,7 +247,7 @@ async fn a_report_settles_once_across_both_stores(
         "with no ledger row behind it either"
     );
     assert_eq!(
-        counter_column(run, "succeeded").await.as_deref(),
+        counter_column(run, "succeeded_count").await.as_deref(),
         Some("1"),
         "and the lifetime tally counts one completed run, not two"
     );

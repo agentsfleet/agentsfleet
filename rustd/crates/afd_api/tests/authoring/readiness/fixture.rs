@@ -134,6 +134,10 @@ pub(super) fn check(review: &Value, kind: &str, subject: &str, state: &str) {
         .find(|check| check["kind"] == kind && check["subject"] == subject)
         .unwrap_or_else(|| panic!("missing {kind}/{subject} check: {review}"));
     assert_eq!(found["state"], state, "{kind}/{subject}");
-    assert!(found["observed_at"].is_number());
+    assert!(
+        found["observed_at"]
+            .as_str()
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok())
+    );
     assert!(!review.to_string().contains(super::TOKEN));
 }

@@ -70,8 +70,8 @@ async fn test_invite_email_carries_accept_link() {
     assert!(
         created
             .get("email_sent_at")
-            .and_then(Value::as_i64)
-            .is_some()
+            .and_then(Value::as_str)
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok())
     );
 
     let found = mailpit_search_to(&address).await;

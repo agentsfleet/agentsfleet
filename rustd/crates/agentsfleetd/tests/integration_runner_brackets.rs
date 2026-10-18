@@ -64,7 +64,9 @@ async fn test_bracket_frames_open_and_close_a_run() {
     assert!(field(&opened, "actor").is_string());
     assert!(field(&opened, "event_type").is_string());
     assert!(
-        field(&opened, "created_at").is_i64(),
+        field(&opened, "created_at")
+            .as_str()
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
         "the row's own instant, so a client never stamps it with its clock"
     );
 

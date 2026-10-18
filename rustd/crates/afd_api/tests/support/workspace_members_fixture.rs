@@ -111,7 +111,7 @@ impl Members {
         .expect("John's fleet seeds");
         sqlx::query(
             "INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now())",
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '1970-01-01T00:00:00.002Z')",
         )
         .bind(mint_id())
         .bind(&self.john.tenant)

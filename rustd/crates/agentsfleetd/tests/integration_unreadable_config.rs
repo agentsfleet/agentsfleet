@@ -120,7 +120,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     .await;
     assert!(refused, "the unreadable fleet's own event is ended");
     assert_eq!(
-        event_column_of(&run, &poisoned, &poisoned_event, "failure_label").await,
+        event_column_of(&run, &poisoned, &poisoned_event, "failure_reason").await,
         Some(CONFIG_UNREADABLE.to_owned()),
         "and the row names the document rather than the runner or the money"
     );

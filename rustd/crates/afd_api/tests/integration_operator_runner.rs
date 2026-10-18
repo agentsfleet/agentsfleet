@@ -133,7 +133,8 @@ async fn assert_runner_policy_and_actions(router: &axum::Router, token: &str, pa
         json_body(selftest)
             .await
             .get("selftest_requested_at")
-            .is_some_and(Value::is_number)
+            .and_then(Value::as_str)
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok())
     );
 
     let rotated = patch(router, token, path, r#"{"action":"rotate"}"#).await;
