@@ -16,7 +16,6 @@ use afd_authoring::{
 };
 use afd_core::id::Uuid7;
 use afd_dragonfly::{FleetStreams, fleet_stream_key};
-use sqlx::{Connection as _, PgConnection};
 
 /// The initial run each case asks for, so a repeated stage would show as a
 /// second admission.
@@ -192,13 +191,10 @@ async fn a_refused_append_or_a_held_row_answers_pending_and_the_same_key_accepts
         .forget(fleet.as_str())
         .await
         .expect("the queue recovers");
-    let mut sibling = sibling_repair(&c, &fleet).await;
+    sibling_claim(&c, &fleet, SIBLING_HOLDS).await;
     let held = c.save(&key, request.clone()).await;
     assert_eq!(pending_event(&held), event, "a held row stays pending");
-    sqlx::query("COMMIT")
-        .execute(&mut sibling)
-        .await
-        .expect("the sibling finishes");
+    sibling_claim(&c, &fleet, SIBLING_RELEASES).await;
     assert_eq!(accepted(&c.save(&key, request).await), event);
     assert_eq!(c.stream_events(&fleet).await, std::slice::from_ref(&event));
     let rows = c.admissions(&fleet).await;
@@ -228,21 +224,22 @@ async fn refuse_appends(c: &Case, fleet: &Uuid7) {
         .expect("occupy the stream key");
 }
 
-/// A sibling repair holding the fleet's admission row, as the replay sweep
-/// does while it confirms that row.
-async fn sibling_repair(c: &Case, fleet: &Uuid7) -> PgConnection {
-    let mut sibling = PgConnection::connect(&c.base.owner_url())
+/// A sibling repair's claim on the fleet's admission row, as a replay pass or
+/// another confirmation stamps it while it appends that row. Held, a
+/// confirmation answers pending; released, the next one appends the row.
+async fn sibling_claim(c: &Case, fleet: &Uuid7, stamp: &'static str) {
+    sqlx::query(stamp)
+        .bind(fleet.as_str())
+        .execute(&mut *c.base.connection().await)
         .await
-        .expect("sibling connects");
-    for step in [
-        "BEGIN",
-        "SELECT id FROM fleet.admissions WHERE fleet_id=$1::uuid FOR UPDATE",
-    ] {
-        sqlx::query(step)
-            .bind(fleet.as_str())
-            .execute(&mut sibling)
-            .await
-            .expect("hold the admission row");
-    }
-    sibling
+        .expect("the sibling's claim is written");
 }
+
+/// A sibling's claim, an hour out: longer than this test runs.
+const SIBLING_HOLDS: &str = "UPDATE fleet.admissions \
+     SET replay_claim_expires_at = statement_timestamp() + interval '1 hour' \
+     WHERE fleet_id = $1::uuid";
+
+/// The sibling finishing without a receipt: its claim is released.
+const SIBLING_RELEASES: &str =
+    "UPDATE fleet.admissions SET replay_claim_expires_at = NULL WHERE fleet_id = $1::uuid";
