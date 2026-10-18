@@ -135,6 +135,17 @@ impl Lane {
 
     /// Writes one charge row against the seeded fleet, answering its id.
     pub(crate) async fn charge(&self, stage: Stage<'_>) -> Uuid7 {
+        let mut connection = self.pool.acquire().await.expect("the lane answers");
+        self.charge_on(&mut *connection, stage).await
+    }
+
+    /// [`Self::charge`], written on `executor` — inside a caller's
+    /// transaction, so a later read in it sees the row.
+    pub(crate) async fn charge_on<'e>(
+        &self,
+        executor: impl sqlx::PgExecutor<'e>,
+        stage: Stage<'_>,
+    ) -> Uuid7 {
         let id = mint_uuid7();
         sqlx::query(INSERT_CHARGE)
             .bind(id.as_str())
@@ -149,7 +160,7 @@ impl Lane {
             .bind(stage.nanos)
             .bind(stage.created_at.to_sqlx())
             .bind(stage.updated_at.to_sqlx())
-            .execute(&mut *self.pool.acquire().await.expect("the lane answers"))
+            .execute(executor)
             .await
             .expect("writing a charge row");
         id

@@ -60,11 +60,21 @@ pub const SELECT_WALLET: &str = include_str!("select_wallet.sql");
 /// reachable divide: reaching the fraction arm implies `created_at < floor <=
 /// updated_at`, which makes the divisor strictly positive.
 ///
+/// Both floors open from `now()`, the transaction's timestamp: the rolling
+/// day is `now() - $3` with `$3` a whole day as a microsecond interval (so a
+/// daylight-saving change in the session's zone cannot stretch it), cut to the
+/// millisecond the `TIMESTAMPTZ(3)` charge columns hold — `now()` carries
+/// microseconds, and an uncut floor would drop a charge stamped at it — and the
+/// month is `date_trunc('month', now(), 'UTC')`. One instant feeds both, so the
+/// day window can never open after the month window it is nested in, and a
+/// caller holding a transaction measures against the same instant its other
+/// statements see.
+///
 /// The two arms are spelled out rather than factored into a helper. This is a
 /// money path, and the SQL a reader sees here is the SQL that runs.
 ///
-/// `$1` workspace, `$2` fleet, `$3` day floor, `$4` month floor, `$5` and `$6`
-/// the two charge types counted.
+/// `$1` workspace, `$2` fleet, `$3` the rolling day's span, `$4` and `$5` the
+/// two charge types counted.
 pub const SELECT_BUDGET_DRAIN: &str = include_str!("select_budget_drain.sql");
 
 /// Record one charge.

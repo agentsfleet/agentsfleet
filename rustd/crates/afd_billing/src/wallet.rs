@@ -19,8 +19,8 @@
 
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
+use sqlx::FromRow;
 use sqlx::postgres::PgRow;
-use sqlx::{FromRow, Row as _};
 
 use crate::Nanos;
 use crate::error::{Result, query, row_malformed};
@@ -45,11 +45,9 @@ const COLUMN_TENANT_ID: &str = "tenant_id";
 /// [`Accounts::wallet`] and the billing page through
 /// [`crate::tenant::Billing::snapshot`], over the same statement.
 ///
-/// A `FromRow` rather than three `try_get` calls at the call site: it folds
-/// every column read into the one failure sqlx already reports for the query,
-/// so the caller has a single error path and it is one a test can reach by
-/// cutting the connection. Written by hand because `exhausted_at` is nullable,
-/// and `#[sqlx(try_from)]` has no form for an optional bridged type.
+/// Decoded through [`WalletRow`], so every column read folds into the one
+/// failure sqlx already reports for the query: the caller has a single error
+/// path, and it is one a test can reach by cutting the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Wallet {
     /// What is left to spend.
@@ -65,16 +63,26 @@ pub struct Wallet {
     pub updated_at: Timestamp,
 }
 
+/// The `billing.wallets` row as its columns spell it.
+///
+/// `exhausted_at` is nullable, and `#[sqlx(try_from)]` has no form for an
+/// optional bridged type, so it decodes as the bridge type itself and becomes a
+/// jiff instant in [`Wallet::from_row`].
+#[derive(FromRow)]
+struct WalletRow {
+    balance_nanos: i64,
+    exhausted_at: Option<jiff_sqlx::Timestamp>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+}
+
 impl FromRow<'_, PgRow> for Wallet {
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
+        let stored = WalletRow::from_row(row)?;
         Ok(Self {
-            balance: Nanos::from_i64(row.try_get("balance_nanos")?),
-            exhausted_at: row
-                .try_get::<Option<jiff_sqlx::Timestamp>, _>("exhausted_at")?
-                .map(jiff_sqlx::Timestamp::to_jiff),
-            updated_at: row
-                .try_get::<jiff_sqlx::Timestamp, _>("updated_at")?
-                .to_jiff(),
+            balance: Nanos::from_i64(stored.balance_nanos),
+            exhausted_at: stored.exhausted_at.map(jiff_sqlx::Timestamp::to_jiff),
+            updated_at: stored.updated_at,
         })
     }
 }
