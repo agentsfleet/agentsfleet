@@ -63,7 +63,7 @@ fn version(accepted: &Value) -> (String, String) {
 }
 
 fn edit(base: &str, revision: &str, end: usize, text: &str, activity: u32) -> String {
-    json!({"fence":"1","deletion_generation":"0","sequence":"1",
+    json!({"fence":"1","sequence":"1",
         "activity_sequence":activity.to_string(),
         "event":{"kind":"proposal","proposal":{"kind":"edit",
             "base_candidate_id":base,"base_candidate_revision":revision,"config_ops":[],

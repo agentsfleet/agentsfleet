@@ -17,7 +17,7 @@ async fn changed_authenticated_metadata_is_removed_without_opening_an_answer() {
     let path = fixture.directory.join(files::META);
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    metadata["metadata"]["generation"] = "2".into();
+    metadata["metadata"]["report_id"] = "019a0000-0000-7000-8000-000000000999".into();
     std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
     fixture.spool.sweep().await.unwrap();
     let loaded = fixture.read().await;

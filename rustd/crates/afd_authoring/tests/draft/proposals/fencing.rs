@@ -75,19 +75,16 @@ async fn refuse_foreign_and_forged(f: &Fixture, a: &Attempt, request: &super::Ac
             .code(),
         AUTHORING_NOT_FOUND
     );
-    for (fence, generation) in [("2", "0"), ("1", "1")] {
-        let mut forged = request.clone();
-        forged.fence = fence.into();
-        forged.deletion_generation = generation.into();
-        assert_eq!(
-            f.drafts
-                .activity(&f.runner, &a.lease, forged)
-                .await
-                .expect_err("forged fence")
-                .code(),
-            AUTHORING_FENCE
-        );
-    }
+    let mut forged = request.clone();
+    forged.fence = "2".into();
+    assert_eq!(
+        f.drafts
+            .activity(&f.runner, &a.lease, forged)
+            .await
+            .expect_err("forged fence")
+            .code(),
+        AUTHORING_FENCE
+    );
 }
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

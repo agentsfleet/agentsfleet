@@ -81,7 +81,6 @@ fn report() -> Report {
     Report::Terminal {
         accounting: Accounting {
             fence: "1".to_owned(),
-            deletion_generation: "1".to_owned(),
             report_id: REPORT.to_owned(),
             outcome: Outcome::Completed,
             failure_reason: None,

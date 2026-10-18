@@ -5,64 +5,51 @@ use crate::{Result, error::raise::invalid, lease::ActivityInput};
 
 const COUNTER: &str = "Authoring counters must be canonical nonnegative decimal integers";
 
-/// Every draft's private deletion generation.
+/// Every draft's private deletion generation, as the draft stream reports it.
 ///
-/// Nothing ever advanced it, so the schema keeps no column for it; the runner
-/// protocol still carries it, and a lease that echoes anything else is stale.
+/// Nothing ever advanced it, so the schema keeps no column for it and the
+/// runner protocol no longer carries it; only the observation stream still
+/// names it.
 pub(crate) const DELETION_GENERATION: i64 = 0;
 
 pub(crate) struct Counters {
     pub(super) fence: i64,
-    pub(super) generation: i64,
     pub(super) sequence: Option<i64>,
     pub(crate) activity: i64,
 }
 
 impl Counters {
     pub(crate) fn renew(request: &garde::Valid<afd_wire::authoring::Renew>) -> Result<Self> {
-        Self::lease(&request.fence, &request.deletion_generation)
+        Self::lease(&request.fence)
     }
 
     pub(crate) fn report(request: &garde::Valid<afd_wire::authoring::Report>) -> Result<Self> {
-        let accounting = request.accounting();
-        Self::lease(&accounting.fence, &accounting.deletion_generation)
+        Self::lease(&request.accounting().fence)
     }
 
-    fn lease(fence: &str, generation: &str) -> Result<Self> {
-        let parse = |raw: &str| {
-            let value = raw.parse::<i64>().map_err(|_overflow| invalid(COUNTER))?;
-            if value < 0 || value.to_string() != raw {
-                return Err(invalid(COUNTER));
-            }
-            Ok(value)
-        };
-        let fence = parse(fence)?;
+    pub(crate) fn model_call(request: &garde::Valid<crate::model::ModelCallInput>) -> Result<Self> {
+        Self::lease(&request.fence)
+    }
+
+    fn lease(fence: &str) -> Result<Self> {
+        let fence = counter(fence)?;
         if fence == 0 {
             return Err(invalid(COUNTER));
         }
         Ok(Self {
             fence,
-            generation: parse(generation)?,
             sequence: None,
             activity: 0,
         })
     }
 
     pub(super) fn binds(&self, attempt: &Attempt) -> bool {
-        self.fence == attempt.fencing_token && self.generation == DELETION_GENERATION
+        self.fence == attempt.fencing_token
     }
 
     pub(crate) fn parse(request: &garde::Valid<ActivityInput>) -> Result<Self> {
-        let counter = |raw: &str| {
-            let value = raw.parse::<i64>().map_err(|_overflow| invalid(COUNTER))?;
-            if value < 0 || value.to_string() != raw {
-                return Err(invalid(COUNTER));
-            }
-            Ok(value)
-        };
         let counters = Self {
             fence: counter(&request.fence)?,
-            generation: counter(&request.deletion_generation)?,
             sequence: Some(counter(&request.sequence)?),
             activity: counter(&request.activity_sequence)?,
         };
@@ -71,24 +58,13 @@ impl Counters {
         }
         Ok(counters)
     }
+}
 
-    pub(crate) fn model_call(request: &garde::Valid<crate::model::ModelCallInput>) -> Result<Self> {
-        let parse = |raw: &str| {
-            let value = raw.parse::<i64>().map_err(|_overflow| invalid(COUNTER))?;
-            if value < 0 || value.to_string() != raw {
-                return Err(invalid(COUNTER));
-            }
-            Ok(value)
-        };
-        let fence = parse(&request.fence)?;
-        if fence == 0 {
-            return Err(invalid(COUNTER));
-        }
-        Ok(Self {
-            fence,
-            generation: parse(&request.deletion_generation)?,
-            sequence: None,
-            activity: 0,
-        })
+/// `raw` as a canonical non-negative decimal: no sign, no leading zero.
+fn counter(raw: &str) -> Result<i64> {
+    let value = raw.parse::<i64>().map_err(|_overflow| invalid(COUNTER))?;
+    if value < 0 || value.to_string() != raw {
+        return Err(invalid(COUNTER));
     }
+    Ok(value)
 }

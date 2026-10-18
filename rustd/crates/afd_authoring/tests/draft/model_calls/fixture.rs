@@ -100,7 +100,6 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
         capability_token: CAPABILITY.into(),
         attempt_id: attempt.id.to_string(),
         fence: "1".into(),
-        deletion_generation: "0".into(),
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {

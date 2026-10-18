@@ -288,7 +288,6 @@ fn check(
     purpose: Purpose,
 ) -> Result<()> {
     if attempt.fencing_token != counters.fence
-        || counters.generation != DELETION_GENERATION
         || counters
             .sequence
             .is_some_and(|sequence| attempt.message_sequence != sequence)

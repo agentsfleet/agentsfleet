@@ -68,7 +68,7 @@ impl Running {
 
     pub(super) fn initialize(&self) -> Value {
         let request = self.f.request(&mint());
-        json!({"fence":"1","deletion_generation":"0","sequence":"1","activity_sequence":"1",
+        json!({"fence":"1","sequence":"1","activity_sequence":"1",
             "event":{"kind":"proposal","proposal":{"kind":"initialize",
                 "definition":request.get("source").and_then(|s| s.get("definition")).expect("native Definition")}}})
     }

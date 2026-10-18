@@ -79,7 +79,6 @@ impl Lessee {
         };
         let accounting = Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
             outcome: ending.outcome,
             failure_reason: ending.reason,

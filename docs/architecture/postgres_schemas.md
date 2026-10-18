@@ -298,7 +298,7 @@ Settled by review on Oct 17, 2026: `runtime_model_ref` and `base_url` kept; `deg
 
 ## Public interface changes
 
-- Runner protocol loses `deletion_generation` (lease payload, activity, model calls, renew, report).
+- The runner protocol carries no `deletion_generation` (lease payload, activity, model calls, renew, report); a spooled report written before the change still decodes.
   The one development runner restarts on the new release; no fleets exist when it does.
 - `agentsfleet tenant provider set` writes through `model.tenant_models`; its output is unchanged.
 - Closed-draft retention, the 24-hour retry window and Library-card deletion (history goes with the

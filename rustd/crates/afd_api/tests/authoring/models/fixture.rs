@@ -78,7 +78,7 @@ impl Model {
             .bind(&running.draft).bind(hex_hash()).fetch_one(&mut *connection).await.expect("bound admitted capability");
         drop(connection);
         let path = format!("{}/model-calls", running.path.trim_end_matches("/activity"));
-        let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1","deletion_generation":"0",
+        let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1",
             "dispatch_id":mint(),"call_index":1,"request":{"messages":[{"role":"user","text":"Investigate checkout"}],"max_output_tokens":128}});
         Self {
             running,

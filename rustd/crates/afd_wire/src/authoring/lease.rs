@@ -116,8 +116,6 @@ pub struct Lease<C> {
     pub sequence: String,
     /// Decimal attempt fencing token.
     pub fence: String,
-    /// Decimal private deletion generation.
-    pub deletion_generation: String,
     /// The lease deadline.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,

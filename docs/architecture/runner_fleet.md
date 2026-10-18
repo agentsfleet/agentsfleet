@@ -685,7 +685,7 @@ Authoring is creator-private work. Resolve its workspace owner, recheck creator 
 
 Additive migrations 935–942 define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts; content-free `authoring.attempts` and dispatch/activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup/Library revisions join their existing domains. The authoring progress channel is `draft:{draft_id}:events`; its ownership is checked before subscription and every reconnect. No private event joins workspace broadcast. The tables are registered and applied to the local test database. The private channel and stream still require implementation; migrations do not prove their runtime behavior.
 
-Each authoring lease has an attempt identity, fence, deletion generation, expiry, pinned model/inference settings/context/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
+Each authoring lease has an attempt identity, fence, expiry, pinned model/inference settings/context/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
 
 ### Scoped provider boundary
 
@@ -713,7 +713,7 @@ The model has one proposal tool: initialize once when no candidate exists, then 
 
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
-| Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and invalidates the deletion generation. |
+| Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and fences every attempt. |
 | Dispatch result, native provider reply and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
 | Authoring report, temporary files and rejected copies | Supervisor | Private bytes are encrypted with a separate local content key. Logical expiry is 24 hours from first write and survives retry or rename. Cleanup runs during uptime and before any restart content read or upload. |
 | Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |

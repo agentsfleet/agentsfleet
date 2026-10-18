@@ -89,7 +89,6 @@ impl Attempt {
     pub(super) fn initialize(&self, activity: u32) -> ActivityInput {
         ActivityRequest {
             fence: "1".into(),
-            deletion_generation: "0".into(),
             sequence: self.sequence.clone(),
             activity_sequence: activity.to_string(),
             event: ActivityEvent::Proposal {
