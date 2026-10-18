@@ -6,9 +6,9 @@
 //! [`afd_db::Precondition`] and prove it on the write's own transaction; one
 //! that no longer holds is [`Refused::Unheld`], and nothing is written.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Precondition;
+use jiff::Timestamp;
 
 use super::{Change, NewSchedule, Refused, Schedules};
 use crate::error::Result;
@@ -25,7 +25,7 @@ impl Schedules {
         workspace: &Uuid7,
         new: NewSchedule<'_>,
         token: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> Result<core::result::Result<Schedule, Refused>> {
         self.insert(workspace, new, token, now, Some(guard)).await
@@ -42,10 +42,9 @@ impl Schedules {
         schedule: &Uuid7,
         change: Change<'_>,
         token: &Uuid7,
-        now: UnixMillis,
         guard: &dyn Precondition,
     ) -> Result<core::result::Result<Option<Schedule>, Refused>> {
-        self.claim(fleet, schedule, change, token, now, Some(guard))
+        self.claim(fleet, schedule, change, token, Some(guard))
             .await
     }
 }

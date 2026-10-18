@@ -98,12 +98,13 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 
 ## Sections (implementation slices)
 
-### §1 — Conventions land at their source
+### §1 — Conventions land at their source — DONE
 
 The rules, the counter table and the deletion-matrix requirement land in `~/Projects/orly` on their own branch and PR: the conventions doc (dropping its stale Zig timestamp and `schema/embed.zig` lines) and the pack text that mandates `core.fleet_*`. After it merges, `orly update --no-hooks` refreshes the generated copies here.
 
-- **Dimension 1.1** — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `test_conventions_carry_naming_rules`
-- **Dimension 1.2** — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
+- **Dimension 1.1** — DONE — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `test_conventions_carry_naming_rules`
+- **Dimension 1.2** — DONE — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
+- **Evidence** — orly PR #65 "docs(conventions): agentsfleet schema naming rules…" merged 2026-10-17 (`gh pr list` in `~/Projects/orly`); `.orly/docs/SCHEMA_CONVENTIONS.md:44` "Counter and pointer names"; `grep -rln 'embed.zig\|core\.fleet_' .orly/` → 0 files; `orly doctor` → "🟢 installed rules match .orly/orly.json".
 
 ### §2 — Slots rebuilt from empty — DONE
 
@@ -333,6 +334,8 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **No-expiry credential** — Indy (2026-10-18), via AskUserQuestion: "Far-future date"; > Indy: "i donot like null" — context: `NEVER_EXPIRES = Timestamp::constant(253_402_207_200, 999_000_000)` (`9999-12-30T22:00:00.999Z`); the lease-ceiling option was rejected.
 - **Typed rows** — Indy (2026-10-18), via AskUserQuestion: "Yes, all crates" — context: Dimension 7.5; baseline 373 `try_get` across 13 crates at `331c0afc8`, 264 positional.
 - **Admission event identifier** — Indy (2026-10-18), via AskUserQuestion: "Re-key it", then on the plan "UUIDv7 row id" — context: Dimension 4.9; the `created_at_ms || '-' || seq` key tied the identifier to the database clock and could not be known before the insert. No published page or OpenAPI example spells the old shape (grep of `~/Projects/docs` and the repository; one hit in `docs/v2/done/M42_001…`, frozen). Readers outside afd_admission change in the downstream batch.
+- **Standard calls only** — > Indy (2026-10-18): "just keep it standard, you always harrow some crap and take a lower end call to create a tech debt, a classic example is BIGNIT for TIMESTAMPZ and fleets.events.id" — context: an instant is `TIMESTAMPTZ(3)` in Postgres and a jiff `Timestamp` in Rust everywhere, with no millisecond number standing in for one: not in a column, a cursor token, a dedup key or event metadata. A judgment call that has a standard answer is taken, not offered. Applied below.
+- **Runner, cron and events batch calls** — Indy (2026-10-18), via AskUserQuestion: `fleet.events.id` "Postgres uuidv7()" (column `DEFAULT uuidv7()`, the insert reads it back with `RETURNING id`); runner event metadata `last_seen_at` "Time string" (RFC 3339, changelog line); one-shot schedule fire time "Row's own stamp"; schedule fields "Rename to match" (the §2 schema already renamed the columns); sandbox tool spans "Duration inside" (the model-facing `timeout_ms`/`yield_time_ms` argument names stay); `since=` "Postgres" (`statement_timestamp() - $ago::interval`). Taken as standard without a question, per the entry above: `runner.events.dedup_key BIGINT` becomes `last_seen_at TIMESTAMPTZ(3)` (slot 1830, unique on `(runner_id, last_seen_at)`); the events cursor token carries the RFC 3339 instant (every database starts empty, so no issued cursor survives); a never-seen runner reads `NEVER_SEEN = Timestamp::UNIX_EPOCH` (no NULL, per "i donot like null"); the operator API's `admin_state` field becomes `status`, the column's name; `RunnerSeed` and `FleetEventSeed` join `afd_db::test_util`.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.

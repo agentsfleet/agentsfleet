@@ -15,6 +15,7 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
+use afd_core::id::Uuid7;
 use afd_cron::DesiredStatus;
 
 use self::support::CronLane;
@@ -124,12 +125,7 @@ async fn a_fire_for_a_schedule_this_daemon_no_longer_has_resolves_to_nothing() {
 
     let held = lane
         .store
-        .claim_current(
-            &lane.fleet_id(),
-            &created.schedule_id,
-            &token,
-            CronLane::now(),
-        )
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &token)
         .await
         .expect("the lane answers")
         .expect("an unheld schedule is claimable");
@@ -147,6 +143,49 @@ async fn a_fire_for_a_schedule_this_daemon_no_longer_has_resolves_to_nothing() {
             .expect("the lane answers")
             .is_none()
     );
+}
+
+/// The closed-vocabulary columns, each with a statement planting a word no
+/// build knows.
+///
+/// One statement per column rather than a built string: sqlx requires a
+/// `&'static str`, and that restriction is a SQL-injection guard worth keeping
+/// even where the value is a literal in a test.
+const UNREADABLE_WORDS: [(&str, &str, &str); 3] = [
+    (
+        "source",
+        "UPDATE fleet.schedules SET source = $2 WHERE id = $1::uuid",
+        "carrier-pigeon",
+    ),
+    (
+        "desired_status",
+        "UPDATE fleet.schedules SET desired_status = $2 WHERE id = $1::uuid",
+        "hibernating",
+    ),
+    (
+        "sync_status",
+        "UPDATE fleet.schedules SET sync_status = $2 WHERE id = $1::uuid",
+        "pending",
+    ),
+];
+
+/// Puts every word [`UNREADABLE_WORDS`] plants back to one this build reads.
+const RESTORE_WORDS: &str = "UPDATE fleet.schedules \
+     SET source = 'api', desired_status = 'active', sync_status = 'syncing' \
+     WHERE id = $1::uuid";
+
+/// Runs `statement` against one schedule, binding `word` as `$2` when given.
+async fn run_on(lane: &CronLane, statement: &'static str, schedule: &Uuid7, word: Option<&str>) {
+    let mut connection = lane.connection().await;
+    let query = sqlx::query(statement).bind(schedule.as_str());
+    let query = match word {
+        Some(word) => query.bind(word),
+        None => query,
+    };
+    query
+        .execute(&mut *connection)
+        .await
+        .expect("planting or restoring a word");
 }
 
 /// A stored word this build cannot read fails the read rather than vanishing.
@@ -173,52 +212,15 @@ async fn a_row_carrying_a_word_this_build_cannot_read_fails_the_read() {
     // One statement per column rather than a built string: sqlx requires a
     // `&'static str`, and that restriction is a SQL-injection guard worth
     // keeping even where the value is a literal in a test.
-    for (column, statement, unreadable) in [
-        (
-            "source",
-            "UPDATE core.fleet_schedules SET source = $2 WHERE id = $1::uuid",
-            "carrier-pigeon",
-        ),
-        (
-            "desired_status",
-            "UPDATE core.fleet_schedules SET desired_status = $2 WHERE id = $1::uuid",
-            "hibernating",
-        ),
-        (
-            "sync_status",
-            "UPDATE core.fleet_schedules SET sync_status = $2 WHERE id = $1::uuid",
-            "pending",
-        ),
-    ] {
-        {
-            let mut connection = lane.connection().await;
-            sqlx::query(statement)
-                .bind(readable.schedule_id.as_str())
-                .bind(unreadable)
-                .execute(&mut *connection)
-                .await
-                .expect("planting an unreadable word")
-        };
-
+    for (column, statement, unreadable) in UNREADABLE_WORDS {
+        run_on(&lane, statement, &readable.schedule_id, Some(unreadable)).await;
         assert!(
             lane.store.list(&lane.fleet_id()).await.is_err(),
             "`{column} = {unreadable}` must fail the read — a list that dropped \
              the row it could not parse answers \"no schedules\" for a fleet \
              that has one firing every night"
         );
-
-        {
-            let mut connection = lane.connection().await;
-            sqlx::query(
-                "UPDATE core.fleet_schedules \
-                 SET source = 'api', desired_status = 'active', sync_status = 'syncing' \
-                 WHERE id = $1::uuid",
-            )
-            .bind(readable.schedule_id.as_str())
-            .execute(&mut *connection)
-            .await
-            .expect("restoring the row between cases")
-        };
+        run_on(&lane, RESTORE_WORDS, &readable.schedule_id, None).await;
     }
 
     // Each case restored its row, so the lane reads normally again: the

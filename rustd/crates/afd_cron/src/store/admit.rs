@@ -6,7 +6,7 @@
 //! taken, so no concurrent create can slip between a count and the insert.
 
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
 
 use super::{CONTEXT_WRITE, NewSchedule, Refused};
 use crate::error::{self, Result};
@@ -51,11 +51,11 @@ pub(super) async fn refusal(
         return Ok(Some(Refused::TooMany));
     }
 
-    // A key the store mints from the new row's own id cannot be held yet.
-    let Some(key) = new.source_key else {
+    // An id the store mints from the new row's own id cannot be held yet.
+    let Some(key) = new.provider_schedule_id else {
         return Ok(None);
     };
-    let duplicate = sqlx::query(sql::SOURCE_KEY_EXISTS)
+    let duplicate = sqlx::query(sql::PROVIDER_SCHEDULE_ID_EXISTS)
         .bind(fleet)
         .bind(key)
         .fetch_optional(&mut *transaction)
@@ -80,16 +80,14 @@ impl Tally {
     /// How many of `fleet`'s schedules this tally covers.
     async fn count(self, transaction: &mut PgConnection, fleet: &str) -> Result<usize> {
         let query = match self {
-            Self::Fleet => sqlx::query(sql::COUNT_FOR_FLEET).bind(fleet),
-            Self::Source(source) => sqlx::query(sql::COUNT_FOR_SOURCE)
+            Self::Fleet => sqlx::query_scalar::<_, i64>(sql::COUNT_FOR_FLEET).bind(fleet),
+            Self::Source(source) => sqlx::query_scalar::<_, i64>(sql::COUNT_FOR_SOURCE)
                 .bind(fleet)
                 .bind(source.as_str()),
         };
-        let held: i64 = query
+        let held = query
             .fetch_one(&mut *transaction)
             .await
-            .map_err(error::query(CONTEXT_WRITE))?
-            .try_get(0)
             .map_err(error::query(CONTEXT_WRITE))?;
         Ok(usize::try_from(held).unwrap_or(usize::MAX))
     }

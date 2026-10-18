@@ -2,7 +2,7 @@
 //!
 //! # Why these are enums and not the strings the column holds
 //!
-//! `520_fleet_schedules.sql` stores `source`, `desired_status` and
+//! `schema/1750_fleet_schedules.sql` stores `source`, `desired_status` and
 //! `sync_status` as `TEXT` with no `CHECK`, deliberately — RULE STS bans a
 //! frozen vocabulary in the schema, because changing one then means a migration
 //! rather than a release. The vocabulary still has to be closed SOMEWHERE, and
@@ -17,6 +17,7 @@ use std::borrow::Cow;
 
 use afd_api_wire::schedule::View;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
 /// The most schedules one fleet may hold.
 ///
@@ -179,9 +180,9 @@ impl SyncStatus {
 
 /// One schedule, as the row holds it.
 ///
-/// # Why `generation`, `sync_token` and `sync_lease_until` are on the value
+/// # Why `resource_version`, `sync_token` and `sync_lease_expires_at` are on the value
 ///
-/// They are not decoration on the row, they are the fence. `generation` is the
+/// They are not decoration on the row, they are the fence. `resource_version` is the
 /// optimistic-concurrency counter a finalize compares against, and the token
 /// plus the lease are what stop two syncers pushing the same schedule at once.
 /// A value type that dropped them would let a caller finalize a claim it no
@@ -202,7 +203,7 @@ pub struct Schedule {
     /// (see [`crate::upstream`]). A one-off a pause removed goes back to its own
     /// id, which is how the reconciler recognises a schedule the scheduler does
     /// not hold.
-    pub source_key: String,
+    pub provider_schedule_id: String,
     /// The expression, in the grammar `validate` accepts.
     pub cron: String,
     /// The zone the expression is interpreted in.
@@ -216,23 +217,24 @@ pub struct Schedule {
     /// How far upstream has been brought in line.
     pub sync_status: SyncStatus,
     /// The optimistic-concurrency counter, always above zero.
-    pub generation: i64,
+    pub resource_version: i64,
     /// The syncer holding this row, when one does.
     pub sync_token: Option<String>,
     /// When that hold expires, so a syncer that died does not hold forever.
-    pub sync_lease_until: Option<i64>,
+    pub sync_lease_expires_at: Option<Timestamp>,
     /// How the last attempt failed, when one did.
     pub last_error: Option<String>,
-    /// When the row was written.
-    pub created_at: i64,
-    /// When it was last changed.
-    pub updated_at: i64,
-    /// The instant a `once` schedule was set for, in milliseconds since the
-    /// epoch; `None` for a recurring one or a row written before slot 931.
+    /// When the row was written, on the database's clock.
+    pub created_at: Timestamp,
+    /// When it was last changed, on the database's clock.
+    pub updated_at: Timestamp,
+    /// The instant a `once` schedule was set for; `None` for a recurring one,
+    /// or for a `once` whose expression or zone does not read.
     ///
-    /// Its expression has no year, so a sync after this instant would
-    /// register a match a year out; the reconciler retires it instead.
-    pub fire_at: Option<i64>,
+    /// Computed from the row's own stamp when its expression is set. The
+    /// expression has no year, so a sync after this instant would register a
+    /// match a year out; the reconciler retires it instead.
+    pub fire_at: Option<Timestamp>,
     /// Pinned base and explicit instance overlay, absent for independent schedules.
     pub recipe: Option<crate::Inherited>,
 }
@@ -276,7 +278,7 @@ impl Schedule {
         });
         afd_core::etag::compute(&[
             Some(self.schedule_id.as_str().as_bytes()),
-            Some(&self.generation.to_be_bytes()),
+            Some(&self.resource_version.to_be_bytes()),
             versions.as_deref().map(str::as_bytes),
         ])
     }

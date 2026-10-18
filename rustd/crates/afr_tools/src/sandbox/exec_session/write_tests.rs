@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+use afd_core::clock::saturating_millis;
 use afd_core::test_util::trace::Capture;
 use afr_executor::Ending;
 use bytes::Bytes;
@@ -12,7 +13,7 @@ use tokio::time::Instant;
 use super::tests::{
     CAT, EXIT, FIRST, FIRST_RUNNING, LEASE_ID, ONE, REPL, named_lease, open, write, writing,
 };
-use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MS_MIN};
+use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MIN};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
@@ -81,13 +82,13 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
         &*write(),
         &executor,
         &lease,
-        writing(1, EXIT, Some(YIELD_MS_MIN)),
+        writing(1, EXIT, Some(saturating_millis(YIELD_MIN))),
     )
     .await;
     assert!(executor.end(FIRST, Ending::Exited(0)));
     let next = call_in(&*write(), &executor, &lease, writing(1, "", None)).await;
 
-    assert_eq!(started.elapsed(), Duration::from_millis(YIELD_MS_MIN));
+    assert_eq!(started.elapsed(), YIELD_MIN);
     assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
     assert_eq!(first.error_code, None);
     assert_eq!(next.text, "Process exited with code 0");

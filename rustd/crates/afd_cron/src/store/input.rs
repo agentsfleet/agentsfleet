@@ -13,13 +13,13 @@ pub struct NewSchedule<'a> {
     pub fleet: &'a Uuid7,
     /// Who asked for it.
     pub source: Source,
-    /// The key the external scheduler will know it by, or `None` for the
+    /// The id the external scheduler will know it by, or `None` for the
     /// schedule's own identifier.
     ///
     /// `None` is unique by construction, which a fleet needs: one run may
-    /// create two schedules in the same instant, and the key is unique per
+    /// create two schedules in the same instant, and the id is unique per
     /// fleet.
-    pub source_key: Option<&'a str>,
+    pub provider_schedule_id: Option<&'a str>,
     /// The expression, already through [`crate::validate::cron`].
     pub cron: &'a str,
     /// The zone, already through [`crate::validate::timezone`].

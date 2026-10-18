@@ -12,13 +12,14 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
 use afr_egress::fixture::{LEASE_ID, policy};
 use afr_egress::testing::{CountingMint, RecordingTransport, Sent};
 use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
+use jiff::Timestamp;
 use tokio::task::JoinHandle;
 
 use crate::catalog::{Catalog, Entry};
@@ -28,11 +29,11 @@ use crate::runtime::{Tool, ToolContext, ToolOutput};
 use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
-pub(crate) const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
+pub(crate) const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
 /// What the fixture's mint answers for `github`.
 pub(crate) const MINTED: &str = "ghs_minted_token";
 /// A minted token's lifetime: one hour.
-pub(crate) const HOUR: i64 = 3_600_000;
+pub(crate) const HOUR: Duration = Duration::from_hours(1);
 /// How long a suite waits on the executor before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 

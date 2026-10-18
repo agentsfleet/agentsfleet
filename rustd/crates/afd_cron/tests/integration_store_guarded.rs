@@ -38,7 +38,7 @@ fn fleet_made(fleet: &afd_core::id::Uuid7) -> NewSchedule<'_> {
     NewSchedule {
         fleet,
         source: Source::Fleet,
-        source_key: None,
+        provider_schedule_id: None,
         cron: "0 9 * * 1",
         timezone: "UTC",
         message: "weekly check",
@@ -99,7 +99,6 @@ async fn a_change_under_a_guard_that_no_longer_holds_writes_nothing() {
             &settled.schedule_id,
             pause,
             &CronLane::token(),
-            CronLane::now(),
             &Verdict(false),
         )
         .await
@@ -119,7 +118,6 @@ async fn a_change_under_a_guard_that_no_longer_holds_writes_nothing() {
             &settled.schedule_id,
             pause,
             &CronLane::token(),
-            CronLane::now(),
             &Verdict(true),
         )
         .await

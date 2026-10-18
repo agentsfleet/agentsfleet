@@ -25,14 +25,14 @@ use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
 /// The shortest a call waits for output: Codex's `MIN_YIELD_TIME_MS`.
-const YIELD_MS_MIN: u64 = 250;
+const YIELD_MIN: Duration = Duration::from_millis(250);
 /// The longest a call waits for output: Codex's `MAX_YIELD_TIME_MS`.
-const YIELD_MS_MAX: u64 = 30_000;
+const YIELD_MAX: Duration = Duration::from_secs(30);
 /// How long a call waits when the model names no yield.
-const YIELD_MS_DEFAULT: u64 = 10_000;
+const YIELD_DEFAULT: Duration = Duration::from_secs(10);
 /// The shortest an empty write waits, so polling a session is never a busy
 /// loop: Codex's `MIN_EMPTY_YIELD_TIME_MS`.
-const EMPTY_WRITE_YIELD_MS_MIN: u64 = 5_000;
+const EMPTY_WRITE_YIELD_MIN: Duration = Duration::from_secs(5);
 /// What a call naming no open session reads back after its id.
 const NOT_OPEN: &str = "is not an open session";
 /// What a write that found no process reads before the session's state: the
@@ -120,7 +120,7 @@ impl Handler for ExecCommand {
         let shared = sessions.open(slot, process);
         let mut process = shared.lock().await;
         let mut collected = Collected::default();
-        let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);
+        let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MIN);
         let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
         let lease_id = context.lease.lease_id;
@@ -161,17 +161,17 @@ impl Handler for WriteStdin {
             Some(ending)
         } else {
             let floor = if arguments.chars.is_empty() {
-                EMPTY_WRITE_YIELD_MS_MIN
+                EMPTY_WRITE_YIELD_MIN
             } else {
                 match executor.write(id, Bytes::from(arguments.chars)).await {
-                    Ok(()) => YIELD_MS_MIN,
+                    Ok(()) => YIELD_MIN,
                     // Ended between the look above and the write: its ending
                     // is on its way, behind whatever it left to say. The call
                     // waits its yield for it and reads the session as running
                     // until it lands; a sandbox that is gone ends the events.
                     Err(failure) if failure.is_unknown_process() => {
                         refused = Some(WRITE_UNDELIVERED);
-                        YIELD_MS_MIN
+                        YIELD_MIN
                     }
                     // The process would not take it: it closed its input, or
                     // has not read what it was sent. It runs on.
@@ -180,7 +180,7 @@ impl Handler for WriteStdin {
                         let event = EVENT_WRITE_REFUSED;
                         tracing::debug!(session_id, event);
                         refused = Some(INPUT_REFUSED);
-                        YIELD_MS_MIN
+                        YIELD_MIN
                     }
                     Err(failure) => return unavailable(&failure),
                 }
@@ -206,8 +206,14 @@ fn spawn_of(open: &Open) -> Spawn {
 
 /// How long a call waits: what the model asked, or the default, held between
 /// `floor` and the longest yield.
-fn yield_of(asked: Option<u64>, floor: u64) -> Duration {
-    Duration::from_millis(asked.unwrap_or(YIELD_MS_DEFAULT).clamp(floor, YIELD_MS_MAX))
+///
+/// `asked` is the model's `yield_time_ms` argument, a count of milliseconds
+/// because that is the name and unit the tool schema publishes; it becomes a
+/// `Duration` here, the one place the count is read.
+fn yield_of(asked: Option<u64>, floor: Duration) -> Duration {
+    asked
+        .map_or(YIELD_DEFAULT, Duration::from_millis)
+        .clamp(floor, YIELD_MAX)
 }
 
 /// One call's answer on session `id` of lease `lease_id`: what arrived, why a

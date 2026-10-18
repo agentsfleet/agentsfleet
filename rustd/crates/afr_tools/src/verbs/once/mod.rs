@@ -11,13 +11,15 @@
 //!
 //! A cron fires on a minute's first second. A moment inside a minute rounds up
 //! to the next one, so the run is never early, and the rounded minute must be
-//! at least [`LEAD_MS`] away: `QStash` has to hold the schedule before its
+//! at least [`LEAD`] away: `QStash` has to hold the schedule before its
 //! minute begins, or the expression's next match is a year later.
 
-use afd_core::clock::{self, UnixMillis};
-use afd_core::timing::DAY_MS;
-use jiff::Timestamp;
+use std::time::Duration;
+
+use afd_core::clock;
+use afd_core::timing::DAY;
 use jiff::tz::TimeZone;
+use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -32,14 +34,14 @@ const UTC: &str = "UTC";
 
 /// How far ahead a moment may be: the span inside which its expression
 /// matches only once.
-const HORIZON_MS: i64 = 365 * DAY_MS;
+const HORIZON: Duration = DAY.saturating_mul(365);
 
 /// One minute, the resolution a cron fires at.
-const MINUTE_MS: i64 = 60_000;
+const MINUTE: Duration = Duration::from_mins(1);
 
 /// How far ahead the rounded minute must be, so the schedule is registered
 /// before that minute begins.
-const LEAD_MS: i64 = MINUTE_MS;
+const LEAD: Duration = MINUTE;
 
 /// What an unreadable moment reads back.
 const DETAIL_AT: &str = "at must be an RFC 3339 instant such as 2026-10-06T09:00:00+05:30";
@@ -90,19 +92,18 @@ impl Handler for ScheduleOnce {
 
 /// The UTC expression that fires at `at`, rounded up to its minute, or why
 /// it cannot.
-fn minute_of(at: &str, now: UnixMillis) -> Result<String, &'static str> {
+fn minute_of(at: &str, now: Timestamp) -> Result<String, &'static str> {
     let instant: Timestamp = at.parse().map_err(|_unreadable| DETAIL_AT)?;
-    let millis = instant.as_millisecond();
-    let to_next_minute = (MINUTE_MS - millis.rem_euclid(MINUTE_MS)) % MINUTE_MS;
-    let minute = millis
-        .checked_add(to_next_minute)
-        .and_then(|rounded| Timestamp::from_millisecond(rounded).ok())
-        .ok_or(DETAIL_TOO_FAR)?;
-    let ahead = minute.as_millisecond() - now.as_millis();
-    if ahead < LEAD_MS {
+    let up_to_minute = TimestampRound::new()
+        .smallest(Unit::Minute)
+        .mode(RoundMode::Ceil);
+    let minute = instant
+        .round(up_to_minute)
+        .map_err(|_range| DETAIL_TOO_FAR)?;
+    if minute < clock::after(now, LEAD) {
         return Err(DETAIL_PAST);
     }
-    if ahead > HORIZON_MS {
+    if minute > clock::after(now, HORIZON) {
         return Err(DETAIL_TOO_FAR);
     }
     let civil = minute.to_zoned(TimeZone::UTC).datetime();

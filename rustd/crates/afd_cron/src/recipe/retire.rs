@@ -17,7 +17,6 @@ pub(super) async fn removed(
                 .bind(&row.id)
                 .bind(DesiredStatus::Deleting.as_str())
                 .bind(SyncStatus::Syncing.as_str())
-                .bind(set.now.as_millis())
                 .execute(&mut *connection)
                 .await
                 .map_err(error::query(CONTEXT))?;
