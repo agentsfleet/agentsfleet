@@ -23,15 +23,20 @@ WITH configured AS (
       LIMIT 1)
 )
 SELECT c.reference, c.provider, c.model, c.base_url, c.has_key,
-       m.context_cap_tokens AS context,
+       m.display_name, m.context_cap_tokens AS context,
        m.input_nanos_per_mtok AS input,
        m.output_nanos_per_mtok AS output
   FROM configured c
   JOIN LATERAL (
-        SELECT context_cap_tokens, input_nanos_per_mtok, output_nanos_per_mtok
-          FROM model.platform_models
-         WHERE model_name = c.model AND (provider = c.provider OR c.provider = $5)
-         ORDER BY provider
+        SELECT i.display_name, i.context_cap_tokens,
+               p.input_nanos_per_mtok, p.output_nanos_per_mtok
+          FROM model.platform_models i
+          JOIN model.platform_model_prices p ON p.platform_model_id = i.id
+           AND p.prompt_tokens_above = 0
+           AND p.effective_from <= statement_timestamp()
+           AND (p.effective_until IS NULL OR p.effective_until > statement_timestamp())
+         WHERE i.model_name = c.model AND (i.provider = c.provider OR c.provider = $5)
+         ORDER BY i.provider
          LIMIT 1
        ) m ON true
  WHERE (c.has_key OR c.provider = $5)

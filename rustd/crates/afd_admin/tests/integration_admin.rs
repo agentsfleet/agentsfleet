@@ -6,34 +6,49 @@
 )]
 
 use afd_admin::{
-    CreateModel, DeleteModel, Model, ModelInput, ModelRates, Models, PlatformKeyInput,
+    CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models, PlatformKeyInput,
     PlatformKeys, SetPlatformKey,
 };
+use afd_core::catalogue::{Metadata, Price};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
+use afd_db::{Db, Migrator};
 use jiff::Timestamp;
 
 /// The instant model identifiers are minted at; rows are stamped by `now()`.
 const NOW: Timestamp = Timestamp::constant(1_725_000_000, 0);
 
-/// Cap and prices for the fixture model, distinct so a swapped column shows.
-const RATES: ModelRates = ModelRates {
-    context_cap_tokens: 200_000,
-    input_nanos_per_mtok: 5,
-    cached_input_nanos_per_mtok: 1,
-    output_nanos_per_mtok: 25,
-};
+#[path = "admin_model/proofs.rs"]
+mod model_proofs;
 
-/// The prices an update moves the fixture model to.
-const RAISED: ModelRates = ModelRates {
-    context_cap_tokens: 400_000,
-    input_nanos_per_mtok: 6,
-    cached_input_nanos_per_mtok: 2,
-    output_nanos_per_mtok: 30,
-};
+/// Synthetic prices and API evidence for the administrator's fixture model.
+fn details(raised: bool) -> ModelUpdate {
+    ModelUpdate {
+        metadata: Metadata {
+            display_name: "Administrator fixture".to_owned(),
+            context_cap_tokens: if raised { 400_000 } else { 200_000 },
+            context_source_url: "https://example.test/models/fixture".to_owned(),
+            context_verified_at: NOW,
+            advanced: raised,
+        },
+        prices: vec![Price {
+            effective_from: NOW,
+            effective_until: None,
+            prompt_tokens_above: 0,
+            input_nanos_per_mtok: if raised { 6 } else { 5 },
+            cached_input_nanos_per_mtok: if raised { 2 } else { 1 },
+            cache_write_nanos_per_mtok: Some(187_500_000),
+            cache_write_5m_nanos_per_mtok: Some(125_000_000),
+            cache_write_1h_nanos_per_mtok: Some(200_000_000),
+            output_nanos_per_mtok: if raised { 30 } else { 25 },
+            source_url: "https://example.test/pricing".to_owned(),
+            verified_at: NOW,
+            conditions: "Synthetic administrator fixture; no provider request.".to_owned(),
+        }],
+    }
+}
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -56,7 +71,7 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
 
     assert!(
         lane.models
-            .update(&model.id, RAISED)
+            .update(&model.id, details(true))
             .await
             .expect("updates")
     );
@@ -65,11 +80,11 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
         .iter()
         .find(|listed| listed.id == model.id)
         .expect("the model is still filed");
-    assert_eq!(row.rates, RAISED);
+    assert_eq!(row.details, details(true));
     assert!(
         !lane
             .models
-            .update(&mint_uuid7(), RAISED)
+            .update(&mint_uuid7(), details(true))
             .await
             .expect("a typed outcome"),
         "an unknown id updates nothing"
@@ -81,6 +96,7 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
             .expect("a typed outcome"),
         DeleteModel::NotFound
     );
+    lane.cleanup().await;
 }
 
 #[tokio::test]
@@ -113,6 +129,7 @@ async fn should_refuse_a_default_whose_workspace_or_model_has_no_row() {
         listed.iter().all(|key| key.provider != lane.provider),
         "a refused set leaves no default behind"
     );
+    lane.cleanup().await;
 }
 
 #[tokio::test]
@@ -165,10 +182,13 @@ async fn should_guard_a_model_while_an_active_default_points_at_it() {
             .expect("a typed outcome"),
         DeleteModel::Deleted
     );
+    lane.cleanup().await;
 }
 
 /// The lane's database, the two stores, and one seeded workspace.
 struct Lane {
+    owner: TestDatabase,
+    database: Db,
     models: Models,
     keys: PlatformKeys,
     workspace: Uuid7,
@@ -178,7 +198,14 @@ struct Lane {
 
 impl Lane {
     async fn create() -> Self {
-        let database: Db = TestDatabase::shared().open(DbRole::Api, &[]).await;
+        let owner = TestDatabase::create().await;
+        let migrator = owner.open(DbRole::Migrator, &[]).await;
+        Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the schema migrates");
+        migrator.close().await;
+        let database: Db = owner.open(DbRole::Api, &[]).await;
         let tenant = mint_uuid7();
         let workspace = mint_uuid7();
         let mut connection = database.acquire().await.expect("an API connection");
@@ -193,18 +220,25 @@ impl Lane {
         let suffix = tenant.as_str().replace('-', "");
         Self {
             models: Models::new(database.clone(), Entropy::new()),
-            keys: PlatformKeys::new(database),
+            keys: PlatformKeys::new(database.clone()),
+            database,
+            owner,
             workspace,
             provider: format!("anthropic-{suffix}"),
             model_name: format!("claude-opus-5-{suffix}"),
         }
     }
 
+    async fn cleanup(self) {
+        self.database.close().await;
+        self.owner.cleanup().await;
+    }
+
     fn input(&self) -> ModelInput {
         ModelInput {
             provider: self.provider.clone(),
             model_name: self.model_name.clone(),
-            rates: RATES,
+            details: details(false),
         }
     }
 
@@ -226,7 +260,7 @@ impl Lane {
         else {
             unreachable!("the fixture model is new: its name carries a minted suffix");
         };
-        assert_eq!(model.rates, RATES);
+        assert_eq!(model.details, details(false));
         model
     }
 }

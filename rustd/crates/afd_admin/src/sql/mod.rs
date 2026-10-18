@@ -10,12 +10,19 @@ pub(crate) const LIST_PLATFORM_MODELS: &str = include_str!("list_platform_models
 
 /// Files a model, or writes nothing when `(provider, model_name)` is taken.
 ///
-/// `$1` id · `$2` provider · `$3` model name · `$4` context cap · `$5`–`$7` the
-/// three prices.
+/// `$1` id · `$2` provider · `$3` model name · `$4` identity metadata JSON.
 pub(crate) const INSERT_PLATFORM_MODEL: &str = include_str!("insert_platform_model.sql");
 
-/// Replaces a model's cap and prices. `$1` id · `$2` cap · `$3`–`$5` prices.
+/// Replaces identity evidence. `$1` id · `$2` identity metadata JSON.
 pub(crate) const UPDATE_PLATFORM_MODEL: &str = include_str!("update_platform_model.sql");
+
+/// Writes dated prices. `$1` model id · `$2` typed price array as JSON.
+pub(crate) const UPSERT_PLATFORM_MODEL_PRICES: &str =
+    include_str!("upsert_platform_model_prices.sql");
+
+/// Removes ranges absent from the complete replacement, using the same parameters.
+pub(crate) const DELETE_PLATFORM_MODEL_PRICES: &str =
+    include_str!("delete_platform_model_prices.sql");
 
 /// Removes a model. A platform default still pointing at it refuses the delete
 /// through `ON DELETE RESTRICT`, which [`crate::Models::delete`] reports as

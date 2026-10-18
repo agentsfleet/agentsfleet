@@ -11,6 +11,7 @@ pub(super) struct Row {
     pub(super) reference: String,
     provider: String,
     model: String,
+    display_name: String,
     base_url: Option<String>,
     has_key: bool,
     context: i32,
@@ -37,7 +38,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
         None => authoring || runtime,
     };
     allowed.then(|| WorkspaceModel {
-        label: format!("{} · {}", row.model, row.provider),
+        label: row.display_name,
         reference: row.reference,
         provider: row.provider,
         model: row.model,
@@ -51,3 +52,6 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
         },
     })
 }
+
+#[cfg(test)]
+mod tests;

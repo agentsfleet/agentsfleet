@@ -74,6 +74,8 @@ mod integration_device_flow_lifecycle;
 mod integration_device_flow_races;
 #[path = "integration_identity.rs"]
 mod integration_identity;
+#[path = "integration_model_catalogue.rs"]
+mod integration_model_catalogue;
 #[path = "integration_preferences.rs"]
 mod integration_preferences;
 #[path = "integration_signup.rs"]
