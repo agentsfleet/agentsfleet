@@ -24,9 +24,10 @@ const CONTEXT_HOLDS: &str = "billing sweep finished holds";
 /// The table a malformed hold identifier is reported against.
 const TABLE_HOLDS: &str = "billing.holds";
 
-/// How long a lease must have been finished before the sweeper releases its
-/// hold: the same grace the line sweep gives the request path's own settle.
-/// Measured from the lease's last change, not the hold's, because settling a
+/// How long a lease must have been finished before its hold is released.
+///
+/// The same grace the line sweep gives the request path's own settle,
+/// measured from the lease's last change rather than the hold's: settling a
 /// line captures onto the hold and would otherwise restart the wait.
 pub const GRACE: Duration = afd_billing::ledger::GRACE;
 

@@ -23,11 +23,14 @@ use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
 use afd_wire::usage::UsageLine;
 
 use crate::queue;
-use crate::report_seed::{DEEP_POOL, held_in};
+use crate::report_seed::{DEEP_POOL, Held, held_in};
 use crate::support::Fixtures;
 
 /// What the unsettled line costs.
 const LINE: Nanos = Nanos::from_i64(40_000);
+
+/// The runtime the orphaned line measured.
+const RUNTIME_MS: u32 = 400;
 
 /// The hold the finished lease left open.
 const HELD: Nanos = Nanos::from_i64(90_000);
@@ -48,89 +51,7 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         Entropy::new(),
         Arc::new(afd_core::clock::SystemClock),
     );
-    let tenant = Uuid7::parse(&held.tenant).expect("the fixture tenant is a v7 spelling");
-    let workspace: String =
-        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
-            .bind(&held.fleet)
-            .fetch_one(&mut *database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("the fixture fleet is readable");
-    let payer = Account {
-        tenant,
-        workspace: Uuid7::parse(&workspace).expect("a v7 workspace"),
-    };
-    let work = WorkKey::FleetLease(held.lease_key.clone());
-
-    let hold = biller
-        .reserve(&Reservation {
-            work: work.clone(),
-            payer: payer.clone(),
-            ceiling: HELD,
-        })
-        .await
-        .expect("the hold is placed");
-    assert!(matches!(hold, Hold::Held { .. }), "{hold:?}");
-    let settlement = Settlement {
-        work,
-        payer,
-        attribution: Attribution::Fleet {
-            fleet: Uuid7::parse(&held.fleet).expect("a v7 fleet"),
-            fleet_name: held.fleet.clone(),
-            event_id: held.event_id.clone(),
-        },
-        provider: crate::seed::PROVIDER.to_owned(),
-        model: crate::seed::MODEL.to_owned(),
-        posture: Posture::Platform,
-        lines: vec![RatedLine {
-            usage: UsageLine {
-                seq: 0,
-                at: held.now,
-                input_tokens: 0,
-                cached_input_tokens: 0,
-                cache_write_tokens: 0,
-                cache_write_5m_tokens: 0,
-                cache_write_1h_tokens: 0,
-                output_tokens: 0,
-                runtime_ms: 400,
-            },
-            price: None,
-            charged: LINE,
-            unpriced_tokens: 0,
-        }],
-    };
-    // The lease's transaction logged the line and then the process died: no
-    // settle, no release, and the lease expired unreported.
-    log_lines(
-        &mut *database.acquire().await.expect("a pooled connection"),
-        &Entropy::new(),
-        held.now,
-        &settlement,
-    )
-    .await
-    .expect("the line is logged");
-    let mut connection = database.acquire().await.expect("a pooled connection");
-    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
-        .bind(held.lease_key.as_str())
-        .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
-        .execute(&mut *connection)
-        .await
-        .expect("the lease ends unreported");
-    let past_grace = GRACE.saturating_mul(2);
-    for (table, key) in [
-        ("billing.usage_lines", "work_id"),
-        ("billing.holds", "work_id"),
-        ("runner.leases", "id"),
-    ] {
-        sqlx::query(sqlx::AssertSqlSafe(
-            AGED.replace("{table}", table).replace("{key}", key),
-        ))
-        .bind(held.lease_key.as_str())
-        .bind(past_grace)
-        .execute(&mut *connection)
-        .await
-        .expect("the rows age past the grace");
-    }
-    drop(connection);
+    orphan(&held, &biller).await;
 
     let swept = sweep(database, &biller).await.expect("the pass reads");
     assert_eq!(
@@ -168,4 +89,99 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
+}
+
+/// The state a crash leaves: the lease's hold placed and one line logged, then
+/// the process died — no settle, no release — and the lease expired
+/// unreported, all longer ago than the sweeper's grace.
+async fn orphan(held: &Held, biller: &LedgerBiller) {
+    let database = &held.fixtures.database;
+    let settlement = settlement(held).await;
+    let placed = biller
+        .reserve(&Reservation {
+            work: settlement.work.clone(),
+            payer: settlement.payer.clone(),
+            ceiling: HELD,
+        })
+        .await
+        .expect("the hold is placed");
+    assert!(matches!(placed, Hold::Held { .. }), "{placed:?}");
+    log_lines(
+        &mut *database.acquire().await.expect("a pooled connection"),
+        &Entropy::new(),
+        held.now,
+        &settlement,
+    )
+    .await
+    .expect("the line is logged");
+
+    let mut connection = database.acquire().await.expect("a pooled connection");
+    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
+        .bind(held.lease_key.as_str())
+        .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
+        .execute(&mut *connection)
+        .await
+        .expect("the lease ends unreported");
+    for (table, key) in [
+        ("billing.usage_lines", "work_id"),
+        ("billing.holds", "work_id"),
+        ("runner.leases", "id"),
+    ] {
+        sqlx::query(sqlx::AssertSqlSafe(
+            AGED.replace("{table}", table).replace("{key}", key),
+        ))
+        .bind(held.lease_key.as_str())
+        .bind(GRACE.saturating_mul(2))
+        .execute(&mut *connection)
+        .await
+        .expect("the rows age past the grace");
+    }
+}
+
+/// One runtime-only line of `held`'s lease, attributed to its fleet.
+async fn settlement(held: &Held) -> Settlement {
+    let workspace: String =
+        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
+            .bind(&held.fleet)
+            .fetch_one(
+                &mut *held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("a pooled connection"),
+            )
+            .await
+            .expect("the fixture fleet is readable");
+    Settlement {
+        work: WorkKey::FleetLease(held.lease_key.clone()),
+        payer: Account {
+            tenant: Uuid7::parse(&held.tenant).expect("a v7 tenant"),
+            workspace: Uuid7::parse(&workspace).expect("a v7 workspace"),
+        },
+        attribution: Attribution::Fleet {
+            fleet: Uuid7::parse(&held.fleet).expect("a v7 fleet"),
+            fleet_name: held.fleet.clone(),
+            event_id: held.event_id.clone(),
+        },
+        provider: crate::seed::PROVIDER.to_owned(),
+        model: crate::seed::MODEL.to_owned(),
+        posture: Posture::Platform,
+        lines: vec![RatedLine {
+            usage: UsageLine {
+                seq: 0,
+                at: held.now,
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                cache_write_tokens: 0,
+                cache_write_5m_tokens: 0,
+                cache_write_1h_tokens: 0,
+                output_tokens: 0,
+                runtime_ms: RUNTIME_MS,
+            },
+            price: None,
+            charged: LINE,
+            unpriced_tokens: 0,
+        }],
+    }
 }
