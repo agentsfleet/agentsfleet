@@ -64,9 +64,9 @@ describe("native platform Library curation", () => {
   it("confirms withdrawal-only deletion against the tag captured when the dialog opened", async () => {
     remove.mockResolvedValue({ok: true, data: undefined});
     show(); fireEvent.click(screen.getByRole("button", {name: "Delete"}));
-    expect(screen.getByRole("alertdialog").textContent).toContain("Existing fleets keep their pinned setup revision");
+    expect(screen.getByRole("alertdialog").textContent).toContain("Existing fleets keep their saved setup");
     fireEvent.click(screen.getAllByRole("button", {name: "Delete"}).at(-1)!);
-    await waitFor(() => expect(screen.getByText("No entries in the catalog")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No fleet setups yet")).toBeTruthy());
     expect(remove).toHaveBeenCalledWith(ENTRY.id, ENTRY.etag);
   });
   it("retains the entry after refused deletion", async () => {
@@ -88,7 +88,7 @@ describe("native platform Library curation", () => {
     await screen.findByText("Draft");
     fireEvent.click(screen.getByRole("button", {name: "Delete"}));
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Delete"}));
-    await screen.findByText("No entries in the catalog");
+    await screen.findByText("No fleet setups yet");
     expect(patch).toHaveBeenLastCalledWith(ENTRY.id, {published: false}, published.etag);
     expect(remove).toHaveBeenCalledWith(ENTRY.id, withdrawn.etag);
   });
@@ -120,4 +120,12 @@ it("opens editing deliberately on a device without hover", async () => {
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Edit"}));
   expect(await screen.findByLabelText("Name")).toBeTruthy();
+});
+
+it("explains an empty platform library and provides a workspace destination", () => {
+  show([]);
+  expect(screen.getByText("Manage fleet setups shared across workspaces.")).toBeTruthy();
+  expect(screen.getByText("No fleet setups yet")).toBeTruthy();
+  expect(screen.getByRole("link", {name: "Open workspace"}).getAttribute("href")).toBe("/");
+  expect(screen.queryByText(/catalog entries|reviewed candidate|stage a/i)).toBeNull();
 });

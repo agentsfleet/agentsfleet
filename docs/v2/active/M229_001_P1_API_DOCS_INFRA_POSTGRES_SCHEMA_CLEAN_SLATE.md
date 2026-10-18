@@ -209,17 +209,17 @@ Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed
 | 11 | Keep Status / Created placement and row hover consistent across tables. | Pending. |
 | 12 | Rename This workspace to Workspace; explain library visibility. | `4662cda2a`: scope explanation and Workspace label. |
 | 13 | Add a New fleet action to the empty workspace library. | `4662cda2a`. |
-| 14 | Show the full Secrets search focus border on the first click. | Pending shared input fix. |
+| 14 | Show the full Secrets search focus border on the first click. | `492e115f6`: shared inset focus ring and focus border; browser regression written. |
 | 15 | Use the agent callsign across recents, fleets, leases, and billing; billing shows only the callsign. | Pending. |
 | 16 | Make the credit balance stand out with a contrasting accent. | Pending. |
-| 17 | Improve Platform menu icons, alignment, and active destinations. | Pending. |
-| 18 | Improve Settings menu icons, alignment, and active destinations. | Pending. |
-| 19 | Remove repeated Encrypted and hidden rows; emphasize Encrypted in the Secrets subtitle. | Pending. |
+| 17 | Improve Platform menu icons, alignment, and active destinations. | Implemented: shared menu navigation, consistent icons, active destination, keyboard focus tests. |
+| 18 | Improve Settings menu icons, alignment, and active destinations. | Implemented through the same menu navigation and destination tests. |
+| 19 | Remove repeated Encrypted and hidden rows; emphasize Encrypted in the Secrets subtitle. | `492e115f6`: shared subtitle with emphasized Encrypted; repeated row text removed. |
 | 20a | Standardize runner Activity headings: Activity, Details, and Created. | Pending. Created records the activity time. |
 | 20b | Show descriptive runner activities for both existing and future rows. | Investigating recorded fields and typed presentation. |
 | 20c | Explain activity details without repeating the activity timestamp. | Pending. |
 | 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | Investigating; live failure cause unconfirmed. |
-| 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | Pending. |
+| 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | Implemented: one-line description, Fleet setups heading, workspace action, empty-state regression. |
 
 The catalogue editor and picker landed in `43b537a19`, `7152af4d2`, `c50b4b630`, and `98c184bdc`.
 Commit hooks passed for those commits and the completed follow-ups. This record makes no unit-test or coverage claim.
