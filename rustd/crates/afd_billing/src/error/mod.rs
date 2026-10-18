@@ -21,7 +21,7 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    billing_wallet_missing, charges_cursor_invalid, query, row_malformed,
+    billing_wallet_missing, charge_overflow, charges_cursor_invalid, query, row_malformed,
 };
 
 /// The result every fallible function in this crate returns.
@@ -80,6 +80,13 @@ pub(crate) enum ErrorKind {
     #[error("a charges cursor this daemon never issued")]
     ChargesCursorInvalid,
 
+    /// A priced line or a balance would not fit in a signed 64-bit nano count.
+    ///
+    /// No source: nothing failed underneath; the arithmetic refused a value
+    /// rather than wrap it into a wrong charge.
+    #[error("a charge does not fit in a 64-bit nano count")]
+    ChargeOverflow,
+
     /// The pool would not give a connection.
     #[error("the billing store's datastore is unavailable")]
     Datastore {
@@ -99,7 +106,8 @@ impl Error {
             }
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Entropy { .. } => (
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ChargeOverflow => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),

@@ -35,6 +35,7 @@ pub mod budget;
 pub mod charge;
 pub mod meter;
 pub mod nanos;
+pub mod price;
 pub mod rates;
 pub mod sql;
 // The TENANT's read side of the same schema: a wallet snapshot and the paged

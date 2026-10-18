@@ -121,6 +121,12 @@ pub const INSERT_FLEET_CHARGE: &str = include_str!("insert_fleet_charge.sql");
 /// `$1` provider, `$2` model name.
 pub const SELECT_PLATFORM_MODEL_PRICES: &str = include_str!("select_platform_model_prices.sql");
 
+/// Every tier one model is published at, across all its dates, oldest first.
+///
+/// `$1` provider · `$2` model name. The rater, not this statement, picks the
+/// tier and the date, so one read serves every line of a piece of work.
+pub const SELECT_PRICE_BOOK: &str = include_str!("select_price_book.sql");
+
 /// The `billing.fleet_charges.charge_type` values this crate writes and counts.
 ///
 /// Two spellings, declared once (RULE UFS): the budget drain counts BOTH, so a charge type spelled
