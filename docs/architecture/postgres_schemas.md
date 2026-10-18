@@ -233,7 +233,8 @@ producer's instant billing uses, which the event row does not hold; the lease's 
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `platform_models` | Platform catalogue with prices (nanos per million tokens) | `id, model_name, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at` |
+| `platform_models` | Curated identities with exact provider API identifiers, display names and context evidence | `id, model_name, provider, display_name, context_cap_tokens, context_source_url, context_verified_at, advanced, created_at, updated_at` |
+| `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices | `id, platform_model_id, effective_from, effective_until, prompt_tokens_above, input_nanos_per_mtok, cached_input_nanos_per_mtok, cache_write_nanos_per_mtok, cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok, source_url, verified_at, conditions, created_at, updated_at` |
 | `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution | `id (=1), resource_version, created_at, updated_at` |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key | `provider (PK), source_workspace_id, active, platform_model_id, base_url, created_at, updated_at` |
 | `tenant_models` | A tenant's own models, each pointing at a vault key | `id, tenant_id, model_name, secret_ref, created_at, updated_at` |
