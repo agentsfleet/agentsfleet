@@ -28,7 +28,7 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# `core.fleet_events`. The continuation insert this crate used to carry a
+# `fleet.events`. The continuation insert this crate used to carry a
 # byte-identical COPY of — the copy existed only because reaching the original
 # meant depending on the whole runner plane, and `afd_events` is that reason
 # removed.
@@ -39,7 +39,14 @@ afd_dragonfly.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_api_wire.workspace = true
+# The fleet status a setup request must find (`installing`), spelled where the
+# fleet's lifecycle declares it rather than again here.
+afd_fleet_lifecycle.workspace = true
 afd_wire.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
+# jiff-sqlx.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The live-tail frames a resolve and a sweep announce are built as values and
 # rendered once; nothing here parses JSON.
 serde_json.workspace = true

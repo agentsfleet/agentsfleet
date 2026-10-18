@@ -16,11 +16,10 @@
 )]
 
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::SubscriptionHub;
 use serde_json::json;
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config, sweeper_exclusive};
+use crate::lane::{Lane, Window, dead_queue, dragonfly_config, sweeper_exclusive};
 use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, SWEEPER, next_frame};
 
 /// A decision is announced on the fleet's live tail, count included.
@@ -34,7 +33,6 @@ use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, SWEEPER, next_frame};
 async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let hub = SubscriptionHub::start(dragonfly_config())
         .await
@@ -42,10 +40,10 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
-    let answered = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let _still_waiting = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let answered = lane.seed_gate(Window::Open).await;
+    let _still_waiting = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&answered, Decision::Denied, OPERATOR, NOTE, None, now)
+        .resolve(&answered, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -74,12 +72,9 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     // The sweeper announces what it takes, the same way: two seeded lapsed,
     // so this sweep takes both — reading the fleet's counters once for the
     // pair — and the sibling above stays.
-    let lapsed = lane.seed_gate(NOW_MS - 1).await;
-    let lapsed_too = lane.seed_gate(NOW_MS - 1).await;
-    lane.inbox
-        .expire(now)
-        .await
-        .expect("the sweep must not fault");
+    let lapsed = lane.seed_gate(Window::Lapsed).await;
+    let lapsed_too = lane.seed_gate(Window::Lapsed).await;
+    lane.inbox.expire().await.expect("the sweep must not fault");
     let swept = next_frame(&mut tail)
         .await
         .expect("the sweep reaches the fleet's tail");
@@ -131,7 +126,6 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_re_raised_actions_rows_are_counted_out_together() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let hub = SubscriptionHub::start(dragonfly_config())
         .await
@@ -139,11 +133,11 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
-    let re_raised = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    lane.seed_gate_for(&re_raised, NOW_MS + WINDOW_MS).await;
-    let _sibling = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let re_raised = lane.seed_gate(Window::Open).await;
+    lane.seed_gate_for(&re_raised, Window::Open).await;
+    let _sibling = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&re_raised, Decision::Denied, OPERATOR, NOTE, None, now)
+        .resolve(&re_raised, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -168,16 +162,15 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
     let inbox = Inbox::new(
         lane.pool.clone(),
         dead_queue(),
         afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the decision stands whatever the queue does");
     assert!(

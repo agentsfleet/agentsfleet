@@ -9,7 +9,7 @@
 //! including the ones the runner is blind to, and answers them.
 //!
 //! That is the split [`crate::Inbox`] already makes over
-//! `core.fleet_approval_gates`, and it is the same split for the same reason.
+//! `fleet.approval_gates`, and it is the same split for the same reason.
 //! What the two sides share is one column's vocabulary, in
 //! [`afd_api_wire::grant::status`], and nothing else — a second spelling of
 //! `revoked` in either crate is a row one plane writes that the other stops
@@ -30,11 +30,10 @@
 //! [`grant_sql::REVOKE_GRANT`] for why the redundancy stays.
 
 use afd_api_wire::grant::status;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::grant_sql;
 use crate::{Result, error};
@@ -57,11 +56,11 @@ pub struct GrantRow {
     /// Where the decision stands, from [`afd_api_wire::grant::status`].
     pub status: String,
     /// When the grant was raised.
-    pub created_at: i64,
+    pub created_at: Timestamp,
     /// When a person approved it, if one has.
-    pub approved_at: Option<i64>,
+    pub approved_at: Option<Timestamp>,
     /// When a person took that back, if one has.
-    pub revoked_at: Option<i64>,
+    pub revoked_at: Option<Timestamp>,
     /// Why the row exists at all — `requested_reason` on the column.
     pub reason: String,
 }
@@ -136,16 +135,13 @@ impl IntegrationGrants {
             return Ok(None);
         }
 
-        let rows = sqlx::query(grant_sql::SELECT_FLEET_GRANTS)
+        let rows = sqlx::query_as::<_, StoredGrant>(grant_sql::SELECT_FLEET_GRANTS)
             .bind(fleet.as_str())
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_LIST))?;
 
-        rows.iter()
-            .map(read_grant)
-            .collect::<Result<Vec<_>>>()
-            .map(Some)
+        Ok(Some(rows.into_iter().map(GrantRow::from).collect()))
     }
 
     /// Takes one grant back.
@@ -157,7 +153,8 @@ impl IntegrationGrants {
     ///
     /// The approval a revoked grant once had is left standing. `approved_at`
     /// is not cleared, so the row still records that a person said yes before
-    /// somebody took it back — a history a cleared column would erase.
+    /// somebody took it back — a history a cleared column would erase. The
+    /// revoke is stamped on the database clock, as every write here is.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -166,7 +163,6 @@ impl IntegrationGrants {
         workspace: &Uuid7,
         fleet: &Uuid7,
         grant: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Revocation> {
         let mut connection = self.database.acquire().await?;
         if !holds(&mut connection, workspace, fleet).await? {
@@ -175,7 +171,6 @@ impl IntegrationGrants {
 
         let revoked = sqlx::query(grant_sql::REVOKE_GRANT)
             .bind(status::REVOKED)
-            .bind(now.as_millis())
             .bind(grant.as_str())
             .bind(fleet.as_str())
             .bind(workspace.as_str())
@@ -199,7 +194,7 @@ impl IntegrationGrants {
 /// the store owns.
 ///
 /// The predicate decides the authorization in the place that can enforce it,
-/// rather than reading `core.fleets.workspace_id` back and comparing it here,
+/// rather than reading `fleet.fleets.workspace_id` back and comparing it here,
 /// so no row comes back to be compared wrongly.
 async fn holds(
     connection: &mut sqlx::PgConnection,
@@ -215,22 +210,32 @@ async fn holds(
         .map_err(error::query(CONTEXT_SCOPE))
 }
 
-/// Reads one grant row, through one error context.
-///
-/// Positional, matching the statement's projection: naming the columns here as
-/// well would be a second list to keep in step with the `SELECT`, and the two
-/// drifting is a decode failure at runtime rather than a build failure.
-fn read_grant(row: &sqlx::postgres::PgRow) -> Result<GrantRow> {
-    let unreadable = error::query(CONTEXT_LIST);
-    Ok(GrantRow {
-        id: row.try_get(0).map_err(&unreadable)?,
-        service: row.try_get(1).map_err(&unreadable)?,
-        status: row.try_get(2).map_err(&unreadable)?,
-        created_at: row.try_get(3).map_err(&unreadable)?,
-        approved_at: row.try_get(4).map_err(&unreadable)?,
-        revoked_at: row.try_get(5).map_err(&unreadable)?,
-        reason: row.try_get(6).map_err(&unreadable)?,
-    })
+/// One grant row as [`grant_sql::SELECT_FLEET_GRANTS`] returns it, by column
+/// name, so the projection and the decoder cannot drift by position.
+#[derive(Debug, sqlx::FromRow)]
+struct StoredGrant {
+    id: String,
+    service: String,
+    status: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    approved_at: Option<jiff_sqlx::Timestamp>,
+    revoked_at: Option<jiff_sqlx::Timestamp>,
+    reason: String,
+}
+
+impl From<StoredGrant> for GrantRow {
+    fn from(stored: StoredGrant) -> Self {
+        Self {
+            id: stored.id,
+            service: stored.service,
+            status: stored.status,
+            created_at: stored.created_at,
+            approved_at: stored.approved_at.map(jiff_sqlx::Timestamp::to_jiff),
+            revoked_at: stored.revoked_at.map(jiff_sqlx::Timestamp::to_jiff),
+            reason: stored.reason,
+        }
+    }
 }
 
 #[cfg(test)]

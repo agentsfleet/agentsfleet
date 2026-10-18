@@ -13,14 +13,14 @@
 //! # The race is decided by Postgres, not by this crate
 //!
 //! Two operators answering one gate at the same instant both run one UPDATE
-//! carrying `WHERE status = 'pending'`. Exactly one updates a row; the other's
+//! carrying `WHERE resolved_at IS NULL`. Exactly one updates a row; the other's
 //! `RETURNING` comes back empty, which is how [`Resolution`] tells "you decided
 //! this" from "somebody already had". A read-then-write would let both believe
 //! they won and both tell their person so.
 //!
 //! # A resolved gate never reopens the row it blocked
 //!
-//! Nothing here writes back to `core.fleet_events`. The blocked row is
+//! Nothing here writes back to `fleet.events`. The blocked row is
 //! terminal by design: a resolved gate lands a NEW event carrying
 //! `actor=continuation:<original>`, so the history keeps both the run that was
 //! stopped and the run that followed from the answer. Re-opening the first
@@ -36,16 +36,17 @@ use afd_api_wire::approval::GateStatus;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
+use jiff_sqlx::ToSqlx as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
 #[cfg(feature = "test-util")]
 pub use self::sweep::SweptParts;
 
-use self::row::read_gate;
+use self::row::StoredGate;
 use crate::sql;
 use crate::{Result, error};
 
-/// The filter that means "every fleet" / "every kind".
+/// The filter that means "every fleet" / "every type".
 ///
 /// An empty string rather than a `NULL`: the statement spells the disabled arm
 /// `$3 = ''`, so one binding serves both the filtered and unfiltered read and
@@ -93,25 +94,23 @@ impl Inbox {
         limit: i64,
     ) -> Result<Vec<GateRow>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_GATE_PAGE)
+        let rows = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_PAGE)
             .bind(workspace.as_str())
             .bind(filter.status.map_or(NO_FILTER, GateStatus::as_str))
             .bind(filter.fleet_id.unwrap_or(NO_FILTER))
-            .bind(filter.gate_kind.unwrap_or(NO_FILTER))
+            .bind(filter.gate_type.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())
-            .bind(cursor.map_or(0, |at| at.created_at))
-            // NULL, not `''`, when there is no cursor: the statement casts this
-            // to uuid so the keyset seek can ride the index, and `''::uuid` is
-            // not a uuid. The `$5 = false` arm is what actually excludes it.
+            // NULL, not a stand-in instant or `''`, when there is no cursor:
+            // the statement casts both to their column types so the keyset seek
+            // can ride the index, and the `$5 = false` arm is what excludes them.
+            .bind(cursor.map(|at| at.created_at.to_sqlx()))
             .bind(cursor.map(|at| at.gate_id))
             .bind(limit)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_PAGE))?;
 
-        rows.iter()
-            .map(|row| read_gate(row, CONTEXT_PAGE))
-            .collect()
+        Ok(rows.into_iter().map(GateRow::from).collect())
     }
 
     /// One gate by id, inside `workspace`.
@@ -124,15 +123,13 @@ impl Inbox {
     /// Reports a datastore that would not answer.
     pub async fn one(&self, workspace: &Uuid7, gate: &Uuid7) -> Result<Option<GateRow>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_GATE_BY_ID)
+        let row = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_BY_ID)
             .bind(gate.as_str())
             .bind(workspace.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ONE))?;
 
-        row.as_ref()
-            .map(|row| read_gate(row, CONTEXT_ONE))
-            .transpose()
+        Ok(row.map(GateRow::from))
     }
 }

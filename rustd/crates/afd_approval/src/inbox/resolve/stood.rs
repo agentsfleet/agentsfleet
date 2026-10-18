@@ -7,9 +7,7 @@
 //! call may have lost.
 
 use afd_api_wire::approval::status;
-use afd_core::clock::UnixMillis;
 
-use super::super::row::read_resolved;
 use super::super::{Inbox, Resolved};
 use crate::Result;
 
@@ -25,20 +23,14 @@ impl Inbox {
     /// # Errors
     /// Reports a ledger that would not answer, and a continuation that would
     /// not land.
-    pub(super) async fn stood(
-        &self,
-        row: &sqlx::postgres::PgRow,
-        now: UnixMillis,
-    ) -> Result<Resolved> {
-        let mut resolved = read_resolved(row)?;
+    pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
         if leaves_delivery_parked(&resolved.status, resolved.event_id.as_deref()) {
             self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
                 .await;
         } else if resolved.status == status::APPROVED
             && let Some(event_id) = resolved.event_id.clone()
         {
-            resolved.continuation_event_id =
-                self.owed_continuation(&resolved, &event_id, now).await?;
+            resolved.continuation_event_id = self.owed_continuation(&resolved, &event_id).await?;
         }
         Ok(resolved)
     }
@@ -54,7 +46,6 @@ impl Inbox {
         &self,
         resolved: &Resolved,
         event_id: &str,
-        now: UnixMillis,
     ) -> Result<Option<String>> {
         let landed = self
             .admissions
@@ -65,7 +56,7 @@ impl Inbox {
             .await?;
         match landed {
             Some(admitted) => Ok(Some(admitted.id)),
-            None => self.continue_from(resolved, event_id, now).await,
+            None => self.continue_from(resolved, event_id).await,
         }
     }
 }

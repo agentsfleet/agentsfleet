@@ -1,34 +1,20 @@
 //! The reference keys and lifetimes the gate store writes.
 
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-)]
-use super::{MILLIS_PER_SECOND, REF_GRACE_SECONDS, REF_MINIMUM_SECONDS, key, reference_lifetime};
-use crate::gate::pending::GateRef;
-use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
+use std::time::Duration;
+
+use super::{REF_GRACE, REF_MINIMUM, key, reference_lifetime};
 
 const ACTION: &str = "0193e9a0-0000-7000-8000-00000000aaaa";
 
-/// The instant every case measures its deadline from.
-const NOW_MS: i64 = 0;
+/// A timeout comfortably beyond the floor, so the grace is what answers.
+const FAR_TIMEOUT: Duration = Duration::from_hours(30);
 
-/// A deadline comfortably beyond the grace, in seconds.
-const FAR_DEADLINE_S: i64 = 100_000;
+/// A timeout inside the floor, so the clamp is what answers.
+const NEAR_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// A deadline inside the floor, so the clamp is what answers.
-const NEAR_DEADLINE_MS: i64 = 1_000;
-
-/// An instant well past a deadline of zero, so the remaining span is
-/// negative and the floor is the only thing keeping the expiry valid.
-const LATE_NOW_MS: i64 = 10_000_000;
-
-fn reference(deadline_ms: i64) -> GateRef {
-    GateRef::new(
-        Uuid7::parse(ACTION).expect("a canonical identifier"),
-        UnixMillis::from_millis(deadline_ms),
-    )
+/// Whole seconds in `span`, as the key's lifetime counts them.
+fn seconds(span: Duration) -> i64 {
+    i64::try_from(span.as_secs()).unwrap_or(i64::MAX)
 }
 
 #[test]
@@ -55,50 +41,24 @@ fn a_reference_outlives_its_own_deadline() {
     // The property the grace exists for: the poll that produces the TIMEOUT
     // runs after the deadline, so a key expiring at the deadline would take
     // the reference away before anything could resolve it.
-    let now = UnixMillis::from_millis(NOW_MS);
-    let far = reference(FAR_DEADLINE_S * MILLIS_PER_SECOND);
-
-    let lifetime = reference_lifetime(&far, now);
-    assert!(
-        lifetime > FAR_DEADLINE_S,
-        "a reference must outlive its deadline, got {lifetime}"
-    );
-}
-
-#[test]
-fn a_deadline_already_past_still_gets_a_usable_lifetime() {
-    // A negative expiry is one Dragonfly refuses outright, which would leave
-    // the event parked with no reference at all.
-    let now = UnixMillis::from_millis(LATE_NOW_MS);
-    let stale = reference(NOW_MS);
-
-    assert_eq!(reference_lifetime(&stale, now), REF_MINIMUM_SECONDS);
-}
-
-#[test]
-fn a_deadline_at_the_edge_of_the_clock_saturates_instead_of_overflowing() {
-    // The widest span the two instants can hold, both ways round: an
-    // unchecked subtraction overflows on each, and release builds keep
-    // overflow checks on, so either would abort the daemon.
-    let latest = reference(i64::MAX);
-    let earliest_now = UnixMillis::from_millis(i64::MIN);
     assert_eq!(
-        reference_lifetime(&latest, earliest_now),
-        i64::MAX / MILLIS_PER_SECOND + REF_GRACE_SECONDS
+        reference_lifetime(FAR_TIMEOUT),
+        seconds(FAR_TIMEOUT + REF_GRACE)
     );
-
-    let earliest = reference(i64::MIN);
-    let latest_now = UnixMillis::from_millis(i64::MAX);
-    assert_eq!(
-        reference_lifetime(&earliest, latest_now),
-        REF_MINIMUM_SECONDS
-    );
+    assert!(reference_lifetime(FAR_TIMEOUT) > seconds(FAR_TIMEOUT));
 }
 
 #[test]
-fn a_near_deadline_is_floored_rather_than_shortened() {
-    let now = UnixMillis::from_millis(NOW_MS);
-    let soon = reference(NEAR_DEADLINE_MS);
+fn a_short_or_zero_timeout_is_floored_rather_than_shortened() {
+    // A key Dragonfly drops before the resolving poll leaves the event parked
+    // with no reference at all.
+    assert_eq!(reference_lifetime(NEAR_TIMEOUT), seconds(REF_MINIMUM));
+    assert_eq!(reference_lifetime(Duration::ZERO), seconds(REF_MINIMUM));
+}
 
-    assert_eq!(reference_lifetime(&soon, now), REF_MINIMUM_SECONDS);
+#[test]
+fn a_timeout_at_the_edge_of_the_range_saturates_instead_of_overflowing() {
+    // An unchecked addition overflows here, and release builds keep overflow
+    // checks on, so it would abort the daemon.
+    assert_eq!(reference_lifetime(Duration::MAX), i64::MAX);
 }

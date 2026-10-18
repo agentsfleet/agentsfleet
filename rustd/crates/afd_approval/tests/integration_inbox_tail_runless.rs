@@ -12,11 +12,10 @@
 )]
 
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::{ReadyIndex, SubscriptionHub};
 use serde_json::{Value, json};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config};
+use crate::lane::{Lane, Window, dead_queue, dragonfly_config};
 use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, next_frame, ready_token};
 
 /// A gate that held no run is answered, announced with no event, and
@@ -30,7 +29,6 @@ use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, next_frame, ready_toke
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let hub = SubscriptionHub::start(dragonfly_config())
         .await
@@ -38,10 +36,10 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+    let runless = lane.seed_runless_gate(Window::Open).await;
     let outcome = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continued = match outcome {
@@ -72,12 +70,11 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_already_resolved_runless_gate_refreshes_readiness() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+    let runless = lane.seed_runless_gate(Window::Open).await;
 
     let first = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -90,7 +87,7 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
 
     let second = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the repeated answer reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -111,12 +108,11 @@ async fn an_already_resolved_runless_gate_refreshes_readiness() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_already_denied_gate_that_held_a_run_refreshes_readiness() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
-    let gate = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let gate = lane.seed_gate(Window::Open).await;
 
     let first = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None, now)
+        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -130,7 +126,7 @@ async fn an_already_denied_gate_that_held_a_run_refreshes_readiness() {
 
     let second = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None, now)
+        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the retry reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -149,16 +145,15 @@ async fn an_already_denied_gate_that_held_a_run_refreshes_readiness() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_runless_gate_with_a_dead_ready_index_still_resolves() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
     let inbox = Inbox::new(
         lane.pool.clone(),
         dead_queue(),
         afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
-    let runless = lane.seed_runless_gate(NOW_MS + WINDOW_MS).await;
+    let runless = lane.seed_runless_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("a lost ready mark does not reject the answer");
     assert!(matches!(outcome, Resolution::Resolved(_)));

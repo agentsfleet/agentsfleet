@@ -16,7 +16,6 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
 use afd_crypto::entropy::Entropy;
@@ -99,7 +98,7 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
                 request_json: "{}",
                 config: &config,
             },
-            UnixMillis::from_millis(0),
+            jiff::Timestamp::UNIX_EPOCH,
         )
         .await;
 

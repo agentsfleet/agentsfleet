@@ -5,8 +5,9 @@
 //! Parking an event writes two things: a durable row, and a Dragonfly reference
 //! from the event to the action it is waiting on. Every later lease poll reads
 //! that reference and re-evaluates it. There is no blocking wait, no parked
-//! handler, and no timer — the deadline is a NUMBER carried in the reference,
-//! compared against the caller's clock.
+//! handler, and no timer — the deadline is the row's `expires_at`, stamped by
+//! the database clock when the gate was raised and compared against that same
+//! clock when a poll reads the row back.
 //!
 //! # Two stores, and the fallback is the point
 //!
@@ -33,7 +34,6 @@
 //! [`afd_core::spelling::from_spelling`], not `match` arms — see that module
 //! for why a second copy of a variant's name is the failure with no test.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
@@ -44,30 +44,29 @@ use crate::gate::decision::Answer;
 /// Serialised through [`Stored`], which is what makes the identifier a real
 /// [`Uuid7`] rather than "whatever thirty-six bytes were in the key". A
 /// reference checked only for its length could name a spelling
-/// `core.fleet_approval_gates` never wrote, and nothing would notice until the
+/// `fleet.approval_gates` never wrote, and nothing would notice until the
 /// row lookup missed.
+///
+/// No deadline: the row holds it, on the clock that stamped it, and the poll
+/// that needs it reads that row anyway. A copy here would be a second instant
+/// to drift from the first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Stored", into = "Stored")]
 pub struct GateRef {
     /// The action a human was asked about.
     action_id: Uuid7,
-    /// When the question lapses.
-    deadline: UnixMillis,
 }
 
 /// The reference as the key holds it.
 ///
 /// A separate shape rather than serde attributes on [`GateRef`] itself,
 /// because the conversion is not a rename: `action_id` arrives as a string and
-/// has to PARSE, and `deadline` is a bare count of milliseconds. Routing
-/// through here is what makes that validation run on every read instead of on
-/// the ones a caller remembered to check.
+/// has to PARSE. Routing through here is what makes that validation run on
+/// every read instead of on the ones a caller remembered to check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Stored {
     /// The action identifier, unvalidated until [`TryFrom`] runs.
     action_id: Box<str>,
-    /// The deadline, in milliseconds since the epoch.
-    deadline_ms: i64,
 }
 
 impl TryFrom<Stored> for GateRef {
@@ -76,7 +75,6 @@ impl TryFrom<Stored> for GateRef {
     fn try_from(stored: Stored) -> Result<Self, Self::Error> {
         Ok(Self {
             action_id: Uuid7::parse(&stored.action_id)?,
-            deadline: UnixMillis::from_millis(stored.deadline_ms),
         })
     }
 }
@@ -85,37 +83,21 @@ impl From<GateRef> for Stored {
     fn from(reference: GateRef) -> Self {
         Self {
             action_id: reference.action_id.as_str().into(),
-            deadline_ms: reference.deadline.as_millis(),
         }
     }
 }
 
 impl GateRef {
-    /// A reference to `action_id`, lapsing at `deadline`.
+    /// A reference to `action_id`.
     #[must_use]
-    pub const fn new(action_id: Uuid7, deadline: UnixMillis) -> Self {
-        Self {
-            action_id,
-            deadline,
-        }
+    pub const fn new(action_id: Uuid7) -> Self {
+        Self { action_id }
     }
 
     /// The action a human was asked about.
     #[must_use]
     pub const fn action_id(&self) -> &Uuid7 {
         &self.action_id
-    }
-
-    /// When the question lapses.
-    #[must_use]
-    pub const fn deadline(&self) -> UnixMillis {
-        self.deadline
-    }
-
-    /// Whether `now` is past the deadline.
-    #[must_use]
-    pub const fn has_lapsed(&self, now: UnixMillis) -> bool {
-        now.as_millis() > self.deadline.as_millis()
     }
 }
 
@@ -132,22 +114,24 @@ pub enum Evaluation {
     Expired,
 }
 
-/// What one poll makes of `answer` against `reference` at `now`.
+/// What one poll makes of `answer`, given whether the gate's deadline has
+/// `lapsed` on the database clock.
 ///
 /// Pure, and separated from the two reads that feed it for the reason the rest
 /// of this crate separates verdicts from I/O: the interesting behaviour is the
-/// deadline comparison and the ordering of "answered" against "lapsed", and
-/// neither needs a datastore to be proven.
+/// ordering of "answered" against "lapsed", and it needs no datastore to be
+/// proven. The comparison itself is the database's — see
+/// [`super::sql::SELECT_GATE_STATUS`].
 ///
 /// An ANSWER outranks a lapsed deadline. A reviewer who approved at the last
 /// second and a sweeper that has not run yet must not race to opposite
 /// outcomes, and the answer is the one a human actually gave.
 #[must_use]
-pub fn evaluate(reference: &GateRef, answer: Option<Answer>, now: UnixMillis) -> Evaluation {
+pub const fn evaluate(answer: Option<Answer>, lapsed: bool) -> Evaluation {
     match answer {
         Some(Answer::Approved) => Evaluation::Approved,
         Some(Answer::Denied) => Evaluation::Denied,
-        None if reference.has_lapsed(now) => Evaluation::Expired,
+        None if lapsed => Evaluation::Expired,
         None => Evaluation::Pending,
     }
 }
@@ -160,17 +144,12 @@ mod tests {
     )]
     use super::{Evaluation, GateRef, evaluate};
     use crate::gate::decision::Answer;
-    use afd_core::clock::UnixMillis;
     use afd_core::id::Uuid7;
 
     const ACTION: &str = "0193e9a0-0000-7000-8000-00000000aaaa";
-    const DEADLINE: i64 = 1_765_000_000_000;
 
     fn reference() -> GateRef {
-        GateRef::new(
-            Uuid7::parse(ACTION).expect("a canonical identifier"),
-            UnixMillis::from_millis(DEADLINE),
-        )
+        GateRef::new(Uuid7::parse(ACTION).expect("a canonical identifier"))
     }
 
     fn stored(reference: &GateRef) -> String {
@@ -185,28 +164,24 @@ mod tests {
             serde_json::from_str::<GateRef>(&written).expect("what we wrote reads back"),
             reference()
         );
-        // The stored shape is named fields, so a reader — or a `redis-cli` —
-        // sees what each number is rather than a position in a delimited pair.
-        assert!(written.contains("action_id"), "{written}");
-        assert!(written.contains("deadline_ms"), "{written}");
+        // The stored shape is a named field, so a reader — or a `redis-cli` —
+        // sees what the value is, and it carries no instant of its own.
+        assert_eq!(written, format!(r#"{{"action_id":"{ACTION}"}}"#));
     }
 
     #[test]
     fn a_reference_that_does_not_validate_is_refused_on_read() {
         // The `try_from` runs on EVERY deserialize, so an identifier that is
-        // the right length and the wrong shape cannot become a `GateRef` — the
-        // hand-rolled version checked only that it was at most thirty-six
-        // bytes.
+        // the right length and the wrong shape cannot become a `GateRef`.
         for refused in [
-            r#"{"action_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","deadline_ms":1}"#,
-            r#"{"action_id":"0193E9A0-0000-7000-8000-00000000AAAA","deadline_ms":1}"#,
-            r#"{"action_id":"","deadline_ms":1}"#,
-            r#"{"action_id":"not-an-id","deadline_ms":1}"#,
+            r#"{"action_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}"#,
+            r#"{"action_id":"0193E9A0-0000-7000-8000-00000000AAAA"}"#,
+            r#"{"action_id":""}"#,
+            r#"{"action_id":"not-an-id"}"#,
             // Serde carries the rest for free: a missing field, a wrong type,
             // and a value that is not an object at all.
-            r#"{"deadline_ms":1}"#,
-            r#"{"action_id":"0193e9a0-0000-7000-8000-00000000aaaa"}"#,
-            r#"{"action_id":"0193e9a0-0000-7000-8000-00000000aaaa","deadline_ms":"soon"}"#,
+            "{}",
+            r#"{"action_id":7}"#,
             "[]",
             "",
         ] {
@@ -222,35 +197,13 @@ mod tests {
         // The race this settles: a reviewer answering at the last second, and a
         // sweeper that has not run yet. Reading the deadline first would throw
         // away an answer a human actually gave.
-        let long_past = UnixMillis::from_millis(DEADLINE + 60_000);
-
-        assert_eq!(
-            evaluate(&reference(), Some(Answer::Approved), long_past),
-            Evaluation::Approved
-        );
-        assert_eq!(
-            evaluate(&reference(), Some(Answer::Denied), long_past),
-            Evaluation::Denied
-        );
+        assert_eq!(evaluate(Some(Answer::Approved), true), Evaluation::Approved);
+        assert_eq!(evaluate(Some(Answer::Denied), true), Evaluation::Denied);
     }
 
     #[test]
-    fn no_answer_waits_until_the_deadline_and_then_expires() {
-        let reference = reference();
-
-        assert_eq!(
-            evaluate(&reference, None, UnixMillis::from_millis(DEADLINE - 1)),
-            Evaluation::Pending
-        );
-        // The boundary is exclusive — at exactly the deadline it is still
-        // pending; only an instant past it expires.
-        assert_eq!(
-            evaluate(&reference, None, UnixMillis::from_millis(DEADLINE)),
-            Evaluation::Pending
-        );
-        assert_eq!(
-            evaluate(&reference, None, UnixMillis::from_millis(DEADLINE + 1)),
-            Evaluation::Expired
-        );
+    fn no_answer_waits_until_the_database_says_the_deadline_passed() {
+        assert_eq!(evaluate(None, false), Evaluation::Pending);
+        assert_eq!(evaluate(None, true), Evaluation::Expired);
     }
 }

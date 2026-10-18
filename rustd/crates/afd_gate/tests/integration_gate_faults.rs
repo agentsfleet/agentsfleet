@@ -26,6 +26,9 @@ use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
 /// A queue address nothing listens on.
 const NOWHERE: &str = "redis://127.0.0.1:1";
 
+/// The timeout the hand-recorded reference is kept alive for.
+const REFERENCE_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
+
 /// A rule that stops the fleet on every chat.
 const KILL_EVERY_CHAT: &str =
     r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}]}"#;
@@ -74,7 +77,7 @@ async fn an_unreadable_gate_decision_reason_carries_no_code_prefix() {
     let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
     let event_id = "event-decision-unreadable";
     gates
-        .record(&fleet, event_id, &GateRef::new(action, NOW))
+        .record(&fleet, event_id, &GateRef::new(action), REFERENCE_TIMEOUT)
         .await
         .expect("the live queue holds the reference");
     let config = config(false);

@@ -12,12 +12,11 @@
 
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::SubscriptionHub;
 use afd_wire::event::EventType;
 use serde_json::json;
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, dead_queue, dragonfly_config};
+use crate::lane::{Lane, Window, dead_queue, dragonfly_config};
 use crate::tail_watch::{
     CONTINUATION_ACTOR_PREFIX, CONTINUATION_BODY, NOTE, OPERATOR, SUBSCRIBE_SETTLE, next_frame,
 };
@@ -35,7 +34,6 @@ use crate::tail_watch::{
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let hub = SubscriptionHub::start(dragonfly_config())
         .await
@@ -43,14 +41,14 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
 
-    let approved = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let _still_waiting = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let approved = lane.seed_gate(Window::Open).await;
+    let _still_waiting = lane.seed_gate(Window::Open).await;
     let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
         .await
         .expect("the counters read before the resolve");
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
@@ -120,16 +118,15 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
     let inbox = Inbox::new(
         lane.pool.clone(),
         dead_queue(),
         afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("a queue that refuses the entry does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
@@ -167,12 +164,9 @@ async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_converged_continuation_announces_nothing() {
-    use sqlx::Row as _;
-
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
-    let approved = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let approved = lane.seed_gate(Window::Open).await;
     let predecessor = lane.gate_column(&approved, "event_id").await;
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
@@ -192,7 +186,8 @@ async fn a_converged_continuation_announces_nothing() {
         })
         .await
         .expect("the admission ledger accepts the continuation");
-    let landed: bool = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+    // The statement answers `inserted` first, which is the column this reads.
+    let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
         .bind(lane.fleet.as_str())
         .bind(admitted.stored.id.as_str())
         .bind(lane.workspace.as_str())
@@ -200,13 +195,10 @@ async fn a_converged_continuation_announces_nothing() {
         .bind(EventType::Continuation.as_str())
         .bind(CONTINUATION_BODY)
         .bind(&predecessor)
-        .bind(now.as_millis())
         .bind(afd_core::event::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
         .await
-        .expect("the lease path's insert must not fault")
-        .try_get(0)
-        .expect("the insert returns its `inserted` flag");
+        .expect("the lease path's insert must not fault");
     assert!(landed, "the fixture must be the writer that opened the row");
 
     // Read AFTER the pre-insert: that row moved the counter legitimately, and
@@ -224,7 +216,7 @@ async fn a_converged_continuation_announces_nothing() {
 
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
