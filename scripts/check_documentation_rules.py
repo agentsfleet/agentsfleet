@@ -46,7 +46,7 @@ MARKETING_WORDS = {
 }
 
 INTERNAL_DETAILS = (
-    re.compile(r"\b(?:core|vault)\.[A-Za-z_]"),
+    re.compile(r"\b(?:core|identity|authoring|fleet|runner|connector|model|billing|vault|memory|audit)\.[A-Za-z_]"),
     re.compile(r"\bfleet_execution_telemetry\b"),
     re.compile(r"\b(?:PostgreSQL|Redis|JSONB|XADD|Lua-EVAL)\b", re.IGNORECASE),
     re.compile(
