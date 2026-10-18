@@ -19,7 +19,7 @@ export function Input({ className, type, ref, ...props }: InputProps) {
         "px-md py-sm text-body-sm text-foreground font-sans",
         "placeholder:text-muted-foreground",
         "enabled:hover:border-ring",
-        "focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
+        "focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring focus:border-ring",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",
         className,

@@ -50,6 +50,16 @@ test.describe("secrets lifecycle", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "secrets");
     await expect(page.getByRole("heading", { name: /^secrets$/i })).toBeVisible();
 
+    const search = page.getByRole("textbox", {name: "Search secrets"});
+    await search.click();
+    await search.fill("a");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("box-shadow", /inset/);
+    await expect(search).toHaveCSS("border-left-color", await search.evaluate((element) => getComputedStyle(element).borderRightColor));
+    await search.clear();
+    await expect(page.getByText("Encrypted", {exact: true})).toBeVisible();
+    await expect(page.getByText("Encrypted and hidden.", {exact: true})).toHaveCount(0);
+
     // Add via the field/value builder, opened in a dialog.
     await page.getByRole("button", { name: "Create secret", exact: true }).click();
     const addDialog = page.getByRole("dialog");

@@ -1,6 +1,5 @@
 export const SECRETS_PAGE_TITLE = "Secrets";
 export const SECRETS_PAGE_DESCRIPTION = "Give your fleets access to services without putting credentials in a chat.";
-export const SECRET_ROW_DESCRIPTION = "Encrypted and hidden.";
 export const CREATE_SECRET_TOOLTIP = "Create an encrypted workspace secret.";
 
 export const DELETE_SECRET_DESCRIPTION = "Deleting breaks fleets that reference it. This cannot be undone.";

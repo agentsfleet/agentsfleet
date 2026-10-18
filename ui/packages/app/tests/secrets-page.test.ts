@@ -117,6 +117,8 @@ describe("Secrets page", () => {
 
     expect(markup).toContain("Secrets");
     expect(markup).toContain(SECRETS_PAGE_DESCRIPTION);
+    expect(markup).toContain('class="font-semibold text-info">Encrypted</span> at rest.');
+    expect(markup).not.toContain("Encrypted and hidden");
     expect(markup).toContain('data-testid="add-secret-dialog"');
     expect(markup).toContain('data-workspace="ws_1"');
     expect(markup).toContain('data-testid="secrets-list"');

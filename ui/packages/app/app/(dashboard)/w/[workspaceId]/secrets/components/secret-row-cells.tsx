@@ -1,7 +1,6 @@
 import { CopyButton, IconAction, Time } from "@agentsfleet/design-system";
 import { PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
 import type { Secret } from "@/lib/api/secrets";
-import { SECRET_ROW_DESCRIPTION } from "../copy";
 
 type SecretActionProps = {
   secret: Secret;
@@ -58,7 +57,6 @@ export function SecretNameCell({ secret, pending, onRename }: {
           <PencilLineIcon size={14} />
         </IconAction>
       </div>
-      <div className="text-label leading-label text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
       <div className="sm:hidden text-label leading-label text-muted-foreground">Created <SecretCreatedCell secret={secret} /></div>
     </div>
   );
