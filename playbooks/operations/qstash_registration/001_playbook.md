@@ -55,7 +55,7 @@ provider bags are synced.
 2. Orly runs schedule sync and confirms the provider destination is the exact
    environment URL above.
 3. Orly confirms status becomes `desired_status=active` and
-   `sync_status=synced` for the current generation.
+   `sync_status=synced` for the current `resource_version` in `fleet.schedules`.
 4. Orly observes one signed delivery and confirms a bad signature and replay
    create no fleet event.
 5. Indy removes the disposable schedule; Orly confirms the provider schedule

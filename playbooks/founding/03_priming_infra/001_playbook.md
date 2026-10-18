@@ -184,8 +184,8 @@ runbook that needed it applies to the store being retired, not to this one —
 a self-hosted cluster is torn down by deleting its Fly app.
 
 Do not apply schema files manually. The checked-in migration runner applies
-them in order during deployment and creates the current schemas:
-`core`, `fleet`, `billing`, `audit`, `vault`, `ops_ro`, and `memory`.
+them in order during deployment. The current namespaces come from
+`schema/1000_schemas.sql`; each later slot creates its owning table and grants.
 
 ## 3. Create Cloudflare tunnels
 

@@ -210,8 +210,8 @@ test_system_roots_are_added_for_the_container() {
 }
 
 # The target is migrated before the copy, so it already holds what the
-# migrations wrote. A restore that ignores that collides on migration 410's
-# singleton row and substitutes trigger defaults for migration 880's counters.
+# migrations wrote. Restoring without clearing seeded rows collides on the
+# catalogue singleton and substitutes trigger defaults for activity counters.
 test_the_load_clears_the_target_and_suppresses_triggers() {
   local name="the load truncates, suppresses triggers, and is atomic"
   local out status=0
@@ -251,7 +251,7 @@ test_the_load_sql_carries_the_two_statements_it_depends_on() {
     bad "$name" "the target is not cleared, so seeded rows collide"
   elif [[ "$body" != *"information_schema.tables"* ]]; then
     bad "$name" "the table list is hand-kept and will rot"
-  elif [[ "$body" != *"schema_migration%"* ]]; then
+  elif [[ "$body" != *"NOT (table_schema = 'audit' AND table_name = '_sqlx_migrations')"* ]]; then
     bad "$name" "the ledger is not excluded from the truncate"
   else
     ok "$name"

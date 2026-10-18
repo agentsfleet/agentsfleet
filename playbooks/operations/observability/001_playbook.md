@@ -4,7 +4,7 @@
 **Applies to:** development and production independently
 
 This runbook installs one environment-scoped folder, one runtime dashboard,
-and six Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
+and five Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
 Prometheus datasource.
 
 **Read before applying to production.** The two environments resolve to the

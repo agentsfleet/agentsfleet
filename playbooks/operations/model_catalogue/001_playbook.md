@@ -1,7 +1,7 @@
 ---
 type: how-to
 audience: operator
-verified: 2026-10-18
+verified: 2026-10-19
 product_version: 0.61.0
 executable: false
 ---
@@ -26,16 +26,15 @@ Every price records its source, verification time, effective interval and condit
 
 1. Obtain Indy's approval for the named environment and vault reads.
    Development approval does not authorize production.
-2. Install Bun 1.4.2 and a Postgres command-line client, `psql`.
+2. Install the repository-pinned Bun version and a Postgres command-line client, `psql`.
 3. Authenticate the 1Password command-line interface.
 4. Confirm the selected vault item has `migrator-connection-string`.
    Development uses `planetscale-dev`; production uses `planetscale-prod`.
 5. Check every model's exact context limit against its provider's models API.
    A missing exact limit is reported as `NOT SEEDED` and excludes that identity.
 
-Apply is currently blocked for published cache-write prices whose lifetime is unspecified.
-Resolve the recorded cache-write decision before applying this branch to an environment.
-The seeder refuses to discard those rates.
+Cache-write prices include separate unspecified-lifetime, five-minute, and one-hour fields.
+Preserve every supplied rate when reviewing the complete price schedule.
 
 ## Steps
 
