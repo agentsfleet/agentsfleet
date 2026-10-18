@@ -399,6 +399,7 @@ dependencies = [
  "base64 0.23.1",
  "garde",
  "jiff",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tokio",
