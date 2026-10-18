@@ -25,7 +25,8 @@ fi
 # Qualified names that look like `schema.table` but are not tables. Each entry
 # needs a reason; an unexplained entry is a table the check stopped guarding.
 #   fleet.delivery — an OpenTelemetry span name (semconv.SPAN_FLEET_DELIVERY).
-readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery"
+#   runner.lease — an OpenTelemetry span name (semconv.SPAN_RUNNER_LEASE).
+readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery runner.lease"
 
 # Tables a page may name because it is recording that they are gone. Naming one
 # is a deliberate retirement note, not a claim that it is live storage. Adding an
@@ -99,14 +100,14 @@ while IFS= read -r entry; do
   # `memory.md` reads as schema.table under the same pattern. A filename is not
   # a claim about storage, so drop anything whose tail is a file extension.
   case "$name" in *.md|*.rs|*.sql|*.ts|*.py|*.sh|*.json|*.yaml) continue;; esac
-  grep -rqE "CREATE TABLE IF NOT EXISTS[[:space:]]+$name\b" schema/ 2>/dev/null && continue
+  grep -rqE "CREATE TABLE([[:space:]]+IF NOT EXISTS)?[[:space:]]+$name\b" schema/ 2>/dev/null && continue
   err "test_arch_cited_tables_exist: $src names '$name', which schema/ does not define"
   broken_tables=$((broken_tables + 1))
 done < <(doc_files | while IFS= read -r f; do
   # Backtick-anchored, so `agentsfleet.billing.charge.type` (a metric name) is
   # not read as a table. A trailing `.column` is kept in scope because pages name
   # a column to make the claim concrete: `core.tenant_billing.balance_nanos`.
-  grep -oE '`(core|billing|fleet|memory|vault)\.[a-z_]+(\.[a-z_]+)?[` ]' "$f" 2>/dev/null \
+  grep -oE '`(core|identity|authoring|fleet|runner|connector|model|billing|vault|memory|audit)\.[a-z_]+(\.[a-z_]+)?[` ]' "$f" 2>/dev/null \
     | sed -E 's/^`//; s/[` ]$//; s/^([a-z]+\.[a-z_]+)\..*/\1/' \
     | sort -u | sed "s|^|$f::|" || true
 done)

@@ -139,7 +139,7 @@ test_arch_doc_no_retired_slot_numbers() {
   # A published decision record keeps its own title, so link text is exempt while
   # the same number in prose is not. Both halves are asserted.
   assert_citation_shape "$name" slots \
-    'Indexes live in `schema/620_runner_lease_indexes.sql`, per [Index audit — slots 033 & 034](https://example.invalid/a).' \
+    'Indexes live in `schema/1810_runner_leases.sql`, per [Index audit — slots 033 & 034](https://example.invalid/a).' \
     'Indexes live in slot 033.'
 }
 
