@@ -46,15 +46,15 @@ mod machine;
 mod record;
 
 use afd_auth::credential::CredentialKind;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_unique;
+use jiff::Timestamp;
 use sqlx::Acquire as _;
 
+use crate::sql::COLUMN_ID;
 use crate::sql::cli_credential as sql;
-use crate::sql::{COLUMN_ID, COLUMN_TENANT_ID};
 use crate::{Result, error, stored};
 use afd_auth::minted::Minted;
 
@@ -71,13 +71,15 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 const CONTEXT_SUBJECT: &str = "resolve subject user";
 
 /// The table a malformed user row is reported by.
-const TABLE_USERS: &str = "core.users";
+const TABLE_USERS: &str = "identity.users";
+/// The column a malformed user's tenant is reported by.
+const COLUMN_TENANT_ID: &str = "tenant_id";
 
 /// The partial index that holds a machine to one live credential.
 ///
-/// Must equal the name in `schema/250_cli_credentials.sql`: a hash or
+/// Must equal the name in `schema/1160_identity_cli_credentials.sql`: a hash or
 /// primary-key collision is unique too, and no re-login resolves it.
-const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_machine_live";
+const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_id_machine_name_live";
 
 /// Leading hex characters kept for display beside a credential.
 ///
@@ -111,22 +113,12 @@ impl CliCredentials {
     /// answer.
     pub async fn user_of(&self, subject: &str) -> Result<UserIdentity> {
         let mut connection = self.database.acquire().await?;
-        let row: Option<(String, String, String, Option<String>, String)> =
-            sqlx::query_as(sql::SELECT_USER_IDENTITY_BY_SUBJECT)
-                .bind(subject)
-                .fetch_optional(connection.as_mut())
-                .await
-                .map_err(error::query(CONTEXT_SUBJECT))?;
-
-        let (id, tenant, email, display_name, tenant_name) =
-            row.ok_or_else(error::unknown_subject)?;
-        Ok(UserIdentity {
-            id: stored::uuid(TABLE_USERS, COLUMN_ID, &id)?,
-            tenant: stored::uuid(TABLE_USERS, COLUMN_TENANT_ID, &tenant)?,
-            email,
-            display_name,
-            tenant_name,
-        })
+        let row: Option<UserRow> = sqlx::query_as(sql::SELECT_USER_IDENTITY_BY_SUBJECT)
+            .bind(subject)
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_SUBJECT))?;
+        row.ok_or_else(error::unknown_subject)?.parse()
     }
 
     /// Mints this machine's credential, revoking whatever it left behind.
@@ -137,7 +129,7 @@ impl CliCredentials {
     /// # Errors
     /// Reports a host that cannot draw entropy and a datastore that would not
     /// answer.
-    pub async fn mint(&self, request: &MintRequest<'_>, now: UnixMillis) -> Result<Revealed> {
+    pub async fn mint(&self, request: &MintRequest<'_>, now: Timestamp) -> Result<Revealed> {
         match self.try_mint(request, now).await {
             // The index refused a second live row for this machine, which means
             // somebody else's login committed between our revoke and our
@@ -152,7 +144,7 @@ impl CliCredentials {
     }
 
     /// One attempt at the mint, collision and all.
-    async fn try_mint(&self, request: &MintRequest<'_>, now: UnixMillis) -> Result<Revealed> {
+    async fn try_mint(&self, request: &MintRequest<'_>, now: Timestamp) -> Result<Revealed> {
         // Both are drawn before the transaction opens. Neither touches the
         // datastore, and holding a transaction open across them would widen the
         // window on this write path for nothing.
@@ -173,7 +165,6 @@ impl CliCredentials {
         sqlx::query(sql::REVOKE_CLI_CREDENTIAL_FOR_MACHINE)
             .bind(request.user.as_str())
             .bind(request.machine.as_str())
-            .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_MINT))?;
@@ -189,7 +180,6 @@ impl CliCredentials {
             .bind(display_prefix(credential.expose()))
             .bind(request.deployment)
             .bind(request.from_address)
-            .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
             .map_err(classify_insert)?;
@@ -222,38 +212,53 @@ impl CliCredentials {
         })
     }
 
-    /// Revokes one of this user's credentials by identifier.
+    /// Revokes one of this user's credentials by identifier, stamped with the
+    /// database clock.
     ///
     /// # Errors
     /// Refuses an id naming no LIVE credential this user holds — which is one
     /// answer for three situations, because telling them apart would confirm
     /// another person's credential to whoever guessed its identifier. Reports a
     /// datastore that would not answer.
-    pub async fn revoke(
-        &self,
-        user: &Uuid7,
-        credential: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Revoked> {
+    pub async fn revoke(&self, user: &Uuid7, credential: &Uuid7) -> Result<Revoked> {
         let mut connection = self.database.acquire().await?;
-        let affected = sqlx::query(sql::REVOKE_CLI_CREDENTIAL_BY_ID)
-            .bind(credential.as_str())
-            .bind(user.as_str())
-            .bind(now.as_millis())
-            .execute(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_REVOKE))?
-            .rows_affected();
-
-        if affected == 0 {
-            return Err(error::cli_credential_not_found());
-        }
+        let revoked_at: Option<jiff_sqlx::Timestamp> =
+            sqlx::query_scalar(sql::REVOKE_CLI_CREDENTIAL_BY_ID)
+                .bind(credential.as_str())
+                .bind(user.as_str())
+                .fetch_optional(connection.as_mut())
+                .await
+                .map_err(error::query(CONTEXT_REVOKE))?;
+        let revoked_at = revoked_at.ok_or_else(error::cli_credential_not_found)?;
 
         let credential_id = credential.as_str();
         tracing::info!(credential_id, event = "credential_revoked");
         Ok(Revoked {
             id: credential.clone(),
-            revoked_at_ms: now.as_millis(),
+            revoked_at: revoked_at.to_jiff(),
+        })
+    }
+}
+
+/// The user row a subject resolves to, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct UserRow {
+    id: String,
+    tenant_id: String,
+    email: String,
+    display_name: Option<String>,
+    tenant_name: String,
+}
+
+impl UserRow {
+    /// The identity this row stores; both identifiers parse here.
+    fn parse(self) -> Result<UserIdentity> {
+        Ok(UserIdentity {
+            id: stored::uuid(TABLE_USERS, COLUMN_ID, &self.id)?,
+            tenant: stored::uuid(TABLE_USERS, COLUMN_TENANT_ID, &self.tenant_id)?,
+            email: self.email,
+            display_name: self.display_name,
+            tenant_name: self.tenant_name,
         })
     }
 }

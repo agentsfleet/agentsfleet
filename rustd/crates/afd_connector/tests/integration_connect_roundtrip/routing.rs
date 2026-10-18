@@ -14,7 +14,7 @@ use super::*;
 async fn a_slack_reinstall_into_another_workspace_moves_the_accounts_route() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     let moving = account(&round, ACCOUNT_A);
     for workspace in [&round.workspace, &round.admin] {
         round
@@ -38,7 +38,7 @@ async fn a_slack_reinstall_into_another_workspace_moves_the_accounts_route() {
 async fn a_disconnect_removes_only_its_own_workspaces_routes() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     let leaving = account(&round, ACCOUNT_A);
     let staying = account(&round, ACCOUNT_B);
     round
@@ -72,7 +72,7 @@ async fn a_disconnect_removes_only_its_own_workspaces_routes() {
 async fn routes_of(round: &Round, account: &str) -> Vec<String> {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query_scalar(
-        "SELECT workspace_id::text FROM core.connector_installs \
+        "SELECT workspace_id::text FROM connector.installs \
          WHERE provider = $1 AND external_account_id = $2",
     )
     .bind(PROVIDER.id())

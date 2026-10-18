@@ -205,7 +205,7 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
 fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
     use std::error::Error as _;
 
-    let malformed = super::row_malformed("core.users", "id")(
+    let malformed = super::row_malformed("identity.users", "id")(
         afd_core::id::Uuid7::parse("not-an-id")
             .err()
             .ok_or("a malformed identifier unexpectedly parsed")?,

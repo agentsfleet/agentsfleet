@@ -9,12 +9,18 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::secret::SecretBytes;
+use jiff::Timestamp;
 
 use super::{Rejected, Verified, sign, verify};
 use crate::provider::Provider;
 use crate::registry::STATE_TTL_SECONDS;
+
+/// The instant `millis` after the epoch: fixtures here are spelled in the
+/// milliseconds the stored shape carries.
+fn at(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).expect("the fixture instant is in range")
+}
 
 /// A readable, low-entropy signing key — any string keys an HMAC, and a
 /// high-entropy hex value trips the secret scanner's generic-api-key rule.
@@ -48,7 +54,7 @@ fn minted(provider: Provider) -> String {
         WORKSPACE,
         STARTER,
         NONCE,
-        UnixMillis::from_millis(NOW),
+        at(NOW),
     )
 }
 
@@ -58,13 +64,8 @@ fn a_signed_state_round_trips_its_workspace_nonce_and_starter() {
     let provider = Provider::Slack;
     let state = minted(provider);
 
-    let verified = verify(
-        provider.state_binding(),
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW),
-    )
-    .expect("a freshly minted state verifies");
+    let verified = verify(provider.state_binding(), &secret(), &state, at(NOW))
+        .expect("a freshly minted state verifies");
 
     assert_eq!(verified.workspace(), WORKSPACE);
     assert_eq!(verified.nonce(), NONCE);
@@ -80,13 +81,8 @@ fn a_different_authenticated_person_is_not_the_starter() {
     let provider = Provider::Slack;
     let state = minted(provider);
 
-    let verified = verify(
-        provider.state_binding(),
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW),
-    )
-    .expect("a freshly minted state verifies");
+    let verified = verify(provider.state_binding(), &secret(), &state, at(NOW))
+        .expect("a freshly minted state verifies");
 
     assert!(!verified.subject_matches(provider.state_binding(), &secret(), BYSTANDER));
 }
@@ -99,12 +95,7 @@ fn a_tampered_authentication_tag_is_refused() {
     state.pop();
     state.push(flipped);
 
-    let refused = verify(
-        Provider::Slack.state_binding(),
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW),
-    );
+    let refused = verify(Provider::Slack.state_binding(), &secret(), &state, at(NOW));
 
     assert_eq!(refused.err(), Some(Rejected::BadSignature));
 }
@@ -134,7 +125,7 @@ fn a_tag_in_any_other_spelling_is_a_bad_signature() {
             Provider::Slack.state_binding(),
             &secret(),
             &format!("{encoded}.{presented}"),
-            UnixMillis::from_millis(NOW),
+            at(NOW),
         );
 
         assert_eq!(refused.err(), Some(Rejected::BadSignature), "`{presented}`");
@@ -172,12 +163,7 @@ fn a_state_signed_under_a_foreign_secret_is_refused() {
     let state = minted(Provider::Slack);
     let other = SecretBytes::new(b"a-different-deployments-secret".to_vec());
 
-    let refused = verify(
-        Provider::Slack.state_binding(),
-        &other,
-        &state,
-        UnixMillis::from_millis(NOW),
-    );
+    let refused = verify(Provider::Slack.state_binding(), &other, &state, at(NOW));
 
     assert_eq!(refused.err(), Some(Rejected::BadSignature));
 }
@@ -190,12 +176,7 @@ fn a_state_signed_under_a_foreign_secret_is_refused() {
 fn a_state_minted_for_one_connector_does_not_verify_as_another() {
     let state = minted(Provider::Slack);
 
-    let refused = verify(
-        Provider::Jira.state_binding(),
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW),
-    );
+    let refused = verify(Provider::Jira.state_binding(), &secret(), &state, at(NOW));
 
     assert_eq!(refused.err(), Some(Rejected::BadSignature));
 }
@@ -212,18 +193,8 @@ fn the_expiry_window_holds_at_both_of_its_edges() {
     let window = i64::from(STATE_TTL_SECONDS) * 1_000;
     let binding = Provider::Slack.state_binding();
 
-    let inside = verify(
-        binding,
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW + window),
-    );
-    let outside = verify(
-        binding,
-        &secret(),
-        &state,
-        UnixMillis::from_millis(NOW + window + 1),
-    );
+    let inside = verify(binding, &secret(), &state, at(NOW + window));
+    let outside = verify(binding, &secret(), &state, at(NOW + window + 1));
 
     assert!(
         inside.is_ok(),
@@ -244,7 +215,7 @@ fn nothing_that_is_not_a_state_verifies_as_one() {
     let binding = Provider::Slack.state_binding();
 
     for presented in ["", "not-a-state", ".", "....", "!!!.deadbeef", "e30.zz"] {
-        let refused = verify(binding, &secret(), presented, UnixMillis::from_millis(NOW));
+        let refused = verify(binding, &secret(), presented, at(NOW));
 
         assert!(refused.is_err(), "`{presented}` must not verify");
     }
@@ -263,12 +234,7 @@ fn a_correctly_signed_payload_with_an_extra_field_is_malformed() {
     let encoded =
         base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &payload);
 
-    let refused = verify(
-        binding,
-        &secret(),
-        &format!("{encoded}.{mac}"),
-        UnixMillis::from_millis(NOW),
-    );
+    let refused = verify(binding, &secret(), &format!("{encoded}.{mac}"), at(NOW));
 
     assert_eq!(refused.err(), Some(Rejected::Malformed));
 }

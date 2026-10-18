@@ -17,12 +17,18 @@
               index; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 use serde_json::{Map, Value, json};
 
 use super::{refresh_triple, slack};
 use crate::provider::Provider;
 use crate::registry::Archetype;
+
+/// The instant `millis` after the epoch: fixtures here are spelled in the
+/// milliseconds the stored shape carries.
+fn at(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).expect("the fixture instant is in range")
+}
 
 /// The delimiter Slack joins its granted scopes with, read from the registry.
 ///
@@ -127,7 +133,6 @@ fn a_slack_install_answer_becomes_a_handle_and_a_routing_row() {
 
     let install = grant.install.expect("Slack routes inbound events back");
     assert_eq!(install.external_account_id, TEAM_ID_VALUE);
-    assert_eq!(install.installed_by, INSTALLER_VALUE);
     assert_eq!(install.scopes, ["app_mentions:read", "chat:write"]);
 }
 
@@ -186,7 +191,7 @@ fn a_refresh_triple_becomes_a_handle_with_an_absolute_expiry() {
         Provider::Linear,
         &refresh_answer(),
         Provider::Linear.display_name(),
-        UnixMillis::from_millis(NOW),
+        at(NOW),
         Map::new(),
     )
     .expect("a complete triple");
@@ -216,14 +221,8 @@ fn a_providers_extra_fields_are_carried_into_the_handle() {
     let mut extras = Map::new();
     extras.insert("accounts_base".into(), json!(base));
 
-    let grant = refresh_triple(
-        Provider::Zoho,
-        &refresh_answer(),
-        base,
-        UnixMillis::from_millis(NOW),
-        extras,
-    )
-    .expect("a complete triple");
+    let grant = refresh_triple(Provider::Zoho, &refresh_answer(), base, at(NOW), extras)
+        .expect("a complete triple");
 
     assert_eq!(grant.handle["accounts_base"], json!(base));
     assert_eq!(grant.handle["integration"], json!(Provider::Zoho.id()));
@@ -243,7 +242,7 @@ fn a_triple_missing_any_of_its_three_legs_is_no_grant() {
             Provider::Jira,
             &answer,
             Provider::Jira.display_name(),
-            UnixMillis::from_millis(NOW),
+            at(NOW),
             Map::new(),
         );
 
@@ -261,7 +260,7 @@ fn a_non_numeric_expiry_is_no_grant() {
         Provider::Jira,
         &answer,
         Provider::Jira.display_name(),
-        UnixMillis::from_millis(NOW),
+        at(NOW),
         Map::new(),
     );
 

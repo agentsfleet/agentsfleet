@@ -11,7 +11,7 @@
 //!
 //! # The authority order lives in the `COALESCE`
 //!
-//! The `core.users` row named by the identity provider's subject OUTRANKS the
+//! The `identity.users` row named by the identity provider's subject OUTRANKS the
 //! token's tenant claim. The claim decides only when no user row exists — which
 //! is every claim-bound credential, because an `agt_t` or `afc_` lookup already
 //! read the user row at authentication time and put the answer on the
@@ -46,41 +46,28 @@
 /// `uq_users_oidc_subject`, the membership by `uq_memberships_tenant_id_user_id`.
 /// Each probe returns at most one row, so the plan is three index lookups
 /// whatever the table sizes.
-pub const AUTHORIZE_WORKSPACE: &str = "\
-SELECT w.tenant_id::text, m.role \
-FROM core.workspaces w \
-LEFT JOIN core.users u ON u.oidc_subject = $2 \
-LEFT JOIN core.memberships m ON m.tenant_id = w.tenant_id AND m.user_id = u.id \
-WHERE w.id = $1::uuid \
-  AND (m.id IS NOT NULL OR w.tenant_id = COALESCE(u.tenant_id, $3::uuid))";
+pub const AUTHORIZE_WORKSPACE: &str = include_str!("workspace/authorize_workspace.sql");
 
 /// The tenant owning one workspace, for the audited cross-tenant override.
 ///
 /// Read only AFTER the verdict above has denied, and only for a principal
 /// holding the platform-wide scope — so it is the second statement of a path
 /// almost nobody takes rather than a cost on the ordinary one.
-pub const SELECT_WORKSPACE_TENANT: &str = "\
-SELECT tenant_id::text \
-FROM core.workspaces \
-WHERE id = $1::uuid";
+pub const SELECT_WORKSPACE_TENANT: &str = include_str!("workspace/select_workspace_tenant.sql");
 
 /// The tenant a subject belongs to, with no workspace to check it against.
 ///
 /// The cold path: creating a workspace, and the tenant-scoped lists that carry
 /// no workspace identifier at all. `resolvePrincipalTenant`'s statement.
-pub const SELECT_USER_TENANT_BY_SUBJECT: &str = "\
-SELECT tenant_id::text \
-FROM core.users \
-WHERE oidc_subject = $1 \
-LIMIT 1";
+pub const SELECT_USER_TENANT_BY_SUBJECT: &str =
+    include_str!("workspace/select_user_tenant_by_subject.sql");
 
 /// Does the tenant a session claims actually exist?
 ///
 /// Asked because a stale session can name a deleted tenant, and refusing it
 /// here with the session sentence beats letting the insert's foreign key
 /// answer as a 500.
-pub const SELECT_TENANT_EXISTS: &str = "\
-SELECT 1 FROM core.tenants WHERE id = $1::uuid LIMIT 1";
+pub const SELECT_TENANT_EXISTS: &str = include_str!("workspace/select_tenant_exists.sql");
 
 /// One workspace row.
 ///
@@ -88,9 +75,7 @@ SELECT 1 FROM core.tenants WHERE id = $1::uuid LIMIT 1";
 /// sends text. No `ON CONFLICT` clause on purpose — the
 /// near-twin in the signup path swallows the collision, while this one needs
 /// `uq_workspaces_tenant_id_name` to surface so the caller hears "taken".
-pub const INSERT_WORKSPACE: &str = "\
-INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-VALUES ($1::uuid, $2::uuid, $3, $4, $5)";
+pub const INSERT_WORKSPACE: &str = include_str!("workspace/insert_workspace.sql");
 
 // The list is two statements: the accounts a caller holds, then one keyset
 // page across all of them. Folding the account read into the page would put a
@@ -106,61 +91,29 @@ VALUES ($1::uuid, $2::uuid, $3, $4, $5)";
 /// membership row backs it: the same two arms [`AUTHORIZE_WORKSPACE`] admits
 /// by. The last column is the person's own account, repeated on every row.
 /// No row at all means no user row, and the caller falls back to the claim.
-pub const SELECT_SUBJECT_ACCOUNTS: &str = concat!(
-    "WITH me AS ( \
-       SELECT id, tenant_id FROM core.users WHERE oidc_subject = $1 \
-     ), held AS ( \
-       SELECT DISTINCT ON (arm.tenant_id) arm.tenant_id, arm.role FROM ( \
-         SELECT m.tenant_id, m.role FROM core.memberships m JOIN me ON m.user_id = me.id \
-         UNION ALL \
-         SELECT me.tenant_id, NULL::text FROM me \
-       ) arm ORDER BY arm.tenant_id, arm.role NULLS LAST \
-     ) \
-     SELECT t.id::text AS tenant_id, held.role, ",
-    owner_name_column!(),
-    ", me.tenant_id::text AS home_tenant_id \
-     FROM held CROSS JOIN me \
-     JOIN core.tenants t ON t.id = held.tenant_id ",
-    owner_name_join!(2)
-);
+pub const SELECT_SUBJECT_ACCOUNTS: &str = include_str!("workspace/select_subject_accounts.sql");
 
 /// The one account a claim-bound credential holds: its own.
 ///
 /// `$1` the tenant claim · `$2` the owner role's spelling. No row when the
 /// claim names no tenant, and the list is then empty rather than refused.
-pub const SELECT_TENANT_ACCOUNT: &str = concat!(
-    "SELECT t.id::text AS tenant_id, NULL::text AS role, ",
-    owner_name_column!(),
-    ", t.id::text AS home_tenant_id \
-     FROM core.tenants t ",
-    owner_name_join!(2),
-    "WHERE t.id = $1::uuid"
-);
+pub const SELECT_TENANT_ACCOUNT: &str = include_str!("workspace/select_tenant_account.sql");
 
 /// The first page of the workspaces across a person's accounts.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = concat!(
-    workspace_page!(),
-    "ORDER BY created_at ASC, id ASC LIMIT $2"
-);
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str =
+    include_str!("workspace/select_tenant_workspaces_page_first.sql");
 
 /// The page after a boundary row.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = concat!(
-    workspace_page!(),
-    "AND (created_at, id) > ($2, $3::uuid) ORDER BY created_at ASC, id ASC LIMIT $4"
-);
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str =
+    include_str!("workspace/select_tenant_workspaces_page_after.sql");
 
 /// The first page, held to an exact name.
 ///
 /// The filter a client reconciling its own create uses, so it can find the
 /// row it just made without walking the whole list.
-pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = concat!(
-    workspace_page!(),
-    "AND name = $2 ORDER BY created_at ASC, id ASC LIMIT $3"
-);
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str =
+    include_str!("workspace/select_tenant_workspaces_page_first_by_name.sql");
 
 /// The page after a boundary row, held to an exact name.
-pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = concat!(
-    workspace_page!(),
-    "AND name = $2 AND (created_at, id) > ($3, $4::uuid) \
-     ORDER BY created_at ASC, id ASC LIMIT $5"
-);
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str =
+    include_str!("workspace/select_tenant_workspaces_page_after_by_name.sql");

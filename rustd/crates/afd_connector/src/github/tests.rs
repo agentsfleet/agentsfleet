@@ -8,6 +8,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use jiff::Timestamp;
 use serde_json::json;
 
 use super::{
@@ -85,6 +86,8 @@ fn an_installation_id_is_bounded_decimal_digits() {
 }
 
 /// The handle carries what the broker mints from and the row is exclusive.
+/// The connect stamp is stored as epoch milliseconds under its `_ms` key,
+/// which is the sealed handle's shape the runner plane reads.
 #[test]
 fn the_grant_carries_the_installation_and_claims_it_exclusively() {
     let landed = grant(
@@ -92,7 +95,11 @@ fn the_grant_carries_the_installation_and_claims_it_exclusively() {
             id: "99".into(),
             account: Some("acme".into()),
         },
-        1_700_000_000_000,
+        Timestamp::constant(1_700_000_000, 0),
+    );
+    assert_eq!(
+        landed.handle.get("connected_at_ms"),
+        Some(&json!(1_700_000_000_000_i64))
     );
     assert_eq!(
         landed

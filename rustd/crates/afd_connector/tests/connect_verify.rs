@@ -30,7 +30,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
@@ -39,6 +38,7 @@ use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_vault::Vault;
+use jiff::Timestamp;
 
 use afd_connector::state::{self, Rejected};
 use afd_connector::{Connectors, Exchange, Grants, PlatformApp, Provider};
@@ -62,10 +62,10 @@ const BYSTANDER: &str = "user_did_not_start_it";
 const NONCE: &str = "nonce-for-this-round-trip";
 
 /// The instant every case signs and verifies at.
-const NOW_MS: i64 = 1_760_000_000_000;
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
-/// A day in milliseconds — well past any connect window this suite asserts on.
-const ONE_DAY_MS: i64 = 1_000 * 60 * 60 * 24;
+/// A day — well past any connect window this suite asserts on.
+const ONE_DAY: std::time::Duration = std::time::Duration::from_hours(24);
 
 /// The state signing secret this deployment holds.
 fn secret() -> SecretBytes {
@@ -77,8 +77,8 @@ fn foreign_secret() -> SecretBytes {
     SecretBytes::new(b"fixture-connector-other-secret".to_vec())
 }
 
-fn now() -> UnixMillis {
-    UnixMillis::from_millis(NOW_MS)
+const fn now() -> Timestamp {
+    NOW
 }
 
 /// The production connect flow over stores that are not there.
@@ -206,7 +206,7 @@ async fn a_state_minted_for_one_connector_does_not_verify_as_another() {
 #[tokio::test]
 async fn a_state_past_its_window_is_expired_rather_than_forged() {
     let presented = state_for(Provider::Slack, STARTER);
-    let long_after = UnixMillis::from_millis(NOW_MS + ONE_DAY_MS);
+    let long_after = afd_core::clock::after(NOW, ONE_DAY);
 
     assert_eq!(
         connectors()

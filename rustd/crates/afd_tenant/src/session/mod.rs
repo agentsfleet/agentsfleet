@@ -33,14 +33,14 @@
 pub mod fingerprint;
 pub mod input;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::session::{
-    AbortReason, ApproveOutcome, SessionState, SessionStore, VerifyOutcome,
+    AbortReason, ApproveOutcome, SESSION_TTL, SessionState, SessionStore, VerifyOutcome,
 };
+use jiff::Timestamp;
 
 // Re-exported so the HTTP layer can name the state a poll reports without
 // taking a dependency on the queue crate: a status is a fact about the login,
@@ -98,7 +98,7 @@ impl Sessions {
     /// # Errors
     /// Refuses a public key or a token name the bounds will not take, reports a
     /// host that cannot draw entropy, and reports a queue that would not answer.
-    pub async fn open(&self, opening: &Opening<'_>, now: UnixMillis) -> Result<Opened> {
+    pub async fn open(&self, opening: &Opening<'_>, now: Timestamp) -> Result<Opened> {
         let session_id = self.entropy.uuid7(now)?;
         let state = SessionState {
             session_id: session_id.as_str().to_owned(),
@@ -110,14 +110,14 @@ impl Sessions {
             nonce: None,
             verification_code_hmac_hex: None,
             verification_attempts: 0,
-            created_at_ms: now.as_millis(),
-            expires_at_ms: now.saturating_add_millis(session_ttl_millis()).as_millis(),
-            approved_at_ms: None,
-            consumed_at_ms: None,
+            created_at: now,
+            expires_at: expiry_of(now),
+            approved_at: None,
+            consumed_at: None,
             aborted_reason: None,
             clerk_user_id: None,
             consumed_client_fingerprint_hex: None,
-            consume_payload_expires_at_ms: None,
+            consume_payload_expires_at: None,
         };
         self.store.put(&state).await?;
 
@@ -144,7 +144,7 @@ impl Sessions {
                 status: state.status,
                 cli_public_key: state.cli_public_key,
                 token_name: state.token_name,
-                expires_at_ms: state.expires_at_ms,
+                expires_at: state.expires_at,
             }),
             SessionStatus::Consumed => Err(error::session_consumed()),
             SessionStatus::Expired => Err(error::session_expired()),
@@ -167,7 +167,7 @@ impl Sessions {
         session_id: &str,
         approval: &Approval<'_>,
         approver: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let id = parse_id(session_id)?;
         let digest = self.code_digest(id.as_str(), approval.verification_code.as_str());
@@ -182,7 +182,7 @@ impl Sessions {
                     code_hmac_hex: &digest,
                     approver,
                 },
-                now.as_millis(),
+                now,
             )
             .await?;
 
@@ -216,13 +216,13 @@ impl Sessions {
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Redeemed> {
         let id = parse_id(session_id)?;
         let digest = self.code_digest(id.as_str(), code.as_str());
         let outcome = self
             .store
-            .verify_and_consume(id.as_str(), &digest, now.as_millis(), fingerprint.as_str())
+            .verify_and_consume(id.as_str(), &digest, now, fingerprint.as_str())
             .await?;
 
         match outcome {
@@ -287,13 +287,15 @@ impl Sessions {
     }
 }
 
-/// The session time-to-live in milliseconds, from the store's own duration.
+/// When a session opened at `now` expires, from the store's own duration.
 ///
 /// Derived rather than declared a second time: the queue expires the key on one
 /// value and the blob carries the same instant, and two constants would let
-/// them drift by exactly the amount nobody notices.
-fn session_ttl_millis() -> i64 {
-    afd_core::clock::saturating_millis_signed(afd_dragonfly::session::SESSION_TTL)
+/// them drift by exactly the amount nobody notices. The daemon's clock, not the
+/// database's: the session lives in Dragonfly, whose key time-to-live is the
+/// same span.
+fn expiry_of(now: Timestamp) -> Timestamp {
+    afd_core::clock::after(now, SESSION_TTL)
 }
 
 /// Refuses a session id that is not a version 7 identifier.
@@ -315,6 +317,7 @@ pub use self::response::{Opened, Redeemed, Waiting};
 #[cfg(test)]
 #[test]
 fn a_session_expires_on_the_queues_own_ttl() {
-    let ttl = u128::try_from(session_ttl_millis()).ok();
-    assert_eq!(ttl, Some(afd_dragonfly::session::SESSION_TTL.as_millis()));
+    let opened = Timestamp::constant(1_767_225_600, 0);
+    let window = expiry_of(opened).duration_since(opened);
+    assert_eq!(window.unsigned_abs(), SESSION_TTL);
 }

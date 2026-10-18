@@ -7,14 +7,14 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::test_util::trace::Capture;
 use afd_tenant::team::Removal;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
 
 /// Now, for every call a case makes.
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// The records one invite, its acceptance and a removal leave, by event.
 const TEAM_EVENTS: [&str; 3] = [
@@ -71,12 +71,12 @@ async fn should_log_each_team_change_once_naming_nobody() {
 async fn should_name_a_nameless_inviter_by_address_and_the_account_by_its_name() {
     let fixture = Fixture::create().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query("UPDATE core.users SET display_name = NULL WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1::uuid")
         .bind(&fixture.john.user)
         .execute(&mut *connection)
         .await
         .expect("John's name clears");
-    sqlx::query("UPDATE core.tenants SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1::uuid")
         .bind(&fixture.john.tenant)
         .bind(ACCOUNT_NAME)
         .execute(&mut *connection)
@@ -89,7 +89,7 @@ async fn should_name_a_nameless_inviter_by_address_and_the_account_by_its_name()
         .await
         .expect("John invites Carol");
     let attempt = fixture
-        .begin_email(&invite, NOW)
+        .begin_email(&invite)
         .await
         .expect("the invite is still pending");
     assert_eq!(attempt.inviter_name, fixture.john.email);

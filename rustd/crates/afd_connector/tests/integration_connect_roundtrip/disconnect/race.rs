@@ -20,7 +20,7 @@ const QUEUE_POLL: Duration = Duration::from_millis(20);
 async fn a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     round
         .grants()
         .land(
@@ -71,7 +71,7 @@ async fn a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither() {
 async fn a_disconnect_racing_a_first_connect_waits_its_turn() {
     let vendor = FakeAtlassian::serving().await;
     let round = Round::create(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
 
     // No handle exists yet, so nothing in the vault can order these two. Both
     // must queue on the workspace row; a path that skipped it would not wait,
@@ -157,7 +157,7 @@ async fn hold(round: &Round, statement: &'static str, binds: &[&str]) -> (Holder
 fn spawn_land(
     round: &Round,
     account: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> tokio::task::JoinHandle<afd_connector::Result<()>> {
     let grants = round.grants();
     let workspace = round.workspace.clone();

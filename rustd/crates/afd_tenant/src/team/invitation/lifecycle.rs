@@ -10,16 +10,16 @@
 //! invitations before it checks membership, so an accept already in flight
 //! finishes first and the check sees the person it let in.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
+use jiff::Timestamp;
 
-use super::{Acceptance, COLUMN_EXPIRES_AT, EmailStatus, INVITE_TTL_MS, Invitation, TABLE};
+use super::{
+    Acceptance, EmailStatus, INVITE_TTL, Invitation, InvitationRow, InviteStatus, LockedRow, TABLE,
+};
 use crate::error::InviteConflict;
+use crate::sql::COLUMN_ID;
 use crate::sql::invite as sql;
-use crate::sql::{COLUMN_ID, COLUMN_OWNER_NAME, COLUMN_TENANT_ID};
 use crate::team::{Accepted, Invitee, NewInvite, Team, Waiting, email};
 use crate::workspace::access::{ROLE_OWNER, Role};
 use crate::{Result, error, stored};
@@ -32,23 +32,53 @@ const CONTEXT_WAITING: &str = "list waiting invitations";
 const CONTEXT_ACCEPT: &str = "accept invitation";
 
 /// Where an accept's workspace identifiers come from, as a malformed one names it.
-const TABLE_WORKSPACES: &str = "core.workspaces";
+const TABLE_WORKSPACES: &str = "identity.workspaces";
 
 /// The index that holds an account to one pending invitation per address.
 const PENDING_CONSTRAINT: &str = "uq_invites_tenant_id_email_pending";
 
-/// Sends attempted for an invitation that was only just issued.
-const NO_ATTEMPTS: i32 = 0;
+/// The two stamps the database writes when an invitation is issued.
+#[derive(Debug, sqlx::FromRow)]
+struct IssuedRow {
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    expires_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+}
+
+/// One invitation waiting for an address, with the account it opens.
+#[derive(Debug, sqlx::FromRow)]
+struct WaitingRow {
+    id: String,
+    tenant_id: String,
+    owner_name: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    expires_at: Timestamp,
+}
+
+impl WaitingRow {
+    /// The waiting invitation this row stores; both identifiers parse here.
+    fn parse(self) -> Result<Waiting> {
+        Ok(Waiting {
+            id: stored::uuid(TABLE, COLUMN_ID, &self.id)?,
+            tenant: stored::tenant(&self.tenant_id)?,
+            owner_name: self.owner_name,
+            expires_at: self.expires_at,
+        })
+    }
+}
 
 impl Team {
     /// Issues an invitation for `new.email` into `new.tenant`, as a member.
     ///
+    /// `now` mints the invitation's identifier; its stamps and deadline are
+    /// the database clock's.
+    ///
     /// # Errors
     /// Refuses an address that already belongs to the account or already has
     /// a pending invitation there; reports a datastore that would not answer.
-    pub async fn invite(&self, new: &NewInvite<'_>, now: UnixMillis) -> Result<Invitation> {
+    pub async fn invite(&self, new: &NewInvite<'_>, now: Timestamp) -> Result<Invitation> {
         let id = self.entropy.uuid7(now)?;
-        let expires_at_ms = now.saturating_add_millis(INVITE_TTL_MS).as_millis();
         let raise = error::query(CONTEXT_ISSUE);
         let mut connection = self.database.acquire().await?;
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
@@ -72,23 +102,22 @@ impl Team {
         if member.is_some() {
             return Err(error::invite_conflict(InviteConflict::Member));
         }
-        sqlx::query(sql::REVOKE_EXPIRED_PENDING)
+        sqlx::query(sql::RETIRE_EXPIRED_PENDING)
             .bind(new.tenant.as_str())
             .bind(new.email.as_str())
-            .bind(now.as_millis())
+            .bind(InviteStatus::Expired.wire())
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
-        sqlx::query(sql::INSERT_INVITE)
+        let issued: IssuedRow = sqlx::query_as(sql::INSERT_INVITE)
             .bind(id.as_str())
             .bind(new.tenant.as_str())
             .bind(new.email.as_str())
             .bind(Role::Member.wire())
+            .bind(InviteStatus::Pending.wire())
             .bind(new.inviter.as_str())
-            .bind(expires_at_ms)
-            .bind(now.as_millis())
-            .bind(NO_ATTEMPTS)
-            .execute(&mut *transaction)
+            .bind(INVITE_TTL)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(classify_insert)?;
         transaction.commit().await.map_err(&raise)?;
@@ -101,14 +130,13 @@ impl Team {
             tenant: new.tenant.clone(),
             email: new.email.as_str().to_owned(),
             role: Role::Member,
-            expires_at_ms,
-            created_at_ms: now.as_millis(),
-            accepted_at_ms: None,
+            expires_at: issued.expires_at,
+            created_at: issued.created_at,
+            resolved_at: None,
             accepted_by: None,
-            revoked_at_ms: None,
             // Nothing sent yet: the route sends next and records the result.
             email_status: EmailStatus::Failed,
-            email_sent_at_ms: None,
+            email_sent_at: None,
         })
     }
 
@@ -117,15 +145,14 @@ impl Team {
     /// # Errors
     /// Reports a datastore that would not answer, and a row this build
     /// cannot read.
-    pub async fn invitations(&self, tenant: &Uuid7, now: UnixMillis) -> Result<Vec<Invitation>> {
+    pub async fn invitations(&self, tenant: &Uuid7) -> Result<Vec<Invitation>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_TENANT_PENDING)
+        let rows: Vec<InvitationRow> = sqlx::query_as(sql::SELECT_TENANT_PENDING)
             .bind(tenant.as_str())
-            .bind(now.as_millis())
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
-        rows.iter().map(Invitation::read).collect()
+        rows.into_iter().map(InvitationRow::parse).collect()
     }
 
     /// Revokes one of the account's pending invitations.
@@ -139,18 +166,13 @@ impl Team {
     /// # Errors
     /// Refuses an invitation its invitee joined through; reports a datastore
     /// that would not answer.
-    pub async fn revoke_invitation(
-        &self,
-        tenant: &Uuid7,
-        invitation: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<()> {
+    pub async fn revoke_invitation(&self, tenant: &Uuid7, invitation: &Uuid7) -> Result<()> {
         let raise = error::query(CONTEXT_REVOKE);
         let mut connection = self.database.acquire().await?;
         let revoked = sqlx::query(sql::REVOKE_INVITE)
             .bind(tenant.as_str())
             .bind(invitation.as_str())
-            .bind(now.as_millis())
+            .bind(InviteStatus::Revoked.wire())
             .execute(connection.as_mut())
             .await
             .map_err(&raise)?;
@@ -176,22 +198,23 @@ impl Team {
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn waiting_for(&self, address: &str, now: UnixMillis) -> Result<Vec<Waiting>> {
+    pub async fn waiting_for(&self, address: &str) -> Result<Vec<Waiting>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_PENDING_FOR_EMAIL)
+        let rows: Vec<WaitingRow> = sqlx::query_as(sql::SELECT_PENDING_FOR_EMAIL)
             .bind(email::fold(address))
-            .bind(now.as_millis())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_WAITING))?;
-        rows.iter().map(waiting).collect()
+        rows.into_iter().map(WaitingRow::parse).collect()
     }
 
     /// Accepts `invitation` as `invitee`, making them a member of its account.
     ///
     /// Accepting again answers as the first accept did, while the membership
     /// stands; a member removed since cannot rejoin through the old link.
+    /// Expiry is decided against the database clock read once the row is
+    /// locked; `now` only mints the membership's identifier.
     ///
     /// # Errors
     /// Refuses an invitation that cannot be accepted any more, and one sent
@@ -200,7 +223,7 @@ impl Team {
         &self,
         invitation: &Uuid7,
         invitee: &Invitee<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Accepted> {
         let raise = error::query(CONTEXT_ACCEPT);
         let mut connection = self.database.acquire().await?;
@@ -208,15 +231,16 @@ impl Team {
             .await
             .map_err(&raise)?;
 
-        let row = sqlx::query(sql::LOCK_INVITE)
+        let row: LockedRow = sqlx::query_as(sql::LOCK_INVITE)
             .bind(invitation.as_str())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(&raise)?
             .ok_or_else(error::invite_not_found)?;
-        let locked = Invitation::read(&row)?;
+        let (locked, locked_at) = row.parse()?;
         let tenant = locked.tenant.as_str();
-        self.settle(&mut transaction, &locked, invitee, now).await?;
+        self.settle(&mut transaction, &locked, invitee, locked_at, now)
+            .await?;
         let rows: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
             .bind(tenant)
             .fetch_all(&mut *transaction)
@@ -246,18 +270,20 @@ impl Team {
 
     /// Writes what accepting `invitation` means for `invitee`, inside the
     /// accept's transaction: a new membership and the invitation's stamp, or
-    /// a check that a replay's membership still stands. The membership's
-    /// identifier is drawn only when one is written.
+    /// a check that a replay's membership still stands. Expiry is decided at
+    /// `locked_at`, the database clock read under the lock; the membership's
+    /// identifier is drawn at `now`, and only when one is written.
     async fn settle(
         &self,
         transaction: &mut sqlx::PgConnection,
         invitation: &Invitation,
         invitee: &Invitee<'_>,
-        now: UnixMillis,
+        locked_at: Timestamp,
+        now: Timestamp,
     ) -> Result<()> {
         let raise = error::query(CONTEXT_ACCEPT);
         let tenant = invitation.tenant.as_str();
-        match invitation.acceptance_for(invitee, now) {
+        match invitation.acceptance_for(invitee, locked_at) {
             Acceptance::Closed => Err(error::invite_not_found()),
             Acceptance::WrongAddress => Err(error::invite_email_mismatch()),
             Acceptance::AlreadyJoined => {
@@ -276,14 +302,13 @@ impl Team {
                     .bind(tenant)
                     .bind(invitee.user.as_str())
                     .bind(invitation.role.wire())
-                    .bind(now.as_millis())
                     .execute(&mut *transaction)
                     .await
                     .map_err(&raise)?;
                 sqlx::query(sql::MARK_ACCEPTED)
                     .bind(invitation.id.as_str())
                     .bind(invitee.user.as_str())
-                    .bind(now.as_millis())
+                    .bind(InviteStatus::Accepted.wire())
                     .execute(&mut *transaction)
                     .await
                     .map_err(&raise)?;
@@ -291,21 +316,6 @@ impl Team {
             }
         }
     }
-}
-
-/// One invitation waiting for an address, read by column name.
-///
-/// Mapped by hand rather than derived: both identifiers parse at the row.
-fn waiting(row: &PgRow) -> Result<Waiting> {
-    let unreadable = error::query(CONTEXT_WAITING);
-    let id: String = row.try_get(COLUMN_ID).map_err(&unreadable)?;
-    let tenant: String = row.try_get(COLUMN_TENANT_ID).map_err(&unreadable)?;
-    Ok(Waiting {
-        id: stored::uuid(TABLE, COLUMN_ID, &id)?,
-        tenant: stored::tenant(&tenant)?,
-        owner_name: row.try_get(COLUMN_OWNER_NAME).map_err(&unreadable)?,
-        expires_at_ms: row.try_get(COLUMN_EXPIRES_AT).map_err(&unreadable)?,
-    })
 }
 
 /// Tells a second pending invitation apart from a broken statement.

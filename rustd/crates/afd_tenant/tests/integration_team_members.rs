@@ -7,18 +7,18 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, NewInvite, Removal};
 use afd_tenant::test_util::hold;
 use afd_tenant::workspace::access::ROLE_OWNER;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
 
 /// Now, for every call a case makes.
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// An account's own user holds it as owner even without a membership row, so
 /// inviting their address is refused as a member's; an accepted invite would
@@ -28,12 +28,14 @@ const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
 async fn should_refuse_inviting_an_owner_no_membership_row_backs() {
     let fixture = Fixture::create().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid")
-        .bind(&fixture.john.tenant)
-        .bind(&fixture.john.user)
-        .execute(&mut *connection)
-        .await
-        .expect("John's account predates memberships");
+    sqlx::query(
+        "DELETE FROM identity.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+    )
+    .bind(&fixture.john.tenant)
+    .bind(&fixture.john.user)
+    .execute(&mut *connection)
+    .await
+    .expect("John's account predates memberships");
     drop(connection);
     let refused = fixture
         .invite(&fixture.john.email, NOW)
@@ -106,7 +108,7 @@ async fn should_keep_existing_role_when_member_accepts_invite() {
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
     let listed = fixture
         .team
-        .invitations(&id(&fixture.john.tenant), NOW)
+        .invitations(&id(&fixture.john.tenant))
         .await
         .expect("the invite list reads");
     assert!(

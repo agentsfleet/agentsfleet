@@ -7,7 +7,6 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
 use afd_crypto::entropy::Entropy;
@@ -15,14 +14,17 @@ use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::directory::After;
 use afd_tenant::workspace::name::Chosen;
 use afd_tenant::workspace::name::ENTROPY_LEN as NAME_ENTROPY_LEN;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id, session};
 
 /// A name both accounts give a workspace, so a name filter must keep them apart.
 const SHARED_NAME: &str = "shared-across-accounts";
 
-/// When the extra workspaces are made: after every signup's own.
-const LATER: UnixMillis = UnixMillis::from_millis(4_102_444_800_000);
+/// When the extra workspaces' identifiers are minted: after every signup's
+/// own. Their creation stamps are the database clock's, which is later than
+/// the seeded signups' too.
+const LATER: Timestamp = Timestamp::constant(4_102_444_800, 0);
 
 /// Bob walks every workspace of both accounts he holds one row at a time:
 /// each appears once, in creation order, and a name both accounts use comes
@@ -37,7 +39,7 @@ async fn should_walk_keyset_across_held_accounts() {
             .expect("a plain name")
             .expect("a chosen name");
         workspaces
-            .create(&id(tenant), Some(name), "fixture", LATER)
+            .create(&id(tenant), Some(name), LATER)
             .await
             .expect("the shared name lands in each account");
     }
@@ -78,7 +80,7 @@ async fn walk_one_row_at_a_time(workspaces: &Workspaces, tenants: &[&str]) -> Ve
             .expect("a page reads");
         let Some(row) = page.rows.last() else { break };
         after = Some(After {
-            created_at_ms: row.created_at_ms,
+            created_at: row.created_at,
             id: id(&row.id),
         });
         walked.extend(page.rows.iter().map(|row| row.id.clone()));
@@ -116,7 +118,7 @@ async fn the_shared_name_comes_back_once_per_account(
         .expect("the first named page reads");
     let boundary = first.rows.last().expect("one named row");
     let after = After {
-        created_at_ms: boundary.created_at_ms,
+        created_at: boundary.created_at,
         id: id(&boundary.id),
     };
     let rest = workspaces
@@ -145,11 +147,11 @@ async fn should_refuse_chosen_workspace_name_when_account_already_uses_it() {
             .expect("a chosen name")
     };
     workspaces
-        .create(&tenant, Some(chosen()), "fixture", LATER)
+        .create(&tenant, Some(chosen()), LATER)
         .await
         .expect("the first lands");
     let taken = workspaces
-        .create(&tenant, Some(chosen()), "fixture", LATER)
+        .create(&tenant, Some(chosen()), LATER)
         .await
         .expect_err("the name is taken");
     assert_eq!(taken.code(), error_code::WORKSPACE_NAME_EXISTS);
@@ -178,13 +180,13 @@ async fn should_draw_again_when_a_generated_name_collides() {
 
     queue(&taken);
     let first = workspaces
-        .create(&tenant, None, "fixture", now)
+        .create(&tenant, None, now)
         .await
         .expect("the first generated name lands");
     queue(&taken);
     queue(&fresh);
     let second = workspaces
-        .create(&tenant, None, "fixture", now)
+        .create(&tenant, None, now)
         .await
         .expect("a collided name is drawn again");
     assert_ne!(second.name, first.name);
@@ -193,7 +195,7 @@ async fn should_draw_again_when_a_generated_name_collides() {
         queue(&taken);
     }
     let exhausted = workspaces
-        .create(&tenant, None, "fixture", now)
+        .create(&tenant, None, now)
         .await
         .expect_err("three collisions in a row");
     assert_eq!(exhausted.code(), error_code::INTERNAL_DB_QUERY);

@@ -12,7 +12,7 @@ use super::*;
 async fn a_disconnect_whose_routing_delete_fails_keeps_its_handle() {
     let vendor = FakeAtlassian::serving().await;
     let (round, migrator) = Round::create_private(&vendor).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = NOW;
     round
         .grants()
         .land(
@@ -67,10 +67,10 @@ async fn refuse_routing_deletes(migrator: &Db) {
     // `REFUSED` is this file's constant, never input, so interpolating it is
     // safe; Postgres binds no parameters into a function body.
     sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
-        "CREATE FUNCTION core.refuse_routing_delete() RETURNS trigger LANGUAGE plpgsql AS \
+        "CREATE FUNCTION connector.refuse_routing_delete() RETURNS trigger LANGUAGE plpgsql AS \
            'BEGIN RAISE EXCEPTION ''{REFUSED}''; END'; \
-         CREATE TRIGGER refuse_routing_delete BEFORE DELETE ON core.connector_installs \
-           FOR EACH ROW EXECUTE FUNCTION core.refuse_routing_delete()"
+         CREATE TRIGGER refuse_routing_delete BEFORE DELETE ON connector.installs \
+           FOR EACH ROW EXECUTE FUNCTION connector.refuse_routing_delete()"
     )))
     .execute(&mut *connection)
     .await
