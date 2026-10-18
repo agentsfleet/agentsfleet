@@ -13,6 +13,8 @@
 
 mod claim_selection;
 
+#[path = "inference_images.rs"]
+mod inference_images;
 #[path = "instants.rs"]
 mod instants;
 #[path = "memory_shapes.rs"]

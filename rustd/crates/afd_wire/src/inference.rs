@@ -21,7 +21,12 @@ pub enum InferenceApi {
 }
 
 impl InferenceApi {
-    /// Every API but chat completions accepts images in tool results.
+    /// Whether a tool's images reach the model. Messages, Responses and
+    /// Gemini 3 read them inside the tool result; Ollama, and Gemini before
+    /// 3, refuse them there (rig-core 0.44 `providers/ollama/chat.rs:298`,
+    /// `gemini/completion.rs:333`), and rig's history adapter moves them into
+    /// the user message that follows (`completion/history.rs:1205`), which
+    /// both read. Chat completions take text alone.
     #[must_use]
     pub const fn carries_images(self) -> bool {
         matches!(
