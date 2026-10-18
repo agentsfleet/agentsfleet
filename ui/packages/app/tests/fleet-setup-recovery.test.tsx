@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { FleetRecovery } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecovery";
 import { SetupPanel } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SetupPanel";
 import { FLEET, FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -44,8 +45,24 @@ it("shows recovery only for unfinished setup or first-run admission", () => {
 it("pins improvement to the displayed revision and requires renewed access review", () => {
   render(<SetupPanel fleet={FleetDetailSchema.parse({...FLEET_DETAIL, needs_re_review: true})} workspaceId={WORKSPACE} />);
   expect(screen.getByText("Review current access before resuming")).toBeTruthy();
-  const href = screen.getByRole("link", {name: "Improve in private chat"}).getAttribute("href");
+  const href = screen.getByRole("link", {name: "Edit fleet"}).getAttribute("href");
   expect(href).toContain(`fleet=${FLEET.id}&setup_revision=${FLEET.setup_revision}`);
+});
+
+it("keeps saved configuration available through a keyboard-operated disclosure", async () => {
+  const user = userEvent.setup();
+  const fleet = FleetDetailSchema.parse(FLEET_DETAIL);
+  render(<SetupPanel fleet={fleet} workspaceId={WORKSPACE} />);
+  const details = screen.getByRole("button", {name: "Advanced settings"});
+  expect(details.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText("Saved configuration")).toBeNull();
+  details.focus();
+  await user.keyboard("{Enter}");
+  expect(details.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getAllByLabelText("Saved configuration").at(-1)?.textContent).toContain(JSON.stringify(fleet.definition.config, null, 2));
+  await user.keyboard(" ");
+  expect(details.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(details);
 });
 
 it.each(["installing", "active", "stopped"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {

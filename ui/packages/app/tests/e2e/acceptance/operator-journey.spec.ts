@@ -46,7 +46,12 @@ function uniqueName(prefix: string): string {
 }
 
 async function clickSidebarLink(page: Page, href: string, destination: RegExp): Promise<void> {
-  const link = page.locator(`aside a[href="${href}"]`);
+  let link = page.locator(`aside a[href="${href}"]`);
+  if (!await link.isVisible()) {
+    await page.getByRole("button", { name: "Workspace and account menu" }).click();
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+    link = page.locator(`[role="menuitem"][href="${href}"]`);
+  }
   await expect(link).toBeVisible();
   await link.click();
   await expect(page).toHaveURL(destination, { timeout: ACTION_TIMEOUT_MS });
@@ -200,8 +205,8 @@ test.describe("operator journey", () => {
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
     await clickSidebarLink(page, workspaceHref(wsId, "events"), workspaceUrlPattern("events"));
-    await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
-    await expect(page.getByLabel("Workspace events", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Workspace activity", { exact: true })).toBeVisible();
 
     await clickSidebarLink(page, workspaceHref(wsId, "approvals"), workspaceUrlPattern("approvals"));
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();

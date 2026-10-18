@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DraftConversation } from "@/components/domain/chat/DraftConversation";
+import { SetupProgress } from "@/components/domain/chat/SetupProgress";
 import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
-import { DRAFT, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 let client: DraftClient;
@@ -20,6 +22,35 @@ function LiveConversation() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   return <DraftConversation client={client} view={view} onReview={() => {}} />;
 }
+
+it("keeps saved setup actions inside the conversation history", () => {
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}} onReview={() => {}}>
+    <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
+      onContinue={() => {}} onRetrySchedule={() => {}} />
+  </DraftConversation>);
+  const open = screen.getByRole("link", {name: "Open fleet"});
+  expect(screen.getByRole("log").contains(open)).toBe(true);
+  expect(open.getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/${FLEET.id}`);
+  expect(screen.getByText(/When you send it a message/)).toBeTruthy();
+});
+
+it.each([false, true])("shows the new-fleet entrance only before an empty draft is saved (%s)", (saved) => {
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [], fleet: saved ? FLEET : null}} onReview={() => {}}>
+    {saved ? <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
+      onContinue={() => {}} onRetrySchedule={() => {}} /> : null}
+  </DraftConversation>);
+  const entrance = screen.queryByRole("heading", {name: "What should your fleet do?"});
+  const suggestion = screen.queryByRole("button", {name: /Fix a build/});
+  if (saved) {
+    expect(entrance).toBeNull();
+    expect(suggestion).toBeNull();
+    expect(screen.getByRole("log").contains(screen.getByRole("link", {name: "Open fleet"}))).toBe(true);
+  } else {
+    expect(entrance).toBeTruthy();
+    expect(suggestion).toBeTruthy();
+    expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
+  }
+});
 
 it("stops authoring at the durable watermark and replaces Working with the terminal result", async () => {
   fixture.messages = [{...MESSAGE, role: "assistant", text: undefined, state: "running"}];
@@ -92,4 +123,23 @@ it("keeps the selected model available when loading the next page fails", async 
   expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toContain(MODEL.label);
   expect(screen.getByRole("button", {name: LOAD_MORE_COPY.models.label})).toHaveProperty("disabled", false);
   expect(client.getSnapshot().models).toEqual([MODEL]);
+});
+
+it.each([false, true])("selects an authoring model with the keyboard and handles a rejected selection (%s)", async (rejectSelection) => {
+  const second = {...MODEL, ref: "model:second", label: "Second model"};
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.includes("/models?") ? response({items: [MODEL, second], next_cursor: null}) : base(input, init);
+  });
+  await client.initialize();
+  const select = vi.spyOn(client, "selectModel");
+  if (rejectSelection) select.mockRejectedValueOnce(new Error("selection interrupted"));
+  render(<LiveConversation />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", {name: "Authoring model"}));
+  await user.keyboard("{End}{Enter}");
+  await waitFor(() => expect(select).toHaveBeenCalledWith(second.ref));
+  await waitFor(() => expect(client.getSnapshot().model).toBe(rejectSelection ? MODEL.ref : second.ref));
+  expect(screen.queryByRole("listbox")).toBeNull();
 });

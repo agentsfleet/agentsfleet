@@ -9,12 +9,14 @@ import {
   ConfirmDialog,
   DashboardRow,
   DashboardRowGroup,
+  DashboardPanelTitle,
   EmptyState,
   Label,
   EYEBROW_CLASS,
   List,
   ListItem,
   Switch,
+  Section,
   cn,
   Time,
 } from "@agentsfleet/design-system";
@@ -102,8 +104,8 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
   }
 
   return (
-    <Card className="flex flex-col gap-md bg-card p-4" aria-label={MEMORY_PANEL_TITLE}>
-      <span className="font-sans text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
+    <Section className="gap-xl" aria-label={MEMORY_PANEL_TITLE}>
+      <DashboardPanelTitle>{MEMORY_PANEL_TITLE}</DashboardPanelTitle>
       {access !== null && canGrant ? (
         <AccessSwitches workspaceId={workspaceId} fleetId={fleetId} initial={access} />
       ) : null}
@@ -129,7 +131,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
         confirmLabel={MEMORY_FORGET_CONFIRM_LABEL}
         onConfirm={pendingEntry ? () => forget(pendingEntry) : undefined}
       />
-    </Card>
+    </Section>
   );
 }
 

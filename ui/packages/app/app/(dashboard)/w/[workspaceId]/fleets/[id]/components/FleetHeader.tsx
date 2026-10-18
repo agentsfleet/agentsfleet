@@ -24,7 +24,7 @@ function FleetBreadcrumb({
   return (
     <Nav
       aria-label={BREADCRUMB_LABEL}
-      className="mb-sm shrink-0 text-sm text-muted-foreground"
+      className="mb-md shrink-0 text-sm text-muted-foreground"
     >
       <Link
         href={workspacePath(workspaceId, "fleets")}
@@ -32,8 +32,7 @@ function FleetBreadcrumb({
       >
         {FLEETS_CRUMB_LABEL}
       </Link>
-      <span aria-hidden="true"> / </span>
-      <span className="text-foreground">{fleetName}</span>
+      <span className="sr-only"> / {fleetName}</span>
     </Nav>
   );
 }
@@ -48,9 +47,11 @@ export function FleetHeader({
   exhaustedAt?: number | null;
 }) {
   return (
-    <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
-      <PageTitle className="sr-only">{fleet.name}</PageTitle>
-      <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
+    <div className="mb-xl flex flex-col gap-lg sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
+        <PageTitle className="break-words">{fleet.name}</PageTitle>
+      </div>
       <div
         aria-label="Fleet lifecycle actions"
         className="flex flex-wrap items-center justify-end gap-sm"

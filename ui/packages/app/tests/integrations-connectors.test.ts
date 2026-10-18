@@ -249,8 +249,8 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it.each([
-    [new Error("connect threw"), "Couldn't connect GitHub. Try again, or check Events for what blocked it."],
-    ["non-error connect failure", "Couldn't connect GitHub. Try again, or check Events for what blocked it."],
+    [new Error("connect threw"), "Couldn't connect GitHub. Try again, or check Activity for what blocked it."],
+    ["non-error connect failure", "Couldn't connect GitHub. Try again, or check Activity for what blocked it."],
   ])("surfaces a thrown connect failure %#", async (cause, message) => {
     startConnectActionMock.mockRejectedValue(cause);
     renderConnectors([GITHUB]);
@@ -287,8 +287,8 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it.each([
-    [new Error("disconnect threw"), "Couldn't disconnect GitHub. Try again, or check Events for what blocked it."],
-    ["non-error disconnect failure", "Couldn't disconnect GitHub. Try again, or check Events for what blocked it."],
+    [new Error("disconnect threw"), "Couldn't disconnect GitHub. Try again, or check Activity for what blocked it."],
+    ["non-error disconnect failure", "Couldn't disconnect GitHub. Try again, or check Activity for what blocked it."],
   ])("surfaces a thrown disconnect failure %#", async (cause, message) => {
     disconnectConnectorActionMock.mockRejectedValue(cause);
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });

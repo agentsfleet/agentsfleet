@@ -7,7 +7,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
-import { accessRevokedResponse, eventStreamResponse, isAccessRefusal } from "@/lib/api/event-stream-proxy";
+import { proxyEventStream } from "@/lib/api/event-stream-proxy";
 import { ERROR_CODE } from "@/lib/errors";
 
 export const runtime = "nodejs";
@@ -32,33 +32,5 @@ export async function GET(req: Request, { params }: Params) {
     `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}` +
     `/fleets/${encodeURIComponent(fleetId)}/events/stream`;
 
-  const upstream = await fetch(upstreamUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "text/event-stream",
-    },
-    signal: req.signal,
-  });
-
-  if (!upstream.ok) {
-    const text = await upstream.text().catch(() => "");
-    // A member removed while their tab slept is refused here, at open, where
-    // the browser would see only a bare `error` and reconnect forever.
-    if (isAccessRefusal(upstream.status, text)) return accessRevokedResponse();
-    return new Response(text || `Upstream error ${upstream.status}`, {
-      status: upstream.status,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "text/plain",
-      },
-    });
-  }
-  if (!upstream.body) {
-    return new Response("Upstream returned no body", {
-      status: 502,
-      headers: { "Content-Type": "text/plain" },
-    });
-  }
-
-  return eventStreamResponse(upstream.body);
+  return proxyEventStream(req, upstreamUrl, token);
 }

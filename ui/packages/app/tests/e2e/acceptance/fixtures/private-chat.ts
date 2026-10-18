@@ -24,7 +24,7 @@ export const CHAT_COPY = {
   applied: "Fleet setup updated. New work uses this setup revision.",
   savedSetup: "Saved fleet setup",
   openFleet: "Open fleet",
-  improve: "Improve in private chat",
+  improve: "Edit fleet",
   composer: "Private chat composer",
   composerInput: "Describe the work you want this fleet to do…",
   send: "Send message",

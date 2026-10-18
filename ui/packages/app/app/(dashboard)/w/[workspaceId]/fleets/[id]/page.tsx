@@ -149,8 +149,9 @@ export default async function FleetDetailPage({
             activeView={view}
           />
           <div
+            key={view}
             className={cn(
-              "flex min-w-0 flex-1 flex-col",
+              "page-entrance flex min-w-0 flex-1 flex-col",
               claimsViewport && "h-full min-h-0 overflow-clip",
             )}
           >

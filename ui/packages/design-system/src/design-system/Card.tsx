@@ -18,6 +18,7 @@ const cardVariants = cva(
   ].join(" "),
   {
     variants: {
+      interactive: {true: "interactive-surface", false: ""},
       featured: {
         true: "border-primary",
         false: "",
@@ -35,6 +36,7 @@ export type CardProps = ComponentProps<"article"> &
   };
 
 export function Card({
+  interactive,
   featured,
   badgeLabel,
   asChild = false,
@@ -43,7 +45,7 @@ export function Card({
   ref,
   ...props
 }: CardProps) {
-  const classes = cn(cardVariants({ featured }), className);
+  const classes = cn(cardVariants({ featured, interactive }), className);
 
   if (asChild) {
     return (

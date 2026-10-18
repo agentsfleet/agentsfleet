@@ -9,8 +9,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <BrandMark className="size-6" /><span className="font-medium tracking-tight">agentsfleet</span>
     </div>
     <div className="mx-auto grid w-full max-w-content flex-1 items-center gap-3xl px-lg py-2xl lg:grid-cols-2 lg:gap-5xl lg:px-3xl">
-      <div className="chat-entrance hidden space-y-2xl lg:block">
-        <div className="chat-brand-halo inline-flex rounded-lg bg-card p-xl"><BrandMark className="size-14 text-pulse" /></div>
+      <div className="content-entrance hidden space-y-2xl lg:block">
+        <div className="signal-halo inline-flex rounded-lg bg-card p-xl"><BrandMark className="size-14 text-pulse" /></div>
         <div className="max-w-narrow space-y-lg"><PageTitle>Good work starts with a conversation.</PageTitle>
           <p className="text-body-lg text-muted-foreground">Turn the work on your mind into a fleet that keeps it moving.</p></div>
         <div className="space-y-lg">{STEPS.map((step) => <div key={step} className="flex items-center gap-md text-body-sm text-muted-foreground"><CheckIcon size={16} className="text-pulse" />{step}</div>)}</div>

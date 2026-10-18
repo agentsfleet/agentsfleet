@@ -6,9 +6,13 @@
 import { z } from "zod";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { ERROR_CODE } from "@/lib/errors";
+import { StreamLifetime } from "@/lib/api/stream-lifetime";
 
 const HTTP_STATUS_OK = 200;
 const HTTP_STATUS_FORBIDDEN = 403;
+const HTTP_STATUS_BAD_GATEWAY = 502;
+const CONTENT_TYPE_TEXT = "text/plain";
+const CURSOR_HEADER = "Last-Event-ID";
 
 const EVENT_STREAM_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -32,6 +36,36 @@ const RefusalSchema = z.object({ error_code: z.string() });
 /** A live stream, with the headers an EventSource and every hop need. */
 export function eventStreamResponse(body: BodyInit): Response {
   return new Response(body, { status: HTTP_STATUS_OK, headers: EVENT_STREAM_HEADERS });
+}
+
+/** Bound the connection and body, retaining the client's reconnect metadata. */
+export async function proxyEventStream(req: Request, url: string, token: string): Promise<Response> {
+  const lifetime = new StreamLifetime(req.signal);
+  const headers: Record<string, string> = {Authorization: `Bearer ${token}`, Accept: EVENT_STREAM_HEADERS["Content-Type"]};
+  const cursor = req.headers.get(CURSOR_HEADER);
+  if (cursor) headers[CURSOR_HEADER] = cursor;
+  try {
+    const upstream = await fetch(url, {method: "GET", headers, signal: lifetime.signal});
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => "");
+      lifetime.dispose();
+      if (isAccessRefusal(upstream.status, text)) return accessRevokedResponse();
+      return new Response(text || `Upstream error ${upstream.status}`, {
+        status: upstream.status,
+        headers: {"Content-Type": upstream.headers.get("content-type") ?? CONTENT_TYPE_TEXT},
+      });
+    }
+    const body = lifetime.wrap(upstream.body);
+    if (!body) return streamFailure("Upstream returned no body");
+    return eventStreamResponse(body);
+  } catch {
+    lifetime.dispose();
+    return streamFailure("Upstream unreachable");
+  }
+}
+
+function streamFailure(message: string): Response {
+  return new Response(message, {status: HTTP_STATUS_BAD_GATEWAY, headers: {"Content-Type": CONTENT_TYPE_TEXT}});
 }
 
 /**

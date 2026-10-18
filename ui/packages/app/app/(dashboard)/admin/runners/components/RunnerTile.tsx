@@ -80,7 +80,7 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
   const awake = runnerIsAwake(runner.admin_state, runner.liveness);
   const workLine = useWorkLine(runner);
   return (
-    <Card asChild className="group min-h-52 p-xl transition-colors duration-snap hover:border-border-strong motion-reduce:transition-none">
+    <Card asChild interactive className="group min-h-52 p-xl">
       <Link href={runnerPath(runner.id)}
         className="flex flex-col gap-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={`${OPEN_RUNNER_LABEL}: ${runner.host_id} — ${runner.admin_state} ${runner.liveness}`}>
@@ -101,7 +101,7 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
               <>Last seen <Time value={new Date(runner.last_seen_at)} format="relative" tooltip={false} /></>
             ) : NEVER_CONNECTED_SENTENCE}
           </span>
-          <span className="shrink-0 font-sans text-label font-medium text-pulse">
+          <span className="shrink-0 font-sans text-label font-medium text-pulse" data-card-open>
             {OPEN_RUNNER_LABEL} →
           </span>
         </div>
