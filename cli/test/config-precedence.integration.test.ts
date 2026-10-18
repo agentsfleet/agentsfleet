@@ -76,7 +76,7 @@ const UNROUTABLE_ENV_URL = "http://127.0.0.1:1/stale-env";
 const AUTH_HEADER = "authorization" as const;
 const HOST_HEADER = "host" as const;
 const BEARER_PREFIX = "Bearer " as const;
-const EMPTY_LIST = { items: [] } as const;
+const EMPTY_LIST = { items: [], next_cursor: null } as const;
 
 // Single source of the wire path for a `list` against a workspace — used
 // both to register the mock route and to assert the inbound path, so the

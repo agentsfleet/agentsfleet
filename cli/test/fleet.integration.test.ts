@@ -9,7 +9,7 @@ import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import { FLEET } from "./chat/fixture.ts";
 import { AGENTSFLEET_STATUS } from "../src/constants/fleet-status.ts";
-import { FLEET_LIST_INVALID } from "../src/commands/fleet.ts";
+import { FLEET_LIST_INVALID } from "../src/commands/fleet-read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
 const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";

@@ -36,7 +36,8 @@ const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
     jsonResponse(200, { secrets: [{ name: "github", kind: "custom_secret", created_at: CREATED_AT }] }),
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
-    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_AT }] }),
+    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_AT,
+      events_processed: "0", budget_used_nanos: "0" }], next_cursor: null }),
   [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
     jsonResponse(200, { items: [LIBRARY_CARD], next_cursor: null }),
   "GET /v1/api-keys": () =>

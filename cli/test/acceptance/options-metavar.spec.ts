@@ -56,7 +56,7 @@ interface CapturingStub {
 /**
  * Tiny capturing HTTP stub. Records every `(method, url, body)` it
  * receives and replies from a route table. Anything unmatched returns
- * an empty `{items: []}` envelope so the CLI keeps walking — the spec
+ * an empty list envelope so the CLI keeps walking — the spec
  * cares about the captured request, not the rendered response.
  */
 function startCapturingStub(routes: Readonly<Record<string, unknown>> = {}): Promise<CapturingStub> {
@@ -69,7 +69,7 @@ function startCapturingStub(routes: Readonly<Record<string, unknown>> = {}): Pro
       captured.push({ method: req.method, url: reqUrl, body });
       const key = `${req.method} ${reqUrl.split("?")[0] ?? ""}`;
       const entry = routes[key];
-      const payload = entry !== undefined ? JSON.stringify(entry) : JSON.stringify({ items: [] });
+      const payload = entry !== undefined ? JSON.stringify(entry) : JSON.stringify({ items: [], next_cursor: null });
       res.writeHead(200, {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload),
