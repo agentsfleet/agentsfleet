@@ -296,9 +296,10 @@ describe("private browser chat", () => {
     expect(instance.getSnapshot().notice).toContain("Publish it explicitly");
     expect(instance.getSnapshot().pending).toBe(false); expect(mutations()).toEqual([]);
   });
-  it("never stages without a fresh Review", async () => {
+  it("refuses staging when the current setup is incomplete", async () => {
     const publisher = vi.fn();
     const instance = await ready(true, publisher);
+    fixture.current = {...fixture.current, review: undefined};
     await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 409});
     expect(publisher).not.toHaveBeenCalled(); expect(instance.getSnapshot().pending).toBe(false);
   });

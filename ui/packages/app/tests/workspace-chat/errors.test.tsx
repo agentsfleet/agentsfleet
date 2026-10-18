@@ -14,8 +14,8 @@ it("explains unavailable setup, preserves the lock, and offers reload or fleet n
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Fleet setup isn’t available");
   expect(screen.getByRole("link", {name: "Your fleets"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets`);
-  const suggestion = await screen.findByRole("button", {name: /Fix a build/});
-  expect(suggestion).toHaveProperty("disabled", true);
+  expect(screen.queryByRole("button", {name: /Fix a build/})).toBeNull();
+  expect(screen.queryByRole("textbox")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Reload"}));
   expect(reload).toHaveBeenCalledOnce();
   expect(fixture.writes()).toHaveLength(0);

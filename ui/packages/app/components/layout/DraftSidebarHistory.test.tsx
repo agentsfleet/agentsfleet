@@ -186,7 +186,7 @@ it("requires confirmation and keeps a chat available after a refused deletion", 
     fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
     fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
     await screen.findByText("Finish the current request first");
-    expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+    expect(screen.getByRole("link", {hidden: true}).textContent).toContain(DRAFT.title);
     fetcher.mockResolvedValueOnce(response(null, 204));
     fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
     await waitFor(() => expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull());

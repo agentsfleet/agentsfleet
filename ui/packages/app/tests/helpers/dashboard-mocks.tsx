@@ -92,7 +92,7 @@ const LUCIDE_ICONS = [
   "CircleStopIcon", "PlayIcon", "PowerOffIcon",
   // The status lines' glyphs and the runner checks badge.
   "CircleAlertIcon", "CoinsIcon", "HourglassIcon", "LoaderCircleIcon", "TimerIcon", "HeartPulseIcon",
-  "ShieldCheckIcon", "ShieldAlertIcon",
+  "ShieldCheckIcon", "ShieldAlertIcon", "LockKeyholeIcon",
 ] as const;
 
 export function lucideMock() {

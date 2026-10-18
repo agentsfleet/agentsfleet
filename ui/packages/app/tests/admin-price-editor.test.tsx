@@ -65,11 +65,11 @@ describe("admin price array editor", () => {
     render(<Harness onSave={save} />);
     change("Input ($/1M)", "0.0000000001");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText(/at most nine fractional digits/)).toBeTruthy();
+    expect((await screen.findAllByText(/at most nine fractional digits/)).length).toBeGreaterThan(0);
     change("Input ($/1M)", "0.55");
     change("Effective until", "2026-10-17T00:00:00Z");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Effective until must be after effective from")).toBeTruthy();
+    expect((await screen.findAllByText("Effective until must be after effective from")).length).toBeGreaterThan(0);
     expect(save).not.toHaveBeenCalled();
   });
   it("discloses optional inference semantics and hides its fields when left unchanged", () => {

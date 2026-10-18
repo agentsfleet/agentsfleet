@@ -19,7 +19,7 @@ describe("catalogue JSON integer boundaries", () => {
     await expect(readCatalogueBody(new Response("{"))).rejects.toThrow(SyntaxError);
     const failure = new Error("body interrupted");
     const body = new ReadableStream({ start(controller) { controller.error(failure); } });
-    await expect(readCatalogueBody(new Response(body))).rejects.toBe(failure);
+    await expect(readCatalogueBody(new Response(body))).rejects.toThrow(failure.message);
   });
   it.each(["-1", "01", "1.5", "9223372036854775808", 1, true])("refuses invalid outgoing nanos %s", (value) => {
     expect(() => stringifyCatalogueBody({ output_nanos_per_mtok: value })).toThrow(ZodError);

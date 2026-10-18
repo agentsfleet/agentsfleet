@@ -24,7 +24,8 @@ function page(models: LibraryModel[], next_cursor: string | null = null) {
 }
 function Intent({ children }: React.PropsWithChildren) {
   const { preload } = useModelCatalogue();
-  return <><Button type="button" onClick={preload}>Load catalogue</Button>{children}</>;
+  const [opened, setOpened] = React.useState(false);
+  return <><Button type="button" onClick={() => {preload(); setOpened(true);}}>Load catalogue</Button>{opened ? children : null}</>;
 }
 function setup(children: React.ReactNode) {
   render(<TooltipProvider><ModelCatalogueProvider><Intent>{children}</Intent></ModelCatalogueProvider></TooltipProvider>);
