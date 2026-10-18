@@ -104,7 +104,7 @@ pub(super) async fn stage(
     };
     platform::stage(stores, &staged.kek).await?;
     for fleet in &staged.fleets {
-        seed::enqueue(&stores.queue, fleet, EventType::Chat, SEEDED_AT).await?;
+        seed::enqueue(&stores.database, &stores.queue, fleet, EventType::Chat).await?;
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
