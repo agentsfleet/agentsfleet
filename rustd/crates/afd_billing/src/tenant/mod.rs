@@ -123,7 +123,8 @@ pub struct ChargeRow {
     /// still name themselves.
     pub fleet_id: String,
     /// That fleet's name as it stood when the charge was written. A snapshot,
-    /// so a later rename never reaches it.
+    /// so a later rename never reaches it. A fleet purged before the charge
+    /// landed leaves its identifier here, equal to `fleet_id`.
     pub fleet_name: String,
     /// The event that triggered the work.
     pub event_id: String,
