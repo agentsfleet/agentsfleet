@@ -289,7 +289,7 @@ pub struct SelfResponse<'a> {
     /// The tier it was assigned.
     #[serde(borrow)]
     pub sandbox_tier: Cow<'a, str>,
-    /// Epoch milliseconds of the last beat; zero when never seen.
+    /// The last beat; the Unix epoch when never seen.
     #[serde(with = "crate::instant")]
     pub last_seen_at: jiff::Timestamp,
     /// The policy currently assigned to it.

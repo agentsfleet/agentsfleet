@@ -179,7 +179,7 @@ pub struct SharedMemory<'a> {
     /// That fleet's name in the workspace.
     #[serde(borrow)]
     pub writer_fleet_name: Cow<'a, str>,
-    /// Epoch milliseconds of its last write.
+    /// When it was last written.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
 }
@@ -313,7 +313,7 @@ pub struct MemoryEntry<'a> {
     /// The retention category, which decides eviction order.
     #[serde(borrow)]
     pub category: Cow<'a, str>,
-    /// Epoch milliseconds, as a JSON NUMBER — never a decimal string.
+    /// When it was last written.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
     /// Who reads it: `fleet` for its writer alone, `workspace` when shared.
