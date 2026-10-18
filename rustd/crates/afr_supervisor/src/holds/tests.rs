@@ -7,16 +7,17 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::{FixedClock, after};
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
+use jiff::Timestamp;
 
 use super::{BuiltUnder, HoldKey, Holds, Release};
 use crate::test_support::FakeEngine;
 
-const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
+const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
 pub(super) const FLEET_A: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 pub(super) const FLEET_B: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const FLEET_C: &str = "01890a5d-ac96-774b-bcce-b302099a80a3";
@@ -56,7 +57,7 @@ pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
     engine.prepare(request).await.unwrap()
 }
 
-pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<UnixMillis> {
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<Timestamp> {
     holds
         .park(key(fleet), id(LEASE), sandbox(engine).await)
         .await
@@ -91,14 +92,11 @@ async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_lease() {
     let (holds, clock) = holds(2);
 
     let until = park(&holds, &engine, FLEET_A).await;
-    clock.advance_millis(30_000);
+    clock.advance(Duration::from_secs(30));
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
 
-    assert_eq!(
-        until,
-        Some(START.saturating_add_millis(SANDBOX_HOLD_IDLE_MS))
-    );
-    assert_eq!(taken.held_ms, 30_000);
+    assert_eq!(until, Some(after(START, SANDBOX_HOLD_IDLE)));
+    assert_eq!(taken.held, Duration::from_secs(30));
     assert!(
         fleets(&holds).await.is_empty(),
         "a taken hold is no longer held"
@@ -157,9 +155,9 @@ async fn test_expired_hold_is_destroyed() {
     let (holds, clock) = holds(2);
 
     park(&holds, &engine, FLEET_A).await;
-    clock.advance_millis(SANDBOX_HOLD_IDLE_MS - 1);
+    clock.advance(SANDBOX_HOLD_IDLE.saturating_sub(Duration::from_millis(1)));
     assert_eq!(fleets(&holds).await, [FLEET_A], "held until its deadline");
-    clock.advance_millis(1);
+    clock.advance(Duration::from_millis(1));
     let left = fleets(&holds).await;
     assert!(left.is_empty(), "{left:?}");
     assert!(holds.take(&key(FLEET_A)).await.is_none());

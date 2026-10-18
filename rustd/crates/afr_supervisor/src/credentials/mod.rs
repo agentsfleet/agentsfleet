@@ -7,7 +7,6 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use afr_egress::{Mint, Minted};
@@ -74,7 +73,7 @@ pub(crate) async fn mint(
     let minted: MintCredentialResponse<'_> = body.decode()?;
     Ok(Minted::new(
         Secret::new(minted.token.into_owned()),
-        UnixMillis::from_millis(minted.expires_at_ms),
+        minted.expires_at,
     ))
 }
 

@@ -2,12 +2,13 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::{Clock, UnixMillis};
+use afd_core::clock::{self, Clock};
 use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::Sandbox;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
+use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
@@ -27,8 +28,8 @@ struct Entry {
     /// The lease that parked it, which alone may end it as superseded.
     lease: Uuid7,
     sandbox: Box<dyn Sandbox>,
-    since: UnixMillis,
-    until: UnixMillis,
+    since: Timestamp,
+    until: Timestamp,
 }
 
 /// Every hold, how many workers the runner has, and how many are busy.
@@ -116,22 +117,17 @@ impl Keeper {
             self.retire(entry, Release::Mismatch);
             return None;
         }
-        let held_ms = self.clock.now().saturating_millis_since(entry.since);
+        let held = crate::deadline::left(entry.since, self.clock.now());
         Some(Taken {
             sandbox: entry.sandbox,
-            held_ms,
+            held,
         })
     }
 
     /// Holds `sandbox` for its fleet until the idle window lapses, after
     /// making room: an older hold of the same fleet goes, then the oldest
     /// until one fewer than the cap remain. A closed keeper holds nothing.
-    fn park(
-        &mut self,
-        key: HoldKey,
-        lease: Uuid7,
-        sandbox: Box<dyn Sandbox>,
-    ) -> Option<UnixMillis> {
+    fn park(&mut self, key: HoldKey, lease: Uuid7, sandbox: Box<dyn Sandbox>) -> Option<Timestamp> {
         if self.closed {
             self.destroy(&key.fleet, sandbox, Release::Shutdown);
             return None;
@@ -146,12 +142,11 @@ impl Keeper {
         };
         self.cap(room);
         let since = self.clock.now();
-        let until = since.saturating_add_millis(SANDBOX_HOLD_IDLE_MS);
+        let until = clock::after(since, SANDBOX_HOLD_IDLE);
         let lease_id = lease.as_str();
         let fleet_id = key.fleet.as_str();
-        let deadline_ms = until.as_millis();
         let event = EVENT_HELD;
-        tracing::info!(lease_id, fleet_id, deadline_ms, event);
+        tracing::info!(lease_id, fleet_id, deadline = %until, event);
         record::sandbox_hold(SandboxHold::Parked);
         self.held.push(Entry {
             key,

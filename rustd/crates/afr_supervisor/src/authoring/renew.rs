@@ -4,6 +4,7 @@ use super::meter::Observed;
 use crate::{Result, client::ControlPlane, error};
 use afd_core::{clock::Clock, id::Uuid7};
 use afd_wire::authoring::{Lease, Renew};
+use jiff::Timestamp;
 use serde_json::Value;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -19,7 +20,8 @@ pub(super) async fn keep(
     observed: &Observed,
 ) -> Result<()> {
     let mut expiry = deadline(lease.expires_at, clock);
-    let maximum = deadline(lease.deadline, clock).min(Instant::now() + Duration::from_secs(300));
+    let maximum =
+        deadline(attempt_ends(lease), clock).min(Instant::now() + Duration::from_secs(300));
     let mut pause = INTERVAL;
     loop {
         let renew_at = (Instant::now() + pause).min(expiry).min(maximum);
@@ -50,10 +52,14 @@ pub(super) async fn keep(
     }
 }
 
-pub(super) fn deadline(at: i64, clock: &dyn Clock) -> Instant {
-    let remaining = at
-        .saturating_sub(clock.now().as_millis())
-        .max(0)
-        .cast_unsigned();
-    Instant::now() + Duration::from_millis(remaining)
+/// When the attempt itself ends; renewal cannot extend it.
+///
+/// The wire still spells this instant as epoch milliseconds. One out of
+/// jiff's range is a broken lease, read as already over.
+pub(super) fn attempt_ends(lease: &Lease<Value>) -> Timestamp {
+    Timestamp::from_millisecond(lease.deadline).unwrap_or(Timestamp::MIN)
+}
+
+pub(super) fn deadline(at: Timestamp, clock: &dyn Clock) -> Instant {
+    Instant::now() + crate::deadline::left(clock.now(), at)
 }

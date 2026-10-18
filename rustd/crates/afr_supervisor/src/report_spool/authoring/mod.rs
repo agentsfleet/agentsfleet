@@ -6,17 +6,20 @@ mod entry;
 mod files;
 
 use crate::{Result, error, storage_home::StorageHome};
-use afd_core::{clock::Clock, id::Uuid7};
+use afd_core::{clock::Clock, id::Uuid7, timing::DAY};
 use afd_wire::authoring::{ENVELOPE_BYTES_MAX, Report};
+use jiff::Timestamp;
 use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::{sync::Notify, time::Instant};
 
-const PRIVATE_TTL_MS: i64 = 24 * 60 * 60 * 1000;
+/// How long a private answer may wait on disk before it is cleared.
+const PRIVATE_TTL: Duration = DAY;
 const DIRECTORY: &str = "authoring";
 /// The refusal a poisoned spool lock earns: a panic interrupted an update.
 const STATE_INTERRUPTED: &str = "private report state was interrupted";
@@ -29,7 +32,7 @@ struct Envelope<'a> {
 
 #[derive(Debug, Default)]
 struct State {
-    high_water: i64,
+    high_water: Timestamp,
     uncertain: bool,
     deadlines: HashMap<PathBuf, Instant>,
 }
@@ -70,13 +73,13 @@ impl Spool {
         let old = reading
             .as_ref()
             .ok()
-            .and_then(|bytes| serde_json::from_slice::<i64>(bytes).ok());
+            .and_then(|bytes| serde_json::from_slice::<Timestamp>(bytes).ok());
         let mut state = self
             .0
             .state
             .lock()
             .map_err(|_poisoned| error::config(STATE_INTERRUPTED))?;
-        state.high_water = old.unwrap_or_else(|| self.0.clock.now().as_millis());
+        state.high_water = old.unwrap_or_else(|| self.0.clock.now());
         state.uncertain = old.is_none() && fs::read_dir(&self.0.directory)?.count() != 0;
         Ok(())
     }
@@ -128,21 +131,20 @@ impl Spool {
                 report_id: settlement.accounting.report_id,
                 generation: settlement.accounting.deletion_generation,
                 first_written_at: now,
-                expires_at: now.saturating_add(PRIVATE_TTL_MS),
+                expires_at: afd_core::clock::after(now, PRIVATE_TTL),
             };
             let answer =
                 zeroize::Zeroizing::new(serde_json::to_string(&answer).map_err(error::encode)?);
             cipher::seal(&directory, metadata, &answer)?;
-            state.deadlines.insert(
-                directory,
-                Instant::now() + std::time::Duration::from_millis(PRIVATE_TTL_MS.cast_unsigned()),
-            );
+            state
+                .deadlines
+                .insert(directory, Instant::now() + PRIVATE_TTL);
         }
         Ok(())
     }
 
-    fn observe(&self, state: &mut State) -> Result<(i64, bool)> {
-        let now = self.0.clock.now().as_millis();
+    fn observe(&self, state: &mut State) -> Result<(Timestamp, bool)> {
+        let now = self.0.clock.now();
         let certain = !state.uncertain && now >= state.high_water;
         state.high_water = state.high_water.max(now);
         files::write(
@@ -213,7 +215,7 @@ fn visit(
     item: &fs::DirEntry,
     path: &std::path::Path,
     state: &mut State,
-    now: i64,
+    now: Timestamp,
     certain: bool,
 ) -> Result<bool> {
     let entry = item.file_type()?.is_dir()

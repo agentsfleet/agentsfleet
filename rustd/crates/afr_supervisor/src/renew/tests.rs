@@ -8,18 +8,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::{FixedClock, before};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::report::FailureClass;
 use afr_agent::Meter;
 use afr_providers::Usage;
+use jiff::Timestamp;
 use tokio::time::Instant;
 
-use super::{EXPIRY_MARGIN, RENEWAL_TICK, Renewal};
+use super::{EXPIRY_MARGIN, Renewal};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{Answer, GRANTED_UNTIL, LEASE_ID, drain, json, plane};
+use afd_core::timing::RENEWAL_TICK;
 
 /// The grant every successful renewal answers with: thirty seconds after the
 /// fixed clock's zero, so each one pushes the deadline a full grant ahead.
@@ -28,12 +30,15 @@ fn renewed() -> Answer {
 }
 
 fn clock() -> FixedClock {
-    FixedClock::at(UnixMillis::from_millis(0))
+    FixedClock::at(Timestamp::UNIX_EPOCH)
 }
 
 /// What the lease is granted for, less the margin it is given up early by.
 fn budget() -> Duration {
-    Duration::from_millis(GRANTED_UNTIL.unsigned_abs()).saturating_sub(EXPIRY_MARGIN)
+    let granted = GRANTED_UNTIL.duration_since(Timestamp::UNIX_EPOCH);
+    Duration::try_from(granted)
+        .unwrap()
+        .saturating_sub(EXPIRY_MARGIN)
 }
 
 #[tokio::test(start_paused = true)]
@@ -118,7 +123,8 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
         .keep()
         .await;
     let lapsed = Instant::now();
-    Renewal::new(&plane, &lease, -1, &clock, &Meter::default())
+    let lapsed_grant = before(Timestamp::UNIX_EPOCH, Duration::from_millis(1));
+    Renewal::new(&plane, &lease, lapsed_grant, &clock, &Meter::default())
         .keep()
         .await;
 

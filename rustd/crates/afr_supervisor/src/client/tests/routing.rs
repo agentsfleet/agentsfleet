@@ -11,11 +11,14 @@ use afd_wire::{
 };
 use bytes::Bytes;
 
+/// The expiry every fake renewal grants.
+const RENEWED_UNTIL: jiff::Timestamp = jiff::Timestamp::constant(7, 0);
+
 #[tokio::test]
 async fn every_verb_goes_to_its_own_path() {
     let (plane, mut calls) = plane(|call| match call.verb {
         Verb::Renew => json(&RenewResponse {
-            lease_expires_at: 7,
+            lease_expires_at: RENEWED_UNTIL,
         }),
         _other => json(&serde_json::json!({})),
     });
@@ -75,7 +78,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
     plane.lease(&[]).await.unwrap();
     assert_eq!(
         plane.renew(&lease, &RenewRequest::default()).await.unwrap(),
-        7,
+        RENEWED_UNTIL,
         "renewal returns its new expiry"
     );
     plane
@@ -101,7 +104,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
 async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
     let (plane, _calls) = plane(|call| match call.verb {
         Verb::Lease => json(&RenewResponse {
-            lease_expires_at: 9,
+            lease_expires_at: RENEWED_UNTIL,
         }),
         _other => Answer::Reply(Bytes::from_static(b"[")),
     });
@@ -112,7 +115,10 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
         .await
         .unwrap();
 
-    assert_eq!(good.decode::<RenewResponse>().unwrap().lease_expires_at, 9);
+    assert_eq!(
+        good.decode::<RenewResponse>().unwrap().lease_expires_at,
+        RENEWED_UNTIL
+    );
     let refused = bad.decode::<RenewResponse>().unwrap_err();
     assert!(
         refused.to_string().contains("hydrate reply did not decode"),

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, SystemClock, UnixMillis};
+use afd_core::clock::{FixedClock, SystemClock};
 use afd_core::error_code::INTERNAL_OPERATION_FAILED;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
@@ -93,7 +93,7 @@ fn answer(
 /// A registry over a stopped clock with room for `workers`, holding a sandbox
 /// for [`FLEET`] that `engine` built.
 pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
-    let holds = Holds::start(Arc::new(FixedClock::at(UnixMillis::from_millis(0))));
+    let holds = Holds::start(Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH)));
     holds.resize(workers);
     assert!(park(&holds, engine).await, "parked");
     holds

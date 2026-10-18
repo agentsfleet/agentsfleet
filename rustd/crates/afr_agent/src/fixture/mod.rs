@@ -24,6 +24,8 @@ mod model;
 pub(crate) const RECEIVER_HELD: &str = "the test holds the receiver for as long as the run";
 /// Where a fixture lease's context knobs sit.
 const CONTEXT_POINTER: &str = "/policy/context";
+/// The instant the fixture lease expires at and its event was made at.
+const AT: &str = "1970-01-01T00:00:00.001Z";
 
 /// The provider key every fixture lease carries.
 pub(crate) const API_KEY: &str = "sk-test-0123456789";
@@ -33,11 +35,11 @@ pub(crate) const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 /// A lease offering `tools`, with `budget` as its context knobs.
 pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'static> {
     let mut document = serde_json::json!({
-        "lease_id": "lease-1", "fencing_token": 7, "lease_expires_at": 1,
+        "lease_id": "lease-1", "fencing_token": 7, "lease_expires_at": AT,
         "secret_delivery": "inline",
         "event": {"event_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
-            "request_json": "{\"message\":\"triage the failed run\"}", "created_at": 1},
+            "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
         "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": tools,
             "secrets_map": {"github": {"token": GITHUB_TOKEN, "host": "api.github.com"}},

@@ -10,7 +10,7 @@ mod retention;
 use super::{Spool, files};
 use crate::storage_home::StorageHome;
 use afd_core::{
-    clock::{Clock, FixedClock, UnixMillis},
+    clock::{Clock, FixedClock},
     id::Uuid7,
 };
 use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
@@ -20,7 +20,7 @@ const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
 const ATTEMPT: &str = "01890a5d-ac96-774b-bcce-b302099a8061";
 const REPORT: &str = "01890a5d-ac96-774b-bcce-b302099a8062";
 const ANSWER: &str = "private authoring answer that must expire";
-const START: i64 = 1_700_000_000_000;
+const START: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 
 struct Fixture {
     _root: tempfile::TempDir,
@@ -34,7 +34,7 @@ impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();
         let home = StorageHome::open(root.path()).unwrap();
-        let clock = Arc::new(FixedClock::at(UnixMillis::from_millis(START)));
+        let clock = Arc::new(FixedClock::at(START));
         let source: Arc<dyn Clock> = Arc::<FixedClock>::clone(&clock);
         let spool = Spool::open(&home, source).unwrap();
         let directory = home.spool().join("authoring").join(LEASE);

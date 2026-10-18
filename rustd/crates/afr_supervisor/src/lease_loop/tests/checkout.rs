@@ -52,7 +52,7 @@ fn rig(workspace: Option<PathBuf>, mint: fn(&Call) -> Option<Answer>) -> Rig {
         Verb::Mint => Some(mint(call).unwrap_or_else(|| {
             crate::test_support::json(&MintCredentialResponse {
                 token: TOKEN.into(),
-                expires_at_ms: GRANTED_UNTIL,
+                expires_at: GRANTED_UNTIL,
             })
         })),
         _other => None,

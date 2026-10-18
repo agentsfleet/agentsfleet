@@ -1,8 +1,9 @@
 //! Content-free settlement survives every private-content cleanup.
 
-use super::{PRIVATE_TTL_MS, State, cipher, files};
+use super::{PRIVATE_TTL, State, cipher, files};
 use crate::{Result, error};
 use afd_wire::authoring::{Accounting, Report};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::time::Instant;
@@ -20,8 +21,10 @@ pub(super) struct Metadata {
     pub(super) attempt_id: String,
     pub(super) report_id: String,
     pub(super) generation: String,
-    pub(super) first_written_at: i64,
-    pub(super) expires_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub(super) first_written_at: Timestamp,
+    #[serde(with = "afd_wire::instant")]
+    pub(super) expires_at: Timestamp,
 }
 
 pub(super) fn settlement(directory: &Path) -> Result<Settlement> {
@@ -29,7 +32,12 @@ pub(super) fn settlement(directory: &Path) -> Result<Settlement> {
         .map_err(error::malformed(crate::client::Verb::AuthoringReport))
 }
 
-pub(super) fn clean(directory: &Path, state: &mut State, now: i64, certain: bool) -> Result<()> {
+pub(super) fn clean(
+    directory: &Path,
+    state: &mut State,
+    now: Timestamp,
+    certain: bool,
+) -> Result<()> {
     files::clear_unknown(directory)?;
     if !certain || valid(directory, state, now).is_err() {
         files::clear_private(directory)?;
@@ -41,7 +49,7 @@ pub(super) fn clean(directory: &Path, state: &mut State, now: i64, certain: bool
 fn valid(
     directory: &Path,
     state: &mut State,
-    now: i64,
+    now: Timestamp,
 ) -> Result<(Metadata, afd_crypto::secret::Kek)> {
     let (metadata, key) = cipher::metadata(directory)?;
     let accounting = settlement(directory)?;
@@ -51,7 +59,7 @@ fn valid(
         || accounting.attempt_id != metadata.attempt_id
         || accounting.accounting.report_id != metadata.report_id
         || accounting.accounting.deletion_generation != metadata.generation
-        || metadata.expires_at.checked_sub(metadata.first_written_at) != Some(PRIVATE_TTL_MS)
+        || metadata.expires_at != afd_core::clock::after(metadata.first_written_at, PRIVATE_TTL)
         || now < metadata.first_written_at
         || now >= metadata.expires_at
     {
@@ -59,12 +67,11 @@ fn valid(
             "private report metadata is expired or inconsistent",
         ));
     }
-    let remaining = u64::try_from(metadata.expires_at - now)
-        .map_err(|_negative| error::config("private report deadline is invalid"))?;
+    let remaining = crate::deadline::left(now, metadata.expires_at);
     let deadline = state
         .deadlines
         .entry(PathBuf::from(directory))
-        .or_insert_with(|| Instant::now() + std::time::Duration::from_millis(remaining));
+        .or_insert_with(|| Instant::now() + remaining);
     if Instant::now() >= *deadline {
         return Err(error::config(
             "private report reached its monotonic deadline",
@@ -76,7 +83,7 @@ fn valid(
 pub(super) fn load(
     directory: &Path,
     state: &mut State,
-    now: i64,
+    now: Timestamp,
     certain: bool,
 ) -> Result<(String, Report)> {
     clean(directory, state, now, certain)?;

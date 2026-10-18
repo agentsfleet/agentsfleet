@@ -124,8 +124,12 @@ impl ControlPlane {
     }
 
     /// Renews a held lease with the run's cumulative tokens, and returns its
-    /// new expiry, in Unix milliseconds.
-    pub(crate) async fn renew(&self, lease_id: &Uuid7, spent: &RenewRequest) -> Result<i64> {
+    /// new expiry.
+    pub(crate) async fn renew(
+        &self,
+        lease_id: &Uuid7,
+        spent: &RenewRequest,
+    ) -> Result<jiff::Timestamp> {
         let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
         let body = self.send_json(Verb::Renew, path, spent).await?;
         body.decode::<RenewResponse>()
