@@ -91,12 +91,12 @@ done
 # The target is NOT empty, and that is what a naive restore gets wrong.
 #
 # It was migrated first — that is this playbook's own step 4 — so it already
-# holds everything the migrations write. Migration 410 seeds
-# `core.model_catalogue_revision` with `id = 1` under a singleton CHECK, so
+# holds everything the migrations write. Slot 1310 seeds
+# `model.catalogue_version` with `id = 1` under a singleton CHECK, so
 # restoring the source's row is a duplicate key every time. And
-# `core.fleet_activity_counters` is maintained by triggers (migrations 880 and
-# 890): restoring `core.fleets` creates counter rows before the dump's own
-# counter rows arrive, so the load either collides or silently substitutes
+# `fleet.activity_counters` is maintained by triggers (slots 1770 and 2010):
+# restoring `fleet.events` and `billing.fleet_charges` creates counter rows
+# before the dump's own counter rows arrive, so the load either collides or silently substitutes
 # trigger defaults for the counts the source actually had. A real run hit the
 # second of these on the first attempt.
 #

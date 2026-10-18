@@ -64,8 +64,8 @@ case "$*" in
     ;;
   *census.sql*)
     case "${DATABASE_URL:-}" in
-      *"$NEXT_HOST"*) printf '%b' "${TARGET_CENSUS:-core.fleets=3\nledger.version=900\n}" ;;
-      *) printf 'core.fleets=3\nledger.version=900\n' ;;
+      *"$NEXT_HOST"*) printf '%b' "${TARGET_CENSUS:-fleet.fleets=3\nledger.version=900\n}" ;;
+      *) printf 'fleet.fleets=3\nledger.version=900\n' ;;
     esac
     ;;
   *) exit 0 ;;
@@ -172,8 +172,8 @@ test_copy_refuses_a_wrong_confirmation() {
 
 test_verify_fails_on_a_row_count_gap() {
   local out status=0
-  out="$(run "$VERIFY" TARGET_CENSUS='core.fleets=2\nledger.version=900\n')" || status=$?
-  if [ "$status" -ne 0 ] && [[ "$out" == *"the branches differ"* ]] && [[ "$out" == *"-core.fleets=3"* ]]; then
+  out="$(run "$VERIFY" TARGET_CENSUS='fleet.fleets=2\nledger.version=900\n')" || status=$?
+  if [ "$status" -ne 0 ] && [[ "$out" == *"the branches differ"* ]] && [[ "$out" == *"-fleet.fleets=3"* ]]; then
     ok "verify fails when a table's rows differ"
   else
     bad "verify fails when a table's rows differ" "status=$status: $out"
