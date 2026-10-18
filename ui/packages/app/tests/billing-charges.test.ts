@@ -86,7 +86,7 @@ describe("describeCharge", () => {
 describe("charge identity", () => {
   it("names setup costs before a fleet exists without marking them deleted", () => {
     const row = charge({ fleet_id: null, event_id: null, charge_type: CHARGE_TYPE.authoring });
-    expect(chargeAgentLabel(row)).toBe("Fleet setup");
+    expect(chargeAgentLabel(row)).toBe("Setup chat");
     expect(describeCharge(row)).toBe("Setup chat · 1,860 tokens · 820 in · 1,040 out");
     expect(describeCharge({ ...row, token_count_input: null })).toBe("Setup chat · No token usage recorded");
   });
@@ -97,17 +97,9 @@ describe("charge identity", () => {
     expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
   });
 
-  // The states slot 915 made reachable, less the ones slot 916 closed: a
-  // charge's `fleet_id` is NOT NULL now, so only `fleet_name` still varies.
-  // The point of the set is unchanged — no combination renders blank, because
-  // an empty cell against a real charge reads as a rendering bug.
-  //
-  // `agentDisplayName`'s absent-identifier arm is still live and still proven,
-  // through `AgentLabel`'s own `fleetId: string | null` prop:
-  // `tests/identity-and-controls.test.tsx` asserts it directly.
-  it("shows the callsign and the operator's own name once both survive", () => {
+  it("uses only the callsign even when the charge retains the fleet name", () => {
     expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toMatch(
-      /^AGENT [A-Z]+-[0-9A-F]{4} · deploy-bot$/,
+      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
     );
   });
 

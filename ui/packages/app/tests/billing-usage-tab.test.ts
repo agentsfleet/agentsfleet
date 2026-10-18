@@ -77,7 +77,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       initialCharges: [charge({ fleet_id: null, event_id: null, authoring_attempt_id: "attempt-1", charge_type: CHARGE_TYPE.authoring })],
       initialCursor: null, pageSize: 25,
     }));
-    expect(screen.getByText("Fleet setup")).toBeTruthy();
+    expect(screen.getByText("Setup chat")).toBeTruthy();
     expect(screen.getByText("Setup chat · 1,860 tokens · 820 in · 1,040 out")).toBeTruthy();
     expect(screen.getByText("−$0.001")).toBeTruthy();
     expect(screen.queryByText("DELETED AGENT")).toBeNull();

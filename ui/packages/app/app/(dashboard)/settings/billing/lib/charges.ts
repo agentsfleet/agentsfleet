@@ -14,7 +14,6 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const SETUP_CHAT_LABEL = "Setup chat";
-const FLEET_SETUP_LABEL = "Fleet setup";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
 const TOKENS_LABEL = "tokens";
 const TOKENS_IN = "in";
@@ -40,29 +39,10 @@ export function formatChargeAmount(nanos: number): string {
   return `−${formatDollars(nanos)}`;
 }
 
-/**
- * Keep historical charges legible after their fleet has been deleted. The
- * same composition every other agent column renders, so a charge sorts and
- * reads under the name the operator knows the agent by.
- *
- * Both fields are passed, and that is what keeps the sort key and the rendered
- * cell the same string. They are produced by one function for exactly that
- * reason: a sort key composed from fewer fields than the cell would order the
- * table by something the operator cannot see.
- */
+/** Retained fleet identifiers keep billing labels stable after deletion. */
 export function chargeAgentLabel(row: ChargeRow): string {
-  if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return FLEET_SETUP_LABEL;
-  return agentDisplayName(row.fleet_id, capturedFleetName(row));
-}
-
-/**
- * The name a charge captured, or null when it captured none. A fleet purged
- * before its charge landed leaves its own identifier in `fleet_name` (the
- * server's fallback, so the money still lands), and printing that would put a
- * raw identifier where a name belongs.
- */
-export function capturedFleetName(row: ChargeRow): string | null {
-  return row.fleet_name === row.fleet_id ? null : row.fleet_name;
+  if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return SETUP_CHAT_LABEL;
+  return agentDisplayName(row.fleet_id);
 }
 
 /** Strip the provider namespace and separators without changing model casing. */
