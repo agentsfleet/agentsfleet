@@ -49,10 +49,12 @@ The UI continues with explicit loaded-title search, available setup state, and s
 - Why: the detail already describes what the fleet does, but list summaries do not. Cards and recents should show the stable agent callsign with useful purpose text.
 - Screens: Your fleets and sidebar recents.
 
-### Exact monetary wire values — awaiting server verification
+### Exact monetary wire values — verified in server and clients
 
 - Change: `2c9c0300b` standardizes nanos fields as non-negative decimal strings matching `^(0|[1-9][0-9]*)$`.
 - Readers: billing balance and charges, event costs, catalogue rates and model-entry rates in the application and CLI.
 - Why: integer JSON loses precision beyond JavaScript's safe integer range. Catalogue readers and edits must use the same published representation as the server.
-- Handoff: Claude will publish the verified field list before client readers change. Catalogue readers already preserve decimal strings; the remaining readers await that handoff.
+- Handoff: Claude published the verified field list for `2c9c0300b` and `763416e7c` in the mailbox. Application commit `716c0cfdd` and command-line interface (CLI) commit `e0c15db29` require bounded decimal strings; writes use the same representation. Live counters, event costs, balance and charge totals use integer arithmetic.
+- Proof: `make lint-app` and `make lint-cli` pass. `make test-coverage-all` passes: app 402 files / 3783 tests, website 20 / 133, CLI 210 / 1841 passing tests / 16 existing skips, design system 62 / 497. All configured coverage measures are 100%; no floor, skip or timeout changed. Output: `/tmp/m229-coverage-all-complete.txt`.
+- Size: production build and all 25 budgets plus the server-module guard pass. Shared compressed JavaScript: 275298 / 276480 bytes; new-fleet total: 334570 bytes; fleet-detail total: 365303 bytes. Compared with the recorded baseline, totals fall by 30347 and 1389 bytes respectively. Output: `/tmp/m229-bundle-nanos-build.txt`, `/tmp/m229-bundle-nanos-size.json`.
 
