@@ -70,9 +70,9 @@ test.describe("fleet detail logs", () => {
     // link, so the bare role query is ambiguous on the detail page.
     await page
       .getByRole("navigation", { name: "Fleet sections" })
-      .getByRole("link", { name: "Events" })
+      .getByRole("link", { name: "Activity" })
       .click();
-    const events = page.getByRole("table", { name: "Fleet events" });
+    const events = page.getByRole("table", { name: "Fleet activity" });
     await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await events.getByRole("button", { name: /inspect event/i }).first().click();
 

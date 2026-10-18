@@ -4,6 +4,7 @@
 use super::super::{fixture::now, funnel::property, mint};
 use super::fixture::Case;
 use afd_authoring::{SavedFleet, types::Start};
+use afd_core::error_code;
 use afd_observability::Telemetry;
 
 const FINISHED: &str = "fleet_setup_finished";
@@ -70,12 +71,109 @@ async fn should_report_setup_cancelled_once_and_not_for_a_refused_kill() {
     let killed = kill(&c, &saved).await.expect("setup cancellation");
     assert_eq!(killed.status, KILLED);
     kill(&c, &saved).await.expect_err("a stale tag is refused");
-    kill(&c, &killed)
+    for status in [Some(KILLED), Some("active"), None] {
+        let refused = c
+            .creations
+            .patch(
+                c.base.access(),
+                &killed.id,
+                Some(&killed.etag),
+                status,
+                Some("renamed"),
+                now(),
+            )
+            .await
+            .expect_err("a killed fleet is a tombstone for every edit");
+        assert_eq!(refused.code(), error_code::AGENTSFLEET_NOT_FOUND);
+    }
+    let unchanged = c
+        .creations
+        .read(c.base.access(), &killed.id)
         .await
-        .expect_err("a killed fleet cannot be killed again");
+        .expect("tombstone remains readable");
+    assert_eq!(unchanged.status, KILLED);
+    assert_eq!(unchanged.name, killed.name);
+    assert_eq!(unchanged.etag, killed.etag);
     let cancelled = c.base.reported(CANCELLED);
     assert_eq!(cancelled.len(), 1, "one cancellation, refusals add nothing");
     about(&c, &cancelled[0], &saved);
     assert_eq!(c.base.reported(FINISHED).len(), 0, "setup never finished");
     c.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn should_leave_installing_setup_unchanged_after_empty_or_invalid_edits() {
+    let c = Case::create().await;
+    let (_, request) = c.request("funnel-refused-edit", Start::None).await;
+    let saved = c.save(&mint(), request).await;
+    let refusals = [
+        (
+            None,
+            error_code::INVALID_REQUEST,
+            "the setup request is invalid",
+        ),
+        (
+            Some("stopped"),
+            error_code::AUTHORING_STATE,
+            "transition_refused",
+        ),
+        (
+            Some("unsupported"),
+            error_code::AUTHORING_STATE,
+            "transition_refused",
+        ),
+    ];
+    for (status, code, message) in refusals {
+        assert_refused_edit(&c, &saved, status, code, message).await;
+    }
+    assert_eq!(c.base.reported(CANCELLED), [] as [Telemetry; 0]);
+    assert_eq!(c.base.reported(FINISHED), [] as [Telemetry; 0]);
+    c.fund().await;
+    let active = c
+        .creations
+        .patch(
+            c.base.access(),
+            &saved.id,
+            Some(&saved.etag),
+            Some("active"),
+            None,
+            now(),
+        )
+        .await
+        .expect("the unchanged version can still resume setup");
+    assert_eq!(active.status, "active");
+    assert_eq!(c.base.reported(FINISHED).len(), 1);
+    c.cleanup().await;
+}
+
+async fn assert_refused_edit(
+    c: &Case,
+    saved: &SavedFleet,
+    status: Option<&str>,
+    code: error_code::ErrorCode,
+    message: &str,
+) {
+    let refused = c
+        .creations
+        .patch(
+            c.base.access(),
+            &saved.id,
+            Some(&saved.etag),
+            status,
+            None,
+            now(),
+        )
+        .await
+        .expect_err("an empty edit or refused transition cannot change setup");
+    assert_eq!(refused.code(), code);
+    assert!(refused.to_string().contains(message), "{refused}");
+    let unchanged = c
+        .creations
+        .read(c.base.access(), &saved.id)
+        .await
+        .expect("setup remains readable");
+    assert_eq!(unchanged.status, saved.status);
+    assert_eq!(unchanged.name, saved.name);
+    assert_eq!(unchanged.etag, saved.etag);
 }

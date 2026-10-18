@@ -197,6 +197,16 @@ Why two debit points and not one:
 
 **Ledger rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type, fleet_id)` since slot 916: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type, fleet_id)` constraint updates that fleet's `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
 
+**Tenant cost history.** `GET /v1/tenants/me/billing/charges` reads runtime ledger rows and `billing.authoring_settlements` together, newest first. Setup costs use the settlement's actual `charged_nanos`, including paid failed attempts. Reservations awaiting accounting add no history row.
+
+Both sources use one descending `(created_at, id)` cursor, with native UUID comparison before wire casts. Each branch filters by tenant. Reading history never changes the wallet.
+
+Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
+
+Setup costs remain visible after private chat deletion because settlements join content-free attempts. Without a retained public fleet link, `fleet_id` and `fleet_name` are null. Runtime rows retain their existing fleet identity and name snapshot.
+
+The dashboard labels these records **Setup chat**, using **Fleet setup** when no fleet link exists. The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor. Runtime rows group by fleet and event within that page; setup rows group by attempt.
+
 A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, recorded in `M155_001` under *Payload offload and the durable stream*.
 
 **Run metering — three layers.** The run debit follows the real run, not a one-shot estimate.

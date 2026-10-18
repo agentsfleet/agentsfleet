@@ -114,6 +114,23 @@ describe("private setup proxy", () => {
     owner.abort(); expect(signal.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
+  it("rotates an established private stream before the hosting limit and cancels upstream", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const bytes = new TextEncoder().encode("id: 7\nevent: message.running\ndata: {}\n\n");
+    upstream.mockResolvedValueOnce(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(bytes); }, cancel,
+    }), {headers: {"Content-Type": "text/event-stream"}}));
+    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const signal: AbortSignal = upstream.mock.calls[0]?.[1].signal;
+    const reader = stream.body!.getReader();
+    expect(await reader.read()).toEqual({done: false, value: bytes});
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(signal.aborted).toBe(true);
+    expect(await reader.read()).toEqual({done: true, value: undefined});
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("aborts a private stream whose upstream handshake never finishes", async () => {
     vi.useFakeTimers();
     upstream.mockImplementation((_target: string, init: RequestInit) => new Promise((_resolve, reject) => {

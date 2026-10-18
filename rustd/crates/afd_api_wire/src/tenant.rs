@@ -135,48 +135,45 @@ pub struct BillingResponse {
     pub exhausted_at: Option<i64>,
 }
 
-/// One ledger row as the charges list shows it.
+/// One runtime charge or settled setup-chat cost.
 ///
 /// Field order is wire order — the struct is serialized straight to JSON, so
 /// the row IS the wire shape.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargeSummary<'a> {
-    /// The ledger row's identifier.
+    /// The runtime ledger row's or setup settlement's identifier.
     pub id: Cow<'a, str>,
     /// Whose charge it is.
     pub tenant_id: Cow<'a, str>,
     /// The workspace it was incurred in — `null` once that workspace is
     /// deleted, because a charge outlives what it was incurred on.
     pub workspace_id: Option<Cow<'a, str>>,
-    /// The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES
-    /// that fleet's deletion, and it is never absent.
-    ///
-    /// The dashboard derives the fleet's callsign from this value, so a charge
-    /// can always say what it paid for.
-    pub fleet_id: Cow<'a, str>,
-    /// That fleet's name as it stood when the charge was written.
-    ///
-    /// A snapshot rather than a live lookup. Renaming a fleet does not reach
-    /// charges already written, because a ledger records what was true when the
-    /// money moved. `null` when the fleet's row could not be read as the
-    /// charge was written; the charge is recorded regardless.
+    /// The runtime fleet identity survives deletion. For setup chats this is
+    /// the saved fleet linked by the retained draft, or `null` if unavailable.
+    pub fleet_id: Option<Cow<'a, str>>,
+    /// Runtime charges keep the fleet name captured when charged, including
+    /// after a rename or deletion. Setup chats use the linked public fleet's
+    /// current name. `null` when no public fleet name is available.
     pub fleet_name: Option<Cow<'a, str>>,
-    /// The event that triggered the work.
-    pub event_id: Cow<'a, str>,
-    /// `receive` or `stage` — the two halves of one event's cost.
+    /// The runtime event, or `null` for setup chats.
+    pub event_id: Option<Cow<'a, str>>,
+    /// The setup attempt, or `null` for runtime events. Identifies accounting
+    /// without exposing private chat content or depending on its retention.
+    pub authoring_attempt_id: Option<Cow<'a, str>>,
+    /// `receive`, `stage`, or `authoring` (a settled setup-chat attempt).
     pub charge_type: Cow<'a, str>,
     /// Whose model bill the tokens landed on.
     pub posture: Cow<'a, str>,
-    /// The model the stage ran against.
+    /// The model used by the run or setup chat.
     pub model: Cow<'a, str>,
     /// What this row drained, in nanos.
     pub credit_deducted_nanos: i64,
-    /// Tokens in, on stage rows that have settled.
+    /// Recorded input tokens for a run or settled setup chat.
     pub token_count_input: Option<i64>,
     /// Tokens out, likewise.
     pub token_count_output: Option<i64>,
-    /// How long the stage ran.
+    /// Recorded runtime in milliseconds.
     pub wall_ms: Option<i64>,
     /// When the row was written — the walk's sort key, and what its cursor
     /// half is rendered from.

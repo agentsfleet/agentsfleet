@@ -1,0 +1,132 @@
+import type { Definition } from "@/lib/api/draft-types";
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
+import { SetupSummary } from "@/components/domain/chat/SetupSummary";
+import { REVIEW } from "@/tests/helpers/draft-fixtures";
+
+const PURPOSE = "Investigate failures";
+const POLICY = "x-agentsfleet";
+const MANUAL = /No automatic triggers/;
+const UNKNOWN = /Automatic triggers could not be confirmed/;
+const ACCESS_UNKNOWN = /Access and spending limits could not be summarized/;
+const EMPTY_REQUIREMENTS = {credentials: [], repositories: [], tools: [], network: {allow: []}, budget: {daily_nanos: "1000000000"}};
+const UTC = "UTC";
+const SCHEDULE = "0 9 * * *";
+const SOURCE = "github";
+
+afterEach(() => {cleanup(); vi.useRealTimers();});
+
+function definition(triggers?: unknown): Definition {
+  return {...REVIEW.effective.definition, config: {[POLICY]: triggers === undefined ? {} : {triggers}}};
+}
+
+it("distinguishes a manual fleet from one with automatic triggers", () => {
+  render(<SetupSummary definition={definition([])} />);
+  expect(screen.getByText(PURPOSE)).toBeTruthy();
+  expect(screen.getByText(MANUAL).textContent).toMatch(/When you send it a message/);
+  expect(screen.queryByText(/automatically:/)).toBeNull();
+});
+
+it("treats an omitted triggers list as manual, matching runtime defaults", () => {
+  render(<SetupSummary definition={definition()} />);
+  expect(screen.getByText(MANUAL)).toBeTruthy();
+});
+
+it("does not infer manual operation when the saved definition is unavailable", () => {
+  render(<SetupSummary />);
+  expect(screen.getByText(/Open the fleet to see its saved instructions/)).toBeTruthy();
+  expect(screen.getByText(UNKNOWN)).toBeTruthy();
+  expect(screen.queryByText(MANUAL)).toBeNull();
+});
+
+it.each([
+  {triggers: "not a list"},
+  {triggers: [{type: "unknown-source"}]},
+  {triggers: [{type: "webhook"}]},
+  {triggers: [{type: "mention", source: SOURCE, channels: null}]},
+])("keeps malformed trigger data unknown: $triggers", ({triggers}) => {
+  render(<SetupSummary definition={definition(triggers)} />);
+  expect(screen.getByText(UNKNOWN)).toBeTruthy();
+  expect(screen.queryByText(MANUAL)).toBeNull();
+});
+
+it("explains event and mention sources without implying that delivery is connected", () => {
+  render(<SetupSummary definition={definition([
+    {type: "webhook", source: SOURCE, events: ["push", "pull_request"]},
+    {type: "webhook", source: "linear"},
+    {type: "webhook", source: "slack", events: []},
+    {type: "mention", source: "slack", channels: ["C123"]},
+  ])} />);
+  expect(screen.getByText(/When github sends push, pull_request/).textContent).toMatch(/Connect the source/);
+  expect(screen.getByText(/When linear sends an event/)).toBeTruthy();
+  expect(screen.getByText(/When slack sends an event/)).toBeTruthy();
+  expect(screen.getByText(/When mentioned in slack: C123/).textContent).toMatch(/Connect the source/);
+  expect(screen.queryByText(MANUAL)).toBeNull();
+});
+
+it.each([undefined, UTC, "Asia/Kolkata"])("previews scheduled timing in the runtime timezone: %s", (timezone) => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-18T02:00:00Z"));
+  render(<SetupSummary definition={definition([{type: "cron", schedule: SCHEDULE, timezone}])} />, {wrapper: TooltipProvider});
+  const timing = screen.getByText(/Next scheduled time/);
+  const text = timing.textContent;
+  expect(text).toContain(`Schedule timezone: ${timezone ?? UTC}`);
+  expect(timing.querySelector("time")?.getAttribute("datetime")).toBe(timezone === "Asia/Kolkata" ? "2026-10-18T03:30:00.000Z" : "2026-10-18T09:00:00.000Z");
+  expect(text).toContain("must be registered");
+});
+
+it.each([
+  {schedule: "invalid schedule", timezone: UTC},
+  {schedule: SCHEDULE, timezone: "Unknown/Timezone"},
+])("does not promise a next run when timing cannot be interpreted: $timezone $schedule", (trigger) => {
+  render(<SetupSummary definition={definition([{type: "cron", ...trigger}])} />);
+  expect(screen.getByText(/Timing could not be previewed/)).toBeTruthy();
+  expect(screen.queryByText(/Next scheduled time/)).toBeNull();
+});
+
+it("makes absent access and network permissions explicit and describes a ceiling rather than a fee", () => {
+  render(<SetupSummary definition={definition([])} requirements={EMPTY_REQUIREMENTS} />);
+  expect(screen.getByText(/No tools requested/)).toBeTruthy();
+  expect(screen.getAllByText(/None requested/)).toHaveLength(2);
+  expect(screen.getByText(/Outbound requests are blocked/)).toBeTruthy();
+  expect(screen.getByText(/\$1\.00 per day; no monthly limit/)).toBeTruthy();
+  expect(screen.getByText(/limits, not a fixed charge/)).toBeTruthy();
+});
+
+it("shows declared access and exact daily and monthly limits without rounding large amounts", () => {
+  render(<SetupSummary requirements={{credentials: [SOURCE], repositories: ["owner/repo"], tools: ["read_file"],
+    network: {allow: ["api.github.com"], read_only: true},
+    budget: {daily_nanos: "1", monthly_nanos: "9223372036854775807"}}} />);
+  expect(screen.getByText(/Connected accounts:/).closest("li")?.textContent).toContain(SOURCE);
+  expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
+  expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
+  expect(screen.getByText(/Network:/).closest("li")?.textContent).toContain("Read-only policy enabled; see advanced details for exceptions.");
+  // Pin test: exact decimal limits must survive values beyond Number.MAX_SAFE_INTEGER.
+  expect(screen.getByText(/Spending limit:/).closest("li")?.textContent).toContain("$0.000000001 per day; $9223372036.854775807 per month.");
+});
+
+it("does not infer a read-only policy for an allowed host", () => {
+  render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network: {allow: ["example.com"]}}} />);
+  expect(screen.getByText(/Requests to example.com/)).toBeTruthy();
+  expect(screen.queryByText(/Read-only policy enabled/)).toBeNull();
+});
+
+it.each([undefined, {}])("does not invent network restrictions when the allow list is absent: %s", (network) => {
+  render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network}} />);
+  expect(screen.getByText(/No explicit host limit shown here/)).toBeTruthy();
+  expect(screen.queryByText(/Outbound requests are blocked/)).toBeNull();
+});
+
+it.each([
+  {},
+  {...EMPTY_REQUIREMENTS, credentials: null},
+  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "0"}},
+  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "-1"}},
+  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "01"}},
+  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "invalid"}},
+])("does not describe unvalidated requirements as safe or free: %s", (requirements) => {
+  render(<SetupSummary requirements={requirements} />);
+  expect(screen.getByText(ACCESS_UNKNOWN)).toBeTruthy();
+  expect(screen.queryByText(/No tools requested/)).toBeNull();
+  expect(screen.queryByText(/Spending limit:/)).toBeNull();
+});

@@ -12,7 +12,7 @@ import { ChatToolbar } from "./ChatToolbar";
 export function ChatComposer({ client, view, running, onReview }: { client: DraftClient; view: DraftView; running: boolean; onReview: () => void }) {
   const disabled = view.busy || view.pending || view.inaccessible || !view.model || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing);
   return <>
-    <DashboardPanel padding="compact" className="chat-composer rounded-xl">
+    <DashboardPanel padding="compact" className="focus-surface rounded-xl">
       <ComposerPrimitive.Root className="flex flex-col gap-md" aria-label="Private chat composer">
         <ComposerPrimitive.Input asChild placeholder={CHAT_PLACEHOLDER} submitMode="enter" disabled={disabled}>
           <Textarea rows={2} aria-label={CHAT_PLACEHOLDER} className="max-h-48 min-h-20 resize-none border-0 bg-transparent shadow-none" />

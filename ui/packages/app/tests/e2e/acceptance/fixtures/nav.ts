@@ -38,3 +38,10 @@ export function workspaceHref(workspaceId: string, subpath = ""): string {
   const clean = subpath.replace(/^\/+/, "");
   return clean ? `/w/${workspaceId}/${clean}` : `/w/${workspaceId}`;
 }
+
+/** Follow the visible account-menu path without replacing the document. */
+export async function openSettingsDestination(page: Page, label: string): Promise<void> {
+  await page.getByRole("button", { name: "Workspace and account menu" }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+}

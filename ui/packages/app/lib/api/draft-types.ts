@@ -86,7 +86,7 @@ export const ModelsSchema = z.object({items: z.array(z.object({
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
-  linked_fleet_id: z.uuidv7().nullable(), updated_at: z.number().int(), expires_at: z.number().int().nullable(),
+  linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: z.number().int(), expires_at: z.number().int().nullable().default(null),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;

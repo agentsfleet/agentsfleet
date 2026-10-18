@@ -131,7 +131,7 @@ const billingShowCommand = Command.make(SHOW, {
   limit: billingLimitFlag,
   cursor: cursorFlag,
 }).pipe(
-  Command.withDescription("Plan, balance, and recent events"),
+  Command.withDescription("Balance and recent fleet and setup costs"),
   guardedHandler(({ limit, cursor }) =>
     billingShowEffectFromArgs({ limit: opt(limit), cursor: opt(cursor) }),
   ),

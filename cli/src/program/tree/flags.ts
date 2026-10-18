@@ -143,7 +143,7 @@ export const memoryLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, MAX_RECALL
   Flag.optional,
 );
 export const billingLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, BILLING_LIMIT_MAX).pipe(
-  Flag.withDescription("Number of recent events to show"),
+  Flag.withDescription("Maximum charge records to read"),
   Flag.optional,
 );
 

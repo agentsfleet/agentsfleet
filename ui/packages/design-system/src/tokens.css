@@ -8,6 +8,7 @@
 @import "@fontsource/commit-mono/700.css";
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/bricolage-grotesque";
+@import "./interactions.css";
 
 :root {
 

@@ -1,14 +1,10 @@
 // Read-only `agentsfleet billing show [--limit N] [--cursor TOKEN] [--json]`.
 //
 // Calls GET /v1/tenants/me/billing for the balance card and GET
-// /v1/tenants/me/billing/charges for the per-event drain history. Each event
-// produces up to two charge rows (charge_type ∈ {receive, stage}); the CLI
-// groups them by (fleet_id, event_id) so each row in the table represents one
-// event with both charges combined. The fleet is part of the key because
-// event_id is a logical id that two fleets can both hold — schema slot 916
-// scopes the ledger's own arbiter the same way, and grouping by the event
-// alone would merge two fleets' charges into one rendered row. `--json` emits the raw shape for scripting and
-// includes `next_cursor` so callers can paginate.
+// /v1/tenants/me/billing/charges for runtime and settled setup costs. Runtime
+// receive/stage rows on the same page group by (fleet_id,event_id); setup rows
+// retain their independent attempt identity. Keep every returned cost before
+// forwarding the server cursor, or pagination would silently skip money.
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -36,8 +32,9 @@ interface BillingSnapshot {
 }
 
 interface ChargeRow {
-  readonly fleet_id?: string;
-  readonly event_id?: string;
+  readonly fleet_id?: string | null;
+  readonly event_id?: string | null;
+  readonly authoring_attempt_id?: string | null;
   readonly posture?: string;
   readonly model?: string;
   readonly recorded_at?: number | null;
@@ -53,8 +50,10 @@ interface ChargesResponse {
 }
 
 interface EventSummary {
-  fleet_id: string | undefined;
-  event_id: string | undefined;
+  fleet_id: string | null | undefined;
+  event_id: string | null | undefined;
+  authoring_attempt_id?: string;
+  setup_nanos?: number;
   posture: string | undefined;
   model: string | undefined;
   recorded_at: number | null;
@@ -105,7 +104,25 @@ const parseCursor = (
 // them because neither a UUID nor a `<millis>-<seq>` event id can contain one,
 // which a plain concatenation could not promise.
 const groupKey = (row: ChargeRow): string =>
-  `${row.fleet_id ?? ""}\u0000${row.event_id ?? ""}`;
+  row.authoring_attempt_id != null
+    ? `${CHARGE_TYPE.authoring}\u0000${row.authoring_attempt_id}`
+    : `${row.fleet_id ?? ""}\u0000${row.event_id ?? ""}`;
+
+const applyCharge = (entry: EventSummary, row: ChargeRow): void => {
+  if (row.charge_type === CHARGE_TYPE.receive) {
+    entry.receive_nanos = row.credit_deducted_nanos ?? 0;
+  } else if (row.charge_type === CHARGE_TYPE.stage || row.charge_type === CHARGE_TYPE.authoring) {
+    if (row.charge_type === CHARGE_TYPE.authoring) {
+      if (row.authoring_attempt_id != null) entry.authoring_attempt_id = row.authoring_attempt_id;
+      entry.setup_nanos = row.credit_deducted_nanos ?? 0;
+    } else {
+      entry.stage_nanos = row.credit_deducted_nanos ?? 0;
+    }
+    entry.token_count_input = row.token_count_input ?? null;
+    entry.token_count_output = row.token_count_output ?? null;
+  }
+  entry.total_nanos = entry.receive_nanos + entry.stage_nanos + (entry.setup_nanos ?? 0);
+};
 
 const groupRowsByEvent = (
   rows: ReadonlyArray<ChargeRow>,
@@ -129,13 +146,7 @@ const groupRowsByEvent = (
       };
       byEvent.set(key, entry);
     }
-    if (r.charge_type === CHARGE_TYPE.receive) {
-      entry.receive_nanos = r.credit_deducted_nanos ?? 0;
-    } else if (r.charge_type === CHARGE_TYPE.stage) {
-      entry.stage_nanos = r.credit_deducted_nanos ?? 0;
-      entry.token_count_input = r.token_count_input ?? null;
-      entry.token_count_output = r.token_count_output ?? null;
-    }
+    applyCharge(entry, r);
     // The receive row is recorded first; pin recorded_at to the earliest of
     // the two so sort-by-time matches the event's gate-pass moment.
     if (
@@ -144,7 +155,6 @@ const groupRowsByEvent = (
     ) {
       entry.recorded_at = r.recorded_at;
     }
-    entry.total_nanos = entry.receive_nanos + entry.stage_nanos;
   }
   return Array.from(byEvent.values()).sort(
     (a, b) => (b.recorded_at ?? 0) - (a.recorded_at ?? 0),
@@ -163,13 +173,12 @@ const renderHuman = (
     yield* output.info("");
 
     if (events.length === 0) {
-      yield* output.info("No billable events recorded yet.");
+      yield* output.info("No billable activity recorded yet.");
     } else {
-      yield* output.info(`Last ${events.length} events drained credits:`);
+      yield* output.info(`Last ${events.length} activities drained credits:`);
       yield* output.printEntityTable(
         {
-          // A charge has no name — the event that caused it is its identity.
-          id: { key: "event_id", label: "EVENT_ID" },
+          id: { key: "event_id", label: "WORK_ID" },
           domain: [
             { key: "posture", label: "POSTURE" },
             { key: "model", label: "MODEL" },
@@ -177,19 +186,21 @@ const renderHuman = (
             { key: "out_tok", label: "OUT_TOK" },
             { key: "receive", label: "RECEIVE" },
             { key: "stage", label: "STAGE" },
+            { key: "setup", label: "SETUP" },
             { key: "total", label: "TOTAL" },
           ],
           // The charges read carries no instant per row.
           ageKey: null,
         },
         events.map((e) => ({
-          event_id: e.event_id ?? "",
+          event_id: e.authoring_attempt_id ?? e.event_id ?? "",
           posture: e.posture ?? "",
           model: e.model ?? "",
           in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
           out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
           receive: formatDollars(e.receive_nanos),
           stage: formatDollars(e.stage_nanos),
+          setup: formatDollars(e.setup_nanos ?? 0),
           total: formatDollars(e.total_nanos),
         })),
       );
@@ -198,7 +209,7 @@ const renderHuman = (
     if (nextCursor) {
       yield* output.info("");
       yield* output.info(
-        `(more events available — re-run with --cursor ${nextCursor})`,
+        `(more costs available — re-run with --cursor ${nextCursor})`,
       );
     }
     yield* output.info("");
@@ -225,13 +236,11 @@ export const billingShowEffectFromArgs = (
     const limit = yield* parseLimit(args.limit);
     const cursor = yield* parseCursor(args.cursor);
 
-    // Charges limit is `limit * 2` because each event has up to 2 rows
-    // (receive + stage); after grouping we slice to the user-requested
-    // event count. `--cursor` is forwarded verbatim — the server treats
-    // it as opaque.
+    // Limit the raw page and keep every returned row. Overfetch followed by
+    // slicing grouped rows would discard setup costs before the next cursor.
     const chargesPath = cursor
-      ? `${CHARGES_PATH}?limit=${limit * 2}&cursor=${encodeURIComponent(cursor)}`
-      : `${CHARGES_PATH}?limit=${limit * 2}`;
+      ? `${CHARGES_PATH}?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
+      : `${CHARGES_PATH}?limit=${limit}`;
     const [billing, charges] = yield* Effect.all(
       [
         http.request<BillingSnapshot>({ path: TENANT_BILLING_PATH, token }),
@@ -240,7 +249,7 @@ export const billingShowEffectFromArgs = (
       { concurrency: 2 },
     );
 
-    const events = groupRowsByEvent(charges?.items ?? []).slice(0, limit);
+    const events = groupRowsByEvent(charges?.items ?? []);
     const nextCursor = charges?.next_cursor ?? null;
 
     if (output.format !== OUTPUT_FORMAT.text) {

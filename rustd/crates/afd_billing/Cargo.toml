@@ -41,4 +41,6 @@ garde.workspace = true
 test-util = ["afd_core/test-util", "afd_db/test-util"]
 
 [dev-dependencies]
+serde_json.workspace = true
+sqlx = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -20,7 +20,7 @@ export function setupProblem(status: number, detail: string): Response {
   return new Response(JSON.stringify({detail}), {status, headers: {[CONTENT_TYPE]: PROBLEM, "Cache-Control": PRIVATE}});
 }
 
-export function setupResponse(upstream: Response, stream: boolean): Response {
+export function setupResponse(upstream: Response, stream: boolean, body: ReadableStream<Uint8Array> | null): Response {
   const type = upstream.headers.get(CONTENT_TYPE)?.split(";")[0]?.trim();
   const headers = new Headers({"Cache-Control": PRIVATE, Vary: "Cookie"});
   headers.set(CONTENT_TYPE, type === JSON_TYPE || type === PROBLEM || stream && type === STREAM ? type : "text/plain");
@@ -29,5 +29,5 @@ export function setupResponse(upstream: Response, stream: boolean): Response {
     const value = upstream.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  return new Response(upstream.status === 204 ? null : upstream.body, {status: upstream.status, headers});
+  return new Response(upstream.status === 204 ? null : body, {status: upstream.status, headers});
 }

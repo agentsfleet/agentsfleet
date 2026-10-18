@@ -221,16 +221,15 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(hit.url, /[?&]actor=steer(%3A|:)\*/);
   });
 
-  it("billing show --limit 5 --cursor xyz → GET .../billing/charges?limit=10&cursor=xyz (limit doubled)", async () => {
+  it("billing show --limit 5 --cursor xyz → GET .../billing/charges?limit=5&cursor=xyz", async () => {
     clear();
     const result = await runFleetctl(["billing", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const charges = captured.find((c) => c.url.includes("/billing/charges"));
     assert.ok(charges, `no billing charges GET captured: ${JSON.stringify(captured)}`);
-    // billing.ts doubles the limit (each event has up to 2 charge rows)
-    // and forwards the operator's cursor verbatim. We assert both.
-    assert.match(charges.url, /[?&]limit=10(&|$)/);
+    // The limit counts raw charge records; the cursor is forwarded verbatim.
+    assert.match(charges.url, /[?&]limit=5(&|$)/);
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
   });
 

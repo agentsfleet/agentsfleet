@@ -138,7 +138,7 @@ export default function ApiKeyList({
 
 function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 max-w-24 sm:max-w-none">
       <span className="block truncate text-body-sm font-medium">{k.key_name}</span>
       <div className="sm:hidden"><KeyActivityCell k={k} /></div>
     </div>

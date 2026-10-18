@@ -17,13 +17,15 @@ export function ReviewSetup({client, view, workspace, open, onOpenChange}: {clie
   const [editing, setEditing] = useState(false);
   const review = view.reviewed;
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="ph-no-capture ph-no-record max-h-screen overflow-y-auto sm:max-w-3xl">
-      <DialogHeader><DialogTitle>Review fleet setup</DialogTitle><DialogDescription>The authoring model proposes this setup from your conversation. Check its instructions and access. Save creates a fleet; publishing shares the reusable setup with the workspace.</DialogDescription></DialogHeader>
-      <div className="flex flex-wrap gap-sm"><Button variant="secondary" disabled={view.busy || (view.draft !== null && view.draft.state !== DRAFT_STATE.editing)} onClick={() => setEditing(!editing)}>{editing ? "Show review" : "Edit setup"}</Button>
-        <Button variant="outline" disabled={view.busy || !view.draft?.candidate} onClick={() => { void client.review().catch(ignore); }}>Refresh review</Button></div>
+    <DialogContent className="ph-no-capture ph-no-record sm:max-w-3xl">
+      <DialogHeader><DialogTitle>{view.fleet ? "Fleet saved" : "Review fleet setup"}</DialogTitle><DialogDescription>{view.fleet
+        ? "Your fleet has been created. See its setup and first-run status below, then open it to send a message or follow its activity."
+        : "Check that this matches what you asked for in the setup chat: what the fleet does, when it runs, and the access it needs. Reviewing does not start a run."}</DialogDescription></DialogHeader>
+      {!view.fleet ? <div className="flex flex-wrap gap-sm"><Button variant="secondary" disabled={view.busy || (view.draft !== null && view.draft.state !== DRAFT_STATE.editing)} onClick={() => setEditing(!editing)}>{editing ? "Show review" : "Edit setup"}</Button>
+        <Button variant="outline" disabled={view.busy || !view.draft?.candidate} onClick={() => { void client.review().catch(ignore); }}>Refresh review</Button></div> : null}
       {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
       {view.notice ? <Alert>{view.notice}</Alert> : null}
-      {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy} onContinue={() => { void client.retry().catch(ignore); }}
+      {view.fleet ? <SetupProgress fleet={view.fleet} definition={view.fleet.definition ?? view.draft?.candidate?.definition} workspace={workspace} busy={view.busy} onContinue={() => { void client.retry().catch(ignore); }}
         onRetrySchedule={(schedule) => { void client.syncSchedule(schedule).catch(ignore); }} />
         : view.busy && !view.draft ? <p className="text-sm text-muted-foreground">Loading selected setup…</p>
         : view.error && !view.draft && !view.preview ? null
@@ -48,6 +50,8 @@ function SaveActions({client, view}: {client: DraftClient; view: ReviewedView}) 
   const disabled = view.busy || view.pending || view.draft.state !== DRAFT_STATE.editing;
   if (view.reviewed.effective.target_setup_revision !== undefined) return <Button disabled={disabled} onClick={() => { void client.apply().catch(ignore); }}>Apply reviewed setup</Button>;
   return <div className="space-y-sm">
+    <h3 className="font-semibold">Create this fleet</h3>
+    <p className="text-sm text-muted-foreground">Save fleet creates it without requesting a first run. Automatic triggers, if configured, can start work once setup is ready. To start work now, add a message and choose Save and run now.</p>
     <Button disabled={disabled} onClick={() => { void client.save().catch(ignore); }}>Save fleet</Button>
     <div className="space-y-xs"><Label htmlFor={inputId}>Optional first run</Label><Input id={inputId} placeholder="What should the saved fleet do first?" value={message} onChange={(event) => setMessage(event.target.value)} /></div>
     <Button variant="secondary" disabled={disabled || !message.length} onClick={() => { void client.save({kind: START_KIND.runNow, message}).catch(ignore); }}>Save and run now</Button>

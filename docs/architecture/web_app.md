@@ -195,4 +195,14 @@ Subresource-Integrity remain separate browser protections.
 
 Opening New fleet allocates no resource. The first mutation creates a creator-private draft. Draft and fleet adapters key all messages, pending sends, streams and caches by account/workspace/subject. Recovery reads durable messages; streams carry authorized hints. Closing, logout, revocation, delete and subject switches clear private buffers; unsent text stays in memory, never browser local storage. No workspace-wide private broadcast is permitted.
 
-A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks; Save and run now exposes Pending until append and receipt complete. Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Improve starts a private draft against a pinned setup revision. Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
+The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
+`StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
+Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
+The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime event streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable events list.
+
+A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks; Save and run now exposes Pending until append and receipt complete. Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision. Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
+
+Review explains the proposed task, run triggers, access, and spending limits before save. Opening review requests no run and creates no fleet.
+The saved view separates setup readiness from first-run admission; an accepted run can still be running.
+The inline saved result shares the assistant conversation viewport, keeping its actions inside the scroll area on narrow or short windows.
+The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.

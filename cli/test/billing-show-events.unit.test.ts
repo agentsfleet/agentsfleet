@@ -47,7 +47,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     );
     await runWith(program);
     const out = rec.stdout.join("\n");
-    expect(out).toMatch(/Last 1 events drained credits:/);
+    expect(out).toMatch(/Last 1 activities drained credits:/);
     expect(out).toMatch(/TABLE:1/);
   });
 
@@ -148,7 +148,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     expect(body.next_cursor).toBe("tok_for_page_2");
   });
 
-  test("--limit slices grouped events not raw rows", async () => {
+  test("groups all records returned on the bounded server page", async () => {
     const rec = makeRecorder();
     const items: Array<Record<string, unknown>> = [];
     for (const eid of ["evt_a", "evt_b", "evt_c"]) {
@@ -169,7 +169,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
-          return Effect.succeed({ items }) as Effect.Effect<unknown, ServerError>;
+          return Effect.succeed({ items: items.slice(0, 2) }) as Effect.Effect<unknown, ServerError>;
         }, rec),
       ),
       Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
@@ -178,7 +178,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     const body = JSON.parse(rec.stdout[0] ?? "{}") as {
       events: Array<unknown>;
     };
-    expect(body.events).toHaveLength(2);
+    expect(body.events).toHaveLength(1);
   });
 
   test("surfaces next_cursor in text mode footer", async () => {
@@ -207,7 +207,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     );
     await runWith(program);
     expect(rec.stdout.join("\n")).toMatch(
-      /more events available — re-run with --cursor next_token_xyz/,
+      /more costs available — re-run with --cursor next_token_xyz/,
     );
   });
 });
