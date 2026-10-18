@@ -159,11 +159,12 @@ impl HttpClientExt for Capture {
 
     fn send_streaming<T>(
         &self,
-        _: Request<T>,
+        req: Request<T>,
     ) -> impl Future<Output = http::Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend,
     {
+        self.0.lock().unwrap().push(req.map(Into::into));
         std::future::ready(Err(http::Error::instance(std::io::Error::other(
             UNUSED_OPERATION,
         ))))
@@ -232,6 +233,8 @@ async fn uses_persisted_destinations_and_accepts_arbitrary_configured_model_iden
         assert_eq!(request.uri().host(), Some("inference.example"));
         assert_eq!(request.uri().path(), suffix);
         assert!(request.headers().contains_key(header));
+        assert_eq!(request.uri().query(), None, "a non-Gemini URL is untouched");
+        assert!(!request.headers().contains_key(header_key::KEY_HEADER));
         let body: serde_json::Value = serde_json::from_slice(request.body()).unwrap();
         assert_eq!(
             body.get("model"),
@@ -240,5 +243,47 @@ async fn uses_persisted_destinations_and_accepts_arbitrary_configured_model_iden
         if api == InferenceApi::Messages {
             assert_eq!(body.get("max_tokens"), Some(&serde_json::json!(37)));
         }
+    }
+}
+
+/// The key a Gemini route is given; no captured URL or error may contain it.
+const GEMINI_KEY: &str = "gemini-hidden-credential";
+
+/// rig's Gemini wire puts the key in the URL; the route's transport moves it
+/// to `x-goog-api-key` before any transport sees the request, unary and
+/// streamed alike.
+#[tokio::test]
+async fn a_gemini_request_carries_its_key_in_a_header_never_in_its_url() {
+    use futures_util::StreamExt as _;
+
+    let value = settings(InferenceApi::Gemini);
+    let route = Configured::new(&value, 100).unwrap();
+    let capture = Capture::default();
+    let model = route.model("gemini-next", GEMINI_KEY, capture.clone());
+    let unary = model
+        .call(CompletionRequest::new(Message::user("hello")))
+        .await
+        .unwrap_err();
+    let mut streamed = model
+        .stream(CompletionRequest::new(Message::user("hello")))
+        .unwrap();
+    let frame = streamed.next().await;
+    let seen = capture.0.lock().unwrap();
+    assert_eq!(seen.len(), 2, "one unary and one streamed send");
+    for request in seen.iter() {
+        assert_eq!(request.uri().host(), Some("inference.example"));
+        assert!(!request.uri().to_string().contains(GEMINI_KEY));
+        assert_eq!(
+            request.headers().get(header_key::KEY_HEADER).unwrap(),
+            GEMINI_KEY
+        );
+        assert!(!format!("{request:?}").contains(GEMINI_KEY));
+    }
+    for rendered in [
+        unary.to_string(),
+        format!("{unary:?}"),
+        format!("{frame:?}"),
+    ] {
+        assert!(!rendered.contains(GEMINI_KEY));
     }
 }

@@ -16,6 +16,8 @@ afd_core.workspace = true
 afd_wire.workspace = true
 garde.workspace = true
 rig-core.workspace = true
+# The request a Gemini call is sent as, rewritten so its key rides a header.
+http.workspace = true
 thiserror.workspace = true
 url.workspace = true
 tracing.workspace = true
@@ -24,7 +26,7 @@ tiktoken-rs.workspace = true
 
 [dev-dependencies]
 bytes.workspace = true
-http.workspace = true
+futures-util.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
