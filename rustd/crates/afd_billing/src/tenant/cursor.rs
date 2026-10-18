@@ -1,5 +1,5 @@
-//! The charges endpoint's opaque cursor: base64url of `{created_at}:{id}`,
-//! the instant written as a Unix millisecond count.
+//! The charges endpoint's opaque cursor: base64url of `{created_at}|{id}`,
+//! the instant written as RFC 3339 in UTC.
 //!
 //! # A second cursor format, not a variant of the first
 //!
@@ -7,10 +7,15 @@
 //! the `starting_after` value the api-key list exchanges. This one is DIFFERENT
 //! on the wire: the whole token is base64url-encoded, it travels under
 //! `?cursor=`, and there is no sort vocabulary beside it because the charges
-//! walk has exactly one ordering. Two formats is not a design anyone would
-//! choose fresh, but this one is on the wire: a client holding a charges
-//! cursor must be able to spend it, so unifying the two is a breaking change
-//! to make on purpose rather than in passing.
+//! walk has exactly one ordering.
+//!
+//! # The instant is RFC 3339, never an epoch count
+//!
+//! An instant is a `TIMESTAMPTZ(3)` in Postgres and a jiff `Timestamp` here, so
+//! the token spells it the way the API spells every instant: jiff's standard
+//! RFC 3339 form. `|` separates it from the id because RFC 3339 carries `:`.
+//! A token naming an instant finer than the millisecond the column holds is
+//! not one this daemon issued, and is refused like any other.
 //!
 //! # Opaque means opaque
 //!
@@ -21,12 +26,12 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
-use jiff::Timestamp;
+use jiff::{Timestamp, Unit};
 
 use crate::error;
 
 /// The separator inside the decoded token.
-const SEPARATOR: char = ':';
+const SEPARATOR: char = '|';
 
 /// The longest identifier half a token may carry.
 ///
@@ -50,19 +55,19 @@ pub struct Boundary {
 
 /// Renders the token a client resumes from after the row `(created_at, id)`.
 ///
-/// The instant travels as whole milliseconds, which is all a `TIMESTAMPTZ(3)`
-/// column holds, so the boundary a token names is exactly the row's.
+/// The instant travels in jiff's RFC 3339 form at the millisecond the
+/// `TIMESTAMPTZ(3)` column holds, so the boundary a token names is exactly the
+/// row's.
 #[must_use]
 pub fn render(created_at: Timestamp, id: &str) -> String {
-    let millis = created_at.as_millisecond();
-    BASE64.encode(format!("{millis}{SEPARATOR}{id}"))
+    BASE64.encode(format!("{created_at}{SEPARATOR}{id}"))
 }
 
 /// Reads a token this daemon issued.
 ///
 /// # Errors
-/// Refuses anything that is not base64url of `{integer}:{id}`, with the integer
-/// an instant jiff can hold and a non-empty id within its cap, as one
+/// Refuses anything that is not base64url of `{RFC 3339 instant}|{id}`, with
+/// the instant whole milliseconds and a non-empty id within its cap, as one
 /// undifferentiated refusal.
 pub fn parse(token: &str) -> crate::Result<Boundary> {
     let decoded = BASE64
@@ -72,11 +77,12 @@ pub fn parse(token: &str) -> crate::Result<Boundary> {
     let (instant, id) = plain
         .split_once(SEPARATOR)
         .ok_or_else(error::charges_cursor_invalid)?;
-    let millis = instant
+    let created_at: Timestamp = instant
         .parse()
-        .map_err(|_not_numeric| error::charges_cursor_invalid())?;
-    let created_at = Timestamp::from_millisecond(millis)
-        .map_err(|_out_of_range| error::charges_cursor_invalid())?;
+        .map_err(|_not_an_instant| error::charges_cursor_invalid())?;
+    if created_at.round(Unit::Millisecond).ok() != Some(created_at) {
+        return Err(error::charges_cursor_invalid());
+    }
     garde::Unvalidated::new(Boundary {
         created_at,
         id: id.to_owned(),
@@ -111,17 +117,18 @@ mod tests {
     fn everything_that_is_not_a_token_is_refused_the_same_way() {
         use base64::Engine as _;
         use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
-        let long_id = format!("1712924400000:{}", "a".repeat(129));
-        // One case per way a token can be wrong: not base64url, base64 of
-        // no separator, an empty id, a non-numeric instant, an instant past
-        // jiff's range, an id past the cap. Each earns the SAME refusal, which
-        // is the opacity claim.
+        let long_id = format!("2024-04-12T12:20:00Z|{}", "a".repeat(129));
+        // One case per way a token can be wrong: not base64url, base64 of no
+        // separator, an empty id, a non-instant, an epoch count in place of
+        // the instant, an instant finer than a millisecond, an id past the
+        // cap. Each earns the SAME refusal, which is the opacity claim.
         for bad in [
             "!!not-valid-base64!!".to_owned(),
             BASE64.encode("no-separator"),
-            BASE64.encode("1712924400000:"),
-            BASE64.encode("not-a-number:abc"),
-            BASE64.encode(format!("{}:abc", i64::MAX)),
+            BASE64.encode("2024-04-12T12:20:00Z|"),
+            BASE64.encode("not-an-instant|abc"),
+            BASE64.encode("1712924400000|abc"),
+            BASE64.encode("2024-04-12T12:20:00.000001Z|abc"),
             BASE64.encode(long_id),
         ] {
             assert!(
@@ -144,7 +151,10 @@ mod tests {
                 .map(|error| (error.code(), error.detail()))
         };
         let malformed = refusal("!!not-valid-base64!!");
-        let past_cap = BASE64.encode(format!("1712924400000:{}", "a".repeat(ID_MAX_LEN + 1)));
+        let past_cap = BASE64.encode(format!(
+            "2024-04-12T12:20:00Z|{}",
+            "a".repeat(ID_MAX_LEN + 1)
+        ));
         assert!(malformed.is_some());
         assert_eq!(refusal(&past_cap), malformed);
         let at_cap = render(APRIL_2024, &"a".repeat(ID_MAX_LEN));
@@ -152,10 +162,19 @@ mod tests {
     }
 
     #[test]
-    fn the_wire_form_is_base64url_of_created_at_millis_and_id() {
-        // Pinned bytes: base64url-no-pad of "1712924400000:abc123". A client
-        // holding an issued cursor must be able to spend it after a deploy, so
-        // the encoding is a wire fact rather than a choice.
-        assert_eq!(render(APRIL_2024, "abc123"), "MTcxMjkyNDQwMDAwMDphYmMxMjM");
+    fn the_token_spells_the_instant_as_rfc3339() {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
+        let token = render(APRIL_2024, "abc123");
+        let plain =
+            String::from_utf8(BASE64.decode(token).expect("base64url")).expect("the token is text");
+        assert_eq!(plain, "2024-04-12T12:20:00Z|abc123");
+    }
+
+    #[test]
+    fn a_millisecond_instant_round_trips_exactly() {
+        let at = Timestamp::constant(1_712_924_400, 123_000_000);
+        let boundary = parse(&render(at, "abc")).expect("a token this daemon issued must parse");
+        assert_eq!(boundary.created_at, at);
     }
 }

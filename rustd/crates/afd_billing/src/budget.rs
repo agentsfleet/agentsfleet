@@ -26,14 +26,12 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
-use jiff::Timestamp;
-use jiff_sqlx::ToSqlx as _;
+use sqlx::PgExecutor;
 
 use crate::Nanos;
 use crate::error::{Result, query};
 use crate::sql;
 use crate::store::Accounts;
-use crate::window::Windows;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_DRAIN: &str = "fleet budget drain";
@@ -111,31 +109,42 @@ struct Drained {
 }
 
 impl Accounts {
-    /// What `fleet_id` has drained inside the windows opening at `now`.
+    /// What `fleet_id` has drained inside the rolling day and the UTC month.
     ///
-    /// A fleet with no ledger rows spends zero — the statement's `COALESCE`
-    /// answers that, so there is no empty-result branch here.
+    /// Both windows open from the database's `now()`; see
+    /// [`sql::SELECT_BUDGET_DRAIN`]. A fleet with no ledger rows spends zero —
+    /// the statement's `COALESCE` answers that, so there is no empty-result
+    /// branch here.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. The caller applies the
     /// fail-open posture; this does not decide it, which is the whole point of
     /// returning `Result` rather than an `Option` that has already chosen.
-    pub async fn spend(
-        &self,
+    pub async fn spend(&self, workspace_id: &Uuid7, fleet_id: &Uuid7) -> Result<Spend> {
+        let mut connection = self.pool().acquire().await?;
+        Self::spend_on(&mut *connection, workspace_id, fleet_id).await
+    }
+
+    /// [`Accounts::spend`], read on `executor`.
+    ///
+    /// The windows open from that connection's transaction timestamp, so a
+    /// caller inside a transaction measures against the instant every other
+    /// statement in it sees.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn spend_on<'e>(
+        executor: impl PgExecutor<'e>,
         workspace_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: Timestamp,
     ) -> Result<Spend> {
-        let windows = Windows::at(now);
-        let mut connection = self.pool().acquire().await?;
         let drained: Drained = sqlx::query_as(sql::SELECT_BUDGET_DRAIN)
             .bind(workspace_id.as_str())
             .bind(fleet_id.as_str())
-            .bind(windows.day.to_sqlx())
-            .bind(windows.month.to_sqlx())
+            .bind(afd_core::timing::DAY)
             .bind(sql::charge::STAGE)
             .bind(sql::charge::RECEIVE)
-            .fetch_one(&mut *connection)
+            .fetch_one(executor)
             .await
             .map_err(query(CONTEXT_DRAIN))?;
 

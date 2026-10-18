@@ -8,11 +8,11 @@
 //! and is there enough.
 //!
 //! Collected here, the dependency runs one way and is visible at a glance:
-//! [`nanos`] is pure arithmetic over a unit, [`window`] is pure arithmetic over
-//! time, and everything with a connection sits on top of both. Nothing in the
-//! two pure modules can reach a datastore, which is what makes the money
-//! arithmetic testable without one — a property the module boundary enforces
-//! rather than a comment asserting it.
+//! [`nanos`] is pure arithmetic over a unit, and everything with a connection
+//! sits on top of it. Nothing in that pure module can reach a datastore, which
+//! is what makes the money arithmetic testable without one — a property the
+//! module boundary enforces rather than a comment asserting it. Time is the
+//! database's: the spend windows open from its `now()`.
 //!
 //! # The separation this module is built around
 //!
@@ -44,7 +44,6 @@ pub mod sql;
 pub mod store;
 pub mod tenant;
 pub mod wallet;
-pub mod window;
 
 pub use self::budget::{Spend, Verdict};
 pub use self::charge::Charged;
@@ -57,4 +56,3 @@ pub use self::nanos::{
 pub use self::rates::Posture;
 pub use self::store::Accounts;
 pub use self::wallet::Wallet;
-pub use self::window::Windows;
