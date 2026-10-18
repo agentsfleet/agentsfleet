@@ -88,13 +88,23 @@ fn create_validation_pins_every_bound() {
         ),
         (
             "/prices/0/input_nanos_per_mtok",
-            serde_json::json!(-1),
-            DETAIL_RATES_NONNEGATIVE,
+            serde_json::json!("-1"),
+            DETAIL_RATES,
         ),
         (
             "/prices/0/cache_write_1h_nanos_per_mtok",
-            serde_json::json!(-1),
-            DETAIL_RATES_NONNEGATIVE,
+            serde_json::json!("-1"),
+            DETAIL_RATES,
+        ),
+        (
+            "/prices/0/output_nanos_per_mtok",
+            serde_json::json!("9223372036854775808"),
+            DETAIL_RATES,
+        ),
+        (
+            "/prices/0/output_nanos_per_mtok",
+            serde_json::json!(25),
+            DETAIL_MALFORMED_JSON,
         ),
         (
             "/prices/0/prompt_tokens_above",
