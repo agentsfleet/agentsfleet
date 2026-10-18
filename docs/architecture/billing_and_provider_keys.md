@@ -18,8 +18,8 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.tenant_wallet.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
-| Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
+| Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.wallets.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
+| Postures | exactly 2, tenant-scoped | `model.tenant_selections.tenant_model_id`: NULL is `platform`, a tenant model is `self_managed`; a missing row means `platform` | §1 |
 | Debit points | 2 per event | receive (`RECEIVE_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
 | Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
@@ -31,8 +31,8 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
 | `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or persisted rows; the runner lease is the machine-plane exception | §8.2 |
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
-| Model registry | one row per `(model_id, secret_ref)` | `core.tenant_model_entries`, `UNIQUE (tenant_id, model_id, secret_ref)`; entries reference keys, never own material | §8.4 |
-| Rate lookup | one fresh read per charge | `LOAD_RATE_WITH_REVISION` returns the rate and its `core.model_catalogue_revision` generation in one snapshot; there is no rate cache | §4.2, §10 |
+| Model registry | one row per `(model_name, secret_ref)` | `model.tenant_models`, `UNIQUE (tenant_id, model_name, secret_ref)`; entries reference keys, never own material | §8.4 |
+| Rate lookup | one fresh read per charge | `LOAD_RATE_WITH_REVISION` returns the rate and its `model.catalogue_version` generation in one snapshot; there is no rate cache | §4.2, §10 |
 | Unknown model on platform | run-fee-only rates | never a default token rate: renew and settle charge the runtime and no tokens; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.2 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
@@ -48,11 +48,11 @@ Each trap is enforced in its owner section; this list is the index.
 - Metering never stops, and nothing zeroes the money column any more — a metered slice charges what the catalogue prices (§2.3).
 - Never fold a catalogue read fault into "this model is not in the catalogue": the second is a value (run-fee-only rates), the first is an error (§4.2).
 - Renewal idempotency is the cumulative-token diff against the affinity cursor, not a slice number — a re-sent renewal charges ≈0 (§3).
-- The budget gate apportions each ledger row's accumulated total across `[created_at, last_charged_at]` — never stamps the whole total on one instant, which under-enforces exactly where the amounts are largest (§5.1).
+- The budget gate apportions each ledger row's accumulated total across `[created_at, updated_at]` — never stamps the whole total on one instant, which under-enforces exactly where the amounts are largest (§5.1).
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
 - Model-registry entries reference vault keys — they never own credential material (§8.4).
-- Absence of a `tenant_model_selection` row is `mode=platform`; new tenants get no eager row (§1).
+- Absence of a `model.tenant_selections` row, like a NULL `tenant_model_id`, is `platform`; new tenants get no eager row (§1).
 - No silent auto-fallback from self-managed to platform on provider error — it would charge without consent (§13).
 - `tenant provider create` never test-calls the provider; a bad key surfaces at the first event, when the provider refuses it (§7).
 - Budget overshoot is bounded, not zero — at most one renewal window past the cap (§5.1).
@@ -113,24 +113,24 @@ One persona carries the worked examples through this doc and the scenarios: **Jo
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per fleet):
 
-- **Platform-managed (v2.0 default = Fireworks Kimi K3).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores a Fireworks credential in its own workspace's `vault.secrets` (the same M45 vault path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_provider_defaults` row records a pointer `(provider, source_workspace_id)` plus the default's `model`, optional `base_url` and `context_cap_tokens`; no key material lives there. At lease time the control plane (`agentsfleetd`) reads the row and follows the pointer into the admin workspace's vault for the api_key alone (`rustd/crates/afd_credential/src/provider/platform.rs`). There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
-- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_model_selection` row points at that name through `secret_ref`. The runner's supervisor uses that key to call the provider's API; the key never enters a sandbox. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed (v2.0 default = Fireworks Kimi K3).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores a Fireworks credential in its own workspace's `vault.secrets` (the same M45 vault path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `model.platform_defaults` row records a pointer `(provider, source_workspace_id)` plus the default's `model`, optional `base_url` and `context_cap_tokens`; no key material lives there. At lease time the control plane (`agentsfleetd`) reads the row and follows the pointer into the admin workspace's vault for the api_key alone (`rustd/crates/afd_credential/src/provider/platform.rs`). There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
+- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `model.tenant_selections` row points at that name through `secret_ref`. The runner's supervisor uses that key to call the provider's API; the key never enters a sandbox. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
 
 **Why Fireworks Kimi K3 is the v2.0 platform default.** It is the strongest general-purpose model in the catalogue that is not Anthropic- or OpenAI-priced, and its 1M context window means a coding agent working a real repository does not hit the wall mid-run. That is a deliberate trade against wholesale price: the K2.7-code generation on the same host is materially cheaper per token, and the default takes capability over cost because a run that exhausts its context and fails costs more than the tokens it saved. Fireworks is OpenAI-compatible (the runner's registry maps `fireworks` to the chat wire, §9), so one code path serves both postures.
 
-The default is a **pointer, not a constant**: `core.platform_provider_defaults` names `(provider, source_workspace_id)` and carries the model and its context cap; the admin credential supplies only the key. Changing it is an admin write, not a deploy. `(provider, model)` is a foreign key into `core.model_library` with `ON DELETE RESTRICT` (`schema/420_platform_provider_defaults.sql`), so the default can never name an uncatalogued model. Naming a superseded model here left platform slices unpriced until M168. Under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`. Under self-managed it dials Fireworks — or any other catalogue provider — with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
+The default is a **pointer, not a constant**: `model.platform_defaults` names `(provider, source_workspace_id)` and points at the model; the model's row carries its context cap, and the admin credential supplies only the key. Changing it is an admin write, not a deploy. `platform_model_id` is a foreign key into `model.platform_models` with `ON DELETE RESTRICT` (`schema/1320_model_platform_defaults.sql`), so the default can never name an uncatalogued model. Naming a superseded model here left platform slices unpriced until M168. Under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`. Under self-managed it dials Fireworks — or any other catalogue provider — with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
-The posture flip lives in `core.tenant_model_selection.mode` (`platform` or `self_managed`). Switching is a single command (`agentsfleet tenant provider create --secret <name>` / `agentsfleet tenant provider delete`) or a single dashboard toggle. **Absence of a `tenant_model_selection` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
+The posture flip lives in `model.tenant_selections.tenant_model_id`; NULL is `platform` and a tenant model is `self_managed`. Switching is a single command (`agentsfleet tenant provider create --secret <name>` / `agentsfleet tenant provider delete`) or a single dashboard toggle. **Absence of a `model.tenant_selections` row is equivalent to `platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
 
 ---
 
 ## 2. Pure credits, one-time starter grant
 
-Every tenant has exactly one balance: `billing.tenant_wallet.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
+Every tenant has exactly one balance: `billing.wallets.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter credit** at tenant-create time: `STARTER_CREDIT_NANOS` in `rustd/crates/afd_tenant/src/signup/mod.rs`. The credit is written to `billing.tenant_wallet.balance_nanos` in the same signup transaction that creates the tenant. There is no replenish; it is a one-time onboarding allowance. Read the source for the current dollar amount.
+Each new tenant receives a **one-time starter credit** at tenant-create time: `STARTER_CREDIT_NANOS` in `rustd/crates/afd_tenant/src/signup/mod.rs`. The credit is written to `billing.wallets.balance_nanos` in the same signup transaction that creates the tenant. There is no replenish; it is a one-time onboarding allowance. Read the source for the current dollar amount.
 
 Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform. A quiet long run therefore stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand runs on either posture without thinking about top-ups.
 
@@ -142,7 +142,7 @@ When `balance_nanos` cannot cover the next event's estimated cost, the gate trip
 
 **There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else: a number that drains, bounded by `balance_exhausted_at` when it reaches zero. Pricing consults the model catalogue and the posture — never the clock. No rate resolver takes a time parameter, which is asserted rather than left to review.
 
-This replaced a timestamp-gated window, and the reason is worth keeping. The cutoff was a per-tenant column (`billing.tenant_wallet.free_trial_ends_at`) that was nullable with no default, and null read as "open". Its only writer in the repository was a test fixture, so **every tenant held null and every metered stage priced to zero — stage billing never charged anyone.** The gate sat ahead of the catalogue lookup, so it also masked an uncatalogued model: a pair with no rate row resolved to zero instead of refusing.
+This replaced a timestamp-gated window, and the reason is worth keeping. The cutoff was a per-tenant wallet column (`free_trial_ends_at`) that was nullable with no default, and null read as "open". Its only writer in the repository was a test fixture, so **every tenant held null and every metered stage priced to zero — stage billing never charged anyone.** The gate sat ahead of the catalogue lookup, so it also masked an uncatalogued model: a pair with no rate row resolved to zero instead of refusing.
 
 Three properties fall out of the removal, all load-bearing:
 
@@ -162,7 +162,7 @@ There are no plan tiers in the cost function. `debit_receive` and `slice_charge`
 
 ## 3. The two debit points
 
-Every event is charged at two points, in this order. Both land in `billing.usage_ledger`; only the run charge moves `billing.tenant_wallet.balance_nanos`, because the receive charge is `RECEIVE_NANOS` (zero today) and writes its ledger row alone (`rustd/crates/afd_billing/src/charge.rs`):
+Every event is charged at two points, in this order. Both land in `billing.fleet_charges`; only the run charge moves `billing.wallets.balance_nanos`, because the receive charge is `RECEIVE_NANOS` (zero today) and writes its ledger row alone (`rustd/crates/afd_billing/src/charge.rs`):
 
 > **The run debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta as **two money writes** (wallet and ledger), both inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none; `FOR UPDATE` on the lease+slot serialises same-lease renewals so a retry-in-flight charges ≈0). §4.2 is the charge function.
 >
@@ -177,8 +177,8 @@ Every event is charged at two points, in this order. Both land in `billing.usage
 >    TWO guard-gated money writes per slice (atomic in the renewal CTE, which
 >    also advances the lease and affinity cursors in the same statement):
 >      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative (= −charged)
->      ② LEDGER     usage_ledger 'stage' row(event_id) += charged / Δtokens / Δt  per-EVENT total (Usage tab),
->                   last_charged_at := now                                    the span the budget gate apportions over
+>      ② LEDGER     fleet_charges 'stage' row(event_id) += charged / Δtokens / Δt  per-EVENT total (Usage tab),
+>                   updated_at := now                                         the span the budget gate apportions over
 >
 >    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
 >    dormant fleet: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
@@ -187,7 +187,7 @@ Every event is charged at two points, in this order. Both land in `billing.usage
 
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT fleet_events (status='received')` and the gate passes | `debit_receive` records `RECEIVE_NANOS` | No today — both postures use the same `RECEIVE_NANOS` constant. The charge keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
+| 1 | **Receive** | Right after `INSERT fleet.events (status='received')` and the gate passes | `debit_receive` records `RECEIVE_NANOS` | No today — both postures use the same `RECEIVE_NANOS` constant. The charge keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
 | 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `slice_charge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model library (§10). self-managed: the run fee only (tokens recorded, not charged). |
 
 Why two debit points and not one:
@@ -195,7 +195,7 @@ Why two debit points and not one:
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero after general availability without re-plumbing.
 - **Run captures the cost of running the fleet's turn.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-**Ledger rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type, fleet_id)` since slot 916: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type, fleet_id)` constraint updates that fleet's `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
+**Ledger rows (M80_010).** `billing.fleet_charges` is keyed `(event_id, charge_type, fleet_id)` (`schema/2010_billing_fleet_charges.sql`): one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type, fleet_id)` constraint updates that fleet's `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
 
 A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, recorded in `M155_001` under *Payload offload and the durable stream*.
 
@@ -204,7 +204,7 @@ A per-renewal breakdown table used to sit beside them, one row per `/renew`/sett
 On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts. The server charges the **delta** since the lease's last-metered cursor: `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms precision), plus the per-token cost of the token delta on the platform posture. It then applies two money writes atomically inside M80_006's fenced renewal CTE, advancing both cursors in the same statement:
 
 1. debit the **wallet** `balance_nanos`, clamped at 0;
-2. accumulate the per-event `stage` **ledger** row, stamping `last_charged_at`.
+2. accumulate the per-event `stage` **ledger** row, stamping `updated_at`.
 
 The per-event slice number is gone with the breakdown table that needed it, and so is the `meter_slice_seq` counter on the affinity slot. Nothing was lost: slice numbering never provided idempotency. That comes from the **cumulative-token diff against the affinity cursor** — a re-sent renewal reports the same cumulatives, computes a zero delta, and charges ≈0 — and ordering comes from the `FOR UPDATE OF l, a` that serialises renewals of one lease.
 
@@ -279,7 +279,7 @@ One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `rustd/crates/
 
 Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That difference is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is spelled once, in `nanos.rs`, so a bump has nowhere else to miss. It was carried in `app/lib/types.ts` and `cli/src/constants/billing.ts` as well until neither file turned out to have an importer: the daemon charges the fee and serves the result, and a client renders what it was served. A pin test read both TypeScript files to hold the three copies equal; deleting the copies retired the test with them.
 
-Rates come from `core.model_library`, read fresh on every charge. `LOAD_RATE_WITH_REVISION` (`rustd/crates/afd_billing/src/sql.rs`) returns the rate and the `core.model_catalogue_revision` generation in one snapshot: one round trip, and no window in which a rate can be older than the catalogue it was read from.
+Rates come from `model.platform_models`, read fresh on every charge. `LOAD_RATE_WITH_REVISION` (`rustd/crates/afd_billing/src/sql.rs`) returns the rate and the `model.catalogue_version` generation in one snapshot: one round trip, and no window in which a rate can be older than the catalogue it was read from.
 
 **There is no rate cache.** A cache saves a read only when the generation and the rate are fetched separately; this statement fetches both at once, so a cache would save nothing and add an eviction path (`rustd/crates/afd_billing/src/store.rs`, "Why there is no rate cache"). M143 §2.2 shipped a generation-checked rate cache, since removed, and its rule still holds: a charge path never reads "no entry" as "this model is not in the catalogue". "Not catalogued" is a database answer.
 
@@ -303,7 +303,7 @@ total_nanos = RECEIVE_NANOS                            // receive
                        + (Δoutput × rate.output_nanos_per_mtok)       / 1_000_000 ]
 ```
 
-The token component dominates a token-heavy run; the run fee dominates a long, quiet one. `rate` is the active model's `core.model_library` row (§10).
+The token component dominates a token-heavy run; the run fee dominates a long, quiet one. `rate` is the active model's `model.platform_models` row (§10).
 
 **Self-managed posture, single event (M80_010):**
 
@@ -322,14 +322,14 @@ total_nanos = RECEIVE_NANOS                            // receive
 
 ```mermaid
 flowchart TD
-    A([Lease poll: readiness peek, claim, stream read]) --> B[INSERT fleet_events status=received]
+    A([Lease poll: readiness peek, claim, stream read]) --> B[INSERT fleet.events status=received]
     B --> C[Resolve posture<br/>Providers::resolve]
     C --> D[Estimate event cost:<br/>receive + run floor]
     D --> E{balance_nanos<br/>≥ estimate?}
-    E -->|no| Block[UPDATE fleet_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
+    E -->|no| Block[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
     E -->|yes| BG{fleet budget<br/>gates::fleet_budget}
-    BG -->|breach| BB[UPDATE fleet_events<br/>SET status=gate_blocked<br/>failure_label=budget_breach]
+    BG -->|breach| BB[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=budget_breach]
     BB --> X1
     BG -->|ok| F[DEBIT RECEIVE<br/>debit_receive<br/>ledger row charge_type=receive]
     F --> G[Approval gate]
@@ -338,7 +338,7 @@ flowchart TD
     H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner runs the agent loop]
     J --> Renew[Runner /renew ticks<br/>meter slice Δ → wallet + ledger §3]
     Renew --> K[Runner reports result]
-    K --> L[UPDATE fleet_events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
+    K --> L[UPDATE fleet.events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
     L --> X2([XACK])
 ```
 
@@ -347,9 +347,9 @@ flowchart TD
 Properties:
 
 - **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the balance cannot cover that estimate, the event is rejected at the gate. The estimate is a deliberately small floor (`ESTIMATE_FLOOR_INPUT_TOKENS`, `ESTIMATE_FLOOR_OUTPUT_TOKENS` in `rustd/crates/afd_billing/src/nanos.rs`), because the runner does not know its token counts at lease time.
-- **Receive charge at issue + incremental run metering.** The receive charge is one `billing.usage_ledger` row, written by a single statement at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each accumulated slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
+- **Receive charge at issue + incremental run metering.** The receive charge is one `billing.fleet_charges` row, written by a single statement at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each accumulated slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **A balance crossing zero mid-run ends the run.** The renewal that empties the wallet charges what is left (`LEAST(slice, balance)`); the next renewal is refused with `UZ-RUN-012` (§3).
-- **Concurrent events on near-zero balance.** Two events can pass the gate together on a balance that covers one. We accept that rather than serialise all events behind a row lock. Their renewals drain the same wallet, and the wallet write clamps at zero (`GREATEST(0, …)`; `schema/700_tenant_wallet.sql` also checks `balance_nanos >= 0`), so the balance never goes negative. The next renewal and the next gate both refuse.
+- **Concurrent events on near-zero balance.** Two events can pass the gate together on a balance that covers one. We accept that rather than serialise all events behind a row lock. Their renewals drain the same wallet, and the wallet write clamps at zero (`GREATEST(0, …)`; `schema/2000_billing_wallets.sql` also checks `balance_nanos >= 0`), so the balance never goes negative. The next renewal and the next gate both refuse.
 
 ### 5.1 The per-fleet budget gate — a second, independent ceiling
 
@@ -359,21 +359,21 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 | | Balance gate | Budget gate |
 |---|---|---|
-| Scope | tenant (`billing.tenant_wallet.balance_nanos`) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
+| Scope | tenant (`billing.wallets.balance_nanos`) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
 | Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
-| Source of truth | wallet balance | `billing.usage_ledger.credit_deducted_nanos`, apportioned across each row's `[created_at, last_charged_at]` span by its overlap with the window |
+| Source of truth | wallet balance | `billing.fleet_charges.charged_nanos`, apportioned across each row's `[created_at, updated_at]` span by its overlap with the window (`rustd/crates/afd_billing/src/sql/select_budget_drain.sql`) |
 
 **Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance` and **before the receive debit** (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`), so a refused event is never charged. The fleet's parsed config is already in hand, so the check costs one indexed aggregate and no extra lookup. Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`rustd/crates/afd_fleet/src/lease/coverage.rs`, `rustd/crates/afd_fleet/src/lease/sql/fleet.rs`) — applying a revision that lowers a runaway fleet's `daily_nanos` therefore bites at its next tick, not only at its next run.
 
-**Windows.** `daily_nanos` is a **rolling 24 hours** (`last_charged_at >= now − 86_400_000`); `monthly_nanos` is the **UTC calendar month** (`month_floor` in `rustd/crates/afd_billing/src/window.rs`). The row filter keys on `last_charged_at` — when a run stopped charging — which is exact where the retired table's filter was a heuristic: it had to widen the scan by `MAX_RUNTIME` to catch slices whose run began before the floor. Both derive from a single `now_ms` per gate invocation, passed in, so the two windows can never straddle a tick. `monthly_nanos` is optional — absent means no monthly ceiling.
+**Windows.** `daily_nanos` is a **rolling 24 hours** (`updated_at >= now() − 24 h`); `monthly_nanos` is the **UTC calendar month** (`month_floor` in `rustd/crates/afd_billing/src/sql/select_budget_drain.sql`). The row filter keys on `updated_at` — when a run stopped charging — which is exact where the retired table's filter was a heuristic: it had to widen the scan by `MAX_RUNTIME` to catch slices whose run began before the floor. Both floors come from one `now()` in the same statement, so the two windows can never straddle a tick. `monthly_nanos` is optional — absent means no monthly ceiling.
 
 **Spend means credit *drained*,** not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
 
 **Timed by drain, not by run start.** The problem this solves outlived the table that first solved it. A run's stage row accumulates in place across renewals, so a single stored instant describes the whole run — and attributing a 12-hour run's spend to its start ages that spend out of a rolling 24-hour window up to 12 hours early, or slips it across a month boundary entirely. Under-enforcement, precisely on the long runaway a budget exists to stop.
 
-The first fix stored per-slice rows in `fleet.metering_periods` and summed them by each slice's own `created_at`. That table is gone: it wrote a row roughly every twenty seconds of every run, which is the growth the schema rebuild removed. The property survives without it. `billing.usage_ledger` carries `last_charged_at` alongside `created_at`, so the accumulated total describes a *span* rather than an instant, and the gate apportions it across `[created_at, last_charged_at]` by overlap with the window being enforced. A run straddling the window boundary contributes the fraction that actually fell inside it.
+The first fix stored per-slice rows in `fleet.metering_periods` and summed them by each slice's own `created_at`. That table is gone: it wrote a row roughly every twenty seconds of every run, which is the growth the schema rebuild removed. The property survives without it. `billing.fleet_charges` carries `updated_at` alongside `created_at`, so the accumulated total describes a *span* rather than an instant, and the gate apportions it across `[created_at, updated_at]` by overlap with the window being enforced. A run straddling the window boundary contributes the fraction that actually fell inside it.
 
 The slice-by-slice audit trail is a separate concern from enforcement, and it is not in Postgres — the charge-slice breakdown shipped as `M155_001` and that spec is its record.
 
@@ -412,7 +412,7 @@ The reasoning is that a balance-exhausted event is usually evidence the user was
 
 A user can switch between platform and self-managed at any time. Effects on subsequent billing:
 
-- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `agentsfleet tenant provider create --secret <name>` flips `tenant_model_selection.mode=self_managed` immediately. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
+- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `agentsfleet tenant provider create --secret <name>` points `model.tenant_selections.tenant_model_id` at the tenant's model immediately, which makes the posture `self_managed`. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
 - **self-managed → platform** (user stops paying their provider): `agentsfleet tenant provider delete` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
 
@@ -438,11 +438,11 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 `provider` is a name the runner's provider registry resolves (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …), or `openai-compatible` with a `base_url` for a custom endpoint, which the lease hands the runner as `custom:<base_url>` (§9; `rustd/crates/afd_credential/src/provider/wire.rs`). `model` is the provider's model identifier. `api_key` is the user's credential.
 
-The `tenant_model_selection` row points at the credential by name through `secret_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`); only one is *active* at a time per tenant.
+The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`); only one is *active* at a time per tenant.
 
 **Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secret create` write path) bridge through `Providers::primary_workspace` (`rustd/crates/afd_credential/src/provider/selection.rs`), which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the rule.
 
-**`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `tenant provider create` time, from the model library (§10), and pinned into `tenant_model_selection.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
+**`context_cap_tokens` is not in the credential body.** The cap is read from the catalogue (`model.platform_models`, §10) with each model resolution, matched by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 
 ### 8.2 The api_key visibility boundary
 
@@ -459,7 +459,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 - User-facing HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/secrets` metadata list (§8.3), and any other JSON a user sees. The authenticated runner lease is the machine-plane exception described above.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
 - The fleet's tool context — placeholders are substituted at send time by the runner's egress guard, outside the sandbox; the provider key is on a different path entirely (the runner's provider client uses it for the inference call only, never via `secrets_map`).
-- Persisted event rows — `core.fleet_events`, `billing.usage_ledger`, anything else under `core.*` or `billing.*`.
+- Persisted event rows — `fleet.events`, `billing.fleet_charges`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
 
 The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `afd_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/afd_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
@@ -476,16 +476,16 @@ Both endpoints honour §8.2: the metadata lives in non-secret `meta_*` columns b
 
 ### 8.4 The tenant model registry — many entries, one shared key (M121)
 
-The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (`schema/440_tenant_model_entries.sql`) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
+The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `model.tenant_models` (`schema/1330_model_tenant_models.sql`) adds the missing noun: one row per configured `(model_name, secret_ref)` pair, so N model rows can reference the same vault credential.
 
 ```sql
-core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, updated_at)
-  UNIQUE (tenant_id, model_id, secret_ref)
+model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_at)
+  UNIQUE (tenant_id, model_name, secret_ref)
 ```
 
 **Entries reference keys — they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns. `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses — `api_key` is structurally absent from the join, not filtered out. A keyless endpoint (Out of Scope: runner auth behaviour is unchanged) stores an empty `api_key` in the secret body so the activate/resolve chain in §9 stays uniform whether or not a key exists.
 
-**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `core.tenant_model_selection` (renamed from `tenant_providers` this milestone — see below). The selection write (`rustd/crates/afd_credential/src/provider/activate/mod.rs`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by comparing `(secret_ref, model_id)` against the selection row and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (**Guards**, below) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
+**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`. The selection write (`rustd/crates/afd_credential/src/provider/activate/mod.rs`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by checking whether the selection's `tenant_model_id` is that entry's `id` (`is_active`, `rustd/crates/afd_credential/src/provider/entries/mod.rs`) and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (**Guards**, below) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
 
 **Guards.** Entry writes refuse an unknown secret, a duplicate pair and the active entry, and deleting a still-referenced secret is refused (codes: API reference › Tenant models).
 
@@ -522,15 +522,15 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 ## 10. The model library — catalogue table + authenticated read
 
-The single source of truth for model context caps **and per-model token rates** is the `core.model_library` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The setup-time vs trigger-time resolution flow — which posture reads what, when, and how the setup's sentinel overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
+The single source of truth for model context caps **and per-model token rates** is the `model.platform_models` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The setup-time vs trigger-time resolution flow — which posture reads what, when, and how the setup's sentinel overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
 
-For billing specifically: the stage charge prices platform-posture slices from `core.model_library`, reading the rate and the catalogue generation in one statement (§4.2), so a slice is never priced against a catalogue state that has since changed.
+For billing specifically: the stage charge prices platform-posture slices from `model.platform_models`, reading the rate and the catalogue generation in one statement (§4.2), so a slice is never priced against a catalogue state that has since changed.
 
 Read shape: API reference › Model Library (keyset-paged; `version` moves on every catalogue change).
 
 What the catalogue holds is curated in `scripts/model-library-allowlist.json` and written by `make seed-models APPLY=1` (without `APPLY=1` it only reports); that file, not this page, is the enumeration. Adding a model is an admin row append, or an allowlist entry plus a seed run. Operators don't need to know the row contents. `tenant provider create` validates membership server-side. This doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
-**The provider is a column, not an inference from the model id.** `core.model_library` keys on `(provider, model_id)` precisely so one model can appear under several hosts at different rates — Kimi K3 is priced separately under `fireworks`, `novita`, `chutes`, `poe` and `openrouter`, and they do not agree. Reading the host out of the id string works only for the vendors whose id happens to carry it, and it is wrong for every gateway. Users pick their provider through their self-managed credential body; the resolver reads that value, never a prefix.
+**The provider is a column, not an inference from the model id.** `model.platform_models` keys on `(provider, model_name)` precisely so one model can appear under several hosts at different rates — Kimi K3 is priced separately under `fireworks`, `novita`, `chutes`, `poe` and `openrouter`, and they do not agree. Reading the host out of the id string works only for the vendors whose id happens to carry it, and it is wrong for every gateway. Users pick their provider through their self-managed credential body; the resolver reads that value, never a prefix.
 
 **Every provider is priced, or records why it never will be.** An allowlist entry carries either rates or exactly one `unpriced_reason` — `cn_endpoint`, `subscription_plan`, `gateway_passthrough`, `deployment_scoped`, `credentialed_feed`, `no_public_rates`, `awaiting_curation`, `operator_hosted`, `duplicate_spelling`, or `unsupported_wire`. `awaiting_curation` is the curation queue and `unsupported_wire` waits on a runner wire (Bedrock's request signing, Gemini's thought signatures); the rest are decisions. The distinction is load-bearing because an uncatalogued model is not a soft state — `UZ-PROVIDER-004` refuses activation for it, and platform posture charges it the run fee only, with no tokens (§2.3, §4.2). Local runtimes take `operator_hosted`: the model runs on hardware the operator owns, so no vendor publishes a per-token rate and none can be derived. Making them activatable is a product decision about the local-runtime experience — a tenant-chosen provider id resolves to a fixed loopback port, so the dial target needs gating per runner first — and it is deliberately not taken here. `scripts/check_model_allowlist.py` enforces all of it under `make lint-all`, so a provider cannot quietly re-enter the uncurated state that left 87 of them unusable.
 
@@ -539,7 +539,7 @@ Properties:
 - **Reading the catalogue requires an authenticated tenant.** There is no public route, no alias and no redirect; an unauthenticated request gets `404`. Per-token rates are margin data, so they sit behind auth like any other tenant read. The dashboard fetches through a token-minting Server Action, and the command-line interface resolves caps server-side via `PUT /v1/tenants/me/provider`.
 - **The response carries no global rate block.** The run and receive constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; the daemon charges, and a client renders what it is served.
 - **Consumed per-session, not cached at the edge.** The dashboard fetches the library once per session; the payload is small and the read is no longer a Content Delivery Network (CDN) concern.
-- **The context cap is resolved at provider-set time, never at trigger time.** It is pinned in `core.tenant_model_selection.context_cap_tokens` (self-managed) or `core.platform_provider_defaults.context_cap_tokens` (platform). Token rates are read per charge, with their generation (§4.2).
+- **The context cap comes from the catalogue.** It is `model.platform_models.context_cap_tokens`, read with each model resolution: a tenant model matches its catalogue row by provider and model name (`rustd/crates/afd_credential/src/provider/registered/sql/entry.sql`), and the platform default points at its row. Token rates are read per charge, with their generation (§4.2).
 
 ---
 

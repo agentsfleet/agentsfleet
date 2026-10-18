@@ -126,7 +126,7 @@ Idle cost is the runner lease-poll loop, fully idle:
 
 | Source | Requests per hour |
 |---|---|
-| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded Dragonfly read of the readiness index (one partition's `HRANDFIELD`, two when the readiness doorbell rang) and **one** indexed `fleet.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
+| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded Dragonfly read of the readiness index (one partition's `HRANDFIELD`, two when the readiness doorbell rang) and **one** indexed `runner.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
 "Zero Postgres round-trips" is about the CANDIDATE SCAN, not authentication. The
@@ -143,9 +143,9 @@ every time makes a cordon, drain, revoke, or delete effective fleet-wide the mom
 it commits.
 
 Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
-above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
+above (`R_runners × 3600` per hour), against a `runner.runners` table whose pages
 stay resident. At the ~100 runners the sizing assumes, that is a few hundred index
-probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
+probes a second. (`runner.runners` is created by `schema/1800_runner_runners.sql` and
 carries no separate index slot: the M154 rebuild retired the shared
 `033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
 that measurable — AUTH.md records the replacement design (a short-lived signed
@@ -176,19 +176,19 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 | Recurring read | Was | Now |
 |---|---|---|
-| Liveness sweep — due runners | Sequential scan + top-N sort of `fleet.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/600_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
-| Liveness sweep — affinity expiry | Full scan of `fleet.runner_affinity`, once **per due runner per cycle** | `idx_runner_affinity_last_runner_id_leased_until`; also covers the unindexed `ON DELETE SET NULL` foreign key |
-| Reclaim — prior active lease | Scan of `fleet.runner_leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runner_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
-| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_fleet_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
-| Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_fleet_events_fleet_id_created_at_event_id` walked in order, because `stx_fleet_events_workspace_id_fleet_id` (slot 922) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
+| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
+| Liveness sweep — affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | `idx_fleet_slots_last_runner_id_lease_expires_at`; also covers the unindexed `ON DELETE SET NULL` foreign key |
+| Reclaim — prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
+| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
+| Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved — the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
-| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (`schema/600_runners.sql`), and `core.api_keys` keeps only `idx_api_keys_tenant_id_active` (`schema/240_api_keys.sql`) |
+| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (`schema/1800_runner_runners.sql`), and `identity.api_keys` keeps only `idx_api_keys_tenant_id_live` (`schema/1150_identity_api_keys.sql`) |
 
 **What this bounds:** idle Postgres cost now tracks the *work* an account is doing, not the number of rows it has accumulated. It does not bound cost per unit of work — that is still governed by traffic.
 
 **What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
-**One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner_leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
+**One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
 
 ---
 
@@ -220,7 +220,7 @@ Once Dragonfly connection count and request volume fit the machine, the next bot
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do — `INSERT fleet_events`, the receive debit at lease, the run metered on each `/renew`, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
+The lease/report hot path does the durable writes the worker used to do — `INSERT fleet.events`, the receive debit at lease, the run metered on each `/renew`, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `runner.leases`/`runner.fleet_slots` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
 Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
 

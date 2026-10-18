@@ -111,7 +111,7 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Human at a terminal (CLI) | `afc_<hex>` CLI credential | backend (`POST /v1/cli-credentials`, paid for with a Clerk api-template JWT) | SHA-256 hash lookup + revocation check; scopes resolved live from Clerk on `oidc_subject` | `Guard::Bearer` → stored credential |
 | Human in a browser (dashboard) | Clerk session token | Clerk | JWKS verify + `aud` | `Guard::Bearer` → session token |
 | Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup; scopes resolved live from Clerk for the key's creator (`created_by`) | `Guard::Bearer` → stored credential |
-| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `fleet.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
+| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
 The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so a runner token cannot satisfy a tenant route and the reverse.
@@ -198,7 +198,7 @@ Capabilities reach a principal as an explicit `scopes` claim. The identity provi
 The `afc_` credential minted by `agentsfleet login` proves identity and resolves capability, the model the `agt_t` key now shares. Its authenticate path is:
 
 ```
-Bearer afc_… → SHA-256 → core.cli_credentials row (JOIN core.users)
+Bearer afc_… → SHA-256 → identity.cli_credentials row (JOIN identity.users)
              → tenant_id, oidc_subject, revoked_at
              → revoked?  → UZ-AUTH-023
              → scope resolver, keyed on oidc_subject (cached 60 s)
@@ -213,11 +213,11 @@ Bearer afc_… → SHA-256 → core.cli_credentials row (JOIN core.users)
 
 That is exactly who a code-applied grant would have harmed. A grant authored in code is keyed by *credential source*, not by person, so a CLI entry would have had to name one fixed set applied to every terminal — and the only sensible candidates are the tenant sets. A hand-narrowed collaborator would then have been widened back to that set on their next `login`, silently, by the credential change alone. Resolving the claim avoids authoring a grant at all: the terminal cannot disagree with the dashboard, and narrowing someone in Clerk reaches every terminal they hold within the cache window instead of requiring a hunt for credentials to revoke.
 
-**Why the claim is not stored on the row.** Snapshotting it at mint would make `core.cli_credentials` a second store of a fact Clerk owns, and it would freeze at issuance; a Postgres projection fed by `user.updated` webhooks would add backfill, ordering, and reconciliation to operate. The resolver holds an in-memory TTL cache instead — a latency optimisation with no persistence, so there is nothing to reconcile and staleness self-heals toward Clerk within the TTL.
+**Why the claim is not stored on the row.** Snapshotting it at mint would make `identity.cli_credentials` a second store of a fact Clerk owns, and it would freeze at issuance; a Postgres projection fed by `user.updated` webhooks would add backfill, ordering, and reconciliation to operate. The resolver holds an in-memory TTL cache instead — a latency optimisation with no persistence, so there is nothing to reconcile and staleness self-heals toward Clerk within the TTL.
 
-**Failure modes.** A fresh answer is served for 60 seconds without asking Clerk again. With Clerk unreachable, the last confirmed answer is served for up to 15 minutes (`DEFAULT_TTL_MS`, `DEFAULT_STALE_CEILING_MS`, `rustd/crates/afd_identity/src/capability.rs`). Past that, or with nothing cached: `503 UZ-AUTH-004`, the same answer a key-set fetch failure gives on the session-token path. No claim provisioned for the subject: empty set, fail closed.
+**Failure modes.** A fresh answer is served for 60 seconds without asking Clerk again. With Clerk unreachable, the last confirmed answer is served for up to 15 minutes (`DEFAULT_TTL`, `DEFAULT_STALE_CEILING`, `rustd/crates/afd_identity/src/capability.rs`). Past that, or with nothing cached: `503 UZ-AUTH-004`, the same answer a key-set fetch failure gives on the session-token path. No claim provisioned for the subject: empty set, fail closed.
 
-**Subject unknown to Clerk (404) — empty set, and deliberately not cached.** This cannot arise at login: the device flow needs a live Clerk user to approve in the browser, so an unknown subject never reaches a mint. It arises *after* one, and only because the credential is durable — the row outlives the person. **This 404 branch is currently the only thing closing that window, and that is a known gap.** Account teardown on `user.deleted` is not ported. The Rust handler answers every event type other than `user.created` with `200 {"ignored":"<event type>"}` (`identity_route.rs`), because a destructive delete does not belong in the milestone that opens accounts; the gap is visible in the answer rather than hidden behind a 404. Until teardown lands there is no `DELETE FROM core.users`, so `250_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway — a wiped Clerk development instance replays no per-user events, a delivery can be lost or rejected, and a database restored from a backup predating the deletion resurrects the row. In each case a live credential names someone Clerk no longer knows, so it resolves to no capabilities and every gate refuses it by scope. `UZ-AUTH-004` was the alternative and is wrong here: it tells a terminal to retry a credential that will never work again. The result is not cached, because a deletion is permanent and needs no cache while a transient 404 must not blank a live operator for a whole freshness window.
+**Subject unknown to Clerk (404) — empty set, and deliberately not cached.** This cannot arise at login: the device flow needs a live Clerk user to approve in the browser, so an unknown subject never reaches a mint. It arises *after* one, and only because the credential is durable — the row outlives the person. **This 404 branch is currently the only thing closing that window, and that is a known gap.** Account teardown on `user.deleted` is not ported. The Rust handler answers every event type other than `user.created` with `200 {"ignored":"<event type>"}` (`identity_route.rs`), because a destructive delete does not belong in the milestone that opens accounts; the gap is visible in the answer rather than hidden behind a 404. Until teardown lands there is no `DELETE FROM identity.users`, so `250_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway — a wiped Clerk development instance replays no per-user events, a delivery can be lost or rejected, and a database restored from a backup predating the deletion resurrects the row. In each case a live credential names someone Clerk no longer knows, so it resolves to no capabilities and every gate refuses it by scope. `UZ-AUTH-004` was the alternative and is wrong here: it tells a terminal to retry a credential that will never work again. The result is not cached, because a deletion is permanent and needs no cache while a transient 404 must not blank a live operator for a whole freshness window.
 
 **Known gap.** Flow 1's credential is durable and shareable (accepted, see the M160 spec), so a shared credential carries the *sharer's* current scopes. Narrowing the sharer narrows every terminal holding it, which is the intended direction, but there is no per-credential ceiling below the person's own grant. Adding one is a row column and an intersection at `parse_claim`, not a redesign.
 
@@ -252,11 +252,11 @@ Clerk user.created
   │                                 unproven → 400 UZ-REQ-001, reason unverified_email)
   │
   ├─► ONE Postgres transaction     (rustd/crates/afd_tenant/src/signup/mod.rs)
-  │     1. core.tenants            one per person
-  │     2. core.users              the OIDC subject, unique
-  │     3. core.memberships        owner, linking the two
-  │     4. core.workspaces         a default, name generated
-  │     5. billing.tenant_wallet   the starter grant
+  │     1. identity.tenants        one per person
+  │     2. identity.users          the OIDC subject, unique
+  │     3. identity.memberships    owner, linking the two
+  │     4. identity.workspaces     a default, name generated
+  │     5. billing.wallets         the starter grant
   │   commit — four of five is not an account
   │
   └─► best-effort Clerk writeback  PATCH {CLERK_API_BASE}/users/{subject}/metadata
@@ -280,7 +280,7 @@ a sign-up method that admits unverified addresses is ever enabled.
 delivery for a subject already opened must answer exactly as the first did. The
 handler reads before it writes and reports the replay. That pre-read is an
 optimisation, not the arbiter: two concurrent deliveries can both pass it, so the
-second trips `uq_users_oidc_subject` (`schema/220_users.sql`), re-reads what the
+second trips `uq_users_oidc_subject` (`schema/1120_identity_users.sql`), re-reads what the
 winner committed, and answers as a replay. An index holds under concurrency and a
 read never can.
 
@@ -298,7 +298,7 @@ datastore learns about a tenant when that tenant's first fleet is installed.
 ## Memberships and roles
 
 A person opens a workspace when they own its account or hold a membership in
-it. Two roles exist, `owner` and `member`, stored in `core.memberships.role`
+it. Two roles exist, `owner` and `member`, stored in `identity.memberships.role`
 (`rustd/crates/afd_tenant/src/workspace/access.rs`).
 
 A role grants no capability. A `member` loses two inside the owner's account:
@@ -615,7 +615,7 @@ Dashboard ─► POST /v1/api-keys ─► Rust backend    Rust backend
                                     │             Principal::Person{ TenantApiKey,
                                     │                                subject, scopes }
                                     ▼
-                            core.api_keys row
+                            identity.api_keys row
                             { key_hash: sha256(agt_t<hex>),
                               tenant_id, key_name, created_by, … }
                             (raw agt_t<hex> shown to
@@ -624,7 +624,7 @@ Dashboard ─► POST /v1/api-keys ─► Rust backend    Rust backend
 
 A tenant API key carries the same standing privilege as a long-lived JWT for the tenant — anyone who holds the raw `agt_t<hex>` value can act for that tenant until the key is revoked. Treat it as a credential equivalent to a database password: rotate on suspected exposure, and prefer an interactive credential (Flow 1 or Flow 2) wherever a human is actually present.
 
-**Resolved (M160_002 §6): a key's power comes from Clerk, keyed on its creator.** `core.api_keys` still has no scopes column and never will — the row-column alternative was rejected as a second store of a fact Clerk owns, the same reasoning §CLI credential — resolved, not granted applies to `core.cli_credentials`. The tenant-api-key class resolves the claim Clerk holds for the subject in `created_by`, through the same resolver and cache as `afc_`, so narrowing a person narrows every key they minted with no deploy. Two keys in one tenant now differ exactly when their creators do: minting a read-only key means minting it as a read-only person.
+**Resolved (M160_002 §6): a key's power comes from Clerk, keyed on its creator.** `identity.api_keys` still has no scopes column and never will — the row-column alternative was rejected as a second store of a fact Clerk owns, the same reasoning §CLI credential — resolved, not granted applies to `identity.cli_credentials`. The tenant-api-key class resolves the claim Clerk holds for the subject in `created_by`, through the same resolver and cache as `afc_`, so narrowing a person narrows every key they minted with no deploy. Two keys in one tenant now differ exactly when their creators do: minting a read-only key means minting it as a read-only person.
 
 **Still open — a ceiling below the person.** Inheritance is exact, so a key cannot be narrower than its creator without a narrower creator. A per-key ceiling (a key that holds a subset of a wide person's grant) is the remaining design question, and its sibling for `afc_` is the *Known gap* under §CLI credential — resolved, not granted; if either lands, both should, and by the same mechanism.
 
@@ -653,7 +653,7 @@ sequenceDiagram
     participant API as agentsfleetd
 
     Service->>API: POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages<br/>Authorization: Bearer agt_t<key>
-    Note over API: Registry::authenticate:<br/>agt_t prefix → digest lookup in core.api_keys<br/>→ creator's scopes from Clerk (cached)<br/>→ Principal::Person{ TenantApiKey }<br/>→ require_scope (fleet:write)
+    Note over API: Registry::authenticate:<br/>agt_t prefix → digest lookup in identity.api_keys<br/>→ creator's scopes from Clerk (cached)<br/>→ Principal::Person{ TenantApiKey }<br/>→ require_scope (fleet:write)
     API-->>Service: 2xx
 ```
 
@@ -682,7 +682,7 @@ Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enr
    │   { host_id, assigned_policy{…}, labels[] }
    ▼
    Guard::Bearer + require_scope gate the route (runner:enroll);
-   the handler mints agt_r<random>, stores ONLY sha256(agt_r) in fleet.runners,
+   the handler mints agt_r<random>, stores ONLY sha256(agt_r) in runner.runners,
    returns the raw token ONCE
    │
    ◄── 201 { runner_id, runner_token: "agt_r…", assigned_policy }   (no runner:enroll → 403)
@@ -690,7 +690,7 @@ Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enr
    does NOT call register — it authenticates every later call with that agt_r
 ```
 
-`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
+`runner.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
 ### Validation — a separate middleware, on purpose
 
@@ -698,7 +698,7 @@ Every later call carries `Bearer agt_r`. Every `/v1/runners/me/*` route is `Guar
 
 ```
 parse Bearer → Plane::Runner admits only "agt_r"   (else 401 UZ-RUN-001 — no JWKS fall-through)
-SELECT id, admin_state, degraded FROM fleet.runners WHERE token_hash = sha256(token)
+SELECT id, admin_state, degraded FROM runner.runners WHERE token_hash = sha256(token)
   admin_state='active' → Principal::Runner{ runner_id, degraded }   (no tenant)
   miss                 → 401 UZ-RUN-001
   non-active           → 401 UZ-RUN-009
@@ -706,13 +706,13 @@ SELECT id, admin_state, degraded FROM fleet.runners WHERE token_hash = sha256(to
 
 A runner token must never satisfy a tenant route, and a user or tenant token must never satisfy a runner route. The boundary is data: `Plane::accepts` lists each plane's credential classes (`rustd/crates/afd_auth/src/plane.rs`), and `test_planes_partition_the_catalogue` (`rustd/crates/afd_auth/tests/bearer_prefix_routing/classification.rs`) proves every class belongs to exactly one plane. No handler re-checks it. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
 
-**Every call reads `fleet.runners`. There is no memoized verdict** (`rustd/crates/afd_state/src/credentials/`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
+**Every call reads `runner.runners`. There is no memoized verdict** (`rustd/crates/afd_state/src/credentials/`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
 
 That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. The heartbeat reply is unconditionally `.ok` (`rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs`), so auth rejection is the only way a runner learns it is out of service.
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
-What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER_MS` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`fleet.runners`, `schema/600_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
+What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`runner.runners`, `schema/1800_runner_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/afr_supervisor/src/error/mod.rs`) — **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 
@@ -722,7 +722,7 @@ It also means a Postgres outage fails runner auth immediately rather than being 
 
 A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves it per lease (`Providers::resolve`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `fleet.runner_leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
+The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves it per lease (`Providers::resolve`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
 ### The token never enters the sandboxed child
 
@@ -892,7 +892,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, access_token, expires_at_ms, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` / `{configured, connected}` flags, never key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`) | secret except public identifiers (`app_id`, `app_slug`, `client_id`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (the workspace `PLATFORM_ADMIN_WORKSPACE_ID` names) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · auth logs |
-| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`platform_provider_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/wire.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `fleet.runner_leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
+| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/wire.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
 
 ### The one place a pepper touches disk, and why
@@ -1056,17 +1056,17 @@ The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callba
 
 A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`. Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific persistence to the registry hook:
 
-- **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
-- **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation. When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it: the daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001). More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `core.connector_installs` route. The token never enters provider-visible state and is discarded after the probe.
+- **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `connector.installs` routing row.
+- **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation. When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it: the daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001). More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `connector.installs` route. The token never enters provider-visible state and is discarded after the probe.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
 - **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector: there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`, and the fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
 
 The rows themselves:
 
 - **Per-install handle** `<provider>` in the **workspace** vault — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, access_token, expires_at_ms, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle at all — not being connectors, their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
-- **`core.connector_installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
+- **`connector.installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
 
-Every authenticated callback completion and Disconnect first locks its workspace's row (`core.workspaces`, `FOR NO KEY UPDATE`), so the two take turns per workspace, even on a first connect, before any connector row exists. The transaction commits or rolls back every connector row together. A callback cannot restore a partial binding after Disconnect finishes.
+Every authenticated callback completion and Disconnect first locks its workspace's row (`identity.workspaces`, `FOR NO KEY UPDATE`), so the two take turns per workspace, even on a first connect, before any connector row exists. The transaction commits or rolls back every connector row together. A callback cannot restore a partial binding after Disconnect finishes.
 
 ### Disconnect and retry
 
@@ -1084,9 +1084,9 @@ Datadog, Grafana and Fly are not connectors and have no `<provider>-app` bag. Ca
 
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
-A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `core.integration_grants` for the requested integration — read via the single enforcement module `rustd/crates/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded (an ungranted request never touches handle bytes; refusal is 403 `UZ-GRANT-001`, no token, no upstream call). The same predicate gates lease-issue: the classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations, and an ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-lease bites on the fleet's next mint; grant-read DB failures fail closed at mint (500, no token) and refuse the lease at issue (delivery stays leasable). The broker itself stays grant-free — it mints, the boundary authorizes. Static pasted secrets (no `integration` field) are not gated.
+A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration — read via the single enforcement module `rustd/crates/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded (an ungranted request never touches handle bytes; refusal is 403 `UZ-GRANT-001`, no token, no upstream call). The same predicate gates lease-issue: the classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations, and an ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-lease bites on the fleet's next mint; grant-read DB failures fail closed at mint (500, no token) and refuse the lease at issue (delivery stays leasable). The broker itself stays grant-free — it mints, the boundary authorizes. Static pasted secrets (no `integration` field) are not gated.
 
-**The handle is held to what the workspace connected (`rustd/crates/afd_fleet/src/lease/mint/claim.rs`).** A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body, so after the vault read and before the exchange the mint checks two facts the workspace did not write. First, an on-demand handle must sit under its own connector's name, because the grant gate ran against the requested name, and a GitHub handle filed as `mything` would otherwise mint as a connector nobody granted (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `core.connector_installs` row for **this** workspace. An installation id is a short integer, not a secret, and the platform App's key signs for every installation the App is on. The routing row is written only after the provider proves the connecting person's access. A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation gets, so the refusal never reveals whether another workspace holds that installation. The connect flow stores installation ids unpadded, so the row and the mint spell one installation one way.
+**The handle is held to what the workspace connected (`rustd/crates/afd_fleet/src/lease/mint/claim.rs`).** A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body, so after the vault read and before the exchange the mint checks two facts the workspace did not write. First, an on-demand handle must sit under its own connector's name, because the grant gate ran against the requested name, and a GitHub handle filed as `mything` would otherwise mint as a connector nobody granted (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `connector.installs` row for **this** workspace. An installation id is a short integer, not a secret, and the platform App's key signs for every installation the App is on. The routing row is written only after the provider proves the connecting person's access. A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation gets, so the refusal never reveals whether another workspace holds that installation. The connect flow stores installation ids unpadded, so the row and the mint spell one installation one way.
 
 **A refresh handle posts only where its connect flow points it.** A refresh grant carries the deployment's `<provider>-app` client secret, and a Zoho handle's `accounts_base` names the server it is posted to. The SSRF guard admits any public `https` host, so it does not keep the secret with the provider. The exchange does: `steer::endpoint` (`rustd/crates/afd_credential/src/credential/oauth/steer.rs`) dials only the descriptor's own endpoint or one of `afd_core::credential::ZOHO_ACCOUNTS_SERVERS`, the list the connect flow writes from, and refuses anything else before a request is built. The mint admission reads the same predicate first, so a forged handle answers `UZ-CONN-006` and nothing is posted.
 
@@ -1105,9 +1105,9 @@ Order is load-bearing:
 1. Refuse any provider but `github` (404 `UZ-CONN-004`), hold the body to the size cap, require the `x-github-event` header (400 `UZ-WH-002`), then read the admin workspace's `github-app` webhook secret (missing → 401 `UZ-WH-020`).
 2. Verify `x-hub-signature-256` over the untouched request body in constant time. A missing or bad signature returns the typed webhook refusal before any payload field or routing table is read.
 3. Return `{"status":"pong"}` for a signed GitHub `ping`; otherwise parse the body with `octocrab`'s typed webhook parser and read `installation.id` and `repository.full_name`; a delivery missing either is acknowledged as `unsupported_event`. The delivery header is diagnostic only.
-4. Resolve `(provider=github, external_account_id=installation.id) → workspace_id` through `core.connector_installs`. An unknown installation is acknowledged and dropped without revealing whether another workspace owns it.
+4. Resolve `(provider=github, external_account_id=installation.id) → workspace_id` through `connector.installs`. An unknown installation is acknowledged and dropped without revealing whether another workspace owns it.
 5. Select only active fleets in that workspace with an approved GitHub integration grant and a GitHub trigger whose explicit `repositories` contains `repository.full_name` and whose `events` admits the incoming event. Missing `repositories` means no App delivery; it remains valid for the manual fleet-addressed route.
-6. Hash the authenticated request body and admit one row per fleet in `core.fleet_admissions`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/afd_ingress/src/deliver.rs`). After the row commits, the admission is appended to `fleet:{fleet_id}:events`. Changing the unsigned delivery header cannot bypass replay protection. More matches than `afd_ingress::MAX_FANOUT` are refused with `UZ-WH-022` rather than truncated.
+6. Hash the authenticated request body and admit one row per fleet in `fleet.admissions`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/afd_ingress/src/deliver.rs`). After the row commits, the admission is appended to `fleet:{fleet_id}:events`. Changing the unsigned delivery header cannot bypass replay protection. More matches than `afd_ingress::MAX_FANOUT` are refused with `UZ-WH-022` rather than truncated.
 
 Pull Request events and completed failed `workflow_run` events are normalized into the ordinary webhook event envelope. Receiving the event does not disclose credentials. A later GitHub API tool call still crosses the runner-token mint boundary and rechecks the fleet's approved integration grant.
 
@@ -1126,7 +1126,7 @@ Slack posts channel mentions here. This is **not** the fleet-trigger webhook pat
 1. Resolve `{provider}` to a connector with an event ingress (else 404 `UZ-CONN-004`) and hold the body to the size cap.
 2. **Read `signing_secret`** from the admin workspace's `slack-app` entry on every request (`rustd/crates/afd_connector/src/app.rs`), so a rotated secret needs no restart. No admin workspace, no `slack-app` bag, or no `signing_secret` → 401 `UZ-WH-020`. The read precedes the verify because you cannot verify without the secret.
 3. **Verify**: a missing `x-slack-signature` → 401 `UZ-WH-010`; a missing or stale `x-slack-request-timestamp` (5-min drift) → 401 `UZ-WH-011`; then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → 401 `UZ-WH-010`).
-4. Resolve `team_id → workspace_id` via `core.connector_installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"team_not_mapped"}`) — so Slack never enters a retry loop against an uninstalled workspace.
+4. Resolve `team_id → workspace_id` via `connector.installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"team_not_mapped"}`) — so Slack never enters a retry loop against an uninstalled workspace.
 
 ### The three signed inbound surfaces
 
@@ -1154,7 +1154,7 @@ Slack's signature failures share the webhook codes (`UZ-WH-010`, `UZ-WH-011`, §
 | `UZ-CONN-008` (installation ownership denied) | GitHub user token cannot access the claimed installation, or another workspace already owns its route | **403** on the callback; no vault or routing-row mutation |
 | `UZ-CONN-006` (OAuth exchange failed) | the provider rejected the `code`→token exchange, or a forged refresh handle named a server outside the allowed list | **502** |
 | `UZ-CONN-009` (installation listing failed) | GitHub refused the installation listing after a successful code exchange | **502** on the callback |
-| — (`team_not_mapped`) | events-ingress `team_id` not in `connector_installs` | **200 ack**, body `{"ignored":"team_not_mapped"}`, event dropped |
+| — (`team_not_mapped`) | events-ingress `team_id` not in `connector.installs` | **200 ack**, body `{"ignored":"team_not_mapped"}`, event dropped |
 
 ### Cross-references — OAuth connectors
 

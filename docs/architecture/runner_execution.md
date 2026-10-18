@@ -150,7 +150,7 @@ A lease's `provider` picks the wire and base URL through the runner's provider r
 
 ## Tool catalog
 
-The runner is the harness, in Codex's shape: the catalog holds every tool the published tools page names, each with the runtime it executes in; the lease's `ExecutionPolicy.tools` selects which of them the model is offered; the model picks by function calling; the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the lease loudly, because a fleet running with a quietly different tool set is not the setup its author wrote. A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `core.fleet_schedules` through the daemon; nothing in the runner sleeps or ticks. They and `message` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane, adding the lease's id and fencing token to each call, one attempt each: a tool never holds the token, and the model, not a retry loop, decides whether to try again.
+The runner is the harness, in Codex's shape: the catalog holds every tool the published tools page names, each with the runtime it executes in; the lease's `ExecutionPolicy.tools` selects which of them the model is offered; the model picks by function calling; the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the lease loudly, because a fleet running with a quietly different tool set is not the setup its author wrote. A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `fleet.schedules` through the daemon; nothing in the runner sleeps or ticks. They and `message` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane, adding the lease's id and fencing token to each call, one attempt each: a tool never holds the token, and the model, not a retry loop, decides whether to try again.
 
 | Tool | Runtime | Needs |
 |---|---|---|
@@ -319,7 +319,7 @@ lease ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per work
    fleet halted or deleted
 ```
 - **Retention.** *Target, not built.* The last three snapshots per fleet, a lifecycle rule on the prefix, and a purge when the fleet is deleted.
-- **Continuity.** The checkpoint a report writes reaches the next lease. Today it is saved to `core.fleet_sessions` and loaded with the fleet, but nothing hands it to a lease; a chat lease carries the thread's recent turns instead (§Crates).
+- **Continuity.** The checkpoint a report writes reaches the next lease. Today it is saved to `fleet.sessions` and loaded with the fleet, but nothing hands it to a lease; a chat lease carries the thread's recent turns instead (§Crates).
 
 Artifacts a fleet saves for the user live beside the snapshots and are downloaded through a presigned URL the daemon authorises.
 

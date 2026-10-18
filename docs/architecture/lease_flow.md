@@ -11,10 +11,10 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 ## 1. From "start a fleet" to a lease
 
 ```text
- SAVE (once)             core.fleets row (name = "AGENT BOB 01", installing)  Postgres
-                         core.fleet_definition_revisions r1: description,
+ SAVE (once)             fleet.fleets row (name = "AGENT BOB 01", installing) Postgres
+                         fleet.revisions r1: description,
                            instructions_md, config (selected)                 Postgres
-                         core.integration_grants (fleet, "github") pending,
+                         connector.integration_grants (fleet, "github") pending,
                            then approved by a person                          Postgres
                          stream fleet:{id}:events + consumer group            Dragonfly
                          locked recheck, all checks ready ⇒ active            Postgres
@@ -22,13 +22,13 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 
  PR OPENED               POST /v1/ingress/github
    GitHub ──signed──►    1 verify HMAC vs vault "github-app".webhook_secret
-                         2 installation.id ─► core.connector_installs ─► workspace
+                         2 installation.id ─► connector.installs ─► workspace
                          3 body ─► 12-field PullRequestDigest (not GitHub's payload)
                          4 fleets in that workspace: active ∩ approved github grant
                                                    ∩ setup repositories ∋ repo
                                                    ∩ setup events ∋ pull_request
                          5 per matched fleet:
-                             INSERT core.fleet_admissions (producer=webhook_app,
+                             INSERT fleet.admissions (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
                              XADD fleet:{id}:events  (receipt)             Dragonfly ← a receipt
                              UPDATE admissions SET receipt                 Postgres
@@ -44,15 +44,15 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
                            empty; when the bit is set again: runner_fleet.md,
                            the doorbell row of its Datastore topology table
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
-                         c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
-                             leased_until = now+30 s            ← THE FENCE IS MINTED HERE
+                         c CLAIM_AFFINITY_SLOT  runner.fleet_slots: fencing_token+1,
+                             lease_expires_at = now+30 s            ← THE FENCE IS MINTED HERE
                          d reclaim a dead holder's active lease? else XAUTOCLAIM/XREADGROUP 1
-                         e INSERT core.fleet_events status=received (+ stamp admission delivered)
+                         e INSERT fleet.events status=received (+ stamp admission delivered)
                          f SPUBLISH event_received bracket on fleet:{id}:activity
                          g gates: payer → balance → budget → receive debit → approval
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
-                         i INSERT fleet.runner_leases  status=active, fencing_token, expires  ← THE LEASE ROW
+                         i INSERT runner.leases        status=active, fencing_token, expires  ← THE LEASE ROW
                          j 200 { lease: { lease_id, fencing_token, lease_expires_at,
                                           event{digest}, policy,
                                           instructions = instructions_md } }
@@ -60,11 +60,11 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 
 ### Save writes the fleet and its setup, then activates once ready
 
-Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `core.fleets` row as `installing` with the reviewed Definition as its first `core.fleet_definition_revisions` row (`afd_authoring/src/creation/reserve.rs`). Nothing touches a queue or an approval before that commit. Setup then advances in bounded steps (`afd_authoring/src/creation/activate.rs`).
+Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing` with the reviewed Definition as its first `fleet.revisions` row (`afd_authoring/src/creation/reserve.rs`). Nothing touches a queue or an approval before that commit. Setup then advances in bounded steps (`afd_authoring/src/creation/activate.rs`).
 
 A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once every readiness check passes, `ensure_group` creates the per-fleet stream and its consumer group, and a locked recheck flips the fleet to `active`. With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
 
-The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
+The fleet's display name ("AGENT BOB 01") is `fleet.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
@@ -72,7 +72,7 @@ The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease t
 
 `route` parses the body once with octocrab, reads `installation.id` and `repository.full_name`, resolves the installation to a workspace with `SELECT_INSTALL_WORKSPACE` (`afd_ingress/src/sql.rs`, `afd_ingress/src/app/mod.rs`), classifies under `Policy::AppIngress`, then asks `subscribers`.
 
-`subscribers` (`afd_ingress/src/app/mod.rs`) runs `SELECT_APP_SUBSCRIBERS` (`afd_ingress/src/sql.rs`): every `core.fleets` row in that workspace with `status = active` joined to `core.integration_grants` where `service = 'github'` and `status = approved`. The document half is in Rust: `Binding::read_for_source` picks the webhook trigger whose `source` is `github` (`afd_ingress/src/binding/mod.rs`), then `serves_repository(repository)` and `admits(event)` (`app.rs`). `serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive (`binding.rs`). `admits` is the opposite: no `events` list means every event. More than `MAX_FANOUT = 100` matches refuses the delivery (`app.rs`; `app_route.rs`).
+`subscribers` (`afd_ingress/src/app/mod.rs`) runs `SELECT_APP_SUBSCRIBERS` (`afd_ingress/src/sql.rs`): every `fleet.fleets` row in that workspace with `status = active` joined to `connector.integration_grants` where `service = 'github'` and `status = approved`. The document half is in Rust: `Binding::read_for_source` picks the webhook trigger whose `source` is `github` (`afd_ingress/src/binding/mod.rs`), then `serves_repository(repository)` and `admits(event)` (`app.rs`). `serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive (`binding.rs`). `admits` is the opposite: no `events` list means every event. More than `MAX_FANOUT = 100` matches refuses the delivery (`app.rs`; `app_route.rs`).
 
 So "the fleet slug AGENT BOB 01 receives the request" is really: the installation that linkwarden lives under maps to Indy's workspace, and every active fleet there holding an approved `github` grant whose reviewed setup has a webhook trigger with `source: github`, `events: [pull_request]`, `repositories: [agentsfleet/linkwarden]` gets one admission. The test fixture's native setup says exactly that (`tests/fixtures/fleets/github-pr-reviewer/definition.json`). Two fleets so configured both run (`docs/architecture/connectors.md`).
 
@@ -82,7 +82,7 @@ The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler
 
 `fan_out` (`app_route.rs`) calls `deliver` once per fleet, sequentially. `afd_ingress/src/deliver.rs` keys the admission `"{fleet}:{replay_id}"` where `replay_id = sha256(body)` (`afd_ingress/src/app/mod.rs`; the unsigned `X-GitHub-Delivery` header is deliberately not used), producer `webhook_app`, actor `github-app` (`app_route.rs`), and `Reply::None` (`deliver.rs`), which matters in section 4.
 
-`Admissions::admit` (`afd_admission/src/admit.rs`): fleet backlog budget first, then `INSERT_ADMISSION` (`afd_admission/src/sql.rs`) into `core.fleet_admissions` (`schema/910_fleet_admissions.sql`) with `ON CONFLICT (producer, producer_key) DO UPDATE ... RETURNING (xmax = 0) AS inserted, created_at, seq, receipt`. The logical event id is `<created_at>-<seq>` (`afd_admission/src/lib.rs`). A fresh row then goes to `queue_entry` (`afd_admission/src/admit_receipt.rs`): `XADD fleet:{id}:events` with the five envelope fields plus `event_id`, `RECORD_RECEIPT` writes the stream entry id back (`sql.rs`), and `mark_ready` sets the fleet's readiness mark through `ReadyIndex::mark` in one of 16 partitions (`afd_dragonfly/src/ready/partition/mod.rs`). A replay (same key) answers the first row with `replayed = true` and re-marks (`admit.rs`). No `core.fleet_events` row is written at ingress (`deliver.rs`).
+`Admissions::admit` (`afd_admission/src/admit.rs`): fleet backlog budget first, then `INSERT_ADMISSION` (`afd_admission/src/sql/insert_admission.sql`) into `fleet.admissions` (`schema/1720_fleet_admissions.sql`) with `ON CONFLICT (producer, producer_key) DO UPDATE ... RETURNING (xmax = 0) AS inserted, id, payload_digest, fleet_id, created_at, receipt`. The logical event id is the admission row's UUIDv7 `id` (`afd_admission/src/admit.rs`). A fresh row then goes to `queue_entry` (`afd_admission/src/admit_receipt.rs`): `XADD fleet:{id}:events` with the five envelope fields plus `event_id`, `RECORD_RECEIPT` writes the stream entry id back (`sql/record_receipt.sql`), and `mark_ready` sets the fleet's readiness mark through `ReadyIndex::mark` in one of 16 partitions (`afd_dragonfly/src/ready/partition/mod.rs`). A replay (same key) answers the first row with `replayed = true` and re-marks (`admit.rs`). No `fleet.events` row is written at ingress (`deliver.rs`).
 
 GitHub gives this whole path ten seconds and never auto-redelivers (`docs/architecture/connectors.md`).
 
@@ -91,17 +91,17 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 `POST /v1/runners/me/leases` (`afd_api_runner/src/handler/runner/lease/mod.rs`; the body must name the lease kinds the runner accepts and may name up to 64 fleets whose sandboxes it holds; a body missing the kinds or naming a hold that is not a fleet identity is refused as malformed, `rustd/crates/afd_api_runner/src/handler/runner/lease/input.rs`) calls `Plane::lease` (`afd_fleet/src/lease/pull/mod.rs`). A degraded runner gets no work. Then `Leases::select` (`afd_fleet/src/lease/assign/mod.rs`):
 
 1. read the readiness marks of the fleets whose sandboxes the runner holds, and try those first (`held_first`, `afd_fleet/src/lease/assign/offer.rs`); then advance a process-wide cursor to the next of 16 partitions and `peek` at most `MAX_READY_CANDIDATES_PER_POLL = 64` fleets from it, plus at most 64 from the partition the readiness doorbell rang, if it rang another (`afd_fleet/src/lease/assign/wake/mod.rs`; when a rung partition is rung again: [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology"); empty peeks answer no-work with zero Postgres reads;
-2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease/mod.rs`): `status = active`, id in the peeked set, `leased_until IS NULL OR < now`, no live sandbox hold by another runner (`held_until`), `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
-3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease/mod.rs`), a conditional upsert on `fleet.runner_affinity` (`schema/630_runner_affinity.sql`) that wins only if `leased_until < now`, bumps `fencing_seq + 1`, sets `leased_until = now + LEASE_TTL` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_seq`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
-4. `take_claimed` (`afd_fleet/src/lease/assign/claim.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease/mod.rs`) flips it to `expired` and re-reads the body from `core.fleet_events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
+2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease/mod.rs`): `status = active`, id in the peeked set, `lease_expires_at IS NULL OR < now`, no live sandbox hold by another runner (`hold_expires_at`), `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
+3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease/mod.rs`), a conditional upsert on `runner.fleet_slots` (`schema/1820_runner_fleet_slots.sql`) that wins only if `lease_expires_at < now`, bumps `fencing_token + 1`, sets `lease_expires_at = now + LEASE_TTL` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_token`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
+4. `take_claimed` (`afd_fleet/src/lease/assign/claim.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease/mod.rs`) flips it to `expired` and re-reads the body from `fleet.events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
 
-`run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull/mod.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: the selected immutable Definition, refused as `SetupUnavailable` when its policy marker differs; `config` from its configuration, `instructions` from its `instructions_md`, and the session row); `record_received` inserts `core.fleet_events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/800_fleet_events.sql`) and stamps `core.fleet_admissions.delivered_at` on the same connection (`afd_admission::sql::MARK_DELIVERED`, `event.rs`); a first delivery publishes the `event_received` bracket (`pull/mod.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
+`run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull/mod.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: the selected immutable Definition, refused as `SetupUnavailable` when its policy marker differs; `config` from its configuration, `instructions` from its `instructions_md`, and the session row); `record_received` inserts `fleet.events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/1700_fleet_events.sql`) and stamps `fleet.admissions.delivered_at` on the same connection (`afd_admission::sql::MARK_DELIVERED`, `event.rs`); a first delivery publishes the `event_received` bracket (`pull/mod.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
 
 `deliver` (`afd_fleet/src/lease/deliver/mod.rs`): open the vault for the declared credentials, derive the repair branch for a write binding (→ `agentsfleet-repair/<base64url(event_id)>`, `afd_gate/src/policy/repair.rs`), read approved grants, and `build::assemble` (`afd_gate/src/policy/build.rs`): `tools` straight from the config, `secrets_map`, `mintable`, provider and api key, `repository_binding`, and `http_origin_policies` from `egress::build`. A mintable credential with no grant parks the lease (`deliver.rs`).
 
-`issue_ready` (`afd_fleet/src/lease/deliver/mod.rs`) → `Leases::issue` (`afd_fleet/src/lease/issue.rs`) writes the `fleet.runner_leases` row (`schema/610_runner_leases.sql`): `status = active`, `fencing_token`, `lease_expires_at = leased_until`, the stream `receipt`, and resets the meter cursor on a fresh lease. Zero rows affected means the claim lapsed under it and no lease is answered. `render` (`afd_fleet/src/lease/answer/mod.rs`) builds the `LeasePayload` (`afd_wire/src/lease/payload.rs`): `lease_id`, `fencing_token`, `lease_expires_at`, `event` (the digest as `request_json`), `policy`, `instructions`.
+`issue_ready` (`afd_fleet/src/lease/deliver/mod.rs`) → `Leases::issue` (`afd_fleet/src/lease/issue.rs`) writes the `runner.leases` row (`schema/1810_runner_leases.sql`): `status = active`, `fencing_token`, `lease_expires_at` = the slot's `lease_expires_at`, the stream `receipt`, and resets the meter cursor on a fresh lease. Zero rows affected means the claim lapsed under it and no lease is answered. `render` (`afd_fleet/src/lease/answer/mod.rs`) builds the `LeasePayload` (`afd_wire/src/lease/payload.rs`): `lease_id`, `fencing_token`, `lease_expires_at`, `event` (the digest as `request_json`), `policy`, `instructions`.
 
-**Who creates what, in order:** `core.fleets` + setup revision + stream group (Save) → `core.fleet_admissions` (ingress) → stream entry + receipt + ready mark (ingress) → `fleet.runner_affinity` claim, fence minted (poll) → `core.fleet_events` received + `admissions.delivered_at` (poll) → `fleet.runner_leases` active (poll). Reclaim re-uses the admission and event rows and only writes a new lease row under a higher fence.
+**Who creates what, in order:** `fleet.fleets` + setup revision + stream group (Save) → `fleet.admissions` (ingress) → stream entry + receipt + ready mark (ingress) → `runner.fleet_slots` claim, fence minted (poll) → `fleet.events` received + `admissions.delivered_at` (poll) → `runner.leases` active (poll). Reclaim re-uses the admission and event rows and only writes a new lease row under a higher fence.
 
 ---
 
@@ -147,8 +147,8 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
  └─────────────────────────────────────────────────────────────────────────────────────┘
                                                daemon report: ONE transaction
                                                CLAIM_AND_SETTLE (fence ≥ seq, active→reported, charge)
-                                               → fleet_events processed/fleet_error + tool_calls
-                                               → fleet_sessions checkpoint → affinity released
+                                               → fleet.events processed/fleet_error + tool_calls
+                                               → fleet.sessions checkpoint → affinity released
                                                → obligation if a reply destination; COMMIT
                                                → XACK receipt → SPUBLISH event_complete
 ```
@@ -184,7 +184,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    │                      admission + XADD + ready mark
    │◄──── 202 ────────────┤
    │                      │◄──── POST /v1/runners/me/leases ──────────────────────────────┤
-   │                      claim slot, fleet_events received, gates, vault, policy:
+   │                      claim slot, fleet.events received, gates, vault, policy:
    │                        tools: [http_request, memory_store, memory_recall]
    │                        network.allow: [api.github.com]
    │                        mintable: github; binding: linkwarden, write, base main
@@ -209,7 +209,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    │                      │◄──── activity: tool_call_completed(failed) ──────────────────┤
    │                      │                                  model turn 3 → final answer text
    │                      │◄──── tool-calls, memory push, POST reports ──────────────────┤
-   │                      settle: fleet_events processed, response_text = the answer
+   │                      settle: fleet.events processed, response_text = the answer
    │                      XACK, event_complete frame → dashboard thread
 ```
 
@@ -221,7 +221,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **Step 4, the review post.** `POST .../pulls/{n}/reviews`: the origin `api.github.com` has rules, and none matches. The write set is exactly `POST /repos/{repo}/git/blobs` and `/git/trees` (open), `/git/commits` carrying only `message`, `tree` and `parents`, `/git/refs` with `ref` locked to the repair branch and only `sha` beside it, and `/pulls` (exact path) with `head`, `base` and `draft: true` locked and only `title`, `body` and `maintainer_can_modify` beside them; a rule that names fields refuses any other key and any query string (`afd_gate/src/policy/egress/write.rs`, where the paths are `HttpPathMatch::Exact`). `/pulls/{n}/reviews` is neither the exact `/pulls` nor a prefix rule, so `origin_admits` answers `request_policy_not_allowed` (`afr_egress/src/admission/mod.rs`) → `ToolErrorCode::RequestPolicyNotAllowed` (`afr_tools/src/egress/mod.rs`) → the model reads `[request_policy_not_allowed] ...` and the run continues (`afr_tools/src/runtime/mod.rs`). The sentence after the code says the run's rules for that host are fixed before it starts and names the three retries not to make (another path, another API, another credential), because a model that read only "not admitted" tried sixteen variants of one refused post on dev (`afr_egress/src/error/mod.rs`, `RequestPolicyNotAllowed`); the same closing clause is on `secret_not_found`. The loop itself still counts nothing: a cap on refusals per run is open scope. The integration test asserts zero POSTs reach the fake GitHub and the last tool result starts with that code (`agentsfleetd/tests/integration_rust_runner_reviews.rs`). The scenario page records the same (`docs/architecture/scenarios/github-pr-reviewer.md`).
 
-**What the operator sees.** The live tail: `event_received`, `tool_call_started` / `tool_call_completed` (the second with `status: failed` and the output head carrying the code), streamed text chunks, `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). Durably: `core.fleet_events` row `processed` with `response_text` = the model's final answer and `tool_calls` = the trace (`afd_fleet/src/lease/finalize.rs`), and `core.fleet_tool_call_details` for "show all" (`afd_api_runner/src/handler/runner/tool_call.rs`). On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
+**What the operator sees.** The live tail: `event_received`, `tool_call_started` / `tool_call_completed` (the second with `status: failed` and the output head carrying the code), streamed text chunks, `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). Durably: `fleet.events` row `processed` with `response_text` = the model's final answer and `tool_calls` = the trace (`afd_fleet/src/lease/finalize.rs`), and `fleet.tool_calls` for "show all" (`afd_api_runner/src/handler/runner/tool_call.rs`). On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
 
 ---
 
@@ -237,7 +237,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 > **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 
-**The other reply path, also not for GitHub.** The report owes a `core.fleet_obligations` delivery only when the admission recorded a reply destination (`afd_fleet/src/lease/commit.rs`; `schema/918_fleet_admissions_reply_destination.sql`). The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`afd_outbound/src/poster/mod.rs`). So there is no daemon-side "answer back to the PR" either.
+**The other reply path, also not for GitHub.** The report owes a `fleet.obligations` delivery only when the admission recorded a reply destination (`afd_fleet/src/lease/commit.rs`; `schema/1720_fleet_admissions.sql`). The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`afd_outbound/src/poster/mod.rs`). So there is no daemon-side "answer back to the PR" either.
 
 **The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`, and a change is meant to leave through `propose_change`, which is not written (`afr_tools/src/sandbox/git/mod.rs`; [Runner execution](./runner_execution.md) §"Repository writes"). Unblocking the review is a one-rule change in `afd_gate/src/policy/egress/write.rs` (an exact `POST /repos/{repo}/pulls/{n}/reviews` with `event` locked to `COMMENT`), which Indy parked until he runs the test.
 
@@ -263,7 +263,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **What carries over.** Fleet memory: the hydrate window is `HYDRATE_WINDOW_BYTES = 256 KiB` with every `core` entry pinned first, plus up to `RECALL_LIMIT_MAX = 50` per recall past the window (`afd_wire/src/memory.rs`; [Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Memory belongs to the fleet, not the PR, so the second review knows the first only if its instructions have it read the existing reviews or recall what it stored. A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet/src/lease/answer/mod.rs`). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches; this fleet has no sandbox, so it never holds one.
 
-**What does not carry over.** The session checkpoint is written to `core.fleet_sessions` and loaded with the fleet, and no lease carries it ([Runner execution](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
+**What does not carry over.** The session checkpoint is written to `fleet.sessions` and loaded with the fleet, and no lease carries it ([Runner execution](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
 
 ---
 
