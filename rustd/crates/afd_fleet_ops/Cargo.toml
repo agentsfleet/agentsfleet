@@ -21,7 +21,10 @@ afd_api_wire.workspace = true
 # The lease statuses a row is stored in, spelled once beside the statements
 # that write them.
 afd_state.workspace = true
-sqlx.workspace = true
+# Lease instants, read through the `TIMESTAMPTZ(3)` bridge.
+jiff.workspace = true
+jiff-sqlx.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 
 [dev-dependencies]

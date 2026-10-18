@@ -1,29 +1,28 @@
 //! The admit half: commit the row, then hand a fresh one to the receipt half
 //! (`admit_receipt`), which appends the entry and records the receipt.
 
-use afd_core::clock::{self, UnixMillis};
+use afd_core::clock;
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
+use jiff::Timestamp;
 use sqlx::Acquire as _;
 
 use crate::error::{Error, Result};
-use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply, logical_parts};
+use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply};
 
-/// A [`Reply`] as the four parameters `INSERT_ADMISSION` takes it in.
+/// A [`Reply`] as the three parameters `INSERT_ADMISSION` takes it in.
 ///
-/// At most one pair is set, which is what lets the statement `COALESCE` them
+/// At most one is set, which is what lets the statement `COALESCE` them
 /// without ever mixing a stated half with an inherited one.
 pub(crate) struct ReplyBinds<'a> {
-    /// `$14`, a stated connector.
+    /// `$13`, a stated connector.
     pub(crate) connector: Option<&'a str>,
-    /// `$15`, a stated address.
+    /// `$14`, a stated address.
     pub(crate) address: Option<&'a str>,
-    /// `$16`, the inherited event's `created_at`.
-    pub(crate) inherit_created_at: Option<i64>,
-    /// `$17`, the inherited event's `seq`.
-    pub(crate) inherit_seq: Option<i64>,
+    /// `$15`, the row the inherited event was admitted as.
+    pub(crate) inherited: Option<Uuid7>,
 }
 
 impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
@@ -31,23 +30,26 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
         let (connector, address, inherited) = match reply {
             Reply::None => (None, None, None),
             Reply::To { connector, address } => (Some(connector), Some(address), None),
-            // An id this ledger never minted names no row, so it copies none —
+            // An id that is not a row id names no row, so it copies none —
             // the same answer as an event recorded without a destination.
-            Reply::Inherit { event_id } => (None, None, logical_parts(event_id)),
+            // Parsed here so text that is not a UUID never reaches the
+            // statement's `::uuid` cast as a refusal.
+            Reply::Inherit { event_id } => (None, None, Uuid7::parse(event_id).ok()),
         };
-        let (inherit_created_at, inherit_seq) = inherited.unzip();
         Self {
             connector,
             address,
-            inherit_created_at,
-            inherit_seq,
+            inherited,
         }
     }
 }
 
-/// What the ledger answered for one admission.
+/// What the ledger answered for one admission, as `INSERT_ADMISSION`'s
+/// `RETURNING` names it.
+#[derive(sqlx::FromRow)]
 pub(crate) struct Ledger {
     /// The row the key holds, this statement's or an earlier one's.
+    #[sqlx(flatten)]
     pub(crate) stored: Repeated,
     /// Whether THIS statement created the row.
     pub(crate) inserted: bool,
@@ -58,7 +60,7 @@ pub(crate) struct Ledger {
 impl Admissions {
     /// Admits one unit of work, at most once per producer key.
     ///
-    /// Answers the logical event id and whether an earlier call already
+    /// Answers the event id and whether an earlier call already
     /// admitted the key. A caller answers success either way: a producer
     /// retrying work this daemon already holds has nothing to fix.
     ///
@@ -105,8 +107,7 @@ impl Admissions {
             return Ok(self.replayed(ledger, &admission).await);
         }
 
-        self.queue_entry(&row_id, ledger.stored, &admission, now)
-            .await
+        self.queue_entry(&row_id, ledger.stored, &admission).await
     }
 
     /// Answers a key an earlier call admitted, or one another daemon is
@@ -141,13 +142,17 @@ impl Admissions {
     /// The fleet budget, then the row: the queue is asked first because a
     /// refusal must leave nothing behind, and the row's own statement carries
     /// the deployment budget.
+    ///
+    /// `now` is the instant the row id was minted at, and the one the
+    /// deployment ceiling's sampling cadence is read against; the row's own
+    /// stamps are the database's.
     async fn commit(
         &self,
         row_id: &Uuid7,
         admission: &Admission<'_>,
         key: &str,
         digest: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Ledger> {
         self.refuse_over_fleet_budget(admission.fleet).await?;
         self.record(row_id, admission, key, digest, now).await
@@ -162,7 +167,7 @@ impl Admissions {
         admission: &Admission<'_>,
         key: &str,
         digest: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Ledger> {
         let estimate = self.deployment_estimate(now).await?;
         let mut connection = self.database.acquire().await?;
@@ -171,15 +176,7 @@ impl Admissions {
             .await
             .map_err(crate::error::query("begin admission"))?;
         let ledger = self
-            .insert_on(
-                &mut transaction,
-                row_id,
-                admission,
-                key,
-                digest,
-                now,
-                estimate,
-            )
+            .insert_on(&mut transaction, row_id, admission, key, digest, estimate)
             .await?;
         transaction
             .commit()

@@ -1,12 +1,13 @@
 //! The row chain one admission needs, the fake queue it appends to, and the
 //! log it leaves — one fleet per test, removed afterwards.
 
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, DbRole};
-use sqlx::{AssertSqlSafe, Connection as _, Row as _};
+use jiff::Timestamp;
+use sqlx::{AssertSqlSafe, Connection as _};
 
 /// The instant the seeded rows carry.
-const SEED_MS: i64 = 1_760_000_000_000;
+const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status that keeps every lease path off the fixture fleet.
 const FLEET_STOPPED: &str = "stopped";
@@ -32,22 +33,22 @@ impl Lane {
             workspace: mint_id(),
             fleet: mint_id(),
         };
-        for (statement, first, second) in [
-            (
-                "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-                 VALUES ($1::uuid, $1::text, $3, $3)",
-                &seeded.tenant,
-                &seeded.tenant,
-            ),
-            (
-                "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-                 VALUES ($1::uuid, $2::uuid, $1::text, 'receipt-fixture', $3)",
-                &seeded.workspace,
-                &seeded.tenant,
-            ),
-        ] {
-            seeded.execute(statement, first, second).await;
-        }
+        let mut connection = seeded
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection");
+        TenantSeed::new(&seeded.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(&seeded.workspace, &seeded.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
+        drop(connection);
         seeded.seed_fleet().await;
         seeded
     }
@@ -55,32 +56,20 @@ impl Lane {
     async fn seed_fleet(&self) {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_STOPPED)
             .name("receipt-fixture-fleet")
-            .at(SEED_MS)
+            .at(SEEDED_AT)
             .native_setup()
             .insert(&mut *self.database.acquire().await.expect("a pooled connection"))
             .await
             .expect("seeding a fleet");
     }
 
-    async fn execute(&self, statement: &'static str, first: &str, second: &str) {
-        sqlx::query(statement)
-            .bind(first)
-            .bind(second)
-            .bind(SEED_MS)
-            .execute(&mut *self.database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("a seed row must insert");
-    }
-
     /// The receipt this fleet's admission row carries, if any.
     pub(crate) async fn receipt(&self) -> Option<String> {
-        sqlx::query("SELECT receipt FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT receipt FROM fleet.admissions WHERE fleet_id = $1::uuid")
             .bind(&self.fleet)
             .fetch_one(&mut *self.database.acquire().await.expect("a pooled connection"))
             .await
             .expect("the fleet holds one admission row")
-            .try_get(0)
-            .expect("the receipt reads as text or null")
     }
 
     /// Stands in for the replay sweeper winning the race: every admission row
@@ -102,11 +91,11 @@ impl Lane {
         for statement in [
             format!(
                 "CREATE FUNCTION public.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ \
-                 BEGIN UPDATE core.fleet_admissions SET receipt = '{receipt}' \
+                 BEGIN UPDATE fleet.admissions SET receipt = '{receipt}' \
                  WHERE id = NEW.id; RETURN NULL; END $$"
             ),
             format!(
-                "CREATE TRIGGER {name} AFTER INSERT ON core.fleet_admissions FOR EACH ROW \
+                "CREATE TRIGGER {name} AFTER INSERT ON fleet.admissions FOR EACH ROW \
                  WHEN (NEW.fleet_id = '{}'::uuid) EXECUTE FUNCTION public.{name}()",
                 self.fleet
             ),
@@ -136,7 +125,7 @@ impl Lane {
                 BEGIN RAISE EXCEPTION 'receipt fixture refusal'; END $$"
             ),
             format!(
-                "CREATE TRIGGER {name} BEFORE UPDATE ON core.fleet_admissions FOR EACH ROW \
+                "CREATE TRIGGER {name} BEFORE UPDATE ON fleet.admissions FOR EACH ROW \
                 WHEN (NEW.fleet_id='{}'::uuid AND NEW.receipt IS NOT NULL) \
                 EXECUTE FUNCTION public.{name}()",
                 self.fleet
@@ -153,12 +142,15 @@ impl Lane {
     /// Removes the fleet's rows, parents last.
     pub(crate) async fn cleanup(self) {
         for (table, id) in [
-            ("DELETE FROM core.fleets WHERE id = $1::uuid", &self.fleet),
+            ("DELETE FROM fleet.fleets WHERE id = $1::uuid", &self.fleet),
             (
-                "DELETE FROM core.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
                 &self.workspace,
             ),
-            ("DELETE FROM core.tenants WHERE id = $1::uuid", &self.tenant),
+            (
+                "DELETE FROM identity.tenants WHERE id = $1::uuid",
+                &self.tenant,
+            ),
         ] {
             let _removed = sqlx::query(table)
                 .bind(id)
@@ -172,7 +164,7 @@ impl Lane {
 /// The event a sweeper that could not be removed is logged under.
 const SWEEPER_NOT_REMOVED: &str = "test_sweeper_not_removed";
 
-/// The stand-in sweeper's trigger and function on `core.fleet_admissions`,
+/// The stand-in sweeper's trigger and function on `fleet.admissions`,
 /// removed when this guard drops — on success, or while a failed test unwinds,
 /// because a drop runs then too. A trigger left behind would stamp its receipt
 /// on nothing (it names one fleet), but it would outlive the run in a shared
@@ -215,7 +207,7 @@ fn remove(url: &str, name: &str) -> sqlx::Result<()> {
     runtime.block_on(async {
         let mut connection = sqlx::PgConnection::connect(url).await?;
         for statement in [
-            format!("DROP TRIGGER IF EXISTS {name} ON core.fleet_admissions"),
+            format!("DROP TRIGGER IF EXISTS {name} ON fleet.admissions"),
             format!("DROP FUNCTION IF EXISTS public.{name}()"),
         ] {
             sqlx::query(AssertSqlSafe(statement))

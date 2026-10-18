@@ -12,4 +12,5 @@ mod support;
 mod integration_fleet_page;
 mod integration_purge_ledger_identity;
 mod integration_purge_privileges;
+mod integration_purge_refusals;
 mod integration_wall_counters;

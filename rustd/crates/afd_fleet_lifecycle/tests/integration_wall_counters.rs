@@ -29,14 +29,13 @@ pub(crate) const RAN: FleetCounters = FleetCounters {
 /// Seeds the counter row the triggers maintain, for a fleet that "ran".
 pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCounters) {
     sqlx::query(
-        "INSERT INTO core.fleet_activity_counters
-           (fleet_id, events_processed, budget_used_nanos, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4, $4)",
+        "INSERT INTO fleet.activity_counters
+           (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3, now(), now())",
     )
     .bind(fleet.as_str())
     .bind(counters.events_processed)
     .bind(counters.budget_used_nanos)
-    .bind(Lane::now().as_millis())
     .execute(&mut *lane.pool.acquire().await.expect("a pooled connection"))
     .await
     .expect("the counter row must insert");

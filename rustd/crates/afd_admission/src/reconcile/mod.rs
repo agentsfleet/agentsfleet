@@ -63,7 +63,6 @@
 //! finds — recovery arrives over several passes, and the backlog rises in
 //! steps the sweeper can keep up with.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_dragonfly::EventId;
 
@@ -156,15 +155,14 @@ impl Admissions {
     /// and the next pass asks again — see the module docs.
     pub async fn reconcile(
         &self,
-        now: UnixMillis,
         fleets: i64,
         rows: i64,
         progress: &mut Progress,
     ) -> Result<Reconciled> {
         let mut reconciled = Reconciled::default();
-        self.continue_repairs(now, fleets, rows, progress, &mut reconciled)
+        self.continue_repairs(fleets, rows, progress, &mut reconciled)
             .await?;
-        self.sweep_heads(now, fleets, rows, progress, &mut reconciled)
+        self.sweep_heads(fleets, rows, progress, &mut reconciled)
             .await?;
         reconciled.resuming = progress.is_resuming();
         Ok(reconciled)
@@ -180,7 +178,6 @@ impl Admissions {
     /// round trip to be told the wrong thing.
     async fn continue_repairs(
         &self,
-        now: UnixMillis,
         fleets: i64,
         rows: i64,
         progress: &mut Progress,
@@ -190,7 +187,7 @@ impl Admissions {
         while let Some(repair) = queued.next() {
             reconciled.probed += 1;
             let walked = match self
-                .void_lost_on(&repair.fleet_id, now, rows, repair.after)
+                .void_lost_on(&repair.fleet_id, rows, repair.after)
                 .await
             {
                 Ok(walked) => walked,
@@ -218,7 +215,6 @@ impl Admissions {
     /// Asks each fleet in the rotation's next slice about its oldest receipt.
     async fn sweep_heads(
         &self,
-        now: UnixMillis,
         fleets: i64,
         rows: i64,
         progress: &mut Progress,
@@ -245,9 +241,7 @@ impl Admissions {
                 event = EVENT_STREAM_LOST,
                 "the queue no longer holds this fleet's oldest undelivered entry, so its accepted work is being re-appended from the ledger"
             );
-            let walked = self
-                .void_lost_on(fleet_id, now, rows, RowKey::FIRST)
-                .await?;
+            let walked = self.void_lost_on(fleet_id, rows, RowKey::FIRST).await?;
             reconciled.voided += walked.voided;
             Self::remember(fleet_id, &walked, progress, reconciled);
         }

@@ -26,9 +26,9 @@
 //! appends when the queue is back. Refusing on an unreadable figure would turn
 //! the one outage acceptance was designed to ride through into a refusal.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::FleetStreams;
+use jiff::Timestamp;
 
 use crate::Admissions;
 use crate::error::{ErrorKind, Result};
@@ -132,7 +132,7 @@ impl Admissions {
     /// # Errors
     /// Never. The signature is fallible because the figure is read from the
     /// database and the caller is already in a `Result` pipeline.
-    pub(crate) async fn deployment_estimate(&self, now: UnixMillis) -> Result<u64> {
+    pub(crate) async fn deployment_estimate(&self, now: Timestamp) -> Result<u64> {
         let budget = self.budgets.replay_backlog;
         let estimate = self.ceiling.estimate();
         if !self.ceiling.due(now, estimate, budget) {
@@ -142,7 +142,7 @@ impl Admissions {
         if !claim.won() {
             return Ok(estimate);
         }
-        match self.backlog(now).await {
+        match self.backlog().await {
             Ok(read) => {
                 claim.publish(read.rows, now);
                 Ok(self.ceiling.estimate())

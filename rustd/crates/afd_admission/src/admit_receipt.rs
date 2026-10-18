@@ -1,7 +1,6 @@
 //! The receipt half of an admission: append the entry a fresh row owns, record
 //! the receipt, and mark the fleet leasable.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::{FleetStreams, ReadyIndex};
@@ -22,17 +21,19 @@ impl Admissions {
     /// is answered, and the sweeper appends when the queue is back. A receipt
     /// the row already carries by the time this writes means the sweeper got
     /// there first; the extra physical entry is dropped at lease by the
-    /// `core.fleet_events` conflict arm, and the line below says it happened.
+    /// `fleet.events` conflict arm, and the line below says it happened.
+    ///
+    /// The entry's `created_at` is the row's, which the database stamped, in
+    /// the milliseconds [`Entry::created_at`] is spelled in.
     pub(crate) async fn queue_entry(
         &self,
         row_id: &Uuid7,
         stored: Repeated,
         admission: &Admission<'_>,
-        now: UnixMillis,
     ) -> Result<Admitted> {
         let producer = admission.producer.as_str();
         let event_id = stored.id.as_str();
-        let created_at = now.as_millis().to_string();
+        let created_at = stored.created_at.as_millisecond().to_string();
         let entry = Entry {
             actor: admission.actor,
             event_type: admission.event_type.as_str(),
@@ -51,7 +52,7 @@ impl Admissions {
             }
         };
 
-        let recorded = match self.record_receipt(row_id, receipt.as_str(), now).await {
+        let recorded = match self.record_receipt(row_id, receipt.as_str()).await {
             Ok(recorded) => recorded,
             Err(error) => {
                 let Logged { error_code, reason } = error.logged();
@@ -94,12 +95,11 @@ impl Admissions {
         Ok(fresh(stored))
     }
 
-    async fn record_receipt(&self, row: &Uuid7, receipt: &str, now: UnixMillis) -> Result<u64> {
+    async fn record_receipt(&self, row: &Uuid7, receipt: &str) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(sql::RECORD_RECEIPT)
             .bind(row.as_str())
             .bind(receipt)
-            .bind(now.as_millis())
             .execute(&mut *connection)
             .await
             .map(|written| written.rows_affected())

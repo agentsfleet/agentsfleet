@@ -42,7 +42,7 @@ async fn rollback_removes_staged_admission_and_no_append_escapes() {
         .expect("rollback surrounding activation");
     drop(connection);
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM core.fleet_admissions WHERE fleet_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid")
             .bind(&lane.fleet)
             .fetch_one(&mut *lane.database.acquire().await.expect("observer"))
             .await

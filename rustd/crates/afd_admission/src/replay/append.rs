@@ -1,11 +1,8 @@
-//! Queue append and receipt persistence retain one logical event identity.
+//! Queue append and receipt persistence retain one event identity: the row id.
 
 use super::{CONTEXT_REPLAY, Pending};
 use crate::{Admissions, Result, error::query, sql};
-use afd_core::{
-    clock::UnixMillis,
-    error_code::{Coded as _, Logged},
-};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::FleetStreams;
 use afd_observability::{
     metrics::label::fleet::ReplayOutcome, producers::fleet::admission as metrics,
@@ -22,10 +19,11 @@ impl Admissions {
     pub(crate) async fn append_pending(
         &self,
         pending: &Pending,
-        now: UnixMillis,
         transaction: &mut Transaction<'_, Postgres>,
     ) -> Result<bool> {
-        let created_at = pending.event_created_at.to_string();
+        // The stream spells the producer's instant in milliseconds
+        // (`Entry::created_at`); the row holds it as a timestamp.
+        let created_at = pending.event_created_at.as_millisecond().to_string();
         let entry = Entry {
             actor: &pending.actor,
             // The stored spelling, passed through. It was written by
@@ -37,7 +35,7 @@ impl Admissions {
             request_json: &pending.request_json,
             created_at: &created_at,
         };
-        let event_id = pending.logical_id.as_str();
+        let event_id = pending.id.as_str();
         let fleet_id = pending.fleet_id.as_str();
         let receipt = match FleetStreams::new(self.queue.clone())
             .append(fleet_id, &entry.queued_pairs(event_id))
@@ -64,7 +62,6 @@ impl Admissions {
         let replays: i64 = sqlx::query_scalar(sql::RECORD_REPLAY_RECEIPT)
             .bind(pending.id.as_str())
             .bind(receipt.as_str())
-            .bind(now.as_millis())
             .fetch_one(&mut **transaction)
             .await
             .map_err(query(CONTEXT_REPLAY))?;
