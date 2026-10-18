@@ -241,7 +241,7 @@ impl Fixture {
 
     /// A runner, and an `active` lease of it that expired long ago.
     async fn strand(&self, connection: &mut sqlx::PgConnection, workspace: &str) {
-        RunnerSeed::new(&self.runner, afd_runner::sql::ADMIN_STATE_ACTIVE, POLICY)
+        RunnerSeed::new(&self.runner, afd_runner::sql::RUNNER_STATUS_ACTIVE, POLICY)
             .seen(LONG_AGO)
             .at(LONG_AGO)
             .insert(&mut *connection)
