@@ -1,7 +1,7 @@
 import { FLEET_ID } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { fetchMock } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail lifecycle states", () => {
@@ -59,11 +59,13 @@ describe("fleets routes — detail lifecycle states", () => {
     mockFetchBilling(happyBilling, {fleet: {name: "fresh-bot", status: "installing"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const stream = await renderToReadableStream(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
+    await stream.allReady;
+    const markup = await new Response(stream).text();
     // The saved fleet stays addressable while readiness blocks activation.
     expect(markup).toContain("installing");
     expect(markup).toContain('aria-label="Fleet status: installing"');

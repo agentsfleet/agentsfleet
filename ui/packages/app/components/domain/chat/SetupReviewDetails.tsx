@@ -2,7 +2,7 @@
 
 import type { Review } from "@/lib/api/draft-types";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, MetaGrid, Section, Terminal } from "@agentsfleet/design-system";
-import { FleetMarkdown } from "../FleetMarkdown";
+import { FleetMarkdownDynamic } from "../FleetMarkdownDynamic";
 import { SetupChecks } from "./SetupChecks";
 import { SetupSummary } from "./SetupSummary";
 
@@ -21,7 +21,7 @@ export function SetupReviewDetails({review}: {review: Review}) {
     ]} />
     <Section className="gap-sm" aria-label="Reviewed instructions">
       <h3 className="font-medium">Instructions</h3>
-      {effective.definition.instructions_md ? <FleetMarkdown>{effective.definition.instructions_md}</FleetMarkdown>
+      {effective.definition.instructions_md ? <FleetMarkdownDynamic>{effective.definition.instructions_md}</FleetMarkdownDynamic>
         : <p className="text-sm text-muted-foreground">Add instructions before saving or publishing.</p>}
     </Section>
     <Accordion type="multiple">
