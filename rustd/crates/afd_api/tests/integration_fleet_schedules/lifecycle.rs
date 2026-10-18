@@ -1,5 +1,5 @@
-//! The lifecycle case: create, read, edit, resume, collide, sync and delete,
-//! in order, against one schedule on one fleet.
+//! The lifecycle case: create, read, edit, resume, create again, sync and delete,
+//! in order, against one fleet.
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
@@ -34,7 +34,7 @@ async fn the_schedules_surface_completes_its_real_lifecycle() {
     the_created_schedule_is_readable_and_listed(&router, &fixture, &created).await;
     a_partial_edit_leaves_the_untouched_fields_alone(&router, &fixture, &created).await;
     an_unpause_is_the_same_verb_carrying_the_other_intent(&router, &fixture, &created).await;
-    a_second_create_in_the_same_instant_is_refused_as_a_duplicate(&router, &fixture).await;
+    a_second_create_in_the_same_instant_is_a_second_schedule(&router, &fixture, &created).await;
     a_sync_reconciles_the_row_it_names(&router, &fixture, &created).await;
     a_delete_marks_the_row_rather_than_removing_it(&router, &fixture, &created).await;
 
@@ -221,30 +221,28 @@ async fn an_unpause_is_the_same_verb_carrying_the_other_intent(
     );
 }
 
-/// Two creates in one instant collide, and the collision is the daemon's own.
+/// A second create in the same instant is a second schedule.
 ///
-/// `create` names the row upstream with `{fleet}-{now}` before the scheduler
-/// has answered with an id of its own. That key has to be unique per fleet, and
-/// the clock is what makes it so — which means the duplicate this refuses is
-/// not an operator sending the same schedule twice, it is two arriving inside
-/// the same millisecond. The suite's clock is frozen, so every create in this
-/// test is "the same millisecond" and the second one is the case.
-async fn a_second_create_in_the_same_instant_is_refused_as_a_duplicate(
+/// The store names each schedule upstream after its own row id, so two creates
+/// inside one millisecond — every create in this test, the suite's clock being
+/// frozen — get two keys, and neither can overwrite the other's registration.
+async fn a_second_create_in_the_same_instant_is_a_second_schedule(
     router: &axum::Router,
     fixture: &Fixture,
+    first: &str,
 ) {
-    let refused = create_with(
+    let (status, second) = create_with(
         router,
         fixture,
         json!({ "cron": NIGHTLY, "message": "run the nightly repair" }),
     )
     .await;
 
-    assert_eq!(
-        refused.0,
-        StatusCode::CONFLICT,
-        "a second create inside the same millisecond reuses the upstream key \
-         the first one claimed, and is refused rather than overwriting it"
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    assert_ne!(
+        field(&second, "id"),
+        first,
+        "a create in the same millisecond is its own row, not the first one rewritten"
     );
 }
 
