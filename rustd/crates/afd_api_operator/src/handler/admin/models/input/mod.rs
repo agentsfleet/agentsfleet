@@ -36,7 +36,8 @@ pub(crate) const DETAIL_PRICES: &str = "prices must hold 1–64 entries, include
 const DETAIL_PRICE_SOURCE_LEN: &str = "prices[].source_url must be 1–2048 bytes";
 const DETAIL_PRICE_CONDITIONS_LEN: &str = "prices[].conditions must be at most 1024 bytes";
 const DETAIL_PRICE_TIER: &str = "prices[].prompt_tokens_above must be >= 0";
-const DETAIL_RATES_NONNEGATIVE: &str = "every rate in prices must be >= 0";
+const DETAIL_RATES: &str =
+    "every rate in prices must be a decimal string of whole nanos, at most 9223372036854775807";
 const DETAIL_INFERENCE_URL: &str = "inference.base_url must be 1–2048 bytes";
 const DETAIL_INFERENCE_DIALECT: &str = "inference.dialect must be 1–64 bytes when set";
 const DETAIL_INFERENCE_OUTPUT: &str = "inference.max_output_tokens must be > 0";
@@ -48,7 +49,7 @@ pub(super) fn create_request(body: &[u8]) -> Result<Valid<AdminModelCreate<'_>>,
         return Err(DETAIL_BODY_REQUIRED);
     }
     let request = afd_http::handler::read_body::<AdminModelCreate<'_>>(body)
-        .map_err(|_error| DETAIL_MALFORMED_JSON)?;
+        .map_err(|error| unreadable(&error))?;
     Unvalidated::new(request)
         .validate()
         .map_err(|report| BOUNDS.pick(&report))
@@ -60,10 +61,29 @@ pub(super) fn patch_request(body: &[u8]) -> Result<Valid<AdminModelPatch<'_>>, &
         return Err(DETAIL_BODY_REQUIRED);
     }
     let patch = afd_http::handler::read_body::<AdminModelPatch<'_>>(body)
-        .map_err(|_error| DETAIL_MALFORMED_JSON)?;
+        .map_err(|error| unreadable(&error))?;
     Unvalidated::new(patch)
         .validate()
         .map_err(|report| BOUNDS.pick(&report))
+}
+
+/// The sentence a body that would not parse earns.
+///
+/// A rate is refused while parsing, because its spelling is the bound
+/// (`afd_wire::nanos`). Those two refusals are this daemon's own text and
+/// carry no part of the value, so matching them is safe; every other parse
+/// failure stays the generic sentence, since `serde_json` may quote the value
+/// it rejected and these bodies are typed by an operator.
+fn unreadable(error: &serde_json::Error) -> &'static str {
+    let text = error.to_string();
+    if [afd_wire::nanos::NOT_CANONICAL, afd_wire::nanos::TOO_LARGE]
+        .iter()
+        .any(|refusal| text.contains(refusal))
+    {
+        DETAIL_RATES
+    } else {
+        DETAIL_MALFORMED_JSON
+    }
 }
 
 /// The sentence a caller is told, keyed by the path of the bound their body
@@ -72,8 +92,9 @@ pub(super) fn patch_request(body: &[u8]) -> Result<Valid<AdminModelPatch<'_>>, &
 /// The wording is a public commitment the dashboard renders, so the bound
 /// lives on the type and only the sentence stays here. Create and patch nest
 /// the evidence under `metadata` and the schedule under `prices`, so one table
-/// serves both; a break in any rate falls to the fallback. Inference settings
-/// carry their own bounds.
+/// serves both. Every bound garde checks is listed; the schedule sentence is
+/// the fallback because every unlisted path is inside `prices`. Inference
+/// settings carry their own bounds.
 const BOUNDS: Sentences = Sentences::new(
     &[
         (FIELD_PROVIDER, DETAIL_PROVIDER_LEN),
@@ -91,7 +112,7 @@ const BOUNDS: Sentences = Sentences::new(
         ("inference.dialect", DETAIL_INFERENCE_DIALECT),
         ("inference.max_output_tokens", DETAIL_INFERENCE_OUTPUT),
     ],
-    DETAIL_RATES_NONNEGATIVE,
+    DETAIL_PRICES,
 );
 
 #[cfg(test)]
