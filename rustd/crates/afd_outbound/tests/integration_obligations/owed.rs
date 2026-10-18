@@ -20,7 +20,8 @@ pub(super) fn delivery(event_id: &str) -> Delivery<'_> {
 /// Owes one delivery the way the report does — in a transaction that commits.
 ///
 /// Returns whether this call is the one that created the row, which is what
-/// `owe` answers and what the caller uses to decide whether to append.
+/// `owe` answers and what the caller uses to decide whether to append. The row
+/// is then [`AGED`](super::seed::AGED), as if the commit happened an hour ago.
 pub(super) async fn owe_committed(harness: &OutboundHarness, row: &str, event_id: &str) -> bool {
     use sqlx::Acquire as _;
 
@@ -33,18 +34,16 @@ pub(super) async fn owe_committed(harness: &OutboundHarness, row: &str, event_id
         .begin()
         .await
         .expect("the report's transaction opens");
-    let written = obligation::owe(
-        &mut transaction,
-        row,
-        delivery(event_id),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("owing a delivery");
+    let written = obligation::owe(&mut transaction, row, delivery(event_id))
+        .await
+        .expect("owing a delivery");
     transaction
         .commit()
         .await
         .expect("the report's transaction commits");
+    // Past both of the producer's spans, so a scan at production spans — and
+    // the producer's own pass — offers it without a test waiting on a clock.
+    age(&harness.database, event_id).await;
     written
 }
 
@@ -56,12 +55,6 @@ pub(super) async fn ready() -> OutboundHarness {
     harness
 }
 
-/// The event ids one scan answers, oldest first.
-///
-/// Both scans take the same three arguments and differ only in WHICH set they
-/// name, so they share a body here for the same reason `obligation::write_receipt`
-/// shares one between its two statements: a pair that binds the same parameters
-/// in the same order is the pair that drifts when each keeps its own copy.
 /// One of the producer's two recovery scans, as a value.
 ///
 /// Named because the signature is unreadable inline and clippy says so: both
@@ -69,40 +62,42 @@ pub(super) async fn ready() -> OutboundHarness {
 /// to one body is as a function pointer returning a boxed future.
 type Scan = for<'a> fn(
     &'a afd_db::Db,
-    UnixMillis,
     i64,
 ) -> std::pin::Pin<
     Box<dyn Future<Output = afd_outbound::Result<Vec<obligation::Owed>>> + Send + 'a>,
 >;
 
+/// The event ids one scan answers, oldest first.
+///
+/// Both scans take the same arguments and differ only in WHICH set they name,
+/// so they share a body here for the same reason `obligation::write_receipt`
+/// shares one between its two statements.
 pub(super) async fn owing(harness: &OutboundHarness, scan: Scan) -> Vec<String> {
-    scan(
-        &harness.database,
-        UnixMillis::from_millis(AFTER_EVERYTHING),
-        AMPLE,
-    )
-    .await
-    .expect("the scan answers")
-    .into_iter()
-    // The scans are deployment-wide by design; this suite asks about its own
-    // fleet, the one `clear_obligations` resets (ISO-1).
-    .filter(|owed| owed.fleet_id == FLEET)
-    .map(|owed| owed.event_id)
-    .collect()
+    scan(&harness.database, AMPLE)
+        .await
+        .expect("the scan answers")
+        .into_iter()
+        // The scans are deployment-wide by design; this suite asks about its own
+        // fleet, the one `clear_obligations` resets (ISO-1).
+        .filter(|owed| owed.fleet_id == FLEET)
+        .map(|owed| owed.event_id)
+        .collect()
 }
 
-/// Obligations still owed an APPEND — committed, never queued.
+/// Obligations still owed an APPEND — committed, never queued — at the age the
+/// producer's own pass asks for.
 pub(super) async fn awaiting_append(harness: &OutboundHarness) -> Vec<String> {
-    owing(harness, |db, before, limit| {
-        Box::pin(obligation::unreceipted(db, before, limit))
+    owing(harness, |db, limit| {
+        Box::pin(obligation::unreceipted(db, MIN_AGE, limit))
     })
     .await
 }
 
-/// Obligations still owed a DELIVERY — queued, nobody received them.
+/// Obligations still owed a DELIVERY — queued, nobody received them — at the
+/// age the producer's own pass asks for.
 pub(super) async fn awaiting_delivery(harness: &OutboundHarness) -> Vec<String> {
-    owing(harness, |db, before, limit| {
-        Box::pin(obligation::undelivered(db, before, limit))
+    owing(harness, |db, limit| {
+        Box::pin(obligation::undelivered(db, LOST_AFTER, limit))
     })
     .await
 }
@@ -129,14 +124,12 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         })
         .await
         .expect("the queue takes the entry");
-    obligation::receipt(
-        &harness.database,
-        &obligation_id(nth),
-        entry.as_str(),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("recording the receipt");
+    obligation::receipt(&harness.database, &obligation_id(nth), entry.as_str())
+        .await
+        .expect("recording the receipt");
+    // The receipt moved `updated_at` to now; the entry has sat on the queue an
+    // hour, as far as the undelivered scan can tell.
+    age(&harness.database, event).await;
 }
 
 /// A second handle on the lane's datastore, for the faults the queue cannot stage.

@@ -10,8 +10,8 @@ use super::*;
 /// Every other case in this file calls a scan and then enqueues by hand. That
 /// grades `obligation::unreceipted` and the queue, and it is exactly why "a
 /// daemon producer enqueues it" had no proof. `Producer::run` is the loop
-/// `agentsfleetd` spawns (`agentsfleetd/src/outbound.rs:95`); it computes its
-/// OWN cutoffs from `clock::now()` rather than taking them as parameters, it
+/// `agentsfleetd` spawns (`agentsfleetd/src/outbound.rs:95`); it scans at its
+/// OWN spans, measured on the database clock, rather than taking them as parameters, it
 /// appends every row a scan answers, and it records each entry as that row's
 /// receipt. None of that is reached by calling a scan directly, and none of it
 /// had a test: nothing under `tests/` named `afd_outbound::producer`, and
@@ -21,8 +21,8 @@ use super::*;
 /// nothing in the daemon called `OutboundQueue::enqueue`. This is the test that
 /// fails if that becomes true again.
 ///
-/// No clock is waited on. `SEEDED_AT` is older than `producer::MIN_AGE` by
-/// years, so the producer's first pass already finds the row.
+/// No clock is waited on. The owed row is aged past `producer::MIN_AGE`, so the
+/// producer's first pass already finds it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {

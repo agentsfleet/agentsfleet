@@ -42,55 +42,64 @@
 )]
 
 use std::collections::BTreeSet;
+use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::fleet_activity_channel;
 use afd_dragonfly::streams::FleetStreams;
-use afd_events::{Filter, History, MAX_LIMIT};
+use afd_events::{Filter, History, MAX_LIMIT, Since};
 use afd_sse::tail;
 use futures_util::StreamExt as _;
+use jiff::Timestamp;
 
 use crate::support::{DELIVERY_BUDGET, EventsLane};
 
-/// The instant the fixture calls "now", as epoch milliseconds.
+/// The instant the fixture calls "now".
 ///
 /// Fixed rather than read from a clock: every assertion below is arithmetic on
 /// row timestamps, and a fixture that could not name the instant could not
 /// state the window it expects.
-const NOW_MS: i64 = 1_800_000_000_000;
+const NOW: Timestamp = Timestamp::constant(1_800_000_000, 0);
 
 /// The overlap the documented reconnect recipe backs the window up by.
 ///
 /// Two seconds, and named once here rather than spelled at each use: the whole
-/// dimension is a claim about THIS number, and a test that wrote `2000` twice
-/// could have them disagree.
-const OVERLAP_MS: i64 = 2_000;
+/// dimension is a claim about THIS number.
+const OVERLAP: Duration = Duration::from_secs(2);
 
 /// How long before the drop the client's LAST delivered event was written.
 ///
 /// Inside the overlap on purpose: this is the event the reconnect window must
-/// re-serve, and the merge must then remove. A value larger than
-/// [`OVERLAP_MS`] would put it outside the window and quietly turn the
-/// duplicate-free assertion into one with nothing to deduplicate.
-const LAST_DELIVERY_AGO_MS: i64 = 1_000;
+/// re-serve, and the merge must then remove.
+const LAST_DELIVERY_AGO: Duration = Duration::from_secs(1);
 
 /// How long before the drop the client's SECOND event was written.
-const SECOND_DELIVERY_AGO_MS: i64 = 5_000;
+const SECOND_DELIVERY_AGO: Duration = Duration::from_secs(5);
 
 /// How long before the drop the client's FIRST event was written.
 ///
 /// Outside the overlap, which is what makes the lower-bound assertion mean
 /// something: a window that reached this far back would be resending history a
 /// long-lived client already holds.
-const FIRST_DELIVERY_AGO_MS: i64 = 10_000;
+const FIRST_DELIVERY_AGO: Duration = Duration::from_secs(10);
 
 /// How long after the drop the first gap event lands.
-const FIRST_GAP_AFTER_MS: i64 = 500;
+const FIRST_GAP_AFTER: Duration = Duration::from_millis(500);
 
 /// How long after the drop the second gap event lands.
-const SECOND_GAP_AFTER_MS: i64 = 1_000;
+const SECOND_GAP_AFTER: Duration = Duration::from_secs(1);
+
+/// `NOW` moved by `span`, earlier or later.
+fn before_now(span: Duration) -> Timestamp {
+    NOW.checked_sub(span)
+        .expect("a fixture instant is in range")
+}
+fn after_now(span: Duration) -> Timestamp {
+    NOW.checked_add(span)
+        .expect("a fixture instant is in range")
+}
 
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
@@ -99,18 +108,19 @@ const SECOND_GAP_AFTER_MS: i64 = 1_000;
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 
-    // Five events across the drop. The ids are stream ids because that is what
-    // an event id IS — `<milliseconds>-<sequence>`, as the OpenAPI documents
-    // the 202's `event_id` — so the fixture spells them the way a producer
-    // mints them rather than inventing a shape this daemon never sees.
-    let delivered_ids = ["1799999990000-0", "1799999995000-0", "1799999999000-0"];
-    let gap_ids = ["1800000000500-0", "1800000001000-0"];
+    // Five events across the drop. An admitted event is named by its
+    // admission row's UUIDv7, so the fixture mints ids of that shape rather
+    // than inventing one this daemon never serves.
+    let delivered = [mint_id(), mint_id(), mint_id()];
+    let gap = [mint_id(), mint_id()];
+    let delivered_ids = delivered.each_ref().map(String::as_str);
+    let gap_ids = gap.each_ref().map(String::as_str);
 
-    lane.seed_event(delivered_ids[0], NOW_MS - FIRST_DELIVERY_AGO_MS)
+    lane.seed_event(delivered_ids[0], before_now(FIRST_DELIVERY_AGO))
         .await;
-    lane.seed_event(delivered_ids[1], NOW_MS - SECOND_DELIVERY_AGO_MS)
+    lane.seed_event(delivered_ids[1], before_now(SECOND_DELIVERY_AGO))
         .await;
-    lane.seed_event(delivered_ids[2], NOW_MS - LAST_DELIVERY_AGO_MS)
+    lane.seed_event(delivered_ids[2], before_now(LAST_DELIVERY_AGO))
         .await;
 
     // The live half, over a real hub. These three are what the connection was
@@ -125,51 +135,65 @@ async fn test_sse_reconnect_backfill() {
 
     // The drop. These two rows land while nobody is subscribed, so pub/sub
     // never offers them to anyone — recovering them is the whole job.
-    lane.seed_event(gap_ids[0], NOW_MS + FIRST_GAP_AFTER_MS)
+    lane.seed_event(gap_ids[0], after_now(FIRST_GAP_AFTER))
         .await;
-    lane.seed_event(gap_ids[1], NOW_MS + SECOND_GAP_AFTER_MS)
+    lane.seed_event(gap_ids[1], after_now(SECOND_GAP_AFTER))
         .await;
 
     // The reconnect. The client backs its window up from its LAST DELIVERY —
     // not from "now", which it has no reason to trust, and not from the first
     // frame of the connection, which would refetch the whole session.
-    let last_delivery_ms = NOW_MS - LAST_DELIVERY_AGO_MS;
-    let since = UnixMillis::from_millis(last_delivery_ms - OVERLAP_MS);
-    let backfill = page_since(&lane, since).await;
+    let last_delivery = before_now(LAST_DELIVERY_AGO);
+    let since = last_delivery
+        .checked_sub(OVERLAP)
+        .expect("a fixture instant is in range");
+    let backfill = page_since(&lane, Since::From(since)).await;
 
-    // The window is an INCLUSIVE lower bound, and it is doing both of its jobs:
-    // it reaches back far enough to re-serve an event the client already has,
-    // and forward far enough to carry the two it does not.
+    assert_window(&backfill, &delivered_ids, &gap_ids);
+    assert_merged(&live, &backfill, &delivered_ids, &gap_ids);
+
+    lane.cleanup().await;
+}
+
+/// The window is an INCLUSIVE lower bound, and it is doing both of its jobs:
+/// it reaches back far enough to re-serve an event the client already has, and
+/// forward far enough to carry the two it does not.
+fn assert_window(backfill: &BTreeSet<String>, delivered: &[&str; 3], gap: &[&str; 2]) {
     assert!(
-        backfill.contains(delivered_ids[2]),
+        backfill.contains(delivered[2]),
         "the two-second overlap must re-serve the last delivered event; a \
          window that started exactly at the last delivery would race the \
          commit of an event published just before the drop"
     );
     assert!(
-        backfill.contains(gap_ids[0]) && backfill.contains(gap_ids[1]),
+        backfill.contains(gap[0]) && backfill.contains(gap[1]),
         "every event written during the gap must be in the backfill"
     );
     assert!(
-        !backfill.contains(delivered_ids[0]) && !backfill.contains(delivered_ids[1]),
+        !backfill.contains(delivered[0]) && !backfill.contains(delivered[1]),
         "the window is bounded below: events older than it must not be resent, \
          or a long-lived client would refetch its whole history on every blip"
     );
+}
 
-    // The merge — the client's half, over the two sets it really holds.
+/// The merge — the client's half, over the two sets it really holds.
+fn assert_merged(
+    live: &[String],
+    backfill: &BTreeSet<String>,
+    delivered: &[&str; 3],
+    gap: &[&str; 2],
+) {
     let mut merged: BTreeSet<String> = live.iter().cloned().collect();
     let before_merge = merged.len() + backfill.len();
     merged.extend(backfill.iter().cloned());
-
     assert!(
         before_merge > merged.len(),
         "the two sets must OVERLAP: an overlap the merge has nothing to remove \
          would mean the window never reached back over the seam"
     );
-
-    let expected: BTreeSet<String> = delivered_ids
+    let expected: BTreeSet<String> = delivered
         .iter()
-        .chain(gap_ids.iter())
+        .chain(gap.iter())
         .map(|id| (*id).to_owned())
         .collect();
     assert_eq!(
@@ -177,8 +201,6 @@ async fn test_sse_reconnect_backfill() {
         "merged by event id, the client holds every event exactly once — \
          gapless across the drop and duplicate-free across the overlap"
     );
-
-    lane.cleanup().await;
 }
 
 /// The event ids the client is delivered live, through a real hub.
@@ -261,8 +283,33 @@ fn event_id_of(data: &str) -> String {
         .to_owned()
 }
 
+/// A relative window is measured back from the DATABASE's clock: rows an hour
+/// old fall outside a thirty-minute window and a row a minute old falls inside
+/// it, with no instant computed in Rust. The rows are stamped from this host's
+/// clock, which shares a machine with the lane's Postgres; the margins are
+/// minutes, so no skew between the two decides the outcome.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_since_span_is_measured_on_the_database_clock() {
+    let lane = EventsLane::open().await;
+    let (old, recent) = (mint_id(), mint_id());
+    let now = Timestamp::now();
+    let ago = |span: Duration| now.checked_sub(span).expect("an instant in range");
+    lane.seed_event(&old, ago(Duration::from_hours(1))).await;
+    lane.seed_event(&recent, ago(Duration::from_mins(1))).await;
+
+    let window = page_since(&lane, Since::Within(Duration::from_mins(30))).await;
+    assert!(
+        window.contains(&recent),
+        "a minute-old row is inside the window"
+    );
+    assert!(!window.contains(&old), "an hour-old row is outside it");
+
+    lane.cleanup().await;
+}
+
 /// The event ids the history returns for this fleet from `since` onward.
-async fn page_since(lane: &EventsLane, since: UnixMillis) -> BTreeSet<String> {
+async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<String> {
     let history = History::new(lane.database.clone());
     let workspace = Uuid7::parse(&lane.workspace).expect("the fixture workspace id is canonical");
     let fleet = Uuid7::parse(&lane.fleet).expect("the fixture fleet id is canonical");

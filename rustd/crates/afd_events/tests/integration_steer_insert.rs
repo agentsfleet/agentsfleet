@@ -39,9 +39,9 @@ const DELIVERY_JSON: &str = r#"{"action":"opened"}"#;
 const REDELIVERED_JSON: &str = r#"{"action":"opened","draft":false}"#;
 
 /// Rewrites the payload digest, or the fleet, of the row an operation holds.
-const SET_DIGEST: &str = "UPDATE core.fleet_admissions SET payload_digest = $3 \
+const SET_DIGEST: &str = "UPDATE fleet.admissions SET payload_digest = $3 \
      WHERE producer = $1 AND producer_key = $2";
-const SET_FLEET: &str = "UPDATE core.fleet_admissions SET fleet_id = $3::uuid \
+const SET_FLEET: &str = "UPDATE fleet.admissions SET fleet_id = $3::uuid \
      WHERE producer = $1 AND producer_key = $2";
 
 /// The warns a reused key can leave, the field that names them, and the field

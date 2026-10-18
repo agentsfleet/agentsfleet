@@ -7,17 +7,16 @@ use super::capture::*;
 
 use super::*;
 
-/// The instant every scan below is asked from: past any row this suite wrote,
-/// so a row the scans return is one they would offer at any cutoff.
-const FAR_FUTURE: i64 = i64::MAX / 2;
+/// The age every scan below asks for: none, so a row the scans leave out is
+/// one they would leave out at any age.
+const ANY_AGE: Duration = Duration::ZERO;
 
-/// Every event either recovery scan would offer, at any cutoff.
+/// Every event either recovery scan would offer, at any age.
 async fn offered(harness: &OutboundHarness) -> Vec<String> {
-    let cutoff = UnixMillis::from_millis(FAR_FUTURE);
-    let unreceipted = obligation::unreceipted(&harness.database, cutoff, AMPLE)
+    let unreceipted = obligation::unreceipted(&harness.database, ANY_AGE, AMPLE)
         .await
         .expect("the unreceipted scan answers");
-    let undelivered = obligation::undelivered(&harness.database, cutoff, AMPLE)
+    let undelivered = obligation::undelivered(&harness.database, ANY_AGE, AMPLE)
         .await
         .expect("the undelivered scan answers");
     unreceipted
@@ -70,15 +69,9 @@ async fn permanent_refusal_abandons_the_obligation() {
         "the abandonment is announced once"
     );
     assert_eq!(
-        obligation::abandon(
-            &harness.database,
-            FLEET,
-            event,
-            AbandonReason::Refused,
-            UnixMillis::from_millis(SEEDED_AT + 50),
-        )
-        .await
-        .expect("the ledger answers"),
+        obligation::abandon(&harness.database, FLEET, event, AbandonReason::Refused)
+            .await
+            .expect("the ledger answers"),
         None,
         "a second abandon stamps nothing, so nothing is announced twice"
     );
@@ -190,7 +183,7 @@ pub(super) async fn set_attempts(harness: &OutboundHarness, event: &str, cycles:
         .await
         .expect("the ledger answers");
     sqlx::query(
-        "UPDATE core.fleet_obligations SET attempt_count = $3
+        "UPDATE fleet.obligations SET attempt_count = $3
           WHERE fleet_id = $1::uuid AND event_id = $2::text",
     )
     .bind(FLEET)

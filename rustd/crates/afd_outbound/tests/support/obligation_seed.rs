@@ -1,39 +1,45 @@
-//! The three parent rows `core.fleet_obligations` hangs from.
+//! The three parent rows `fleet.obligations` hangs from, and the clock the
+//! fixture rows are aged on.
 //!
-//! The obligation table references `core.fleets` and `core.workspaces`, which
-//! reference `core.tenants`, so an obligation cannot be written until all three
-//! exist. Every crate that needs them seeds its own — `afd_api`, `afd_approval`
-//! and `afd_fleet` each carry a copy — because there is no shared fixture crate
-//! and a test that borrowed another crate's would depend on that crate's test
-//! tree. This is the smallest seed that satisfies the constraints and nothing
-//! more: no lease, no admission, no stream.
+//! The obligation table references `fleet.fleets` and `identity.workspaces`,
+//! which reference `identity.tenants`, so an obligation cannot be written until
+//! all three exist. This is the smallest seed that satisfies the constraints and
+//! nothing more: no lease, no admission, no stream.
 //!
-//! # Why the ids are fixed and the names carry them
+//! # Why the ids are fixed and the inserts are idempotent
 //!
-//! `uq_workspaces_tenant_id_name` is unique per tenant and every lane here
-//! shares one tenant, so a constant NAME would collide where the `ON CONFLICT
-//! (id)` arm cannot see it. The ids are v7 spellings because
-//! `ck_fleet_obligations_id_uuidv7` checks the version nibble, and a v4 id
-//! would be refused by the CHECK rather than by anything a reader can see.
+//! Every lane here shares one tenant, one workspace and one fleet, and the
+//! suites share one schema (`TestDatabase::shared`), so each test seeds the same
+//! three rows. `afd_db::test_util`'s seeds insert plainly and would refuse the
+//! second test's copy; these carry `ON CONFLICT (id) DO NOTHING` instead. The
+//! ids are v7 spellings because every `ck_*_id_uuidv7` CHECK reads the version
+//! nibble, and a v4 id would be refused by the CHECK rather than by anything a
+//! reader can see.
+//!
+//! # Why rows are aged rather than stamped
+//!
+//! The ledger stamps every row with `now()` and both recovery scans measure age
+//! against `statement_timestamp()`, so a test cannot hand a scan a cutoff any
+//! more. It moves the ROW instead: [`age`] backdates a fixture row by [`AGED`],
+//! which puts it past both of the producer's spans, so the scans run at the
+//! spans production runs them at and no test sleeps on a wall clock.
 
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use std::time::Duration;
+
 use afd_db::Db;
 use afd_dragonfly::{
     Dedicated, Dragonfly, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundReader,
 };
+use jiff::Timestamp;
 
-/// The instant every fixture row is stamped with.
-///
-/// Fixed rather than `now()`: the scans this suite drives take their cutoff as
-/// a parameter, so a test picks a cutoff relative to THIS and never waits on a
-/// wall clock. `producer::MIN_AGE` is thirty seconds and `LOST_AFTER` is five
-/// minutes; a suite that honoured them against the real clock would sleep for
-/// both.
-pub(crate) const SEEDED_AT: i64 = 1_760_000_000_000;
+/// How far [`age`] backdates a fixture row: past both
+/// `producer::MIN_AGE` and `producer::LOST_AFTER`, so either scan offers it.
+pub(crate) const AGED: Duration = Duration::from_hours(1);
 
 /// The tenant every fixture workspace hangs from.
 pub(crate) const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
@@ -43,47 +49,42 @@ pub(crate) const WORKSPACE: &str = "0195b4ba-8d3a-7a11-8abc-000000000002";
 pub(crate) const FLEET: &str = "0195b4ba-8d3a-7a11-8abc-000000000003";
 
 /// Seeds the tenant, workspace and fleet, idempotently.
-///
-/// `ON CONFLICT (id) DO NOTHING` throughout, because the suite shares one
-/// schema (`TestDatabase::shared`) and every test calls this.
 pub(crate) async fn seed_parents(database: &Db) {
     let mut connection = database.acquire().await.expect("the ledger answers");
 
     sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, 'outbound-fixture', $2, $2)
+        "INSERT INTO identity.tenants (id, name, created_at, updated_at)
+         VALUES ($1::uuid, 'outbound-fixture', now(), now())
          ON CONFLICT (id) DO NOTHING",
     )
     .bind(TENANT)
-    .bind(SEEDED_AT)
     .execute(&mut *connection)
     .await
     .expect("seeding a tenant");
 
     sqlx::query(
-        "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-         VALUES ($1::uuid, $2::uuid, $1::text, 'fixture', $3)
+        "INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
+         VALUES ($1::uuid, $2::uuid, $1::text, now())
          ON CONFLICT (id) DO NOTHING",
     )
     .bind(WORKSPACE)
     .bind(TENANT)
-    .bind(SEEDED_AT)
     .execute(&mut *connection)
     .await
     .expect("seeding a workspace");
 
     sqlx::query(
-        "INSERT INTO core.fleets
-           (id, workspace_id, tenant_id, name, config_json,
-            status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'outbound-fixture',
-                 '{}'::jsonb, 'active', $4, $4)
+        "INSERT INTO fleet.fleets
+           (id, workspace_id, tenant_id, name, status, required_tags,
+            memory_reads_workspace, memory_publishes_workspace, resource_version,
+            created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'outbound-fixture', 'active',
+                 '{}'::text[], false, false, 1, now(), now())
          ON CONFLICT (id) DO NOTHING",
     )
     .bind(FLEET)
     .bind(WORKSPACE)
     .bind(TENANT)
-    .bind(SEEDED_AT)
     .execute(&mut *connection)
     .await
     .expect("seeding a fleet");
@@ -95,11 +96,29 @@ pub(crate) async fn seed_parents(database: &Db) {
 /// carries other suites' rows and a bare `DELETE` would take theirs too.
 pub(crate) async fn clear_obligations(database: &Db) {
     let mut connection = database.acquire().await.expect("the ledger answers");
-    sqlx::query("DELETE FROM core.fleet_obligations WHERE fleet_id = $1::uuid")
+    sqlx::query("DELETE FROM fleet.obligations WHERE fleet_id = $1::uuid")
         .bind(FLEET)
         .execute(&mut *connection)
         .await
         .expect("clearing this fixture's obligations");
+}
+
+/// Backdates the fixture fleet's row for `event` by [`AGED`], as that long
+/// passing without anyone touching it would leave it.
+pub(crate) async fn age(database: &Db, event: &str) {
+    let mut connection = database.acquire().await.expect("the ledger answers");
+    sqlx::query(
+        "UPDATE fleet.obligations
+            SET created_at = created_at - $3::interval,
+                updated_at = updated_at - $3::interval
+          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+    )
+    .bind(FLEET)
+    .bind(event)
+    .bind(AGED)
+    .execute(&mut *connection)
+    .await
+    .expect("ageing the obligation");
 }
 
 /// The thread every fixture answer is addressed to, as a Slack producer
@@ -120,17 +139,19 @@ pub(crate) struct OwedRow<'a> {
     pub(crate) answer: &'a str,
 }
 
-/// Writes `row` owed by the fixture fleet, bypassing the ledger's own verbs.
+/// Writes `row` owed by the fixture fleet, bypassing the ledger's own verbs,
+/// already [`AGED`].
 ///
 /// For the row those verbs refuse to write and a deployment can still hold:
 /// one naming a connector the catalogue no longer answers to.
 pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
     let mut connection = database.acquire().await.expect("the ledger answers");
     sqlx::query(
-        "INSERT INTO core.fleet_obligations
+        "INSERT INTO fleet.obligations
            (id, fleet_id, workspace_id, provider, destination, event_id, answer,
             receipt, attempt_count, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 0, $9, $9)",
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 0,
+                 now() - $9::interval, now() - $9::interval)",
     )
     .bind(obligation_id(row.nth))
     .bind(FLEET)
@@ -140,7 +161,7 @@ pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
     .bind(row.event)
     .bind(row.answer)
     .bind(row.receipt)
-    .bind(SEEDED_AT)
+    .bind(AGED)
     .execute(&mut *connection)
     .await
     .expect("seeding an owed row");
@@ -148,22 +169,23 @@ pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
 
 /// The fixture fleet's row for `event`, as its abandonment reads:
 /// `(abandoned_at, abandon_reason)`, both `None` while it is still owed.
-pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<i64>, Option<String>) {
+pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<Timestamp>, Option<String>) {
     let mut connection = database.acquire().await.expect("the ledger answers");
-    sqlx::query_as(
-        "SELECT abandoned_at, abandon_reason FROM core.fleet_obligations
+    let (at, reason): (Option<jiff_sqlx::Timestamp>, Option<String>) = sqlx::query_as(
+        "SELECT abandoned_at, abandon_reason FROM fleet.obligations
           WHERE fleet_id = $1::uuid AND event_id = $2::text",
     )
     .bind(FLEET)
     .bind(event)
     .fetch_one(&mut *connection)
     .await
-    .expect("reading the obligation")
+    .expect("reading the obligation");
+    (at.map(jiff_sqlx::Timestamp::to_jiff), reason)
 }
 
 /// A v7-shaped obligation id, distinct per caller.
 ///
-/// `ck_fleet_obligations_id_uuidv7` reads the version nibble, so the `7` in the
+/// `ck_obligations_id_uuidv7` reads the version nibble, so the `7` in the
 /// third group is load-bearing and not decoration.
 pub(crate) fn obligation_id(nth: u8) -> String {
     format!("{OBLIGATION_ID_STEM}{nth:02}")
@@ -243,7 +265,7 @@ pub(crate) async fn entries_on(redis: &Dragonfly) -> u64 {
 /// # Why a count of the whole stream will not do
 ///
 /// [`entries_on`] answers for the stream, and the stream is one key for the
-/// deployment. `Producer::run` scans `core.fleet_obligations` deployment-WIDE
+/// deployment. `Producer::run` scans `fleet.obligations` deployment-WIDE
 /// and appends every row it finds owed — which is correct, and which means a
 /// test asserting "appended exactly once" against `XLEN` is really asserting
 /// that no other fleet in the shared database owed anything. On a lane that

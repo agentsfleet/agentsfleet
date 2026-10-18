@@ -38,11 +38,11 @@ afd_wire.workspace = true
 # The opaque page cursor. base64url-no-pad, because the value comes back in a
 # query string where a `=` would need percent-encoding.
 base64.workspace = true
-# `since=` takes a calendar string, and `afd_core::clock` is deliberately a
-# clock and an instant TYPE with no calendar in it. Same division
-# `afd_billing::window` draws: UnixMillis at the boundaries, jiff only for
-# the civil-to-instant conversion between them.
+# Every instant a row, a cursor or a `since=` window carries.
 jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: row fields decode through it and
+# a cursor boundary binds through it.
+jiff-sqlx.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

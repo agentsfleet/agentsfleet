@@ -38,14 +38,8 @@ use sqlx::Row as _;
 
 use crate::support::EventsLane;
 
-/// The instant every row here is stamped with.
-///
-/// One value for every write: nothing in this file asks a question about time,
-/// so a second instant would only be noise a reader has to rule out.
-const WRITTEN_AT: i64 = 1_760_000_000_000;
-
 /// The event a person unblocked, which the continuation resumes.
-const PREDECESSOR: &str = "1760000000000-1";
+const PREDECESSOR: &str = "0195b4ba-8d3a-7a11-8abc-0000000000a1";
 
 /// Runs the shared narrative insert and answers whether it inserted a row.
 ///
@@ -62,7 +56,6 @@ async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> boo
         .bind("continuation")
         .bind("{}")
         .bind(resumes)
-        .bind(WRITTEN_AT)
         .bind(afd_core::event::status::RECEIVED)
         .fetch_one(&mut *connection)
         .await
@@ -75,7 +68,7 @@ async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> boo
 async fn stored_predecessor(lane: &EventsLane, event_id: &str) -> Option<String> {
     let mut connection = lane.connection().await;
     sqlx::query(
-        "SELECT resumes_event_id FROM core.fleet_events
+        "SELECT resumes_event_id FROM fleet.events
          WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(lane.fleet.as_str())
@@ -94,7 +87,7 @@ async fn stored_predecessor(lane: &EventsLane, event_id: &str) -> Option<String>
 async fn row_count(lane: &EventsLane, event_id: &str) -> i64 {
     let mut connection = lane.connection().await;
     sqlx::query(
-        "SELECT count(*) FROM core.fleet_events
+        "SELECT count(*) FROM fleet.events
          WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(lane.fleet.as_str())
@@ -115,7 +108,7 @@ async fn row_count(lane: &EventsLane, event_id: &str) -> i64 {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn lineage_survives_lease_before_approval() {
     let lane = EventsLane::open().await;
-    let event = format!("{WRITTEN_AT}-lease-first");
+    let event = afd_db::test_util::mint_id();
 
     let first = insert(&lane, &event, None).await;
     let second = insert(&lane, &event, Some(PREDECESSOR)).await;
@@ -140,7 +133,7 @@ async fn lineage_survives_lease_before_approval() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn lineage_kept_when_approval_writes_first() {
     let lane = EventsLane::open().await;
-    let event = format!("{WRITTEN_AT}-approval-first");
+    let event = afd_db::test_util::mint_id();
 
     let first = insert(&lane, &event, Some(PREDECESSOR)).await;
     let second = insert(&lane, &event, None).await;
@@ -166,7 +159,7 @@ async fn lineage_kept_when_approval_writes_first() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_redelivery_never_clears_lineage() {
     let lane = EventsLane::open().await;
-    let event = format!("{WRITTEN_AT}-redelivered");
+    let event = afd_db::test_util::mint_id();
 
     insert(&lane, &event, Some(PREDECESSOR)).await;
     for _ in 0..3 {
@@ -195,7 +188,7 @@ async fn a_redelivery_never_clears_lineage() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn only_a_fresh_insert_reports_inserted() {
     let lane = EventsLane::open().await;
-    let event = format!("{WRITTEN_AT}-flag");
+    let event = afd_db::test_util::mint_id();
 
     assert!(
         insert(&lane, &event, None).await,
@@ -211,4 +204,47 @@ async fn only_a_fresh_insert_reports_inserted() {
     );
 
     lane.cleanup().await;
+}
+
+/// The row id is the column's own `uuidv7()`: the insert names the event by
+/// `(fleet_id, event_id)`, binds no id, and reads the row's back — the SAME id
+/// on the conflict arm, so a caller pointing a tool call or a lease at the row
+/// gets one identity however many times the event arrives.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn the_row_id_is_minted_by_postgres_and_stable_across_arms() {
+    let lane = EventsLane::open().await;
+    let event = afd_db::test_util::mint_id();
+
+    let first = inserted_id(&lane, &event).await;
+    let again = inserted_id(&lane, &event).await;
+
+    let minted = afd_core::id::Uuid7::parse(&first);
+    assert!(
+        minted.is_ok(),
+        "the database minted a version-7 id: {first}"
+    );
+    assert_eq!(again, first, "a redelivery answers the row's own id");
+    assert_eq!(row_count(&lane, &event).await, 1);
+
+    lane.cleanup().await;
+}
+
+/// Runs the shared insert and answers the row id it reports.
+async fn inserted_id(lane: &EventsLane, event_id: &str) -> String {
+    let mut connection = lane.connection().await;
+    sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+        .bind(lane.fleet.as_str())
+        .bind(event_id)
+        .bind(lane.workspace.as_str())
+        .bind("continuation:test")
+        .bind("continuation")
+        .bind("{}")
+        .bind(None::<&str>)
+        .bind(afd_core::event::status::RECEIVED)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the narrative insert must run")
+        .try_get("id")
+        .expect("the statement returns the row id")
 }

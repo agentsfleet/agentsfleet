@@ -1,49 +1,31 @@
 //! The waiting read's texts: a fleet's steers on the admission ledger that no
 //! runner has yet. Split from [`super`] at its length cap; they read
-//! `core.fleet_admissions` and share none of its macros.
-
-/// The waiting read's columns and scope: a fleet's steers on its queue that
-/// no runner has yet.
-macro_rules! queued_scope {
-    () => {
-        "\
-SELECT fleet_id::text, workspace_id::text, actor, event_type, request_json, created_at, seq \
-FROM core.fleet_admissions \
-WHERE fleet_id = $2::uuid AND workspace_id = $1::uuid AND producer = $3 \
-  AND delivered_at IS NULL "
-    };
-}
-
-/// The waiting read's order and cut, newest first.
-macro_rules! queued_newest_first {
-    ($limit:literal) => {
-        concat!("ORDER BY created_at DESC, seq DESC LIMIT $", $limit)
-    };
-}
+//! `fleet.admissions` and share none of its column list.
+//!
+//! An admitted event is named by its admission row's id, so a waiting row's
+//! `event_id` is that id as text and its `created_at` the admission's own —
+//! the key the history row will carry once a runner leases it
+//! (`crate::sql::INSERT_LEASED_FLEET_EVENT` stamps it from the same row). The
+//! two reads therefore order and cut on one key, `(created_at, event_id)`.
 
 /// The fleet's waiting steers, newest first: `$1` workspace, `$2` fleet, `$3`
 /// producer, `$4` limit.
 ///
-/// Both partial indexes on `delivered_at IS NULL` (`schema/910`,
-/// `schema/914`) key on `(fleet_id, created_at, seq)` and hold only in-flight
-/// work, so whichever the planner takes, the fleet is an index condition, the
-/// order comes off the index, and the cost follows what waits, never the
-/// ledger's history. The logical id is spelled in Rust
-/// (`afd_admission::logical_id`), so the two integers come back as they are.
-pub(in crate::history) const SELECT_THREAD_QUEUED: &str =
-    concat!(queued_scope!(), queued_newest_first!(4));
+/// `idx_admissions_delivery_lookup` keys `(fleet_id, created_at, id)` over
+/// `delivered_at IS NULL` and holds only in-flight work, so the fleet is an
+/// index condition, the order comes off the index, and the cost follows what
+/// waits, never the ledger's history.
+pub(in crate::history) const SELECT_THREAD_QUEUED: &str = include_str!("select_thread_queued.sql");
 
-/// The same, older than a resumed page's cursor: `$4` `created_at`, `$5`
-/// `event_id`, `$6` limit.
+/// The same, older than a resumed page's cursor: `$4` cursor instant, `$5`
+/// cursor event id, `$6` limit.
 ///
-/// The cursor is a history key, `(created_at, event_id)`, and a waiting row's
-/// event id is the logical id `{created_at}-{seq}`; spelling it here compares
-/// the two on the one key the merged page is sorted and cut on.
-pub(in crate::history) const SELECT_THREAD_QUEUED_AFTER: &str = concat!(
-    queued_scope!(),
-    "AND (created_at, created_at::text || '-' || seq::text) < ($4, $5) ",
-    queued_newest_first!(6)
-);
+/// The id is compared as TEXT, because the cursor's event id may name a
+/// history row that is not an admission (a continuation, a schedule run) and a
+/// `::uuid` cast of it would fail the read. Lowercase hex text orders the same
+/// as the UUID's bytes, so the comparison and the `ORDER BY id` agree.
+pub(in crate::history) const SELECT_THREAD_QUEUED_AFTER: &str =
+    include_str!("select_thread_queued_after.sql");
 
 /// The waiting-messages texts, for the suite that asks Postgres how it plans
 /// them.

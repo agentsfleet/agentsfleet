@@ -49,12 +49,12 @@ mod walk;
 /// many rows it expects.
 const SPREADS: [(i32, i32, i32); 2] = [(20, 5, 40), (50, 10, 200)];
 
-/// The first decoy event's timestamp, and the tenant's.
-const DECOY_MS: i64 = 1_700_000_000_000;
+/// The first decoy event's instant, and the tenant's.
+const DECOY_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 
 /// The one tenant every decoy workspace belongs to.
-const SEED_TENANT: &str = "INSERT INTO core.tenants (id, name, created_at, updated_at)
-VALUES ($1::uuid, 'plan-probe', $2, $2)";
+const SEED_TENANT: &str = "INSERT INTO identity.tenants (id, name, created_at, updated_at)
+VALUES ($1::uuid, 'plan-probe', $2::timestamptz, $2::timestamptz)";
 
 /// Decoy workspaces, their fleets and their events, in one statement.
 ///
@@ -63,30 +63,33 @@ VALUES ($1::uuid, 'plan-probe', $2, $2)";
 /// common and many rare, which is what an exact actor read is costed against.
 const SEED_SPREAD: &str = "
 WITH workspaces AS (
-    INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-    SELECT uuidv7(), $1::uuid, 'plan-probe-' || w, 'plan-probe', $2
+    INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
+    SELECT uuidv7(), $1::uuid, 'plan-probe-' || w, $2::timestamptz
       FROM generate_series(1, $3) w
     RETURNING id
 ), fleets AS (
-    INSERT INTO core.fleets
-      (id, workspace_id, tenant_id, name, config_json, status,
+    INSERT INTO fleet.fleets
+      (id, workspace_id, tenant_id, name, status, required_tags,
+       memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspaces.id, $1::uuid, 'plan-probe-' || f,
-           '{}'::jsonb, 'active', $2, $2
+    SELECT uuidv7(), workspaces.id, $1::uuid, 'plan-probe-' || f, 'active',
+           '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspaces, generate_series(1, $4) f
     RETURNING id, workspace_id
 )
-INSERT INTO core.fleet_events
+INSERT INTO fleet.events
   (fleet_id, workspace_id, event_id, actor, event_type, status, request_json,
    created_at, updated_at)
 SELECT fleets.id, fleets.workspace_id, 'plan-probe-' || e,
        CASE WHEN e % 4 = 0 THEN 'cron:' || fleets.id || ':' || (e % 8) ELSE 'steer:api' END,
-       'chat', 'completed', '{}'::jsonb, $2 + e, $2 + e
+       'chat', 'completed', '{}'::jsonb,
+       $2::timestamptz + e * interval '1 millisecond',
+       $2::timestamptz + e * interval '1 millisecond'
   FROM fleets, generate_series(1, $5) e";
 
 /// Refreshes the statistics every plan here is costed from, the dependency
 /// statistics among them.
-const ANALYZE_EVENTS: &str = "ANALYZE core.fleet_events";
+const ANALYZE_EVENTS: &str = "ANALYZE fleet.events";
 
 /// Runs one statement that returns nothing worth reading.
 async fn run(connection: &mut PgConnection, statement: &'static str) {
@@ -125,7 +128,7 @@ pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
     let mut connection = db.acquire().await.expect("a private connection");
     sqlx::query(SEED_TENANT)
         .bind(tenant.as_str())
-        .bind(DECOY_MS)
+        .bind(jiff_sqlx::ToSqlx::to_sqlx(DECOY_AT))
         .execute(&mut *connection)
         .await
         .expect("the decoy tenant must insert");
@@ -143,7 +146,7 @@ async fn generic_plans(
     run(&mut connection, "BEGIN").await;
     sqlx::query(SEED_SPREAD)
         .bind(tenant)
-        .bind(DECOY_MS)
+        .bind(jiff_sqlx::ToSqlx::to_sqlx(DECOY_AT))
         .bind(workspaces)
         .bind(fleets)
         .bind(events)
@@ -192,7 +195,7 @@ fn assert_walks_the_index(name: &str, plan: &str, index: &str, bounds: &[&str]) 
     let walk = lines.next().unwrap_or_default();
     let condition = lines.next().unwrap_or_default();
     assert!(
-        walk.contains(&format!("Index Scan using {index} on fleet_events "))
+        walk.contains(&format!("Index Scan using {index} on events "))
             && bounds.iter().all(|bound| condition.contains(bound))
             && !plan.contains("Sort"),
         "{name} does not walk {index} in order with its bounds:\n{plan}"

@@ -41,8 +41,11 @@ CREATE INDEX idx_admissions_unreceipted
 CREATE INDEX idx_admissions_undelivered
     ON fleet.admissions (fleet_id, created_at, sequence)
     WHERE receipt IS NOT NULL AND delivered_at IS NULL;
+-- Not delivered, in event order: a fleet's waiting steers, newest first. Keyed
+-- on `id`, the admission's `event_id`, so `ORDER BY created_at, id` comes off
+-- the index with no sort.
 CREATE INDEX idx_admissions_delivery_lookup
-    ON fleet.admissions (fleet_id, created_at, sequence) WHERE delivered_at IS NULL;
+    ON fleet.admissions (fleet_id, created_at, id) WHERE delivered_at IS NULL;
 CREATE INDEX idx_admissions_reply_lookup
     ON fleet.admissions (fleet_id, created_at, sequence) WHERE reply_provider IS NOT NULL;
 

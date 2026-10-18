@@ -57,7 +57,7 @@ async fn stamp(
     event_id: &str,
     reason: AbandonReason,
 ) {
-    match obligation::abandon(database, fleet_id, event_id, reason, afd_core::clock::now()).await {
+    match obligation::abandon(database, fleet_id, event_id, reason).await {
         Ok(Some(attempt_count)) => Abandoned {
             provider,
             fleet_id,
