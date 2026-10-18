@@ -60,7 +60,7 @@ pub(crate) fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls
 /// read are NULL exactly when the case passes.
 async fn nullable_column(run: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM core.fleet_events \
+        "SELECT {column}::text FROM fleet.events \
          WHERE fleet_id = $1::uuid AND event_id = $2"
     ));
     let mut connection = run.booted.database.acquire().await.expect("a connection");
@@ -169,7 +169,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
     // that bump without the reclaim, so the report is the stale holder's.
     let mut connection = run.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(
-        "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1 \
+        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1::uuid"
             .to_owned(),
     ))

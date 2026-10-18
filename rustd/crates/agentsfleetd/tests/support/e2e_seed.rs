@@ -45,7 +45,9 @@ use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 
 use crate::e2e::{MODEL, PROVIDER};
-use afd_db::test_util::{DefaultSeed, FleetSeed, PlatformDefault, TenantSeed, WorkspaceSeed};
+use afd_db::test_util::{
+    DefaultSeed, FleetSeed, ModelSeed, PlatformDefault, TenantSeed, WorkspaceSeed,
+};
 use jiff_sqlx::ToSqlx as _;
 
 use crate::e2e_native::Stored;
@@ -94,6 +96,11 @@ pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet
 
 /// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
+
+/// The saved inference settings the scenario's model routes through: the
+/// Messages API at the real base URL, with the output limit the runs assert on.
+const MODEL_INFERENCE: &str =
+    r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":8192}"#;
 
 /// The placement tag a scenario's fleet requires and only its own runner
 /// carries.
@@ -221,35 +228,17 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO model.platform_models
-           (id, model_name, provider, context_cap_tokens,
-            input_nanos_per_mtok, cached_input_nanos_per_mtok,
-            output_nanos_per_mtok, created_at, updated_at, inference)
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8, $9)
-         ON CONFLICT (provider, model_name) DO UPDATE
-           SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-               cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
-               output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-               updated_at = EXCLUDED.updated_at",
-    )
-    .bind(CATALOGUE_ROW)
-    .bind(MODEL)
-    .bind(PROVIDER)
-    .bind(CONTEXT_CAP_TOKENS)
-    .bind(INPUT_NANOS_PER_MTOK)
-    .bind(CACHED_INPUT_NANOS_PER_MTOK)
-    .bind(OUTPUT_NANOS_PER_MTOK)
-    .bind(now.to_sqlx())
-    .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
-        api: afd_wire::inference::InferenceApi::Messages,
-        base_url: "https://api.anthropic.com/v1".into(),
-        dialect: None,
-        max_output_tokens: 8192,
-    }))
-    .execute(&mut *connection)
-    .await
-    .expect("the catalogue seed must run");
+    ModelSeed::new(CATALOGUE_ROW, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+        .rates(
+            INPUT_NANOS_PER_MTOK,
+            CACHED_INPUT_NANOS_PER_MTOK,
+            OUTPUT_NANOS_PER_MTOK,
+        )
+        .verified_at(now)
+        .inference(MODEL_INFERENCE)
+        .insert(&mut *connection)
+        .await
+        .expect("the catalogue seed must run");
 }
 
 /// Makes `(PROVIDER, MODEL)` the active platform default.
