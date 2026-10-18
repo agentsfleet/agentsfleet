@@ -145,7 +145,8 @@ async fn should_report_a_stopped_message_finished_once_however_often_stop_retrie
 async fn should_answer_the_same_when_the_analytics_endpoint_is_unreachable() {
     let f = Fixture::create().await;
     let unreachable = Analytics::resolve("test-project", Some("http://127.0.0.1:9")).await;
-    let drafts = Drafts::new(f.db.clone(), Entropy::new()).with_analytics(unreachable);
+    let drafts = Drafts::new(f.db.clone(), Entropy::new(), super::fixture::ledger(&f.db))
+        .with_analytics(unreachable);
     let created = drafts
         .create(f.access(), f.request(mint(), Some("Still accepted")), now())
         .await

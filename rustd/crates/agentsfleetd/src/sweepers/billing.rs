@@ -1,5 +1,6 @@
 //! The billing sweeper: usage that committed without its settlement, and holds
-//! that outlived their lease, finished on a schedule.
+//! that outlived their fleet lease or setup chat attempt, finished on a
+//! schedule.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +40,22 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                         released = swept.released,
                         release_failures = swept.release_failures,
                         "billing sweep repaired usage the request path left unsettled"
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(
+                    event = FAILED,
+                    error_code = error.code().as_str(),
+                    "billing sweep waits for its datastore"
+                ),
+            }
+            match afd_authoring::billing_sweep::release_finished(&database, biller.as_ref()).await {
+                Ok(pass) if pass != afd_authoring::billing_sweep::Released::default() => {
+                    tracing::info!(
+                        event = COMPLETED,
+                        released = pass.released,
+                        release_failures = pass.release_failures,
+                        "billing sweep released holds finished setup chats left open"
                     );
                 }
                 Ok(_) => {}

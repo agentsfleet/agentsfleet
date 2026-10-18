@@ -77,6 +77,17 @@ impl LedgerBiller {
         }
     }
 
+    /// A biller over `database` on the wall clock and fresh entropy: what the
+    /// daemon builds, and what a test over a live database wants.
+    #[must_use]
+    pub fn on_system_clock(database: Db) -> Self {
+        Self::new(
+            database,
+            Entropy::new(),
+            Arc::new(afd_core::clock::SystemClock),
+        )
+    }
+
     /// A fresh row identifier.
     fn mint(&self) -> Result<Uuid7> {
         Ok(self.entropy.uuid7(self.clock.now())?)
@@ -185,16 +196,30 @@ impl Biller for LedgerBiller {
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
         let mut connection = self.database.acquire().await?;
-        let row: Option<BalanceRow> = sqlx::query_as(SELECT_BALANCE)
-            .bind(payer.tenant.as_str())
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(query(CONTEXT_BALANCE))?;
-        let row = row.ok_or_else(billing_wallet_missing)?;
-        Ok(Balance {
-            balance: Nanos::from_i64(row.balance_nanos),
-            held: Nanos::from_i64(row.held),
-            exhausted_at: row.exhausted_at.map(jiff_sqlx::Timestamp::to_jiff),
-        })
+        balance(connection.as_mut(), &payer.tenant).await
     }
+}
+
+/// `tenant`'s balance and what its open holds reserve, read on `executor`.
+///
+/// What [`LedgerBiller`] answers for [`Biller::balance`], exposed so a caller
+/// already inside a transaction reads it on that transaction's connection
+/// rather than taking a second one from the pool: a nested acquire under load
+/// starves the pool, every connection held by a transaction waiting for one
+/// more.
+///
+/// # Errors
+/// The statement would not run, or the tenant has no wallet.
+pub async fn balance<'e>(executor: impl sqlx::PgExecutor<'e>, tenant: &Uuid7) -> Result<Balance> {
+    let row: Option<BalanceRow> = sqlx::query_as(SELECT_BALANCE)
+        .bind(tenant.as_str())
+        .fetch_optional(executor)
+        .await
+        .map_err(query(CONTEXT_BALANCE))?;
+    let row = row.ok_or_else(billing_wallet_missing)?;
+    Ok(Balance {
+        balance: Nanos::from_i64(row.balance_nanos),
+        held: Nanos::from_i64(row.held),
+        exhausted_at: row.exhausted_at.map(jiff_sqlx::Timestamp::to_jiff),
+    })
 }

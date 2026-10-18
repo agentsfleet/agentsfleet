@@ -1,11 +1,11 @@
-//! Tenant charge paging bounds its setup-history work before detail joins.
+//! Tenant charge paging bounds its usage-line work before detail joins.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::unwrap_used,
     reason = "live-schema test preconditions fail loudly"
 )]
 
-use afd_billing::sql::{CHARGE_TYPE_AUTHORING, charge, posture, work};
+use afd_billing::sql::{CHARGE_TYPE_AUTHORING, charge, work};
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, DbRole, Migrator};
 use jiff_sqlx::ToSqlx as _;
@@ -22,11 +22,11 @@ const AFTER: &str = include_str!("../src/sql/select_tenant_charges_after.sql");
 
 const PAGE: i32 = 10;
 const HISTORY_SIZES: [i64; 4] = [128, 256, 512, 1024];
-const PAGING_INDEX: &str = "idx_authoring_settlements_tenant_id_created_at_id";
+const PAGING_INDEX: &str = "idx_usage_lines_tenant_id_created_at_id";
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn charge_pages_bound_setup_history_before_detail_joins() {
+async fn charge_pages_bound_usage_history_before_detail_joins() {
     // The plan proof owns schema statistics; concurrent tests must not change them.
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
@@ -37,17 +37,17 @@ async fn charge_pages_bound_setup_history_before_detail_joins() {
     for size in HISTORY_SIZES {
         for owner in [&tenant, &foreign] {
             fixture::attempts(&db, owner, previous + 1, size).await;
-            fixture::settlements(&db, owner, previous + 1, size).await;
+            fixture::lines(&db, owner, previous + 1, size).await;
         }
-        sqlx::query("ANALYZE billing.authoring_settlements")
+        sqlx::query("ANALYZE billing.usage_lines")
             .execute(&mut *db.acquire().await.unwrap())
             .await
             .unwrap();
         for boundary in [None, Some(size / 2)] {
             let plan = explain(&db, &tenant, boundary).await;
             let root = plan.get(0).unwrap().get("Plan").unwrap();
-            assert_bounded_setup(root, boundary.is_some());
-            println!("history={size} boundary={boundary:?} setup_index_rows={PAGE}");
+            assert_bounded_page(root, boundary.is_some());
+            println!("history={size} boundary={boundary:?} line_index_rows={PAGE}");
         }
         previous = size;
     }
@@ -66,8 +66,6 @@ async fn explain(db: &Db, tenant: &str, boundary: Option<i64>) -> Value {
     query
         .bind(i64::from(PAGE))
         .bind(CHARGE_TYPE_AUTHORING)
-        .bind(posture::PLATFORM)
-        .bind(posture::SELF_MANAGED)
         .bind(work::FLEET_LEASE)
         .bind(charge::STAGE)
         .fetch_one(&mut *db.acquire().await.unwrap())
@@ -75,8 +73,8 @@ async fn explain(db: &Db, tenant: &str, boundary: Option<i64>) -> Value {
         .unwrap()
 }
 
-fn assert_bounded_setup(plan: &Value, after: bool) {
-    let scan = setup_scan(plan).unwrap();
+fn assert_bounded_page(plan: &Value, after: bool) {
+    let scan = line_scan(plan).unwrap();
     assert_eq!(scan["Index Name"], PAGING_INDEX, "{plan:#}");
     let condition = scan["Index Cond"].as_str().unwrap();
     assert!(condition.contains("tenant_id"), "{plan:#}");
@@ -98,29 +96,9 @@ fn assert_bounded_setup(plan: &Value, after: bool) {
     );
 }
 
-fn setup_scan(plan: &Value) -> Option<&Value> {
-    if plan["Relation Name"] == "authoring_settlements" {
+fn line_scan(plan: &Value) -> Option<&Value> {
+    if plan["Relation Name"] == "usage_lines" {
         return Some(plan);
     }
-    plan.get("Plans")?.as_array()?.iter().find_map(setup_scan)
-}
-
-#[tokio::test]
-#[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn every_settlement_takes_its_tenant_from_its_attempt() {
-    let database = TestDatabase::create().await;
-    let db = database.open(DbRole::Migrator, &[]).await;
-    Migrator::new().run(&db).await.unwrap();
-    let tenant = fixture::tenant();
-    fixture::attempts(&db, &tenant, 1, 3).await;
-    fixture::settlements(&db, &tenant, 1, 3).await;
-    let counts: (i64, i64) = sqlx::query_as("SELECT count(*), count(*) FILTER (WHERE s.tenant_id=a.tenant_id) FROM billing.authoring_settlements s JOIN authoring.attempts a ON a.id=s.attempt_id WHERE a.tenant_id=$1::uuid")
-        .bind(&tenant).fetch_one(&mut *db.acquire().await.unwrap()).await.unwrap();
-    assert_eq!(
-        counts,
-        (3, 3),
-        "a writer that names no tenant still files the attempt's"
-    );
-    db.close().await;
-    database.cleanup().await;
+    plan.get("Plans")?.as_array()?.iter().find_map(line_scan)
 }

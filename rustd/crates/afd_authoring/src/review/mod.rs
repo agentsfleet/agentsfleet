@@ -95,7 +95,7 @@ pub(crate) async fn build_against(
     let requirements = Requirements::of(&candidate.definition);
     authority::observe(connection, draft, &mut observed).await?;
     let reference = model::observe(connection, draft, candidate, &mut observed).await?;
-    wallet::observe(connection, &draft.tenant_id, &mut observed).await?;
+    wallet::observe(connection, draft, &mut observed).await?;
     credentials::observe(
         setup,
         connection,

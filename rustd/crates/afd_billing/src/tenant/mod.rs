@@ -92,8 +92,6 @@ impl Billing {
                 .bind(tenant.as_str())
                 .bind(i64::from(limit))
                 .bind(sql::CHARGE_TYPE_AUTHORING)
-                .bind(sql::posture::PLATFORM)
-                .bind(sql::posture::SELF_MANAGED)
                 .bind(sql::work::FLEET_LEASE)
                 .bind(sql::charge::STAGE),
             Some(after) => sqlx::query_as(sql::SELECT_TENANT_CHARGES_AFTER)
@@ -102,8 +100,6 @@ impl Billing {
                 .bind(after.id.as_str())
                 .bind(i64::from(limit))
                 .bind(sql::CHARGE_TYPE_AUTHORING)
-                .bind(sql::posture::PLATFORM)
-                .bind(sql::posture::SELF_MANAGED)
                 .bind(sql::work::FLEET_LEASE)
                 .bind(sql::charge::STAGE),
         };

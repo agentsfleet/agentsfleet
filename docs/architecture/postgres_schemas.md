@@ -139,7 +139,7 @@ connection or transaction; there is no generic repository trait.
 | `drafts` | One private setup chat | `id, workspace_id, tenant_id, user_id, title, status, tenant_model_id, head_candidate_id, source_type, source_library_revision_id, source_fleet_revision_id, instance_name, fleet_id, library_revision_id, last_message_sequence, cancelled_through_sequence, resource_version, closed_at, expires_at, created_at, updated_at` |
 | `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
 | `candidates` | A frozen numbered setup the model proposed | `id, draft_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
-| `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, created_at, updated_at` |
+| `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, outcome, created_at, updated_at` · `reserved_nanos` is the ceiling its hold reserves; `outcome` is set once usage settles |
 | `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` | `id, attempt_id, sequence, request_digest, status, result, usage, native_reply, private_expires_at, created_at, updated_at` |
 | `activity_receipts` | Replay proof for "runner posted a setup" | `id, attempt_id, sequence, request_digest, candidate_id, created_at` · append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | `id, draft_id, attempt_id, report_id, answer_digest, expires_at, created_at` · append-only |
@@ -251,14 +251,13 @@ limit) arrives only with the change that reads it.
 |---|---|---|
 | `wallets` | The tenant's balance; the only row money moves on | `tenant_id (PK), balance_nanos, exhausted_at, created_at, updated_at` · `CHECK (balance_nanos >= 0)` |
 | `fleet_charges` | Retired writer: what each fleet event cost before fleet runs logged usage lines; no path writes it, and billing run 4 drops it | `id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, charge_type, posture, model, charged_nanos, input_token_count, cached_input_token_count, output_token_count, wall_ms, event_created_at, created_at, updated_at` |
-| `authoring_settlements` | Final charge for one chat turn; outlives the chat | `id, attempt_id, tenant_id, report_id, accounting_digest, outcome, failure_reason, usage, charged_nanos, created_at` · append-only · `tenant_id` is a scope copy a trigger takes from the attempt |
 | `authoring_report_receipts` | Acknowledges an interim report without settling | `id, attempt_id, report_id, accounting_digest, acknowledgement, created_at` · append-only |
-| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id, authoring_attempt_id, provider, model, posture, requested_at, input_token_count, cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos, settled_at, created_at, updated_at` · `UNIQUE (work_type, work_id, seq)` · fleet runs write it now; setup chat moves onto it in billing run 3, retiring `authoring_settlements` (billing §11) |
+| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id, authoring_attempt_id, provider, model, posture, requested_at, input_token_count, cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos, settled_at, created_at, updated_at` · `UNIQUE (work_type, work_id, seq)` · fleet runs and setup chat both write it (billing §11) |
 | `holds` | The built-in biller's reservation for one piece of work | `id, work_type, work_id, tenant_id, ceiling_nanos, captured_nanos, released_at, created_at, updated_at` · `UNIQUE (work_type, work_id)` |
 
-Money outlives every deletion: `usage_lines` carries opaque `tenant_id`, `workspace_id` and
-`fleet_id` values with no foreign key; `authoring_settlements` hangs off `authoring.attempts`, which
-keeps its workspace, tenant and user identifiers without a foreign key. Erasing a fleet, workspace
+Money outlives every deletion: `usage_lines` carries opaque `tenant_id`, `workspace_id`,
+`fleet_id` and `authoring_attempt_id` values with no foreign key, and `authoring.attempts` keeps
+its workspace, tenant and user identifiers without a foreign key. Erasing a fleet, workspace
 or account therefore never deletes a charge. The slots name the export that reads them (rule 7).
 
 ## Deletion matrix
@@ -291,7 +290,7 @@ is dropped.
 - `identity.cli_credentials.tenant_id`: CLI authentication reads the user's tenant; dropped unless a
   reader needs the credential's own copy.
 - `authoring.attempts.settled_nanos`: dropped unless a reader distinct from
-  `billing.authoring_settlements.charged_nanos` is found.
+  `billing.usage_lines.charged_nanos` is found.
 
 Settled by review on Oct 17, 2026: `runtime_model_ref` and `base_url` kept; `degraded`,
 `selftest_all_ok`, `capability_reported_at`, `leases.last_metered_at`, `attempts.input_token_count`,

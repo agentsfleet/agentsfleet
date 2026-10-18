@@ -6,7 +6,10 @@ mod patch;
 pub(crate) use patch::idle;
 pub(crate) mod read;
 
+use std::sync::Arc;
+
 use crate::{Result, error::raise::stored};
+use afd_billing::biller::Biller;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -18,18 +21,23 @@ pub struct Drafts {
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
+    /// Moves a setup chat's money: the same biller fleet leases bill through
+    /// (billing §11), built once where the daemon is assembled.
+    pub(crate) biller: Arc<dyn Biller>,
 }
 
 impl Drafts {
-    /// Shares the daemon's pool; private drafts hold no provider keys.
+    /// Shares the daemon's pool and its `biller`; private drafts hold no
+    /// provider keys.
     ///
     /// Reports no funnel step until [`Drafts::with_analytics`] names a reporter.
     #[must_use]
-    pub const fn new(database: Db, entropy: Entropy) -> Self {
+    pub fn new(database: Db, entropy: Entropy, biller: Arc<dyn Biller>) -> Self {
         Self {
             database,
             entropy,
             analytics: Analytics::silent(),
+            biller,
         }
     }
 

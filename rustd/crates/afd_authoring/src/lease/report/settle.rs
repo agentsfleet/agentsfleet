@@ -1,4 +1,5 @@
-//! Final settlement, actual wallet debit and replay acknowledgement commit together.
+//! Final settlement: the attempt's usage lines and its replay acknowledgement
+//! commit together; money moves after commit, through the biller (billing §11).
 
 use afd_core::clock;
 use afd_wire::authoring::{Knowledge, Outcome, Report, Reported};
@@ -9,19 +10,17 @@ use sqlx::PgConnection;
 use super::{
     CONTEXT,
     prepare::Prepared,
-    receipt, sql,
+    receipt, sql, usage,
     verdict::{self, Verdict},
 };
 use crate::{
     Drafts, Result,
-    error::{
-        ErrorKind,
-        raise::{query, stored},
-    },
+    error::raise::query,
     funnel::Owed,
     lease::{Status, guard, meter},
     types::RUNNING,
 };
+use afd_billing::biller::Release;
 
 pub(super) struct Settlement<'a> {
     pub(super) attempt: &'a guard::Attempt,
@@ -43,16 +42,25 @@ pub(super) enum Acknowledgement {
     Retained,
 }
 
+/// What a settled report owes once its transaction commits: the lines it
+/// logged, to settle, and why the attempt's hold is released.
+pub(super) struct Owing {
+    pub(super) lines: afd_billing::biller::Settlement,
+    pub(super) release: Release,
+}
+
 pub(super) async fn commit(
     drafts: &Drafts,
     connection: &mut PgConnection,
     settlement: Settlement<'_>,
     owed: &mut Owed,
-) -> Result<Reported> {
+) -> Result<(Reported, Option<Owing>)> {
     let known = settlement.verified.usage.knowledge == Knowledge::Known;
-    if known {
-        debit(drafts, connection, &settlement).await?;
-    }
+    let owing = if known {
+        Some(log(drafts, connection, &settlement).await?)
+    } else {
+        None
+    };
     update_attempt(connection, &settlement, known).await?;
     if known {
         reconcile(connection, &settlement).await?;
@@ -78,7 +86,7 @@ pub(super) async fn commit(
         )
         .await?;
     }
-    Ok(ack)
+    Ok((ack, owing))
 }
 
 async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
@@ -96,41 +104,20 @@ async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<
     Ok(())
 }
 
-async fn debit(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
-    let provider = if s.attempt.model_snapshot.platform_managed {
-        s.verified.provider_nanos
+/// Logs the attempt's priced usage lines inside the report's transaction.
+///
+/// Usage the daemon knows is what settles: one line per known dispatch and
+/// one for the runtime, logged once per attempt (`(work, seq)` is unique, so a
+/// replay that reaches here again logs nothing new).
+async fn log(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<Owing> {
+    let lines = usage::settlement(connection, s.attempt, s.verified, s.now).await?;
+    afd_billing::ledger::log_lines(&mut *connection, &drafts.entropy, s.now, &lines).await?;
+    let release = if s.verdict.outcome == Outcome::Completed {
+        Release::Completed
     } else {
-        0
+        Release::Failed
     };
-    let due = s
-        .verified
-        .runtime_nanos
-        .checked_add(provider)
-        .ok_or(ErrorKind::Balance)?;
-    let charged: i64 = sqlx::query_scalar(sql::DEBIT)
-        .bind(s.attempt.tenant_id.as_str())
-        .bind(due)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?
-        .ok_or(ErrorKind::Balance)?;
-    let usage = serde_json::json!({"knowledge":"known","calls":s.verified.calls,
-        "input_tokens":s.verified.usage.input_tokens,"output_tokens":s.verified.usage.output_tokens,
-        "runtime_ms":clock::saturating_millis_signed(s.verified.runtime),
-        "provider_cost_nanos":s.verified.provider_nanos.to_string()});
-    sqlx::query(sql::SETTLEMENT)
-        .bind(drafts.mint(s.now)?.as_str())
-        .bind(s.attempt.id.as_str())
-        .bind(s.prepared.report_id.as_str())
-        .bind(&s.prepared.digest)
-        .bind(verdict::outcome(s.verdict.outcome))
-        .bind(s.verdict.reason.map(verdict::reason))
-        .bind(serde_json::to_string(&usage).map_err(stored)?)
-        .bind(charged)
-        .execute(connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    Ok(())
+    Ok(Owing { lines, release })
 }
 
 async fn update_attempt(
@@ -151,6 +138,7 @@ async fn update_attempt(
         .bind(!known)
         .bind(clock::saturating_millis_signed(s.verified.runtime))
         .bind(s.now.to_sqlx())
+        .bind(known.then(|| verdict::outcome(s.verdict.outcome)))
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

@@ -1,4 +1,5 @@
-//! Wallet, draft and attempt locks match the live writer's ordering.
+//! Draft and attempt locks match the live writer's ordering; money moves
+//! through the biller in its own transactions, so no wallet lock is taken here.
 
 use super::sql;
 use crate::{
@@ -22,7 +23,6 @@ const LIMIT: i64 = 64;
 #[derive(sqlx::FromRow)]
 struct Hint {
     id: String,
-    tenant_id: String,
     draft_id: String,
 }
 
@@ -43,11 +43,6 @@ pub(super) async fn expire(drafts: &Drafts) -> Result<u64> {
 async fn expire_one(drafts: &Drafts, hint: &Hint) -> Result<bool> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-    let _: Option<String> = sqlx::query_scalar(crate::lease::sql::WALLET)
-        .bind(&hint.tenant_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(query(CONTEXT))?;
     let _: Option<String> = sqlx::query_scalar(sql::DRAFT)
         .bind(&hint.draft_id)
         .fetch_optional(&mut *tx)

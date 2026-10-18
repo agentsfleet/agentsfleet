@@ -23,6 +23,7 @@ impl Drafts {
     pub async fn renew(&self, runner: &Uuid7, lease: &Uuid7, request: Renew) -> Result<Renewed> {
         let request = garde::Unvalidated::new(request).validate()?;
         let counters = guard::Counters::renew(&request)?;
+        let held = budget::held(self, runner, lease).await;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let host = afd_runner::capacity::lock(&mut tx, runner)
@@ -33,7 +34,8 @@ impl Drafts {
         }
         let guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
         let mut owed = Owed::default();
-        let (verified, remaining_output_tokens) = match available(&mut tx, &guarded, &request).await
+        let (verified, remaining_output_tokens) = match available(held, &mut tx, &guarded, &request)
+            .await
         {
             Ok(verified) => verified,
             Err(error) if failure::record(&mut tx, &guarded.attempt, &error, &mut owed).await? => {
@@ -64,6 +66,7 @@ impl Drafts {
 }
 
 async fn available(
+    held: Result<()>,
     connection: &mut sqlx::PgConnection,
     guarded: &guard::Guarded,
     request: &garde::Valid<Renew>,
@@ -71,7 +74,7 @@ async fn available(
     guard::current_model(connection, guarded).await?;
     let observed = garde::Unvalidated::new(request.usage.clone()).validate()?;
     let verified = meter::verify(connection, &guarded.attempt, &observed, guarded.now).await?;
-    budget::coverage(connection, &guarded.attempt).await?;
+    held?;
     let remaining = u64::try_from(
         budget::output_limit(&guarded.attempt.model_snapshot) - guarded.attempt.output_token_count,
     )

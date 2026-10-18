@@ -50,7 +50,7 @@ async fn balance(f: &Fixture) -> i64 {
 
 async fn counts(f: &Fixture, a: &Attempt) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM billing.authoring_settlements WHERE attempt_id=$1::uuid), \
+        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid AND outcome IS NOT NULL), \
         (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1::uuid), \
         (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1::uuid)",
     )

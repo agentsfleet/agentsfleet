@@ -170,12 +170,6 @@ pub(crate) async fn accounting(
     lease: &Uuid7,
     counters: &Counters,
 ) -> Result<Attempt> {
-    let first = attempt(connection, sql::FIND, runner, lease).await?;
-    let _wallet: Option<String> = sqlx::query_scalar(sql::WALLET)
-        .bind(first.tenant_id.as_str())
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
     let locked = attempt(connection, sql::LOCK, runner, lease).await?;
     if !counters.binds(&locked) {
         return Err(ErrorKind::Fence.into());
@@ -243,11 +237,6 @@ pub(crate) async fn refresh(
 }
 
 async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<read::Locked> {
-    let _wallet: Option<String> = sqlx::query_scalar(sql::WALLET)
-        .bind(attempt.tenant_id.as_str())
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
     let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
         .bind(attempt.user_id.as_str())
         .fetch_optional(&mut *connection)
@@ -263,6 +252,17 @@ async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<rea
         return Err(ErrorKind::Hidden.into());
     }
     read::lock(connection, access, &person, &attempt.draft_id).await
+}
+
+/// The runner's attempt for `lease`, read without a lock: what a caller needs
+/// to ask the biller for its hold before any transaction opens. The guard
+/// inside that transaction re-reads it under the lock and decides.
+pub(crate) async fn peek(
+    connection: &mut PgConnection,
+    runner: &Uuid7,
+    lease: &Uuid7,
+) -> Result<Attempt> {
+    attempt(connection, sql::FIND, runner, lease).await
 }
 
 async fn attempt(

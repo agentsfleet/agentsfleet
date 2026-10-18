@@ -2,8 +2,8 @@
 -- pinned. A table, not a message column, because a turn can be retried and every
 -- attempt carries its own reservation.
 --
--- No foreign key to drafts, workspaces, tenants or users: settlements hang off an
--- attempt, and money outlives every deletion (deletion matrix). The identifiers
+-- No foreign key to drafts, workspaces, tenants or users: the attempt's usage
+-- lines name it, and money outlives every deletion (deletion matrix). The identifiers
 -- stay as opaque values; `dispatches.result` is scrubbed instead.
 --
 -- `runner_id` keeps its foreign key but clears to NULL when the runner's record
@@ -15,8 +15,11 @@
 -- the model the attempt may call. `lease_expires_at` and `expires_at` are the lease
 -- and overall deadlines. `call_count` and `output_token_count` are aggregates kept
 -- under the attempt lock (rule 5 exception), read by admission and renewal.
--- `reported_runtime_ms`, `usage_unknown` and `reserved_nanos` feed settlement;
--- `last_activity_sequence` orders activity reports.
+-- `reported_runtime_ms` and `usage_unknown` feed settlement; `reserved_nanos` is
+-- the ceiling the attempt's hold in `billing.holds` reserves (billing §11);
+-- `outcome` is the settled outcome a replayed report answers after private
+-- text is gone, NULL until settled; `last_activity_sequence` orders activity
+-- reports.
 
 CREATE TABLE authoring.attempts (
     id                      UUID PRIMARY KEY,
@@ -41,6 +44,7 @@ CREATE TABLE authoring.attempts (
     reported_runtime_ms     BIGINT  NOT NULL,
     last_activity_sequence  BIGINT  NOT NULL,
     failure_reason          TEXT,
+    outcome                 TEXT,
     created_at              TIMESTAMPTZ(3)  NOT NULL,
     updated_at              TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_attempts_lease_id UNIQUE (lease_id),

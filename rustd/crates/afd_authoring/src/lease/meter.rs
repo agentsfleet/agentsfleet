@@ -21,10 +21,7 @@ const CONTEXT: &str = "verify authoring cumulative usage";
 const TOTALS: &str = include_str!("sql/totals.sql");
 
 pub(crate) struct Verified {
-    pub(crate) calls: i64,
     pub(crate) runtime: Duration,
-    pub(crate) provider_nanos: i64,
-    pub(crate) runtime_nanos: i64,
     pub(crate) usage: Usage,
     pub(crate) failed_calls: i64,
 }
@@ -58,10 +55,7 @@ pub(crate) async fn verify(
     check_cost(reported, totals.provider)?;
     let runtime_nanos = runtime_nanos(runtime)?;
     Ok(Verified {
-        calls: totals.calls,
         runtime,
-        provider_nanos: totals.provider,
-        runtime_nanos,
         failed_calls: totals.failed_calls,
         usage: usage(
             totals.known,

@@ -15,19 +15,11 @@ pub(super) const ACKNOWLEDGE: &str = include_str!("acknowledge.sql");
 /// `$6` its retention window.
 pub(super) const ANSWER_RECEIPT: &str = include_str!("answer_receipt.sql");
 
-/// Debits at most the balance, returning the amount taken.
-///
-/// `$1` tenant, `$2` the amount due.
-pub(super) const DEBIT: &str = include_str!("debit.sql");
-
-/// `$1` id, `$2` attempt, `$3` report, `$4` accounting digest, `$5` outcome,
-/// `$6` failure reason, `$7` usage, `$8` charged nanos.
-pub(super) const SETTLEMENT: &str = include_str!("settlement.sql");
-
 /// Closes or holds the attempt; its lease never outlives the report.
 ///
 /// `$1` attempt, `$2` status, `$3` whether usage is unknown, `$4` verified
-/// runtime in milliseconds, `$5` the clock the report was measured at.
+/// runtime in milliseconds, `$5` the clock the report was measured at, `$6`
+/// the settled outcome (NULL while usage is unknown).
 pub(super) const ATTEMPT: &str = include_str!("attempt.sql");
 
 /// The message's first terminal write: it matches only a running message, so
@@ -49,5 +41,7 @@ pub(super) const LATE_MESSAGE: &str = include_str!("late_message.sql");
 /// reason.
 pub(super) const RESOLVED_REASON: &str = include_str!("resolved_reason.sql");
 
+/// The outcome a settled attempt recorded, which every later replay answers.
+///
 /// `$1` attempt.
 pub(super) const SETTLED_OUTCOME: &str = include_str!("settled_outcome.sql");

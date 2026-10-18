@@ -44,18 +44,22 @@ impl Setup {
             .zip(&setup.attempts)
             .zip([("completed", 17_i64), ("failed", 19_i64)])
         {
-            sqlx::query("INSERT INTO billing.authoring_settlements(id,attempt_id,report_id,accounting_digest,outcome,usage,charged_nanos,created_at) VALUES($1::uuid,$2::uuid,$1::uuid,$1,$3,'{\"knowledge\":\"known\",\"input_tokens\":23,\"output_tokens\":29}', $4,to_timestamp(101))")
-                .bind(settlement).bind(attempt).bind(outcome)
-                .bind(charged).execute(&mut *connection).await.expect("settlement including paid failed attempt");
-            sqlx::query("UPDATE authoring.attempts SET status='settled',usage_unknown=false WHERE id=$1::uuid")
-                .bind(attempt)
+            // A settled setup chat's charge is its usage line, as the report logs it.
+            sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq,tenant_id,workspace_id,authoring_attempt_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,settled_at,created_at,updated_at) VALUES($1::uuid,'authoring_attempt',$2::uuid,0,$4::uuid,$5::uuid,$2::uuid,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp(101),to_timestamp(101),to_timestamp(101))")
+                .bind(settlement).bind(attempt).bind(charged)
+                .bind(&owner.tenant).bind(&setup.workspace)
+                .execute(&mut *connection).await.expect("a settled setup line, including a paid failed attempt");
+            sqlx::query("UPDATE authoring.attempts SET status='settled',usage_unknown=false,outcome=$2 WHERE id=$1::uuid")
+                .bind(attempt).bind(outcome)
                 .execute(&mut *connection).await.expect("settled obligation");
         }
-        sqlx::query("UPDATE billing.usage_lines SET created_at=to_timestamp(101) WHERE tenant_id=$1::uuid")
-            .bind(&owner.tenant)
-            .execute(&mut *connection)
-            .await
-            .expect("tied timestamps across charge sources");
+        sqlx::query(
+            "UPDATE billing.usage_lines SET created_at=to_timestamp(101) WHERE tenant_id=$1::uuid",
+        )
+        .bind(&owner.tenant)
+        .execute(&mut *connection)
+        .await
+        .expect("tied timestamps across charge sources");
         setup
     }
 

@@ -1,33 +1,39 @@
 //! Readiness is a current observation; wallet balances never enter review identity.
 
-use afd_core::{id::Uuid7, timing::LEASE_TTL};
+use afd_core::timing::LEASE_TTL;
 use sqlx::PgConnection;
 
-use super::Observed;
+use super::{Context, Observed};
 use crate::{
     Result,
-    model::budget,
     types::{Action, ActionKind, CheckKind, CheckState},
 };
 
-const CONTEXT: &str = "observe setup wallet readiness";
-
+/// Ready when the owner's balance, less every open hold, still funds one
+/// lease interval of runtime: the least a setup chat can run before its first
+/// renewal asks again. Read on the caller's transaction, never a second pooled
+/// connection.
 pub(super) async fn observe(
     connection: &mut PgConnection,
-    owner: &Uuid7,
+    draft: &Context,
     observed: &mut Observed,
 ) -> Result<()> {
-    let wallet = budget::reserved(connection, owner, CONTEXT).await?;
-    let ready = wallet.is_some_and(|wallet| {
-        let interval = i64::try_from(LEASE_TTL.as_secs())
-            .ok()
-            .and_then(|seconds| afd_billing::RUN_NANOS_PER_SEC.checked_mul(seconds));
-        wallet
-            .open_count
-            .checked_mul(wallet.largest_reserved)
-            .and_then(|reserved| interval.and_then(|interval| reserved.checked_add(interval)))
-            .is_some_and(|required| wallet.balance_nanos >= required)
-    });
+    let ready = match afd_billing::ledger::balance(&mut *connection, &draft.tenant_id).await {
+        Ok(balance) => {
+            let interval = i64::try_from(LEASE_TTL.as_secs())
+                .ok()
+                .and_then(|seconds| afd_billing::RUN_NANOS_PER_SEC.checked_mul(seconds));
+            interval.is_some_and(|interval| {
+                balance
+                    .balance
+                    .as_i64()
+                    .saturating_sub(balance.held.as_i64())
+                    >= interval
+            })
+        }
+        Err(fault) if fault.is_wallet_missing() => false,
+        Err(fault) => return Err(fault.into()),
+    };
     observed.check(
         CheckKind::Wallet,
         "owner_wallet",

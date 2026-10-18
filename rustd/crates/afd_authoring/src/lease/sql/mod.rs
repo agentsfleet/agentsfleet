@@ -5,11 +5,6 @@
 /// `$1` lease, `$2` runner.
 pub(super) const FIND: &str = include_str!("find.sql");
 
-/// The tenant's wallet, locked: every authoring money path takes it first.
-///
-/// `$1` tenant.
-pub(crate) const WALLET: &str = include_str!("wallet.sql");
-
 /// [`FIND`], locked.
 pub(super) const LOCK: &str = include_str!("lock.sql");
 

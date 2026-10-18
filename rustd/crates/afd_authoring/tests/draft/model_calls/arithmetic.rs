@@ -35,7 +35,7 @@ async fn an_unfunded_wallet_cannot_dispatch_an_already_admitted_attempt() {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn aggregate_reservation_overflow_cannot_authorize_a_physical_request() {
+async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
@@ -59,17 +59,19 @@ async fn aggregate_reservation_overflow_cannot_authorize_a_physical_request() {
         .execute(&mut *connection)
         .await
         .expect("large per-attempt reservations");
+    // One nano short of the ceiling: the biller's arithmetic saturates, so a
+    // hold at the integer edge is refused rather than wrapped into a grant.
     sqlx::query("UPDATE billing.wallets SET balance_nanos=$2 WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
-        .bind(i64::MAX)
+        .bind(i64::MAX - 1)
         .execute(&mut *connection)
         .await
-        .expect("largest supported wallet");
+        .expect("one nano below the largest ceiling");
     drop(connection);
     let error = calls
         .call(&f.runner, &a.lease, fixture::request(&a))
         .await
-        .expect_err("total reservation exceeds integer accounting");
+        .expect_err("a ceiling the balance cannot fund is refused");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
     assert_eq!(provider.count(), 0);
