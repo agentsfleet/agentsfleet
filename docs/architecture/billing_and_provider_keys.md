@@ -236,7 +236,7 @@ pub enum Posture { Platform, SelfManaged }
 pub const RECEIVE_NANOS: Nanos = Nanos(0);
 
 /// Records that charge. `posture` rides the ledger row rather than the amount.
-pub async fn debit_receive(&self, charged: Charged<'_>, now: UnixMillis) -> Result<Nanos>
+pub async fn debit_receive(&self, charged: Charged<'_>, now: Timestamp) -> Result<Nanos>
 ```
 
 Receive is a single named constant, `RECEIVE_NANOS`, defined in `rustd/crates/afd_billing/src/nanos.rs`. Both postures currently resolve to the same value; the `posture` stays on the charge so a future ratchet can re-introduce asymmetry without touching callers. The shape is what matters: posture-aware, plan-independent, plumbed through the lease path. Live value lives in the source — read it there; pin tests lock it.
