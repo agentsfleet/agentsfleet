@@ -112,15 +112,13 @@ export const SECRET_FIELD = {
 // flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
 export const HTTPS_SCHEME_PREFIX = "https://" as const;
 
-// Mirrors `charge::RECEIVE` / `charge::STAGE` in rustd/crates/afd_billing/src/sql.rs — every
-// metered event yields up to two rows, one per charge_type. Use this rather
-// than typing "receive" / "stage" inline so a future rename catches every
-// callsite via the type.
-export type ChargeType = "receive" | "stage";
+// Runtime event costs and settled setup attempts share the tenant cost history.
+export type ChargeType = "receive" | "stage" | "authoring";
 
 export const CHARGE_TYPE = {
   receive: "receive" as ChargeType,
   stage: "stage" as ChargeType,
+  authoring: "authoring" as ChargeType,
 } as const;
 
 export type TenantProvider = {
@@ -186,15 +184,14 @@ export type TenantBillingChargesResponse = {
     id: string;
     tenant_id: string;
     workspace_id: string | null;
-    /** Survives the fleet's deletion (slot 915) — the callsign derives from
-     * it, so a purged fleet's charges can still name themselves. Never null:
-     * slot 916 made the column `NOT NULL` as part of the accumulate arbiter,
-     * so the absent case it once documented is a row no database holds. */
-    fleet_id: string;
+    /** Runtime identity survives deletion. Setup uses its retained draft's
+     * public fleet link, or null when no saved fleet is available. */
+    fleet_id: string | null;
     /** The fleet's name when the charge was written — a snapshot, so a later
-     * rename never reaches it. `null` on pre-slot-915 charges. */
+     * rename never reaches it. Setup uses the linked fleet's current name. */
     fleet_name: string | null;
-    event_id: string;
+    event_id: string | null;
+    authoring_attempt_id: string | null;
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;

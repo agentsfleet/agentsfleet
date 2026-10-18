@@ -185,7 +185,7 @@ async fn test_m201_charge_row_decodes_fleet_name() {
     // so the fleet does not tell them apart.
     let captured = page
         .iter()
-        .find(|row| row.event_id == held.event_id)
+        .find(|row| row.event_id.as_deref() == Some(held.event_id.as_str()))
         .expect("the fixture's receive charge must be on the page");
     assert_eq!(
         captured.fleet_name.as_deref(),
@@ -194,14 +194,14 @@ async fn test_m201_charge_row_decodes_fleet_name() {
          names a fleet after its own identifier"
     );
     assert_eq!(
-        captured.fleet_id.as_str(),
-        held.fleet.as_str(),
+        captured.fleet_id.as_deref(),
+        Some(held.fleet.as_str()),
         "the identifier the dashboard derives a callsign from must survive the read"
     );
 
     let nameless = page
         .iter()
-        .find(|row| row.event_id == nameless_event(&held))
+        .find(|row| row.event_id.as_deref() == Some(nameless_event(&held).as_str()))
         .expect("the hand-seeded nameless charge must be on the page");
     assert_eq!(
         nameless.fleet_name, None,
@@ -218,7 +218,7 @@ async fn test_m201_charge_row_decodes_fleet_name() {
 /// `Billing::charges` runs one of TWO statements depending on whether the
 /// caller is resuming, and both select `fleet_name`. Every other
 /// test here takes the first page, which leaves the resumed one — a separate
-/// `SELECT` list, maintained by hand beside its twin — proven by nothing.
+/// cursor boundary — proven by nothing.
 ///
 /// The failure it guards is invisible until a tenant has more charges than one
 /// page holds: `ChargeRow::read` calls `try_get("fleet_name")` by name, so a

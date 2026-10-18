@@ -23,7 +23,7 @@ export type FleetView = (typeof FLEET_VIEW)[keyof typeof FLEET_VIEW];
 
 const FLEET_NAV_ITEMS: { view: FleetView; label: string }[] = [
   { view: FLEET_VIEW.chat, label: "Chat" },
-  { view: FLEET_VIEW.events, label: "Events" },
+  { view: FLEET_VIEW.events, label: "Activity" },
   { view: FLEET_VIEW.memory, label: "Memory" },
   { view: FLEET_VIEW.setup, label: "Setup" },
   { view: FLEET_VIEW.trigger, label: "Trigger" },

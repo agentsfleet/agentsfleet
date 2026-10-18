@@ -40,6 +40,25 @@ it("saves an explicit first-run message and shows the saved fleet", async () => 
   expect(fixture.writes()[0]?.body).toMatchObject({start: {kind: "run_now", message: "Check the build"}});
 });
 
+it("explains why the proposed task needs checking without starting work", () => {
+  render(<LiveReview />);
+  expect(screen.getByText(/Check that this matches what you asked for/)).toBeTruthy();
+  expect(screen.getByText("Investigate failures")).toBeTruthy();
+  expect(screen.getByText(/No automatic triggers/)).toBeTruthy();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("shows a saved fleet as a completed creation rather than another review", async () => {
+  render(<LiveReview />);
+  fireEvent.click(screen.getByRole("button", {name: /^Save fleet$/}));
+  await screen.findByRole("heading", {name: "Fleet saved"});
+  expect(screen.queryByRole("button", {name: "Edit setup"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Refresh review"})).toBeNull();
+  expect(screen.getByText(/You saved this fleet without requesting a first run/)).toBeTruthy();
+  expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
+  expect(fixture.writes()).toHaveLength(1);
+});
+
 it("can edit, return to review, refresh, and recover an unsuccessful reviewed action", async () => {
   render(<LiveReview />);
   fireEvent.click(screen.getByRole("button", {name: "Edit setup"}));

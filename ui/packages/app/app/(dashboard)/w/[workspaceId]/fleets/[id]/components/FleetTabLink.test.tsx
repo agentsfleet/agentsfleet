@@ -18,12 +18,12 @@ afterEach(() => {
 describe("FleetTabLink", () => {
   it("a clicked fleet tab reads as loading while its view is on the way", () => {
     linkStatus.pending = true;
-    render(<FleetTabLink href="/w/ws_1/fleets/fleet_1?view=events">Events</FleetTabLink>);
-    const label = screen.getByText("Events");
+    render(<FleetTabLink href="/w/ws_1/fleets/fleet_1?view=events">Activity</FleetTabLink>);
+    const label = screen.getByText("Activity");
     expect(label.getAttribute("data-pending")).toBe("true");
     expect(label.className).toContain("animate-pulse");
     // The link brightens off its pending label; the underline stays put.
-    expect(screen.getByRole("link", { name: "Events" }).className).toContain("has-data-[pending=true]:text-foreground");
+    expect(screen.getByRole("link", { name: "Activity" }).className).toContain("has-data-[pending=true]:text-foreground");
   });
 
   it("a settled tab carries no pending marker", () => {

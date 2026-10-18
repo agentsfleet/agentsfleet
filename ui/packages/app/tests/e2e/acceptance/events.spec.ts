@@ -33,12 +33,12 @@ test.describe("events page", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "events");
     await expect(page).toHaveURL(workspaceUrlPattern("events"));
 
-    await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
 
     // Exact: once rows exist the events table adds its own scroll region,
-    // named "Workspace events, scrollable", inside this landmark. A substring
+    // named "Workspace activity, scrollable", inside this landmark. A substring
     // match resolves to both and fails strict mode on any populated fixture.
-    const workspaceEvents = page.getByLabel("Workspace events", { exact: true });
+    const workspaceEvents = page.getByLabel("Workspace activity", { exact: true });
     await expect(workspaceEvents).toBeVisible();
 
     // Either empty-state or a populated list of event cards. Both are
@@ -48,8 +48,8 @@ test.describe("events page", () => {
     // itself is the assertion: if neither side appears within the timeout
     // we fail loud, and we don't need to re-check `isVisible()` (which
     // would race with re-renders between frames).
-    const emptyState = workspaceEvents.getByText(/no events yet/i);
-    const populatedList = workspaceEvents.getByRole("article").first();
+    const emptyState = workspaceEvents.getByText(/no activity yet/i);
+    const populatedList = workspaceEvents.getByRole("button", { name: /inspect event/i }).first();
     await emptyState.or(populatedList).waitFor({ state: "visible", timeout: 10_000 });
   });
 });

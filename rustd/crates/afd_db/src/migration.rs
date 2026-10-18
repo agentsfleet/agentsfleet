@@ -200,6 +200,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("955_runner_policy_required.sql"),
     migration!("956_model_inference.sql"),
     migration!("957_authoring_native_reply.sql"),
+    migration!("958_authoring_charge_paging.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

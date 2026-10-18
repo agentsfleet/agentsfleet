@@ -19,6 +19,24 @@ it("shows all readiness outcomes and refuses external or backslash recovery dest
   expect(safeActionHref(undefined)).toBeUndefined();
 });
 
+it("hides infrastructure subjects while retaining resource names and unknown checks", () => {
+  const modelSubject = "internal-model-ref";
+  const resource = "github";
+  const unknownKind = "unrecognized-check";
+  const unknownSubject = "resource-needs-attention";
+  render(<SetupChecks label="Readiness" checks={[
+    {kind: "model", subject: modelSubject, state: "ready"},
+    {kind: "credentials", subject: resource, state: "blocked"},
+    {kind: unknownKind, subject: unknownSubject, state: "missing"},
+  ]} />);
+  expect(screen.getByText("Model availability")).toBeTruthy();
+  expect(screen.queryByText(modelSubject)).toBeNull();
+  expect(screen.getByText("Connected account")).toBeTruthy();
+  expect(screen.getByText(resource)).toBeTruthy();
+  expect(screen.getByText(unknownKind)).toBeTruthy();
+  expect(screen.getByText(unknownSubject)).toBeTruthy();
+});
+
 it("keeps Continue available until a requested first run is durably accepted", () => {
   const proceed = vi.fn();
   const fleet = {...FLEET, status: "active", start: {kind: "run_now" as const, state: "pending" as const}};

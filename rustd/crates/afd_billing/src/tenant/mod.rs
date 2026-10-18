@@ -2,9 +2,9 @@
 //!
 //! # Why this module cannot move money
 //!
-//! Every drain of `balance_nanos` is a writable CTE on the lease plane — the
-//! renew and settle statements — and the one inflow is the signup starter
-//! grant. This module holds neither; it is the read side those movements are
+//! Runtime renewals and reports, plus setup settlement, debit the wallet.
+//! Signup bootstrap adds the starter grant. This module holds none of those
+//! writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so
 //! it is stated where somebody adding a write will read it.
@@ -127,29 +127,26 @@ pub struct Wallet {
     pub exhausted_at_ms: Option<i64>,
 }
 
-/// One ledger row, as the charges response shows it.
+/// One runtime ledger row or setup settlement, as the charges response shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChargeRow {
-    /// The ledger row's identifier.
+    /// The ledger row's or setup settlement's identifier.
     pub id: String,
     /// Whose charge it is.
     pub tenant_id: String,
     /// The workspace it was incurred in, until that workspace is deleted.
     pub workspace_id: Option<String>,
-    /// The fleet it was incurred by, and it OUTLIVES that fleet.
-    ///
-    /// Not optional: the column is `NOT NULL`, part of the accumulate
-    /// arbiter, and no foreign key. The dashboard derives a fleet's callsign
-    /// from this value, so a purged fleet's charges still name themselves.
-    pub fleet_id: String,
-    /// That fleet's name as it stood when the charge was written.
-    ///
-    /// `None` when the fleet row was unreadable as the charge was written. A
-    /// snapshot, so a later rename never reaches it.
+    /// Runtime fleet identity survives deletion. Setup may have no fleet yet;
+    /// when its private draft remains, its public saved-fleet link is used.
+    pub fleet_id: Option<String>,
+    /// Runtime rows keep the name captured when charged. Setup rows use the
+    /// linked public fleet's current name, or `None` without a retained link.
     pub fleet_name: Option<String>,
-    /// The event that triggered the work.
-    pub event_id: String,
-    /// `receive` or `stage` — the two halves of one event's cost.
+    /// The runtime event, absent for setup chats.
+    pub event_id: Option<String>,
+    /// Content-free setup attempt identity, absent for runtime events.
+    pub authoring_attempt_id: Option<String>,
+    /// `receive`, `stage`, or `authoring`.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,
@@ -182,6 +179,7 @@ impl ChargeRow {
             workspace_id: row.try_get("workspace_id").map_err(&unreadable)?,
             fleet_id: row.try_get("fleet_id").map_err(&unreadable)?,
             event_id: row.try_get("event_id").map_err(&unreadable)?,
+            authoring_attempt_id: row.try_get("authoring_attempt_id").map_err(&unreadable)?,
             charge_type: row.try_get("charge_type").map_err(&unreadable)?,
             posture: row.try_get("posture").map_err(&unreadable)?,
             model: row.try_get("model").map_err(&unreadable)?,

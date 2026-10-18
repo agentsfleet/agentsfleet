@@ -1,7 +1,7 @@
 import { type ComponentProps } from "react";
 import { cn } from "../utils";
 
-const CONTENT_LAYOUT_CLASS = "flex min-w-0 flex-col gap-8";
+const CONTENT_LAYOUT_CLASS = "page-entrance flex min-w-0 flex-col gap-8";
 const FULL_HEIGHT_LAYOUT_CLASS = "min-h-0 flex-1";
 
 export type PageLayoutProps = ComponentProps<"div"> & {

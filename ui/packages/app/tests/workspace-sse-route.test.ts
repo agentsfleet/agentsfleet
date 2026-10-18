@@ -88,13 +88,14 @@ describe("workspace SSE route", () => {
       Authorization: `Bearer ${TOKEN}`,
       Accept: CONTENT_TYPE_STREAM,
     });
-    expect((init as RequestInit).signal).toBe(controller.signal);
+    expect((init as RequestInit).signal?.aborted).toBe(false);
     expect(getTokenFn).toHaveBeenCalledWith();
     expect(res.headers.get("content-type")).toBe(CONTENT_TYPE_STREAM);
     expect(res.headers.get("cache-control")).toBe("no-cache, no-transform");
     expect(res.headers.get("connection")).toBe("keep-alive");
     expect(res.headers.get("x-accel-buffering")).toBe("no");
     expect(await res.text()).toBe("data: hello\n\n");
+    expect((init as RequestInit).signal?.aborted).toBe(true);
   });
 
   it("passes through an upstream error body and content type", async () => {

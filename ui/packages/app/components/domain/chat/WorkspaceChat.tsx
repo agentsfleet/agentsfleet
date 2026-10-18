@@ -66,9 +66,10 @@ function ChatSurface({client, workspace, subject}: {client: DraftClient; workspa
     {view.notice ? <Alert>{view.notice}</Alert> : null}
     <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
     <ChatModelAvailability client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} onReview={review} />
-    {view.fleet ? <SetupProgress fleet={view.fleet} workspace={workspace} busy={view.busy}
-      onContinue={() => { void client.retry().catch(ignore); }} onRetrySchedule={retrySchedule} /> : null}
+    <DraftConversation client={client} view={view} onReview={review}>
+      {view.fleet ? <SetupProgress fleet={view.fleet} definition={view.fleet.definition ?? view.draft?.candidate?.definition} workspace={workspace} busy={view.busy}
+        onContinue={() => { void client.retry().catch(ignore); }} onRetrySchedule={retrySchedule} /> : null}
+    </DraftConversation>
     {reviewOpen ? <ReviewSetup client={client} view={view} workspace={workspace} open={reviewOpen} onOpenChange={setReviewOpen} /> : null}
   </div>;
 }

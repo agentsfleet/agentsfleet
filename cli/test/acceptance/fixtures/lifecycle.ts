@@ -7,9 +7,13 @@
 
 import { runFleetctl } from "./cli.js";
 import { Schema } from "effect";
-import { FleetSchema } from "../../../src/commands/chat/protocol.ts";
+import { FleetSchema, decimal } from "../../../src/commands/chat/protocol.ts";
 
 type Env = Readonly<Record<string, string>>;
+
+const FleetDetailSchema = Schema.Struct({
+  ...FleetSchema.fields, events_processed: decimal, budget_used_nanos: decimal,
+});
 
 export interface FleetRow {
   readonly id?: string;
@@ -65,7 +69,7 @@ export const stopFleet = (env: Env, id: string): Promise<unknown> => lifecycleAc
 export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("resume", id, env);
 export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
-export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): Promise<FleetRow> {
+export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): Promise<typeof FleetDetailSchema.Type> {
   const result = await runFleetctl(
     ["fleet", "show", fleetId, "--json"],
     timeoutMs === undefined ? { env } : { env, timeoutMs },
@@ -76,7 +80,7 @@ export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): 
     }
     throw new Error(`fleet show ${fleetId} exited ${result.code}: ${result.stderr.trim()}`);
   }
-  const payload = Schema.decodeUnknownSync(Schema.Struct({items: Schema.Array(FleetSchema)}))(
+  const payload = Schema.decodeUnknownSync(Schema.Struct({items: Schema.Array(FleetDetailSchema)}))(
     JSON.parse(result.stdout.trim()),
   );
   const fleet = payload.items[0];
@@ -88,7 +92,7 @@ export async function expectStatus(
   env: Env,
   fleetId: string,
   expected: string | ReadonlyArray<string>,
-): Promise<FleetRow> {
+): Promise<typeof FleetDetailSchema.Type> {
   const payload = await getStatus(env, fleetId);
   const actual = payload.status;
   const allowed: ReadonlyArray<string> = Array.isArray(expected) ? expected : [expected as string];

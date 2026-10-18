@@ -5,7 +5,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 
 export function NewFleetEntrance({ workspaceId }: { workspaceId: string }) {
   const href = workspacePath(workspaceId, "fleets/new");
-  return <div className="fleet-entrance flex flex-col items-center gap-xl py-2xl text-center sm:py-4xl">
+  return <div className="content-entrance flex flex-col items-center gap-xl py-2xl text-center sm:py-4xl">
     <BrandMark className="size-10 text-pulse" aria-hidden="true" />
     <div className="space-y-md">
       <PageTitle>What should your fleet do?</PageTitle>

@@ -1,0 +1,94 @@
+/* Shared motion and depth use the existing palette, spacing and timing tokens. */
+.interactive-surface {
+  --interactive-elevation: var(--tw-ring-offset-shadow, 0 0 transparent),
+    var(--tw-ring-shadow, 0 0 transparent), var(--elevation-floating);
+}
+.interactive-surface:focus-within {
+  border-color: var(--pulse);
+  box-shadow: var(--interactive-elevation);
+}
+
+.signal-halo { box-shadow: 0 0 var(--sp-4xl) var(--pulse-glow); }
+.focus-surface:focus-within {
+  border-color: var(--pulse);
+  box-shadow: 0 0 var(--sp-2xl) var(--pulse-glow);
+}
+
+.tab-trigger::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(-0.5 * var(--sp-xs));
+  height: var(--sp-xs);
+  background: var(--pulse);
+  transform: scaleX(0);
+  opacity: 0;
+}
+.tab-trigger[data-active="true"]::after, .tab-trigger[data-state="active"]::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+@media (forced-colors: active) {
+  .tab-trigger[data-active="true"]::after, .tab-trigger[data-state="active"]::after {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+  .interactive-surface:focus-visible {
+    outline: var(--sp-xs) solid Highlight;
+    outline-offset: var(--sp-xs);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .interactive-surface:hover {
+    border-color: var(--pulse);
+    box-shadow: var(--interactive-elevation);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The resting frame retains no transform, so fixed dialogs stay viewport-bound. */
+  @keyframes page-enter {
+    from { opacity: 0; transform: translateY(var(--sp-sm)); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes content-enter {
+    from { opacity: 0; transform: translateY(var(--sp-md)); }
+    to { opacity: 1; transform: none; }
+  }
+  .page-entrance {
+    animation: page-enter var(--motion-duration-fade) var(--easing-fade) backwards;
+  }
+  .content-entrance {
+    animation: content-enter var(--motion-duration-fade) var(--easing-fade) backwards;
+  }
+  .control-motion {
+    transition: transform var(--motion-duration-snap) var(--easing-snap),
+      background-color var(--motion-duration-snap) var(--easing-snap),
+      border-color var(--motion-duration-snap) var(--easing-snap),
+      color var(--motion-duration-snap) var(--easing-snap),
+      box-shadow var(--motion-duration-snap) var(--easing-snap);
+  }
+  .focus-surface, .interactive-surface {
+    transition: transform var(--motion-duration-fade) var(--easing-fade),
+      border-color var(--motion-duration-fade) var(--easing-fade),
+      box-shadow var(--motion-duration-fade) var(--easing-fade);
+  }
+  .interactive-surface [data-card-open] {
+    transition: transform var(--motion-duration-fade) var(--easing-fade);
+  }
+  .tab-trigger::after {
+    transition: transform var(--motion-duration-fade) var(--easing-fade),
+      opacity var(--motion-duration-fade) var(--easing-fade);
+  }
+  .interactive-surface:focus-within [data-card-open] { transform: translateX(var(--sp-sm)); }
+  .control-motion:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.98); }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .interactive-surface:hover { transform: translateY(calc(-1 * var(--sp-xs))); }
+  .interactive-surface:hover [data-card-open] { transform: translateX(var(--sp-sm)); }
+  .control-motion:hover:not(:disabled):not([aria-disabled="true"]) { transform: translateY(calc(-0.5 * var(--sp-xs))); }
+  .control-motion:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.98); }
+}

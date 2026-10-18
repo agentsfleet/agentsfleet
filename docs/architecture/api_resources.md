@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-10-14
-product_version: 0.60.0
+verified: 2026-10-18
+product_version: 0.62.1
 executable: false
 ---
 
@@ -46,7 +46,7 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 - JSON requests reject unknown fields. Omit absent optional success fields. Page envelopes always include `items`, `total:null`, and `next_cursor` (null on the last page).
 - Money, message sequences, candidate revisions, setup revisions, and fences use decimal strings. Times retain the repository's UTC Unix-millisecond JSON integers under REST guide §4. Narrow caps/limits use safe JSON integers.
 - Lists accept `limit` and `starting_after` using `afd_core::paging::Cursor` (`rustd/crates/afd_core/src/paging/mod.rs:30`, `paging/cursor.rs:26`). General lists default 50/max 100; draft messages default 20/max 25. Cursors bind resource, creator, ordering, filters, and limit; no cross-subject cursor reuse.
-- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
+- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag. Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
 - Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Library create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
 - Collection creation keys are scoped by actor + workspace + operation type + parent collection. Member message/revision keys are scoped by workspace + operation type + resource, with the accepting actor bound in the receipt. Hash the normalized input. Same key/body/actor replays the same accepted resource or message; changed body or actor reuse on a member resource conflicts. Authorization runs before replay. Keep content-free identity/digest receipts while their resource exists and a 24-hour tombstone after purge. Tombstone replay returns 410; after its disclosed expiry, the key is no longer protected.
 - `If-Match` missing →428; stale →412 with current `etag`; state blocks mutation →409 with `current_state`. Check preconditions before external side effects. A recognized idempotent replay recovers the already accepted resource despite a now-stale original tag, after authorization and key/body checks; it performs no second mutation.
@@ -145,7 +145,7 @@ Send atomically captures the draft's selected authoring model reference; admissi
 |---|---|---|---|---|
 | C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
-| C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY |
+| C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; a killed fleet returns 404 `UZ-AGT-009` after write preconditions pass |
 | C4 | POST F/messages | `{message,operation_id}`; operation_id required UUIDv7; no header key | 202 existing `{status:"accepted",event_id,replayed}`; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/fleet-libraries | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; library:write | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |

@@ -7075,7 +7075,7 @@
           "Billing"
         ],
         "summary": "List tenant charges",
-        "description": "Returns charge records with the newest record first. Use `limit` and `cursor` to read more records. ",
+        "description": "Returns fleet-run and settled setup-chat costs with the newest record first. Use `limit` and `cursor` to read more records. ",
         "operationId": "get_tenant_billing_charges",
         "parameters": [
           {
@@ -18336,12 +18336,10 @@
       },
       "ChargeSummary": {
         "type": "object",
-        "description": "One ledger row as the charges list shows it.\n\nField order is wire order — the struct is serialized straight to JSON, so\nthe row IS the wire shape.",
+        "description": "One runtime charge or settled setup-chat cost.\n\nField order is wire order — the struct is serialized straight to JSON, so\nthe row IS the wire shape.",
         "required": [
           "id",
           "tenant_id",
-          "fleet_id",
-          "event_id",
           "charge_type",
           "posture",
           "model",
@@ -18349,9 +18347,16 @@
           "recorded_at"
         ],
         "properties": {
+          "authoring_attempt_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The setup attempt, or `null` for runtime events. Identifies accounting\nwithout exposing private chat content or depending on its retention."
+          },
           "charge_type": {
             "type": "string",
-            "description": "`receive` or `stage` — the two halves of one event's cost."
+            "description": "`receive`, `stage`, or `authoring` (a settled setup-chat attempt)."
           },
           "credit_deducted_nanos": {
             "type": "integer",
@@ -18359,27 +18364,33 @@
             "description": "What this row drained, in nanos."
           },
           "event_id": {
-            "type": "string",
-            "description": "The event that triggered the work."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runtime event, or `null` for setup chats."
           },
           "fleet_id": {
-            "type": "string",
-            "description": "The fleet it was incurred by. Unlike `workspace_id`, this one SURVIVES\nthat fleet's deletion, and it is never absent.\n\nThe dashboard derives the fleet's callsign from this value, so a charge\ncan always say what it paid for."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runtime fleet identity survives deletion. For setup chats this is\nthe saved fleet linked by the retained draft, or `null` if unavailable."
           },
           "fleet_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "That fleet's name as it stood when the charge was written.\n\nA snapshot rather than a live lookup. Renaming a fleet does not reach\ncharges already written, because a ledger records what was true when the\nmoney moved. `null` when the fleet's row could not be read as the\ncharge was written; the charge is recorded regardless."
+            "description": "Runtime charges keep the fleet name captured when charged, including\nafter a rename or deletion. Setup chats use the linked public fleet's\ncurrent name. `null` when no public fleet name is available."
           },
           "id": {
             "type": "string",
-            "description": "The ledger row's identifier."
+            "description": "The runtime ledger row's or setup settlement's identifier."
           },
           "model": {
             "type": "string",
-            "description": "The model the stage ran against."
+            "description": "The model used by the run or setup chat."
           },
           "posture": {
             "type": "string",
@@ -18400,7 +18411,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Tokens in, on stage rows that have settled."
+            "description": "Recorded input tokens for a run or settled setup chat."
           },
           "token_count_output": {
             "type": [
@@ -18416,7 +18427,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "How long the stage ran."
+            "description": "Recorded runtime in milliseconds."
           },
           "workspace_id": {
             "type": [
