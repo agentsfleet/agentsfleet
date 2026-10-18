@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ServerIcon } from "lucide-react";
 import { Badge, Card, cn, Time } from "@agentsfleet/design-system";
-import { hasBeenSeen, type RunnerListItem } from "@/lib/api/runners";
-import { LEASE_OUTCOME } from "@/lib/api/runners-types";
+import { type RunnerListItem } from "@/lib/api/runners";
+import { hasBeenSeen, LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { runnerPath } from "@/lib/runner-routes";
 import {
   IDLE_SENTENCE,

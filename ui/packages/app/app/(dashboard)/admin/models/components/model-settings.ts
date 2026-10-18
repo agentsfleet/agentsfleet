@@ -9,7 +9,7 @@ const UINT32_MAX = 4_294_967_295;
 const POSITIVE_INTEGER_ERROR = "Enter a positive integer within the supported token limit";
 const rate = z.string().trim().superRefine((value, context) => {
   try { usdPerMtokToNanos(value); }
-  catch (error) { context.addIssue({ code: "custom", message: error instanceof Error ? error.message : "Invalid price" }); }
+  catch { context.addIssue({ code: "custom", message: "Enter a non-negative price within the supported range, using at most nine fractional digits" }); }
 });
 const optionalRate = z.union([z.literal(""), rate]);
 const tokenCount = (minimum: number, maximum: number) => z.string().trim().regex(/^\d+$/, POSITIVE_INTEGER_ERROR)

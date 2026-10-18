@@ -53,10 +53,6 @@ const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
 
-/** Whether the runner has ever beaten. The daemon writes the Unix epoch for a
- * runner that never connected (`NEVER_SEEN` in `afd_runner`), never null. */
-export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > 0;
-
 export interface RunnerListItem {
   id: string;
   host_id: string;

@@ -48,5 +48,6 @@ export function runnerActivity(item: RunnerEventItem & {event_type: RunnerLifecy
 }
 
 function label(labels: Readonly<Record<string, string>>, value: string): string {
-  return Object.hasOwn(labels, value) ? labels[value] ?? value : value;
+  const recorded = Object.hasOwn(labels, value) ? labels[value] : undefined;
+  return recorded ?? value;
 }

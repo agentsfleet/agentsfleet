@@ -40,12 +40,16 @@ it("retains retry after a connection failure", async () => {
   expect(await screen.findByRole("button", {name: "Retry"})).toBeTruthy();
   expect(screen.queryByText("Connection lost")).toBeNull();
 });
-it("cancels the read when the dialog closes and ignores its late answer", async () => {
+it.each(["success", "failure"])("cancels the read when the dialog closes and ignores its late %s", async (outcome) => {
   const pending = Promise.withResolvers<Response>(); fetchMock.mockReturnValueOnce(pending.promise);
   const view = show(); const signal = fetchMock.mock.calls[0]?.[1]?.signal;
   view.unmount(); expect(signal?.aborted).toBe(true);
-  await act(async () => pending.resolve(response(FLEET_DETAIL)));
+  await act(async () => {
+    if (outcome === "success") pending.resolve(response(FLEET_DETAIL));
+    else pending.reject(new TypeError("Connection lost"));
+  });
   expect(screen.queryByRole("link")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 it("creates a fresh cancellation owner after Strict Mode cleanup", async () => {
   fetchMock.mockImplementation(async () => response(FLEET_DETAIL));
@@ -53,6 +57,21 @@ it("creates a fresh cancellation owner after Strict Mode cleanup", async () => {
   expect(await screen.findByRole("link", {name: /Open fleet/})).toBeTruthy();
   expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(false);
+});
+it("ignores a buffered success when the dialog closes before its continuation runs", async () => {
+  const ready = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>();
+  const stream = new ReadableStream<Uint8Array>({start: (controller) => ready.resolve(controller)});
+  const controller = await ready.promise;
+  fetchMock.mockResolvedValueOnce(new Response(stream));
+  const view = show();
+  await act(async () => controller.enqueue(new TextEncoder().encode(JSON.stringify(FLEET_DETAIL))));
+  await act(async () => {
+    controller.close();
+    // Close after the buffered read finishes, before its promise continuation.
+    queueMicrotask(() => queueMicrotask(() => queueMicrotask(() => view.unmount())));
+  });
+  expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  expect(screen.queryByRole("link")).toBeNull();
 });
 it("does not carry an authorized destination into a different workspace", async () => {
   fetchMock.mockResolvedValueOnce(response(FLEET_DETAIL)).mockResolvedValueOnce(response({}, 404));

@@ -48,7 +48,7 @@ export function formatRatesPerMtok(rates: RateFields | null): string {
 
 export function formatRatePerMtok(nanos: string | null): string {
   if (nanos === null) return PRICE_UNKNOWN;
-  const [whole = "", fraction = ""] = nanosToUsdPerMtok(nanos).split(".");
+  const [whole, fraction = ""] = nanosToUsdPerMtok(nanos).split(".");
   return `${whole}.${fraction.padEnd(RATE_MIN_DECIMALS, "0")}`;
 }
 

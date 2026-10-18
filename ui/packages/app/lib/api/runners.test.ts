@@ -6,8 +6,8 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0011";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
-import { hasBeenSeen, listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
-import { parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
+import { listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
+import { hasBeenSeen, parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
 
 beforeEach(() => {
   vi.clearAllMocks();

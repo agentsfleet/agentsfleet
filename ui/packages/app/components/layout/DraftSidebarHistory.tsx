@@ -2,7 +2,7 @@
 
 import { useContext, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ConfirmDialog, Input, SectionLabel } from "@agentsfleet/design-system";
+import { Input, SectionLabel } from "@agentsfleet/design-system";
 import { SearchIcon } from "lucide-react";
 import { useCurrentUser } from "@/lib/auth/client";
 import { DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
@@ -10,8 +10,8 @@ import type { SidebarDraft } from "@/lib/api/draft-summary";
 import { workspacePath } from "@/lib/workspace-routes";
 import { DraftLoadMore, LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
 import { DraftSidebarItem } from "./DraftSidebarItem";
-import { HistoryContext, UpdateContext, type DraftSidebarState } from "./draft-sidebar-state";
-import { useDeleteDraft } from "./use-delete-draft";
+import { HistoryContext, UpdateContext, removeSidebarDraft, type DraftSidebarState } from "./draft-sidebar-state";
+import { DraftDeleteDialogDynamic } from "./DraftDeleteDialogDynamic";
 
 export { DraftSidebarProvider, useDraftSidebarBridge, useFreshFleetChat } from "./draft-sidebar-state";
 
@@ -34,12 +34,10 @@ function SidebarChats({history, onNavigate}: {history: DraftSidebarState; onNavi
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<SidebarDraft | null>(null);
   const onRemoved = (id: string): void => {
-    update((value) => value?.workspace === history.workspace && value.subject === history.subject
-      ? {...value, cards: value.cards.filter((card) => card.id !== id), current: value.current === id ? null : value.current} : value);
+    update((value) => removeSidebarDraft(value, history, id));
     if (id === (search.get("draft") ?? history.current)) router.replace(workspacePath(history.workspace, "fleets/new"));
     setSelected(null);
   };
-  const deletion = useDeleteDraft(history.workspace, history.remove, onRemoved);
   const filtered = history.cards.filter((card) => card.title.toLowerCase().includes(query.trim().toLowerCase()));
   const active = search.get("draft") ?? history.current;
   return <div className="ph-no-capture ph-no-record px-3 pt-xl">
@@ -49,14 +47,13 @@ function SidebarChats({history, onNavigate}: {history: DraftSidebarState; onNavi
       <Input aria-label={HISTORY_COPY.search} placeholder={HISTORY_COPY.search} value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" />
     </div> : null}
     {filtered.map((card) => <DraftSidebarItem key={card.id} card={card} workspace={history.workspace} active={card.id === active}
-      disabled={history.locked || deletion.pending} onNavigate={onNavigate} onDelete={() => {deletion.clearError(); setSelected(card);}} />)}
+      disabled={history.locked || selected !== null} onNavigate={onNavigate} onDelete={() => setSelected(card)} />)}
     {!filtered.length ? <p className="px-md py-sm text-label text-muted-foreground">{history.status === HISTORY_STATUS.unavailable ? HISTORY_COPY.unavailable
       : history.status === HISTORY_STATUS.loading ? HISTORY_COPY.loading
       : history.cards.length > 0 ? HISTORY_COPY.noMatches : HISTORY_COPY.empty}</p> : null}
     {history.more ? <DraftLoadMore className="px-md pt-sm" copy={LOAD_MORE_COPY.chats} onLoad={history.more} /> : null}
     {history.more && query.trim() ? <p className="px-md py-sm text-eyebrow text-muted-foreground">Search covers loaded chat titles. Load more chats to include older conversations.</p> : null}
-    <ConfirmDialog open={selected !== null} onOpenChange={(open) => {if (!open) setSelected(null);}} title="Delete setup chat?" confirmLabel="Delete chat" intent="destructive"
-      description={`Delete “${selected?.title ?? "this chat"}” and its private conversation? Saved fleets and published library versions stay available.`}
-      onConfirm={selected ? () => deletion.remove(selected.id) : undefined} errorMessage={deletion.error} />
+    {selected ? <DraftDeleteDialogDynamic card={selected} workspace={history.workspace} remove={history.remove}
+      onRemoved={onRemoved} onClose={() => setSelected(null)} /> : null}
   </div>;
 }

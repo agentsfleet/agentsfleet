@@ -34,7 +34,7 @@ export function DraftConversation({client, view, children}: {client: DraftClient
     onCancel: () => client.stop(),
   }), [client, view.messages, running]);
   const runtime = useExternalStoreRuntime<Message>(adapter);
-  const empty = view.messages.length === 0 && !view.fleet;
+  const empty = view.messages.length === 0 && !view.fleet && !view.draft && !view.preview;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col" aria-label="Private fleet setup conversation">

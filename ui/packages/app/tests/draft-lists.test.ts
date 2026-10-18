@@ -5,7 +5,7 @@ import { DraftLists } from "@/lib/api/draft-lists";
 import { DraftClient } from "@/lib/api/drafts";
 import { DRAFT_LIST, LIST_PAGE_LIMIT } from "@/lib/api/draft-list-types";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
-import { APP_ORIGIN, DRAFT, DRAFT_ID, MODEL, MODEL_REF, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { APP_ORIGIN, DRAFT, DRAFT_ID, FLEET_ID, MODEL, MODEL_REF, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 type Page = {items: unknown[]; next_cursor: string | null};
 type Route = (url: URL) => Response | Promise<Response>;
@@ -242,4 +242,17 @@ it("private chat lists > retains a renamed chat and its saved state after naviga
   const saved = list.updateDraft({...DRAFT, title: "Build repair", state: "closed", linked_fleet_id: SECOND_CARD.id});
   expect(saved.cards[0]).toMatchObject({title: "Build repair", state: "closed", linked_fleet_id: SECOND_CARD.id});
   expect(list.view.cards).toEqual(saved.cards);
+});
+
+it("updates one renamed chat without changing its neighbours, and clears an absent saved-fleet link", async () => {
+  drafts = () => page([FIRST_CARD, SECOND_CARD], null);
+  const lists = new DraftLists(`/live/v1/workspaces/${WORKSPACE}`);
+  await lists.open(new AbortController().signal);
+  const renamed = {...DRAFT, title: "Build repairs", etag: '\"renamed\"', linked_fleet_id: FLEET_ID};
+  expect(lists.updateDraft(renamed).cards).toEqual([
+    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: FLEET_ID}, SECOND_CARD,
+  ]);
+  expect(lists.updateDraft({...renamed, linked_fleet_id: undefined}).cards).toEqual([
+    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: null}, SECOND_CARD,
+  ]);
 });

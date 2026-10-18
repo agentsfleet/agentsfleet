@@ -3,8 +3,8 @@
 import { z } from "zod";
 import { Instant } from "./decode";
 
-export const DRAFT_STATE = {editing: "editing", saving: "saving", closed: "closed"} as const;
-export const MESSAGE_ROLE = {user: "user", assistant: "assistant"} as const;
+import { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
+export { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
 export const MESSAGE_STATE = {
   queued: "queued", running: "running", completed: "completed", cancelled: "cancelled",
   failed: "failed", timedOut: "timed_out",

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
+import { DraftClient } from "@/lib/api/drafts";
+import { ChatModelAvailability } from "@/components/domain/chat/ChatAvailability";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
@@ -85,4 +87,12 @@ it("keeps an incomplete model search distinct from a workspace with no configure
   await waitFor(() => expect(fixture.fetch.mock.calls.length).toBeGreaterThan(reads));
   expect(screen.queryByText("Add a model to start chatting")).toBeNull();
   expect(fixture.writes()).toEqual([]);
+});
+
+it.each(["loading", "unavailable"] as const)("does not claim there are no models while the list is %s", (listStatus) => {
+  const client = new DraftClient({...CHAT_PROPS, subject: "creator"});
+  render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus}} workspace={WORKSPACE} />);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByLabelText("Loading chat models") !== null).toBe(listStatus === "loading");
+  client.dispose();
 });

@@ -7,7 +7,8 @@ import { ArrowLeftIcon, ChevronRightIcon, ShieldCheckIcon, LogOutIcon, SettingsI
 import { cn, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@agentsfleet/design-system";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import { ACCOUNT_NAV, BOTTOM_NAV, PLATFORM_NAV, WORKSPACE_NAV, NAV_SURFACE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { NAV_SURFACE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { ACCOUNT_NAV, BOTTOM_NAV, PLATFORM_NAV, WORKSPACE_NAV } from "./account-menu-data";
 
 export const MENU_VIEW = { home: "home", settings: "settings", platform: "platform" } as const;
 export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];

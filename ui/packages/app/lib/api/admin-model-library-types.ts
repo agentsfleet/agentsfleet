@@ -11,8 +11,8 @@ const RATE_OVERFLOW = "Price exceeds the maximum integer nanos amount";
 
 export function usdPerMtokToNanos(usd: string): string {
   if (!DECIMAL_RATE.test(usd)) throw new RangeError(INVALID_RATE);
-  const [whole = "", fraction = ""] = usd.split(".");
-  const nanos = BigInt(whole + fraction.padEnd(NANOS_DECIMAL_PLACES, "0"));
+  const [whole, fraction = ""] = usd.split(".");
+  const nanos = BigInt(`${whole}${fraction.padEnd(NANOS_DECIMAL_PLACES, "0")}`);
   if (nanos > MAX_RATE_NANOS) throw new RangeError(RATE_OVERFLOW);
   return String(nanos);
 }

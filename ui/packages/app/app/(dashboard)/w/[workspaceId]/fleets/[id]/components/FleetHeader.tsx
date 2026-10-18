@@ -52,7 +52,7 @@ export function FleetHeader({
       <div className="min-w-0">
         <FleetBreadcrumb workspaceId={workspaceId} fleetName={agentDisplayName(fleet.id)} />
         <PageTitle className="break-words">{agentDisplayName(fleet.id)}</PageTitle>
-        <p className="mt-sm text-body-sm text-muted-foreground">{fleet.definition.description || fleet.name}</p>
+        <p className="mt-sm text-body-sm text-muted-foreground">{fleet.definition.description}</p>
       </div>
       <div
         aria-label="Fleet lifecycle actions"
