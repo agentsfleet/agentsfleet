@@ -240,12 +240,15 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    /// This row as both schedule surfaces render it, borrowing its text.
+    /// This row as both schedule surfaces render it at `now`, borrowing its
+    /// text.
     ///
     /// Declared on the row, so the tenant surface and the runner's verb cannot
-    /// render one schedule two ways.
+    /// render one schedule two ways. `now` is the caller's injected clock: the
+    /// run state and next run are a reading at that instant.
     #[must_use]
-    pub fn view(&self) -> View<'_> {
+    pub fn view(&self, now: Timestamp) -> View<'_> {
+        let (run_state, next_run_at) = crate::run::upcoming(self, now);
         View {
             schedule_id: Cow::Borrowed(self.schedule_id.as_str()),
             fleet_id: Cow::Borrowed(self.fleet_id.as_str()),
@@ -262,6 +265,9 @@ impl Schedule {
                 .as_ref()
                 .and_then(|recipe| recipe.overrides.clone()),
             last_error: self.last_error.as_deref().map(Cow::Borrowed),
+            description: crate::run::describe(&self.cron, &self.timezone),
+            run_state,
+            next_run_at,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

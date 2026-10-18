@@ -66,12 +66,17 @@ pub(crate) async fn apply<D: Services>(
     )
     .await?;
     let location = format!("/v1/workspaces/{}/fleets/{fleet}", owned.workspace);
-    Ok(created(applied, &schedules, &location))
+    Ok(created(applied, &schedules, &location, services.now()))
 }
 
 /// The `201` for an accepted revision: the setup it settled on and the
 /// schedules active after it, tagged with the fleet's new resource tag.
-fn created(applied: AppliedRevision, schedules: &[afd_cron::Schedule], location: &str) -> Response {
+fn created(
+    applied: AppliedRevision,
+    schedules: &[afd_cron::Schedule],
+    location: &str,
+    now: jiff::Timestamp,
+) -> Response {
     let tag = applied.etag.clone();
     let value = wire::AppliedRevision {
         fleet_id: applied.fleet_id.to_string(),
@@ -79,7 +84,7 @@ fn created(applied: AppliedRevision, schedules: &[afd_cron::Schedule], location:
         setup_etag: applied.setup_etag,
         etag: applied.etag,
         review_digest: applied.review_digest,
-        schedules: schedules.iter().map(afd_cron::Schedule::view).collect(),
+        schedules: crate::handler::schedule::views(schedules, now),
     };
     let mut response = (StatusCode::CREATED, Json(value)).into_response();
     attach(&mut response, header::ETAG, &tag);

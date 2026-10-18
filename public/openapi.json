@@ -24907,6 +24907,16 @@
           }
         }
       },
+      "RunState": {
+        "type": "string",
+        "description": "Whether a schedule will run, so a client never computes a run time for one\nthat is paused, unregistered or unreadable.",
+        "enum": [
+          "scheduled",
+          "paused",
+          "activation_pending",
+          "next_run_unavailable"
+        ]
+      },
       "RunnerAdminAction": {
         "type": "string",
         "description": "Platform-operator mutation actions.\n\nRotation and self-test are operations rather than state transitions. They\nride the same endpoint because they share the operator scope and the\nexactly-one-of body guard with the transition actions.",
@@ -26929,6 +26939,8 @@
           "status",
           "sync",
           "etag",
+          "description",
+          "run_state",
           "created_at",
           "updated_at"
         ],
@@ -26941,6 +26953,10 @@
           "cron": {
             "type": "string",
             "description": "The expression it fires on."
+          },
+          "description": {
+            "type": "string",
+            "description": "The expression in words, with the zone it is read in, for example\n`At 9:00 AM (Asia/Kolkata)`."
           },
           "etag": {
             "type": "string",
@@ -26961,6 +26977,14 @@
             "type": "string",
             "description": "What the fleet is asked to do."
           },
+          "next_run_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it next runs, computed by the server from the expression and its\nzone. Null unless `run_state` is `scheduled`."
+          },
           "once": {
             "type": "boolean",
             "description": "Whether it retires after its first fire. Beta: this field may change shape before it is stable.",
@@ -26976,6 +27000,10 @@
                 "type": "null"
               }
             ]
+          },
+          "run_state": {
+            "$ref": "#/components/schemas/RunState",
+            "description": "Whether the schedule will run, as the server reads it now."
           },
           "schedule_id": {
             "type": "string",

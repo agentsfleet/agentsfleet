@@ -41,6 +41,7 @@
 mod fire;
 mod next;
 mod recipe;
+mod run;
 mod service;
 mod store;
 

@@ -101,7 +101,11 @@ pub(crate) async fn create<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    rendered(created.map_err(refused)?, StatusCode::CREATED)
+    rendered(
+        created.map_err(refused)?,
+        StatusCode::CREATED,
+        services.now(),
+    )
 }
 
 /// `PATCH …/schedules/{schedule_id}`.
@@ -173,7 +177,7 @@ pub(crate) async fn patch<D: Services>(
         )
         .await
         .map_err(afd_http::handler::schedule::edit_refusal)?;
-    rendered(changed, StatusCode::OK)
+    rendered(changed, StatusCode::OK, services.now())
 }
 
 /// `DELETE …/schedules/{schedule_id}` — see the module note on why it does not.
@@ -231,7 +235,7 @@ pub(crate) async fn purge<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    held_or(removed, StatusCode::OK)
+    held_or(removed, StatusCode::OK, services.now())
 }
 
 /// `POST …/schedules/{schedule_id}/sync`.
@@ -283,5 +287,5 @@ pub(crate) async fn sync<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    held_or(synced, StatusCode::OK)
+    held_or(synced, StatusCode::OK, services.now())
 }
