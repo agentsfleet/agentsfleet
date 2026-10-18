@@ -47,6 +47,8 @@ pub(crate) const KEY: &str = "sk-test-provider-key-0123456789";
 pub(crate) const TOKEN: &str = "ghp_suite_token_abcdef";
 /// The lease every suite's run is.
 pub(crate) const LEASE_ID: &str = "lease-1";
+/// The instant every lease here is stamped with: one millisecond past the epoch.
+const AT: &str = "1970-01-01T00:00:00.001Z";
 /// The content type a streamed turn answers with.
 const EVENT_STREAM: &str = "text/event-stream";
 
@@ -202,10 +204,10 @@ fn answer(reply: Option<&Reply>) -> Response<Body> {
 pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePayload<'static> {
     let request = serde_json::json!({ "message": message }).to_string();
     let document = serde_json::json!({
-        "lease_id": LEASE_ID, "fencing_token": 1, "lease_expires_at": 1,
+        "lease_id": LEASE_ID, "fencing_token": 1, "lease_expires_at": AT,
         "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
-            "event_type": "chat", "request_json": request, "created_at": 1},
+            "event_type": "chat", "request_json": request, "created_at": AT},
         "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": tools, "secrets_map": {"github": {"token": TOKEN, "host": "api.github.com"}},
             "mintable": [], "provider": provider, "api_key": KEY, "inference_host": "",

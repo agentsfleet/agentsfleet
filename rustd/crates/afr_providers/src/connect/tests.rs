@@ -10,14 +10,16 @@ use crate::registry::Registry;
 
 /// A key no rendering may show.
 const KEY: &str = "sk-never-printed";
+/// The instant every lease here is stamped with: one millisecond past the epoch.
+const AT: &str = "1970-01-01T00:00:00.001Z";
 
 /// A lease naming `provider`, with [`KEY`].
 fn lease(provider: &str) -> LeasePayload<'static> {
     let document = serde_json::json!({
-        "lease_id": "lease-1", "fencing_token": 1, "lease_expires_at": 1,
+        "lease_id": "lease-1", "fencing_token": 1, "lease_expires_at": AT,
         "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
-            "event_type": "chat", "request_json": "{}", "created_at": 1},
+            "event_type": "chat", "request_json": "{}", "created_at": AT},
         "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": [], "secrets_map": null, "mintable": [], "provider": provider,
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,

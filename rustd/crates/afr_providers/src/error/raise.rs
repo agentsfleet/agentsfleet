@@ -73,6 +73,11 @@ pub(crate) fn unnamed(call_id: &str, source: EmptyToolName) -> Error {
     })
 }
 
+/// The request cannot be sent: a tool it offers has no name, for `source`.
+pub(crate) fn nameless_tool(source: EmptyToolName) -> Error {
+    Error::from(ErrorKind::NamelessTool { source })
+}
+
 /// `failure`, as rig reported it, as the kind a report names: a status the
 /// provider answered is a refusal under the provider's own code, a reply cut
 /// short or a connection that dropped is lost, a provider's error after its

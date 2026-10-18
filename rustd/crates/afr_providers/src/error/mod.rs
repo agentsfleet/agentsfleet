@@ -111,6 +111,14 @@ pub(crate) enum ErrorKind {
         source: EmptyToolName,
     },
 
+    /// The request offers a tool with no name.
+    #[error("the request cannot be sent: a tool it offers has no name")]
+    NamelessTool {
+        /// rig's reason.
+        #[source]
+        source: EmptyToolName,
+    },
+
     /// The provider registry names an entry whose base URL does not parse.
     #[error("the provider registry's entry {name} has a base URL that does not parse")]
     Registry {
@@ -171,6 +179,7 @@ impl Error {
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
+            | ErrorKind::NamelessTool { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
@@ -191,6 +200,7 @@ impl Error {
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
+            | ErrorKind::NamelessTool { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }
@@ -210,6 +220,7 @@ impl Error {
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
+            | ErrorKind::NamelessTool { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }
@@ -230,6 +241,7 @@ impl Error {
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
+            | ErrorKind::NamelessTool { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }

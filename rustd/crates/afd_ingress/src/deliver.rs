@@ -9,7 +9,7 @@
 //! queue, so losing the queue lost both the claim and the delivery it was
 //! protecting.
 //!
-//! Nothing is written to `core.fleet_events` here, for the reason
+//! Nothing is written to `fleet.events` here, for the reason
 //! `afd_events::steer` states about its own path: the row appears when the
 //! runner leases the event, and a daemon that inserted one at ingress would
 //! be racing its own runner to describe the same event.

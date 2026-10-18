@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 
-use rig_core::completion::{CompletionRequest, ProviderToolDefinition, ToolDefinition};
+use rig_core::completion::{
+    AssistantMessage, CacheRetention, CompletionRequest, ProviderToolDefinition, ToolDefinition,
+};
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
     ToolResultContent, UserContent,
@@ -34,11 +36,17 @@ const FIELD_PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 /// conversation.
 pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionRequest> {
     let history = Conversation::default().map(request.messages)?;
-    let tools = request.tools.iter().map(|spec| ToolDefinition {
-        name: spec.name.to_owned(),
-        description: spec.description.to_owned(),
-        parameters: spec.parameters.clone(),
-    });
+    let tools = request
+        .tools
+        .iter()
+        .map(|spec| {
+            Ok(ToolDefinition {
+                name: ToolName::new(spec.name).map_err(raise::nameless_tool)?,
+                description: spec.description.to_owned(),
+                parameters: spec.parameters.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     let hosted = request
         .hosted
         .iter()
@@ -46,16 +54,21 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
-    // Responses only: Messages caches by its markers, and the Chat wire's
-    // gateways refuse a field they do not know.
-    if wire == Wire::Responses {
-        built.additional_params =
-            Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
+    match wire {
+        // Messages keeps the top-level breakpoint the provider moves along the
+        // conversation, beside the markers on its static prefix.
+        Wire::Messages => built = built.cache(CacheRetention::Short),
+        Wire::Responses => {
+            built.additional_params =
+                Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
+        }
+        // The Chat wire's gateways refuse a field they do not know.
+        Wire::Chat => {}
     }
     Ok(built
         .model(request.model)
         .preamble(request.instructions)
-        .tools(tools.collect())
+        .tools(tools)
         .provider_tools(hosted.collect()))
 }
 
@@ -93,9 +106,11 @@ impl<'a> Conversation<'a> {
                     calls,
                     replay,
                 } => {
-                    let content = self.assistant(text, calls, &replay.0)?;
+                    let content = self.assistant(text, calls, &replay.content)?;
                     if !content.is_empty() {
-                        history.push(RigMessage::Assistant { id: None, content });
+                        let turn =
+                            AssistantMessage::new(content).with_origin(replay.origin.clone());
+                        history.push(RigMessage::Assistant(turn));
                     }
                 }
                 Message::ToolResult {

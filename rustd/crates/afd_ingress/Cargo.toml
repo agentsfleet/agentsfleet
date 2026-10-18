@@ -65,6 +65,8 @@ serde_json.workspace = true
 # The App ingress keys its at-most-once claim on the body's digest rather than
 # on the provider's unsigned delivery header — see `app::replay_id`.
 sha2.workspace = true
+# The instant a channel binding's or a notice's id is minted at.
+jiff.workspace = true
 # That digest is rendered lowercase hex, one spelling, so every redelivery of
 # the same body claims the same key.
 hex.workspace = true
