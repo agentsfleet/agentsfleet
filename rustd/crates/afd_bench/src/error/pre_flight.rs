@@ -47,12 +47,16 @@ impl Error {
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
             | ErrorKind::FixtureUnseedable { .. }
+            | ErrorKind::FixtureRefused { .. }
             | ErrorKind::RunnerUnenrollable { .. }
             | ErrorKind::TaskLost { .. }
             | ErrorKind::CounterUnreadable { .. }
             | ErrorKind::StatementsUnreadable { .. }
             | ErrorKind::PlatformDefaultHeld { .. }
             | ErrorKind::CredentialUnsealable { .. }
+            | ErrorKind::CredentialUnstorable { .. }
+            | ErrorKind::CredentialMalformed { .. }
+            | ErrorKind::IdentifierRefused { .. }
             | ErrorKind::CeilingRefused { .. }
             | ErrorKind::LeaseUnreadable { .. } => false,
         }

@@ -3,7 +3,7 @@
 //! # A steer is a Postgres row, then three Dragonfly commands
 //!
 //! `afd_events::Steer::append` admits the message — an insert-returning and
-//! an update on `core.fleet_admissions` — and then issues an `XADD` onto the
+//! an update on `fleet.admissions` — and then issues an `XADD` onto the
 //! fleet's stream, an `HSET` marking the fleet ready in its partition, and an
 //! `SPUBLISH` ringing that partition's readiness doorbell. The narrative row a
 //! reader pages over still appears when a runner LEASES it, and that cost

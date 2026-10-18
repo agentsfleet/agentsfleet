@@ -117,6 +117,12 @@ pub(crate) enum ErrorKind {
     #[error("the bench fixture would not seed")]
     FixtureUnseedable { source: sqlx::Error },
 
+    /// A shared seed's refusal, kept apart from [`Self::DatabaseUnavailable`]:
+    /// both carry `afd_db`'s error, and a refused row is a fixture fault, not
+    /// a database that would not open.
+    #[error("the bench fixture would not seed")]
+    FixtureRefused { source: afd_db::Error },
+
     /// Carries the observability crate's own error rather than its message:
     /// the census names the row it rejected, and stringifying here would drop
     /// that from the chain a reader walks.
@@ -202,6 +208,17 @@ pub(crate) enum ErrorKind {
 
     #[error("the drain's platform credential would not seal")]
     CredentialUnsealable { source: afd_crypto::error::Error },
+
+    #[error("the vault would not store the drain's platform credential")]
+    CredentialUnstorable { source: afd_vault::Error },
+
+    #[error("the drain's platform credential is not a JSON object")]
+    CredentialMalformed { source: serde_json::Error },
+
+    /// A fixture identifier the id type refused. The seed spells every one
+    /// schema-legal by construction, so this is a seed defect, not an input.
+    #[error("a bench fixture identifier is not a canonical UUIDv7")]
+    IdentifierRefused { source: afd_core::error::Error },
 
     /// The ceiling is sized for the widest rung and every rung joins its
     /// streams before the next opens, so a refusal means a stream outlived its

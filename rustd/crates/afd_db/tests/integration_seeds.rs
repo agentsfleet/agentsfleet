@@ -117,7 +117,8 @@ async fn a_wallet_seed_holds_the_balance_it_was_given() {
 async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
     let scene = Scene::seed().await;
     let mut connection = scene.database.acquire().await.expect("a connection");
-    let model_row = PlatformModelSeed::new(&scene.provider, MODEL, CAP, PRICES)
+    let model_row = mint_id();
+    PlatformModelSeed::new(&model_row, &scene.provider, MODEL, CAP, PRICES)
         .at(SEEDED_AT)
         .insert(&mut *connection)
         .await

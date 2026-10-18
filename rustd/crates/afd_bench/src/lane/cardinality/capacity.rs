@@ -74,7 +74,7 @@ pub(super) async fn record(stores: &Datastores, report: &mut Report) -> Result<(
         stores.queue.clone(),
         Entropy::new(),
     );
-    let backlog = ledger.backlog(clock::now()).await?;
+    let backlog = ledger.backlog().await?;
     report.measurement(LEDGER_BACKLOG_ROWS, count(backlog.rows));
     report.measurement(
         LEDGER_BACKLOG_OLDEST_AGE_MS,
