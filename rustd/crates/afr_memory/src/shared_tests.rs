@@ -22,6 +22,8 @@ const LIMIT: usize = 5;
 
 /// The other fleet in the workspace, whose name a reader sees on what it shared.
 const WRITER: &str = "incident-fleet-3";
+/// When [`WRITER`] last wrote a shared entry.
+const WRITTEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
 fn entry(key: &str) -> MemoryDelta<'static> {
     MemoryDelta {
@@ -40,7 +42,7 @@ fn shared(key: &str) -> SharedMemory<'static> {
         category: Cow::Borrowed(PINNED_CATEGORY),
         writer_fleet_id: Cow::Borrowed("0199a1f0-0000-7000-8000-000000000003"),
         writer_fleet_name: Cow::Borrowed(WRITER),
-        updated_at: 0,
+        updated_at: WRITTEN,
     }
 }
 

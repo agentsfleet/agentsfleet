@@ -30,4 +30,6 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The instant a shared entry was last written, in the fakes.
+jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }

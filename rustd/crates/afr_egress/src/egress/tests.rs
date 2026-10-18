@@ -1,16 +1,15 @@
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 use reqwest::header::AUTHORIZATION;
 
 use super::Egress;
 use crate::admission::{Draft, Placement};
 use crate::error::raise;
 use crate::fixture::{
-    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, LEASE_ID, PUSHOVER_TOKEN, PUSHOVER_USER, Shown, policy,
-    shown,
+    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, LEASE_ID, PUSHOVER_TOKEN, PUSHOVER_USER, START, Shown,
+    TOKEN_LIFETIME, policy, shown,
 };
 use crate::testing::CountingMint;
 
-const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
 const MINTED: &str = "ghs_minted_token";
 const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
 const POST: &str = "POST";
@@ -34,7 +33,7 @@ fn post(url: &str, body: &str) -> Draft {
 async fn prepare(draft: Draft) -> Result<String, Shown> {
     let policy = policy(false);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, 3_600_000, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
     egress
         .prepare(draft)
@@ -131,7 +130,7 @@ async fn should_admit_nothing_through_a_closed_guard() {
 async fn should_print_no_secret_in_its_debug_after_a_mint() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, 3_600_000, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
     let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
     let prepared = egress.prepare(post(REFS, &named)).await;
