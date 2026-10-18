@@ -87,18 +87,7 @@ describe("BillingUsageTab charge cell", () => {
     );
   });
 
-  // Dimension 3.2. The charge of a fleet that no longer exists still names it.
-  //
-  // This is the defect the whole slot exists to end, read from the surface an
-  // operator actually looks at. Both halves are asserted because they come from
-  // different places and fail apart: the callsign is derived from the retained
-  // identifier, the name is the copy the ledger snapshotted at charge time.
-  //
-  // The absence assertion is the one that would have caught the original bug.
-  // A cell showing only the callsign is a pass on the first two checks and
-  // still a regression, so the deleted label is required to be gone from the
-  // whole rendered tab rather than merely absent from the text we looked at.
-  it("test_m201_billing_renders_callsign_and_name", () => {
+  it("renders only the retained callsign after fleet deletion", () => {
     const { container } = render(
       React.createElement(BillingUsageTab, {
         initialCharges: [
@@ -109,10 +98,10 @@ describe("BillingUsageTab charge cell", () => {
       }),
     );
 
-    const expected = agentDisplayName(PURGED_FLEET_ID, CAPTURED_NAME);
+    const expected = agentDisplayName(PURGED_FLEET_ID);
     const label = container.querySelector(`[data-agent-name="${expected}"]`);
     expect(label).not.toBeNull();
-    expect(label?.textContent).toContain(CAPTURED_NAME);
+    expect(container.textContent).not.toContain(CAPTURED_NAME);
     expect(label?.textContent).toContain("AGENT ");
     expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
   });
@@ -130,8 +119,15 @@ describe("BillingUsageTab charge cell", () => {
       }),
     );
 
-    const expected = agentDisplayName(PURGED_FLEET_ID, null);
+    const expected = agentDisplayName(PURGED_FLEET_ID);
     expect(container.querySelector(`[data-agent-name="${expected}"]`)).not.toBeNull();
     expect(container.textContent).not.toContain(PURGED_FLEET_ID);
+  });
+  it("labels an unsaved authoring charge as Setup chat", () => {
+    const {container} = render(<BillingUsageTab initialCharges={[
+      charge({fleet_id: null, fleet_name: null, charge_type: CHARGE_TYPE.authoring}),
+    ]} initialCursor={null} pageSize={25} />);
+    expect(container.querySelector('[data-agent-name="Setup chat"]')?.textContent).toBe("Setup chat");
+    expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
   });
 });

@@ -1,3 +1,4 @@
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
@@ -51,7 +52,7 @@ describe("fleets routes — detail lifecycle states", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).not.toContain("Balance exhausted");
   });
 
@@ -93,7 +94,7 @@ describe("fleets routes — detail lifecycle states", () => {
         searchParams: Promise.resolve({ view: "setup" }),
       }),
     );
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).toContain("Schedule");
     expect(markup).toContain("No schedule set.");
     expect(markup).not.toContain("Webhook URL");

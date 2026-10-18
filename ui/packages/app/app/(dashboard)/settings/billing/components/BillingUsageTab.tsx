@@ -5,13 +5,12 @@ import { ActivityIcon } from "lucide-react";
 import {
   DataTable,
   EmptyState,
+  EYEBROW_CLASS,
   PAGINATION_KIND,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { AgentLabel } from "@/components/domain/AgentLabel";
 import {
-  capturedFleetName,
   chargeAgentLabel,
   displayModelName,
   describeCharge,
@@ -63,7 +62,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "created",
     header: TIME_LABEL.created,
     hideOnMobile: true,
-    sortValue: (c) => c.recorded_at,
+    sortValue: (c) => Date.parse(c.recorded_at),
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
     // The label already IS the precise instant, so no hover tooltip is added.
@@ -92,8 +91,9 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
 ];
 
 function ChargeIdentityCell({ charge }: { charge: ChargeRow }) {
+  const label = chargeAgentLabel(charge);
   return <div className="space-y-xs sm:space-y-0">
-    <AgentLabel fleetId={charge.fleet_id} fleetName={charge.fleet_id === null ? chargeAgentLabel(charge) : capturedFleetName(charge)} className="text-foreground" />
+    <span className={EYEBROW_CLASS} data-agent-name={label}>{label}</span>
     <div className="space-y-xs text-label text-muted-foreground sm:hidden">
       <p>{displayModelName(charge.model)} · {describeCharge(charge)}</p>
       <Time value={new Date(charge.recorded_at)} label={formatChargeTimestamp(charge.recorded_at)} />

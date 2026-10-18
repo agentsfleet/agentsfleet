@@ -7,6 +7,7 @@ import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { BREADCRUMB_LABEL, FLEETS_CRUMB_LABEL } from "./console-copy";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
   AGENTSFLEET_STATUS.ACTIVE,
@@ -49,8 +50,9 @@ export function FleetHeader({
   return (
     <div className="mb-xl flex flex-col gap-lg sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
-        <PageTitle className="break-words">{fleet.name}</PageTitle>
+        <FleetBreadcrumb workspaceId={workspaceId} fleetName={agentDisplayName(fleet.id)} />
+        <PageTitle className="break-words">{agentDisplayName(fleet.id)}</PageTitle>
+        <p className="mt-sm text-body-sm text-muted-foreground">{fleet.definition.description || fleet.name}</p>
       </div>
       <div
         aria-label="Fleet lifecycle actions"
@@ -67,7 +69,7 @@ export function FleetHeader({
           <FleetConfig
             workspaceId={workspaceId}
             fleetId={fleet.id}
-            fleetName={fleet.name}
+            fleetName={agentDisplayName(fleet.id)}
             etag={fleet.etag}
           />
         ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (

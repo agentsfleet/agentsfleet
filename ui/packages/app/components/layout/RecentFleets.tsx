@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import Link from "next/link";
 import { NavItem, SectionLabel } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 type RecentFleet = { id: string; name: string };
 type RecentRegistry = Record<string, RecentFleet[]>;
@@ -49,7 +50,10 @@ export function RecentFleets({ workspaceId, pathname, onNavigate }: { workspaceI
     {workspaceId && fleets.length ? fleets.map((fleet) => {
       const href = workspacePath(workspaceId, `fleets/${fleet.id}`);
       return <NavItem key={fleet.id} asChild active={pathname === href || pathname.startsWith(`${href}/`)} onClick={onNavigate}>
-        <Link href={href} prefetch={false} title={fleet.name}><span className="truncate">{fleet.name}</span></Link>
+        <Link href={href} prefetch={false} title={fleet.name} aria-label={agentDisplayName(fleet.id)}>
+          <span className="min-w-0"><span className="block truncate">{agentDisplayName(fleet.id)}</span>
+            <span className="block truncate text-label text-muted-foreground">{fleet.name}</span></span>
+        </Link>
       </NavItem>;
     }) : <p className="px-md text-body-sm text-muted-foreground">Fleets you open appear here.</p>}
   </div>;

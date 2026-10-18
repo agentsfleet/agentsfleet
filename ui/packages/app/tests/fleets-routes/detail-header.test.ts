@@ -1,3 +1,4 @@
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID, response } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
@@ -63,7 +64,7 @@ describe("fleets routes — detail header and summary", () => {
         }),
       ),
     );
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
   });
 
   it("fleet summary links an exact pending count to the filtered Approvals inbox", async () => {

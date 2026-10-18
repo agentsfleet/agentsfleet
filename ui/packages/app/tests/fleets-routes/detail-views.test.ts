@@ -1,3 +1,4 @@
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID } from "../helpers/draft-fixtures";
 import { detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
@@ -184,7 +185,7 @@ describe("fleets routes — detail views", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).toContain("Balance exhausted");
   });
 
