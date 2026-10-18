@@ -14,7 +14,7 @@ use afd_core::error_code;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};
 
-use crate::device_flow_lane::{APPROVER, CODE, approval, now, origin, surface};
+use crate::device_flow_lane::{CODE, approval, now, origin, owner, surface};
 use crate::dragonfly_harness::DragonflyHarness;
 
 /// Dimension 1.2 — a redeemed session is terminal, and reads as gone.
@@ -23,13 +23,14 @@ use crate::dragonfly_harness::DragonflyHarness;
 async fn test_device_flow_terminal_states_are_terminal() {
     let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
+    let approver = owner("terminal");
 
     let opened = sessions
         .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), &approver, now())
         .await
         .expect("approve");
     sessions
@@ -51,7 +52,7 @@ async fn test_device_flow_terminal_states_are_terminal() {
     assert_eq!(refusal.code(), error_code::SESSION_CONSUMED);
 
     // And a bulk abort by its owner cannot un-redeem it.
-    let aborted = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    let aborted = sessions.cancel_all(&approver).await.expect("cancel all");
     assert!(!aborted.contains(&opened.session_id), "{aborted:?}");
     let refusal = sessions
         .poll(&opened.session_id)
@@ -66,13 +67,14 @@ async fn test_device_flow_terminal_states_are_terminal() {
 async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
     let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
+    let approver = owner("idempotent");
 
     let opened = sessions
         .open(&Opening::parse("cli-key", "laptop").expect("bounds"), now())
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, now())
+        .approve(&opened.session_id, &approval(), &approver, now())
         .await
         .expect("approve");
 
@@ -82,12 +84,12 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
         .expect("cancel all");
     assert!(!foreign.contains(&opened.session_id), "{foreign:?}");
 
-    let first = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    let first = sessions.cancel_all(&approver).await.expect("cancel all");
     assert!(
         first.contains(&opened.session_id),
         "the owner's cancel performs the transition: {first:?}"
     );
-    let repeat = sessions.cancel_all(APPROVER).await.expect("cancel all");
+    let repeat = sessions.cancel_all(&approver).await.expect("cancel all");
     assert!(
         !repeat.contains(&opened.session_id),
         "a repeat changes nothing, so nothing is audited twice: {repeat:?}"
@@ -106,7 +108,7 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
 async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
     let harness = DragonflyHarness::connect().await;
     let sessions = surface(&harness);
-    let owner = format!("{APPROVER}_{}", std::process::id());
+    let owner = owner("bulk");
     let other = format!("{owner}_other");
 
     let mut mine = Vec::new();

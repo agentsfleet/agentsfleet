@@ -48,6 +48,16 @@ pub(crate) fn approval() -> Approval<'static> {
     Approval::parse("dash-key", "sealed-credential", "nonce-12", CODE).expect("bounds")
 }
 
+/// An approver no other test shares, for a test that bulk-cancels.
+///
+/// `cancel_all` aborts every live login its owner approved, and the suites run
+/// in parallel against one queue. A test cancelling as [`APPROVER`] would abort
+/// the logins a sibling test is still driving, so each canceller takes its own
+/// owner; the process id keeps two concurrent runs on one queue apart too.
+pub(crate) fn owner(test: &str) -> String {
+    format!("{APPROVER}_{test}_{}", std::process::id())
+}
+
 /// A caller's identity for the replay window.
 pub(crate) fn origin(session_id: &str) -> Fingerprint {
     Fingerprint::of("203.0.113.7", "agentsfleet/1.0", session_id)
