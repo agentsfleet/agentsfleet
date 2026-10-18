@@ -17,8 +17,8 @@
 //! The mock lives behind the `test-util` feature (`M-TEST-UTIL`), so a release
 //! build has no constructor that can weaken nonce generation.
 
-use jiff::Timestamp;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
 use crate::error::{Error, ErrorKind, Result};
 
