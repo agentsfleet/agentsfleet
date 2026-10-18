@@ -1,5 +1,5 @@
 import { ADMIN_MODEL, METADATA, PRICE } from "@/tests/helpers/catalogue-fixtures";
-import { stringifyCatalogueBody } from "./catalogue-json";
+import { readCatalogueBody, stringifyCatalogueBody } from "./catalogue-json";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listAdminModels, createAdminModel, updateAdminModel, deleteAdminModel, setPlatformDefault, listPlatformKeys, activePlatformDefault, type PlatformKey } from "./admin_model_library";
 
@@ -29,7 +29,7 @@ describe("admin model catalogue client", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe(stringifyCatalogueBody(body));
+    expect(await readCatalogueBody(new Response(init.body))).toEqual(body);
   });
 
   it("should PATCH caps/rates by id (identity stays immutable)", async () => {

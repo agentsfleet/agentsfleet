@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
-import { DRAFT, MESSAGE, response } from "@/tests/helpers/draft-fixtures";
+import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
+import { DRAFT, MESSAGE, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
 
 const requestPath = (input: string | URL | Request): string => typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 let fixture: ChatFixture;
@@ -11,8 +11,9 @@ afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 it("holds the loading state while resuming a chat and never renders the new-fleet entrance", async () => {
   const done = Promise.withResolvers<Response>();
-  const base = fixture.fetch.getMockImplementation()!;
-  fixture.fetch.mockImplementation(async (input, init) => requestPath(input).endsWith(`/drafts/${DRAFT.id}`) ? done.promise : base(input, init));
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation(async (input, init) => requestPath(input).endsWith(`/drafts/${DRAFT.id}`) ? done.promise.then((value) => value.clone()) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   await screen.findByLabelText("Loading setup chat");
   expect(screen.queryByText("What should your fleet do?")).toBeNull();
@@ -25,10 +26,11 @@ it("drops the previous conversation immediately when a different chat is selecte
   const view = render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   await screen.findByText("Your setup is ready.");
   const done = Promise.withResolvers<Response>();
-  const next = {...DRAFT, id: "0199a801-1000-7000-8000-00000000000a", title: "Morning brief"};
-  const base = fixture.fetch.getMockImplementation()!;
+  const next = {...DRAFT, id: REVISION_ID, title: "Morning brief"};
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.messages = [{...MESSAGE, text: "Prepare a morning brief"}];
-  fixture.fetch.mockImplementation(async (input, init) => requestPath(input).endsWith(`/drafts/${next.id}`) ? done.promise : base(input, init));
+  fixture.fetch.mockImplementation(async (input, init) => requestPath(input).endsWith(`/drafts/${next.id}`) ? done.promise.then((value) => value.clone()) : base(input, init));
   view.rerender(<WorkspaceChat {...CHAT_PROPS} draft={next.id} />);
   expect(screen.queryByText("Your setup is ready.")).toBeNull();
   expect(screen.queryByText("What should your fleet do?")).toBeNull();
@@ -48,7 +50,9 @@ it("renames a chat with a conditional patch and retains the editor on a refusal"
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
   await waitFor(() => expect(screen.queryByLabelText("Chat name")).toBeNull());
   expect(screen.getByRole("heading", {name: "Build repair"})).toBeTruthy();
-  expect(fixture.writes().at(-1)?.headers.get("If-Match")).toBe(DRAFT.etag);
+  const patch = fixture.fetch.mock.calls.at(-1)?.[1];
+  expect(patch?.method).toBe("PATCH");
+  expect(new Headers(patch?.headers).get("If-Match")).toBe(DRAFT.etag);
 });
 
 it("retries the selected chat after an initial read failure without showing a blank fleet", async () => {

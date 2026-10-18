@@ -227,8 +227,8 @@ describe("listRunnerEvents", () => {
 });
 
 describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
-  it("holds the eight non-lease tags and neither work record", () => {
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(8);
+  it("holds the nine non-lease tags and neither work record", () => {
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(9);
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
   });
@@ -303,6 +303,7 @@ describe("wire constants mirror the daemon's enums", () => {
       "runner_draining",
       "runner_drained",
       "runner_revoked",
+      "runner_token_rotated",
       "runner_policy_assigned",
     ]);
   });

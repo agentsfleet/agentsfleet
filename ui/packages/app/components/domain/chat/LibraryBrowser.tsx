@@ -68,7 +68,7 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
     {selected ? <LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
-    {entry ? <LibraryInspection entry={entry} onUse={() => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}); }} /> : null}
+    {entry && selected && !error ? <LibraryInspection entry={entry} onUse={() => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}); }} /> : null}
   </div>;
 }
 

@@ -110,7 +110,10 @@ it("saves an improvement against the current setup tag and publishes another rev
   const base = fixture.fetch.getMockImplementation()!;
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`)) return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: []});
+    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`)) {
+      fixture.calls.push({path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined, headers: new Headers(init?.headers)});
+      return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: []});
+    }
     if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`)) return response({etag: PUBLICATION.etag});
     if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}/revisions`)) return response(PUBLICATION);
     return base(input, init);
