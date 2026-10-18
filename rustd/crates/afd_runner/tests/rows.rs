@@ -56,7 +56,7 @@ INSERT INTO authoring.attempts
    output_token_count, reported_runtime_ms, last_activity_sequence, created_at,
    updated_at)
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $6::uuid, 1, 1, $1::text,
-        '{}', $7, $8::timestamptz, $8::timestamptz, 0, false, 0, 0, 0, 0, now(), now())";
+        '{}', $7, $8::timestamptz, $8::timestamptz, $9, false, 0, 0, 0, 0, now(), now())";
 
 /// Where a lease lives and what it owes.
 pub(crate) struct LeaseRow<'a> {
@@ -125,23 +125,35 @@ pub(crate) async fn slot(
         .expect("the slot seeds");
 }
 
-/// Seeds one authoring attempt `runner` holds until `lease_expires_at`.
+/// What an attempt reserved, and whether it still runs.
+pub(crate) struct AttemptRow<'a> {
+    /// Its status, as stored.
+    pub(crate) status: &'a str,
+    /// When its lease lapses.
+    pub(crate) lease_expires_at: Timestamp,
+    /// The money it holds against the wallet.
+    pub(crate) reserved_nanos: i64,
+}
+
+/// Seeds one authoring attempt `runner` ran, and answers its id.
 pub(crate) async fn attempt(
     connection: &mut PgConnection,
     (runner, workspace, tenant): (&str, &str, &str),
-    status: &str,
-    lease_expires_at: Timestamp,
-) {
+    row: AttemptRow<'_>,
+) -> String {
+    let id = mint_id();
     sqlx::query(INSERT_ATTEMPT)
-        .bind(mint_id())
+        .bind(&id)
         .bind(mint_id())
         .bind(runner)
         .bind(workspace)
         .bind(tenant)
         .bind(mint_id())
-        .bind(status)
-        .bind(lease_expires_at.to_sqlx())
+        .bind(row.status)
+        .bind(row.lease_expires_at.to_sqlx())
+        .bind(row.reserved_nanos)
         .execute(&mut *connection)
         .await
         .expect("the authoring attempt seeds");
+    id
 }

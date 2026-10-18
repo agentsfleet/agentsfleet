@@ -6,6 +6,11 @@
 -- attempt, and money outlives every deletion (deletion matrix). The identifiers
 -- stay as opaque values; `dispatches.result` is scrubbed instead.
 --
+-- `runner_id` keeps its foreign key but clears to NULL when the runner's record
+-- retires, the way `runner.fleet_slots.last_runner_id` does: a revoked runner's
+-- row goes, the attempts it ran and the money they reserved stay. NULL means
+-- the runner that ran it no longer exists, never that no runner did.
+--
 -- `fencing_token` is the lease epoch; `model_token_hash` and `model_snapshot` pin
 -- the model the attempt may call. `lease_expires_at` and `expires_at` are the lease
 -- and overall deadlines. `call_count` and `output_token_count` are aggregates kept
@@ -17,7 +22,7 @@ CREATE TABLE authoring.attempts (
     id                      UUID PRIMARY KEY,
     CONSTRAINT ck_attempts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     lease_id                UUID    NOT NULL,
-    runner_id               UUID    NOT NULL REFERENCES runner.runners(id),
+    runner_id               UUID    REFERENCES runner.runners(id) ON DELETE SET NULL (runner_id),
     workspace_id            UUID    NOT NULL,
     tenant_id               UUID    NOT NULL,
     user_id                 UUID    NOT NULL,
