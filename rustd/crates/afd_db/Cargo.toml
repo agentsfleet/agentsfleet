@@ -46,6 +46,7 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+sqlx = { workspace = true, features = ["derive"] }
 # Installed by the test harness so event macros evaluate their fields; see the
 # workspace manifest for why that is a correctness concern and not a coverage one.
 tracing-subscriber.workspace = true
@@ -61,7 +62,7 @@ tracing.workspace = true
 # can make the datastore stop answering mid-run, which is the only way to reach
 # the handshake-deadline and pool-exhaustion branches a healthy server never
 # produces.
-tokio = { workspace = true, features = ["rt-multi-thread", "sync", "net", "io-util", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "net", "io-util", "macros", "time", "process"] }
 
 [lints]
 workspace = true

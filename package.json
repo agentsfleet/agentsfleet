@@ -7,10 +7,15 @@
     "ui/packages/design-system"
   ],
   "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2",
     "zod": "^4.6.5"
   },
   "overrides": {
     "playwright-core": "1.64.0"
   },
-  "version": "0.28.2"
+  "version": "0.28.2",
+  "dependencies": {
+    "decimal.js": "^10.6.0"
+  }
 }

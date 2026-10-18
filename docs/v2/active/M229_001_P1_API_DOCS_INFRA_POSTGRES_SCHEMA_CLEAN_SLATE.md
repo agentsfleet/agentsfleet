@@ -73,11 +73,17 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | `cli/src/**`, `ui/packages/app/**`, `scripts/**`, `playbooks/**`, `make/*.mk` | EDIT | Only where the inventory check finds a removed name |
 | `docs/AUTH.md`, `docs/AUTH_DEVICE_LOGIN.md`, `docs/architecture/*.md` | EDIT | Old table names replaced; `postgres_schemas.md` §Settled outcomes |
 | `docs/v2/pending/*.md`, `docs/v2/active/*.md` | EDIT | Live specs naming a removed table; `done/` stays frozen |
-| `scripts/model-library-allowlist.json`, `scripts/seed-models.mjs`, `scripts/check_model_allowlist.py`, `playbooks/operations/model_catalogue/**` | EDIT | §8: the curated catalogue, its prices, provenance and availability ([#771](https://github.com/agentsfleet/agentsfleet/issues/771)) |
-| `schema/13*_model_*.sql` | EDIT | §8: availability, priced tiers, effective dates and provenance per model |
+| `scripts/model-library-allowlist.json`, `scripts/seed-models.mjs`, `playbooks/operations/model_catalogue/**`, `make/dev.mk`, `make/quality.mk` | EDIT | §8: curated identities, exact prices and provenance; Bun callers and the validator for this data format ([#771](https://github.com/agentsfleet/agentsfleet/issues/771)) |
+| `scripts/check_model_allowlist.py`, `scripts/check_model_allowlist_test.py` | DELETE | §8: the provider-wide priced-or-reasoned format is removed by the owner's curated-only decision; source, amount, region, duplicate and sentinel refusals are covered in the Bun validator |
+| `scripts/model-catalogue/**`, `package.json`, `bun.lock` | CREATE / EDIT | §8: bounded schema validation, exact decimal arithmetic and seeder helpers |
+| `schema/13*_model_*.sql` | EDIT / CREATE | §8: identity with one advanced flag; separate price tiers, dates and provenance |
 | `rustd/crates/afd_billing/src/{rates,meter,nanos}.rs`, `rustd/crates/afd_credential/src/provider/**`, `rustd/crates/afd_admin/src/**`, `rustd/crates/afd_authoring/src/catalogue/**` | EDIT | §8: tier, date and cache-write pricing; picker filtering |
-| `rustd/crates/afr_providers/{assets,src}/**`, `rustd/crates/afd_wire/src/report/**` | EDIT | §8: native Gemini and Ollama wires; cache-write usage on the report |
-| `ui/packages/app/**`, `cli/src/**` (model picker and provider commands) | EDIT | §8: display name, availability and Ollama endpoint kind |
+| `rustd/crates/afd_core/src/{lib,catalogue}.rs`, `rustd/crates/afd_tenant/src/models/**`, `rustd/crates/{afd_admin,afd_tenant,afd_credential}/Cargo.toml` | EDIT / CREATE | §8: shared typed price/evidence records; advanced-filtered reads and atomic administrator replacements |
+| `rustd/crates/afr_providers/{assets,src,tests}/**`, `rustd/crates/afr_providers/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_wire/src/report/**` | EDIT / CREATE | §8: native Gemini and Ollama wires, mocked transport proofs and cache-write usage |
+| `ui/packages/app/**`, `cli/src/**` (model picker and provider commands) | EDIT / CREATE / DELETE | §8: catalogue display names, explicit advanced selection, precise prices, no static model suggestions; bounded test files |
+| `docs/reviews/model-catalogue/**` | CREATE | §8: provider verification, measured checks and exact handover for the other agent's paths |
+| `rustd/crates/afd_db/Cargo.toml`, `rustd/crates/afd_db/tests/**` | EDIT / CREATE | §8: real seeder through the canonical migrator; price-table shape and grants |
+| `rustd/crates/afr_telemetry/src/labels/tests.rs`, `docs/metrics.runner.census.tsv` | EDIT | §8: Gemini and Ollama are two added closed provider labels; retain the label-product test and declare its exact series count |
 | `.orly/docs/SCHEMA_CONVENTIONS.md`, `.orly/AGENTS.md` | EDIT | Only through `orly update` after the source change (the latter mandates `core.fleet_*`) |
 | `~/Projects/orly/**` (conventions doc and the pack carrying `core.fleet_*`) | EDIT | Cross-repository, own branch and PR (owner-approved) |
 | `~/Projects/docs/**` | EDIT | Runner protocol, retention, retry window, Library deletion, changelog `<Update>`; own branch |
@@ -164,15 +170,15 @@ Every query is rewritten here, so two fixes land with it rather than touching ea
 
 The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/agentsfleet/issues/771) and nothing superseded; every price is the provider's published rate for the request it bills. Machine identifiers are the providers' exact API model IDs, display names are labels, and existing provider keys stay (`gemini`, displayed "Google"). Provenance and the Oct 18 verification are in Discovery (Catalogue prices verified).
 
-- **Dimension 8.1** — the curated picker lists exactly the 17 enabled entries of #771 by provider key and exact API model ID, each with its display name → Test `test_curated_picker_lists_the_enabled_catalogue`
-- **Dimension 8.2** — `gpt-5.6-terra` is selectable as an advanced entry outside the curated list; `accounts/fireworks/models/deepseek-v4-pro-0813` is refused for serverless selection → Test `test_advanced_and_disabled_entries`
-- **Dimension 8.3** — MiniMax M3 and superseded generations leave the picker; a saved configuration naming one still resolves and bills where its route is callable, and is never swapped for another model → Test `test_pruned_model_keeps_saved_configs`
+- **Dimension 8.1** — the curated identity set is exactly #771's 17 entries; a picker row requires an exact context integer from its provider's own models API, with unreadable limits reported and unseeded → Test `test_curated_picker_lists_the_enabled_catalogue`
+- **Dimension 8.2** — `gpt-5.6-terra` is returned only when advanced models are requested; one boolean distinguishes it, with no availability vocabulary → Test `test_advanced_picker_requires_a_request`
+- **Dimension 8.3** — MiniMax M3, superseded generations and serverless-deprecated DeepSeek V4 Pro 0813 have no catalogue rows; every database starts empty, so there are no saved selections to preserve → Test `test_pruned_model_rows_are_deleted`
 - **Dimension 8.4** — a context tier prices the whole request: OpenAI at 272,000 input tokens is base and at 272,001 upper; Haiku 5.5 at 100,000 prompt tokens is base and at 100,001 upper, counting cache reads and writes → Test `test_context_tier_prices_the_whole_request`
 - **Dimension 8.5** — an effective date switches price at UTC midnight: Gemini 4 Argon (`gemini`) bills 2.00 / 0.10 / 10.00 at 2026-11-30T23:59:59.999Z and 4.00 / 0.20 / 20.00 at 2026-12-01T00:00:00Z; Mistral Large 4 keeps its promotional rate with no invented end date → Test `test_effective_dates_switch_at_utc_midnight`
 - **Dimension 8.6** — cache writes bill at their own rate: Anthropic by 5-minute or 1-hour lifetime, OpenAI at its listed per-tier rate, never as uncached input → Test `test_cache_writes_bill_at_their_rate`
-- **Dimension 8.7** — 0.006, 0.015, 0.0625, 0.075 and 0.1875 USD per million tokens store and bill exactly in nanos → Test `test_sub_cent_rates_bill_exactly`
+- **Dimension 8.7** — 0.006, 0.015, 0.0375, 0.0625, 0.075, 0.125 and 0.1875 USD per million tokens store and bill exactly in nanos → Test `test_sub_cent_rates_bill_exactly`
 - **Dimension 8.8** — usage counts each token once: cache reads leave uncached input, cache writes are not also input, reasoning tokens bill once as output → Test `test_usage_counts_each_token_once`
-- **Dimension 8.9** — an Ollama endpoint records whether it is local or cloud, lists the model tags the server returns, and its token price stays unknown, never zero → Test `test_ollama_pricing_stays_unknown`
+- **Dimension 8.9** — Ollama records local or cloud, lists tags from its configured server, and keeps token pricing unknown; only a customer's own runner may dial a marked local endpoint, never the daemon; cloud requires https and the existing address guards → Test `test_ollama_pricing_stays_unknown`
 - **Dimension 8.10** — the native `gemini` route carries tool calls across turns with their thought signatures, separate from OpenRouter's Gemini route (mocked transport) → Test `test_native_gemini_continues_tool_calls`
 - **Dimension 8.11** — every price carries source URL, verification time, effective dates, unit and conditions, and the seeder refuses one without them → Test `test_price_rows_carry_provenance`
 
@@ -190,7 +196,7 @@ Runner protocol (POST /v1/runners/me/authoring-leases/{lease_id}/{activity|model
 Draft messages: unchanged on the wire; `operation_id` is stored on authoring.messages (Discovery: Message operation key).
 Drafts: `closed_at` and `expires_at` unchanged on the wire.
 CLI: `agentsfleet tenant provider set` unchanged from outside; server writes model.tenant_models.
-Model picker (operator and tenant catalogue reads): each entry adds `display_name`, `availability` (curated or advanced) and its priced tiers with effective dates; pruned entries are absent.
+Model picker (operator and tenant catalogue reads): each entry adds `display_name`, boolean `advanced`, context provenance and priced tiers with effective dates; pruned entries are absent. Tenant `GET /v1/models?advanced=true` explicitly requests advanced entries; default reads omit them.
 Runner report usage: adds cache-write token counts by lifetime, so writes bill at their own rate (§8).
 Tables and columns: docs/architecture/postgres_schemas.md is the interface; renames there are final.
 ```
@@ -207,10 +213,11 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | Erasure loses money | A deletion root cascades into attempts, settlements or charges | No foreign key from money rows to an erasable owner; `test_deletion_matrix_keeps_money` fails |
 | Late 754 merge | Slots 956/957 land on `main` after this branch opens | Rebase folds them into the new slots; `rust-migration-list` fails until folded |
 | Concurrent resolution | Two people resolve one gate or invite | Guarded UPDATE on `resolved_at IS NULL`; second sees zero rows and a conflict |
-| Disabled route selected | A tenant or setup names `deepseek-v4-pro-0813` on Fireworks serverless | Refused at selection with a named error; nothing is saved (8.2) |
+| Pruned route selected | A tenant or setup names an identity absent from the catalogue | Selection is refused; no catalogue row or replacement is fabricated (8.3) |
 | Unknown price | An Ollama model has no published token price | Price stays unknown; the spend view shows unknown, never 0 (8.9) |
 | Promotion ends | Gemini's Dec 1, 2026 date passes, or Mistral publishes an end date | The effective-dated row takes over at UTC midnight; an undated promotion stays until the catalogue is edited (8.5) |
-| Pruned model saved | A configuration names a model no longer in the picker | It keeps resolving and billing; no silent replacement (8.3) |
+| Context cannot be verified | The provider models API cannot supply the exact served limit | Seeder reports the identity and omits its row; marketing shorthand is never converted (8.1) |
+| Ollama boundary crossed | A daemon or shared runner is asked to dial a local endpoint, or cloud uses http | Refuse before network access; no private endpoint is discovered by the daemon (8.9) |
 
 ## Invariants
 
@@ -259,15 +266,15 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
 | 7.5 | unit | `test_rows_decode_into_typed_structs` | scan of `rustd/crates/*/src` → 0 matches for `try_get`; a seeded `row.try_get(0)` fails the scan naming its file |
-| 8.1 | integration | `test_curated_picker_lists_the_enabled_catalogue` | seeded catalogue → picker returns the 17 #771 entries, `gemini` displayed "Google", no MiniMax M3 |
-| 8.2 | integration | `test_advanced_and_disabled_entries` | Terra → listed advanced; selecting Fireworks `deepseek-v4-pro-0813` serverless → refused, nothing saved |
-| 8.3 | integration | `test_pruned_model_keeps_saved_configs` | saved MiniMax M3 entry → absent from picker; resolves and bills at its stored rate |
+| 8.1 | integration | `test_curated_picker_lists_the_enabled_catalogue` | all 17 identities with provider-API context proofs → exactly 17 default picker entries, `gemini` displayed "Google"; missing proof → reported and unseeded |
+| 8.2 | integration | `test_advanced_picker_requires_a_request` | default → no Terra; explicit advanced read → Terra with `advanced=true`, all curated rows `false` |
+| 8.3 | integration | `test_pruned_model_rows_are_deleted` | seed a non-curated identity and extra price tier in a test database; apply the curated set → both are deleted with no orphan price; repeat diff → no changes |
 | 8.4 | unit | `test_context_tier_prices_the_whole_request` | 272,000 / 272,001 OpenAI input; Haiku 99,000 input + 1,000 cache read vs + 1,001 → base vs upper on every token |
 | 8.5 | unit | `test_effective_dates_switch_at_utc_midnight` | 2026-11-30T23:59:59.999Z → 2.00/0.10/10.00; 2026-12-01T00:00:00Z → 4.00/0.20/20.00 |
 | 8.6 | unit | `test_cache_writes_bill_at_their_rate` | Sonnet 1M 5-minute writes → 2.50 USD; 1-hour → 4.00 USD; Sol over 272K writes → 5.00 USD per million |
-| 8.7 | unit | `test_sub_cent_rates_bill_exactly` | 1,000,000 tokens at 0.006 → 6,000,000 nanos; 0.075 → 75,000,000; 0.0625 → 62,500,000 |
+| 8.7 | unit | `test_sub_cent_rates_bill_exactly` | decimal strings × 1,000,000,000 → exact integer nanos for 0.006, 0.015, 0.0375, 0.0625, 0.075, 0.125 and 0.1875; UI retains each digit |
 | 8.8 | unit | `test_usage_counts_each_token_once` | 1,000 input of which 400 cache read and 100 cache write, 50 reasoning → 500 uncached + 400 read + 100 write + output once |
-| 8.9 | integration | `test_ollama_pricing_stays_unknown` | mocked Ollama `/api/tags` → tags listed with endpoint kind; spend reads unknown, not 0 |
+| 8.9 | integration | `test_ollama_pricing_stays_unknown` | mocked `/api/tags` → exact server tags with endpoint kind; price stays unknown; daemon never dials local; shared runner and non-local http are refused |
 | 8.10 | unit | `test_native_gemini_continues_tool_calls` | mocked stream with a function call and thought signature → next request echoes the signature |
 | 8.11 | unit | `test_price_rows_carry_provenance` | allowlist row missing `source_url` or `verified_at` → seeder refuses it by name |
 
@@ -335,7 +342,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 6. **What we do NOT build** — new features; the remaining data-access work; per-schema roles; Firecracker; wire renames.
 7. **Fit with existing features** — compounds with M224_001 launch readiness; must not destabilise the fleet lease path (`runner.fleet_slots`, fencing).
 8. **Surface order** — API and runner first; the CLI and dashboard are unchanged from outside.
-9. **Dashboard restraint** — no new UI.
+9. **Dashboard restraint** — §8 adds catalogue labels and explicit advanced selection; other dashboard changes follow §4.
 10. **Confused-user next step** — `docs/architecture/postgres_schemas.md` for contributors; the changelog `<Update>` for runner operators.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -381,6 +388,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Model catalogue fold** — > Indy (2026-10-18): "I want the Model library to prune … add this to your spec", then "open an issue on the gh for the model stuff … and link the issue in the spec too" — context: the curated picker, provider mappings and pricing are refreshed in this PR as §8; the full brief, sources and the first pricing verification are [issue #771](https://github.com/agentsfleet/agentsfleet/issues/771).
 - **Catalogue prices verified** — Oct 18, 2026, 12:33 UTC, official pages and OpenRouter's `/api/v1/models`: Anthropic, OpenAI (both tiers, cache writes 1.25× input), Google, Mistral, Fireworks GLM 5.3 Flash 0.15/0.03/0.50, Kimi K3 3.00/0.30/15.00, DeepSeek V4.1 Flash 0.30/0.006/1.20, OpenRouter Muse Wonder 4.00/0.20/20.00, Gemini 4 Argon 2.00/0.10/10.00 (cache write 0.1875), Qwen3.8 Max 0902 2.00/0.25/6.00, and Groq gpt-oss-120b 0.15/0.075 (50% cache discount)/0.60 all match #771. Differences: Fireworks states context as "1040k" (Kimi K3's FAQ says 1,048,576), so those three stay unverified integers; OpenRouter reports Muse Wonder at 1,048,576, not 1,000,000; Google and Mistral pages state no context window; DeepSeek V4 Pro 0813 serverless is deprecated from Sep 25, 2026, still showing 1.32/0.044/3.96; Anthropic adds a 1.1× multiplier for US-only inference.
 - **§8 catalogue calls** — Indy (2026-10-18), via AskUserQuestion, eight answers: picker = exactly #771's 17 curated entries plus `gpt-5.6-terra` as advanced ("Exactly the brief"); native Gemini runner wire built in this PR through Rig 0.44's `gemini` module ("Build it now"); Ollama gets its own runner wire through Rig's `ollama` module ("New Ollama wire"); cache-write tokens are reported and billed by lifetime ("Bill them now"); prices move to a new `model.platform_model_prices` table, one row per prompt-size tier and date range ("New price table", after asking "do you need a new table"); rows that leave the picker are deleted, not flagged ("Delete pruned rows") — every database starts empty under §2/§5, so no saved configuration survives to preserve, and serverless-deprecated DeepSeek V4 Pro 0813 is left out the same way, leaving one advanced flag; context integers come from each provider's own models API, recorded with their source, and a model with no exact served limit is not seeded ("From provider API"); a local Ollama endpoint may be `http`/private only when marked local and dialled by the runner on the customer's host, never by the daemon, while cloud Ollama keeps https and the full SSRF guard ("Runner-local exception"). Where §8's text assumes an availability column with pruned/disabled values, this entry supersedes it until §8 is reconciled.
+- **§8 implementation decisions** — Indy (2026-10-18), answering the isolated catalogue worktree: include a separate unspecified-lifetime cache-write rate and token category; keep `effective_from` and `effective_until` with a narrow naming exception for those two price-table columns. Per-request usage, pricing and deduplication design is left to Indy and the other agent. Local Ollama stays blocked until Indy chooses customer-runner ownership. Neither deferred design is claimed complete here.
 - **§8 isolated implementation** — owner instruction (Oct 18, 2026): branch `feat/m229-model-catalogue` starts at `53e3d093ece9ff39fde0290924ff30b7ac70efca`; local commits only, no push or Pull Request. The sibling agent owns `afd_http`, `afd_api_*`, `agentsfleetd`, `afd_bench` and `public/openapi.json`; required edits there are a file-and-line handover. Service tiers (OpenAI Batch, Flex and Fast) and Anthropic's US-only 1.1× pricing are outside this section. Whole-file Rust coverage must reach 99%; TypeScript coverage 100%.
 - **Stale architecture docs** — Indy (2026-10-18), via AskUserQuestion: "Delete it" for `docs/architecture/tenant_provider_v2.md` (a selection shape M229 did not build) and "Cut §5–§9" for `scenarios/production-deploy-repair.md` (a repair-record design with no tables or code).
 - **Docs branch ahead of code** — `chore/m229-schema-clean-slate-changelog` at `c3d4c8a` in `~/Projects/agentsfleet-worktrees/m229-docs` (docs `make test` 22 OK, `make lint` clean) states, from this spec, behaviour the code does not have yet; each is re-checked against code before the PR: 4.7 most API types still send milliseconds and `public/openapi.json` still carries `expires_at_ms` (`MintCredentialResponse`, `PollSessionResponse`) with no `format: date-time`; 4.5 `deletion_generation` still in 31 places under `crates/*/src`; 4.2 the replay key expires 24 hours after purge today, not 24 hours from the first attempt (`replay/sql.rs` PURGE); 4.3 Library removal keeps revisions a fleet references today (`library/remove.rs` UNREFERENCED); runner `status` replaces `admin_state` in OpenAPI `RunnerItem` and `RunnerAdminPatchResponse`.
