@@ -16,6 +16,8 @@ use super::{
 fn a_provider_is_its_registry_name_or_other() {
     for (configured, label) in [
         ("anthropic", "anthropic"),
+        ("gemini", "gemini"),
+        ("ollama", "ollama"),
         ("mistral", "mistral"),
         ("xai", "xai"),
         ("grok", "xai"),
@@ -27,7 +29,7 @@ fn a_provider_is_its_registry_name_or_other() {
         assert_eq!(Provider::of(configured).as_str(), label, "`{configured}`");
     }
     // Every shipped entry, and `_other`: the ceiling is sized to this.
-    assert_eq!(Provider::count(), 43);
+    assert_eq!(Provider::count(), 45);
 }
 
 /// A table that will not parse names no provider, so every label is `_other`
