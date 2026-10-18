@@ -1,11 +1,13 @@
 import type { FleetTrigger } from "@/lib/types";
+import Link from "next/link";
 import {
   Badge,
-  Card,
-  CardContent,
+  Button,
+  DashboardPanelTitle,
   EmptyState,
   List,
   ListItem,
+  Section,
   Time,
 } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
@@ -26,14 +28,14 @@ const TRIGGERS_EMPTY_DESCRIPTION =
 
 export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props) {
   return (
-    <Card className="bg-card" aria-label={TRIGGERS_TITLE}>
-      <CardContent className="flex flex-col gap-md">
-        <h2 className="font-sans text-sm font-medium">{TRIGGERS_TITLE}</h2>
+    <Section aria-label={TRIGGERS_TITLE} className="gap-xl">
+        <DashboardPanelTitle>{TRIGGERS_TITLE}</DashboardPanelTitle>
         {triggers.length === 0 ? (
           <EmptyState
             icon={<ZapIcon size={28} />}
             title={TRIGGERS_EMPTY_TITLE}
             description={TRIGGERS_EMPTY_DESCRIPTION}
+            action={<Button asChild variant="secondary"><Link href="?view=setup">Open setup</Link></Button>}
           />
         ) : (
           <List variant="ordered" className="flex list-none flex-col gap-sm space-y-0 pl-0">
@@ -50,11 +52,10 @@ export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props
             })}
           </List>
         )}
-        <p className="text-xs text-muted-foreground">
-          Use Improve from Setup to change how this fleet wakes. Review and Apply affect new work.
+        <p className="text-sm text-muted-foreground">
+          Review and Apply affect new work. Running work keeps the setup it started with.
         </p>
-      </CardContent>
-    </Card>
+    </Section>
   );
 }
 

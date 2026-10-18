@@ -87,10 +87,10 @@ test.describe("fleet console", () => {
     // test_non_chat_console_views_scroll_normally — the Setup view is ordinary
     // page content: it is reachable and its seeded instructions are not clipped away.
     await rail.getByRole("link", { name: "Setup" }).click();
-    await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(page.getByRole("heading", { name: "Saved instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(page.getByText(SEEDED_INSTRUCTIONS).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Runtime configuration", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Improve in private chat" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Advanced settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit fleet" })).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its
     // own landmark so it is not confused with the sidebar destination.

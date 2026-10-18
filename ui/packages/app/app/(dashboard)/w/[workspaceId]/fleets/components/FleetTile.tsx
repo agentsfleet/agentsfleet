@@ -242,6 +242,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
     // p-4/gap-3/gap-4/gap-2/mt-2/pt-3 before — six numbers, none of them the
     // inset that framed them.
     <Card
+      interactive
       className="min-h-48 p-xl"
       data-kind={kind}
     >
@@ -267,7 +268,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
           <span className="min-w-0 truncate text-label text-muted-foreground" data-agent-name={identity.callsign}>
             {agentDisplayName(fleet.id)}
           </span>
-          <span className="shrink-0 font-sans text-label font-medium text-pulse">
+          <span className="shrink-0 font-sans text-label font-medium text-pulse" data-card-open>
             Open →
           </span>
         </div>

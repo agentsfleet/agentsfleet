@@ -60,7 +60,7 @@ describe("fleets routes — detail views", () => {
     ).rejects.toThrow("Fleet read failed");
   });
 
-  it("fleet Events view loads the URL-selected standard-table window", async () => {
+  it("fleet Activity view loads the URL-selected standard-table window", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -80,7 +80,7 @@ describe("fleets routes — detail views", () => {
     );
   });
 
-  it("fleet Events view threads the URL cursor into the events fetch", async () => {
+  it("fleet Activity view threads the URL cursor into the events fetch", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -100,7 +100,7 @@ describe("fleets routes — detail views", () => {
     expect(urls.some((url) => url.includes("cursor=tok_fleet"))).toBe(true);
   });
 
-  it("fleet Events view propagates failed history to the retry boundary", async () => {
+  it("fleet Activity view propagates failed history to the retry boundary", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -200,7 +200,7 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain('aria-label="Fleet sections"');
     expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}" aria-current="page"`);
     expect(markup).toContain("Chat");
-    expect(markup).toContain("Events");
+    expect(markup).toContain("Activity");
     expect(markup).toContain("Memory");
     expect(markup).toContain("Setup");
     expect(markup).toContain("Trigger");
@@ -239,8 +239,8 @@ describe("fleets routes — detail views", () => {
       }),
     );
     expect(await screen.findByText("Investigate failures.")).not.toBeNull();
-    expect(screen.getByRole("heading", {name: "Fleet setup"})).not.toBeNull();
-    expect(screen.getByRole("link", {name: "Improve in private chat"}).getAttribute("href")).toBe(`/w/ws_1/fleets/new?fleet=${FLEET_ID}&setup_revision=1`);
+    expect(screen.getByRole("heading", {name: "What this fleet does"})).not.toBeNull();
+    expect(screen.getByRole("link", {name: "Edit fleet"}).getAttribute("href")).toBe(`/w/ws_1/fleets/new?fleet=${FLEET_ID}&setup_revision=1`);
     expect(screen.queryByText("Skill source")).toBeNull();
     expect(screen.queryByText("Latest outcome")).toBeNull();
   });
