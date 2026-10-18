@@ -57,9 +57,11 @@ pub fn grade<E: Coded>(samples: &[(&str, E)], expect: Expect) {
 
         if let Some(source) = error.source() {
             wrapped.push(*label);
+            // A cause that renders nothing (an empty validation report) has no
+            // text to repeat, and every string ends with the empty one.
             let cause = source.to_string();
             assert!(
-                !rendered.ends_with(&cause),
+                cause.is_empty() || !rendered.ends_with(&cause),
                 "{label} repeats its own cause: {rendered}"
             );
         }

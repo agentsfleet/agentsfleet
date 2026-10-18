@@ -22,7 +22,7 @@ categories.workspace = true
 # crate's idea of a ledger outage drift from the ledger's. `afd_crypto`'s is
 # the mocked entropy source a failed draw for a binding id is sampled from, and
 # `afd_outbound`'s the ledger failures a notice's obligation can raise.
-test-util = ["afd_admission/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
+test-util = ["afd_admission/test-util", "afd_core/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The
