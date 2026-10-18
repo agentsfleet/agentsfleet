@@ -12,7 +12,7 @@ use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::admit::Refusal;
 
-use crate::lease_reads::COLUMN_LEASED_UNTIL;
+use crate::rows::{LAPSE, Row};
 
 /// The stored status of an event nobody ended.
 const STATUS_RECEIVED_ROW: &str = "received";
@@ -33,8 +33,8 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    end_the_event(&fixtures, &claimed, now).await;
+    let now = fixtures.enrolled_at();
+    end_the_event(&fixtures, &claimed).await;
 
     let log = Capture::install();
     let answer = fixtures
@@ -67,10 +67,10 @@ async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_b
 
 /// Opens `claimed`'s event row and ends it, as a run that already finished
 /// would have left it.
-async fn end_the_event(fixtures: &Fixtures, claimed: &Acquired, now: UnixMillis) {
+async fn end_the_event(fixtures: &Fixtures, claimed: &Acquired) {
     let leases = fixtures.leases();
     leases
-        .record_received(claimed, now)
+        .record_received(claimed)
         .await
         .expect("the row opens");
     let label = afd_core::event::label::EVENT_TYPE_UNSUPPORTED;
@@ -79,7 +79,6 @@ async fn end_the_event(fixtures: &Fixtures, claimed: &Acquired, now: UnixMillis)
             &claimed.fleet_id,
             &claimed.event_id,
             Refusal::labelled(label),
-            now,
         )
         .await
         .expect("the row ends");
@@ -107,7 +106,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     let claimed = claim(&fixtures, &seeded).await;
     let plane = plane_with_unreadable_payer(&fixtures);
 
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
+    let now = fixtures.enrolled_at();
     let log = Capture::install();
     let answer = plane
         .lease_claimed(claimed.clone(), &seeded.runner, now)
@@ -152,12 +151,10 @@ fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
     }
 }
 
-/// Asserts the fleet's claim was handed back: its lease runs out at the
-/// instant it was claimed, so the next poll may take it.
+/// Asserts the fleet's claim was handed back, so the next poll may take it.
 async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
-    assert_eq!(
-        fixtures.affinity_column(fleet, COLUMN_LEASED_UNTIL).await,
-        Some(fixtures.enrolled_at().to_string()),
+    assert!(
+        fixtures.slot_is_free(fleet).await,
         "the retry freed the claim"
     );
 }
@@ -241,15 +238,11 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let lapsed = claimed.leased_until.saturating_add_millis(1);
+    let slot = Row::Slot(claimed.fleet_id.as_str());
+    fixtures.age(slot, "lease_expires_at", LAPSE).await;
     let won = fixtures
         .leases()
-        .claim(
-            &claimed.fleet_id,
-            &rival,
-            lapsed,
-            afd_core::timing::LEASE_TTL_MS,
-        )
+        .claim(&claimed.fleet_id, &rival, afd_core::timing::LEASE_TTL)
         .await
         .expect("the claim statement answers");
     assert!(won.is_some(), "the rival takes the lapsed slot");

@@ -23,7 +23,7 @@ impl Admissions {
     ) -> Result<bool> {
         // The stream spells the producer's instant in milliseconds
         // (`Entry::created_at`); the row holds it as a timestamp.
-        let created_at = pending.event_created_at.as_millisecond().to_string();
+        let created_at = pending.event_created_at.to_string();
         let entry = Entry {
             actor: &pending.actor,
             // The stored spelling, passed through. It was written by

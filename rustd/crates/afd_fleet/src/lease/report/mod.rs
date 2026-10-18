@@ -8,8 +8,8 @@
 //! # Why the money is settled before the event row is closed
 //!
 //! The reverse order looks tidier — end the work, then bill for it — and it
-//! loses money on the cap path. A run that reaches `MAX_RUNTIME_MS` is racing
-//! the reclaim sweep, and the sweep bumps `fencing_seq`. Settle first and the
+//! loses money on the cap path. A run that reaches `MAX_RUNTIME` is racing
+//! the reclaim sweep, and the sweep bumps `fencing_token`. Settle first and the
 //! affinity lock inside the statement holds the sweep off until the charge
 //! commits. Settle second and the sweep wins the fence, the settle is refused,
 //! and the last slice of a twelve-hour run is never charged to anyone.
@@ -33,11 +33,10 @@
 //! attaches the instrument. An exporter fused into the money path would be one
 //! a report could not settle without.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
 use afd_wire::report::ReportRequest;
+use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::commit::{Committed, TerminalReport};
@@ -122,7 +121,7 @@ impl Plane {
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Reconciled> {
         let lease_id = request.lease_id.as_ref();
         let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
@@ -155,7 +154,7 @@ impl Plane {
                 self.announce(runner_id, request, &lease, closed, charged, now)
                     .await;
                 if let Some(owing) = owed {
-                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref(), now)
+                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref())
                         .await;
                 }
                 Ok(reconciled(lease, charged, false))
@@ -224,7 +223,7 @@ fn terminal<'a>(
     meter: Meter,
     request: &'a ReportRequest<'a>,
     tool_calls: Option<&'a str>,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> TerminalReport<'a> {
     TerminalReport {
         lease_id,
@@ -244,21 +243,9 @@ fn terminal<'a>(
         },
         last_event_id: request.checkpoint.last_event_id.as_ref(),
         last_response: request.checkpoint.last_response.as_ref(),
-        held_until: held_until(request.held_until_ms, now),
+        held_until: request.held_until,
         now,
     }
-}
-
-/// When the sandbox the run left held lapses, as the slot records it: never
-/// past one idle window from now, whatever the runner asked, so a runner
-/// cannot steer a fleet to itself for longer than a hold lasts. A deadline
-/// already past holds nothing.
-fn held_until(asked_ms: Option<i64>, now: UnixMillis) -> Option<UnixMillis> {
-    let latest = now.saturating_add_millis(SANDBOX_HOLD_IDLE_MS);
-    asked_ms
-        .map(UnixMillis::from_millis)
-        .filter(|asked| *asked > now)
-        .map(|asked| asked.min(latest))
 }
 
 /// The run's tool trace as the event row stores it, fenced to `lease`.

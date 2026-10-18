@@ -1,7 +1,7 @@
 //! What a caller is TOLD, as distinct from what went wrong.
 //!
 //! Every sentence here is client-visible, so each is a wire fact: what a caller
-//! reads is behaviour (RULE UFS). They live apart from [`super::ErrorKind`]
+//! reads is behaviour (RULE UFS). They live apart from `ErrorKind`
 //! because the two answer different questions — that one is what happened, this
 //! is what we say — and because a sentence changing is a wire change while a
 //! kind changing is not.

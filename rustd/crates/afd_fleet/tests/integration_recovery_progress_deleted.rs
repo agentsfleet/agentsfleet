@@ -13,13 +13,13 @@
 )]
 
 use afd_admission::Progress;
-use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
     EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, ledger, producer_key,
 };
 use crate::integration_recovery_progress::{ONE_FLEET, SLACK_PASSES, unfinished_fleets};
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -35,7 +35,7 @@ async fn forget_fleet_rows(fixtures: &Fixtures, fleet: &str) {
         .acquire()
         .await
         .expect("the ledger answers");
-    sqlx::query("DELETE FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+    sqlx::query("DELETE FROM fleet.admissions WHERE fleet_id = $1::uuid")
         .bind(fleet)
         .execute(&mut *connection)
         .await
@@ -89,14 +89,16 @@ async fn a_deleted_fleet_does_not_strand_the_ones_after_it() {
     let mut progress = Progress::default();
     let (deleted, deleted_event) = lost.remove(0);
     for _pass in 0..passes {
-        let at = clock::now();
-        live.reconcile(at, ONE_FLEET, EVERY_ROW, &mut progress)
+        live.reconcile(ONE_FLEET, EVERY_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
-        let repaired = match fixtures.admission_receipt(&deleted, &deleted_event).await {
+        let repaired = match fixtures
+            .text(Row::Admission(&deleted_event), "receipt")
+            .await
+        {
             Some(receipt) => streams
                 .holds_entry(&deleted, &EventId::of(&receipt))
                 .await
@@ -113,18 +115,17 @@ async fn a_deleted_fleet_does_not_strand_the_ones_after_it() {
 
     let remaining = unfinished_fleets(&fixtures).await + SLACK_PASSES;
     for _pass in 0..remaining {
-        let at = clock::now();
-        live.reconcile(at, ONE_FLEET, EVERY_ROW, &mut progress)
+        live.reconcile(ONE_FLEET, EVERY_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs past a deleted fleet");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs past a deleted fleet");
     }
 
     for (fleet, event_id) in &lost {
         let receipt = fixtures
-            .admission_receipt(fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
         assert!(

@@ -14,6 +14,7 @@ use tracing_subscriber::registry::Registry;
 
 use super::seed::seed_provider_resolution;
 use super::*;
+use crate::rows::Row;
 
 /// The target sqlx logs each executed statement under.
 const STATEMENT_TARGET: &str = "sqlx::query";
@@ -85,7 +86,10 @@ async fn test_issue_reads_the_tenant_once() {
     );
     assert_eq!(
         fixtures
-            .affinity_column(&seeded.fleet, crate::lease_reads::COLUMN_METERED_INPUT)
+            .text(
+                Row::Slot(&seeded.fleet),
+                crate::lease_reads::COLUMN_METERED_INPUT
+            )
             .await,
         Some("0".to_owned()),
         "the fresh lease's own insert reset the cursor an earlier run left"

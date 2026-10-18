@@ -7,9 +7,8 @@
 //! `agentsfleet_lease_poll_dragonfly_commands_total` publishes, so a command
 //! left out of it is load the metric hides.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL_MS;
+use afd_core::timing::LEASE_TTL;
 use afd_dragonfly::ReadyToken;
 use afd_observability::producers;
 
@@ -27,13 +26,12 @@ impl Leases {
         fleet_id: &Uuid7,
         token: &ReadyToken,
         runner_id: &Uuid7,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         // Recorded on the ONE exit that hands work out. A `None` — a lost
         // claim, an empty stream, a dropped entry — reaches nothing here,
         // because nothing started.
-        self.try_candidate_unrecorded(fleet_id, token, runner_id, now, cost)
+        self.try_candidate_unrecorded(fleet_id, token, runner_id, cost)
             .await
             .inspect(|found| {
                 if let Some(acquired) = found {
@@ -50,10 +48,9 @@ impl Leases {
         fleet_id: &Uuid7,
         token: &ReadyToken,
         runner_id: &Uuid7,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let Some(claimed) = self.claim(fleet_id, runner_id, now, LEASE_TTL_MS).await? else {
+        let Some(claimed) = self.claim(fleet_id, runner_id, LEASE_TTL).await? else {
             // Taken by a live holder. No event was read, so nothing is orphaned.
             return Ok(None);
         };
@@ -61,11 +58,11 @@ impl Leases {
         // raised, through the release the pull's endings share. Left held, the
         // held-slot filter would hide the fleet for a full TTL.
         match self
-            .take_claimed(fleet_id, &claimed, token, runner_id, now, cost)
+            .take_claimed(fleet_id, &claimed, token, runner_id, cost)
             .await
         {
             Err(fault) => {
-                self.let_go(fleet_id, claimed.fence, now).await;
+                self.let_go(fleet_id, claimed.fence).await;
                 Err(fault)
             }
             outcome => outcome,
@@ -79,12 +76,11 @@ impl Leases {
         claimed: &crate::lease::affinity::Claimed,
         token: &ReadyToken,
         runner_id: &Uuid7,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         // A won claim over a lapsed holder means its lease is still `active`
         // and still names the work it never finished.
-        if let Some(prior) = self.reclaim_prior_active(fleet_id, now).await? {
+        if let Some(prior) = self.reclaim_prior_active(fleet_id).await? {
             let fleet = fleet_id.as_str();
             let runner = runner_id.as_str();
             let lease = prior.lease_id.as_str();
@@ -101,8 +97,7 @@ impl Leases {
             );
             return from_reclaim(fleet_id, claimed, token, prior).map(Some);
         }
-        self.acquire_fresh(fleet_id, claimed, token, now, cost)
-            .await
+        self.acquire_fresh(fleet_id, claimed, token, cost).await
     }
 
     /// Pull the next event for a claimed fleet: the group's oldest pending
@@ -116,7 +111,6 @@ impl Leases {
         fleet_id: &Uuid7,
         claimed: &crate::lease::affinity::Claimed,
         token: &ReadyToken,
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         let streams = self.streams();
@@ -130,7 +124,7 @@ impl Leases {
             // claim so the next event is not blocked behind it, then clear the
             // mark this poll peeked: a drained fleet left marked is a claim,
             // a read and a release on every poll that samples it, forever.
-            self.release(fleet_id, claimed.fence, now).await?;
+            self.release(fleet_id, claimed.fence).await?;
             producers::fleet::lease_claimed_empty();
             cost.dragonfly_commands += 1;
             self.clear_mark(fleet_id, token).await;
@@ -145,7 +139,7 @@ impl Leases {
                 // Freed for the reason the empty arm frees it: this fleet holds
                 // nothing this poll can lease. Holding the claim would cost a
                 // full TTL of silence on a fleet whose next event may be fine.
-                self.release(fleet_id, claimed.fence, now).await?;
+                self.release(fleet_id, claimed.fence).await?;
                 Ok(None)
             }
         }

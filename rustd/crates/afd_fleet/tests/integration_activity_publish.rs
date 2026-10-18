@@ -43,6 +43,10 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
 
+/// How long the backdated lease still has to run, so the stages read as live.
+const LEASE_LEFT: std::time::Duration = std::time::Duration::from_secs(60);
+use crate::rows::{LAPSE, Row};
+
 /// The text the forwarded frame carries. Never read back — the queue it would
 /// have gone to is not answering, which is the point.
 const CHUNK_TEXT: &str = "the fleet said this into a queue that is not there";
@@ -50,13 +54,18 @@ const CHUNK_TEXT: &str = "the fleet said this into a queue that is not there";
 /// The four closed stages share one histogram family.
 const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
 
+/// Held by every test whose accepted frame records delivery stages: the
+/// histogram is the process's, so one test's sample would land inside
+/// another's before-and-after window.
+static DELIVERY_STAGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// An active lease's first marked frame records all three receipt/runtime stages.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_first_chunk_records_active_lease_stages() {
+    let _stages = DELIVERY_STAGES.lock().await;
     let capture = Capture::install();
     let run = held().await;
-    let now = afd_core::clock::now().as_millis();
     let mut connection = run
         .fixtures
         .database
@@ -64,14 +73,16 @@ async fn test_first_chunk_records_active_lease_stages() {
         .await
         .expect("database connection");
     sqlx::query(
-        "UPDATE fleet.runner_leases
-         SET created_at = $2, event_created_at = $3, lease_expires_at = $4
+        "UPDATE runner.leases
+         SET created_at = clock_timestamp() - $2::interval,
+             event_created_at = clock_timestamp() - $3::interval,
+             lease_expires_at = clock_timestamp() + $4::interval
          WHERE id = $1::uuid",
     )
     .bind(run.issued.lease_id.as_str())
-    .bind(now - 100)
-    .bind(now - 200)
-    .bind(now + 60_000)
+    .bind(std::time::Duration::from_millis(100))
+    .bind(std::time::Duration::from_millis(200))
+    .bind(LEASE_LEFT)
     .execute(&mut *connection)
     .await
     .expect("lease timings are current");
@@ -102,7 +113,11 @@ async fn test_first_chunk_records_active_lease_stages() {
     // Lapsed: its deadline is now behind the clock the activity target reads.
     expired
         .fixtures
-        .lapse_lease(expired.issued.lease_id.as_str())
+        .age(
+            Row::Lease(expired.issued.lease_id.as_str()),
+            "lease_expires_at",
+            LAPSE,
+        )
         .await;
     let target = expired
         .leases
@@ -144,6 +159,7 @@ async fn test_first_chunk_records_active_lease_stages() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_activity_publish_redis_down() {
+    let _stages = DELIVERY_STAGES.lock().await;
     let run = held().await;
     let plane = run.fixtures.plane_with_dead_queue();
 
@@ -206,7 +222,6 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
             &fleet,
             &run.event_id,
             Refusal::labelled(label::APPROVAL_DENIED),
-            run.now,
         )
         .await
         .expect("the refusal writes over live Postgres whatever the queue does");
@@ -245,7 +260,6 @@ async fn test_a_closing_counts_the_fleets_pending_gates() {
             &fleet,
             &run.event_id,
             Refusal::labelled(label::APPROVAL_DENIED),
-            run.now,
         )
         .await
         .expect("the refusal writes over live Postgres");
@@ -272,25 +286,24 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
         .await
         .expect("a pooled connection");
     let workspace: String =
-        sqlx::query_scalar("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
             .bind(&run.fleet)
             .fetch_one(&mut *connection)
             .await
             .expect("the held fleet has a workspace");
     sqlx::query(
-        "INSERT INTO core.fleet_approval_gates
+        "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+            gate_type, proposed_action, evidence, blast_radius, expires_at,
             resolved_by, status, detail, created_at, updated_at, event_id)
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
                  'repository_write', 'open a pull request', '{}'::jsonb,
-                 'one repository', $5, '', $6, '', $5, NULL, $7)",
+                 'one repository', now(), '', $5, '', now(), now(), $6)",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(&run.fleet)
     .bind(&workspace)
     .bind(afd_db::test_util::mint_id())
-    .bind(run.now.as_millis())
     .bind(status)
     .bind(&run.event_id)
     .execute(&mut *connection)

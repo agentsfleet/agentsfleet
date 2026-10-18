@@ -17,9 +17,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_admission::{Admission, Admitted, Key, Producer, Reply, logical_parts, sql};
+use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
 use afd_wire::event::EventType;
-use sqlx::Row as _;
 
 use crate::integration_admission_recovery::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;
@@ -35,11 +34,11 @@ const THREAD_B: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000200"}"#;
 
 /// The check slot 918 names.
-const BOTH_OR_NEITHER: &str = "ck_fleet_admissions_reply_both_or_neither";
+const BOTH_OR_NEITHER: &str = "ck_admissions_reply_both_or_neither";
 
-/// The index slot 918 adds, and what its definition must say.
-const LOOKUP_INDEX: &str = "idx_fleet_admissions_reply_lookup";
-const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, seq)";
+/// The reply lookup index, and what its definition must say.
+const LOOKUP_INDEX: &str = "idx_admissions_reply_lookup";
+const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, sequence)";
 const LOOKUP_PREDICATE: &str = "WHERE (reply_provider IS NOT NULL)";
 
 /// An id this ledger never minted.
@@ -69,25 +68,17 @@ fn replying<'a>(
 
 /// The destination one event was admitted with, read by the shipped lookup.
 async fn destination(fixtures: &Fixtures, fleet: &str, event_id: &str) -> Option<(String, String)> {
-    let (created_at, seq) = logical_parts(event_id).expect("the ledger minted this id");
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(sql::SELECT_REPLY_DESTINATION)
+    sqlx::query_as(sql::SELECT_REPLY_DESTINATION)
         .bind(fleet)
-        .bind(created_at)
-        .bind(seq)
+        .bind(event_id)
         .fetch_optional(&mut *connection)
         .await
         .expect("the lookup runs")
-        .map(|row| {
-            (
-                row.try_get(0).expect("a connector is text"),
-                row.try_get(1).expect("an address is text"),
-            )
-        })
 }
 
 /// Admits and answers the ledger's reply, failing loudly on a refusal.
@@ -149,22 +140,17 @@ async fn reply_destination_is_both_or_neither() {
         "the stated pair is stored exactly"
     );
 
-    let (created_at, seq) = logical_parts(&admitted.stored.id).expect("the ledger minted this id");
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    let refused = sqlx::query(
-        "UPDATE core.fleet_admissions SET reply_address = NULL \
-         WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3",
-    )
-    .bind(&fleet)
-    .bind(created_at)
-    .bind(seq)
-    .execute(&mut *connection)
-    .await
-    .expect_err("a connector without an address must be refused");
+    let refused =
+        sqlx::query("UPDATE fleet.admissions SET reply_address = NULL WHERE id = $1::uuid")
+            .bind(&admitted.stored.id)
+            .execute(&mut *connection)
+            .await
+            .expect_err("a connector without an address must be refused");
     assert_eq!(
         refused
             .as_database_error()
@@ -268,24 +254,17 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
         "the first destination stands, as the first payload does"
     );
 
-    let (created_at, seq) = logical_parts(&first.stored.id).expect("the ledger minted this id");
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    let stored: String = sqlx::query(
-        "SELECT payload_digest FROM core.fleet_admissions \
-         WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3",
-    )
-    .bind(&fleet)
-    .bind(created_at)
-    .bind(seq)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the row is there")
-    .try_get(0)
-    .expect("a digest is text");
+    let stored: String =
+        sqlx::query_scalar("SELECT payload_digest FROM fleet.admissions WHERE id = $1::uuid")
+            .bind(&first.stored.id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the row is there");
     assert_ne!(
         stored,
         retry.payload_digest(),
@@ -309,16 +288,17 @@ async fn the_reply_lookup_index_holds_only_rows_that_owe() {
         .acquire()
         .await
         .expect("a pooled connection");
-    let definition: String = sqlx::query("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
-        .bind(LOOKUP_INDEX)
-        .fetch_one(&mut *connection)
-        .await
-        .unwrap_or_else(|failure| panic!("{LOOKUP_INDEX} must exist after migration: {failure}"))
-        .try_get(0)
-        .expect("an index definition is text");
+    let definition: String =
+        sqlx::query_scalar("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
+            .bind(LOOKUP_INDEX)
+            .fetch_one(&mut *connection)
+            .await
+            .unwrap_or_else(|failure| {
+                panic!("{LOOKUP_INDEX} must exist after migration: {failure}")
+            });
     assert!(
         definition.contains(LOOKUP_COLUMNS),
-        "the lookup keys on the fleet and the logical id's two integers: {definition}"
+        "the lookup keys on the fleet and the admission order: {definition}"
     );
     assert!(
         definition.contains(LOOKUP_PREDICATE),

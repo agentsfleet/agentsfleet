@@ -34,10 +34,10 @@
 //! — that last would need a new registry code. Any body, or none, gets that
 //! shape.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates, payer_gate};
@@ -153,7 +153,7 @@ impl Plane {
         runner_id: &Uuid7,
         held: &[Uuid7],
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<String> {
         self.poll(runner_id, held, degraded, now, None)
             .await
@@ -173,10 +173,10 @@ impl Plane {
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Step<Admission2>> {
         let installed = match self
-            .resolve_installed(&acquired, runner_id, now)
+            .resolve_installed(&acquired, runner_id)
             .await?
             .proceed()
         {
@@ -184,7 +184,7 @@ impl Plane {
             Err(ended) => return Ok(ended),
         };
 
-        let received = self.leases.record_received(&acquired, now).await?;
+        let received = self.leases.record_received(&acquired).await?;
         let delivery = received.delivery;
         if delivery == crate::lease::event::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
@@ -209,13 +209,13 @@ impl Plane {
         installed: Installed,
         delivery: crate::lease::event::Delivery,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Step<Admission2>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
             return self
-                .refused(&acquired, label, runner_id, &reason, now)
+                .refused(&acquired, label, runner_id, &reason)
                 .await
                 .map(Step::Stop);
         };
@@ -225,7 +225,7 @@ impl Plane {
         let read = self.accounts.payer(&acquired.workspace_id).await;
         let tenant = match payer_gate(read, &acquired.workspace_id)? {
             Ok(tenant) => tenant,
-            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
+            Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
         let resolved = self
             .providers
@@ -234,7 +234,7 @@ impl Plane {
         let gated = self.gated(&acquired, &installed, tenant, &resolved, delivery, now);
         let billed = match gated.await?.admitted() {
             Ok(billed) => billed,
-            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
+            Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
         Ok(Step::Go(Admission2 {
             acquired,
@@ -293,7 +293,7 @@ impl Plane {
         tenant: Uuid7,
         resolved: &Resolved,
         delivery: crate::lease::event::Delivery,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Admission> {
         let request = Request {
             workspace_id: &acquired.workspace_id,
@@ -318,7 +318,7 @@ impl Plane {
         &self,
         acquired: &Acquired,
         installed: &Installed,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Option<Admission> {
         let verdict = self
             .gates

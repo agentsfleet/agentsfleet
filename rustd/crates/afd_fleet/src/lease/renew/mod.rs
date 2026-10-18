@@ -2,7 +2,7 @@
 //!
 //! What makes this more than a `SET lease_expires_at` is that reclaimability
 //! and the kill deadline live on two different rows — see
-//! [`crate::lease::sql::renew::RENEW_AND_METER`]. Both move together under one fence,
+//! [`crate::lease::sql::meter::METER_LEASE`]. Both move together under one fence,
 //! or the runner is told the lease is gone.
 //!
 //! # Three gates, three postures, all stated here
@@ -22,17 +22,16 @@
 //! an [`Error`](crate::Error), and the posture is applied once, where a reader
 //! can see both halves at once.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL_MS;
 use afd_wire::report::RenewRequest;
-use sqlx::{Connection as _, Row as _};
+use jiff::Timestamp;
+use sqlx::{Connection as _, FromRow as _};
 
 use crate::error::{Result, lease_lost, lease_max_runtime, query};
 use crate::lease::pull::Plane;
 use crate::lease::sql;
-use crate::lease::sql::renew::RenewRow;
+use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
 use afd_billing::rates::Posture;
 use afd_billing::{Cumulative, Nanos};
@@ -75,7 +74,7 @@ pub enum Renewed {
     /// Both rows advanced. Carries the new deadline and what the slice drained.
     Extended {
         /// The instant both rows now expire at.
-        expires_at: UnixMillis,
+        expires_at: Timestamp,
         /// Nanocredits this slice actually took.
         charged: Nanos,
     },
@@ -99,32 +98,13 @@ impl Leases {
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::renew::SELECT_LEASE_FOR_RENEW)
+        let found: Option<LeaseForRenew> = sqlx::query_as(sql::renew::SELECT_LEASE_FOR_RENEW)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-
-        let Some(row) = found else {
-            return Ok(None);
-        };
-        let text = |index: usize| -> Result<String> {
-            row.try_get::<String, _>(index).map_err(query(CONTEXT_LOAD))
-        };
-        let id = |index: usize, column: &'static str| -> Result<Uuid7> {
-            Uuid7::parse(&text(index)?)
-                .map_err(crate::error::row_malformed("fleet.runner_leases", column))
-        };
-        Ok(Some(Renewing {
-            tenant_id: id(0, "tenant_id")?,
-            fleet_id: id(1, "fleet_id")?,
-            workspace_id: id(2, "workspace_id")?,
-            posture: text(3)?,
-            provider: text(4)?,
-            model: text(5)?,
-            status: text(6)?,
-        }))
+        found.map(LeaseForRenew::into_renewing).transpose()
     }
 
     /// Advance both deadline rows and meter the slice, atomically.
@@ -138,7 +118,7 @@ impl Leases {
         lease_id: &str,
         runner_id: &Uuid7,
         meter: afd_billing::Meter,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Renewed> {
         let ledger_id = self.entropy().uuid7(now)?;
         let mut connection = self.pool().acquire().await?;
@@ -149,36 +129,20 @@ impl Leases {
         if !capacity.can_renew() {
             return Ok(Renewed::Lost);
         }
-        let now = capacity.now();
-        let renew = RenewRow {
+        let metering = Metering {
             lease_id,
             runner_id,
-            now,
-            want_until: now.saturating_add_millis(LEASE_TTL_MS),
             meter,
             ledger_id: &ledger_id,
         };
-        let row = renew
-            .bind()
+        let row = metering
+            .bind(Ending::Renew)
             .fetch_one(&mut *transaction)
             .await
             .map_err(query(CONTEXT_RENEW))?;
+        let renewed = RenewAnswer::from_row(&row).map_err(query(CONTEXT_RENEW))?;
         transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-
-        let column = |index: usize| -> Result<Option<i64>> {
-            row.try_get::<Option<i64>, _>(index)
-                .map_err(query(CONTEXT_RENEW))
-        };
-        let probe_found: i64 = row.try_get(0).map_err(query(CONTEXT_RENEW))?;
-        let aff_updated: i64 = row.try_get(3).map_err(query(CONTEXT_RENEW))?;
-        Ok(verdict_of(
-            probe_found,
-            column(1)?,
-            column(2)?,
-            aff_updated,
-            column(4)?,
-            now,
-        ))
+        Ok(renewed.verdict(capacity.now()))
     }
 }
 
@@ -195,32 +159,61 @@ impl Leases {
 /// active. A probe that IS there means the guard failed, on the cap or on the
 /// fence; only the cap is a deterministic, reportable fact, so a stale fence
 /// falls through to `Lost` alongside it.
-fn verdict_of(
+/// The columns of [`sql::meter::METER_LEASE`]'s answer a renewal reads.
+#[derive(sqlx::FromRow)]
+struct RenewAnswer {
     probe_found: i64,
-    new_until: Option<i64>,
-    hard_cap: Option<i64>,
-    aff_updated: i64,
-    charged: Option<i64>,
-    now: UnixMillis,
-) -> Renewed {
-    if let Some(until) = new_until {
-        if aff_updated != 1 {
+    new_until: Option<jiff_sqlx::Timestamp>,
+    hard_cap: Option<jiff_sqlx::Timestamp>,
+    charged_nanos: Option<i64>,
+}
+
+impl RenewAnswer {
+    /// The renewal's outcome, judged against `checked_at`, the database's own
+    /// instant read under the host lock.
+    fn verdict(self, checked_at: Timestamp) -> Renewed {
+        if let Some(until) = self.new_until {
+            return Renewed::Extended {
+                expires_at: until.to_jiff(),
+                charged: Nanos::from_i64(self.charged_nanos.unwrap_or(0)),
+            };
+        }
+        if self.probe_found == 0 {
             return Renewed::Lost;
         }
-        return Renewed::Extended {
-            expires_at: UnixMillis::from_millis(until),
-            // A surviving guard row always prices a charge, so a null would
-            // mean the guard passed without `calc` — read as zero drain rather
-            // than a debit the wallet never took.
-            charged: Nanos::from_i64(charged.unwrap_or(0)),
+        match self.hard_cap {
+            Some(cap) if cap.to_jiff() <= checked_at => Renewed::MaxRuntime,
+            _stale_fence => Renewed::Lost,
+        }
+    }
+}
+
+/// [`sql::renew::SELECT_LEASE_FOR_RENEW`]'s row, ids still as stored text.
+#[derive(sqlx::FromRow)]
+struct LeaseForRenew {
+    tenant_id: String,
+    fleet_id: String,
+    workspace_id: String,
+    posture: String,
+    provider: String,
+    model: String,
+    status: String,
+}
+
+impl LeaseForRenew {
+    fn into_renewing(self) -> Result<Renewing> {
+        let id = |text: &str, column: &'static str| {
+            Uuid7::parse(text).map_err(crate::error::row_malformed("runner.leases", column))
         };
-    }
-    if probe_found == 0 {
-        return Renewed::Lost;
-    }
-    match hard_cap {
-        Some(cap) if cap <= now.as_millis() => Renewed::MaxRuntime,
-        _stale_fence => Renewed::Lost,
+        Ok(Renewing {
+            tenant_id: id(&self.tenant_id, "tenant_id")?,
+            fleet_id: id(&self.fleet_id, "fleet_id")?,
+            workspace_id: id(&self.workspace_id, "workspace_id")?,
+            posture: self.posture,
+            provider: self.provider,
+            model: self.model,
+            status: self.status,
+        })
     }
 }
 
@@ -241,15 +234,15 @@ impl Plane {
         runner_id: &Uuid7,
         lease_id: &str,
         request: RenewRequest,
-        now: UnixMillis,
-    ) -> Result<(UnixMillis, Nanos)> {
+        now: Timestamp,
+    ) -> Result<(Timestamp, Nanos)> {
         let Some(lease) = self.leases.load_for_renew(lease_id, runner_id).await? else {
             return Err(crate::error::lease_not_found());
         };
         if lease.status != sql::LEASE_STATUS_ACTIVE {
             return Err(lease_lost());
         }
-        self.gate_renewal(&lease, lease_id, now).await?;
+        self.gate_renewal(&lease, lease_id).await?;
 
         let cumulative = Cumulative::reported(
             request.input_tokens,
@@ -295,7 +288,7 @@ pub(super) fn posture_of(lease: &Renewing) -> Posture {
 /// Says that a renewal metered the run fee and none of `cumulative`, because
 /// the catalogue could not price it.
 ///
-/// The caller meters zero counts. `RENEW_AND_METER` advances the token cursor
+/// The caller meters zero counts. `METER_LEASE` advances the token cursor
 /// with `GREATEST`, so zero counts leave it where the last priced slice left
 /// it, and the next priced renewal or a priced report charges these tokens.
 /// Real counts at run-fee rates would move the cursor past tokens charged at

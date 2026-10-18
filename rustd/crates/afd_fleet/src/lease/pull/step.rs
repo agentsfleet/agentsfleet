@@ -99,14 +99,14 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
-    use afd_core::clock::UnixMillis;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
     use afd_gate::gate::Waiting;
+    use jiff::Timestamp;
 
     use super::{Step, waited};
 
     fn runner() -> Uuid7 {
-        Uuid7::encode(UnixMillis::from_millis(1_767_225_600_000), [3; ENTROPY_LEN])
+        Uuid7::encode(Timestamp::constant(1_767_225_600, 0), [3; ENTROPY_LEN])
             .expect("a fixed instant encodes")
     }
 

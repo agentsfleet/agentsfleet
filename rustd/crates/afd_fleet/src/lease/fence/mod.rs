@@ -8,14 +8,13 @@
 //!
 //! # The token is `u64`, and the column is not
 //!
-//! `fencing_seq` is server-issued and monotonic, so no value this daemon writes
+//! `fencing_token` is server-issued and monotonic, so no value this daemon writes
 //! is negative. One edited out of band could be, and [`u64::try_from`] refuses
 //! it: its `Err` becomes the `sequence_corrupt` refusal rather than a token
 //! that wrapped to a huge positive value.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use sqlx::FromRow as _;
 
 use crate::error::{Result, query, sequence_corrupt};
 use crate::lease::sql;
@@ -28,7 +27,7 @@ const CONTEXT_FENCE: &str = "live fence lookup";
 /// The lease's own token and the fleet's live fencing sequence, if this runner
 /// holds a live lease on it.
 ///
-/// `COALESCE(a.fencing_seq, l.fencing_token)` so a reclaim that bumped the
+/// `COALESCE(a.fencing_token, l.fencing_token)` so a reclaim that bumped the
 /// sequence strands the old holder BELOW it — the affinity row is the live
 /// authority and the lease's own token is only the fallback for a fleet whose
 /// slot row is gone.
@@ -37,15 +36,9 @@ const CONTEXT_FENCE: &str = "live fence lookup";
 /// one and its successor — the highest token wins: tokens rise with every
 /// issue, where `created_at` is one daemon replica's clock.
 ///
-/// `$1` runner, `$2` fleet, `$3` the active status, `$4` now.
-const SELECT_LIVE_FENCE_BY_FLEET: &str = "\
-SELECT l.fencing_token AS own, COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
-FROM fleet.runner_leases l
-LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-WHERE l.runner_id = $1::uuid AND l.fleet_id = $2::uuid
-  AND l.status = $3 AND l.lease_expires_at > $4
-ORDER BY l.fencing_token DESC
-LIMIT 1";
+/// `$1` runner, `$2` fleet, `$3` the active status; the deadline is read on
+/// `statement_timestamp()`.
+const SELECT_LIVE_FENCE_BY_FLEET: &str = include_str!("select_live_fence_by_fleet.sql");
 
 /// The same fence, addressed by lease id when the caller already holds one.
 ///
@@ -53,14 +46,9 @@ LIMIT 1";
 /// fleet yields no row — the IDOR cross-check IS the `WHERE`, not a comparison
 /// the handler has to remember to make afterwards.
 ///
-/// `$1` lease, `$2` runner, `$3` fleet, `$4` the active status, `$5` now.
-const SELECT_LIVE_FENCE_BY_LEASE: &str = "\
-SELECT l.fencing_token AS own, COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
-FROM fleet.runner_leases l
-LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.fleet_id = $3::uuid
-  AND l.status = $4 AND l.lease_expires_at > $5
-LIMIT 1";
+/// `$1` lease, `$2` runner, `$3` fleet, `$4` the active status; the deadline is
+/// read on `statement_timestamp()`.
+const SELECT_LIVE_FENCE_BY_LEASE: &str = include_str!("select_live_fence_by_lease.sql");
 
 /// A live lease's own token beside its fleet's live sequence.
 ///
@@ -125,13 +113,11 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Option<Fence>> {
         let found = sqlx::query(SELECT_LIVE_FENCE_BY_FLEET)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis());
+            .bind(sql::LEASE_STATUS_ACTIVE);
         self.read_fence(found).await
     }
 
@@ -149,14 +135,12 @@ impl Leases {
         runner_id: &Uuid7,
         lease_id: &str,
         fleet_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Option<Fence>> {
         let found = sqlx::query(SELECT_LIVE_FENCE_BY_LEASE)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis());
+            .bind(sql::LEASE_STATUS_ACTIVE);
         self.read_fence(found).await
     }
 
@@ -170,10 +154,16 @@ impl Leases {
         else {
             return Ok(None);
         };
-        let own: i64 = row.try_get(0).map_err(query(CONTEXT_FENCE))?;
-        let live_seq: i64 = row.try_get(1).map_err(query(CONTEXT_FENCE))?;
-        Fence::new(own, live_seq).map(Some)
+        let read = LiveFence::from_row(&row).map_err(query(CONTEXT_FENCE))?;
+        Fence::new(read.own, read.live_seq).map(Some)
     }
+}
+
+/// A fence statement's answer: the lease's own token and the fleet's live one.
+#[derive(sqlx::FromRow)]
+struct LiveFence {
+    own: i64,
+    live_seq: i64,
 }
 
 #[cfg(test)]

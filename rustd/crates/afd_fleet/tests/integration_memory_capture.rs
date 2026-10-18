@@ -107,7 +107,7 @@ async fn test_memory_capture_fencing() {
 
     // ── And the store is exactly as the holder left it ──────────────────────
     let window = plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect("the holder may read its fleet's memory");
     assert_eq!(
@@ -196,16 +196,11 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
     // The control: while the fleet has not moved past it, the holder recalls
     // and hydrates, so each refusal below is the reclaim's doing.
     plane
-        .recall(
-            &run.runner,
-            &fleet_id,
-            &recall(lease, run.fence.as_u64()),
-            run.now,
-        )
+        .recall(&run.runner, &fleet_id, &recall(lease, run.fence.as_u64()))
         .await
         .expect("the holder recalls while the fleet has not moved past it");
     plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect("and hydrates");
     let live = supersede(&run).await;
@@ -227,7 +222,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
         );
 
         let recalled = plane
-            .recall(&run.runner, &fleet_id, &recall(lease, presented), run.now)
+            .recall(&run.runner, &fleet_id, &recall(lease, presented))
             .await
             .expect_err("a superseded lease cannot recall");
         assert_eq!(
@@ -237,7 +232,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
         );
     }
     let hydrated = plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect_err("a superseded lease cannot hydrate");
     assert_eq!(hydrated.code(), error_code::RUN_STALE_FENCING_TOKEN);
@@ -286,7 +281,7 @@ async fn test_memory_capture_refuses_a_lease_the_runner_does_not_hold() {
     );
 
     let window = plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect("the real holder may read");
     assert!(
@@ -321,8 +316,8 @@ async fn supersede(run: &report_seed::Held) -> u64 {
         .await
         .expect("a pooled connection");
     let live: i64 = sqlx::query_scalar(
-        "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1
-         WHERE fleet_id = $1::uuid RETURNING fencing_seq",
+        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1
+         WHERE fleet_id = $1::uuid RETURNING fencing_token",
     )
     .bind(&run.fleet)
     .fetch_one(&mut *connection)

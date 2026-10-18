@@ -83,7 +83,7 @@ mod tests {
     fn only_an_admission_yields_billing() {
         let billed = super::Billed {
             tenant_id: afd_core::id::Uuid7::encode(
-                afd_core::clock::UnixMillis::from_millis(1_767_225_600_000),
+                jiff::Timestamp::constant(1_767_225_600, 0),
                 [9; afd_core::id::ENTROPY_LEN],
             )
             .expect("a fixed, in-range instant encodes"),

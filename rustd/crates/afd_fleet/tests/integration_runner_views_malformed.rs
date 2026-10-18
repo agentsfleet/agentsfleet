@@ -5,7 +5,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::paging::DEFAULT_LIMIT;
@@ -25,17 +24,14 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols");
-    overwrite_admin_state(&fixtures, &enrolled.runner_id).await;
+    overwrite_status(&fixtures, &enrolled.runner_id).await;
     let malformed = fixtures
         .runners()
-        .runner_detail(
-            &enrolled.runner_id,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        )
+        .runner_detail(&enrolled.runner_id)
         .await
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
@@ -57,13 +53,13 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
     fixtures.cleanup().await;
 }
 
-async fn overwrite_admin_state(fixtures: &Fixtures, runner: &Uuid7) {
+async fn overwrite_status(fixtures: &Fixtures, runner: &Uuid7) {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE fleet.runners SET admin_state = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1::uuid")
         .bind(runner.as_str())
         .bind("unknown_state")
         .execute(&mut *connection)
@@ -78,15 +74,14 @@ async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO fleet.runner_events \
-         (id, runner_id, event_type, metadata, created_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5)",
+        "INSERT INTO runner.events \
+         (id, runner_id, event_type, metadata, last_seen_at, created_at) \
+         VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, NULL, now())",
     )
     .bind("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0c")
     .bind(runner.as_str())
     .bind("unknown_event")
     .bind("{}")
-    .bind(fixtures.enrolled_at() + 4)
     .execute(&mut *connection)
     .await
     .expect("the malformed fixture event is stored");
@@ -97,7 +92,7 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect("the missing identifier is canonical");
     let detail_error = fixtures
         .runners()
-        .runner_detail(&missing, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .runner_detail(&missing)
         .await
         .expect_err("a missing runner has no detail");
     let event_error = fixtures

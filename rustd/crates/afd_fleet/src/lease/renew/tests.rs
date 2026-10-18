@@ -1,9 +1,9 @@
 //! What a renewal says when the catalogue cannot price its tokens.
 
 use afd_billing::Cumulative;
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_core::test_util::trace::Capture;
+use jiff::Timestamp;
 use tracing::Level;
 
 use super::{EVENT_TOKENS_HELD, Renewing, hold_tokens};
@@ -17,7 +17,7 @@ const HELD: Cumulative = Cumulative {
 
 /// A lease with three distinct identifiers, so a swapped field cannot pass.
 fn renewing() -> Result<Renewing, &'static str> {
-    let at = UnixMillis::from_millis(1_767_225_600_000);
+    let at = Timestamp::constant(1_767_225_600, 0);
     let mint = |seed: u8| {
         Uuid7::encode(at, [seed; ENTROPY_LEN])
             .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")

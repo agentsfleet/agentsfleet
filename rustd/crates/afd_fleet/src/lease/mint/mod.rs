@@ -11,7 +11,7 @@
 //!    opened, so a request nobody approved never touches credential bytes.
 //! 3. **The handle is held to what the workspace connected** — the name it
 //!    was asked for, and for a GitHub App the installation's routing row
-//!    ([`claim`]). The handle is bytes the workspace wrote; the row is what the
+//!    (`claim`). The handle is bytes the workspace wrote; the row is what the
 //!    connect flow wrote once the provider proved access.
 //! 4. **The exchange last**, holding no datastore connection, because a vendor
 //!    round trip must not occupy a pooled connection.
@@ -44,10 +44,10 @@
 //! still sees one token issued — the same one-request bound, and the same
 //! reason a later re-check would buy nothing.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::credentials::MintCredentialRequest;
+use jiff::Timestamp;
 use serde_json::Value;
 
 use self::claim::{Claim, claim};
@@ -81,11 +81,11 @@ impl Plane {
         &self,
         runner_id: &Uuid7,
         request: &MintCredentialRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Minted> {
         let scope = self
             .leases
-            .mint_scope(runner_id, &request.lease_id, now)
+            .mint_scope(runner_id, &request.lease_id)
             .await?
             .ok_or_else(lease_not_found)?;
         // Resolved once, and it answers both questions that follow: whether
@@ -106,7 +106,7 @@ impl Plane {
                 workspace_id: &scope.workspace_id,
                 handle: &handle,
                 binding: scope.binding.as_ref(),
-                now_ms: now.as_millis(),
+                now,
             })
             .await;
 
@@ -114,7 +114,7 @@ impl Plane {
         // The exchange consumed the posted refresh token, so the replacement is
         // written back BEFORE the caller is handed anything. A failure here is
         // reported and dropped: the access token in hand is valid either way.
-        self.persist_rotation(&scope, &request.integration, &handle, &minted, now)
+        self.persist_rotation(&scope, &request.integration, &handle, &minted)
             .await;
         Ok(minted)
     }
@@ -213,7 +213,6 @@ impl Plane {
         integration: &str,
         handle: &Value,
         minted: &Minted,
-        now: UnixMillis,
     ) {
         let Some(replacement) = minted.rotated_refresh_token.as_deref() else {
             return;
@@ -234,7 +233,7 @@ impl Plane {
         let workspace_id = scope.workspace_id.as_str();
         match self
             .vault
-            .rotate_refresh_token(key, posted, replacement, now)
+            .rotate_refresh_token(key, posted, replacement)
             .await
         {
             Ok(outcome) => tracing::debug!(

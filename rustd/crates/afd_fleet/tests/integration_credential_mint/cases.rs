@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::requests;
+use crate::rows::{LAPSE, Row};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
@@ -15,10 +16,9 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
     let owner = bound(&fixtures, "{}").await;
     let stranger = bound(&fixtures, "{}").await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let scope = leases
-        .mint_scope(&owner.runner, &owner.lease, now)
+        .mint_scope(&owner.runner, &owner.lease)
         .await
         .expect("the read must succeed")
         .expect("the owner's own lease resolves");
@@ -29,7 +29,7 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
     // The IDOR negative: a real, live lease belonging to somebody else.
     assert!(
         leases
-            .mint_scope(&stranger.runner, &owner.lease, now)
+            .mint_scope(&stranger.runner, &owner.lease)
             .await
             .expect("the read must succeed")
             .is_none(),
@@ -38,10 +38,12 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
 
     // And the lease's own lifetime bounds the authority: past its expiry the
     // same runner presenting the same id resolves to nothing.
-    let expired = UnixMillis::from_millis(NOW_MS + LEASE_WINDOW_MS + 1);
+    fixtures
+        .age(Row::Lease(&owner.lease), "lease_expires_at", LAPSE)
+        .await;
     assert!(
         leases
-            .mint_scope(&owner.runner, &owner.lease, expired)
+            .mint_scope(&owner.runner, &owner.lease)
             .await
             .expect("the read must succeed")
             .is_none(),
@@ -69,10 +71,10 @@ async fn test_mint_refuses_a_superseded_active_lease() {
     )
     .await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = fixtures.enrolled_at();
     assert!(
         leases
-            .mint_scope(&owner.runner, &owner.lease, now)
+            .mint_scope(&owner.runner, &owner.lease)
             .await
             .expect("the read must succeed")
             .is_some(),
@@ -83,7 +85,7 @@ async fn test_mint_refuses_a_superseded_active_lease() {
 
     assert!(
         leases
-            .mint_scope(&owner.runner, &owner.lease, now)
+            .mint_scope(&owner.runner, &owner.lease)
             .await
             .expect("the read must succeed")
             .is_none(),
@@ -125,7 +127,7 @@ async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
         .mint(
             &owner.runner,
             &requests::mint(&owner.lease, CONNECTOR_STATIC),
-            UnixMillis::from_millis(NOW_MS),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("a connected static handle mints");
@@ -163,7 +165,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
             .mint(
                 &owner.runner,
                 &requests::mint(&owner.lease, CONNECTOR_GITHUB),
-                UnixMillis::from_millis(NOW_MS),
+                fixtures.enrolled_at(),
             )
             .await
             .expect_err("an ungranted integration must not mint");
@@ -193,7 +195,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
         .mint(
             &owner.runner,
             &requests::mint(&owner.lease, CONNECTOR_GITHUB),
-            UnixMillis::from_millis(NOW_MS),
+            fixtures.enrolled_at(),
         )
         .await
         .expect_err("an unconnected integration must not mint");

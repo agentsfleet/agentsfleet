@@ -43,16 +43,15 @@ async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)",
+        "INSERT INTO connector.integration_grants
+           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), now())",
     )
     .bind(id)
     .bind(fleet)
     .bind(service)
     .bind(status)
     .bind("a fixture asked")
-    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");

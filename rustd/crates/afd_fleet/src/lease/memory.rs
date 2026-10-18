@@ -15,7 +15,7 @@
 //! already superseded reads and writes nothing, whatever token it presents.
 //!
 //! The fence statements in [`crate::lease::fence`] scope the lease to this
-//! runner and fleet; [`Fence::current`] and [`Fence::holds`] then apply the
+//! runner and fleet; `Fence::current` and `Fence::holds` then apply the
 //! supersession and own-token rule report and renew share. Past the fence,
 //! memory is `afd_memory`'s: the grants, the store and the window are decided
 //! there.
@@ -30,12 +30,12 @@
 //! `crate::lease::write_fence` is the shape that would close it: the fence
 //! proved inside the write's own transaction.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_memory::Captured;
 use afd_wire::memory::{
     MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
+use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::fence::Fence;
@@ -58,11 +58,10 @@ impl Plane {
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<MemoryHydrateResponse<'static>> {
         let Some(fence) = self
             .leases
-            .live_fence_for_fleet(runner_id, fleet_id, now)
+            .live_fence_for_fleet(runner_id, fleet_id)
             .await?
         else {
             return Err(lease_not_found());
@@ -86,14 +85,13 @@ impl Plane {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryPushRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Captured> {
         self.fenced(
             runner_id,
             fleet_id,
             &request.lease_id,
             request.fencing_token,
-            now,
         )
         .await?;
         let counted = self
@@ -135,14 +133,12 @@ impl Plane {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryRecallRequest<'_>,
-        now: UnixMillis,
     ) -> Result<MemoryRecallResponse<'static>> {
         self.fenced(
             runner_id,
             fleet_id,
             &request.lease_id,
             request.fencing_token,
-            now,
         )
         .await?;
         Ok(self
@@ -159,11 +155,10 @@ impl Plane {
         fleet_id: &Uuid7,
         lease_id: &str,
         token: u64,
-        now: UnixMillis,
     ) -> Result<()> {
         let Some(fence) = self
             .leases
-            .live_fence_for_lease(runner_id, lease_id, fleet_id, now)
+            .live_fence_for_lease(runner_id, lease_id, fleet_id)
             .await?
         else {
             return Err(lease_not_found());

@@ -8,7 +8,6 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::Partition;
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
@@ -30,7 +29,7 @@ static NEXT: AtomicU32 = AtomicU32::new(0);
 
 /// A fresh id in the uuidv7 shape the schema checks, its last group walked.
 fn fresh_id() -> String {
-    let run = afd_core::clock::now().as_millis() % 0xfff;
+    let run = afd_core::clock::now().as_millisecond() % 0xfff;
     let pid = std::process::id();
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     format!("0195b4ba-8d3a-7{run:03x}-9bcd-{pid:08x}{n:04x}")
@@ -50,10 +49,7 @@ async fn shared_runners(scene: &Scene) -> (String, [Uuid7; 2]) {
         let enrolled = scene
             .fixtures
             .runners()
-            .register(
-                &request,
-                UnixMillis::from_millis(scene.fixtures.enrolled_at()),
-            )
+            .register(&request, scene.fixtures.enrolled_at())
             .await
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);
@@ -71,7 +67,7 @@ async fn fleet_in(scene: &Scene, partition: Partition, tag: &str, runners: &[Uui
     let (workspace, tenant) = (fresh_id(), fresh_id());
     scene
         .fixtures
-        .seed_fleet(&id, &workspace, &tenant, tag, scene.fixtures.enrolled_at())
+        .seed_fleet(&id, &workspace, &tenant, tag)
         .await;
     Fleet {
         id,

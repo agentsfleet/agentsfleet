@@ -9,9 +9,9 @@
 
 use std::time::Instant;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::ReadyToken;
+use jiff::Timestamp;
 
 use super::Plane;
 use super::Polled;
@@ -40,7 +40,7 @@ impl Plane {
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
         began: Instant,
     ) -> Result<Polled> {
         let held = Held {
@@ -60,16 +60,16 @@ impl Plane {
         match pass {
             Ok(Step::Go(Leased(answer))) => Ok(Polled::Lease(answer)),
             Ok(Step::Stop(answer)) => {
-                self.let_go(&held, now).await;
+                self.let_go(&held).await;
                 Ok(Polled::Empty(answer))
             }
             Ok(Step::Park(answer)) => {
-                self.let_go(&held, now).await;
+                self.let_go(&held).await;
                 self.leases.clear_mark(&held.fleet_id, &held.ready).await;
                 Ok(Polled::Empty(answer))
             }
             Err(fault) => {
-                self.let_go(&held, now).await;
+                self.let_go(&held).await;
                 Err(fault)
             }
         }
@@ -77,8 +77,8 @@ impl Plane {
 
     /// Frees the claim through the one best-effort release every
     /// lease-less ending shares.
-    async fn let_go(&self, held: &Held, now: UnixMillis) {
-        self.leases.let_go(&held.fleet_id, held.fence, now).await;
+    async fn let_go(&self, held: &Held) {
+        self.leases.let_go(&held.fleet_id, held.fence).await;
     }
 }
 

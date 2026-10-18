@@ -85,7 +85,7 @@ async fn test_m201_charge_survives_unreadable_fleet_row() {
 
 /// The workspace the fixture's fleet belongs to, read before the fleet is gone.
 ///
-/// `billing.usage_ledger.workspace_id` is still a foreign key, so the charge
+/// `billing.fleet_charges.workspace_id` is still a foreign key, so the charge
 /// below needs a workspace that exists; only `fleet_id` was freed.
 async fn workspace_of(held: &Held) -> Uuid7 {
     let mut connection = held
@@ -95,7 +95,7 @@ async fn workspace_of(held: &Held) -> Uuid7 {
         .await
         .expect("a pooled connection");
     let workspace: String =
-        sqlx::query("SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid")
+        sqlx::query("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
             .bind(&held.fleet)
             .fetch_one(&mut *connection)
             .await
@@ -117,7 +117,7 @@ async fn remove_fleet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("DELETE FROM core.fleets WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM fleet.fleets WHERE id = $1::uuid")
         .bind(&held.fleet)
         .execute(&mut *connection)
         .await
@@ -133,7 +133,7 @@ async fn orphan_row(held: &Held, event: &str) -> (Option<String>, Option<String>
         .await
         .expect("a pooled connection");
     let row = sqlx::query(
-        "SELECT fleet_id::text, fleet_name FROM billing.usage_ledger WHERE event_id = $1",
+        "SELECT fleet_id::text, fleet_name FROM billing.fleet_charges WHERE event_id = $1",
     )
     .bind(event)
     .fetch_optional(&mut *connection)

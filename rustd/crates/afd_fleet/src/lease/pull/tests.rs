@@ -63,12 +63,7 @@ async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
     );
 
     test_dead::plane()
-        .refuse_unreadable_config(
-            &test_dead::acquired(),
-            &test_dead::id(9),
-            &fault,
-            test_dead::AT,
-        )
+        .refuse_unreadable_config(&test_dead::acquired(), &test_dead::id(9), &fault)
         .await
         .expect("an unrecorded refusal is logged, not raised");
 

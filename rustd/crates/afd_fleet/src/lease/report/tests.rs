@@ -4,12 +4,11 @@
 //! own file stays readable.
 
 use afd_billing::rates::Posture;
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use jiff::Timestamp;
 
+use super::posture_of;
 use super::steps::step;
-use super::{held_until, posture_of};
 use crate::lease::affinity::Fence;
 use crate::lease::settle::Reported;
 
@@ -19,7 +18,7 @@ use crate::lease::settle::Reported;
 /// the lease separately, and a fixture that reused one id would let a
 /// swapped field pass.
 fn reported(posture: &str) -> Result<Reported, &'static str> {
-    let at = UnixMillis::from_millis(1_767_225_600_000);
+    let at = Timestamp::constant(1_767_225_600, 0);
     let mint = |seed: u8| {
         Uuid7::encode(at, [seed; ENTROPY_LEN])
             .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
@@ -100,40 +99,6 @@ fn a_failed_finalize_step_renders_every_refusal() -> Result<(), &'static str> {
         step("released", &lease, "lease-fixture", Err(failure));
     }
     Ok(())
-}
-
-/// A runner's hold deadline is recorded as asked inside one idle window, cut
-/// to the window's end past it, and dropped once it is no longer ahead.
-#[test]
-fn test_a_held_deadline_is_clamped_to_the_window() {
-    let now = UnixMillis::from_millis(1_767_225_600_000);
-    let latest = now.saturating_add_millis(SANDBOX_HOLD_IDLE_MS);
-    let within = now.saturating_add_millis(SANDBOX_HOLD_IDLE_MS / 2);
-    let asked = |at: UnixMillis, by: i64| held_until(Some(at.as_millis() + by), now);
-
-    assert_eq!(
-        held_until(None, now),
-        None,
-        "nothing held, nothing recorded"
-    );
-    assert_eq!(
-        asked(now, -1),
-        None,
-        "a deadline already past holds nothing"
-    );
-    assert_eq!(asked(now, 0), None, "nor does one that lapses now");
-    assert_eq!(
-        asked(within, 0),
-        Some(within),
-        "inside the window, as asked"
-    );
-    assert_eq!(
-        asked(latest, 0),
-        Some(latest),
-        "the window's own end, as asked"
-    );
-    assert_eq!(asked(latest, 1), Some(latest), "past it, cut to its end");
-    assert_eq!(held_until(Some(i64::MAX), now), Some(latest));
 }
 
 #[test]

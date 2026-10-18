@@ -22,7 +22,7 @@ use std::borrow::Cow;
 /// distance. Named rather than spelled at each call site so that intent reads
 /// off the name (RULE UFS), and so the one test that deliberately steps OUTSIDE
 /// the window is visibly different from the ones that do not.
-pub(crate) const ONE_BEAT_MS: i64 = 1_000;
+pub(crate) const ONE_BEAT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// An enrolment at `tier` under `network`, asking for `workers`.
 pub(crate) fn enrolment(

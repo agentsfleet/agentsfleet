@@ -119,6 +119,8 @@ afd_wire.workspace = true
 # reaches memory only through the store trait this crate holds.
 afd_memory.workspace = true
 sqlx.workspace = true
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
 # The `Deserialize` bound the stored-column decoders take, and the value

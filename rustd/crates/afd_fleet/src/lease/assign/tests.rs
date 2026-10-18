@@ -1,5 +1,5 @@
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use jiff::Timestamp;
 
 use super::diagnostics;
 
@@ -9,11 +9,8 @@ use super::diagnostics;
 /// constructor that yields one without a fixture string to keep in step
 /// with the type's own shape rules.
 fn runner_id() -> Result<Uuid7, &'static str> {
-    Uuid7::encode(
-        UnixMillis::from_millis(1_767_225_600_000),
-        [7u8; ENTROPY_LEN],
-    )
-    .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
+    Uuid7::encode(Timestamp::constant(1_767_225_600, 0), [7u8; ENTROPY_LEN])
+        .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
 /// Every queue and wake reporter renders every Dragonfly failure kind without
@@ -96,12 +93,12 @@ async fn a_held_fleets_unreadable_readiness_leaves_the_poll_its_partition()
     use afd_dragonfly::ReadyCursor;
 
     use super::diagnostics::EVENT_HELD_READ_FAILED;
-    use crate::lease::test_dead::{AT, id, leases};
+    use crate::lease::test_dead::{id, leases};
 
     let log = Capture::install();
     let store = leases();
 
-    let polled = store.select(&id(9), &[id(1), id(1)], AT).await;
+    let polled = store.select(&id(9), &[id(1), id(1)]).await;
 
     polled
         .err()

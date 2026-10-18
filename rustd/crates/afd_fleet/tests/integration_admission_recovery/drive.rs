@@ -22,11 +22,14 @@ pub(super) async fn assert_recovered(
 ) {
     for recovered in owed {
         let receipt = fixtures
-            .admission_receipt(fleet, recovered)
+            .text(Row::Admission(recovered), "receipt")
             .await
             .unwrap_or_else(|| panic!("{recovered} is accepted work and must hold a receipt"));
         assert_eq!(
-            fixtures.admission_replays(fleet, recovered).await,
+            fixtures
+                .value::<i64>(Row::Admission(recovered), "replay_count")
+                .await
+                .expect("replay_count is NOT NULL"),
             1,
             "{recovered} was re-appended exactly once"
         );
@@ -74,7 +77,7 @@ pub(super) async fn run_one_to_settlement(
     fleet: &str,
     tenant: &str,
     runner: &Uuid7,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> Completed {
     // Scoped to THIS fleet, not "whatever any partition offers". The expect
     // below always claimed it reached the fleet holding admitted work while
@@ -84,13 +87,13 @@ pub(super) async fn run_one_to_settlement(
     // pairs an id with a fleet that never held it, which is a wrong answer
     // rather than a flake. The readiness cursor is global, so this is decided
     // by what else is polling.
-    let acquired = crate::seed::select_fleet_within_rotations(leases, runner, now, fleet)
+    let acquired = crate::seed::select_fleet_within_rotations(leases, runner, fleet)
         .await
         .expect("one rotation of polls must reach the fleet holding admitted work");
     let event_id = acquired.event_id.clone();
     assert_eq!(
         leases
-            .record_received(&acquired, now)
+            .record_received(&acquired)
             .await
             .expect("the narrative log must open")
             .delivery,
@@ -98,12 +101,12 @@ pub(super) async fn run_one_to_settlement(
         "a newly leased event has no row yet"
     );
     let receipt = fixtures
-        .admission_receipt(fleet, &event_id)
+        .text(Row::Admission(&event_id), "receipt")
         .await
         .expect("the delivered row still names the entry it arrived on");
     assert!(
         fixtures
-            .admission_delivered_at(fleet, &event_id)
+            .instant(Row::Admission(&event_id), "delivered_at")
             .await
             .is_some(),
         "the REAL delivery path stamped the ledger — nothing in this test did"
@@ -125,12 +128,12 @@ pub(super) async fn run_one_to_settlement(
         .await
         .expect("the lease row must be written")
         .expect("the claim is still held");
-    // One slice after the meter's own stamp, which issue took from the
-    // database clock.
-    let settled_at = fixtures
-        .metered_since(fleet)
-        .await
-        .saturating_add_millis(SLICE_MS);
+    // At least one slice of runtime, metered on the database clock.
+    fixtures
+        .age(Row::Slot(fleet), COLUMN_LAST_METERED, SLICE)
+        .await;
+    let from = fixtures.metered_since(fleet).await;
+    let settled_at = fixtures.enrolled_at();
     let Settled::Claimed(charged) = fixtures
         .settle_alone(
             leases,
@@ -144,15 +147,23 @@ pub(super) async fn run_one_to_settlement(
     else {
         unreachable!("the only holder of this fleet cannot be fenced out")
     };
+    let to = fixtures.metered_since(fleet).await;
+    let slice = run_fee(afd_core::clock::saturating_millis_signed(
+        afd_core::clock::elapsed(from, to),
+    ));
+    assert!(
+        slice >= SLICE_NANOS,
+        "the aged meter charges at least a slice: {slice}"
+    );
     assert_eq!(
         charged.as_i64(),
-        SLICE_NANOS,
-        "a second of runtime at one nano per millisecond is a thousand nanos"
+        slice,
+        "the charge is the meter's span at one nano per millisecond"
     );
     let balance = fixtures.balance(tenant).await;
     assert_eq!(
         balance,
-        Some(DEEP_POOL - SLICE_NANOS),
+        Some(DEEP_POOL - slice),
         "the wallet paid for the run exactly once"
     );
     let debits = fixtures.ledger_rows(&event_id).await;
@@ -175,9 +186,9 @@ pub(super) async fn append_as_the_dead_inserter(
     fleet: &str,
     workspace: &str,
     event_id: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> EventId {
-    let created_at = now.as_millis().to_string();
+    let created_at = now.to_string();
     let entry = Entry {
         actor: ACTOR,
         event_type: EventType::Webhook.as_str(),

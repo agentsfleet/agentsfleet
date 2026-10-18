@@ -53,12 +53,12 @@
 )]
 
 use afd_admission::Progress;
-use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
     EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, ledger, producer_key,
 };
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -95,7 +95,7 @@ pub(crate) async fn unfinished_fleets(fixtures: &Fixtures) -> usize {
         .await
         .expect("the ledger answers");
     let counted: (i64,) = sqlx::query_as(
-        "SELECT count(DISTINCT fleet_id) FROM core.fleet_admissions
+        "SELECT count(DISTINCT fleet_id) FROM fleet.admissions
           WHERE receipt IS NOT NULL AND delivered_at IS NULL",
     )
     .fetch_one(&mut *connection)
@@ -134,7 +134,7 @@ async fn rotation_recovers_fleets_past_the_pass_budget() {
             .expect("a live queue admits and receipts");
         assert!(
             fixtures
-                .admission_receipt(&fleet, &event.stored.id)
+                .text(Row::Admission(&event.stored.id), "receipt")
                 .await
                 .is_some(),
             "{key} was receipted before the loss"
@@ -151,18 +151,17 @@ async fn rotation_recovers_fleets_past_the_pass_budget() {
     let passes = unfinished_fleets(&fixtures).await + SLACK_PASSES;
     let mut progress = Progress::default();
     for _pass in 0..passes {
-        let at = clock::now();
-        live.reconcile(at, ONE_FLEET, EVERY_ROW, &mut progress)
+        live.reconcile(ONE_FLEET, EVERY_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
     }
 
     for (fleet, event_id) in &lost {
         let receipt = fixtures
-            .admission_receipt(fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
         assert!(
@@ -189,14 +188,9 @@ pub(crate) async fn deliver(fixtures: &Fixtures, fleet: &str, event_id: &str) {
         .acquire()
         .await
         .expect("the ledger answers");
-    let (created_at, seq) = event_id
-        .split_once('-')
-        .expect("a logical event id is `<created_at>-<seq>`");
     sqlx::query(afd_admission::sql::MARK_DELIVERED)
         .bind(fleet)
-        .bind(created_at.parse::<i64>().expect("the instant is numeric"))
-        .bind(seq.parse::<i64>().expect("the sequence is numeric"))
-        .bind(clock::now().as_millis())
+        .bind(event_id)
         .execute(&mut *connection)
         .await
         .expect("stamping the delivery");

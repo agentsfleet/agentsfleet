@@ -9,7 +9,8 @@ use afd_approval::{Decision, Inbox, Resolution};
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ReadyIndex;
 
-use crate::lease_reads::{COLUMN_LAST_RUNNER, COLUMN_LEASED_UNTIL};
+use crate::lease_reads::COLUMN_LAST_RUNNER;
+use crate::rows::Row;
 
 /// An event type this build does not know, refused before any money is read.
 const EVENT_TYPE_UNKNOWN: &str = "fixture-unknown";
@@ -40,16 +41,13 @@ async fn test_stop_releases_the_claim() {
         answer.contains(NO_LEASE),
         "a refused event issued a lease: {answer}"
     );
-    assert_eq!(
-        fixtures
-            .affinity_column(&seeded.fleet, COLUMN_LEASED_UNTIL)
-            .await,
-        Some(fixtures.enrolled_at().to_string()),
-        "the refusal freed the claim at its own instant, not a claim's lifetime later"
+    assert!(
+        fixtures.slot_is_free(&seeded.fleet).await,
+        "the refusal freed the claim at once, not a claim's lifetime later"
     );
     assert_eq!(
         fixtures
-            .affinity_column(&seeded.fleet, COLUMN_LAST_RUNNER)
+            .text(Row::Slot(&seeded.fleet), COLUMN_LAST_RUNNER)
             .await,
         None,
         "a claim that ran nothing leaves no sticky hint, or a fleet that keeps \
@@ -61,7 +59,6 @@ async fn test_stop_releases_the_claim() {
     let leased = crate::seed::select_fleet_within_rotations(
         &fixtures.leases(),
         &seeded.runner,
-        UnixMillis::from_millis(fixtures.enrolled_at() + 1),
         &seeded.fleet,
     )
     .await
@@ -91,11 +88,8 @@ async fn test_approval_resolution_leases_next_poll() {
         answer.contains(NO_LEASE),
         "an unanswered gate issued a lease: {answer}"
     );
-    assert_eq!(
-        fixtures
-            .affinity_column(&seeded.fleet, COLUMN_LEASED_UNTIL)
-            .await,
-        Some(fixtures.enrolled_at().to_string()),
+    assert!(
+        fixtures.slot_is_free(&seeded.fleet).await,
         "the park freed the claim"
     );
     assert!(
@@ -118,7 +112,6 @@ async fn test_approval_resolution_leases_next_poll() {
         REVIEWER,
         "",
         Some(&seeded.fleet),
-        UnixMillis::from_millis(fixtures.enrolled_at() + 1),
     )
     .await
     .expect("the resolve must not fault");
@@ -131,7 +124,6 @@ async fn test_approval_resolution_leases_next_poll() {
     let leased = crate::seed::select_fleet_within_rotations(
         &fixtures.leases(),
         &seeded.runner,
-        UnixMillis::from_millis(fixtures.enrolled_at() + 2),
         &seeded.fleet,
     )
     .await

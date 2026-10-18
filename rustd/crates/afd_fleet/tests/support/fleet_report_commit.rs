@@ -10,11 +10,12 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::{Reported, Terminal, TerminalReport, Verdict};
+use jiff::Timestamp;
 
 use crate::report_seed::{DEEP_POOL, Held, SLICE_MS, run_fee_meter};
+use crate::rows::Row;
 
 /// A response Postgres refuses, after the settle has already written.
 ///
@@ -53,7 +54,7 @@ pub(crate) fn report<'a>(
     runner_id: &'a Uuid7,
     lease: &'a Reported,
     response_text: &'a str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> TerminalReport<'a> {
     TerminalReport {
         lease_id,
@@ -87,14 +88,14 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
     );
     assert_eq!(
         held.fixtures
-            .event_column(&held.fleet, &held.event_id, "status")
+            .text(Row::Event(&held.fleet, &held.event_id), "status")
             .await,
         Some(afd_core::event::status::RECEIVED.to_owned()),
         "{why}: the event was never ended"
     );
     assert_eq!(
         held.fixtures
-            .session_column(&held.fleet, "context_json")
+            .text(Row::Session(&held.fleet), "context_json")
             .await,
         None,
         "{why}: no cursor was written — a session pointing past a run that did not finish \

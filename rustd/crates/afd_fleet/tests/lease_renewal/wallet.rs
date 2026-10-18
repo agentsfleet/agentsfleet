@@ -9,6 +9,7 @@ use super::{
     replicas::waiting,
     seat::{FUNDED, Seat},
 };
+use crate::rows::Row;
 use afd_authoring::Claimed;
 use afd_billing::{Cumulative, Meter, SliceRates};
 use afd_core::{clock, id::Uuid7};
@@ -26,8 +27,8 @@ const INPUT_TOKENS: i64 = 1_000_000;
 /// One reported millisecond at the runtime rate.
 const AUTHORING_DEBIT: i64 = 100;
 const HOLD_WALLET: &str =
-    "SELECT pg_backend_pid() FROM billing.tenant_wallet WHERE tenant_id = $1::uuid FOR UPDATE";
-const BALANCE: &str = "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid";
+    "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE";
+const BALANCE: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid";
 
 #[derive(Debug, Clone, Copy)]
 enum First {
@@ -36,7 +37,7 @@ enum First {
 }
 
 /// How far the authoring turn is backdated so its attempt reads as already started.
-const AGE_MS: i64 = 1_000;
+const AGE: Duration = Duration::from_secs(1);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -50,7 +51,7 @@ async fn test_runtime_debit_and_authoring_settlement_interleave_on_one_wallet() 
 async fn scenario(first: First) {
     let running = Running::create().await;
     let database = &running.fixtures.database;
-    sqlx::query("UPDATE fleet.runners SET worker_count = 2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1::uuid")
         .bind(running.runner.as_str())
         .execute(&mut *database.acquire().await.expect("widen"))
         .await
@@ -61,14 +62,10 @@ async fn scenario(first: First) {
     let lease = Seat::admit(&drafts, &running.runner, &draft)
         .await
         .expect("the second worker admits the turn beside the runtime lease");
-    sqlx::query(
-        "UPDATE fleet.authoring_attempts SET created_at = created_at - $2 WHERE id = $1::uuid",
-    )
-    .bind(lease.attempt_id.as_str())
-    .bind(AGE_MS)
-    .execute(&mut *database.acquire().await.expect("age"))
-    .await
-    .expect("a second of elapsed runtime covers the reported millisecond");
+    running
+        .fixtures
+        .age(Row::Attempt(lease.attempt_id.as_str()), "created_at", AGE)
+        .await;
     assert_eq!(balance(&running, &seat.tenant).await, FUNDED);
 
     let leases = running.fixtures.leases();

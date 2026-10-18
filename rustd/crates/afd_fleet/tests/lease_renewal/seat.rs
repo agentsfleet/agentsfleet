@@ -17,21 +17,21 @@ const SECRET_REF: &str = "authoring-model";
 const PROVIDER: &str = "openai";
 const KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const IDENTITY: &str =
-    "SELECT tenant_id::text, workspace_id::text FROM core.fleets WHERE id = $1::uuid";
+    "SELECT tenant_id::text, workspace_id::text FROM fleet.fleets WHERE id = $1::uuid";
 const PERSON: &str = "\
-INSERT INTO core.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$1,$1,$3,$3)";
+INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
+VALUES($1::uuid,$2::uuid,$1,$1,now(),now())";
 const MODEL: &str = "\
-INSERT INTO core.model_library(id,model_id,provider,context_cap_tokens,input_nanos_per_mtok,
+INSERT INTO model.platform_models(id,model_name,provider,context_cap_tokens,input_nanos_per_mtok,
 cached_input_nanos_per_mtok,output_nanos_per_mtok,created_at,updated_at)
-VALUES($1::uuid,$2,$3,128000,$4,$4,$4,$5,$5)";
+VALUES($1::uuid,$2,$3,128000,$4,$4,$4,now(),now())";
 const ENTRY: &str = "\
-INSERT INTO core.tenant_model_entries(id,tenant_id,model_id,secret_ref,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3,$4,$5,$5)";
+INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at)
+VALUES($1::uuid,$2::uuid,$3,$4,now(),now())";
 const SECRET: &str = "\
-INSERT INTO vault.secrets(id,workspace_id,key_name,encrypted_dek,dek_nonce,dek_tag,nonce,
-ciphertext,tag,kek_version,meta_provider,meta_has_key,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,$12,$12)";
+INSERT INTO vault.secrets(id,workspace_id,key_name,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,
+secret_ciphertext,secret_tag,kek_version,meta_provider,meta_has_key,created_at,updated_at)
+VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,now(),now())";
 
 pub(super) struct Seat {
     pub(super) tenant: String,
@@ -57,21 +57,16 @@ impl Seat {
             catalogue: id(&mint_id()),
         };
         seat.seed(database).await;
-        running
-            .fixtures
-            .seed_wallet(&seat.tenant, FUNDED, clock::now().as_millis())
-            .await;
+        running.fixtures.seed_wallet(&seat.tenant, FUNDED).await;
         seat
     }
 
     async fn seed(&self, database: &Db) {
-        let now = clock::now().as_millis();
         let model = format!("gpt-4o-{}", self.catalogue);
         let mut connection = database.acquire().await.expect("seat seed");
         sqlx::query(PERSON)
             .bind(self.owner.as_str())
             .bind(&self.tenant)
-            .bind(now)
             .execute(&mut *connection)
             .await
             .expect("the tenant's owner");
@@ -80,7 +75,6 @@ impl Seat {
             .bind(&model)
             .bind(PROVIDER)
             .bind(NANOS_PER_USD)
-            .bind(now)
             .execute(&mut *connection)
             .await
             .expect("an isolated priced model");
@@ -89,7 +83,6 @@ impl Seat {
             .bind(&self.tenant)
             .bind(&model)
             .bind(SECRET_REF)
-            .bind(now)
             .execute(&mut *connection)
             .await
             .expect("the owner's registered model");
@@ -113,7 +106,6 @@ impl Seat {
             .bind(sealed.payload_tag().as_slice())
             .bind(sealed.kek_version())
             .bind(PROVIDER)
-            .bind(now)
             .execute(&mut *connection)
             .await
             .expect("the sealed owner key");
@@ -155,7 +147,7 @@ impl Seat {
 
     /// Removes the one global row the seat wrote; the lane reset owns the rest.
     pub(super) async fn remove(self, database: &Db) {
-        sqlx::query("DELETE FROM core.model_library WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
             .bind(self.catalogue.as_str())
             .execute(&mut *database.acquire().await.expect("seat cleanup"))
             .await

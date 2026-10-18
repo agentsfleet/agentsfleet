@@ -20,11 +20,9 @@ use std::time::Duration;
 
 /// Every ordering finishes inside this, or the test fails rather than hangs.
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
-const LIVE_AUTHORING: &str = const_format::concatcp!(
-    "SELECT lease_id::text FROM fleet.authoring_attempts WHERE runner_id = $1::uuid \
-     AND status = $2 AND lease_expires_at > ",
-    afd_db::statement::NOW_MS,
-);
+const LIVE_AUTHORING: &str = "\
+SELECT lease_id::text FROM authoring.attempts
+WHERE runner_id = $1::uuid AND status = $2 AND lease_expires_at > clock_timestamp()";
 
 /// Where A's late renewal lands relative to B's authoring admission.
 #[derive(Debug, Clone, Copy)]

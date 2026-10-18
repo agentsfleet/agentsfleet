@@ -35,11 +35,11 @@
 //! text that is not UTF-8. [`str::floor_char_boundary`] backs off to the last
 //! character boundary at or below the cap.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
+use jiff::Timestamp;
 
 use sqlx::PgConnection;
 
@@ -91,7 +91,6 @@ impl Leases {
         fleet_id: &Uuid7,
         event_id: &str,
         outcome: Terminal<'_>,
-        now: UnixMillis,
     ) -> Result<Option<Closed>> {
         let Terminal {
             verdict,
@@ -107,7 +106,6 @@ impl Leases {
             .bind(response_text)
             .bind(tokens)
             .bind(wall_ms)
-            .bind(now.as_millis())
             .bind(verdict.label())
             .bind(afd_core::event::status::RECEIVED)
             .bind(verdict.detail())
@@ -146,7 +144,6 @@ impl Leases {
         fleet_id: &Uuid7,
         last_event_id: &str,
         last_response: &str,
-        now: UnixMillis,
     ) -> Result<()> {
         // `Value`, then `Display`. `serde_json::to_string` is fallible in its
         // signature and cannot fail for two string fields, which would leave an
@@ -163,7 +160,6 @@ impl Leases {
         sqlx::query(sql::session::UPSERT_FLEET_SESSION)
             .bind(fleet_id.as_str())
             .bind(&document)
-            .bind(now.as_millis())
             .execute(&mut *connection)
             .await
             .map_err(crate::error::query(CONTEXT_CHECKPOINT))?;
@@ -244,7 +240,7 @@ impl Leases {
         lease_id: &str,
         fleet_id: &Uuid7,
         event_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let row_id = self.entropy().uuid7(now)?;
 
@@ -253,7 +249,6 @@ impl Leases {
             .bind(row_id.as_str())
             .bind(runner_id.as_str())
             .bind(afd_runner::sql::event_type::LEASE_RELEASED)
-            .bind(now.as_millis())
             .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(lease_id)
             .bind(afd_runner::sql::meta::FLEET_ID)

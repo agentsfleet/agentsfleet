@@ -71,7 +71,7 @@ fn unwritable() -> afd_approval::Error {
     control.fail_next();
     afd_approval::Error::from(
         entropy
-            .uuid7(afd_core::clock::UnixMillis::from_millis(1_767_225_600_000))
+            .uuid7(jiff::Timestamp::constant(1_767_225_600, 0))
             .expect_err("a mocked source told to fail refuses the mint"),
     )
 }
@@ -194,7 +194,7 @@ fn config(access: Option<&str>) -> FleetConfig {
 }
 
 /// An event identifier in the spelling the admission ledger mints: the
-/// admission instant and the sequence, which is what `core.fleet_events` stores
+/// admission instant and the sequence, which is what `fleet.events` stores
 /// in its TEXT key.
 ///
 /// It read `0197a4ba-8d3a-7f13-8abc-123456789abc` — a canonical v7, and a shape

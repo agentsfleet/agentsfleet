@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 
 use super::*;
 use crate::requests;
+use afd_crypto::entropy::Entropy;
 
 /// The token every counted exchange hands back.
 const COUNTED_TOKEN: &str = "ghs_counted";
@@ -41,7 +42,7 @@ impl Exchanger for Counting {
         self.0.fetch_add(1, Ordering::SeqCst);
         Box::pin(std::future::ready(Outcome::Ok(Minted {
             token: Zeroizing::new(COUNTED_TOKEN.to_owned()),
-            expires_at_ms: NOW_MS + LEASE_WINDOW_MS,
+            expires_at: afd_core::clock::after(afd_core::clock::now(), LEASE_WINDOW),
             rotated_refresh_token: None,
         })))
     }
@@ -78,16 +79,14 @@ async fn seed_install(fixtures: &Fixtures, workspace: &str, installation: &str) 
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.connector_installs
-           (id, provider, external_account_id, workspace_id, installed_by, scopes,
-            created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4::uuid, '', '{}', $5, $5)",
+        "INSERT INTO connector.installs
+           (id, provider, external_account_id, workspace_id, scopes, created_at, updated_at)
+         VALUES ($1::uuid, $2, $3, $4::uuid, '{}', now(), now())",
     )
-    .bind(new_id())
+    .bind(mint_id())
     .bind(CONNECTOR_GITHUB)
     .bind(installation)
     .bind(workspace)
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the routing row must insert");
@@ -134,7 +133,7 @@ async fn mint(
         .mint(
             &who.runner,
             &requests::mint(&who.lease, integration),
-            UnixMillis::from_millis(NOW_MS),
+            fixtures.enrolled_at(),
         )
         .await
         .map_err(|refused| refused.code());

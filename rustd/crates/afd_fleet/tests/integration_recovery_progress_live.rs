@@ -12,12 +12,12 @@
 )]
 
 use afd_admission::Progress;
-use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
     EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, ledger, producer_key,
 };
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -64,7 +64,7 @@ async fn interleaved_live_admissions_survive_recovery() {
             .await
             .expect("a live queue admits and receipts");
         let receipt = fixtures
-            .admission_receipt(&fleet, &event.stored.id)
+            .text(Row::Admission(&event.stored.id), "receipt")
             .await
             .expect("an append after the loss records its receipt");
         alive.push((event.stored.id, receipt));
@@ -72,30 +72,35 @@ async fn interleaved_live_admissions_survive_recovery() {
 
     let mut progress = Progress::default();
     for _pass in 0..4 {
-        let at = clock::now();
-        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut progress)
+        live.reconcile(EVERY_FLEET, EVERY_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
     }
 
     for (event_id, receipt) in &alive {
         assert_eq!(
-            fixtures.admission_receipt(&fleet, event_id).await.as_ref(),
+            fixtures
+                .text(Row::Admission(event_id), "receipt")
+                .await
+                .as_ref(),
             Some(receipt),
             "{event_id} was queued and alive; recovery must not have touched it"
         );
         assert_eq!(
-            fixtures.admission_replays(&fleet, event_id).await,
+            fixtures
+                .value::<i64>(Row::Admission(event_id), "replay_count")
+                .await
+                .expect("replay_count is NOT NULL"),
             0,
             "{event_id} was never re-appended, because it was never lost"
         );
     }
     for event_id in &lost {
         let receipt = fixtures
-            .admission_receipt(&fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
         assert!(
@@ -142,12 +147,11 @@ async fn concurrent_reconcilers_repair_each_row_once() {
         .await
         .expect("destroying this fleet's stream data");
 
-    let at = clock::now();
     let mut here = Progress::default();
     let mut there = Progress::default();
     let (left, right) = tokio::join!(
-        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut here),
-        live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut there),
+        live.reconcile(EVERY_FLEET, EVERY_ROW, &mut here),
+        live.reconcile(EVERY_FLEET, EVERY_ROW, &mut there),
     );
     let left = left.expect("the first pass runs against both live datastores");
     let right = right.expect("the second pass runs against both live datastores");
@@ -156,12 +160,15 @@ async fn concurrent_reconcilers_repair_each_row_once() {
         left.voided + right.voided <= u64::try_from(owed.len()).expect("three fits a u64"),
         "two passes voided more receipts than the fleet had rows: {left:?} {right:?}"
     );
-    live.replay(clock::now(), NO_GRACE, EVERY_ROW)
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");
     for event_id in &owed {
         assert_eq!(
-            fixtures.admission_replays(&fleet, event_id).await,
+            fixtures
+                .value::<i64>(Row::Admission(event_id), "replay_count")
+                .await
+                .expect("replay_count is NOT NULL"),
             1,
             "{event_id} was re-appended exactly once, by whichever pass won"
         );
@@ -196,31 +203,35 @@ async fn replayed_reconcile_pass_is_idempotent() {
         .expect("destroying this fleet's stream data");
 
     let mut progress = Progress::default();
-    let at = clock::now();
-    live.reconcile(at, EVERY_FLEET, EVERY_ROW, &mut progress)
+    live.reconcile(EVERY_FLEET, EVERY_ROW, &mut progress)
         .await
         .expect("the repairing pass runs");
-    live.replay(at, NO_GRACE, EVERY_ROW)
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs");
     let recovered = fixtures
-        .admission_receipt(&fleet, &event.stored.id)
+        .text(Row::Admission(&event.stored.id), "receipt")
         .await
         .expect("the row was repaired and re-appended");
 
     // The fleet is whole again. A second pass must find nothing to do on it.
     let settled = live
-        .reconcile(clock::now(), EVERY_FLEET, EVERY_ROW, &mut progress)
+        .reconcile(EVERY_FLEET, EVERY_ROW, &mut progress)
         .await
         .expect("the second pass runs");
 
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &event.stored.id).await,
+        fixtures
+            .text(Row::Admission(&event.stored.id), "receipt")
+            .await,
         Some(recovered),
         "the second pass left the repaired receipt alone"
     );
     assert_eq!(
-        fixtures.admission_replays(&fleet, &event.stored.id).await,
+        fixtures
+            .value::<i64>(Row::Admission(&event.stored.id), "replay_count")
+            .await
+            .expect("replay_count is NOT NULL"),
         1,
         "one loss is one re-append, however many passes run"
     );

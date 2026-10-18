@@ -34,27 +34,23 @@ mod rotation;
 mod write_gate;
 use crate::seed;
 use crate::support;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
-use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
+use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
-/// The instant every fixture row is stamped with.
-const NOW_MS: i64 = 1_900_000_000_000;
-
-/// How long the fixture leases stay live.
-const LEASE_WINDOW_MS: i64 = 30_000;
+/// How long the fixture leases, gates and minted credentials stay live.
+const LEASE_WINDOW: std::time::Duration = afd_core::timing::LEASE_TTL;
 
 /// The key every fixture in this lane seals and opens under.
 ///
 /// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
-/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// point of it. `model.platform_defaults` has `provider` as its PRIMARY
 /// KEY, so the row is a fact about the deployment rather than about a test, and
 /// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
 /// owns it, and the secret it names is opened by the other. Under two different
@@ -108,7 +104,7 @@ async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
     if config_json != "{}" {
         set_config(fixtures, &fleet, config_json).await;
     }
-    let lease = new_id();
+    let lease = mint_id();
     seed_lease(fixtures, &lease, runners[0].as_str(), &fleet, &workspace).await;
     Bound {
         runner: runners[0].clone(),
@@ -116,22 +112,6 @@ async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
         fleet,
         workspace,
     }
-}
-
-/// A fresh version-7 identifier for a fixture row.
-///
-/// Drawn through the workspace's own entropy surface rather than a random
-/// crate, so a fixture cannot end up minting identifiers a different way from
-/// the daemon it is testing.
-fn new_id() -> String {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host provides entropy");
-    Uuid7::encode(UnixMillis::from_millis(NOW_MS), bytes)
-        .expect("a v7 identifier encodes")
-        .as_str()
-        .to_owned()
 }
 
 /// The workspace a seeded fleet belongs to.
@@ -142,7 +122,7 @@ async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
         .await
         .expect("a pooled connection");
     sqlx::query_scalar::<_, String>(
-        "SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid",
+        "SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid",
     )
     .bind(fleet)
     .fetch_one(&mut *connection)
@@ -155,38 +135,44 @@ async fn set_config(fixtures: &Fixtures, fleet: &str, config_json: &str) {
     fixtures.native_config(fleet, config_json).await;
 }
 
-/// Writes one live lease binding `runner` to `fleet`.
+/// Writes one live lease binding `runner` to `fleet`, over the fleet's
+/// [`EVENT_ID`] event.
 async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str, workspace: &str) {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    // `receipt` takes the event id, which is what `911_runner_leases_receipt.sql`
-    // backfilled existing rows with: before the ledger owned identity, the
-    // entry id WAS the event id.
-    // The column is NOT NULL, and this fixture predates it.
+    let kind = EventKind {
+        actor: "fixture:steer",
+        event_type: "chat",
+        status: afd_core::event::status::RECEIVED,
+    };
+    let event = FleetEventSeed::new(fleet, workspace, EVENT_ID, kind)
+        .insert(&mut *connection)
+        .await
+        .expect("the leased event row must insert");
     sqlx::query(
-        "INSERT INTO fleet.runner_leases
-           (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt,
-            actor, event_type, event_created_at, posture, provider, model,
-            metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-            last_metered_at, fencing_token, lease_expires_at, status,
-            created_at, updated_at)
-         SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5, $5,
-                'fixture:steer',
-                'chat', $6, 'platform', 'anthropic', 'claude-fixture',
-                0, 0, 0, 0, $8, $7, 'active', $6, $6
-         FROM core.fleets f WHERE f.id = $3::uuid",
+        "INSERT INTO runner.leases
+           (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+            receipt, posture, provider, model,
+            metered_input_token_count, metered_cached_token_count, metered_output_token_count,
+            fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at)
+         SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5::uuid, now(),
+                $6, 'platform', 'anthropic', 'claude-fixture',
+                0, 0, 0,
+                $7, now() + $8::interval, $9, 0, now(), now()
+         FROM fleet.fleets f WHERE f.id = $3::uuid",
     )
     .bind(lease)
     .bind(runner)
     .bind(fleet)
     .bind(workspace)
+    .bind(event)
     .bind(EVENT_ID)
-    .bind(NOW_MS)
-    .bind(NOW_MS + LEASE_WINDOW_MS)
     .bind(FIXTURE_FENCE)
+    .bind(LEASE_WINDOW)
+    .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
     .execute(&mut *connection)
     .await
     .expect("the lease row must insert");
@@ -201,20 +187,19 @@ async fn supersede(fixtures: &Fixtures, fleet: &str) {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO fleet.runner_affinity
-           (fleet_id, last_runner_id, fencing_seq, leased_until,
-            metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+        "INSERT INTO runner.fleet_slots
+           (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+            metered_input_token_count, metered_cached_token_count, metered_output_token_count,
             last_metered_at, created_at, updated_at)
-         VALUES ($1::uuid, NULL, $2, $3, 0, 0, 0, $4, $4, $4)
-         ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq",
+         VALUES ($1::uuid, NULL, $2, now() + $3::interval, NULL, 0, 0, 0, now(), now(), now())
+         ON CONFLICT (fleet_id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)
     .bind(FIXTURE_FENCE + 1)
-    .bind(NOW_MS + LEASE_WINDOW_MS)
-    .bind(NOW_MS)
+    .bind(LEASE_WINDOW)
     .execute(&mut *connection)
     .await
-    .expect("the affinity row must upsert");
+    .expect("the slot row must upsert");
 }
 
 /// Stores one credential handle in the vault, sealed under the fixture key.
@@ -235,12 +220,12 @@ async fn seed_handle(fixtures: &Fixtures, workspace: &str, name: &str, handle: &
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO vault.secrets
-           (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag,
-            nonce, ciphertext, tag, kek_version, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+           (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag,
+            secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
-    .bind(new_id())
+    .bind(mint_id())
     .bind(workspace)
     .bind(name)
     .bind(sealed.wrapped_dek())
@@ -250,7 +235,6 @@ async fn seed_handle(fixtures: &Fixtures, workspace: &str, name: &str, handle: &
     .bind(sealed.payload_ciphertext())
     .bind(sealed.payload_tag().as_slice())
     .bind(sealed.kek_version())
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the vault row must insert");
@@ -264,16 +248,15 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &str, service: &str, status: &st
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, 'fixture', $5)
+        "INSERT INTO connector.integration_grants
+           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4, 'fixture', now(), now())
          ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status",
     )
-    .bind(new_id())
+    .bind(mint_id())
     .bind(fleet)
     .bind(service)
     .bind(status)
-    .bind(NOW_MS)
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");
@@ -291,30 +274,29 @@ const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"writ
 /// Writes one answered repository-write gate for `fleet` and `EVENT_ID`.
 async fn seed_write_gate(fixtures: &Fixtures, fleet: &str, stated: &str, spent: i64) -> String {
     let workspace = workspace_of(fixtures, fleet).await;
-    let gate_id = new_id();
+    let gate_id = mint_id();
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.fleet_approval_gates
+        "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-            gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+            gate_type, proposed_action, evidence, blast_radius, expires_at,
             resolved_by, status, detail, created_at, updated_at, event_id,
             stated_binding, spend_count, spend_ceiling)
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
                  $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
-                 $6, 'fixture:human', 'approved', '', $7, $7, $8,
-                 $9::jsonb, $10, $11)",
+                 now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7,
+                 $8::jsonb, $9, $10)",
     )
     .bind(&gate_id)
     .bind(fleet)
     .bind(&workspace)
-    .bind(new_id())
+    .bind(mint_id())
     .bind(KIND_REPOSITORY_WRITE)
-    .bind(NOW_MS + LEASE_WINDOW_MS)
-    .bind(NOW_MS)
+    .bind(LEASE_WINDOW)
     .bind(EVENT_ID)
     .bind(stated)
     .bind(spent)

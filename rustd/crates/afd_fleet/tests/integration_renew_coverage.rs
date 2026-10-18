@@ -8,11 +8,11 @@
 use crate::integration_held_sandbox::report::processed;
 use crate::queue;
 use crate::report_seed;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_fleet::lease::Plane;
 use afd_wire::report::{RenewRequest, ReportRequest};
+use jiff::Timestamp;
 
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
@@ -40,7 +40,7 @@ async fn remove_wallet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
         .bind(&held.tenant)
         .execute(&mut *connection)
         .await
@@ -48,9 +48,7 @@ async fn remove_wallet(held: &Held) {
 }
 
 async fn exhaust_fleet_budget(held: &Held) {
-    held.fixtures
-        .seed_wallet(&held.tenant, DEEP_POOL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(held, ONE_NANO_DAILY_BUDGET).await;
     let mut connection = held
         .fixtures
@@ -58,7 +56,7 @@ async fn exhaust_fleet_budget(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE billing.usage_ledger SET credit_deducted_nanos = 2 WHERE event_id = $1")
+    sqlx::query("UPDATE billing.fleet_charges SET charged_nanos = 2 WHERE event_id = $1")
         .bind(&held.event_id)
         .execute(&mut *connection)
         .await
@@ -76,7 +74,7 @@ async fn kill_fleet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET status = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid")
         .bind(&held.fleet)
         .bind(FLEET_KILLED)
         .execute(&mut *connection)
@@ -159,9 +157,7 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
     let plane = held.fixtures.plane();
     let lease_id = held.issued.lease_id.as_str();
 
-    held.fixtures
-        .seed_wallet(&held.tenant, DEEP_POOL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     kill_fleet(&held).await;
     plane
@@ -191,9 +187,7 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     let plane = held.fixtures.plane();
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
-    held.fixtures
-        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let first = token_charge(&held, &plane, 10_000).await;
     assert!(first > 0, "the fixture rate prices ten thousand tokens");
 
@@ -221,9 +215,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     // A priced model, so the refusal below is the fault and not a missing rate.
-    held.fixtures
-        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
         input_tokens: 12_000,
         cached_input_tokens: 3_000,
@@ -276,8 +268,9 @@ fn reported(input_tokens: u32) -> RenewRequest {
 
 /// The run fee for the runtime between two meter stamps. Renewal stamps the
 /// database clock it read, so these are the instants it metered between.
-fn run_fee(from: UnixMillis, to: UnixMillis) -> afd_billing::Nanos {
-    afd_billing::slice_charge(RUN_FEE_ONLY, to.saturating_millis_since(from), 0, 0, 0)
+fn run_fee(from: Timestamp, to: Timestamp) -> afd_billing::Nanos {
+    let wall_ms = afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to));
+    afd_billing::slice_charge(RUN_FEE_ONLY, wall_ms, 0, 0, 0)
 }
 
 /// Renews `held`'s lease for `input_tokens` and answers what it charged for

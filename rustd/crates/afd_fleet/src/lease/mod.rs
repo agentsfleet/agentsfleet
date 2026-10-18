@@ -1,8 +1,8 @@
 //! Lease issue: the claim, the gates, the money, and the row.
 //!
 //! The `lease` verb performs the pre-execution control-plane work and hands a
-//! self-contained `ExecutionPolicy` to the runner. Split by concern the way
-//! [`crate::runner`] is: [`affinity`] is the atomic claim and the fence it
+//! self-contained `ExecutionPolicy` to the runner. Split by concern:
+//! [`affinity`] is the atomic claim and the fence it
 //! mints — the only place a [`affinity::Fence`] comes from — and the modules
 //! beside it add the gates and the row.
 //!

@@ -25,13 +25,11 @@
 //! abandoned claim costs one poll rather than a full TTL of silence on that
 //! fleet.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_core::timing::RUNNER_OFFLINE_AFTER;
 use afd_dragonfly::{Ready, ReadyToken};
 use afd_observability::metrics::label::fleet::RunStart;
 use afd_observability::producers;
-use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::lease::envelope::{Acquired, Kind};
@@ -87,13 +85,8 @@ impl Leases {
     /// `held` names the fleets whose sandboxes the runner says it holds; a
     /// ready one among them is tried before the partition, whichever partition
     /// it sits in.
-    pub async fn select(
-        &self,
-        runner_id: &Uuid7,
-        held: &[Uuid7],
-        now: UnixMillis,
-    ) -> Result<Option<Acquired>> {
-        self.select_recording(runner_id, held, now).await.0
+    pub async fn select(&self, runner_id: &Uuid7, held: &[Uuid7]) -> Result<Option<Acquired>> {
+        self.select_recording(runner_id, held).await.0
     }
 
     /// The poll, its outcome, and what it cost.
@@ -106,10 +99,9 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        now: UnixMillis,
     ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
-        let selected = self.select_counted(runner_id, held, now, &mut cost).await;
+        let selected = self.select_counted(runner_id, held, &mut cost).await;
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
@@ -126,14 +118,13 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
+        if let Some(acquired) = self.held_first(runner_id, held, cost).await? {
             return Ok(Some(acquired));
         }
         let (offer, rung) = self.ready_this_poll(runner_id, cost).await;
-        let claimed = self.offered(runner_id, offer, now, cost).await;
+        let claimed = self.offered(runner_id, offer, cost).await;
         // On every exit, a failed one included: when the fault was a rung
         // fleet's, ringing again would send every later poll back to it. A
         // fault elsewhere, a Postgres error say, leaves the ring clear too; the
@@ -154,27 +145,22 @@ impl Leases {
         runner_id: &Uuid7,
         ready: &[&str],
         cursor_ids: &[&str],
-        now: UnixMillis,
     ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
-        let rows = sqlx::query(sql::lease::SELECT_READY_CANDIDATES)
+        let ids: Vec<String> = sqlx::query_scalar(sql::lease::SELECT_READY_CANDIDATES)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner_id.as_str())
             .bind(ready)
             .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(now.as_millis())
-            .bind(RUNNER_OFFLINE_AFTER_MS)
-            .bind(sql::ADMIN_STATE_ACTIVE)
+            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(cursor_ids)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;
 
-        rows.iter()
-            .map(|row| {
-                let id: String = row.try_get(0).map_err(query(CONTEXT_CANDIDATES))?;
-                Uuid7::parse(&id).map_err(crate::error::row_malformed("core.fleets", "id"))
-            })
+        ids.iter()
+            .map(|id| Uuid7::parse(id).map_err(crate::error::row_malformed("fleet.fleets", "id")))
             .collect()
     }
 }

@@ -6,16 +6,17 @@ use crate::{
     seed::{self, Seeded},
     support::Fixtures,
 };
-use afd_core::{clock, clock::UnixMillis, id::Uuid7};
+use afd_core::{clock, id::Uuid7};
 use afd_fleet::lease::{Billed, Renewed};
 use afd_wire::runner::{HeartbeatRequest, HeldFleets};
+use jiff::Timestamp;
 
 pub(super) struct Running {
     pub(super) fixtures: Fixtures,
     pub(super) runner: Uuid7,
     pub(super) fleet: String,
     pub(super) lease: Uuid7,
-    pub(super) now: UnixMillis,
+    pub(super) now: Timestamp,
 }
 
 impl Running {
@@ -44,11 +45,11 @@ impl Running {
             .await
             .expect("host proves its assigned enforcement");
         let leases = fixtures.leases();
-        let acquired = seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
+        let acquired = seed::select_fleet_within_rotations(&leases, &runner, &fleet)
             .await
             .expect("a fresh affinity is selected");
         leases
-            .record_received(&acquired, now)
+            .record_received(&acquired)
             .await
             .expect("open event history");
         let tenant = Uuid7::parse(&tenant).expect("fixture tenant");
@@ -83,7 +84,7 @@ impl Running {
                 self.lease.as_str(),
                 &self.runner,
                 free_meter(),
-                self.now.saturating_add_millis(-10_000),
+                afd_core::clock::before(self.now, std::time::Duration::from_millis(10_000)),
             )
             .await
             .expect("renewal is a verdict")

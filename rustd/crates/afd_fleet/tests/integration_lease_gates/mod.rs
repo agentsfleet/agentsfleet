@@ -45,7 +45,6 @@ mod slack;
 mod stops;
 mod tenant;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Acquired;
 use sqlx::Row as _;
@@ -123,20 +122,13 @@ const STATUS_APPROVED: &str = "approved";
 const REPOSITORY_WRITE_SPEND_CEILING: i64 = 32;
 
 /// How long a fixture gate stays unexpired.
-const GATE_WINDOW_MS: i64 = 600_000;
+const GATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// A settled spend past [`BUDGETED_CONFIG`]'s ceiling, in nanodollars.
 const OVERSPENT_NANOS: i64 = 2_000_000_000;
 
 /// The context ceiling the fixture model is catalogued with.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
-
-/// The fixture model's prices, which the money pass needs to quote a charge.
-const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
-/// As [`INPUT_NANOS_PER_MTOK`], for cached input.
-const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
-/// As [`INPUT_NANOS_PER_MTOK`], for output.
-const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 
 /// A provider credential body shaped like the real one and worth nothing.
 /// Runtime resolution vets it before dialling, so it names its provider.
@@ -187,30 +179,21 @@ async fn ready(fixtures: &Fixtures) -> Ready {
 /// Split from [`drive`] because the case below has to act BETWEEN the two: a
 /// fleet paused after its event was claimed is a window that exists only here.
 async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
-    crate::seed::select_fleet_within_rotations(
-        &fixtures.leases(),
-        &ready.runner,
-        UnixMillis::from_millis(fixtures.enrolled_at()),
-        &ready.fleet,
-    )
-    .await
-    .expect("the fleet is leasable")
+    crate::seed::select_fleet_within_rotations(&fixtures.leases(), &ready.runner, &ready.fleet)
+        .await
+        .expect("the fleet is leasable")
 }
 
 /// Runs the gate chain over an already-claimed event.
 async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> String {
     fixtures
         .plane()
-        .lease_claimed(
-            claimed,
-            &ready.runner,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        )
+        .lease_claimed(claimed, &ready.runner, fixtures.enrolled_at())
         .await
         .expect("every gate verdict is a decision, not a fault")
 }
 
-/// The status and failure label one `core.fleet_events` row carries, if the
+/// The status and failure label one `fleet.events` row carries, if the
 /// pass got far enough to open one.
 ///
 /// Every stop answers identical bytes — `pull.rs`'s module note says so — so
@@ -222,8 +205,8 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
         .await
         .expect("a pooled connection");
     let row = sqlx::query(
-        "SELECT status, COALESCE(failure_label, '') \
-           FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2",
+        "SELECT status, COALESCE(failure_reason, '') \
+           FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(fleet)
     .bind(event)
@@ -233,7 +216,7 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
     row.map(|row| {
         (
             row.try_get(0).expect("status is text"),
-            row.try_get(1).expect("failure_label is text"),
+            row.try_get(1).expect("failure_reason is text"),
         )
     })
 }
@@ -242,7 +225,7 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
 async fn set_status(fixtures: &Fixtures, fleet: &str, status: &str) {
     execute(
         fixtures,
-        "UPDATE core.fleets SET status = $2 WHERE id = $1::uuid",
+        "UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid",
         fleet,
         status,
     )

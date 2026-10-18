@@ -26,16 +26,16 @@ use crate::support::Fixtures;
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 /// The scan's text prepared with the types sqlx binds it with.
 const PREPARE: &str = "PREPARE ready_candidates \
-(text, text, text[], bigint, bigint, bigint, text, text[]) AS ";
+(text, text, text[], bigint, interval, text, text[]) AS ";
 /// Its plan. The values are placeholders a generic plan never reads.
 const EXPLAIN: &str = "EXPLAIN (VERBOSE, COSTS OFF) EXECUTE ready_candidates \
-('active', '01890a5d-ac96-774b-bcce-b302099a80a1', '{}', 64, 0, 0, 'active', '{}')";
+('active', '01890a5d-ac96-774b-bcce-b302099a80a1', '{}', 64, '30 seconds', 'active', '{}')";
 /// Drops the prepared text, which outlives the transaction.
 const DEALLOCATE: &str = "DEALLOCATE ready_candidates";
 /// The plan line naming what the scan sorts by.
 const SORT_KEY: &str = "Sort Key:";
 /// The bind carrying the cursor's partition's ids.
-const CURSOR_IDS: &str = "$8";
+const CURSOR_IDS: &str = "$7";
 
 /// Runs one statement that returns nothing worth reading. Every text is this
 /// file's own constant or the scan's, never input.

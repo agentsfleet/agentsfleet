@@ -18,12 +18,10 @@
 //! A minted token is the broker's and is never held here; the runner masks
 //! those before it sends, with the guard that minted them.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_outbound::Interim;
 use afd_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use afr_secrets::{Scrub, StaticSecrets};
-use sqlx::Row as _;
 
 use crate::error::{Result, lease_not_found, message_limit_reached, message_no_channel, query};
 use crate::lease::pull::Plane;
@@ -48,10 +46,9 @@ impl Plane {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         request: &MessageRequest<'_>,
-        now: UnixMillis,
     ) -> Result<Interim> {
         let standing = self
-            .standing(runner_id, lease_id, request.fencing_token, now)
+            .standing(runner_id, lease_id, request.fencing_token)
             .await?;
         let reply = {
             let mut connection = self.leases.pool().acquire().await?;
@@ -65,13 +62,13 @@ impl Plane {
         .ok_or_else(message_no_channel)?;
         let counted = self
             .leases
-            .count_message(&standing.lease_id, request.fencing_token, now)
+            .count_message(&standing.lease_id, request.fencing_token)
             .await?;
         let Some(part) = counted else {
             // No slot taken: the run is at its cap, or a reclaim superseded the
             // holder after its standing was read. The second read says which.
             let Standing { lease_id, .. } = standing;
-            self.standing(runner_id, lease_id, request.fencing_token, now)
+            self.standing(runner_id, lease_id, request.fencing_token)
                 .await?;
             return Err(message_limit_reached());
         };
@@ -126,28 +123,17 @@ impl Leases {
     /// Counts one message against `lease_id` while it holds its fleet under
     /// `presented`, answering which line of the run it is, or `None` once the
     /// run has said [`MESSAGES_PER_RUN_MAX`] or the lease no longer holds.
-    async fn count_message(
-        &self,
-        lease_id: &Uuid7,
-        presented: u64,
-        now: UnixMillis,
-    ) -> Result<Option<u32>> {
+    async fn count_message(&self, lease_id: &Uuid7, presented: u64) -> Result<Option<u32>> {
         let mut connection = self.pool().acquire().await?;
-        let counted = sqlx::query(COUNT_MESSAGE)
+        let counted: Option<i32> = sqlx::query_scalar(COUNT_MESSAGE)
             .bind(lease_id.as_str())
             .bind(i32::try_from(MESSAGES_PER_RUN_MAX).unwrap_or(i32::MAX))
             .bind(i64::try_from(presented).unwrap_or(i64::MAX))
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_COUNT))?;
-        counted
-            .map(|row| {
-                let posted: i32 = row.try_get(0).map_err(query(CONTEXT_COUNT))?;
-                Ok(u32::try_from(posted).unwrap_or(MESSAGES_PER_RUN_MAX))
-            })
-            .transpose()
+        Ok(counted.map(|posted| u32::try_from(posted).unwrap_or(MESSAGES_PER_RUN_MAX)))
     }
 }
 
