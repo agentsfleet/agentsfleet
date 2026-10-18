@@ -32,14 +32,15 @@
 
 use std::borrow::Cow;
 
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
-use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
+use afd_dragonfly::{Dragonfly, FleetStreams};
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
-use afd_wire::event::{Entry, EventType};
+use afd_wire::event::EventType;
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
     SandboxTier,
@@ -172,7 +173,7 @@ pub async fn ready_fleet(
 ) -> Result<SeededFleet> {
     let seeded = identities(index);
     rows(database, prefix, &seeded, tag, now).await?;
-    enqueue(queue, &seeded, EVENT_TYPE, now).await?;
+    enqueue(database, queue, &seeded, EVENT_TYPE).await?;
     Ok(seeded)
 }
 
@@ -230,41 +231,38 @@ pub(crate) async fn rows(
     .map_err(seed_refused)
 }
 
-/// One event of `event_type` on the fleet's stream, and the readiness mark
-/// that makes a poll look at it.
+/// One event of `event_type` admitted onto the fleet, through the ledger's own
+/// write path.
 ///
-/// Both halves, because either alone is a state the daemon never produces:
-/// ingress appends and marks in one path.
+/// `Admissions::admit` is what ingress runs: it writes the `fleet.admissions`
+/// row, appends the entry under that row's id, records the receipt and marks
+/// the fleet ready. Seeding through it leaves exactly the state ingress leaves,
+/// so the lease path's delivery stamp meets a real row, as in production.
+///
+/// A queue that refuses the append is the ledger's deferral, not an error: the
+/// row stands without a receipt and the run's ledger backlog shows it.
 pub(crate) async fn enqueue(
+    database: &Db,
     queue: &Dragonfly,
     seeded: &SeededFleet,
     event_type: EventType,
-    now: Timestamp,
-) -> Result<()> {
-    let streams = FleetStreams::new(queue.clone());
-    streams.ensure_group(&seeded.fleet).await?;
-    let created = now.to_string();
-    // `Entry::queued_pairs` and NOT a hand-written field list: a field the
-    // producer adds arrives here with it, so the reader never drops a seeded
-    // entry as one nothing admitted. The event id is minted the way
-    // `afd_fleet`'s lease suites mint it. No admission row stands behind it,
-    // which the lease path reads as an ordinary answer: an id the ledger
-    // never minted has no row to stamp delivered (`afd_fleet` `lease::event`).
-    let event_id = afd_db::test_util::mint_id();
-    let entry = Entry {
-        actor: BENCH_ACTOR,
-        event_type: event_type.as_str(),
-        workspace_id: seeded.workspace.as_str(),
-        request_json: BENCH_REQUEST_JSON,
-        created_at: created.as_str(),
-    };
-    streams
-        .append(&seeded.fleet, &entry.queued_pairs(&event_id))
+) -> Result<String> {
+    FleetStreams::new(queue.clone())
+        .ensure_group(&seeded.fleet)
         .await?;
-    // The index mints the token, as it does for ingress: a lease poll that
-    // drains this fleet clears exactly the generation it peeked.
-    ReadyIndex::new(queue.clone()).mark(&seeded.fleet).await?;
-    Ok(())
+    let admitted = Admissions::new(database.clone(), queue.clone(), Entropy::new())
+        .admit(Admission {
+            producer: Producer::Steer,
+            key: Key::Unrepeatable,
+            fleet: &seeded.fleet,
+            workspace: &seeded.workspace,
+            actor: BENCH_ACTOR,
+            event_type,
+            request_json: BENCH_REQUEST_JSON,
+            reply: Reply::None,
+        })
+        .await?;
+    Ok(admitted.stored.id.as_str().to_owned())
 }
 
 /// Enrol one runner carrying this run's placement tag.
