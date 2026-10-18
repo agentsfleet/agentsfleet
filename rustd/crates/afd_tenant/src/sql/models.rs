@@ -17,9 +17,11 @@
 //! duplication is the price of whole statements a `PREPARE` can check, and
 //! this comment is the marker a drift-hunting reviewer greps for.
 
-/// First page. `$1` is the normalized provider filter or NULL; `$2` is
+/// First page, with one extra row to prove whether another page exists.
+///
+/// `$1` is the normalized provider filter or NULL; `$2` is
 /// `limit + 1` — the extra row never reaches the response, it only answers
-/// "is there another page?" without a COUNT.
+/// "is there another page?" without a COUNT. `$3` includes advanced entries.
 pub const SELECT_LIBRARY_PAGE_FIRST: &str = include_str!("models/select_library_page_first.sql");
 
 /// Resume after a cursor.
@@ -27,4 +29,5 @@ pub const SELECT_LIBRARY_PAGE_FIRST: &str = include_str!("models/select_library_
 /// The row-wise comparison is the seek predicate: strictly greater on the
 /// first key that differs, which is exactly the order below. `$2` is the
 /// `display_key`, `$3` the `vendor_key`, `$4` the id, `$5` `limit + 1`.
+/// `$6` includes advanced entries.
 pub const SELECT_LIBRARY_PAGE_AFTER: &str = include_str!("models/select_library_page_after.sql");

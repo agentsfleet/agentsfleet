@@ -58,7 +58,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
 #[ignore = "requires live Postgres"]
 async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET input_nanos_per_mtok=1,output_nanos_per_mtok=1 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=1,output_nanos_per_mtok=1 WHERE platform_model_id=$1::uuid")
         .bind(f.catalogue.first().expect("first owned model").as_str()).execute(&mut *f.connection().await).await.expect("fractional rate");
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());

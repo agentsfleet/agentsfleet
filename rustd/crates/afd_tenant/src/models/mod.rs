@@ -1,6 +1,6 @@
 //! The priced model catalogue, as the tenant plane reads it.
 //!
-//! `model.platform_models` prices the platform's billing spine; every
+//! `model.platform_models` identifies models and its price table quotes them; every
 //! authenticated tenant may read it and nobody on this plane may write it —
 //! the admin CRUD is M179's surface. What lives here is one bounded page walk
 //! in the catalogue's normalized order.
@@ -16,6 +16,7 @@
 
 pub mod cursor;
 
+use afd_core::catalogue::{Metadata, Price};
 use afd_db::Db;
 use jiff::Timestamp;
 use sqlx::FromRow as _;
@@ -52,26 +53,12 @@ impl Models {
     pub async fn page(
         &self,
         filter: Option<&str>,
+        advanced: bool,
         after: Option<&Boundary>,
         limit: u32,
     ) -> Result<LibraryPage> {
         let fetch = i64::from(limit).saturating_add(OVER_FETCH);
-        let mut connection = self.database.acquire().await?;
-        let query = match after {
-            None => sqlx::query(sql::SELECT_LIBRARY_PAGE_FIRST)
-                .bind(filter)
-                .bind(fetch),
-            Some(boundary) => sqlx::query(sql::SELECT_LIBRARY_PAGE_AFTER)
-                .bind(filter)
-                .bind(boundary.display_key.as_str())
-                .bind(boundary.vendor_key.as_str())
-                .bind(boundary.id.as_str())
-                .bind(fetch),
-        };
-        let fetched = query
-            .fetch_all(connection.as_mut())
-            .await
-            .map_err(error::library_page_unavailable)?;
+        let fetched = self.fetch(filter, advanced, after, fetch).await?;
 
         // Decoded after the fetch rather than by `query_as`, so a row this
         // daemon cannot read reports as that, not as the catalogue being
@@ -95,6 +82,33 @@ impl Models {
             has_more: fetched.len() > limit as usize,
         })
     }
+
+    async fn fetch(
+        &self,
+        filter: Option<&str>,
+        advanced: bool,
+        after: Option<&Boundary>,
+        fetch: i64,
+    ) -> Result<Vec<sqlx::postgres::PgRow>> {
+        let mut connection = self.database.acquire().await?;
+        let query = match after {
+            None => sqlx::query(sql::SELECT_LIBRARY_PAGE_FIRST)
+                .bind(filter)
+                .bind(fetch)
+                .bind(advanced),
+            Some(boundary) => sqlx::query(sql::SELECT_LIBRARY_PAGE_AFTER)
+                .bind(filter)
+                .bind(&boundary.display_key)
+                .bind(&boundary.vendor_key)
+                .bind(&boundary.id)
+                .bind(fetch)
+                .bind(advanced),
+        };
+        query
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(error::library_page_unavailable)
+    }
 }
 
 /// One catalogue row as the library read serves it, plus the version input.
@@ -105,6 +119,10 @@ pub struct LibraryRow {
     pub model_id: String,
     /// The provider hosting it.
     pub provider: String,
+    /// Display name, verified context and advanced-selection flag.
+    pub metadata: Metadata,
+    /// All published tiers and date ranges, with their evidence.
+    pub prices: Vec<Price>,
     /// The context window the price is quoted for.
     pub context_cap_tokens: i32,
     /// The input rate, in nanos per million tokens.
@@ -159,6 +177,8 @@ fn unreadable_row(source: sqlx::Error) -> crate::Error {
 struct CatalogueRow {
     model_name: String,
     provider: String,
+    metadata: sqlx::types::Json<Metadata>,
+    prices: sqlx::types::Json<Vec<Price>>,
     context_cap_tokens: i32,
     input_nanos_per_mtok: i64,
     cached_input_nanos_per_mtok: i64,
@@ -176,6 +196,8 @@ impl CatalogueRow {
         LibraryRow {
             model_id: self.model_name,
             provider: self.provider,
+            metadata: self.metadata.0,
+            prices: self.prices.0,
             context_cap_tokens: self.context_cap_tokens,
             input_nanos_per_mtok: self.input_nanos_per_mtok,
             cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,

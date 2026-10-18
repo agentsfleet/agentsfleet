@@ -9,7 +9,10 @@ use afd_authoring::{
 };
 use afd_core::{clock, id::Uuid7, money::NANOS_PER_USD};
 use afd_crypto::{aad::Aad, entropy::Entropy, envelope::Sealer, secret::Kek};
-use afd_db::{Db, test_util::mint_id};
+use afd_db::{
+    Db,
+    test_util::{ModelSeed, mint_id},
+};
 
 /// Past any bound a turn reserves and any slice a renewal meters.
 pub(super) const FUNDED: i64 = 1_000 * NANOS_PER_USD;
@@ -21,10 +24,6 @@ const IDENTITY: &str =
 const PERSON: &str = "\
 INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
 VALUES($1::uuid,$2::uuid,$1,$1,now(),now())";
-const MODEL: &str = "\
-INSERT INTO model.platform_models(id,model_name,provider,context_cap_tokens,input_nanos_per_mtok,
-cached_input_nanos_per_mtok,output_nanos_per_mtok,created_at,updated_at)
-VALUES($1::uuid,$2,$3,128000,$4,$4,$4,now(),now())";
 const ENTRY: &str = "\
 INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at)
 VALUES($1::uuid,$2::uuid,$3,$4,now(),now())";
@@ -70,12 +69,9 @@ impl Seat {
             .execute(&mut *connection)
             .await
             .expect("the tenant's owner");
-        sqlx::query(MODEL)
-            .bind(self.catalogue.as_str())
-            .bind(&model)
-            .bind(PROVIDER)
-            .bind(NANOS_PER_USD)
-            .execute(&mut *connection)
+        ModelSeed::new(self.catalogue.as_str(), PROVIDER, &model, 128_000)
+            .rates(NANOS_PER_USD, NANOS_PER_USD, NANOS_PER_USD)
+            .insert(&mut *connection)
             .await
             .expect("an isolated priced model");
         sqlx::query(ENTRY)

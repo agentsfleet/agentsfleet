@@ -22,10 +22,9 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
             Some(true),
         )
         .await;
-    // The ceiling is the catalogue's, read live: a negative row is one the
-    // schema permits, and resolution clamps it to the unknown/auto sentinel.
+    // The ceiling is read from the catalogue rather than the stored entry.
     let model = format!("gpt-fixture-{}", afd_db::test_util::mint_id());
-    fixture.seed_catalogue("openai", &model, -1).await;
+    fixture.seed_catalogue("openai", &model, 64_000).await;
     let store = Providers::new(
         fixture.database.clone(),
         Arc::clone(&fixture.kek),
@@ -49,8 +48,8 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
     assert_eq!(&*resolved.provider, "openai");
     assert_eq!(&*resolved.model, model.as_str());
     assert_eq!(
-        resolved.context_cap_tokens, 0,
-        "a negative catalogue cap clamps"
+        resolved.context_cap_tokens, 64_000,
+        "resolution reads the exact stored catalogue cap"
     );
     assert_eq!(resolved.api_key().expose(), "sk-self-managed");
     fixture.cleanup().await;

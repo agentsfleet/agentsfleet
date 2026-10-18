@@ -43,6 +43,7 @@ const CONTEXT_PAGE: &str = "tenant model registry page";
 struct RateRow {
     provider: String,
     model_name: String,
+    metadata: sqlx::types::Json<afd_core::catalogue::Metadata>,
     context_cap_tokens: i32,
     input_nanos_per_mtok: i64,
     cached_input_nanos_per_mtok: i64,
@@ -94,7 +95,7 @@ impl Providers {
             platform_default: default.map(|default| PricedDefault {
                 rate: rates
                     .get(&(default.provider.to_string(), default.model.to_string()))
-                    .copied(),
+                    .cloned(),
                 default,
             }),
         })
@@ -249,7 +250,7 @@ fn rate_for(
     model: &str,
 ) -> Option<CatalogueRate> {
     let provider = credential?.provider()?;
-    rates.get(&(provider.to_owned(), model.to_owned())).copied()
+    rates.get(&(provider.to_owned(), model.to_owned())).cloned()
 }
 
 /// Where a later page resumes after `entry`.
@@ -267,15 +268,12 @@ fn boundary_of(entry: &Entry) -> Boundary {
 impl RateRow {
     /// The row as its map entry.
     ///
-    /// The ceiling is clamped the way every other reader of this column clamps
-    /// it: `model.platform_models.context_cap_tokens` is `INTEGER NOT NULL`
-    /// with no nonnegative constraint, because RULE STS keeps bounds in the
-    /// application, so a negative row is one the schema permits and a page
-    /// must not render.
+    /// Uses the shared stored-context conversion; catalogue contexts are positive.
     fn into_rate(self) -> ((String, String), CatalogueRate) {
         (
             (self.provider, self.model_name),
             CatalogueRate {
+                metadata: self.metadata.0,
                 context_cap_tokens: cap::stored(self.context_cap_tokens),
                 input_nanos_per_mtok: self.input_nanos_per_mtok,
                 cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,
