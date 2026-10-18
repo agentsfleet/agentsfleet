@@ -69,6 +69,7 @@ fn minted(limit: u32, provider: Option<&str>) -> String {
         vendor_key: "anthropic".to_owned(),
         id: BOUNDARY_ID.to_owned(),
         provider: provider.map(str::to_owned),
+        advanced: false,
         limit,
     })
 }
@@ -181,6 +182,7 @@ async fn a_cursor_whose_id_is_no_identifier_is_malformed() {
         vendor_key: "v".to_owned(),
         id: "not-a-uuid".to_owned(),
         provider: None,
+        advanced: false,
         limit: 50,
     });
     let path = format!("{MODELS}?starting_after={token}");

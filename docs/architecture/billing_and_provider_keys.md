@@ -525,7 +525,7 @@ The fleet's operating context cap stops tool use and requests a final answer. It
 
 `model.platform_models` holds each exact provider/model identity, display name, context evidence, advanced flag and inference settings. `model.platform_model_prices` holds its prompt-size tiers, effective date ranges, token rates and price evidence. Platform admins manage both through `POST/PATCH/DELETE /v1/admin/models`; authenticated tenants read them through **`GET /v1/models`**. Workspace chat lists only eligible owner registrations and the enabled platform default (§9), rather than every catalogue row. The setup and trigger resolution flow is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed).
 
-Section 8 of M229 remains in progress. Per-request billing, cache-write accounting and the HTTP representations still require integration. [The verification report](../reviews/model-catalogue/verification.md) records those gaps; this table split does not prove settlement uses the new rates.
+Section 8 of M229 remains in progress. Per-request billing, cache-write accounting and the HTTP representations still require integration. [The integration handover](../reviews/model-catalogue/handover.md) records those gaps; this table split does not prove settlement uses the new rates.
 
 Read shape: API reference › Model Library (keyset-paged; `version` moves on every catalogue change).
 

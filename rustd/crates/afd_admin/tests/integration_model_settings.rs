@@ -129,7 +129,7 @@ async fn create(models: &Models, api: InferenceApi, output: u32) -> Model {
     else {
         panic!("new identity")
     };
-    model
+    *model
 }
 
 async fn assert_invalid_updates(models: &Models, db: &Db, id: &Uuid7) {
@@ -161,11 +161,7 @@ async fn replace_inference(models: &Models, id: &Uuid7) {
         models
             .update(
                 id,
-                rates(
-                    128_000,
-                    3,
-                    Some(&settings(InferenceApi::Messages, 65536)),
-                ),
+                rates(128_000, 3, Some(&settings(InferenceApi::Messages, 65536)),),
             )
             .await
             .expect("API and limit change")
@@ -197,7 +193,11 @@ async fn concurrent_rate_and_inference_updates_keep_a_valid_saved_pair() {
     assert_eq!(final_model.details.inference.as_ref(), Some(&replacement));
     let expected_rate = if rate_update.is_ok() { 2 } else { 3 };
     assert_eq!(
-        final_model.details.prices.first().map(|price| price.input_nanos_per_mtok),
+        final_model
+            .details
+            .prices
+            .first()
+            .map(|price| price.input_nanos_per_mtok),
         Some(expected_rate)
     );
     assert!(

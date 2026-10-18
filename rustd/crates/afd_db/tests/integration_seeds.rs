@@ -15,8 +15,7 @@
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
-    DefaultSeed, ModelSeed, SEEDED_AT, TenantSeed, TestDatabase, WalletSeed,
-    WorkspaceSeed, mint_id,
+    DefaultSeed, ModelSeed, SEEDED_AT, TenantSeed, TestDatabase, WalletSeed, WorkspaceSeed, mint_id,
 };
 
 /// The balance the wallet case seeds.

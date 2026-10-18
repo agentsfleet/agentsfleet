@@ -14,6 +14,7 @@ use std::time::Instant;
 
 use afd_api_wire::models::{CatalogueModel, CatalogueResponse};
 use afd_core::paging::QUERY_LIMIT;
+use afd_http::services::price_wire;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 use afd_tenant::models::cursor::{self, Cursor};
@@ -81,7 +82,7 @@ const VARY_VALUE: &str = "Authorization";
         "identical for every authorized caller. ",
     ),
     params(
-        afd_http::openapi::query::ModelEntryFilter,
+        afd_http::openapi::query::CatalogueFilter,
     ),
     responses(
         (status = 200, description = "One page of the catalogue, under the entity tag its bytes hash to", body = CatalogueResponse),
@@ -107,6 +108,9 @@ pub(crate) async fn catalogue<D: Services>(
     read
 }
 
+/// The query parameter that asks for advanced models.
+const QUERY_ADVANCED: &str = "advanced";
+
 /// The surface this handler serves, in the census's own spelling.
 const SURFACE: Surface = Surface::GlobalModels;
 
@@ -128,9 +132,11 @@ async fn read_catalogue<D: Services>(
     let query = query.unwrap_or_default();
     let limit = catalogue_limit(input::decoded(&query, QUERY_LIMIT)?.as_deref())?;
     let provider = input::normalize_provider(input::decoded(&query, "provider")?)?;
+    let advanced = input::parse_advanced(input::decoded(&query, QUERY_ADVANCED)?.as_deref())?;
     let after = input::parse_cursor(
         input::decoded(&query, "starting_after")?,
         provider.as_deref(),
+        advanced,
         limit,
     )?;
 
@@ -139,14 +145,14 @@ async fn read_catalogue<D: Services>(
         Stage::Sql,
         services
             .catalogue()
-            .page(provider.as_deref(), after.as_ref(), limit),
+            .page(provider.as_deref(), advanced, after.as_ref(), limit),
     )
     .await
     .map_err(Refusal::at(EVENT_CATALOGUE))?;
 
     let rows = u64::try_from(page.models.len()).unwrap_or(u64::MAX);
     let serializing = Instant::now();
-    let body = serialize(&page, provider.as_deref(), limit);
+    let body = serialize(&page, provider.as_deref(), advanced, limit);
     library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
     library::read_served(SURFACE, rows);
     library::payload_served(SURFACE, u64::try_from(body.len()).unwrap_or(u64::MAX));
@@ -155,7 +161,7 @@ async fn read_catalogue<D: Services>(
 }
 
 /// The page, serialized once into the bytes both the tag and the body use.
-fn serialize(page: &LibraryPage, provider: Option<&str>, limit: u32) -> Vec<u8> {
+fn serialize(page: &LibraryPage, provider: Option<&str>, advanced: bool, limit: u32) -> Vec<u8> {
     let next_cursor = page
         .has_more
         .then_some(page.boundary.as_ref())
@@ -167,6 +173,7 @@ fn serialize(page: &LibraryPage, provider: Option<&str>, limit: u32) -> Vec<u8> 
                 vendor_key: boundary.vendor_key.clone(),
                 id: boundary.id.clone(),
                 provider: provider.map(str::to_owned),
+                advanced,
                 limit,
             }))
         });
@@ -191,6 +198,11 @@ fn model(row: &LibraryRow) -> CatalogueModel<'_> {
         input_nanos_per_mtok: row.input_nanos_per_mtok,
         cached_input_nanos_per_mtok: row.cached_input_nanos_per_mtok,
         output_nanos_per_mtok: row.output_nanos_per_mtok,
+        display_name: Cow::Borrowed(&row.metadata.display_name),
+        advanced: row.metadata.advanced,
+        context_source_url: Cow::Borrowed(&row.metadata.context_source_url),
+        context_verified_at: row.metadata.context_verified_at,
+        prices: row.prices.iter().map(price_wire).collect(),
     }
 }
 

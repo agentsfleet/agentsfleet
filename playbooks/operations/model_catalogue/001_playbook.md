@@ -82,9 +82,10 @@ operator write: obtain approval for the target environment before saving.
    change was also approved.
 5. Select **Save changes**, reload the page and reopen the row to check that the
    settings persisted. The underlying update is `PATCH /v1/admin/models/{id}`;
-   its body includes the current rate/context fields and the `inference` object
-   (`api`, `base_url`, optional `dialect`, `max_output_tokens`). Omitting
-   `inference` preserves the existing settings.
+   its body is the model's `metadata`, its complete `prices` schedule (every
+   tier and date range, in integer nanos per million tokens) and the
+   `inference` object (`api`, `base_url`, optional `dialect`,
+   `max_output_tokens`). Omitting `inference` preserves the existing settings.
 6. Confirm the workspace has a credentialed registration for this model or an
    enabled platform model. New fleet uses those eligible models; setup chat
    additionally requires the selected SDK route to support tools. Saving

@@ -3874,9 +3874,18 @@
             }
           },
           {
+            "name": "advanced",
+            "in": "query",
+            "description": "`true` lists only the advanced models a picker offers on request;\n`false` or absent lists the ordinary catalogue. No other spelling is\naccepted.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "starting_after",
             "in": "query",
-            "description": "Opaque cursor from a previous page's `next_cursor`, bound to the filters\nand page size that produced it. Only the sort boundary is read from it —\nthe filters applied are always the request's.",
+            "description": "Opaque cursor from a previous page's `next_cursor`, bound to the filters\nand page size that produced it.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17371,41 +17380,47 @@
         "additionalProperties": false
       },
       "AdminModelCreate": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Rates and context cap flattened on the existing wire."
-          },
-          {
-            "type": "object",
-            "required": [
-              "provider",
-              "model_id"
-            ],
-            "properties": {
-              "inference": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Explicit inference settings; omitted rows remain unavailable for inference."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-native model identity."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Provider identity."
-              }
-            }
-          }
+        "type": "object",
+        "description": "`POST /v1/admin/models` input: one identity, its evidence, its complete\nprice schedule and, optionally, its inference settings.",
+        "required": [
+          "provider",
+          "model_id",
+          "metadata",
+          "prices"
         ],
-        "description": "`POST /v1/admin/models` input."
+        "properties": {
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Explicit inference settings; omitted rows remain unavailable for inference."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Provider-native model identity."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "Every prompt tier across every date range, in integer nanos per\nmillion tokens."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider identity."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelCreated": {
         "allOf": [
@@ -17429,71 +17444,85 @@
         "description": "Successful model creation."
       },
       "AdminModelItem": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Rates and context cap flattened on the existing wire."
-          },
-          {
-            "type": "object",
-            "required": [
-              "id",
-              "provider",
-              "model_id"
-            ],
-            "properties": {
-              "id": {
-                "type": "string",
-                "description": "Opaque `UUIDv7` row identity."
-              },
-              "inference": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Non-secret settings used by setup chat and runtime leases."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-native model identity."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Provider identity."
-              }
-            }
-          }
+        "type": "object",
+        "description": "One model in the admin list.",
+        "required": [
+          "id",
+          "provider",
+          "model_id",
+          "metadata",
+          "prices"
         ],
-        "description": "One priced model row in the admin list."
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Opaque `UUIDv7` row identity."
+          },
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Non-secret settings used by setup chat and runtime leases."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Provider-native model identity."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The complete schedule, ordered by tier then start."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider identity."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelPatch": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Existing rate fields remain flattened on the wire."
-          },
-          {
-            "type": "object",
-            "properties": {
-              "inference": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Omission preserves the current inference settings."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            }
-          }
+        "type": "object",
+        "description": "`PATCH /v1/admin/models/{id}` input: a complete replacement of the\nevidence and the price schedule, and optionally of the inference settings.",
+        "required": [
+          "metadata",
+          "prices"
         ],
-        "description": "Mutable model rates and optional replacement inference settings."
+        "properties": {
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Omission preserves the current inference settings."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The whole schedule; a range absent here is removed."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelUpdated": {
         "type": "object",
@@ -18256,18 +18285,63 @@
           }
         }
       },
+      "CatalogueMetadata": {
+        "type": "object",
+        "description": "One exact provider/model identity's label and context evidence.",
+        "required": [
+          "display_name",
+          "context_cap_tokens",
+          "context_source_url",
+          "context_verified_at",
+          "advanced"
+        ],
+        "properties": {
+          "advanced": {
+            "type": "boolean",
+            "description": "Whether a picker lists the model only when asked for advanced models."
+          },
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The exact served context limit, from the provider's own models API."
+          },
+          "context_source_url": {
+            "type": "string",
+            "description": "The provider models API response that supplied the limit."
+          },
+          "context_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that response was verified."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable label; never used to route a request."
+          }
+        },
+        "additionalProperties": false
+      },
       "CatalogueModel": {
         "type": "object",
-        "description": "One priced model as the catalogue shows it.\n\n`id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),\nnever the row's own id — that one is admin-plane identity and rides the\ncursor opaquely instead.",
+        "description": "One priced model as the catalogue shows it. Every rate is integer nanos per\nmillion tokens.\n\n`id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),\nnever the row's own id — that one is admin-plane identity and rides the\ncursor opaquely instead.",
         "required": [
           "id",
           "provider",
           "context_cap_tokens",
           "input_nanos_per_mtok",
           "cached_input_nanos_per_mtok",
-          "output_nanos_per_mtok"
+          "output_nanos_per_mtok",
+          "display_name",
+          "advanced",
+          "context_source_url",
+          "context_verified_at",
+          "prices"
         ],
         "properties": {
+          "advanced": {
+            "type": "boolean",
+            "description": "Listed only when the caller asks for advanced models."
+          },
           "cached_input_nanos_per_mtok": {
             "type": "integer",
             "format": "int64",
@@ -18277,6 +18351,19 @@
             "type": "integer",
             "format": "int32",
             "description": "The context window the price is quoted for."
+          },
+          "context_source_url": {
+            "type": "string",
+            "description": "The provider models API response the context limit came from."
+          },
+          "context_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that response was verified."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The label a picker shows; never used to route a request."
           },
           "id": {
             "type": "string",
@@ -18292,11 +18379,105 @@
             "format": "int64",
             "description": "The output rate, likewise."
           },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The complete schedule, ordered by tier then start. The three rates\nabove are its base tier as it stands now."
+          },
           "provider": {
             "type": "string",
             "description": "The provider hosting it."
           }
         }
+      },
+      "CataloguePrice": {
+        "type": "object",
+        "description": "One prompt-size tier's rates during a half-open date range.",
+        "required": [
+          "effective_from",
+          "prompt_tokens_above",
+          "input_nanos_per_mtok",
+          "cached_input_nanos_per_mtok",
+          "output_nanos_per_mtok",
+          "source_url",
+          "verified_at",
+          "conditions"
+        ],
+        "properties": {
+          "cache_write_1h_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Cache writes with a one-hour lifetime."
+          },
+          "cache_write_5m_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Cache writes with a five-minute lifetime."
+          },
+          "cache_write_nanos_per_mtok": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Cache writes whose provider reports no lifetime."
+          },
+          "cached_input_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Input read from the provider's cache."
+          },
+          "conditions": {
+            "type": "string",
+            "description": "Scope, exclusions and provider-specific conditions; may be empty."
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The first instant this quote applies."
+          },
+          "effective_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The first instant it no longer applies, or `null` for an open range."
+          },
+          "input_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Uncached input."
+          },
+          "output_nanos_per_mtok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Output, reasoning included once where the provider bills it."
+          },
+          "prompt_tokens_above": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The tier applies to a request whose whole prompt exceeds this many\ntokens; `0` is the base tier."
+          },
+          "source_url": {
+            "type": "string",
+            "description": "The provider's pricing page or response the quote came from."
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the quote was verified."
+          }
+        },
+        "additionalProperties": false
       },
       "CatalogueResponse": {
         "type": "object",
@@ -21305,7 +21486,9 @@
         "enum": [
           "chat",
           "responses",
-          "messages"
+          "messages",
+          "gemini",
+          "ollama"
         ]
       },
       "InviteEmailResponse": {
@@ -22570,6 +22753,13 @@
             "format": "date-time",
             "description": "When it was first stored."
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The catalogue's label for the model, or `null` for a model the\ncatalogue does not carry, which a picker shows by its `model_id`."
+          },
           "has_key": {
             "type": "boolean",
             "description": "Whether a key is stored under that name. Never the key."
@@ -22637,7 +22827,7 @@
               "string",
               "null"
             ],
-            "description": "Registered rig dialect, or absent for a plain compatible gateway."
+            "description": "Registered rig dialect, or absent for a plain compatible gateway. The\nnative Gemini and Ollama APIs take none."
           },
           "max_output_tokens": {
             "type": "integer",
@@ -22748,39 +22938,6 @@
             "description": "Runtime nanos per second."
           }
         }
-      },
-      "ModelRates": {
-        "type": "object",
-        "description": "Mutable rate fields shared by admin model create and patch.",
-        "required": [
-          "context_cap_tokens",
-          "input_nanos_per_mtok",
-          "cached_input_nanos_per_mtok",
-          "output_nanos_per_mtok"
-        ],
-        "properties": {
-          "cached_input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Cached-input nanos per million tokens."
-          },
-          "context_cap_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum context tokens."
-          },
-          "input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Input-token nanos per million tokens."
-          },
-          "output_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Output-token nanos per million tokens."
-          }
-        },
-        "additionalProperties": false
       },
       "ModelRequest_Value_Value_Value": {
         "type": "object",
@@ -23475,6 +23632,13 @@
             "format": "int32",
             "description": "The context window the catalogue prices it at.",
             "minimum": 0
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The catalogue's label for the model, or `null` when the catalogue\ncarries no price for it."
           },
           "input_nanos_per_mtok": {
             "type": [

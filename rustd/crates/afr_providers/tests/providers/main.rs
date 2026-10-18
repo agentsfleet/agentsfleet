@@ -22,8 +22,8 @@ mod images;
 mod limits;
 mod limits_flow;
 mod logging;
-mod privacy;
 mod native;
+mod privacy;
 mod retries;
 mod turns;
 

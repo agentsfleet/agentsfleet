@@ -116,6 +116,24 @@ pub struct ModelEntryFilter {
     pub limit: Option<String>,
 }
 
+/// What `GET /v1/models` is filtered and paged by.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct CatalogueFilter {
+    /// Exact match on the normalized provider. At most 128 bytes once
+    /// normalized; empty after normalization is treated as absent.
+    pub provider: Option<String>,
+    /// `true` lists only the advanced models a picker offers on request;
+    /// `false` or absent lists the ordinary catalogue. No other spelling is
+    /// accepted.
+    pub advanced: Option<bool>,
+    /// Opaque cursor from a previous page's `next_cursor`, bound to the filters
+    /// and page size that produced it.
+    pub starting_after: Option<String>,
+    /// Rows per page, 1..100. Defaults to 50.
+    pub limit: Option<String>,
+}
+
 /// The one-time value a connector flow is resumed by.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]

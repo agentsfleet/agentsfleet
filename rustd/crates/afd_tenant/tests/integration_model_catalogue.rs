@@ -4,12 +4,12 @@ use afd_admin::{CreateModel, ModelInput, ModelUpdate};
 use afd_core::catalogue::{Metadata, Price};
 use afd_crypto::entropy::Entropy;
 use afd_db::{Db, Migrator, config::DbRole, test_util::TestDatabase};
-use std::error::Error as _;
 use afd_tenant::{
     Result,
     models::{Boundary, Models},
 };
 use jiff::Timestamp;
+use std::error::Error as _;
 
 const VERIFIED: Timestamp = Timestamp::constant(1_725_000_000, 0);
 const PROVIDER: &str = "fireworks";
@@ -109,10 +109,7 @@ async fn test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filte
     assert_eq!(first.models.len(), 1);
     let row = first.models.first().ok_or(EXPECTED_MODEL)?;
     assert_eq!(row.model_id, FIRST);
-    assert_eq!(
-        row.metadata.display_name,
-        format!("Readable {FIRST}")
-    );
+    assert_eq!(row.metadata.display_name, format!("Readable {FIRST}"));
     assert_eq!(row.metadata.context_verified_at, VERIFIED);
     assert_eq!(row.prices, vec![price(0), price(272_000)]);
     let second = lane
@@ -120,7 +117,10 @@ async fn test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filte
         .page(None, false, first.boundary.as_ref(), 1)
         .await?;
     assert!(!second.has_more);
-    assert_eq!(second.models.first().ok_or(EXPECTED_MODEL)?.model_id, SECOND);
+    assert_eq!(
+        second.models.first().ok_or(EXPECTED_MODEL)?.model_id,
+        SECOND
+    );
     let regular = lane.models.page(None, false, None, 10).await?;
     assert_eq!(regular.models.len(), 2);
     let advanced = lane.models.page(Some("openai"), true, None, 10).await?;

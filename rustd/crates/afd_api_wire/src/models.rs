@@ -13,7 +13,10 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-/// One priced model as the catalogue shows it.
+use crate::catalogue::CataloguePrice;
+
+/// One priced model as the catalogue shows it. Every rate is integer nanos per
+/// million tokens.
 ///
 /// `id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),
 /// never the row's own id — that one is admin-plane identity and rides the
@@ -33,6 +36,18 @@ pub struct CatalogueModel<'a> {
     pub cached_input_nanos_per_mtok: i64,
     /// The output rate, likewise.
     pub output_nanos_per_mtok: i64,
+    /// The label a picker shows; never used to route a request.
+    pub display_name: Cow<'a, str>,
+    /// Listed only when the caller asks for advanced models.
+    pub advanced: bool,
+    /// The provider models API response the context limit came from.
+    pub context_source_url: Cow<'a, str>,
+    /// When that response was verified.
+    #[serde(with = "afd_wire::instant")]
+    pub context_verified_at: jiff::Timestamp,
+    /// The complete schedule, ordered by tier then start. The three rates
+    /// above are its base tier as it stands now.
+    pub prices: Vec<CataloguePrice<'a>>,
 }
 
 /// `GET /v1/models` — one page of the catalogue.

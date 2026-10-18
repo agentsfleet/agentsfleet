@@ -262,6 +262,6 @@ impl Lane {
             unreachable!("the fixture model is new: its name carries a minted suffix");
         };
         assert_eq!(model.details, details(false));
-        model
+        *model
     }
 }

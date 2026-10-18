@@ -121,7 +121,10 @@ async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
         match header {
             Some(header) => assert!(sent.request.headers().contains_key(header), "{api:?}"),
             None => assert!(
-                sent.request.uri().query().is_some_and(|query| query.starts_with("key=")),
+                sent.request
+                    .uri()
+                    .query()
+                    .is_some_and(|query| query.starts_with("key=")),
                 "{api:?}"
             ),
         }
