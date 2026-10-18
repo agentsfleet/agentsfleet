@@ -52,6 +52,11 @@ pub(crate) fn billing_wallet_missing() -> Error {
 }
 
 /// Refuses a charges cursor this daemon never issued.
+/// A priced line or balance past what a signed 64-bit nano count holds.
+pub(crate) fn charge_overflow() -> Error {
+    ErrorKind::ChargeOverflow.into()
+}
+
 pub(crate) fn charges_cursor_invalid() -> Error {
     ErrorKind::ChargesCursorInvalid.into()
 }
@@ -88,6 +93,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("wallet missing", billing_wallet_missing()),
         ("charges cursor invalid", charges_cursor_invalid()),
+        ("charge overflow", charge_overflow()),
         (
             "datastore",
             ErrorKind::Datastore { source: datastore }.into(),

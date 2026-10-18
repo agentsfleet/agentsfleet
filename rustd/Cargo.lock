@@ -411,6 +411,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_fleet_runtime",
+ "afd_wire",
  "base64 0.23.1",
  "garde",
  "jiff",

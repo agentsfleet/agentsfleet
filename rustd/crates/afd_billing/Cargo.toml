@@ -25,6 +25,8 @@ afd_db.workspace = true
 afd_crypto.workspace = true
 # A fleet's declared budget and dollar ceilings, as its config spells them.
 afd_fleet_runtime.workspace = true
+# The usage line a runner reports, which the rater prices.
+afd_wire.workspace = true
 # A month window is a CALENDAR question — `afd_core::clock` is the instant type
 # and the clock source, and carries no calendar. Same division the events
 # crate's `since=` draws.
