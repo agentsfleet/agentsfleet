@@ -673,7 +673,7 @@ Labels are bounded at the source:
 | `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
 | `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
-| `gen_ai.request.model` | the run's model name as the lease carried it: a catalogue value, or any name a tenant typed for an `openai-compatible` custom endpoint, which `core.model_library` does not bound; the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
+| `gen_ai.request.model` | the run's model name as the lease carried it: a catalogue value, or any name a tenant typed for an `openai-compatible` custom endpoint, which `model.platform_models` does not bound; the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
 | `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
 | `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
@@ -687,13 +687,13 @@ rather than bounded.
 The cost families copy the run's model name into `gen_ai.request.model`
 (`rustd/crates/afd_observability/src/producers/cost.rs`). Most names come from
 the catalogue, but a tenant's `openai-compatible` custom endpoint can name any
-model, absent from `core.model_library`
+model, absent from `model.platform_models`
 ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8. The self-managed credential and the api_key visibility boundary"). The
 families declare no ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
 only bound is the SDK's default of 2,000 series per stream: past it, new
 `(model, …)` combinations are folded into one `otel.metric.overflow` series, and
 their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.usage_ledger`. A provider with no
+Postgres query against `billing.fleet_charges`. A provider with no
 well-known name **omits the attribute and keeps the measurement** on the
 `fleet.delivery` span, and the omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`

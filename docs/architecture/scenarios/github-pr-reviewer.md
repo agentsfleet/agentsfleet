@@ -23,7 +23,7 @@ sequenceDiagram
 
   Admin->>GH: create App; set callback + /v1/ingress/github
   Admin->>API: vault App identity, webhook secret, and client credentials
-  Note over Admin,PG: admin already staged and published github-pr-reviewer from a reviewed chat draft → core.fleet_library_revisions
+  Note over Admin,PG: admin already staged and published github-pr-reviewer from a reviewed chat draft → authoring.library_revisions
   Op->>API: sign up and create/select workspace W
   Op->>API: connect github (signed single-use state)
   API-->>Op: GitHub user-authorization URL
@@ -32,14 +32,14 @@ sequenceDiagram
   GH->>API: callback one-time code + state (+ installation_id when claimed)
   API->>GH: exchange code; verify user can access installation
   GH-->>API: installation accessible
-  API->>PG: conditional vault handle + connector_installs route
+  API->>PG: conditional vault handle + connector.installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
   Op->>CLI: chat --library github-pr-reviewer --revision <revision_id>
   CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
   Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
   CLI->>API: GET draft review (setup, access, readiness, review digest)
   CLI->>API: POST /v1/workspaces/{ws}/fleets { source: draft candidate, review_digest }
-  API->>PG: INSERT core.fleets (installing) + setup revision 1
+  API->>PG: INSERT fleet.fleets (installing) + setup revision 1
   API-->>CLI: { fleet, setup checks: github grant pending }
   Op->>API: approve the github grant on the setup check
   API->>PG: stream + group ready; locked recheck ⇒ active
@@ -47,7 +47,7 @@ sequenceDiagram
   GH->>API: POST /v1/ingress/github
   API->>API: verify App signature before payload routing
   API->>PG: installation → workspace → repository/event/grant fleets
-  API->>PG: INSERT core.fleet_admissions (webhook_app, fleet:body digest)
+  API->>PG: INSERT fleet.admissions (webhook_app, fleet:body digest)
   API->>API: XADD fleet:{id}:events ✅
   Runner->>API: lease → { instructions, event, policy } (no sandbox: every tool runs in the supervisor)
   Runner->>GH: GET /pulls/{n} (Accept: vnd.github.diff, Bearer ${secrets.github.token})
@@ -63,13 +63,13 @@ A platform admin stages a reviewed chat candidate as a platform Library revision
 
 ## 2. Two layers: the immutable revision and the live fleet
 
-The fleet runs the instructions and policy of its selected setup revision in `core.fleet_definition_revisions`, read fresh by every claim (`rustd/crates/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
+The fleet runs the instructions and policy of its selected setup revision in `fleet.revisions`, read fresh by every claim (`rustd/crates/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
 
 ## 3. Connect the App, bind the repository, then receive the PR
 
 1. **Platform setup and workspace connection.** The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet execution". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
 2. **Fleet subscription.** The saved fleet's webhook trigger declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in its reviewed setup. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding/mod.rs:250-256`).
-3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, writes one `core.fleet_admissions` row per fleet keyed by fleet and body digest, and appends the event to that fleet's stream ([`../lease_flow.md`](../lease_flow.md) §"Admission: the row is the acceptance, the stream entry is a receipt").
+3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, writes one `fleet.admissions` row per fleet keyed by fleet and body digest, and appends the event to that fleet's stream ([`../lease_flow.md`](../lease_flow.md) §"Admission: the row is the acceptance, the stream entry is a receipt").
 
 4. **The authorisation, once, at Save.** The setup's `github` credential shows as a grant check. Save raises a pending approval card for `(fleet_id, "github")`, John approves it, and the fleet activates only after a locked recheck sees every check ready (`rustd/crates/afd_authoring/src/creation/activate.rs`, `rustd/crates/afd_approval/src/request/setup.rs`). How the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, apply a reviewed improvement with a shorter `repositories` list instead.
 
@@ -86,7 +86,7 @@ The gate + billing path is identical to every other event — see [`../billing_a
 ## 5. What John sees after the integration test proves the path
 
 - Not yet: the pull request carries no review, because the review POST is refused at egress (§4).
-- `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
+- `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `fleet.events`.
 
 ## 6. Proof status
 

@@ -27,7 +27,7 @@ Publishing is a separate human action against the reviewed candidate. It either 
 
 Postgres stores normalized Definitions, immutable candidate/Library/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision. Library removal hides the entry while retaining revisions referenced by installed fleets. No object-store bundle is needed for this path.
 
-Bundle upload, GitHub archive import, export, tar snapshots, runner bundle download, the `SKILL.md`/`TRIGGER.md` parser and source-Markdown setup writers are removed. Shared tools, vault storage, connector ingress and repository checkout keep their independent uses. Frozen migrations remain historical records. `schema/950_drop_fleet_bundle_storage.sql` drops the tables `core.fleet_library` and `core.tenant_fleet_library` and the `core.fleets` columns `source_markdown`, `trigger_markdown`, `bundle_content_hash` and `bundle_snapshot_key`, so a fleet row carries no instructions of its own; they live only in its pinned revision.
+Bundle upload, GitHub archive import, export, tar snapshots, runner bundle download, the `SKILL.md`/`TRIGGER.md` parser and source-Markdown setup writers are removed. Shared tools, vault storage, connector ingress and repository checkout keep their independent uses. `fleet.fleets` (`schema/1500_fleet_fleets.sql`) has no instruction or bundle columns, so a fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
 
 ## Validated Definition
 

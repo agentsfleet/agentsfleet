@@ -317,7 +317,7 @@ sequenceDiagram
     participant API as agentsfleetd
 
     CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events<br/>Authorization: Bearer afc_…
-    Note over API: Registry::authenticate:<br/>SHA-256 → core.cli_credentials row (JOIN core.users),<br/>revoked? → UZ-AUTH-023,<br/>scopes resolved from the provider on oidc_subject (cached),<br/>→ Principal::Person{ CliCredential, tenant, subject, scopes }
+    Note over API: Registry::authenticate:<br/>SHA-256 → identity.cli_credentials row (JOIN identity.users),<br/>revoked? → UZ-AUTH-023,<br/>scopes resolved from the provider on oidc_subject (cached),<br/>→ Principal::Person{ CliCredential, tenant, subject, scopes }
     API-->>CLI: 200 events
 
     CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer afc_…<br/>Accept: text/event-stream

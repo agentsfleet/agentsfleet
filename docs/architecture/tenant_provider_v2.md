@@ -22,17 +22,17 @@ no explicit locks and no decrypt.
 
 | Debt | Consequence today | Owner |
 |---|---|---|
-| `secret_ref` is TEXT, not a foreign key | the database cannot refuse an orphaning delete, so a three-lock treaty (`vault.secrets` → `core.tenant_model_entries` → `core.tenant_model_selection`, in that order) is hand-held by every producer and destroyer of a credential reference; every participant takes the `vault.secrets` row lock first, and the deletes spell all three as `FOR UPDATE` | §V2-1 |
+| `secret_ref` is TEXT, not a foreign key | the database cannot refuse an orphaning delete, so a three-lock treaty (`vault.secrets` → `model.tenant_models` → `model.tenant_selections`, in that order) is hand-held by every producer and destroyer of a credential reference; every participant takes the `vault.secrets` row lock first, and the deletes spell all three as `FOR UPDATE` | §V2-1 |
 | the credential payload is the authority for `provider`; `meta_provider` is only a copy | activation must decrypt an envelope to write a truthful row | §V2-3 |
 | the selection row snapshots `provider` + `context_cap_tokens` at write time | the catalogue must be consulted at write (a time-of-check to time-of-use race, which the gate-and-write statement closes), and a later admin repoint or cap change is invisible to the stored view | §V2-2 |
 
 ## V2-1 · Make the reference a foreign key — deletes the treaty
 
-`vault.secrets.id` is already a UUID primary key (`schema/300_vault_secrets.sql`). Referencing rows store it:
+`vault.secrets.id` is already a UUID primary key (`schema/1200_vault_secrets.sql`). Referencing rows store it:
 
 ```sql
-ALTER TABLE core.tenant_model_entries   ADD COLUMN secret_id UUID REFERENCES vault.secrets(id);
-ALTER TABLE core.tenant_model_selection ADD COLUMN secret_id UUID REFERENCES vault.secrets(id);
+ALTER TABLE model.tenant_models         ADD COLUMN secret_id UUID REFERENCES vault.secrets(id);
+ALTER TABLE model.tenant_selections ADD COLUMN secret_id UUID REFERENCES vault.secrets(id);
 ```
 
 An INSERT of a referencing row then takes `FOR KEY SHARE` on the credential
@@ -57,8 +57,8 @@ already ignores the whole row in favour of the live default. v2 stores only
 what the tenant decided:
 
 ```
-core.tenant_model_selection v2:  (tenant_id, mode, secret_id, model)
-    context_cap_tokens → resolved at lease time from core.model_library
+model.tenant_selections v2:  (tenant_id, mode, secret_id, model)
+    context_cap_tokens → resolved at lease time from model.platform_models
     provider           → resolved at lease time from the credential
 ```
 
@@ -88,10 +88,10 @@ legacy — v2 requires the model in the body or on the registry entry.
 
 ```
 PUT /v1/tenants/me/provider {mode:self_managed, secret_ref, model}
-│ ① INSERT INTO core.tenant_model_entries (…, secret_id, …)
+│ ① INSERT INTO model.tenant_models (…, secret_id, …)
 │     SELECT s.id, … FROM vault.secrets s JOIN <workspace bridge>
 │     ON CONFLICT DO NOTHING            ── the foreign key is the lock and the missing-credential refusal
-│ ② INSERT INTO core.tenant_model_selection (tenant_id, mode, secret_id, model)
+│ ② INSERT INTO model.tenant_selections (tenant_id, mode, secret_id, model)
 │     ON CONFLICT (tenant_id) DO UPDATE ── plus the courtesy EXISTS gate
 └ COMMIT
 2 statements · no explicit locks · no treaty · no decrypt · nothing to go stale

@@ -71,14 +71,14 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
 - **Routes are generic over `{provider}`** (API reference › Connectors). The dashboard owns `/api/connectors/{provider}/callback`; Disconnect removes only `agentsfleet` state.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile. Unit tests pin the rest: every id parses back to its variant, no two display names match, every OAuth connector asks for at least one scope, and no two providers share a signed-state domain or nonce namespace (`provider.rs`, `registry/tests.rs`).
-- **A callback and a Disconnect each write both rows in one transaction.** A completing callback commits its sealed grant and its routing row together, so a connect that cannot seal its grant leaves no routing row behind. Disconnect deletes the grant and the routing rows together, so a refused delete leaves both (`afd_connector/src/grant/holding.rs`). Both lock the workspace row first (`core.workspaces`, `FOR NO KEY UPDATE`, `afd_connector/src/sql.rs`), so a callback and a Disconnect take turns even on a first connect, before the grant's row exists, and end with both rows or neither. The vault and the routing table share one Postgres, so no advisory lock is needed.
+- **A callback and a Disconnect each write both rows in one transaction.** A completing callback commits its sealed grant and its routing row together, so a connect that cannot seal its grant leaves no routing row behind. Disconnect deletes the grant and the routing rows together, so a refused delete leaves both (`afd_connector/src/grant/holding.rs`). Both lock the workspace row first (`identity.workspaces`, `FOR NO KEY UPDATE`, `afd_connector/src/sql.rs`), so a callback and a Disconnect take turns even on a first connect, before the grant's row exists, and end with both rows or neither. The vault and the routing table share one Postgres, so no advisory lock is needed.
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app/mod.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
 
 | Archetype | Flow | Callback carries | Writes | Shipped instances |
 |---|---|---|---|---|
-| `oauth2` | authorize-redirect → code exchange (deadline-armed) → the provider's `complete::read` arm parses, then the grant is sealed | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-data-center — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
+| `oauth2` | authorize-redirect → code exchange (deadline-armed) → the provider's `complete::read` arm parses, then the grant is sealed | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector.installs`) | `slack`, `zoho` (multi-data-center — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | user authorization → discover or verify App installation → `complete::read` (GitHub arm); zero reachable installations REFUSE with `UZ-CONN-008` (no install-page continuation in this tree — see §GitHub App) | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
 **There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. The `catalogue!` macro declares five variants (`rustd/crates/afd_connector/src/provider.rs`) — five Open Authorization (OAuth) or app-install connectors, not eight.
@@ -97,7 +97,7 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
    scenario that depends on this says so and cites this anchor rather than
    restating it.
 6. **The standing integration grant authorises every mint, including a
-   repository write.** `core.integration_grants` holds one row per
+   repository write.** `connector.integration_grants` holds one row per
    `(fleet_id, service)` — `UNIQUE (fleet_id, service)` — and only an `approved`,
    unrevoked row admits a mint. Save writes that row `pending` and raises one
    approval card; a person's yes on that card is the answer, because the
@@ -159,7 +159,7 @@ A callback completion writes the vault handle and the reverse-routing rows in on
 The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
 ```
-workspace vault                          core.connector_installs
+workspace vault                          connector.installs
 github = {                               provider = github
   integration: github,                   external_account_id = installation_id
   installation_id                       workspace_id = connected workspace
@@ -214,14 +214,14 @@ This gives each layer one job:
 | Workspace connection | Installation-to-workspace identity and the outbound credential handle |
 | Fleet trigger | Explicit repository and event subscription |
 | Integration grant | Whether that fleet may use GitHub |
-| Admission row (`core.fleet_admissions`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
+| Admission row (`fleet.admissions`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
 
 ### Where a grant comes from
 
 A grant is **requested at Save**: when a saved fleet's readiness review finds a
 declared credential's grant missing, setup activation asks for it
 (`rustd/crates/afd_authoring/src/creation/activate.rs`). The request writes a
-`pending` `core.integration_grants` row and raises an approval card in one
+`pending` `connector.integration_grants` row and raises an approval card in one
 transaction (`rustd/crates/afd_approval/src/grant_sql.rs`), and the fleet stays
 `installing` until every readiness check, the grant included, is ready
 (`rustd/crates/afd_authoring/src/creation/progress.rs`). The lease path asks the
@@ -258,7 +258,7 @@ verify platform webhook signature BEFORE reading routing fields
   (a `ping` answers `pong` only after the signature verifies)
         │
         ▼
-installation.id → core.connector_installs → workspace
+installation.id → connector.installs → workspace
         │
         ▼
 active fleets in that workspace
@@ -268,7 +268,7 @@ active fleets in that workspace
   ∩ approved GitHub integration grant
         │
         ▼
-core.fleet_admissions row (body digest + fleet) → XADD fleet:{id}:events
+fleet.admissions row (body digest + fleet) → XADD fleet:{id}:events
 ```
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
