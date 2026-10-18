@@ -446,7 +446,7 @@ family counts suppression. The only bound is the shared batch queue, `SPAN_QUEUE
 counting.
 
 Why it matters: an idle runner sends one heartbeat every 10 s
-(`HEARTBEAT_INTERVAL_MS` in `rustd/crates/afd_core/src/timing.rs`), and each
+(`HEARTBEAT_INTERVAL` in `rustd/crates/afd_core/src/timing.rs`), and each
 one is a matched request and therefore a span. Span volume grows with runner
 count until a route policy fills the declared `reason` set (`noisy_route`,
 `runner_rejection_budget`, `server_error_budget`, `sampled_success_budget`,
