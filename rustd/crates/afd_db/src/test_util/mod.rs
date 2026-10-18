@@ -59,6 +59,7 @@ mod fleet;
 mod fleet_event;
 mod identity;
 mod platform_default;
+mod platform_model;
 mod rows;
 mod runner;
 mod unreachable;
@@ -70,6 +71,7 @@ pub use self::fleet::{
 pub use self::fleet_event::{EventKind, FleetEventSeed};
 pub use self::identity::{TenantSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
+pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
 pub use self::unreachable::unreachable_db;

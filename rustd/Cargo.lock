@@ -987,6 +987,7 @@ dependencies = [
 name = "afd_tenant"
 version = "0.61.0"
 dependencies = [
+ "afd_admin",
  "afd_auth",
  "afd_core",
  "afd_crypto",
@@ -1819,6 +1820,9 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "block-buffer"
@@ -6458,7 +6462,9 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx-core",
+ "sqlx-mysql",
  "sqlx-postgres",
+ "sqlx-sqlite",
  "syn 2.0.119",
  "tokio",
  "url",
@@ -6482,6 +6488,7 @@ dependencies = [
  "generic-array",
  "log",
  "percent-encoding",
+ "serde",
  "sha1",
  "sha2 0.11.1",
  "sqlx-core",
@@ -6541,6 +6548,7 @@ dependencies = [
  "libsqlite3-sys",
  "log",
  "percent-encoding",
+ "serde",
  "sqlx-core",
  "thiserror",
  "tracing",

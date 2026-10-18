@@ -15,8 +15,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 playbooks_require_vault_read_approval
 playbooks_require_op_auth
-playbooks_require_tool node
-playbooks_require_tool psql
+playbooks_require_tool bun
 
 echo ""
 echo "== model-catalogue Section 1: catalogue diff (read-only) =="
@@ -27,9 +26,8 @@ catalogue_export_database_url
 root="$(catalogue_repo_root)"
 cd "$root"
 
-# No --apply: the script fetches upstream pricing, diffs it against the live
-# catalogue and prints. Nothing reaches the database on this path.
-node "$CATALOGUE_SEED_SCRIPT"
+# No --apply: read the reviewed price snapshot and live rows without writing.
+bun "$CATALOGUE_SEED_SCRIPT"
 
 echo ""
 echo "✅ diff complete for env: ${ENV:-} (nothing written)"

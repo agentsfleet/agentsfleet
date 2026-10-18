@@ -27,5 +27,5 @@ _ensure-local-daemon:
 # Emit-and-review by default: rates are billing data, so nothing reaches the
 # database until the diff has been read and APPLY=1 passed. Reads DATABASE_URL to
 # diff against the live catalogue; unset means fresh-install mode.
-seed-models:  ## Seed/refresh core.model_library from the curated allowlist (APPLY=1 to write)
-	@node scripts/seed-models.mjs $(if $(APPLY),--apply,)
+seed-models:  ## Review or replace model identities and price rows (APPLY=1 to write)
+	@bun scripts/seed-models.mjs $(if $(filter 1,$(APPLY)),--apply,)

@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # model-catalogue - Model Catalogue Priming Playbook
 #
-# core.model_library ships EMPTY by design, and every fleet needs a model. A
-# freshly rebuilt environment is therefore deployed but not usable until this
-# runs. The tool it wraps (scripts/seed-models.mjs) has always worked; what was
-# missing is that it lived in the local-development Makefile fragment, no
-# playbook referenced it, and `APPLY=1` wrote billing rates with no approval
-# variable and no confirmation of which environment was being written — a lower
-# bar than the Redis teardown, which only deletes cache.
+# model.platform_models and model.platform_model_prices start empty.
+# Review the curated identity/price diff before approving one environment.
+# The write requires both an approval variable and a typed target name.
 #
 # Required environment variables:
 #   ACTION=diff|apply                Which arm to run
