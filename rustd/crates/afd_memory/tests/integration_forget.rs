@@ -7,8 +7,7 @@
 
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::error_code::{MEM_AGENTSFLEET_NOT_FOUND, MEM_ENTRY_NOT_FOUND};
-use afd_core::id::Uuid7;
-use afd_db::test_util::mint_id;
+use afd_db::test_util::mint_uuid7;
 use afd_memory::error::detail::{ENTRY_NOT_FOUND, FLEET_NOT_FOUND};
 use afd_memory::page::View;
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
@@ -19,10 +18,6 @@ use crate::workspace::{Grants, Workspace, delta};
 const AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 /// The key both fleets write.
 const KEY: &str = "deploy_target";
-
-fn minted() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("a minted id is canonical")
-}
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -89,7 +84,7 @@ async fn test_a_forget_of_a_key_the_fleet_does_not_hold_answers_entry_not_found(
 async fn test_every_operator_verb_refuses_a_fleet_outside_the_workspace_alike() {
     let space = Workspace::create().await;
     let fleet = space.fleet("elsewhere", Grants::default()).await;
-    let (stranger, ghost) = (minted(), minted());
+    let (stranger, ghost) = (mint_uuid7(), mint_uuid7());
     let memories = &space.memories;
     let change = MemoryAccessRequest {
         read: Some(true),

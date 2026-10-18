@@ -13,7 +13,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
 use jiff::Timestamp;
 
 /// The instant model identifiers are minted at; rows are stamped by `now()`.
@@ -69,13 +69,16 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
     assert!(
         !lane
             .models
-            .update(&mint(), RAISED)
+            .update(&mint_uuid7(), RAISED)
             .await
             .expect("a typed outcome"),
         "an unknown id updates nothing"
     );
     assert_eq!(
-        lane.models.delete(&mint()).await.expect("a typed outcome"),
+        lane.models
+            .delete(&mint_uuid7())
+            .await
+            .expect("a typed outcome"),
         DeleteModel::NotFound
     );
 }
@@ -87,7 +90,7 @@ async fn should_refuse_a_default_whose_workspace_or_model_has_no_row() {
     lane.file_model().await;
 
     let missing_workspace = PlatformKeyInput {
-        source_workspace_id: mint(),
+        source_workspace_id: mint_uuid7(),
         ..lane.key_input()
     };
     assert_eq!(
@@ -176,8 +179,8 @@ struct Lane {
 impl Lane {
     async fn create() -> Self {
         let database: Db = TestDatabase::shared().open(DbRole::Api, &[]).await;
-        let tenant = mint();
-        let workspace = mint();
+        let tenant = mint_uuid7();
+        let workspace = mint_uuid7();
         let mut connection = database.acquire().await.expect("an API connection");
         TenantSeed::new(tenant.as_str())
             .insert(&mut *connection)
@@ -226,8 +229,4 @@ impl Lane {
         assert_eq!(model.rates, RATES);
         model
     }
-}
-
-fn mint() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("mint_id answers a UUIDv7")
 }

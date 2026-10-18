@@ -11,7 +11,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
 use afd_memory::Memories;
 use afd_wire::memory::{MemoryDelta, Visibility};
 
@@ -40,7 +40,7 @@ impl Workspace {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
-        let id = Uuid7::parse(&mint_id()).expect("a minted id is canonical");
+        let id = mint_uuid7();
         let mut connection = database.acquire().await.expect("an API connection");
         TenantSeed::new(&tenant)
             .insert(&mut *connection)
@@ -63,7 +63,7 @@ impl Workspace {
 
     /// A fleet named `name` holding `grants`.
     pub(crate) async fn fleet(&self, name: &str, grants: Grants) -> Uuid7 {
-        let fleet = Uuid7::parse(&mint_id()).expect("a minted id is canonical");
+        let fleet = mint_uuid7();
         FleetSeed::new(fleet.as_str(), self.id.as_str(), &self.tenant, FLEET_ACTIVE)
             .name(name)
             .memory(grants.read, grants.publish)

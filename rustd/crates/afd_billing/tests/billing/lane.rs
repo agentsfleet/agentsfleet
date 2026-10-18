@@ -21,7 +21,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -89,9 +89,9 @@ impl Lane {
         let lane = Self {
             accounts: Accounts::new(pool.clone(), Entropy::new()),
             billing: Billing::new(pool.clone()),
-            tenant: mint(),
-            workspace: mint(),
-            fleet: mint(),
+            tenant: mint_uuid7(),
+            workspace: mint_uuid7(),
+            fleet: mint_uuid7(),
             pool,
         };
         let mut connection = lane.pool.acquire().await.expect("the lane answers");
@@ -135,7 +135,7 @@ impl Lane {
 
     /// Writes one charge row against the seeded fleet, answering its id.
     pub(crate) async fn charge(&self, stage: Stage<'_>) -> Uuid7 {
-        let id = mint();
+        let id = mint_uuid7();
         sqlx::query(INSERT_CHARGE)
             .bind(id.as_str())
             .bind(self.tenant.as_str())
@@ -171,9 +171,4 @@ impl Lane {
             .expect("filing a catalogue row");
         model
     }
-}
-
-/// A fresh identifier no other test can name.
-pub(crate) fn mint() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("mint_id answers a UUIDv7")
 }
