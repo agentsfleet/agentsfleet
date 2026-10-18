@@ -55,15 +55,18 @@ use sqlx::AssertSqlSafe;
 use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
+mod billing;
 mod connector;
 mod fleet;
 mod fleet_event;
 mod identity;
+mod model;
 mod platform_default;
 mod rows;
 mod runner;
 mod unreachable;
 
+pub use self::billing::WalletSeed;
 pub use self::connector::{GrantSeed, InstallSeed};
 pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
@@ -71,6 +74,7 @@ pub use self::fleet::{
 };
 pub use self::fleet_event::{EventKind, FleetEventSeed};
 pub use self::identity::{TenantSeed, WorkspaceSeed};
+pub use self::model::{PlatformModelSeed, Prices};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
