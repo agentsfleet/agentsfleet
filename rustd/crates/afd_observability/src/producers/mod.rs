@@ -30,6 +30,7 @@
 //! point: the HTTP shell knows about telemetry, telemetry knows nothing about
 //! the HTTP shell.
 
+pub mod billing;
 pub mod cost;
 pub mod fleet;
 pub mod http;
@@ -52,6 +53,7 @@ pub struct Producers {
     pub(crate) library: self::library::Handles,
     pub(crate) memory: self::memory::Handles,
     pub(crate) cost: self::cost::Handles,
+    pub(crate) billing: self::billing::Handles,
 }
 
 impl Producers {
@@ -71,6 +73,7 @@ impl Producers {
             library: self::library::Handles::claim(instruments)?,
             memory: self::memory::Handles::claim(instruments)?,
             cost: self::cost::Handles::claim(instruments)?,
+            billing: self::billing::Handles::claim(instruments)?,
         })
     }
 }
