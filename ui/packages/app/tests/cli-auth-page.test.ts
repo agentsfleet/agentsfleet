@@ -14,12 +14,12 @@ import CliAuthPage from "@/app/cli-auth/[session_id]/page";
 
 const SESSION_ID = "0190b3c0-1111-7000-8000-000000000001";
 
-function activeBody(overrides: Partial<{ status: string; cli_public_key: string; token_name: string; expires_at_ms: number }> = {}) {
+function activeBody(overrides: Partial<{ status: string; cli_public_key: string; token_name: string; expires_at: string }> = {}) {
   return {
     status: "pending",
     cli_public_key: "AAAA",
     token_name: "darwin/arm64",
-    expires_at_ms: Date.now() + 300_000,
+    expires_at: new Date(Date.now() + 300_000).toISOString(),
     ...overrides,
   };
 }
@@ -120,6 +120,18 @@ describe("CliAuthPage — load states", () => {
     await waitFor(() => {
       expect(screen.getByText(/went wrong loading this login session/i)).toBeTruthy();
     });
+  });
+
+  it("refuses a session that names its window as an epoch-millisecond expires_at_ms", async () => {
+    const { expires_at: _instant, ...rest } = activeBody();
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse(200, { ...rest, expires_at_ms: Date.now() + 300_000 }),
+    );
+    await renderPage();
+    await waitFor(() => {
+      expect(screen.getByText(/went wrong loading this login session/i)).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
   it("renders 404 as 'not recognized — start over'", async () => {

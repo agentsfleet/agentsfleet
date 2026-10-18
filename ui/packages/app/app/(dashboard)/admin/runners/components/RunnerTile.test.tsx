@@ -19,7 +19,7 @@ function runner(overrides: Partial<RunnerListItem> = {}): RunnerListItem {
     id: "r-tile-1",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "online",
     labels: ["gpu"],
     last_seen_at: Date.now(),

@@ -52,7 +52,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: "01J2WQ8F3K7VZ9XB4N6MTYD5AR",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "busy",
     labels: ["gpu", "prod"],
     last_seen_at: Date.now(),
@@ -93,7 +93,7 @@ describe("RunnerHeader — admin actions", () => {
     // operable (cordon and drain render disabled until their verbs land).
     updateRunnerAdminStateActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { admin_state: "revoked" },
+      data: { status: "revoked" },
     });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));

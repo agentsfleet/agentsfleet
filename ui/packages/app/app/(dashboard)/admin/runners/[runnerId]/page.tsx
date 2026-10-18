@@ -94,7 +94,7 @@ export default async function RunnerDetailPage({
       <RunnerViewedTracker
         runnerId={runner.id}
         liveness={runner.liveness}
-        adminState={runner.admin_state}
+        adminState={runner.status}
       />
       <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
 

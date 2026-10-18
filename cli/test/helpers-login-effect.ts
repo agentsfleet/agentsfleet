@@ -148,7 +148,7 @@ export const successPollHttp: Layer.Layer<HttpClient> = Layer.succeed(HttpClient
         status: "verification_pending",
         cli_public_key: "stub",
         token_name: "macos-cli",
-        expires_at_ms: Date.now() + 60_000,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
       } as T);
     }
     return Effect.die(`unexpected ${method} ${path}`);

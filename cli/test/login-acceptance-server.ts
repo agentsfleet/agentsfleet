@@ -83,7 +83,7 @@ export const httpLayer = (
           status: "verification_pending",
           cli_public_key: fixture.capturedCliPubKey.value ?? "",
           token_name: "macos-cli",
-          expires_at_ms: Date.now() + 60_000,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
         } as T);
       }
       if (method === "POST" && path === `/v1/auth/sessions/${SESSION_ID}/verify`) {

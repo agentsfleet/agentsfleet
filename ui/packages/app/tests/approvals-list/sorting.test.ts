@@ -38,17 +38,17 @@ function twoRows() {
       fleet_id: AGENTSFLEET_B,
       created_at: NEWER,
       status: "approved",
-      updated_at: NEWER + A_MOMENT_MS,
+      resolved_at: NEWER + A_MOMENT_MS,
       resolved_by: "human:someone",
     }),
     gate({
       gate_id: "01999999-0000-7000-8000-000000000002",
       action_id: "a2",
       created_at: OLDER,
-      // Still pending: no `updated_at`, so the Decided column sorts on the
+      // Still pending: no `resolved_at`, so the Decided column sorts on the
       // deadline instead. Both arms of that `??` need a row.
-      updated_at: null,
-      timeout_at: NEWER + A_WHILE_MS,
+      resolved_at: null,
+      expires_at: NEWER + A_WHILE_MS,
     }),
   ];
 }
@@ -93,7 +93,7 @@ describe("ApprovalsTable — sorting", () => {
   });
 
   it("sorts a pending row by its deadline and a settled one by its answer", () => {
-    // `updated_at ?? timeout_at`: a row nobody has answered has no decision
+    // `resolved_at ?? expires_at`: a row nobody has answered has no decision
     // instant, so the column falls back to when it will be taken away.
     render(
       React.createElement(ApprovalsList, {

@@ -39,13 +39,13 @@ export interface ApprovalGate {
   readonly gate_id?: string | null;
   readonly fleet_id?: string | null;
   readonly fleet_name?: string | null;
-  readonly gate_kind?: string | null;
+  readonly gate_type?: string | null;
   readonly tool_name?: string | null;
   readonly status?: string | null;
   readonly proposed_action?: string | null;
   readonly blast_radius?: string | null;
   readonly created_at?: number | string | null;
-  readonly timeout_at?: number | string | null;
+  readonly expires_at?: number | string | null;
   /** Who decided it. `resolved_by_name` is a display name the daemon may not
    *  have, and answers `""` when it does not; `resolved_by` is the subject and
    *  is the one that is always there. api-dev returns exactly that pair. */
@@ -157,7 +157,7 @@ export const approvalsListEffectFromArgs = (
       gates.map((g) => ({
         gate: cell(g.gate_id),
         fleet: cell(g.fleet_name ?? g.fleet_id),
-        kind: cell(g.gate_kind),
+        kind: cell(g.gate_type),
         status: cell(g.status),
         action: cell(g.proposed_action ?? g.tool_name),
         [AGE_KEY]: typeof g.created_at === "number" ? g.created_at : undefined,
@@ -198,12 +198,12 @@ export const approvalsShowEffectFromArgs = (
     yield* output.printKeyValue({
       gate_id: cell(gate.gate_id),
       fleet: cell(gate.fleet_name ?? gate.fleet_id),
-      kind: cell(gate.gate_kind),
+      kind: cell(gate.gate_type),
       status: cell(gate.status),
       proposed: cell(gate.proposed_action),
       blast_radius: cell(gate.blast_radius),
       created_at: isoOrDash(gate.created_at),
-      timeout_at: isoOrDash(gate.timeout_at),
+      expires_at: isoOrDash(gate.expires_at),
       resolved_by: cell(gate.resolved_by_name || gate.resolved_by),
     });
   });

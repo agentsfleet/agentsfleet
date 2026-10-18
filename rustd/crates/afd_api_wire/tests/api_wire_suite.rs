@@ -17,3 +17,5 @@ mod redaction;
 mod schema;
 #[path = "tenant_provider_shapes.rs"]
 mod tenant_provider_shapes;
+#[path = "wire_names.rs"]
+mod wire_names;

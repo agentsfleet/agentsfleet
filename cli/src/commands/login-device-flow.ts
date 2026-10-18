@@ -12,7 +12,7 @@
 //     201 { session_id, login_url, request_id }
 //   GET  /v1/auth/sessions/{id}
 //     200 { status: "pending"|"verification_pending",
-//           cli_public_key, token_name, expires_at_ms }
+//           cli_public_key, token_name, expires_at }
 //     404 | 410 — terminal states (consumed/expired/aborted)
 //   POST /v1/auth/sessions/{id}/verify  { verification_code }
 //     200 { dashboard_public_key, ciphertext, nonce }    (success | replay)

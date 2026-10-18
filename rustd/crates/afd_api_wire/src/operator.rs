@@ -22,7 +22,7 @@ pub struct RunnerItem<'a> {
     #[serde(borrow)]
     pub sandbox_tier: Cow<'a, str>,
     /// Operator-controlled admission state.
-    pub admin_state: AdminState,
+    pub status: AdminState,
     /// Runtime state derived from heartbeat and leases.
     pub liveness: RunnerLiveness,
     /// Placement labels.

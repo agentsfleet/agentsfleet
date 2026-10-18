@@ -38,7 +38,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: "runner-1",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "online",
     labels: [],
     last_seen_at: 1_760_000_000_000,
@@ -62,7 +62,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 
 describe("requestRunnerSelftest", () => {
   it("PATCHes the self_test action against the single-runner operator path", async () => {
-    const recorded = { id: "runner-1", admin_state: "active", selftest_requested_at: 1_760_000_000_000 };
+    const recorded = { id: "runner-1", status: "active", selftest_requested_at: 1_760_000_000_000 };
     requestMock.mockResolvedValueOnce(recorded);
     const r = await requestRunnerSelftest("tok", "runner-1");
     expect(r).toEqual(recorded);
@@ -74,7 +74,7 @@ describe("requestRunnerSelftest", () => {
   });
 
   it("percent-encodes the runner id rather than splicing it into the path raw", async () => {
-    requestMock.mockResolvedValueOnce({ id: "a/b", admin_state: "active", selftest_requested_at: 1 });
+    requestMock.mockResolvedValueOnce({ id: "a/b", status: "active", selftest_requested_at: 1 });
     await requestRunnerSelftest("tok", "a/b");
     expect(requestMock).toHaveBeenCalledWith("/v1/fleets/runners/a%2Fb", expect.anything(), "tok");
   });

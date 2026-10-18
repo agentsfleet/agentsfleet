@@ -210,8 +210,8 @@ if (!isLive) {
       );
       assert.equal(listed.code, 0, `approvals list failed: ${listed.stderr}`);
       const gates =
-        (trailingJson(listed.stdout) as { items?: Array<{ gate_kind?: string }> }).items ?? [];
-      const cards = gates.filter((row) => row.gate_kind === KIND_INTEGRATION_GRANT);
+        (trailingJson(listed.stdout) as { items?: Array<{ gate_type?: string }> }).items ?? [];
+      const cards = gates.filter((row) => row.gate_type === KIND_INTEGRATION_GRANT);
       assert.equal(cards.length, 0,
         `the inbox the CLI reads must carry no ${KIND_INTEGRATION_GRANT} card: ${listed.stdout}`);
     });
