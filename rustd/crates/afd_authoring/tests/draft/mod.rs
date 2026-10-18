@@ -39,29 +39,6 @@ use serde_json::json;
 /// a fixture turn or activation can make.
 const FUNDED_NANOS: i64 = 1_000 * NANOS_PER_USD;
 
-/// How many times a proof retries a lock-limited request before failing.
-///
-/// A shared lane runs fault fixtures whose trigger DDL queues an exclusive
-/// table lock; a request behind it is refused retryably, and its retry
-/// converges because every authoring write is keyed by its operation.
-const LOCK_RETRIES: usize = 20;
-
-/// Runs `attempt` again while the lock limit refuses it, as a client retrying
-/// the same keyed request would; any other answer is returned as it is.
-async fn retried<T, F, Fut>(mut attempt: F) -> afd_authoring::Result<T>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = afd_authoring::Result<T>>,
-{
-    for _ in 1..LOCK_RETRIES {
-        match attempt().await {
-            Err(error) if afd_db::pool::gave_up_on_lock(&error) => {}
-            answered => return answered,
-        }
-    }
-    attempt().await
-}
-
 fn mint() -> Uuid7 {
     Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture UUIDv7")
 }

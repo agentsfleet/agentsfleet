@@ -60,7 +60,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | `schema/*.sql` (one per table) | CREATE | The signed-off design, ordered per table by foreign key |
 | `rustd/crates/afd_db/src/migration.rs`, `rustd/crates/afd_db/src/migrate/**` | EDIT | SQLx `Migrator` over the explicit slot list; bounded lock kept; hand-rolled ledger deleted |
 | `rustd/crates/*/src/**/sql/*.sql` | CREATE | Every static runtime statement as a file beside its use case |
-| `rustd/crates/afd_db/src/pool/**` | EDIT | Statement and lock time limits on every pooled connection; migrate exempt |
+| `rustd/crates/afd_db/src/pool/**` | EDIT | Runtime statements as `.sql` files beside the pool |
 | `rustd/crates/*/src/**/*.rs` with a schema-qualified table name | EDIT | Queries and row structs follow new names; dropped columns lose their writers |
 | `rustd/crates/afd_authoring/src/privacy.rs`, `rustd/crates/afd_tenant/src/**` erasure paths | EDIT | Every deletion root scrubs dispatch text; money is not cascaded |
 | `rustd/crates/afd_wire/src/authoring/**`, `rustd/crates/afr_supervisor/src/**` | EDIT | `deletion_generation` leaves the runner protocol and its report spool |
@@ -148,12 +148,11 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 
 ### §7 — Data access rides the rewrite
 
-Every query is rewritten here, so three fixes land with it rather than touching each query twice. The 22 whole-row `to_jsonb(<alias>)::text` reads in 16 files (count at `a8646bb2a`) become explicit column lists into typed rows; `Json<T>` stays for real JSON columns. The Library list joins each card to its head revision in one statement. Each pooled connection sets `lock_timeout` and `statement_timeout`; the migrate connection sets neither. **Implementation default:** `lock_timeout` 2 s and `statement_timeout` 15 s as named constants in `afd_db`, because 15 s is the whole setup budget (`SETUP_BUDGET`, `afd_authoring/src/creation/activate.rs:16`) and a lock wait must fail well inside it.
+Every query is rewritten here, so two fixes land with it rather than touching each query twice. The 22 whole-row `to_jsonb(<alias>)::text` reads in 16 files (count at `a8646bb2a`) become explicit column lists into typed rows; `Json<T>` stays for real JSON columns. The Library list joins each card to its head revision in one statement. Connections set no `lock_timeout` or `statement_timeout` (Discovery: Time limits withdrawn).
 
 - **Dimension 7.1** — no whole-row JSON read remains in runtime source → Test `test_no_whole_row_json_reads`
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
 - **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
-- **Dimension 7.3** — a request waiting on a held wallet lock fails within the lock limit with a retryable error, and the pool serves the next request → Test `test_lock_wait_is_bounded`
 - **Dimension 7.5** — every multi-column read decodes into a `#[derive(sqlx::FromRow)]` struct through `query_as`, instants through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]`, single columns through `query_scalar`; no `try_get` remains (373 across 13 crates at `331c0afc8`) → Test `test_rows_decode_into_typed_structs`
 
 ### §5 — Rebuilt from empty, proven locally, migrated on merge
@@ -196,7 +195,6 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 4. No applied slot changes silently — SQLx checksums; `test_migrate_refuses_edited_slot`.
 7. Every static statement prepares against the schema — `test_every_sql_file_prepares` in the integration lane.
 5. No money row has a foreign key to an erasable owner — catalogue assertion in `test_deletion_matrix_keeps_money`.
-6. Every pooled runtime connection carries both time limits — `SHOW lock_timeout` on a pooled connection in `test_lock_wait_is_bounded`.
 
 ## Metrics & Observability
 
@@ -235,7 +233,6 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
-| 7.3 | integration | `test_lock_wait_is_bounded` | wallet row held in another transaction → request fails under 3 s, retryable; next request succeeds |
 | 7.5 | unit | `test_rows_decode_into_typed_structs` | scan of `rustd/crates/*/src` → 0 matches for `try_get`; a seeded `row.try_get(0)` fails the scan naming its file |
 
 ## Acceptance Rubric (single scoring surface)
@@ -298,7 +295,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 2. **Preserved user behaviour** — every dashboard page, CLI command and runner keeps working; chat, save, publish, install, schedules, approvals and billing behave as before apart from §4.
 3. **Optimal-way check** — a from-empty rebuild is the most direct route while no production data exists; forward migrations would keep 95 slots of history and every copy column.
 4. **Rebuild-vs-iterate** — rebuild; the owner chose it, and iterating would mean dozens of `ALTER` slots that freeze the mistakes.
-5. **What we build** — new slots, renamed queries with typed reads, the one-query Library list, connection time limits, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
+5. **What we build** — new slots, renamed queries with typed reads, the one-query Library list, erasure that keeps money and scrubs text, one runner wire removal, the conventions at source, the docs.
 6. **What we do NOT build** — new features; the remaining data-access work; per-schema roles; Firecracker; wire renames.
 7. **Fit with existing features** — compounds with M224_001 launch readiness; must not destabilise the fleet lease path (`runner.fleet_slots`, fencing).
 8. **Surface order** — API and runner first; the CLI and dashboard are unchanged from outside.
@@ -344,6 +341,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Deadline outcome** — Indy (2026-10-18), via AskUserQuestion: "Always timed_out" — context: `author`'s unbiased `tokio::select!` raced the attempt deadline against renewal, which stops at the same instant, and reported `timed_out` 8 times and `failed`/`provider_usage_unknown` 4 times in 12; `biased;` with the deadline first makes a turn that reaches its deadline always report `timed_out`.
 - **Renew half-move branch** — Indy (2026-10-18), via AskUserQuestion: "Delete it" — context: `meter_lease.sql` locks the lease and its slot (`FOR UPDATE OF l, a`) before either moves, so `slot_updated != 1` could not occur; the branch, its column and the doc calling a half-applied renewal a real outcome go (RULE NDC).
 - **Orphan charge name** — Indy (2026-10-18), via AskUserQuestion: "Fleet id as name", asked twice — the second time after I read that `test_m201_charge_survives_unreadable_fleet_row` asserted NULL ("a fabricated name a reader cannot tell from a captured one") and that the old column was nullable — context: slot 2010 keeps `fleet_name NOT NULL`; `insert_fleet_charge.sql` falls back to `fleet_id::text` when the fleet row is gone, so the money always lands and a reader detects the fallback because it equals `fleet_id` on the row.
+- **Time limits withdrawn** — Indy (2026-10-18), via AskUserQuestion: "No limits on pooled path", then "Remove limits" — context: a read-only probe of dev's PlanetScale PgBouncer (port 6432, the API role) refused every connection carrying `lock_timeout` or `statement_timeout` as a startup option (`FATAL: unsupported startup parameter in options: lock_timeout`, 7 of 7; `statement_timeout` alone likewise), and the login role has no role-level defaults. Deployed daemons run only the pooled API role, so no runtime connection could carry the limits; `afd_db::pool::limits`, `gave_up_on_lock` and Dimension 7.3 go. Supersedes item 2 of the Data-access fold. Neither limit existed on `main` before this branch (`640bc2e95`).
 - **Stale architecture docs** — Indy (2026-10-18), via AskUserQuestion: "Delete it" for `docs/architecture/tenant_provider_v2.md` (a selection shape M229 did not build) and "Cut §5–§9" for `scenarios/production-deploy-repair.md` (a repair-record design with no tables or code).
 - **Docs branch ahead of code** — `chore/m229-schema-clean-slate-changelog` at `c3d4c8a` in `~/Projects/agentsfleet-worktrees/m229-docs` (docs `make test` 22 OK, `make lint` clean) states, from this spec, behaviour the code does not have yet; each is re-checked against code before the PR: 4.7 most API types still send milliseconds and `public/openapi.json` still carries `expires_at_ms` (`MintCredentialResponse`, `PollSessionResponse`) with no `format: date-time`; 4.5 `deletion_generation` still in 31 places under `crates/*/src`; 4.2 the replay key expires 24 hours after purge today, not 24 hours from the first attempt (`replay/sql.rs` PURGE); 4.3 Library removal keeps revisions a fleet references today (`library/remove.rs` UNREFERENCED); runner `status` replaces `admin_state` in OpenAPI `RunnerItem` and `RunnerAdminPatchResponse`.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
