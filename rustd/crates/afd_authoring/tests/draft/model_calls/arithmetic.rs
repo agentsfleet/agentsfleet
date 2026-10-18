@@ -83,9 +83,13 @@ async fn aggregate_reservation_overflow_cannot_authorize_a_physical_request() {
 #[ignore = "requires live Postgres"]
 async fn unrepresentable_provider_cost_is_uncertain_without_private_output_or_redispatch() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=2147483647,inference=jsonb_set(inference,'{max_output_tokens}','2147483647'::jsonb),output_nanos_per_mtok=$2 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str()).bind(i64::MAX)
+    let model = f.catalogue.first().expect("owned model").as_str();
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=2147483647,inference=jsonb_set(inference,'{max_output_tokens}','2147483647'::jsonb) WHERE id=$1::uuid")
+        .bind(model)
         .execute(&mut *f.connection().await).await.expect("supported positive model extremes");
+    sqlx::query("UPDATE model.platform_model_prices SET output_nanos_per_mtok=$2 WHERE platform_model_id=$1::uuid")
+        .bind(model).bind(i64::MAX)
+        .execute(&mut *f.connection().await).await.expect("the largest representable output rate");
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let mut stub = Provider::known();
     *stub.response.get_mut("usage").expect("usage object") =

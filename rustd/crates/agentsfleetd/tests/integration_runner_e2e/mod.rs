@@ -236,7 +236,7 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
          proven here across the two REQUESTS that write them rather than within one store call"
     );
     assert_eq!(
-        counter_column(run, "succeeded").await.as_deref(),
+        counter_column(run, "succeeded_count").await.as_deref(),
         Some("1"),
         "the lifetime tally counts the completed run on the succeeded arm"
     );
@@ -293,7 +293,7 @@ async fn assert_replay_returns_the_stored_outcome(
         "and mutates nothing — the lease reads exactly as the first report left it"
     );
     assert_eq!(
-        counter_column(run, "succeeded").await.as_deref(),
+        counter_column(run, "succeeded_count").await.as_deref(),
         Some("1"),
         "the lifetime tally counts the run once, because it is gated on the claim \
          that the repeat did not win. The handler's product funnel and cost meters \

@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 const SERVICE: &str = "github";
 const LEASES: &str = "/v1/runners/me/leases";
-const LABEL: &str = "COALESCE(failure_label, '')";
+const LABEL: &str = "COALESCE(failure_reason, '')";
 
 async fn connect_and_declare(run: &Scenario) {
     let vault = Vault::new(

@@ -157,11 +157,12 @@ impl Watched {
     pub(super) async fn commit_without_publish(&self) -> String {
         let event_id = afd_db::test_util::mint_id();
         sqlx::query(
-            "INSERT INTO core.fleet_events \
+            "INSERT INTO fleet.events \
             (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, \
-             response_text, tokens, wall_ms, created_at, updated_at) \
+             response_text, token_count, wall_ms, created_at, updated_at) \
             VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', $4, \
-                    '{}', 'recovered answer', 7, 12, 10, 11)",
+                    '{}', 'recovered answer', 7, 12, \
+                    '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
         .bind(&self.fixture.fleet)
         .bind(self.fixture.workspace.as_str())

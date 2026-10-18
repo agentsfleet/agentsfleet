@@ -93,7 +93,9 @@ async fn test_steer_publishes_admitted_frame() {
     assert_eq!(frame["message"], json!(MESSAGE));
     assert_eq!(frame["actor"], json!(members.bob.actor()));
     assert!(
-        frame["created_at"].as_i64().is_some_and(|at| at > 0),
+        frame["created_at"]
+            .as_str()
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
         "{frame}"
     );
 

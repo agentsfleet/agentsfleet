@@ -89,7 +89,8 @@ async fn announces_counters(opening: &str, fixture: &Fixture) {
     );
     assert_eq!(
         hello.pointer(&format!("/counters/{}/budget_used_nanos", fixture.fleet)),
-        Some(&serde_json::json!(counters.budget_used_nanos))
+        Some(&serde_json::json!(counters.budget_used_nanos.to_string())),
+        "spend travels as a decimal string, as every nanos amount does: {hello}"
     );
 }
 

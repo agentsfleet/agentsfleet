@@ -200,7 +200,7 @@ pub(crate) struct Scenario {
 ///
 /// The order is the daemon's own: nothing is put on the stream until the fleet
 /// row it joins against exists, because the assignment pass filters candidates
-/// through `core.fleets` and a mark with no row makes a correct refusal look
+/// through `fleet.fleets` and a mark with no row makes a correct refusal look
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     scenario_with_provider(supervisor, None).await

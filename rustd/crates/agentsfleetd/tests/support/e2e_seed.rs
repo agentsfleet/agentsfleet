@@ -137,7 +137,7 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
 
 /// The name the scenario's own fleet row carries.
 ///
-/// `core.fleets` holds one name per workspace, so a second fleet seeded into
+/// `fleet.fleets` holds one name per workspace, so a second fleet seeded into
 /// the same workspace passes a name of its own.
 pub(crate) const FLEET_NAME: &str = "e2e-fleet";
 

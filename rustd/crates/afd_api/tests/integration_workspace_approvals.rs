@@ -168,7 +168,10 @@ async fn assert_approval_resolution(
         "the conflict names the gate it is about: {refused}"
     );
     assert!(
-        refused.get("resolved_at").and_then(Value::as_i64).is_some(),
+        refused
+            .get("resolved_at")
+            .and_then(Value::as_str)
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
         "when it was answered: {refused}"
     );
 }
