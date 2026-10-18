@@ -38,35 +38,27 @@ export const RUNNER_ADMIN_STATE = {
 
 export type RunnerAdminState = (typeof RUNNER_ADMIN_STATE)[keyof typeof RUNNER_ADMIN_STATE];
 
-export const RUNNER_EVENT_TYPES = [
-  "runner_registered",
-  "runner_online",
-  "runner_offline",
-  "lease_acquired",
-  "lease_released",
-  "runner_cordoned",
-  "runner_draining",
-  "runner_drained",
-  "runner_revoked",
-  "runner_policy_assigned",
-] as const;
-
+export const RUNNER_EVENT_TYPE = {
+  registered: "runner_registered",
+  online: "runner_online",
+  offline: "runner_offline",
+  leaseAcquired: "lease_acquired",
+  leaseReleased: "lease_released",
+  cordoned: "runner_cordoned",
+  draining: "runner_draining",
+  drained: "runner_drained",
+  revoked: "runner_revoked",
+  tokenRotated: "runner_token_rotated",
+  policyAssigned: "runner_policy_assigned",
+} as const;
+export const RUNNER_EVENT_TYPES = Object.values(RUNNER_EVENT_TYPE);
 export type RunnerEventType = (typeof RUNNER_EVENT_TYPES)[number];
 
-// The lifecycle subset Activity renders: every tag EXCEPT the two per-work
-// records, which the Leases table already states once each with an outcome.
-// One exported constant, consumed verbatim by the Activity caller (Invariant:
-// lifecycle and work events never mix in that feed).
-export const RUNNER_LIFECYCLE_EVENT_TYPES = [
-  "runner_registered",
-  "runner_online",
-  "runner_offline",
-  "runner_cordoned",
-  "runner_draining",
-  "runner_drained",
-  "runner_revoked",
-  "runner_policy_assigned",
-] as const satisfies readonly RunnerEventType[];
+// Work records belong to Leases; the remaining recorded changes belong to Activity.
+export const RUNNER_LIFECYCLE_EVENT_TYPES = RUNNER_EVENT_TYPES.filter(
+  (type) => type !== RUNNER_EVENT_TYPE.leaseAcquired && type !== RUNNER_EVENT_TYPE.leaseReleased,
+);
+export type RunnerLifecycleEventType = (typeof RUNNER_LIFECYCLE_EVENT_TYPES)[number];
 
 /// The "never contacted" sentinel for `last_seen_at`, mirroring
 /// `protocol.RUNNER_LAST_SEEN_NEVER` — same name across both runtimes so the

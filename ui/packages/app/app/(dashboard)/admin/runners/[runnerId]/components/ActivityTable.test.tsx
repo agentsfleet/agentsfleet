@@ -1,254 +1,67 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { formatTimeAbsolute, TooltipProvider } from "@agentsfleet/design-system";
-import { type RunnerEventItem } from "@/lib/api/runners";
-import { RUNNER_LAST_SEEN_NEVER, RUNNER_LIFECYCLE_EVENT_TYPES } from "@/lib/api/runners-types";
-
-// The wrapper stands in for a real ancestor, not a missing one: the app mounts
-// exactly one TooltipProvider in `app/layout.tsx`, above every route group, and
-// the relative `Time` cell here reads it from there. That the root mounts it at
-// all is guarded once, in `app/layout.test.tsx` — not re-litigated per island.
-
-vi.mock("@/lib/pagination/use-url-cursor-pages", () => ({
-  useUrlCursorPages: () => ({
-    page: 1,
-    hasNext: false,
-    isLoading: false,
-    goToPage: vi.fn(),
-    changePageSize: vi.fn(),
-  }),
-}));
-
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
+import type { RunnerEventItem } from "@/lib/api/runners";
+import { RUNNER_EVENT_TYPE } from "@/lib/api/runners-types";
 import { ActivityTable } from "./ActivityTable";
 
-afterEach(() => cleanup());
-
-// Two distinct instants whose order — not magnitude — the sort test pins.
-const OLDER_INSTANT_MS = 1_000;
-const NEWER_INSTANT_MS = 2_000;
-
-function item(overrides: Partial<RunnerEventItem>): RunnerEventItem {
-  return {
-    id: `evt-${Math.random().toString(36).slice(2)}`,
-    runner_id: "r-1",
-    event_type: "runner_online",
-    occurred_at: new Date().toISOString(),
-    metadata: {},
-    ...overrides,
-  };
+vi.mock("@/lib/pagination/use-url-cursor-pages", () => ({
+  useUrlCursorPages: () => ({page: 1, hasNext: false, isLoading: false, goToPage: vi.fn(), changePageSize: vi.fn()}),
+}));
+afterEach(cleanup);
+const OCCURRED = "2026-10-17T06:32:49Z";
+function item(id: string, overrides: Partial<RunnerEventItem> = {}): RunnerEventItem {
+  return {id, runner_id: "runner-1", event_type: RUNNER_EVENT_TYPE.online, occurred_at: OCCURRED, metadata: {}, ...overrides};
+}
+function show(items: RunnerEventItem[]) {
+  render(<ActivityTable initial={{items, total: null, next_cursor: null}} pageSize={25} />, {wrapper: TooltipProvider});
 }
 
-describe("ActivityTable", () => {
-  it("test_activity_excludes_lease_work_events", () => {
-    // The exported lifecycle set holds neither work tag…
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
-    // …and a feed seeded with both renders neither.
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({ id: "keep-1", event_type: "runner_online" }),
-            item({ id: "drop-1", event_type: "lease_acquired" }),
-            item({ id: "drop-2", event_type: "lease_released" }),
-          ],
-          total: 3,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("came online")).toBeTruthy();
-    expect(screen.queryByText(/acquired a lease/)).toBeNull();
-    expect(screen.queryByText(/released a lease/)).toBeNull();
+describe("runner activity history", () => {
+  it("uses descriptive headings and puts the recorded time after the activity", () => {
+    show([item("online")]);
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Activity", "Details", "Occurred"]);
+    expect(screen.getByText("Runner connected")).toBeTruthy();
+    expect(screen.getByText("Connection established.")).toBeTruthy();
+    expect(screen.queryByText(/last contact/i)).toBeNull();
   });
-
-  it("test_activity_renders_admin_state_transition", () => {
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              event_type: "runner_draining",
-              metadata: { from_admin_state: "active", to_admin_state: "draining" },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("draining")).toBeTruthy();
-    expect(screen.getByText("active → draining")).toBeTruthy();
+  it("keeps work events in Leases and includes access-token changes in Activity", () => {
+    show([item("acquired", {event_type: RUNNER_EVENT_TYPE.leaseAcquired}),
+      item("released", {event_type: RUNNER_EVENT_TYPE.leaseReleased}),
+      item("rotated", {event_type: RUNNER_EVENT_TYPE.tokenRotated})]);
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByText("Runner access token replaced")).toBeTruthy();
+    expect(screen.queryByText("Runner connected")).toBeNull();
   });
-
-  it("test_activity_renders_registration_record", () => {
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              event_type: "runner_registered",
-              metadata: { host_id: "runner-prod-ams-01.internal", sandbox_tier: "landlock_full" },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("registered")).toBeTruthy();
-    expect(screen.getByText("runner-prod-ams-01.internal · Landlock")).toBeTruthy();
+  it("formats the server's saved state transition keys", () => {
+    show([item("draining", {event_type: RUNNER_EVENT_TYPE.draining,
+      metadata: {from_status: "active", to_status: "draining"}})]);
+    expect(screen.getByText("Runner started draining")).toBeTruthy();
+    expect(screen.getByText("Active → Draining")).toBeTruthy();
   });
-
-  it("should degrade detail honestly — absent metadata, host-only registration, unknown tier tag", () => {
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({ id: "bare", event_type: "runner_online", metadata: null }),
-            item({ id: "host-only", event_type: "runner_registered", metadata: { host_id: "host-x" } }),
-            item({
-              id: "future-tier",
-              event_type: "runner_registered",
-              metadata: { host_id: "host-y", sandbox_tier: "quantum_jail" },
-            }),
-          ],
-          total: 3,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    // Host-only registration renders the host with no dangling separator.
-    expect(screen.getByText("host-x")).toBeTruthy();
-    // A tier tag minted after this build renders its raw spelling, not nothing.
-    expect(screen.getByText(/quantum_jail/)).toBeTruthy();
+  it("renders recorded registration and policy facts", () => {
+    show([item("registered", {event_type: RUNNER_EVENT_TYPE.registered,
+      metadata: {host_id: "runner-prod", sandbox_tier: "landlock_full"}}),
+    item("policy", {event_type: RUNNER_EVENT_TYPE.policyAssigned,
+      metadata: {sandbox_tier: "landlock_full", network_policy: "deny_all_egress", worker_count: 4}})]);
+    expect(screen.getByText("Host: runner-prod · Isolation: Landlock")).toBeTruthy();
+    expect(screen.getByText("Isolation: Landlock · Network: No egress · Workers: 4")).toBeTruthy();
   });
-
-  it("should sort by Occurred through the standard header control, on an uncounted feed", () => {
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({ id: "older", event_type: "runner_online", occurred_at: new Date(OLDER_INSTANT_MS).toISOString() }),
-            item({ id: "newer", event_type: "runner_offline", occurred_at: new Date(NEWER_INSTANT_MS).toISOString() }),
-          ],
-          // total unknown (null) — the pager renders without a fabricated count.
-          total: null,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    const orderOf = () =>
-      screen
-        .getAllByRole("row")
-        .slice(1)
-        .map((row) => (row.textContent?.includes("came online") ? "older" : "newer"));
-    fireEvent.click(screen.getByRole("button", { name: /occurred/i }));
-    const firstSort = orderOf();
-    fireEvent.click(screen.getByRole("button", { name: /occurred/i }));
-    // Two clicks walk both directions of the same comparator: the order must
-    // invert, proving the column sorts on the record's real timestamp.
-    expect(orderOf()).toEqual([...firstSort].reverse());
+  it("explains missing metadata without fabricating details or hiding the event", () => {
+    show([item("offline", {event_type: RUNNER_EVENT_TYPE.offline, metadata: null})]);
+    expect(screen.getByText("Runner stopped responding")).toBeTruthy();
+    expect(screen.getByText("No recent heartbeat received.")).toBeTruthy();
   });
-
-  // ── Detail for online/offline records ────────────────────────────────────
-  // These two event types are the bulk of any runner's history and rendered a
-  // BLANK detail cell, because the reader only understood string metadata and
-  // both writers store `last_seen_at` as a JSON number.
-
-  it("states the real last-contact instant on a went-offline record", () => {
-    // The record's own timestamp is when the sweeper NOTICED — three lease
-    // TTLs after the runner actually went quiet. The detail carries the honest
-    // instant, so the row cannot be read as "it died at 10:01:30".
-    const WENT_DARK_MS = Date.UTC(2026, 6, 24, 10, 0, 0);
-    const SWEEPER_NOTICED_MS = WENT_DARK_MS + 90_000;
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              id: "offline-1",
-              event_type: "runner_offline",
-              occurred_at: new Date(SWEEPER_NOTICED_MS).toISOString(),
-              metadata: { last_seen_at: WENT_DARK_MS },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("went offline")).toBeTruthy();
-    expect(
-      screen.getByText(`last contact ${formatTimeAbsolute(new Date(WENT_DARK_MS))}`),
-    ).toBeTruthy();
+  it("sorts whole-second and fractional instants by time", () => {
+    show([item("first"), item("later", {event_type: RUNNER_EVENT_TYPE.offline, occurred_at: "2026-10-17T06:32:49.123Z"})]);
+    const order = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0]?.textContent);
+    fireEvent.click(screen.getByRole("button", {name: /Occurred/}));
+    expect(order()).toEqual(["Runner connected", "Runner stopped responding"]);
+    fireEvent.click(screen.getByRole("button", {name: /Occurred/}));
+    expect(order()).toEqual(["Runner stopped responding", "Runner connected"]);
   });
-
-  it("states when a recovered runner was last heard from before it came back", () => {
-    const LAST_HEARD_MS = Date.UTC(2026, 6, 24, 10, 0, 0);
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              id: "online-1",
-              event_type: "runner_online",
-              occurred_at: new Date(LAST_HEARD_MS + 3_600_000).toISOString(),
-              metadata: { last_seen_at: LAST_HEARD_MS },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(
-      screen.getByText(`last contact ${formatTimeAbsolute(new Date(LAST_HEARD_MS))}`),
-    ).toBeTruthy();
-  });
-
-  it("names the never-contacted sentinel instead of rendering the epoch", () => {
-    // A runner minted but never heard from carries last_seen_at = 0. Formatting
-    // that as an instant would print 1 Jan 1970 — a lie dressed as precision.
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              id: "first-1",
-              event_type: "runner_online",
-              metadata: { last_seen_at: RUNNER_LAST_SEEN_NEVER },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("first contact")).toBeTruthy();
-    expect(screen.queryByText(/1970/)).toBeNull();
-  });
-
-  it("leaves the detail empty when a record carries no metadata it understands", () => {
-    // The default arm still has to be silent rather than inventive: a future
-    // event type with unrecognised metadata renders nothing, not a guess.
-    render(
-      <ActivityTable
-        initial={{
-          items: [
-            item({
-              id: "bare-1",
-              event_type: "runner_drained",
-              metadata: { something_else: "value" },
-            }),
-          ],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    expect(screen.getByText("drained")).toBeTruthy();
-    expect(screen.queryByText(/last contact/)).toBeNull();
-    expect(screen.queryByText(/first contact/)).toBeNull();
+  it("distinguishes an empty history from a missing read", () => {
+    show([]);
+    expect(screen.getByText("No lifecycle records yet")).toBeTruthy();
   });
 });
