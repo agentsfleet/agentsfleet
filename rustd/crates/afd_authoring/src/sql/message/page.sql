@@ -1,5 +1,5 @@
 SELECT m.sequence,
-       r.operation_id::text AS operation_id,
+       m.operation_id::text AS operation_id,
        m.status,
        m.user_text,
        m.answer_text,
@@ -15,7 +15,6 @@ SELECT m.sequence,
        u.known
   FROM authoring.messages m
  CROSS JOIN generate_series(0, 1) AS role(ordinal)
-  LEFT JOIN authoring.replay_receipts r ON r.resource_id = m.id
   LEFT JOIN LATERAL (
         SELECT a.reported_runtime_ms,
                COALESCE(sum((d.usage->>'input_tokens')::bigint), 0)::bigint AS input_tokens,

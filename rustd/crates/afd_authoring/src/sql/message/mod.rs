@@ -1,11 +1,12 @@
 //! Request sequence and its selected model are accepted in the draft transaction.
 //!
-//! A message's retry key lives in `authoring.replay_receipts` under the
-//! message's own id, and its usage is the attempt's dispatch receipts, summed
-//! once a report was acknowledged: neither is a message column.
+//! A message keeps the operation key that queued it, which its page returns;
+//! the 24-hour retry window is `authoring.replay_receipts`, swept long before
+//! the message goes. Its usage is the attempt's dispatch receipts, summed once
+//! a report was acknowledged, never a message column.
 
-/// `$1` id, `$2` draft, `$3` sequence, `$4` status, `$5` tenant model (NULL for
-/// the platform default), `$6` user text.
+/// `$1` id, `$2` draft, `$3` sequence, `$4` operation, `$5` status, `$6` tenant
+/// model (NULL for the platform default), `$7` user text.
 pub(crate) const INSERT: &str = include_str!("insert.sql");
 
 /// `$1` draft, `$2` the new last sequence.

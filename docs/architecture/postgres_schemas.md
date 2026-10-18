@@ -40,7 +40,9 @@ table has one obvious home and one obvious shape.
    Named exceptions, each with its consistency rule stated in the slot: an aggregate maintained under
    the same lock or trigger as its source; a delivery snapshot that must outlive its source; a
    non-secret projection of encrypted content; a scope copy a restricted role needs to filter alone.
-6. **Retry keys** (`operation_id` + request digest) live only in receipt tables.
+6. **Retry keys** (`operation_id` + request digest) are enforced only by receipt tables. A row may
+   keep the key that created it as a plain column when an API returns that key for longer than the
+   receipt lives (`authoring.messages.operation_id`); that column decides no replay.
 7. **Every column names its reader** before it is created. Accounting and audit records are exempt
    when the slot names the export or verification that reads them.
 8. **A new table** carries a written answer to "why not a column, or an existing table".
@@ -135,7 +137,7 @@ connection or transaction; there is no generic repository trait.
 | Table | Purpose | Columns |
 |---|---|---|
 | `drafts` | One private setup chat | `id, workspace_id, tenant_id, user_id, title, status, tenant_model_id, head_candidate_id, source_type, source_library_revision_id, source_fleet_revision_id, instance_name, fleet_id, library_revision_id, last_message_sequence, cancelled_through_sequence, resource_version, closed_at, expires_at, created_at, updated_at` |
-| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
+| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
 | `candidates` | A frozen numbered setup the model proposed | `id, draft_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
 | `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, created_at, updated_at` |
 | `dispatches` | One physical model call: intent before, result after | `id, attempt_id, sequence, request_digest, status, result, usage, private_expires_at, created_at, updated_at` |
@@ -156,10 +158,13 @@ connection or transaction; there is no generic repository trait.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field); the sweeper deletes past `expires_at`. The sweep cascades messages, candidates and answer
   receipts and keeps attempts, dispatches (result scrubbed) and settlements.
-- **Retry window.** A replay receipt lives 24 hours from `created_at` (`REPLAY_TOMBSTONE_MS`). Inside
-  the window the same key and body return the first result, a different body is refused, and a key
-  whose resource was deleted returns Gone. After the window the key is new. The draft message API
-  still returns `operation_id`, joined from the receipt.
+- **Retry window.** A replay receipt answers its key for 24 hours from `created_at`
+  (`afd_authoring::replay::REPLAY_WINDOW`). Inside the window the same key and body return the first
+  result, a different body or user is refused, and a key whose resource was deleted returns Gone.
+  At the boundary and after it the key is new: the next claim deletes the expired receipt and files
+  its own, and `Drafts::maintain` sweeps the rest in bounded `SKIP LOCKED` batches. The draft
+  message API returns `operation_id` from `messages.operation_id`, written when the turn is
+  accepted, because the turn outlives its receipt.
 - **Running totals.** `attempts.call_count` and `output_token_count` are aggregates maintained under
   the attempt lock and read by admission and renewal (rule 5 exception); the input total had no reader.
 - The setup JSON is copied onto each frozen revision table on purpose: a shared definitions table

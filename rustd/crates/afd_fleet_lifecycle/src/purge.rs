@@ -24,9 +24,9 @@
 //! outlives the fleet still naming which fleet it paid for, beside the
 //! `fleet_name` captured when the money moved. Erasing one would falsify the
 //! reconciliation between the charges and the wallet. A setup retry key in
-//! `authoring.replay_receipts` survives too: it carries no foreign key, so a
-//! late retry finds its resource gone rather than creating it again (slot
-//! 1980).
+//! `authoring.replay_receipts` survives too, for the rest of its 24-hour
+//! window: it carries no foreign key, so a late retry finds its resource gone
+//! rather than creating it again (slot 1980).
 //!
 //! # The Dragonfly stream is best-effort, after the commit
 //!

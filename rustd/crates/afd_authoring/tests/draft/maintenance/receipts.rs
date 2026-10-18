@@ -1,0 +1,145 @@
+//! The receipt sweep deletes a bounded batch past the window, skips a receipt a
+//! claim holds, and leaves every message its operation key.
+
+use super::{Fixture, mint, now};
+use crate::draft::window::{PAST, message_id, receipts, refile};
+use afd_authoring::types::MessageQuery;
+use afd_core::timing::DAY;
+use sqlx::{Postgres, Transaction};
+use std::time::Duration;
+
+/// The most receipts one pass deletes (`afd_authoring`'s `SWEEP_LIMIT`).
+const SWEEP_LIMIT: u64 = 64;
+/// How many passes a proof runs for a sweep to converge. Every lane's pass
+/// sweeps every lane's expired receipts, so a pass may find its batch taken.
+const PASSES: usize = 20;
+/// How long a pass may take before it is waiting on a lock it should skip.
+const UNBLOCKED: Duration = Duration::from_secs(10);
+/// Older than every other seeded receipt, so it is the first row every pass
+/// reaches and a pass that waited on locks would wait on it.
+const OLDEST: Duration = PAST.saturating_add(Duration::from_hours(1));
+
+/// Locks one receipt, as a claim deleting its expired row holds it; `$1` id.
+const LOCK: &str = "SELECT id::text FROM authoring.replay_receipts WHERE id=$1::uuid FOR UPDATE";
+
+/// Files one expired receipt per id in `$1`, each under its own key.
+const EXPIRED: &str = "\
+INSERT INTO authoring.replay_receipts
+ (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
+SELECT r.id::uuid,$3::uuid,$4::uuid,'sweep:'||r.operation,r.operation::uuid,'digest',r.id::uuid,
+       statement_timestamp() - $5::interval
+  FROM unnest($1::text[],$2::text[]) AS r(id,operation)";
+
+/// This workspace's receipts past the window.
+async fn expired(f: &Fixture) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND created_at <= statement_timestamp() - $2::interval")
+        .bind(f.workspace.as_str())
+        .bind(DAY)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("expired census")
+}
+
+/// Runs passes until `count` reads `target`, or [`PASSES`] ran.
+async fn sweep_until(f: &Fixture, target: i64, count: impl AsyncFn() -> i64) {
+    for _ in 0..PASSES {
+        if count().await == target {
+            return;
+        }
+        f.drafts.maintain().await.expect("maintenance pass");
+    }
+    assert_eq!(count().await, target, "the sweep converged");
+}
+
+async fn seed(f: &Fixture, ids: &[String], age: Duration) {
+    let operations: Vec<String> = ids.iter().map(|_| mint().to_string()).collect();
+    sqlx::query(EXPIRED)
+        .bind(ids)
+        .bind(&operations)
+        .bind(f.workspace.as_str())
+        .bind(f.owner.as_str())
+        .bind(age)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("seeded receipts");
+}
+
+/// An expired receipt locked by an open claim, and that receipt's id.
+///
+/// Every lane's pass sweeps every lane's receipts, so one can delete the row
+/// between its insert and the lock; the lock then finds nothing and another
+/// receipt is filed.
+async fn hold(f: &Fixture) -> (Transaction<'static, Postgres>, String) {
+    let mut held = None;
+    for _ in 0..PASSES {
+        let id = mint().to_string();
+        seed(f, std::slice::from_ref(&id), OLDEST).await;
+        let claim = Transaction::begin(f.connection().await, None).await;
+        let mut claim = claim.expect("claim transaction");
+        let locked: Option<String> = sqlx::query_scalar(LOCK)
+            .bind(&id)
+            .fetch_optional(&mut *claim)
+            .await
+            .expect("claim locks");
+        if locked.is_some() {
+            held = Some((claim, id));
+            break;
+        }
+        claim.rollback().await.expect("claim releases");
+    }
+    held.expect("a claim held an expired receipt")
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn the_receipt_sweep_is_bounded_and_skips_a_receipt_a_claim_holds() {
+    let f = Fixture::create().await;
+    let ids: Vec<String> = (0..=SWEEP_LIMIT).map(|_| mint().to_string()).collect();
+    seed(&f, &ids, PAST).await;
+    let live = mint().to_string();
+    seed(&f, std::slice::from_ref(&live), Duration::ZERO).await;
+    let (claim, held) = hold(&f).await;
+    let pass = tokio::time::timeout(UNBLOCKED, f.drafts.maintain()).await;
+    let pass = pass.expect("the pass skips the held receipt rather than waiting");
+    let swept = pass.expect("maintenance pass").expired_receipts;
+    assert!(swept <= SWEEP_LIMIT, "one pass deleted {swept}");
+    sweep_until(&f, 1, async || expired(&f).await).await;
+    assert_eq!(receipts(&f, &held).await, 1, "the held receipt was skipped");
+    assert_eq!(
+        receipts(&f, &live).await,
+        1,
+        "a receipt inside the window stays"
+    );
+    claim.rollback().await.expect("claim releases");
+    sweep_until(&f, 0, async || expired(&f).await).await;
+    assert_eq!(receipts(&f, &live).await, 1);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_message_past_the_window_keeps_its_operation_id_after_its_receipt_is_swept() {
+    let f = Fixture::create().await;
+    let key = mint();
+    let request = f.request(key.clone(), Some("Watch checkout"));
+    let created = f.drafts.create(f.access(), request, now()).await;
+    let draft = created.expect("create").draft.id;
+    sqlx::query("UPDATE authoring.messages SET created_at = created_at - $2::interval WHERE draft_id=$1::uuid")
+        .bind(draft.as_str())
+        .bind(PAST)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the message is older than the window");
+    let message = message_id(&f, &draft, 1).await;
+    refile(&f, &key, &message, &f.owner, PAST).await;
+    sweep_until(&f, 0, async || receipts(&f, &message).await).await;
+    let page = MessageQuery {
+        limit: 20,
+        starting_after: None,
+    };
+    let page = f.drafts.messages(f.access(), &draft, page).await;
+    let page = page.expect("a message outlives its receipt");
+    let user = page.items.first().expect("the user turn");
+    assert_eq!((user.role, &user.operation_id), ("user", &key));
+    f.cleanup().await;
+}

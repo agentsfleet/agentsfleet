@@ -1,6 +1,6 @@
 -- Every authoring retry key (rule 6): create draft, send message, publish. The same
 -- key and body inside 24 hours of `created_at` return the first result
--- (`REPLAY_TOMBSTONE_MS`); a different body or user is refused; a key whose
+-- (`REPLAY_WINDOW`); a different body or user is refused; a key whose
 -- resource is gone answers Gone. After the window the key is new and the sweep
 -- deletes the row. Append-only (rule 9).
 --
@@ -20,9 +20,8 @@ CREATE TABLE authoring.replay_receipts (
     CONSTRAINT uq_replay_receipts_scope_operation_id UNIQUE (scope, operation_id)
 );
 
--- The fixed-age sweep, and the message API's join back to its retry key.
+-- The fixed-age sweep.
 CREATE INDEX idx_replay_receipts_created_at_id ON authoring.replay_receipts (created_at, id);
-CREATE INDEX idx_replay_receipts_resource_id ON authoring.replay_receipts (resource_id);
 
 CREATE FUNCTION authoring.replay_receipts_refuse_update() RETURNS trigger AS $$
 BEGIN

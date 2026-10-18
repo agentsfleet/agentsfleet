@@ -123,6 +123,7 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         .bind(insertion.id.as_str())
         .bind(insertion.draft.as_str())
         .bind(insertion.sequence)
+        .bind(insertion.operation.as_str())
         .bind(QUEUED)
         .bind(model::tenant_model(insertion.model))
         .bind(insertion.text)

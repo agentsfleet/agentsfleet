@@ -28,6 +28,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Anal
                         interrupted = counts.interrupted,
                         purged_drafts = counts.purged_drafts,
                         expired_results = counts.expired_results,
+                        expired_receipts = counts.expired_receipts,
                         "authoring recovery advanced"
                     );
                 }

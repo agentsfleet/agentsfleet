@@ -4,14 +4,20 @@
 -- `sequence` is the turn's position in its draft. `status` and `created_at` feed
 -- the dispatcher's pending scan. `tenant_model_id` is the model the turn ran on
 -- (NULL is the platform default). `candidate_id` is the setup this turn produced.
--- `finished_at` is the instant the turn's answer is shown with (rule 4c). The
--- turn's retry key lives in `authoring.replay_receipts` (rule 6).
+-- `finished_at` is the instant the turn's answer is shown with (rule 4c).
+-- `operation_id` is the client's key for the request that queued the turn; the
+-- message API returns it for the turn's whole life. The retry window itself is
+-- enforced by `authoring.replay_receipts` (rule 6), whose rows are swept 24 hours
+-- after they are filed while the turn lives as long as its draft, so the key the
+-- API returns cannot be read back from the receipt. Not unique: once the window
+-- passes, the same key queues a new turn.
 
 CREATE TABLE authoring.messages (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_messages_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     draft_id         UUID   NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
     sequence         BIGINT NOT NULL,
+    operation_id     UUID   NOT NULL,
     status           TEXT   NOT NULL,
     tenant_model_id  UUID REFERENCES model.tenant_models(id) ON DELETE SET NULL,
     user_text        TEXT   NOT NULL,
