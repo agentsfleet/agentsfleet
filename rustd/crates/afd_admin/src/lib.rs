@@ -6,6 +6,7 @@
 
 #![deny(clippy::self_named_module_files)]
 
+pub mod catalogue;
 mod error;
 mod model;
 mod platform_key;

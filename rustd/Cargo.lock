@@ -470,6 +470,7 @@ dependencies = [
 name = "afd_credential"
 version = "0.62.1"
 dependencies = [
+ "afd_admin",
  "afd_billing",
  "afd_core",
  "afd_crypto",

@@ -8,9 +8,11 @@ use afd_db::Db;
 use afd_db::constraint::violates_foreign_key;
 use afd_wire::inference::ModelInference;
 use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
 use sqlx::{Acquire as _, PgConnection};
 
+use crate::catalogue::{MetadataColumns, prices_for, replace_prices};
 use crate::error::{Result, query, row};
 use crate::sql;
 
@@ -59,26 +61,27 @@ pub struct Model {
     pub details: ModelUpdate,
 }
 
-/// A `model.platform_models` row by name, before its id is parsed.
+/// A `model.platform_models` row by name, before its id is parsed. Prices are
+/// a separate read ([`prices_for`]); `inference` is the one real JSON column.
 #[derive(Debug, sqlx::FromRow)]
 struct ModelRow {
     id: String,
     provider: String,
     model_name: String,
-    metadata: Json<Metadata>,
-    prices: Json<Vec<Price>>,
+    #[sqlx(flatten)]
+    metadata: MetadataColumns,
     inference: Option<Json<ModelInference>>,
 }
 
 impl ModelRow {
-    fn parse(self) -> Result<Model> {
+    fn parse(self, prices: Vec<Price>) -> Result<Model> {
         Ok(Model {
             id: Uuid7::parse(&self.id).map_err(row(MODEL_TABLE, "id"))?,
             provider: self.provider,
             model_name: self.model_name,
             details: ModelUpdate {
-                metadata: self.metadata.0,
-                prices: self.prices.0,
+                metadata: self.metadata.into(),
+                prices,
                 inference: self.inference.map(|settings| settings.0),
             },
         })
@@ -130,7 +133,16 @@ impl Models {
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_LIST))?;
-        rows.into_iter().map(ModelRow::parse).collect()
+        let ids: Vec<String> = rows.iter().map(|model| model.id.clone()).collect();
+        let mut prices = prices_for(&mut *connection, &ids)
+            .await
+            .map_err(query(CONTEXT_LIST))?;
+        rows.into_iter()
+            .map(|model| {
+                let schedule = prices.take(&model.id);
+                model.parse(schedule)
+            })
+            .collect()
     }
 
     /// Files a model and advances the catalogue version atomically.
@@ -151,7 +163,11 @@ impl Models {
             .bind(id.as_str())
             .bind(&input.provider)
             .bind(&input.model_name)
-            .bind(Json(metadata))
+            .bind(&metadata.display_name)
+            .bind(metadata.context_cap_tokens)
+            .bind(&metadata.context_source_url)
+            .bind(metadata.context_verified_at.to_sqlx())
+            .bind(metadata.advanced)
             .bind(input.details.inference.as_ref().map(Json))
             .execute(&mut *transaction)
             .await
@@ -159,7 +175,12 @@ impl Models {
         if done.rows_affected() == 0 {
             return Ok(CreateModel::Duplicate);
         }
-        write_prices(&mut transaction, &id, &input.details.prices, CONTEXT_CREATE).await?;
+        let writing = PriceWrite {
+            model: &id,
+            prices: &input.details.prices,
+            context: CONTEXT_CREATE,
+        };
+        self.write_prices(&mut transaction, writing, now).await?;
         transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
         Ok(CreateModel::Created(Box::new(Model {
             id,
@@ -177,10 +198,12 @@ impl Models {
     /// context cap, so a smaller context cannot strand a saved output limit
     /// above it.
     ///
+    /// `now` mints the identifiers of price rows the replacement adds.
+    ///
     /// # Errors
-    /// Refuses settings that cannot route within the cap; reports transaction
-    /// failures. `Ok(false)` means no such row.
-    pub async fn update(&self, id: &Uuid7, details: ModelUpdate) -> Result<bool> {
+    /// Refuses settings that cannot route within the cap; reports entropy and
+    /// transaction failures. `Ok(false)` means no such row.
+    pub async fn update(&self, id: &Uuid7, details: ModelUpdate, now: Timestamp) -> Result<bool> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPDATE))?;
         bump(&mut transaction, CONTEXT_UPDATE).await?;
@@ -202,7 +225,11 @@ impl Models {
         )?;
         let done = sqlx::query(sql::UPDATE_PLATFORM_MODEL)
             .bind(id.as_str())
-            .bind(Json(&details.metadata))
+            .bind(&details.metadata.display_name)
+            .bind(details.metadata.context_cap_tokens)
+            .bind(&details.metadata.context_source_url)
+            .bind(details.metadata.context_verified_at.to_sqlx())
+            .bind(details.metadata.advanced)
             .bind(details.inference.as_ref().map(Json))
             .execute(&mut *transaction)
             .await
@@ -210,9 +237,32 @@ impl Models {
         if done.rows_affected() == 0 {
             return Ok(false);
         }
-        write_prices(&mut transaction, id, &details.prices, CONTEXT_UPDATE).await?;
+        let writing = PriceWrite {
+            model: id,
+            prices: &details.prices,
+            context: CONTEXT_UPDATE,
+        };
+        self.write_prices(&mut transaction, writing, now).await?;
         transaction.commit().await.map_err(query(CONTEXT_UPDATE))?;
         Ok(true)
+    }
+
+    /// Writes a complete replacement price list, minting an id for every row
+    /// the replacement may add; a row that already exists keeps its own.
+    async fn write_prices(
+        &self,
+        connection: &mut PgConnection,
+        writing: PriceWrite<'_>,
+        now: Timestamp,
+    ) -> Result<()> {
+        let ids = writing
+            .prices
+            .iter()
+            .map(|_| self.entropy.uuid7(now).map(|id| id.as_str().to_owned()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        replace_prices(connection, writing.model, &ids, writing.prices)
+            .await
+            .map_err(query(writing.context))
     }
 
     /// Deletes a model no platform default points at, and advances the
@@ -251,26 +301,11 @@ fn validate(inference: Option<&ModelInference>, metadata: &Metadata) -> Result<(
     Ok(())
 }
 
-/// Retains stable price identifiers and removes only ranges absent from the replacement.
-async fn write_prices(
-    connection: &mut PgConnection,
-    id: &Uuid7,
-    prices: &[Price],
+/// One model's replacement price list and the operation it reports under.
+struct PriceWrite<'a> {
+    model: &'a Uuid7,
+    prices: &'a [Price],
     context: &'static str,
-) -> Result<()> {
-    sqlx::query(sql::UPSERT_PLATFORM_MODEL_PRICES)
-        .bind(id.as_str())
-        .bind(Json(prices))
-        .execute(&mut *connection)
-        .await
-        .map_err(query(context))?;
-    sqlx::query(sql::DELETE_PLATFORM_MODEL_PRICES)
-        .bind(id.as_str())
-        .bind(Json(prices))
-        .execute(connection)
-        .await
-        .map_err(query(context))?;
-    Ok(())
 }
 
 /// Advances the catalogue version, taking the row lock that serializes edits.

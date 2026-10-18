@@ -1,12 +1,9 @@
-UPDATE model.platform_models m
-SET display_name = metadata.display_name,
-    context_cap_tokens = metadata.context_cap_tokens,
-    context_source_url = metadata.context_source_url,
-    context_verified_at = metadata.context_verified_at,
-    advanced = metadata.advanced,
-    inference = COALESCE($3::jsonb, m.inference),
+UPDATE model.platform_models
+SET display_name = $2,
+    context_cap_tokens = $3,
+    context_source_url = $4,
+    context_verified_at = $5,
+    advanced = $6,
+    inference = COALESCE($7::jsonb, inference),
     updated_at = now()
-FROM jsonb_to_record($2::jsonb) AS metadata(
-    display_name text, context_cap_tokens integer, context_source_url text,
-    context_verified_at timestamptz, advanced boolean)
-WHERE m.id = $1::uuid
+WHERE id = $1::uuid

@@ -5,17 +5,20 @@
 //! `test_every_sql_file_prepares`. Every write stamps `updated_at` with the
 //! database's `now()` (`docs/architecture/postgres_schemas.md` rule 4).
 
-/// Every priced model, in stable provider/model order.
+/// Every catalogued model's identity, in stable provider/model order; prices
+/// come from [`SELECT_MODEL_PRICES`].
 pub(crate) const LIST_PLATFORM_MODELS: &str = include_str!("list_platform_models.sql");
 
 /// Files a model, or writes nothing when `(provider, model_name)` is taken.
 ///
-/// `$1` id · `$2` provider · `$3` model name · `$4` identity metadata JSON ·
-/// `$5` inference settings or NULL.
+/// `$1` id · `$2` provider · `$3` model name · `$4` display name · `$5` context
+/// cap · `$6` context source · `$7` verified at · `$8` advanced · `$9`
+/// inference settings or NULL.
 pub(crate) const INSERT_PLATFORM_MODEL: &str = include_str!("insert_platform_model.sql");
 
-/// Replaces identity evidence, and the inference settings when `$3` is not
-/// NULL. `$1` id · `$2` identity metadata JSON · `$3` settings.
+/// Replaces identity evidence, and the inference settings when `$7` is not
+/// NULL. `$1` id · `$2`–`$6` the identity columns in insert order · `$7`
+/// settings.
 pub(crate) const UPDATE_PLATFORM_MODEL: &str = include_str!("update_platform_model.sql");
 
 /// A model's saved inference settings, locking the row for the update that
@@ -23,13 +26,19 @@ pub(crate) const UPDATE_PLATFORM_MODEL: &str = include_str!("update_platform_mod
 pub(crate) const SELECT_PLATFORM_MODEL_INFERENCE: &str =
     include_str!("select_platform_model_inference.sql");
 
-/// Writes dated prices. `$1` model id · `$2` typed price array as JSON.
+/// Writes dated prices, one array per column. `$1` model id · `$2` the minted
+/// row ids · `$3`–`$14` the price columns in table order. A row that exists
+/// keeps its id.
 pub(crate) const UPSERT_PLATFORM_MODEL_PRICES: &str =
     include_str!("upsert_platform_model_prices.sql");
 
-/// Removes ranges absent from the complete replacement, using the same parameters.
+/// Removes tiers absent from the complete replacement. `$1` model id · `$2`
+/// prompt thresholds · `$3` range starts, pairwise.
 pub(crate) const DELETE_PLATFORM_MODEL_PRICES: &str =
     include_str!("delete_platform_model_prices.sql");
+
+/// Every price row of `$1`'s model ids, ordered by model, tier and start.
+pub(crate) const SELECT_MODEL_PRICES: &str = include_str!("select_model_prices.sql");
 
 /// Removes a model. A platform default still pointing at it refuses the delete
 /// through `ON DELETE RESTRICT`, which [`crate::Models::delete`] reports as
