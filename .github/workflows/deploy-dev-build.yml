@@ -58,7 +58,7 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist --bin agentsfleet-runner
+              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
           cp rustd/target/dist/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
@@ -156,7 +156,7 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist --bin agentsfleetd
+              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
           cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-amd64
