@@ -57,6 +57,52 @@ pub struct DefaultSeed<'a> {
     pub created_at: jiff::Timestamp,
 }
 
+impl DefaultSeed<'_> {
+    /// Writes the default unless the provider already has one, answering
+    /// whether this call wrote it. The fallible twin of
+    /// [`PlatformDefault::hold`], for a caller that reports a held default
+    /// instead of reusing it, and removes its own with [`Self::release`].
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the insert fails.
+    pub async fn claim<'e>(self, executor: impl sqlx::PgExecutor<'e>) -> crate::Result<bool> {
+        let inserted: Option<String> = sqlx::query_scalar(INSERT_DEFAULT)
+            .bind(self.provider)
+            .bind(self.source_workspace_id)
+            .bind(self.model)
+            .bind(self.context_cap_tokens)
+            .bind(jiff_sqlx::ToSqlx::to_sqlx(self.created_at))
+            .bind(super::mint_id())
+            .fetch_optional(executor)
+            .await
+            .map_err(|source| crate::error::query(CLAIM_CONTEXT, source))?;
+        Ok(inserted.is_some())
+    }
+
+    /// Removes the default `provider` holds, but only while it still names
+    /// `source_workspace_id`, so a default another caller wrote is never the
+    /// one removed. A default already gone is not an error.
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the delete fails.
+    pub async fn release<'e>(
+        executor: impl sqlx::PgExecutor<'e>,
+        provider: &str,
+        source_workspace_id: &str,
+    ) -> crate::Result<()> {
+        sqlx::query(DELETE_DEFAULT)
+            .bind(provider)
+            .bind(source_workspace_id)
+            .execute(executor)
+            .await
+            .map_err(|source| crate::error::query(REMOVAL_CONTEXT, source))?;
+        Ok(())
+    }
+}
+
+/// The operation a failed claim is reported under.
+const CLAIM_CONTEXT: &str = "claiming a platform default";
+
 /// The row this process inserted, and the database it lives in.
 #[derive(Debug, Clone)]
 struct Created {

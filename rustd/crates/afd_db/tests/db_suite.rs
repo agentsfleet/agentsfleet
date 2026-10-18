@@ -43,6 +43,8 @@ mod integration_pool_faults;
 mod integration_pool_retry;
 #[path = "integration_pool_tls.rs"]
 mod integration_pool_tls;
+#[path = "integration_seeds.rs"]
+mod integration_seeds;
 #[path = "lock_policy.rs"]
 mod lock_policy;
 #[path = "migrations.rs"]
