@@ -88,6 +88,21 @@ fn refusal(check: impl FnOnce()) -> Option<String> {
 #[test]
 fn a_sound_sample_set_passes() {
     grade(&sound(), SOUND);
+    // A cause that renders nothing is not a repeated cause.
+    let mut silent = sound();
+    silent.push((
+        "silent cause",
+        Error::from(Kind::Wrapped {
+            source: std::io::Error::other(""),
+        }),
+    ));
+    grade(
+        &silent,
+        Expect {
+            with_source: 2,
+            ..SOUND
+        },
+    );
     grade_sentences([("root", "It failed"), ("wrapped", "Try again")], 2);
 }
 

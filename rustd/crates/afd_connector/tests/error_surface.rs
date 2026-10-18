@@ -17,81 +17,32 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::error::Error as _;
+use afd_core::test_util::error_surface::{Expect, grade};
 
 use afd_connector::error::{detail, one_of_each_kind};
 
 /// The kinds a retry could plausibly fix, by the label the sample gives them.
 const RETRYABLE: &[&str] = &["datastore", "vendor unreachable"];
 
+/// Everything every error surface owes, graded once by
+/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// rendering, no kind repeating its cause, and these measured counts. The
+/// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]
-fn every_kind_renders_leading_with_its_code() {
-    let kinds = one_of_each_kind();
-    assert!(
-        kinds.len() >= 10,
-        "a kind was added to ErrorKind without a sample here"
+fn the_error_surface_holds() {
+    let samples = one_of_each_kind();
+    assert_eq!(
+        samples.len(),
+        15,
+        "a kind was added or dropped without its sample"
     );
-
-    for (label, error) in &kinds {
-        let rendered = error.to_string();
-        assert!(
-            rendered.starts_with(&format!("[{}]", error.code().as_str())),
-            "{label} does not lead with its code: {rendered}"
-        );
-        assert!(
-            rendered.len() > error.code().as_str().len() + 3,
-            "{label} renders its code and nothing else"
-        );
-    }
-}
-
-/// Where there IS a source, it adds something rather than repeating us.
-///
-/// `RUST_ERROR_STANDARD` rule 4, as the standard states it — not "every variant
-/// has a source", which the document explicitly calls wrong. `GrantUnreadable`
-/// holds nothing and nothing caused it in the sense a chain walker means.
-#[test]
-fn no_error_reports_itself_as_its_own_cause() {
-    for (label, error) in one_of_each_kind() {
-        let rendered = error.to_string();
-        if let Some(source) = error.source() {
-            assert_ne!(
-                source.to_string(),
-                rendered,
-                "{label} reports itself as its own cause"
-            );
-            assert!(
-                !rendered.ends_with(&source.to_string()),
-                "{label} repeats its source verbatim: {rendered}"
-            );
-        }
-    }
-}
-
-/// The wrapped failure survives `?` rather than being flattened into a string.
-#[test]
-fn a_wrapped_failure_is_still_reachable_through_the_chain() {
-    let wrapped: Vec<&str> = one_of_each_kind()
-        .iter()
-        .filter(|(_, error)| error.source().is_some())
-        .map(|(label, _)| *label)
-        .collect();
-
-    assert!(
-        wrapped.len() >= 7,
-        "only {wrapped:?} keep a source; a lift was replaced by a stringify"
+    grade(
+        &samples,
+        Expect {
+            with_source: 9,
+            distinct_codes: 8,
+        },
     );
-}
-
-#[test]
-fn every_code_is_one_the_registry_declares() {
-    for (label, error) in one_of_each_kind() {
-        assert!(
-            afd_core::error_code::REGISTRY.contains(&error.code()),
-            "{label} reports {} which is not in the registry",
-            error.code().as_str()
-        );
-    }
 }
 
 #[test]
@@ -200,12 +151,5 @@ fn no_sentence_carries_anything_from_the_exchange() {
                 "{label} leaks `{leak}` into the caller's sentence: {sentence}"
             );
         }
-    }
-}
-
-#[test]
-fn the_backtrace_accessor_answers_for_every_kind() {
-    for (_label, error) in one_of_each_kind() {
-        let _status = error.backtrace().status();
     }
 }

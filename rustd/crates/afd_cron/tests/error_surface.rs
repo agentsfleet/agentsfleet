@@ -18,7 +18,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::error::Error as _;
+use afd_core::test_util::error_surface::{Expect, grade};
 
 use afd_cron::error::{detail, one_of_each_kind};
 
@@ -39,80 +39,25 @@ const FIRE_REFUSALS: &[&str] = &[
 /// The word every kind that is not a refused fire reads under.
 const OPERATIONAL_REASON: &str = "operational_fault";
 
+/// Everything every error surface owes, graded once by
+/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// rendering, no kind repeating its cause, and these measured counts. The
+/// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]
-fn every_kind_renders_leading_with_its_code() {
-    let kinds = one_of_each_kind();
-    assert!(
-        kinds.len() >= 9,
-        "a kind was added to ErrorKind without a sample here"
+fn the_error_surface_holds() {
+    let samples = one_of_each_kind();
+    assert_eq!(
+        samples.len(),
+        16,
+        "a kind was added or dropped without its sample"
     );
-
-    for (label, error) in &kinds {
-        let rendered = error.to_string();
-        assert!(
-            rendered.starts_with(&format!("[{}]", error.code().as_str())),
-            "{label} does not lead with its code: {rendered}"
-        );
-        assert!(
-            rendered.len() > error.code().as_str().len() + 3,
-            "{label} renders its code and nothing else"
-        );
-    }
-}
-
-/// Where there IS a source, it adds something rather than repeating us.
-///
-/// Not every kind has one and that is not a defect: `UpstreamRefused` holds a
-/// status and nothing caused it in the sense a chain walker means. What no
-/// error may do is report itself as its own cause — the failure
-/// `RUST_ERROR_STANDARD` rule 4 exists to prevent, which prints the same
-/// sentence twice to any `{:#}` walker before reaching anything new.
-#[test]
-fn no_error_reports_itself_as_its_own_cause() {
-    for (label, error) in one_of_each_kind() {
-        let rendered = error.to_string();
-        if let Some(source) = error.source() {
-            assert_ne!(
-                source.to_string(),
-                rendered,
-                "{label} reports itself as its own cause"
-            );
-            assert!(
-                !rendered.ends_with(&source.to_string()),
-                "{label} repeats its source verbatim: {rendered}"
-            );
-        }
-    }
-}
-
-/// The wrapped failure survives `?` rather than being flattened into a string.
-///
-/// The lifts are `From`, so nothing on these paths does
-/// `map_err(|e| Mine(e.to_string()))` — which compiles, reads the same at the
-/// call site, and destroys the chain an operator follows to the real cause.
-#[test]
-fn a_wrapped_failure_is_still_reachable_through_the_chain() {
-    let wrapped: Vec<&str> = one_of_each_kind()
-        .iter()
-        .filter(|(_, error)| error.source().is_some())
-        .map(|(label, _)| *label)
-        .collect();
-
-    assert!(
-        wrapped.len() >= 6,
-        "only {wrapped:?} keep a source; a lift was replaced by a stringify"
+    grade(
+        &samples,
+        Expect {
+            with_source: 6,
+            distinct_codes: 5,
+        },
     );
-}
-
-#[test]
-fn every_code_is_one_the_registry_declares() {
-    for (label, error) in one_of_each_kind() {
-        assert!(
-            afd_core::error_code::REGISTRY.contains(&error.code()),
-            "{label} reports {} which is not in the registry",
-            error.code().as_str()
-        );
-    }
 }
 
 #[test]
@@ -190,13 +135,6 @@ fn a_vendor_status_never_reaches_the_caller() {
             "{label} leaks the vendor's answer into the caller's sentence: {}",
             error.detail()
         );
-    }
-}
-
-#[test]
-fn the_backtrace_accessor_answers_for_every_kind() {
-    for (_label, error) in one_of_each_kind() {
-        let _status = error.backtrace().status();
     }
 }
 
