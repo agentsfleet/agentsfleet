@@ -48,13 +48,13 @@ it("pins improvement to the displayed revision and requires renewed access revie
   expect(href).toContain(`fleet=${FLEET.id}&setup_revision=${FLEET.setup_revision}`);
 });
 
-it("shows the saved purpose, instructions, version, and read-only triggers together", () => {
+it("shows the saved purpose, instructions, version, and schedule together", () => {
   const fleet = FleetDetailSchema.parse(FLEET_DETAIL);
   render(<SetupPanel fleet={fleet} workspaceId={WORKSPACE} />);
   expect(screen.getByText(fleet.definition.description)).toBeTruthy();
   expect(screen.getByText(new RegExp(`Saved version ${fleet.setup_revision}`))).toBeTruthy();
   expect(screen.getByRole("region", {name: "Saved instructions"})).toBeTruthy();
-  expect(screen.getByRole("region", {name: "Configured triggers"})).toBeTruthy();
+  expect(screen.getByRole("region", {name: "Schedule"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
   expect(screen.queryByLabelText("Saved configuration")).toBeNull();
   expect(screen.queryByRole("link", {name: "Open setup"})).toBeNull();
