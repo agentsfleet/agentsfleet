@@ -81,6 +81,11 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 | `rustd/crates/afd_core/src/{lib,catalogue}.rs`, `rustd/crates/afd_tenant/src/models/**`, `rustd/crates/{afd_admin,afd_tenant,afd_credential}/Cargo.toml` | EDIT / CREATE | §8: shared typed price/evidence records; advanced-filtered reads and atomic administrator replacements |
 | `rustd/crates/afr_providers/{assets,src,tests}/**`, `rustd/crates/afr_providers/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_wire/src/report/**` | EDIT / CREATE | §8: native Gemini and Ollama wires, mocked transport proofs and cache-write usage |
 | `ui/packages/app/**`, `cli/src/**` (model picker and provider commands) | EDIT / CREATE / DELETE | §8: catalogue display names, explicit advanced selection, precise prices, no static model suggestions; bounded test files |
+| `rustd/crates/afd_billing/src/{biller,price,ledger,limits}/**` | CREATE | §9: the `Biller` trait, the pure `Rater`, `LedgerBiller`, budget limits over `billing.usage_lines` |
+| `rustd/crates/afd_billing/src/{store,charge,meter,rates,budget}.rs`, `rustd/crates/afd_fleet/src/lease/**`, `rustd/crates/afd_authoring/src/{lease,model,review,maintenance}/**` | EDIT / DELETE | §9: both paths call the `Biller`; their own money SQL and rounding go |
+| `rustd/crates/afd_wire/src/{usage,report}/**`, `rustd/crates/afd_api_runner/src/**`, `rustd/crates/afr_supervisor/src/**`, `rustd/crates/afr_agent/src/**` | CREATE / EDIT | §9: per-request usage lines on renew and report |
+| `schema/20*_billing_*.sql` | EDIT / CREATE / DELETE | §9: `billing.usage_lines` and `billing.holds`; `fleet_charges` and `authoring_settlements` removed |
+| `rustd/crates/agentsfleetd/src/plane/**` | EDIT | §9: constructs `LedgerBiller` with `OutagePolicy::Open` |
 | `docs/reviews/model-catalogue/**` | CREATE | §8: provider verification, measured checks and exact handover for the other agent's paths |
 | `rustd/crates/afd_db/Cargo.toml`, `rustd/crates/afd_db/tests/**` | EDIT / CREATE | §8: real seeder through the canonical migrator; price-table shape and grants |
 | `rustd/crates/afr_telemetry/src/labels/tests.rs`, `docs/metrics.runner.census.tsv` | EDIT | §8: Gemini and Ollama are two added closed provider labels; retain the label-product test and declare its exact series count |
@@ -182,6 +187,58 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 - **Dimension 8.10** — the native `gemini` route carries tool calls across turns with their thought signatures, separate from OpenRouter's Gemini route (mocked transport) → Test `test_native_gemini_continues_tool_calls`
 - **Dimension 8.11** — every price carries source URL, verification time, effective dates, unit and conditions, and the seeder refuses one without them → Test `test_price_rows_carry_provenance`
 
+### §8 UI follow-up — user-reported fixes
+
+Indy added these fixes on October 19, 2026. The UI stream owns application and design-system files under `ui/packages/**` and this tracking section.
+Backend requests remain in [M229_UI_REQUESTS.md](M229_UI_REQUESTS.md). Completed rows name their commits; application unit tests and coverage await Claude's checks.
+
+| Report | Required result | Progress / evidence |
+|---|---|---|
+| 1 | Meaningful setup-chat titles; preserve explicit renames. | `2ead62453`: derived titles and rename; automatic saved titles requested from server. |
+| 2 | Search all private chats, with honest scope and pagination. | Loaded-title search is explicit; full search requested from server. |
+| 3 | Selecting a chat keeps its position and avoids the new-fleet page flash. | `2ead62453`: stable ordering and selection-specific loading. |
+| 3a | Delete a private setup chat with confirmation and clear failures. | `2ead62453`: shared deletion action and confirmation. |
+| 3b | Show draft, saved, version, and publication state from recorded data. | `2ead62453`: current chat state; list revision summaries requested from server. |
+| 4 | Remove Review Setup; save directly with current setup validation. | `2ead62453`: inline setup and direct Save / Save changes. |
+| 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | Correct source is revision-bound; purpose and saved-screen simplification in progress. |
+| 6 | Combine Setup and Trigger; show triggers and schedules read-only. | In progress. |
+| 7 | Use the shared table row hover on runner leases. | Pending. |
+| 8 | Retain lease history and prevent missing Open fleet destinations. | UI checking pending; retained history and authorized destinations requested from server. |
+| 9 | Rename runner lease Outcome to Status. | Pending. |
+| 10 | Move lease inspection beneath its fleet label; remove the chevron column. | Pending. |
+| 11 | Keep Status / Created placement and row hover consistent across tables. | Pending. |
+| 12 | Rename This workspace to Workspace; explain library visibility. | `4662cda2a`: scope explanation and Workspace label. |
+| 13 | Add a New fleet action to the empty workspace library. | `4662cda2a`. |
+| 14 | Show the full Secrets search focus border on the first click. | Pending shared input fix. |
+| 15 | Use the agent callsign across recents, fleets, leases, and billing; billing shows only the callsign. | Pending. |
+| 16 | Make the credit balance stand out with a contrasting accent. | Pending. |
+| 17 | Improve Platform menu icons, alignment, and active destinations. | Pending. |
+| 18 | Improve Settings menu icons, alignment, and active destinations. | Pending. |
+| 19 | Remove repeated Encrypted and hidden rows; emphasize Encrypted in the Secrets subtitle. | Pending. |
+| 20a | Standardize runner Activity headings: Activity, Details, and Created. | Pending. Created records the activity time. |
+| 20b | Show descriptive runner activities for both existing and future rows. | Investigating recorded fields and typed presentation. |
+| 20c | Explain activity details without repeating the activity timestamp. | Pending. |
+| 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | Investigating; live failure cause unconfirmed. |
+| 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | Pending. |
+
+The catalogue editor and picker landed in `43b537a19`, `7152af4d2`, `c50b4b630`, and `98c184bdc`.
+Commit hooks passed for those commits and the completed follow-ups. This record makes no unit-test or coverage claim.
+
+### §9 — One billing lifecycle behind a `Biller` trait
+
+Fleet runs and setup chat bill through one lifecycle. Work reports usage per provider request; one pure `Rater` prices each request by its whole-request prompt tier and its request time; the priced lines land in `billing.usage_lines` inside the work's own transaction; then an `Arc<dyn Biller>` moves money after commit. `LedgerBiller` (wallets and holds in Postgres) is the built-in implementation; a queue or third-party biller is another implementation of the same trait. Design and the before/after map: [`billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) §11. Decisions: Discovery (Billing revamp).
+
+- **Dimension 9.1** — usage is reported per provider request as `{seq, at, prompt, cached_read, cache_write, cache_write_5m, cache_write_1h, output}` plus runtime, and a line repeated with the same `(work, seq)` charges once → Test `test_usage_lines_deduplicate_on_sequence`
+- **Dimension 9.2** — one `Rater` prices every line: tier by whole-request prompt size, price by request time, self-managed charges runtime only, each token category rounds up per line → Test `test_rater_prices_each_line_by_tier_and_date`
+- **Dimension 9.3** — a reported request time outside its work's window is clamped to that window before pricing → Test `test_request_time_is_clamped_to_the_work`
+- **Dimension 9.4** — `Biller` has `reserve`, `settle`, `release` and `balance`; one conformance suite (idempotency, release, short balance, racing holds) passes for every implementation → Test `test_every_biller_passes_the_conformance_suite`
+- **Dimension 9.5** — a fleet run reserves at admission, settles and reserves again at each renewal, settles and releases at report, and an expired lease bills its last runtime → Test `test_fleet_expiry_bills_its_last_slice`
+- **Dimension 9.6** — setup chat reserves at claim and per model call and settles at report through the same `Biller`, with no money SQL of its own → Test `test_setup_chat_settles_through_the_biller`
+- **Dimension 9.7** — `billing.usage_lines` replaces `billing.fleet_charges` and `billing.authoring_settlements`; the tenant charges page reads that one table, and fleet budgets count its rows → Test `test_charges_page_reads_one_ledger`
+- **Dimension 9.8** — `OutagePolicy::Open` is chosen at the biller's construction site: a biller that cannot answer admits the work and its lines settle later → Test `test_billing_outage_fails_open`
+- **Dimension 9.9** — concurrent holds for one payer never exceed the balance the biller can see → Test `test_concurrent_holds_cannot_exceed_balance`
+- **Dimension 9.10** — lines committed without a settlement (a crash between commit and `settle`) are settled by the sweeper exactly once → Test `test_unsettled_lines_are_resettled`
+
 ### §5 — Rebuilt from empty, proven locally, migrated on merge
 
 Runs after §6 and §7. The proof is local: the Docker lane's Postgres and Dragonfly are torn down to nothing, `agentsfleetd migrate` builds the schema from empty, and the full integration lane and a daemon-plus-runner smoke run pass against it. No hand procedure touches a deployed database. Development is torn down by the owner, and when the PR merges with this spec in `done/`, the release command migrates it from empty like any deploy.
@@ -197,7 +254,7 @@ Draft messages: unchanged on the wire; `operation_id` is stored on authoring.mes
 Drafts: `closed_at` and `expires_at` unchanged on the wire.
 CLI: `agentsfleet tenant provider set` unchanged from outside; server writes model.tenant_models.
 Model picker (operator and tenant catalogue reads): each entry adds `display_name`, boolean `advanced`, context provenance and priced tiers with effective dates; pruned entries are absent. Tenant `GET /v1/models?advanced=true` explicitly requests advanced entries; default reads omit them.
-Runner report usage: adds cache-write token counts by lifetime, so writes bill at their own rate (§8).
+Runner renew and report usage: per-request lines `{seq, at, prompt, cached_read, cache_write, cache_write_5m, cache_write_1h, output}` replace the cumulative `input_tokens` / `cached_input_tokens` / `output_tokens` totals (§9).
 Tables and columns: docs/architecture/postgres_schemas.md is the interface; renames there are final.
 ```
 
@@ -277,6 +334,16 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 8.9 | integration | `test_ollama_pricing_stays_unknown` | mocked `/api/tags` → exact server tags with endpoint kind; price stays unknown; daemon never dials local; shared runner and non-local http are refused |
 | 8.10 | unit | `test_native_gemini_continues_tool_calls` | mocked stream with a function call and thought signature → next request echoes the signature |
 | 8.11 | unit | `test_price_rows_carry_provenance` | allowlist row missing `source_url` or `verified_at` → seeder refuses it by name |
+| 9.1 | integration | `test_usage_lines_deduplicate_on_sequence` | the same `(work, seq)` line logged and settled twice → one `billing.usage_lines` row, one debit; a new `seq` → a second row |
+| 9.2 | unit | `test_rater_prices_each_line_by_tier_and_date` | 272,000 prompt tokens → base tier, 272,001 → upper tier for the whole request; cache reads and writes count toward the prompt; a self-managed line → runtime only; 1 token at 0.006 USD/Mtok → 6 nanos rounded up from 0.006 |
+| 9.3 | unit | `test_request_time_is_clamped_to_the_work` | `at` before the work's start → priced at the start; after its end → priced at the end |
+| 9.4 | integration | `test_every_biller_passes_the_conformance_suite` | `LedgerBiller` and `RecordingBiller` → idempotent reserve, settle and release; a short balance answers `Short`; release after settle frees the rest |
+| 9.5 | integration | `test_fleet_expiry_bills_its_last_slice` | lease expires after 30 s unreported → one runtime line of 30 s charged and the hold released |
+| 9.6 | integration | `test_setup_chat_settles_through_the_biller` | a setup-chat turn → its lines in `billing.usage_lines`, its hold released, no row in any authoring money table |
+| 9.7 | integration | `test_charges_page_reads_one_ledger` | fleet and setup-chat lines for one tenant → one page newest-first; the fleet budget's day sum equals its lines |
+| 9.8 | integration | `test_billing_outage_fails_open` | biller unavailable under `OutagePolicy::Open` → the work is admitted (`Unconfirmed`); under `Closed` → refused |
+| 9.9 | integration | `test_concurrent_holds_cannot_exceed_balance` | two concurrent reservations of 60% of the balance → exactly one `Held` |
+| 9.10 | integration | `test_unsettled_lines_are_resettled` | a line committed without settlement → the sweeper settles it once; a second pass charges nothing |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -393,6 +460,8 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **§8 isolated implementation** — owner instruction (Oct 18, 2026): branch `feat/m229-model-catalogue` starts at `53e3d093ece9ff39fde0290924ff30b7ac70efca`; local commits only, no push or Pull Request. The sibling agent owns `afd_http`, `afd_api_*`, `agentsfleetd`, `afd_bench` and `public/openapi.json`; required edits there are a file-and-line handover. Service tiers (OpenAI Batch, Flex and Fast) and Anthropic's US-only 1.1× pricing are outside this section. Whole-file Rust coverage must reach 99%; TypeScript coverage 100%.
 - **Stale architecture docs** — Indy (2026-10-18), via AskUserQuestion: "Delete it" for `docs/architecture/tenant_provider_v2.md` (a selection shape M229 did not build) and "Cut §5–§9" for `scenarios/production-deploy-repair.md` (a repair-record design with no tables or code).
 - **Docs branch ahead of code** — `chore/m229-schema-clean-slate-changelog` at `c3d4c8a` in `~/Projects/agentsfleet-worktrees/m229-docs` (docs `make test` 22 OK, `make lint` clean) states, from this spec, behaviour the code does not have yet; each is re-checked against code before the PR: 4.7 most API types still send milliseconds and `public/openapi.json` still carries `expires_at_ms` (`MintCredentialResponse`, `PollSessionResponse`) with no `format: date-time`; 4.5 `deletion_generation` still in 31 places under `crates/*/src`; 4.2 the replay key expires 24 hours after purge today, not 24 hours from the first attempt (`replay/sql.rs` PURGE); 4.3 Library removal keeps revisions a fleet references today (`library/remove.rs` UNREFERENCED); runner `status` replaces `admin_state` in OpenAPI `RunnerItem` and `RunnerAdminPatchResponse`.
+- **Billing revamp** — Indy (2026-10-18/19), via AskUserQuestion and chat: usage reporting "I choose A" (per-request records, priced by the daemon, deduplicated on work and sequence); "Biller System must be abstracted by trait, one of the Trait Object is the inbuilt billing system", so a queue or a third party can bill later; the trait owns both gates and charges ("Both: admit + settle"); "Think on a large refactor and i command you to do so, since we have an opportunity to revamp"; one ledger ("One usage_lines"); rounding "Round up per line"; outage "keep it fail OPEN with an ability to flip later … since when we are early we must adopt the optimistic eagar path to promote usage from users". Setup chat moves from failing closed to failing open with fleets. Indy reviews the abstraction before implementation: architecture §11.
+- **Gemini key out of the URL** — Indy (2026-10-19): "do what is needed to cover the security loophole. i leave it to you." rig-core 0.44 builds `?key=` (`providers/gemini/mod.rs:91`); `afd_inference`'s `HeaderKey` transport moves it to `x-goog-api-key` for both runner and daemon (`55eaf1d76`, `df93412df`).
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.

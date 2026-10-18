@@ -181,6 +181,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2010_billing_fleet_charges.sql"),
     migration!("2020_billing_authoring_settlements.sql"),
     migration!("2030_billing_authoring_report_receipts.sql"),
+    migration!("2040_billing_usage_lines.sql"),
+    migration!("2050_billing_holds.sql"),
     // 21xx memory
     migration!("2100_memory_entries.sql"),
 ];
