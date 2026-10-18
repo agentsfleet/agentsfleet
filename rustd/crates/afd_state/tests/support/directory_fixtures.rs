@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase};
 use afd_db::{Db, Migrator};
 use sqlx::AssertSqlSafe;
 
@@ -35,7 +35,8 @@ pub(crate) struct Fixtures {
 impl Fixtures {
     /// Opens the api-role pool against the database the lane already migrated.
     ///
-    /// What almost every test here wants. The two that DESTROY something take
+    /// What almost every test here wants. The two that DESTROY something, and
+    /// the one that files an unsaltable blank subject, take
     /// [`Fixtures::create_disposable`] instead.
     pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
@@ -52,9 +53,12 @@ impl Fixtures {
     /// cannot run against the shared lane database for the obvious reason: the
     /// next test would find the table, or the database, gone.
     ///
-    /// It stays two tests wide because a database of your own costs the whole
-    /// migration chain, so it is worth having only when the test is ABOUT the
-    /// datastore failing.
+    /// Also for the blank-subject row: `uq_users_oidc_subject` admits one blank
+    /// subject, which a shared database would already hold on a second run.
+    ///
+    /// It stays three tests wide because a database of your own costs the whole
+    /// migration chain, so it is worth having only when the shared lane cannot
+    /// hold what the test files.
     pub(crate) async fn create_disposable() -> Self {
         let lane = TestDatabase::create().await;
         let migrator = lane.open(DbRole::Migrator, &[]).await;
@@ -85,8 +89,23 @@ impl Fixtures {
 }
 
 /// The digest a presented credential is stored under.
+///
+/// Salted with [`per_run`]: `key_hash`, `token_hash` and `credential_hash` are
+/// each unique, so a fixed credential filed by an earlier run against a
+/// database the lane did not reset (`KEEP_TEST_STATE=1`) would refuse the
+/// insert. A lookup in the same run computes the same salt, so it still finds
+/// its row.
 pub(crate) fn digest_of(presented: &str) -> Digest {
-    Digest::of(&Presented::new(presented).expect("a fixture credential is not blank"))
+    Digest::of(&Presented::new(&per_run(presented)).expect("a fixture credential is not blank"))
+}
+
+/// `name`, made this run's own with the process id.
+///
+/// For a value a unique index covers — a digest, or a user's
+/// `oidc_subject` (`uq_users_oidc_subject`) — that a test would otherwise spell
+/// the same way every run.
+pub(crate) fn per_run(name: &str) -> String {
+    format!("{name}-{}", std::process::id())
 }
 
 // ── Row seeding ─────────────────────────────────────────────────────────────
@@ -136,39 +155,42 @@ pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
 impl Fixtures {
     /// Inserts a tenant, returning its identifier.
     pub(crate) async fn tenant(&self, id: &str) -> String {
-        self.run(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'fixture', 0, 0)",
-            &[id],
-        )
-        .await;
+        let mut connection = self
+            .database
+            .acquire()
+            .await
+            .expect("a connection for seeding");
+        TenantSeed::new(id)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant row must insert");
         id.to_owned()
     }
 
     /// Inserts a user under `tenant`, returning its identifier.
     pub(crate) async fn user(&self, id: &str, tenant: &str, subject: &str) -> String {
         self.run(
-            "INSERT INTO core.users \
+            "INSERT INTO identity.users \
              (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $1 || '@example.test', 0, 0)",
+             VALUES ($1::uuid, $2::uuid, $3, $1 || '@example.test', now(), now())",
             &[id, tenant, subject],
         )
         .await;
         id.to_owned()
     }
 
-    /// Inserts a tenant api-key. `active` and `revoked_at` move together, which
-    /// the schema insists on: `ck_api_keys_revoked_iff_inactive` refuses a row
-    /// that is inactive without a revocation instant, or carries one while
-    /// active.
+    /// Inserts a tenant api-key, revoked unless `active`.
+    ///
+    /// Revocation is `revoked_at` being set; the key's name is its digest, which
+    /// is unique per test and so never trips `uq_api_keys_tenant_id_name`.
     pub(crate) async fn api_key(&self, tenant: &str, digest: &Digest, subject: &str, active: bool) {
-        let revoked_at = if active { "NULL" } else { "1" };
+        let revoked_at = if active { "NULL" } else { "now()" };
         self.run(
             &format!(
-                "INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, \
-                  active, revoked_at, created_at, updated_at) \
-                 VALUES ($4::uuid, $1::uuid, $2, '', $2, $3, {active}, {revoked_at}, 0, 0)"
+                "INSERT INTO identity.api_keys \
+                 (id, tenant_id, name, description, key_hash, created_by_subject, \
+                  revoked_at, created_at, updated_at) \
+                 VALUES ($4::uuid, $1::uuid, $2, '', $2, $3, {revoked_at}, now(), now())"
             ),
             &[tenant, digest.as_str(), subject, &identifier(minted_seed())],
         )
@@ -183,39 +205,43 @@ impl Fixtures {
         digest: &Digest,
         revoked: bool,
     ) {
-        let revoked_at = if revoked { "1" } else { "NULL" };
+        let revoked_at = if revoked { "now()" } else { "NULL" };
         self.run(
             &format!(
-                "INSERT INTO core.cli_credentials \
+                "INSERT INTO identity.cli_credentials \
                  (id, user_id, tenant_id, machine_name, credential_hash, \
                   credential_prefix, deployment, created_from_address, \
-                  created_at, revoked_at) \
+                  revoked_at, created_at, updated_at) \
                  VALUES ($4::uuid, $1::uuid, $2::uuid, 'fixture', $3, 'afc_', \
-                         'test', '127.0.0.1', 0, {revoked_at})"
+                         'test', '127.0.0.1', {revoked_at}, now(), now())"
             ),
             &[user, tenant, digest.as_str(), &identifier(minted_seed())],
         )
         .await;
     }
 
-    /// Inserts a runner in `admin_state`.
-    pub(crate) async fn runner(
-        &self,
-        id: &str,
-        digest: &Digest,
-        admin_state: &str,
-        degraded: bool,
-    ) {
+    /// Inserts a runner holding `status`, its token stored as `digest`.
+    ///
+    /// Written here rather than through `afd_db`'s `RunnerSeed`, whose token
+    /// digest is the runner's own id: this suite looks a runner up BY its
+    /// digest, so the digest is the column under test.
+    pub(crate) async fn runner(&self, id: &str, digest: &Digest, status: &str, degraded: bool) {
+        let degraded_reason = if degraded {
+            "'fixture-degraded'"
+        } else {
+            "NULL"
+        };
         self.run(
             &format!(
-                "INSERT INTO fleet.runners \
-                 (id, host_id, token_hash, sandbox_tier, admin_state, labels, \
-                  network_policy, registry_allowlist, degraded, last_seen_at, created_at, \
-                  updated_at) \
-                 VALUES ($1::uuid, 'fixture-host', $2, 'standard', $3, '{{}}'::jsonb, \
-                         'deny_all_egress', '[]'::jsonb, {degraded}, 0, 0, 0)"
+                "INSERT INTO runner.runners \
+                 (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
+                  registry_allowlist, worker_count, degraded_reason, last_seen_at, \
+                  lease_version, created_at, updated_at) \
+                 VALUES ($1::uuid, 'fixture-host', $2, 'standard', $3, '[]'::jsonb, \
+                         'deny_all_egress', '[]'::jsonb, 1, {degraded_reason}, now(), 0, \
+                         now(), now())"
             ),
-            &[id, digest.as_str(), admin_state],
+            &[id, digest.as_str(), status],
         )
         .await;
     }

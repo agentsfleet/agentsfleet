@@ -149,7 +149,7 @@ impl Resolved for TenantApiKeyRow {
     const STATEMENT: &'static str = sql::SELECT_TENANT_API_KEY;
 
     fn into_record(self) -> Result<CredentialRecord> {
-        rows::person(&self.tenant, &self.subject, self.live)
+        rows::person(&self.tenant, &self.subject, rows::liveness(self.usable))
     }
 }
 
@@ -159,7 +159,7 @@ impl Resolved for CliCredentialRow {
     const STATEMENT: &'static str = sql::SELECT_CLI_CREDENTIAL;
 
     fn into_record(self) -> Result<CredentialRecord> {
-        rows::person(&self.tenant, &self.subject, self.live)
+        rows::person(&self.tenant, &self.subject, rows::liveness(self.usable))
     }
 }
 
@@ -169,7 +169,8 @@ impl Resolved for RunnerTokenRow {
     const STATEMENT: &'static str = sql::SELECT_RUNNER_TOKEN;
 
     fn into_record(self) -> Result<CredentialRecord> {
-        rows::machine(&self.runner, self.degraded, self.live)
+        let live = self.live();
+        rows::machine(&self.runner, self.degraded, live)
     }
 }
 

@@ -141,7 +141,7 @@ impl Runners {
             host_id,
             token_digest: token.digest().as_str(),
             sandbox_tier: tier_wire(assigned.sandbox_tier),
-            status: sql::ADMIN_STATE_ACTIVE,
+            status: sql::RUNNER_STATUS_ACTIVE,
             labels_json: &labels_json,
             last_seen_at: sql::NEVER_SEEN,
             event_id: &event_id,

@@ -89,7 +89,7 @@ pub async fn lock(
         now: census.checked_at,
         workers: host.worker_count,
         occupied: census.occupied,
-        claims_allowed: !host.degraded && host.status == crate::sql::ADMIN_STATE_ACTIVE,
+        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
     }))

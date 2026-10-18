@@ -51,7 +51,7 @@ impl Fixture {
             .expect("seed the capacity workspace");
         RunnerSeed::new(
             fixture.runner.as_str(),
-            afd_runner::sql::ADMIN_STATE_ACTIVE,
+            afd_runner::sql::RUNNER_STATUS_ACTIVE,
             POLICY,
         )
         .workers(workers)

@@ -156,9 +156,9 @@ impl Liveness {
         let rows = sqlx::query_as::<_, DueRow>(sql::sweep::SELECT_DUE_RUNNERS)
             .bind(sql::NEVER_SEEN.to_sqlx())
             .bind(RUNNER_OFFLINE_AFTER)
-            .bind(sql::ADMIN_STATE_ACTIVE)
+            .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(sql::ADMIN_STATE_DRAINING)
+            .bind(sql::RUNNER_STATUS_DRAINING)
             .bind(BATCH_LIMIT)
             .fetch_all(&mut *connection)
             .await
@@ -245,8 +245,8 @@ impl Liveness {
         let event_id = self.event_id()?;
         let drained: i64 = sqlx::query_scalar(sql::sweep::MARK_DRAINED_IF_IDLE)
             .bind(runner_id.as_str())
-            .bind(sql::ADMIN_STATE_DRAINED)
-            .bind(sql::ADMIN_STATE_DRAINING)
+            .bind(sql::RUNNER_STATUS_DRAINED)
+            .bind(sql::RUNNER_STATUS_DRAINING)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(event_id.as_str())
             .bind(sql::event_type::RUNNER_DRAINED)
