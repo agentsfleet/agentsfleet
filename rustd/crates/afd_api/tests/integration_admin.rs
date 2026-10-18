@@ -15,8 +15,8 @@ use afd_db::test_util::{ModelSeed, PlatformDefault, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
-const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","output_nanos_per_mtok":"25"}"#;
-const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","output_nanos_per_mtok":"30"}"#;
+const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","metadata":{"display_name":"Fixture model","context_cap_tokens":200000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","context_cap_tokens":250000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"30","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
 #[path = "integration_admin/model_refusals.rs"]
 mod model_refusals;
 #[tokio::test]
