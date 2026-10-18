@@ -90,21 +90,15 @@ done
 
 # The target is NOT empty, and that is what a naive restore gets wrong.
 #
-# It was migrated first — that is this playbook's own step 4 — so it already
-# holds everything the migrations write. Slot 1310 seeds
-# `model.catalogue_version` with `id = 1` under a singleton CHECK, so
-# restoring the source's row is a duplicate key every time. And
-# `fleet.activity_counters` is maintained by triggers (slots 1770 and 2010):
-# restoring `fleet.events` and `billing.fleet_charges` creates counter rows
-# before the dump's own counter rows arrive, so the load either collides or silently substitutes
-# trigger defaults for the counts the source actually had. A real run hit the
-# second of these on the first attempt.
+# It was migrated first, so it already holds seeded catalogue rows. Restoring
+# those rows without clearing them collides on their primary keys. Activity
+# triggers also change counters during inserts; the dump must restore its own
+# recorded counters rather than recompute them in COPY order.
 #
 # So the load truncates first and runs with triggers suppressed, and all of it
 # — truncate and every COPY — happens inside ONE transaction. A failure rolls
-# the whole thing back to the migrated-and-empty state the step began from,
-# which is what makes a retry clean instead of leaving a half-populated target
-# that has to be recreated.
+# the whole thing back to the state the step began from, which makes a retry
+# clean instead of leaving a half-populated target that has to be recreated.
 cat >"$work_dir/load.sql" <<'SQL'
 -- Suppress triggers for the load so the dump's own values land, rather than
 -- whatever a trigger would compute from the insert order. Requires no
@@ -124,7 +118,7 @@ BEGIN
     AND table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
     AND table_schema NOT LIKE 'pg\_%'
     AND table_schema NOT LIKE 'pscale%'
-    AND NOT (table_schema = 'audit' AND table_name LIKE 'schema_migration%');
+    AND NOT (table_schema = 'audit' AND table_name = '_sqlx_migrations');
   IF targets IS NULL THEN
     RAISE EXCEPTION 'no user tables on the target — it was never migrated';
   END IF;
