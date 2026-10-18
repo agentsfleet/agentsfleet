@@ -82,7 +82,7 @@ function createEventColumns(
       key: "time",
       header: TIME_LABEL.created,
       hideOnMobile: true,
-      sortValue: (row) => row.created_at,
+      sortValue: (row) => Date.parse(row.created_at),
       cell: (row) => <EventTimeCell row={row} />,
     },
     {
