@@ -4,8 +4,10 @@
 //! one tool-result image onto a Messages `image` block and a Responses
 //! `input_image`, each from the same base64 content, so the two wires that
 //! take an image take it from here (`rig-core/src/providers/anthropic/
-//! completion.rs`, `openai/responses_api/mod.rs`). Chat completions take text
-//! alone, which [`Wire::carries_images`](crate::Wire::carries_images) says.
+//! completion.rs`, `openai/responses_api/mod.rs`); Gemini and Ollama take it
+//! inside the result or, where the wire refuses that, in the user message
+//! rig's history adapter adds. Chat completions take text alone, which
+//! [`Wire::carries_images`](crate::Wire::carries_images) says.
 
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
