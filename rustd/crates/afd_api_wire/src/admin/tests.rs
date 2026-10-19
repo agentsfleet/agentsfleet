@@ -103,17 +103,20 @@ fn a_platform_key_put_refuses_a_nul_in_provider_or_model() {
         model: Cow::Borrowed(model),
         base_url: None,
     };
-    put("anthropic", "claude-opus-5")
-        .validate()
-        .expect("a clean body passes");
+    assert!(
+        put("anthropic", "claude-opus-5").validate().is_ok(),
+        "a clean body passes"
+    );
     for broken in [
         put("anth\0ropic", "claude-opus-5"),
         put("anthropic", "claude\0-opus-5"),
     ] {
-        let report = broken.validate().expect_err("a NUL is refused");
+        let refused = broken.validate().err().map(|report| report.to_string());
         assert!(
-            report.to_string().contains(afd_validate::rules::HAS_NUL),
-            "{report}"
+            refused
+                .as_deref()
+                .is_some_and(|report| report.contains(afd_validate::rules::HAS_NUL)),
+            "a NUL is refused as one: {refused:?}"
         );
     }
 }
