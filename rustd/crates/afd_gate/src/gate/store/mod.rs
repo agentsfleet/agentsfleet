@@ -15,7 +15,7 @@ use afd_db::Db;
 use afd_dragonfly::{Dragonfly, ReadyIndex};
 
 use super::sql;
-use crate::error::{Result, query};
+use crate::error::{DETAIL_GATE_REFERENCE_UNWRITABLE, Result, encoded, query};
 use crate::gate::decision::{Answer, answer};
 use crate::gate::pending::{Evaluation, GateRef, evaluate};
 
@@ -164,13 +164,9 @@ impl Gates {
         timeout: Duration,
     ) -> Result<()> {
         let lifetime = reference_lifetime(timeout);
-        // Infallible for this shape — a one-field record of a string has no
-        // serializer error to reach — but the failure is not
-        // swallowed: an unwritable reference would leave a parked event unable
-        // to find its own gate, which is the one outcome worth an error.
-        let encoded = serde_json::to_string(reference).map_err(|_shape| {
-            crate::error::rejected(crate::error::DETAIL_GATE_REFERENCE_UNWRITABLE)
-        })?;
+        // An unwritable reference would leave a parked event unable to find
+        // its own gate, which is the one outcome worth an error.
+        let encoded = encoded(reference, DETAIL_GATE_REFERENCE_UNWRITABLE)?;
         self.queue
             .set_for(
                 &key::event_ref(fleet_id.as_str(), event_id),
@@ -211,10 +207,12 @@ impl Gates {
             // Only reachable in the window a mirror write missed, which is what
             // makes it worth a line: this is the metric that says the write
             // side has a gap, and it is silent when it does not.
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let outcome = answer.as_str();
             tracing::info!(
                 event = EVENT_DB_FALLBACK,
                 action_id = action,
-                outcome = answer.as_str(),
+                outcome,
                 "the decision mirror was absent and the durable row answered"
             );
         }
