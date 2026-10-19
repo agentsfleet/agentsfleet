@@ -15,7 +15,10 @@ use crate::catalogue::{CatalogueMetadata, CataloguePrice, PRICES_MAX, price_sche
 pub struct PlatformKeyPut<'a> {
     /// Provider and vault-row name.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub provider: Cow<'a, str>,
     /// Workspace holding that vault row.
     #[serde(borrow)]
@@ -26,7 +29,10 @@ pub struct PlatformKeyPut<'a> {
     pub source_workspace_id: Cow<'a, str>,
     /// Priced model selected as platform default.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub model: Cow<'a, str>,
     /// Custom endpoint for the compatible-provider mode.
     #[serde(borrow)]
