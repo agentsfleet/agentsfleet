@@ -25,6 +25,16 @@ export const ACCOUNT_NAV: NavEntry[] = [
   { label: "Billing", path: "/settings/billing", icon: CreditCardIcon },
 ];
 
+export const ACCOUNT_SHORTCUTS: NavEntry[] = [
+  { label: "Usage", path: "/settings/billing", icon: CreditCardIcon },
+];
+
+export const SERVICE_SHORTCUTS: NavEntry[] = [
+  { label: "Connect apps", path: "integrations", icon: PlugIcon, workspaceScoped: true },
+  { label: "Get API keys", path: "/settings/api-keys", icon: KeyRoundIcon },
+  { label: "Manage secrets", path: "secrets", icon: LockKeyholeIcon, workspaceScoped: true },
+];
+
 export const BOTTOM_NAV: NavEntry[] = [
-  { label: "Docs", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
+  { label: "Learn more", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true, analyticsSource: "app_sidebar_docs" },
 ];

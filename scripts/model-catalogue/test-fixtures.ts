@@ -16,6 +16,7 @@ export function priceFixture(overrides: Partial<Price> = {}): Price {
 export function modelFixture(overrides: Partial<Model> = {}): Model {
   return { provider: "fireworks", model_name: MODEL_NAME, display_name: "GLM 5.3 Flash", advanced: false,
     context: { tokens: 1_048_576, source_url: `https://api.fireworks.ai/v1/${MODEL_NAME}#contextLength`, verified_at: VERIFIED_AT },
+    inference: { api: "chat", base_url: "https://api.fireworks.ai/inference/v1", max_output_tokens: 943718 },
     context_unverified_reason: null, prices: [priceFixture()], ...overrides };
 }
 

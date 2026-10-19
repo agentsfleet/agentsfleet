@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
 import {
@@ -26,6 +26,8 @@ const workspaceSwitcherLoader = createIntentModuleLoader(
 
 export default function WorkspaceSwitcher({ workspaces, operatorScopes = [], collapsed = false }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+  const refreshed = useRef<string | null>(null);
   const workspaceSwitcher = useIntentModule(workspaceSwitcherLoader);
   const [activated, setActivated] = useState(false);
   const [open, setOpen] = useState(false);
@@ -48,6 +50,15 @@ export default function WorkspaceSwitcher({ workspaces, operatorScopes = [], col
     setOpen(false);
     setActivated(false);
   }, [pathname]);
+
+  // A persistent shell may have read before signup provisioning completed.
+  // Re-read server data once for this missing identity; never poll or provision
+  // an account from the browser. Failed reads retain the page retry surface.
+  useEffect(() => {
+    if (!routedId || active || refreshed.current === routedId) return;
+    refreshed.current = routedId;
+    router.refresh();
+  }, [routedId, active, router]);
 
   function preloadWorkspaceMenu() {
     void workspaceSwitcherLoader.preload();

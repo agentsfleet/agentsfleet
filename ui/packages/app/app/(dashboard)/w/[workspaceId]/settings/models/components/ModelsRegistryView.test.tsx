@@ -18,7 +18,7 @@ const COLUMNS: DataTableColumn<RegistryRow>[] = [
 it("filters loaded model names and providers while preserving the default when cleared", async () => {
   const onSortChange = vi.fn();
   render(<ModelsRegistryView rows={ROWS} columns={COLUMNS} platformDefault={null} sort={null} onSortChange={onSortChange} pending={false} />);
-  const input = screen.getByRole("searchbox", {name: "Search loaded models"});
+  const input = screen.getByRole("searchbox", {name: "Search models"});
   fireEvent.change(input, {target: {value: "ANTHROPIC"}});
   await waitFor(() => expect(screen.queryByText("Platform default")).toBeNull());
   expect(screen.getByText("claude-sonnet-5")).toBeTruthy();

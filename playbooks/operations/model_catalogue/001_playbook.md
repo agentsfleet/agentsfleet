@@ -2,7 +2,7 @@
 type: how-to
 audience: operator
 verified: 2026-10-19
-product_version: 0.61.0
+product_version: 0.62.1
 executable: false
 ---
 
@@ -12,7 +12,9 @@ executable: false
 
 Review and apply the curated catalogue to one environment.
 The seeder reads `scripts/model-library-allowlist.json` through Bun's native Postgres client.
-It writes identities to `model.platform_models` and dated prices to `model.platform_model_prices`.
+It writes identities and inference connections to `model.platform_models` and dated prices to `model.platform_model_prices`.
+Connections include the API, base URL, optional SDK dialect and output token limit.
+Re-priming fills missing connections and preserves saved administrator overrides.
 
 An apply deletes identities and price rows absent from the reviewed snapshot.
 Identity changes, price changes and the catalogue generation commit together.
@@ -62,33 +64,34 @@ Preserve every supplied rate when reviewing the complete price schedule.
    Read that diff before invoking the apply arm with `ENV=prod`.
    Type `prod` at its confirmation prompt.
 
-## Configure inference after pricing
+## Activate a primed model
 
-Freshly seeded rows contain rates and context metadata. A row also needs saved
-inference settings before setup chat or runtime can use it. This is a separate
-operator write: obtain approval for the target environment before saving.
+Priming supplies connection settings, context metadata and prices. Credentials and
+platform activation remain separate operator writes. Obtain approval for the target
+environment before activating a model.
 
-1. Sign in to the target dashboard with `model:admin` and open `/admin/models`.
-2. Edit the intended provider/model row. Provider and model identity stay locked.
-3. Set **Inference API** to the provider's supported Chat completions, Responses
-   or Messages API, or the native Gemini or Ollama API, and enter its
-   **Inference base URL**. Enter the physical
-   **Context window (tokens)** and **Model output limit (tokens)**. These are the
-   model's actual limits; authored operating thresholds are separate.
-4. Leave **SDK dialect (optional)** blank for the standard API, or enter a
-   supported Software Development Kit (SDK) dialect for that provider. The server
-   validates the route and dialect. Preserve the current rates unless a rate
-   change was also approved.
-5. Select **Save changes**, reload the page and reopen the row to check that the
-   settings persisted. The underlying update is `PATCH /v1/admin/models/{id}`;
-   its body is the model's `metadata`, its complete `prices` schedule (every
-   tier and date range, in integer nanos per million tokens) and the
-   `inference` object (`api`, `base_url`, optional `dialect`,
-   `max_output_tokens`). Omitting `inference` preserves the existing settings.
-6. Confirm the workspace has a credentialed registration for this model or an
-   enabled platform model. New fleet uses those eligible models; setup chat
-   additionally requires the selected SDK route to support tools. Saving
-   catalogue metadata alone does not provision credentials or select a default.
+1. Sign in with `model:admin` and open **Platform → Model library** (`/admin/models`).
+2. Select the intended row's default star, enter the provider API key and confirm.
+3. Open **New fleet** and confirm the model appears in the picker.
+   Setup chat also requires the selected SDK route to support tools.
+
+## Change connection settings or prices
+
+1. Edit the intended model. Provider and model identity stay locked.
+2. Review **Connection** first. The primed **Inference API**, **Inference base URL**
+   and **Model output limit (tokens)** normally need no changes.
+   **Dialect (optional)** selects a supported provider SDK dialect.
+3. Expand **Catalogue details** to change display name, context evidence or
+   **Advanced model**. Advanced models appear only after a user requests the
+   expanded model picker.
+4. Expand **Pricing** to review all dated prices and token thresholds.
+   **Add pricing tier** adds a long-prompt rate or a later effective interval.
+   One base tier is enough when the provider has a single rate.
+5. Select **Save changes** to save the connection, catalogue details and complete
+   price schedule together. Reload and reopen the row to verify the values.
+
+An existing connection is preserved when an API update omits `inference`.
+Saving metadata alone does not supply credentials or select a default.
 
 Implementation references: `rustd/crates/afd_wire/src/inference.rs`,
 `rustd/crates/afd_api_wire/src/admin_catalogue.rs`, and

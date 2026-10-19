@@ -40,7 +40,7 @@ export function ModelsRegistryView({ rows, columns, platformDefault, sort, onSor
     });
   }
   return <Section className="space-y-xl">
-    <CollectionToolbar label="Search loaded models" value={search} onChange={(value) => { setSearch(value); resetPage(); }} summary={`${matches.length} of ${rows.length} loaded models`} />
+    <CollectionToolbar label="Search models" value={search} onChange={(value) => { setSearch(value); resetPage(); }} summary={`${matches.length} of ${rows.length} models`} />
     <DataTable columns={columns} rows={matches.slice((currentPage - 1) * pageSize, currentPage * pageSize)} rowKey={rowKey} caption="Models" isLoading={pending || loading}
       sortKey={sort?.key} sortDirection={sort?.dir} onSortChange={(key) => { resetPage(); onSortChange(key); }}
       pagination={{kind: PAGINATION_KIND.page, page: currentPage, pageSize,

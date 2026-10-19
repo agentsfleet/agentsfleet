@@ -95,6 +95,10 @@ describe("app layouts and pages", () => {
 
     expect(signInMarkup).toContain("data-sign-in=");
     expect(signUpMarkup).toContain("data-sign-up=");
+    expect(signInMarkup).toContain("Forgot your password?");
+    expect(signInMarkup).toContain("on the password screen");
+    expect(signUpMarkup).toContain('href="/sign-in"');
+    expect(signUpMarkup).toContain("Sign in to reset your password");
     expect(signInMarkup).toContain("colorPrimary");
     expect(signUpMarkup).toContain("colorPrimary");
   });

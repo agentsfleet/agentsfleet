@@ -42,7 +42,7 @@ describe("admin price array editor", () => {
     const save = vi.fn();
     render(<Harness onSave={save} />);
     expect(screen.getByRole("button", { name: "Remove price 1" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Add price" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add pricing tier" }));
     fireEvent.click(screen.getByRole("button", { name: "Price 2" }));
     for (const [label, value] of [["Prompt tokens above", "272000"], ["Effective from", VERIFIED_AT], ["Price source URL", SOURCE_URL], ["Price verified at", VERIFIED_AT], ["Input ($/1M)", "4"], ["Cached ($/1M)", "0.1"], ["Output ($/1M)", "20"]]) change(label!, value!, 1);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -72,10 +72,12 @@ describe("admin price array editor", () => {
     expect((await screen.findAllByText("Effective until must be after effective from")).length).toBeGreaterThan(0);
     expect(save).not.toHaveBeenCalled();
   });
-  it("discloses optional inference semantics and hides its fields when left unchanged", () => {
-    render(<Harness onSave={vi.fn()} />);
-    fireEvent.click(screen.getByRole("switch", { name: "Write inference settings" }));
+  it("explains advanced visibility and configures an initially missing connection", () => {
+    render(<Harness onSave={vi.fn()} defaults={{ ...DEFAULTS, update_inference: false }} />);
     expect(screen.queryByLabelText("Inference API")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Configure connection" }));
+    expect(screen.getByLabelText("Inference API")).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Write inference settings" })).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: "Advanced model" }));
     expect(screen.getByRole("switch", { name: "Advanced model" }).getAttribute("aria-checked")).toBe("true");
   });
@@ -91,7 +93,7 @@ it("summarizes an overlapping tier even while that price row is collapsed", asyn
 it("caps the editor at 64 prices and permits another only after removing a row", () => {
   const prices = Array.from({ length: 64 }, (_, index) => ({ ...DEFAULTS.prices[0]!, prompt_tokens_above: String(index) }));
   render(<Harness onSave={vi.fn()} defaults={{ ...DEFAULTS, prices }} />);
-  expect(screen.getByRole("button", { name: "Add price" })).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", { name: "Add pricing tier" })).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", { name: "Remove price 1" }));
-  expect(screen.getByRole("button", { name: "Add price" })).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", { name: "Add pricing tier" })).toHaveProperty("disabled", false);
 });

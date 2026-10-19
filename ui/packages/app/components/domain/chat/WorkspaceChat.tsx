@@ -17,7 +17,7 @@ import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
 
-type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean};
+type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean; canManagePlatformModels?: boolean};
 const ignore = (): void => undefined;
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
@@ -32,7 +32,7 @@ export function WorkspaceChat(props: Props) {
   return <OwnedChat key={JSON.stringify([identity, props.draft, props.source])} {...props} identity={identity} />;
 }
 
-function OwnedChat({identity, draft, source, canPublishPlatform}: Props & {identity: DraftIdentity}) {
+function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatformModels}: Props & {identity: DraftIdentity}) {
   const [client, setClient] = useState<DraftClient | null>(null);
   const [opening, setOpening] = useState(true);
   const [reload, setReload] = useState<(() => Promise<void>) | null>(null);
@@ -59,10 +59,10 @@ function OwnedChat({identity, draft, source, canPublishPlatform}: Props & {ident
     void open().catch(ignore);
     return () => {disposed = true; current.dispose();};
   }, [selection]);
-  return client && reload ? <ChatSurface client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="h-80 w-full" aria-label="Loading setup chat" />;
+  return client && reload ? <ChatSurface canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="h-80 w-full" aria-label="Loading setup chat" />;
 }
 
-function ChatSurface({client, workspace, subject, opening, selected, reload}: {client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
+function ChatSurface({client, workspace, subject, opening, selected, reload, canManagePlatformModels}: {canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const retrySchedule = (schedule: Schedule): void => { void client.syncSchedule(schedule).catch(ignore); };
@@ -72,7 +72,7 @@ function ChatSurface({client, workspace, subject, opening, selected, reload}: {c
     {opening ? <Skeleton className="h-80 w-full" aria-label="Loading setup chat" /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading key={view.draft?.id} client={client} view={view} />
     <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
-    <ChatModelAvailability client={client} view={view} workspace={workspace} />
+    <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />
     <DraftConversation client={client} view={view}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>

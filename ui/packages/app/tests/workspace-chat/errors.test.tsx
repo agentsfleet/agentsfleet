@@ -55,7 +55,7 @@ it("offers model settings when a successful list confirms there are no authoring
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Add a model to start chatting");
   expect(screen.getByRole("alert").className).toContain("max-w-measure");
-  expect(screen.getByRole("link", {name: "Open model settings"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
+  expect(screen.getByRole("link", {name: "Add model"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
 });
 
@@ -94,5 +94,14 @@ it.each(["loading", "unavailable"] as const)("does not claim there are no models
   render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus}} workspace={WORKSPACE} />);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByLabelText("Loading chat models") !== null).toBe(listStatus === "loading");
+  client.dispose();
+});
+
+
+it("takes platform model administrators to the model library when no model is configured", () => {
+  const client = new DraftClient({...CHAT_PROPS, subject: "creator"});
+  render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus: "ready"}} workspace={WORKSPACE} canManagePlatformModels />);
+  expect(screen.getByRole("link", {name: "Add model"}).getAttribute("href")).toBe("/admin/models");
+  expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
   client.dispose();
 });

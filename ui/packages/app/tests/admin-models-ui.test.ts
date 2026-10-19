@@ -60,6 +60,9 @@ function rowFor(modelId: string): HTMLElement {
 }
 
 async function loadedEditDialog(label: string) {
+  await screen.findByRole("button", { name: "Catalogue details" });
+  fireEvent.click(screen.getByRole("button", { name: "Catalogue details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
   const field = await screen.findByLabelText(label);
   const dialog = field.closest('[role="dialog"]');
   if (!dialog) throw new Error("loaded edit field has no dialog owner");
