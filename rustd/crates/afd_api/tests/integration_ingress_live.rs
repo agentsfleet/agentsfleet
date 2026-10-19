@@ -6,7 +6,7 @@
 //! `impl WebhookIngress for Ingress` and `afd_ingress`'s own resolution read no
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
-//! These do run them. The row comes out of `core.fleets`, the secret out of
+//! These do run them. The row comes out of `fleet.revisions`, the secret out of
 //! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
 //! crosses the same three stores in the same order the daemon crosses them.
 //!
@@ -85,7 +85,7 @@ async fn deliver(
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores() {
     // The whole order in one pass, and the only test that proves the stores
-    // answer at all: the binding is read from `core.fleets`' stored document,
+    // answer at all: the binding is read from the head `fleet.revisions` document,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
     // and the claim reaches Dragonfly. A stub can answer each of those; none of
     // them can be WRONG under a stub, which is what this is here to catch.

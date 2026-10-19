@@ -44,8 +44,8 @@ async fn connect_and_declare(run: &Scenario) {
         .await
         .expect("existing connection");
     // Declared the way a person declares it: an Apply selecting a setup that
-    // names the credential. The lease reads the selected revision, never
-    // `config_json`.
+    // names the credential. The lease reads the selected revision, never a
+    // copy on the fleet row.
     let mut connection = run.booted.database.acquire().await.expect("connection");
     let mut config: serde_json::Value = sqlx::query_scalar::<_, String>(
         "SELECT (r.definition -> 'config')::text FROM fleet.fleets f \

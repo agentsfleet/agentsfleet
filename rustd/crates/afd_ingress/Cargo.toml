@@ -34,7 +34,7 @@ afd_admission.workspace = true
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
 # The obligation ledger a notice is owed through: the one module that owns
-# `core.fleet_obligations`, so a notice and an answer are owed alike.
+# `fleet.obligations`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true
@@ -43,7 +43,7 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The Postgres pool the fleet row is read on.
 afd_db.workspace = true
-# The typed reader for a stored `config_json`. Its `Trigger::Webhook` is where a
+# The typed reader for a stored revision `config`. Its `Trigger::Webhook` is where a
 # binding is read, typed, rather than picked out of jsonb in SQL — see `binding`.
 afd_fleet_runtime.workspace = true
 # `FleetStatus`, so "will this fleet take work" is asked of a type rather than

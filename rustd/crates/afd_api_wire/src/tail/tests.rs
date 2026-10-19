@@ -177,7 +177,7 @@ fn should_spell_a_runless_gates_event_as_null() {
 /// the completion.
 ///
 /// This is the defect the snapshot exists to close. `events_processed` moves
-/// `AFTER INSERT ON core.fleet_events` — at receive — but a gate park returns
+/// `AFTER INSERT ON fleet.events` — at receive — but a gate park returns
 /// before the completion is published, so a client hearing counters only on
 /// `event_complete` reads short by exactly the events awaiting a human. A
 /// frame-by-frame assertion is what keeps a later variant from being added

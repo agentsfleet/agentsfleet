@@ -114,7 +114,7 @@ pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
 /// `last-delivered-id`, which moves the retention floor, so a suite that
 /// inspected its stream that way would change the thing it was about to assert
 /// on. Nothing in production reads a stream this way — history is
-/// `core.fleet_events` — which is why it lives here and not on
+/// `fleet.events` — which is why it lives here and not on
 /// [`FleetStreams`](crate::FleetStreams).
 ///
 /// Each [`FleetEvent`] carries the receipt and the entry's fields, so a caller

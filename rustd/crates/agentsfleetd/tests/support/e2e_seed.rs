@@ -15,7 +15,7 @@
 //! can seed an empty config and an unsupported event type and stay green.
 //!
 //! In the order the daemon consults them: the fleet must exist and be `active`;
-//! its `config_json` must PARSE; the tenant must hold a wallet; the model must
+//! its head revision's `config` must PARSE; the tenant must hold a wallet; the model must
 //! be priced; a platform provider default must be active; and that default's
 //! workspace must hold a sealed provider key.
 //!

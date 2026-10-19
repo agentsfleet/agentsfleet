@@ -16,7 +16,7 @@
 //!
 //! # An unreadable config withholds, it does not widen
 //!
-//! A `config_json` this daemon cannot parse yields `None` for the binding, and
+//! A revision `config` this daemon cannot parse yields `None` for the binding, and
 //! a repository-scoped mint refuses on `None` rather than minting the
 //! installation's full scope. That is the only safe direction: the binding is
 //! what NARROWS the request, so its absence must never be the permissive

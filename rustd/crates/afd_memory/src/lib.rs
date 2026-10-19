@@ -2,7 +2,7 @@
 //!
 //! [`PgStore`] is where every memory read and write in `agentsfleetd` lands.
 //! [`Memories`] is the handle the daemon holds once: it reads each fleet's
-//! workspace and shared-memory grants from `core.fleets`, applies them, and
+//! workspace and shared-memory grants from `fleet.fleets`, applies them, and
 //! hands the call to the store.
 //!
 //! # Sharing is a grant, and the writer is in every identity

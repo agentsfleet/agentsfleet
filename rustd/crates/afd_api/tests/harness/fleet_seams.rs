@@ -129,7 +129,7 @@ impl Fleet {
     /// [`Self::live`] leaves the queue unreachable and [`Self::with_ingress`]
     /// replaces the store entirely. That makes this the only arm on which the
     /// whole resolve → open → append order runs as the daemon runs it: the
-    /// binding comes out of `core.fleets`, the secret out of `vault.secrets`,
+    /// binding comes out of `fleet.revisions`, the secret out of `vault.secrets`,
     /// and the claim lands in Dragonfly. A suite on `Scripted` proves what the
     /// HANDLER decided; this one proves the store underneath it answers.
     pub(crate) fn with_live_ingress(mut self, database: Db, queue: Dragonfly) -> Self {

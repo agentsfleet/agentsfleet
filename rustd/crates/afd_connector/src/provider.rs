@@ -11,7 +11,7 @@
 //! # The ids are stored data, not a spelling
 //!
 //! Each id is the `{provider}` route segment, the `provider` column value in
-//! `core.connector_installs`, and the stem of two vault keys — `<id>-app` for
+//! `connector.installs`, and the stem of two vault keys — `<id>-app` for
 //! the platform app credentials and `<id>` for the workspace's own grant.
 //! Renaming one strands every row and vault key already written under it.
 
@@ -31,7 +31,7 @@ use std::fmt;
 /// than the dependency.
 ///
 /// The `id` is the route segment, the `provider` column value in
-/// `core.connector_installs`, and the stem of two vault keys — see the module
+/// `connector.installs`, and the stem of two vault keys — see the module
 /// note on why these are not this crate's to improve.
 macro_rules! catalogue {
     ($(

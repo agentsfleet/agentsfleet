@@ -110,7 +110,7 @@ pub enum Liveness {
 pub enum CredentialRecord {
     /// A credential belonging to a person.
     ///
-    /// Carries the identity-provider SUBJECT, never a `core.users` primary key.
+    /// Carries the identity-provider SUBJECT, never an `identity.users` primary key.
     /// [`Subject`] is a distinct type, so a directory implementation that hands
     /// over a row id does not compile.
     ///
@@ -130,7 +130,7 @@ pub enum CredentialRecord {
     /// No tenant field, because a runner holds no tenant authority: secret
     /// delivery to a runner is placement, not a standing grant.
     Machine {
-        /// The `fleet.runners` row the credential proved.
+        /// The `runner.runners` row the credential proved.
         runner: Uuid7,
         /// The row's reconciled verdict, read in the same statement as the
         /// token hash so the lease gate never re-reads the row.

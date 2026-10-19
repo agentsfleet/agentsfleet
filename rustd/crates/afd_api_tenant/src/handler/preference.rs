@@ -19,7 +19,7 @@
 //! # The subject is not the user id
 //!
 //! The principal carries the identity provider's subject; every preference row
-//! keys on the `core.users.id` it maps to. That mapping is a READ, and a
+//! keys on the `identity.users.id` it maps to. That mapping is a READ, and a
 //! subject with no row is refused rather than bootstrapped — inventing a user
 //! here would fork identity ownership away from the signup path that owns it.
 
@@ -43,7 +43,7 @@ use crate::services::{Services, WorkspacePreferences as _};
 const EVENT_WRITE: &str = "preference_write_failed";
 const EVENT_ONBOARDING: &str = "onboarding_read_failed";
 
-/// The refusal a subject with no `core.users` row earns.
+/// The refusal a subject with no `identity.users` row earns.
 ///
 /// `S_USER_CONTEXT_REQUIRED`, kept verbatim — a dashboard shows this to
 /// somebody whose sign-up has not finished landing.

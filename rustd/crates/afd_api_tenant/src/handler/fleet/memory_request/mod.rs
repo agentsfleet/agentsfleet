@@ -2,7 +2,7 @@
 //!
 //! Split from [`super::memory`] along the line the file cap and the tests both
 //! want: everything here is total, synchronous and datastore-free, so the whole
-//! refusal surface in FRONT of `memory.memory_entries` is proven by the unit
+//! refusal surface in FRONT of `memory.entries` is proven by the unit
 //! tests at the bottom of this file rather than by driving HTTP.
 //!
 //! # Why this decodes the URL itself

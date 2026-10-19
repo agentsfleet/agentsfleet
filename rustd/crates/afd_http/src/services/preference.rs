@@ -9,7 +9,7 @@
 //!
 //! Every other identity question on this plane is answered before a handler
 //! runs. This one cannot be: the principal carries the identity provider's
-//! SUBJECT, and preferences key on the internal `core.users.id` it maps to —
+//! SUBJECT, and preferences key on the internal `identity.users.id` it maps to —
 //! a row that may not exist yet for a freshly signed-up person. So the mapping
 //! is a read like any other, and `Ok(None)` is the caller's cue to refuse
 //! rather than to invent a user row.

@@ -127,7 +127,7 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
 ///
 /// Both counters ride every frame rather than each riding the frame that moved
 /// it, because they do not move together. `events_processed` is bumped
-/// `AFTER INSERT ON core.fleet_events` (`schema/890`) — at RECEIVE, not at
+/// `AFTER INSERT ON fleet.events` (`schema/1770`) — at RECEIVE, not at
 /// completion — while `budget_used_nanos` follows the ledger write, which may
 /// update one row many times across a run. Both only ever grow — the
 /// triggers add, and the backfill's conflict arm takes `GREATEST` — so a

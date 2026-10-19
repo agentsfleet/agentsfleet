@@ -3,7 +3,7 @@
 //! `webhook_qstash_route.rs` stops at the last point the handler has acquired
 //! nothing: the body cap, a deployment holding no keys, a token that does not
 //! verify, and a callback naming no schedule. Everything past that line reads
-//! `core.fleet_schedules` joined to `core.fleets`, and over the unreachable
+//! `fleet.schedules` joined to `fleet.fleets`, and over the unreachable
 //! pool it can only be a 503 — so the whole tail of the handler read zero
 //! covered lines: the three deliberate drops, and the append itself.
 //!

@@ -8,7 +8,7 @@
 
 use super::ErrorCode;
 
-/// No `fleet.runners` row matches the presented runner token.
+/// No `runner.runners` row matches the presented runner token.
 ///
 /// `ERR_RUN_INVALID_RUNNER_TOKEN`. The runner plane's [`AUTH_UNAUTHORIZED`]:
 /// a separate code because the runner client classifies its own plane's

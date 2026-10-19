@@ -5,7 +5,7 @@
 //! That header's rule is that a store which INVENTS a refusal keeps agreeing
 //! with the suite after the real store stops producing it. This does not invent
 //! one. `platform_default` answers `Ok(None)` — the same `Ok(None)` the real
-//! store answers over a Postgres whose `core.platform_provider_defaults` holds
+//! store answers over a Postgres whose `model.platform_defaults` holds
 //! no active row — and every other verb is the production store, unchanged.
 //!
 //! # Why the state cannot be reached any other way
@@ -17,7 +17,7 @@
 //! seeding its own default — and over the dead pool the same read is a 503, not
 //! a `None`, so the router suite cannot reach it either.
 //!
-//! A live test would need a globally-empty `core.platform_provider_defaults`,
+//! A live test would need a globally-empty `model.platform_defaults`,
 //! which races every other integration test's seeding on the shared pool.
 //!
 //! [`TenantProviders`] is a TRAIT, so substituting one method reaches the real

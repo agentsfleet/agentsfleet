@@ -16,7 +16,7 @@
 //! # The ownership check is the store's, not this file's
 //!
 //! Whether the fleet is the workspace's, and whether it may read the
-//! workspace's shared entries, is a read of `core.fleets` the memory store
+//! workspace's shared entries, is a read of `fleet.fleets` the memory store
 //! makes itself (`afd_memory::Memories`) rather than an opening call every
 //! handler has to remember. [`WorkspaceContext`]
 //! here is this handler saying WHICH workspace it acts in, never deciding

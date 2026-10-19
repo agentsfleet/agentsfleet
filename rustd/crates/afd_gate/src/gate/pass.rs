@@ -4,7 +4,7 @@
 //!
 //! A reference means this event was ALREADY parked and a human was already
 //! asked. That question outlives the policy that raised it, so it is honoured
-//! first. Reading policy first let a mid-flight `config_json` PATCH silently
+//! first. Reading policy first let a mid-flight Apply of a new setup silently
 //! withdraw a question already put to a human: dropping `gates` returned "pass"
 //! at the top, and emptying `gates.rules` fell through to auto-approve — either
 //! way the parked event ran while its card still sat unanswered. [`route`]
@@ -23,7 +23,7 @@
 //!
 //! # What the pass never does
 //!
-//! It writes no `core.fleet_events` row. Every outcome below is a decision the
+//! It writes no `fleet.events` row. Every outcome below is a decision the
 //! CALLER applies once — the same discipline [`Admission`](crate::lease::Admission)
 //! states for the money gates, and for the same reason: a refusal that forgot
 //! its row and one that wrote it twice are both unrepresentable when the value

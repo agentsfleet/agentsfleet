@@ -160,7 +160,7 @@ impl EventId {
     ///
     /// The report path needs this: the entry was acknowledged long after the
     /// poll that read it, by a different request, and what survives in between
-    /// is the `fleet.runner_leases.receipt` text. Deliberately not a `From`
+    /// is the `runner.leases.receipt` text. Deliberately not a `From`
     /// impl — a receipt is a thing Dragonfly produced, and a blanket conversion
     /// from `&str` would let any string in the program become one silently.
     #[must_use]

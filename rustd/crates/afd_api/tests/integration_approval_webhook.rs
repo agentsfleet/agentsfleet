@@ -10,7 +10,7 @@
 //! A resolved gate that lands no continuation is a run a person unblocked and
 //! nothing restarted — the fleet sits parked forever while the dashboard shows
 //! an answered gate. That failure is invisible to the response body, which says
-//! `resolved` either way, so every test here reads `core.fleet_events` rather
+//! `resolved` either way, so every test here reads `fleet.events` rather
 //! than trusting the 200.
 //!
 //! # Why the callback is compared against the bearer surface

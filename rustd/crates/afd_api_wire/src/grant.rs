@@ -8,7 +8,7 @@
 //!
 //! # Why the spellings live here rather than beside either reader
 //!
-//! Three crates touch `core.integration_grants.status` and none of them owns
+//! Three crates touch `connector.integration_grants.status` and none of them owns
 //! it. `afd_gate` reads it on the mint hot path, `afd_approval` writes it —
 //! both when an approval moves a grant and when an operator revokes one — and
 //! the API renders it. This crate is the one they already share, so a spelling
@@ -27,7 +27,7 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-/// The spellings `core.integration_grants.status` stores.
+/// The spellings `connector.integration_grants.status` stores.
 ///
 /// Three, and only one of them admits anything. `pending` is a grant the
 /// install raised and nobody has answered; `approved` is the standing yes a

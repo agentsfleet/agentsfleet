@@ -20,7 +20,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// The spellings `core.fleet_approval_gates.status` stores.
+/// The spellings `fleet.approval_gates.status` stores.
 ///
 /// Declared HERE, in the crate both planes already read, because two crates
 /// write and read this one column: the runner plane parks a gate at `PENDING`

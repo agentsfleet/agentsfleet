@@ -17,7 +17,7 @@
 //!
 //! # Every test mints its own installation
 //!
-//! `core.connector_installs` is keyed on `(provider, external_account_id)`
+//! `connector.installs` is keyed on `(provider, external_account_id)`
 //! and these tests share one database lane. A literal id shared between them
 //! makes the second test to run meet the first one's row as "held elsewhere"
 //! — the product working exactly as [`an_installation_another_workspace_routes_is_refused_and_stays_where_it_is`]
