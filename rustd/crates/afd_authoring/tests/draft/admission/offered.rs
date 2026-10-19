@@ -28,13 +28,34 @@ async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_not
         .expect("admission answers")
         .expect("the queued chat is admitted");
     assert_eq!(claimed.draft_id, draft.id.to_string());
-    queue(&f, "A second chat for the spent choice").await;
+    let second = queue(&f, "A second chat for the spent choice").await;
     let spent = f
         .drafts
         .claim_offered(&f.runner, ticket)
         .await
         .expect("admission answers");
     assert!(spent.is_none(), "the recorded placement spent the choice");
+    sqlx::query(
+        "UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1::uuid",
+    )
+    .bind(second.id.as_str())
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("the second chat's retention closed");
+    let fresh = Runners::new(f.db.clone(), Entropy::new())
+        .claim_offer(&f.runner, AcceptedKinds::ALL)
+        .await
+        .expect("the host answers")
+        .expect("an active host is offered");
+    let skipped = f
+        .drafts
+        .claim_offered(&f.runner, fresh)
+        .await
+        .expect("admission answers");
+    assert!(
+        skipped.is_none(),
+        "a lapsed chat is passed over, and nothing else waits"
+    );
     assert_eq!(attempts(&f).await, 1);
     f.cleanup().await;
 }

@@ -44,7 +44,7 @@ impl Intent {
         prepared: prepare::Prepared,
         now: Timestamp,
         authorized_at: Instant,
-    ) -> Result<Self> {
+    ) -> Self {
         let remaining = attempt
             .expires_at
             .duration_since(now)
@@ -54,21 +54,16 @@ impl Intent {
             key,
             body: prepared.body,
             timeout: remaining.min(budget::PROVIDER_TIMEOUT),
-            inference: attempt
-                .model_snapshot
-                .inference
-                .clone()
-                .ok_or(ErrorKind::Model)?,
+            inference: prepared.inference,
             model: attempt.model_snapshot.model.clone(),
-            context_tokens: u32::try_from(attempt.model_snapshot.context_window_tokens)
-                .map_err(|_invalid| ErrorKind::Model)?,
+            context_tokens: prepared.context_tokens,
         };
-        Ok(Self {
+        Self {
             outbound,
             attempt,
             authorized_at,
             output_limit: prepared.output_limit,
-        })
+        }
     }
 }
 
@@ -233,7 +228,7 @@ impl ModelCalls {
             prepared,
             now,
             authorized_at,
-        )?)))
+        ))))
     }
 }
 
