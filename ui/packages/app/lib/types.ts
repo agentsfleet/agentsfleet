@@ -46,7 +46,7 @@ export type MemoryEntry = {
   key: string;
   content: string;
   category: string;
-  /** epoch milliseconds */
+  /** RFC 3339 instant */
   updated_at: string;
   visibility: MemoryVisibility;
   /** The fleet that wrote it; another fleet's id marks an entry this fleet

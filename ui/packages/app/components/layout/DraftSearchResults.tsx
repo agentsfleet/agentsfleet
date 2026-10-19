@@ -4,6 +4,7 @@ import { useContext, useEffect, useMemo } from "react";
 import { Alert, Button } from "@agentsfleet/design-system";
 import { DRAFT_SEARCH_STATUS as STATUS } from "@/lib/api/draft-vocabulary";
 import { sidebarDrafts } from "@/lib/api/draft-summary";
+import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { DraftLoadMore, LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
 import { DraftChatList } from "./DraftChatList";
 import { UpdateContext, type DraftSidebarState } from "./draft-sidebar-state";
@@ -19,7 +20,7 @@ export function DraftSearchResults({history, query, onNavigate}: DraftSearchResu
     if (!inaccessible) return;
     history.owner?.invalidateAccess();
     update(value => value?.workspace === history.workspace && value.subject === history.subject
-      ? {...value, cards: [], more: null, fresh: null, remove: null, current: null, locked: true, status: "unavailable"} : value);
+      ? {...value, cards: [], more: null, fresh: null, remove: null, current: null, locked: true, status: DRAFT_LIST_STATUS.unavailable} : value);
   }, [inaccessible, update, history.workspace, history.subject, history.owner]);
   if (search.view.status === STATUS.loading) return <output className="block px-md py-sm text-label text-muted-foreground">Searching chats…</output>;
   if (search.view.status === STATUS.inaccessible) return <Alert variant="destructive">{search.view.message}</Alert>;

@@ -31,7 +31,7 @@ export type InviteSummary = {
   link: string;
   /** What became of its most recent email. */
   email_status: EmailStatus;
-  /** When the relay last accepted its email, epoch milliseconds; null if never. */
+  /** When the relay last accepted its email, an RFC 3339 instant; null if never. */
   email_sent_at: string | null;
 };
 

@@ -266,4 +266,4 @@ export function isSelftestStale(runner: SelftestPolicyView): boolean {
 
 /** Whether the runner has ever beaten. The daemon writes the Unix epoch for a
  * runner that never connected (`NEVER_SEEN` in `afd_runner`), never null. */
-export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > 0;
+export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > RUNNER_LAST_SEEN_NEVER;
