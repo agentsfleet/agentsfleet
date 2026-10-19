@@ -71,7 +71,7 @@ test-util = [
 ]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 # The reconcile sweeper's resume state is handed in and out of a mutex around
 # every pass, and that hand-off is the one part of it decidable without a
 # datastore. Reaching it needs a `Reconcile`, which needs an `Admissions`, which

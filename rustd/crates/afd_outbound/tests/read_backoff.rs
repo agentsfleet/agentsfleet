@@ -69,6 +69,9 @@ const MAX_READS_IN_WINDOW: usize = 9;
 /// would blow the supervisor's join budget every time Dragonfly was unwell.
 const SHUTDOWN_BUDGET: Duration = Duration::from_millis(500);
 
+/// How long a fresh worker may take to send its first read.
+const READ_REACHED_WITHIN: Duration = Duration::from_secs(2);
+
 /// The connection's own allowance for an answer to travel.
 const REQUEST_DEADLINE: Duration = Duration::from_millis(100);
 
@@ -166,13 +169,16 @@ async fn test_a_shutdown_does_not_wait_out_a_stalled_read() {
     let (worker, token, delivered) = worker_against(&server).await;
     let running = tokio::spawn(worker.run(token.clone()));
 
-    // Long enough that the worker is parked in the resume read, which is the
-    // only state where this assertion means anything.
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(
-        server.reads() > 0,
-        "the worker never reached the read, so this proves nothing about shutdown"
-    );
+    // Once the stalling peer has been asked for a read, the worker is parked
+    // in it: the only state where this assertion means anything.
+    let deadline = Instant::now() + READ_REACHED_WITHIN;
+    while server.reads() == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the worker never reached the read, so this proves nothing about shutdown"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
     let started = Instant::now();
     token.cancel();
     running.await.expect("the worker task must not panic");
