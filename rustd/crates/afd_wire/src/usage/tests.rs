@@ -6,7 +6,8 @@
 use garde::Validate as _;
 
 use super::{
-    DAEMON_SEQ_BASE, LINES_MAX, RUNNER_SEQ_MAX, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine,
+    DAEMON_SEQ_BASE, LINES_MAX, RUNNER_SEQ_MAX, RUNTIME_MS_MAX, RequestLines, RequestUsage,
+    UsageLine,
 };
 
 const AT: &str = "2026-10-19T10:00:00.123Z";
@@ -78,7 +79,12 @@ fn request(seq: u32) -> RequestUsage {
 
 #[test]
 fn a_batch_carries_none_to_the_most_requests() {
-    for (count, valid) in [(0, true), (1, true), (LINES_MAX, true), (LINES_MAX + 1, false)] {
+    for (count, valid) in [
+        (0, true),
+        (1, true),
+        (LINES_MAX, true),
+        (LINES_MAX + 1, false),
+    ] {
         let batch = RequestLines(
             (0..count)
                 .map(|seq| request(u32::try_from(seq).expect("fits")))
@@ -90,7 +96,9 @@ fn a_batch_carries_none_to_the_most_requests() {
 
 #[test]
 fn a_runner_numbers_below_the_daemons_range() {
-    request(RUNNER_SEQ_MAX).validate().expect("the top of the runner range");
+    request(RUNNER_SEQ_MAX)
+        .validate()
+        .expect("the top of the runner range");
     RequestLines(vec![request(0), request(DAEMON_SEQ_BASE)])
         .validate()
         .expect_err("a request in the daemon's range is refused");
@@ -113,4 +121,38 @@ fn a_request_carrying_runtime_is_refused() {
         .expect("a request is an object")
         .insert("runtime_ms".to_owned(), serde_json::json!(5));
     serde_json::from_value::<RequestUsage>(json).expect_err("the daemon measures runtime");
+}
+
+/// Every token count publishes the whole `u32` range, so a generated client
+/// does not type a count above `i32::MAX` out of existence.
+#[cfg(feature = "openapi")]
+#[test]
+fn the_published_token_counts_span_u32() {
+    let schema = serde_json::to_value(<RequestUsage as utoipa::PartialSchema>::schema())
+        .expect("the schema serializes");
+    for field in [
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_tokens",
+        "cache_write_5m_tokens",
+        "cache_write_1h_tokens",
+        "output_tokens",
+    ] {
+        let read = |key: &str| schema.pointer(&format!("/properties/{field}/{key}"));
+        assert_eq!(
+            read("format").and_then(serde_json::Value::as_str),
+            Some("int64"),
+            "{field}"
+        );
+        assert_eq!(
+            read("minimum").and_then(serde_json::Value::as_u64),
+            Some(0),
+            "{field}"
+        );
+        assert_eq!(
+            read("maximum").and_then(serde_json::Value::as_u64),
+            Some(u64::from(u32::MAX)),
+            "{field}"
+        );
+    }
 }
