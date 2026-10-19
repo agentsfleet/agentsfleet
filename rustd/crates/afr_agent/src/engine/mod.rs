@@ -99,8 +99,9 @@ impl fmt::Debug for AgentRun<'_> {
 ///
 /// The engine adds each turn's usage. The supervisor sends the unrecorded lines
 /// with every lease renewal and forgets the ones the daemon says it recorded;
-/// the report carries whatever is left, so the daemon prices every request on
-/// its own and a lost response never loses a line. Each total is its own
+/// before the report it renews until one body holds the rest, and the report
+/// carries those, so the daemon prices every request on its own and a lost
+/// response never loses a line. Each total is its own
 /// atomic: a read between two adds may see one turn's input without its output.
 #[derive(Debug)]
 pub struct Meter {
@@ -181,6 +182,13 @@ impl Meter {
     pub fn unrecorded(&self) -> RequestLines {
         let lines = self.lines();
         RequestLines(lines.unrecorded.iter().take(LINES_MAX).copied().collect())
+    }
+
+    /// How many request lines the daemon has not recorded, which may be more
+    /// than one body carries.
+    #[must_use]
+    pub fn backlog(&self) -> usize {
+        self.lines().unrecorded.len()
     }
 
     /// Forgets every line the daemon recorded, through `seq`.

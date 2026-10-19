@@ -12,6 +12,7 @@ use super::LeaseRun;
 use crate::client::retrying;
 use crate::memory;
 use crate::records;
+use crate::renew;
 use crate::report::{Ending, report};
 use crate::report_spool::{Delivery, Spooled, settles};
 
@@ -23,9 +24,9 @@ const EVENT_ENCODE_FAILED: &str = "report_encode_failed";
 const EVENT_UNSPOOLED_LOST: &str = "report_failed";
 
 impl LeaseRun<'_> {
-    /// Posts the run's full tool records, pushes its memory, then spools and
-    /// posts its report, which carries when the sandbox the run left held
-    /// lapses. Answers whether the daemon will never record the report, so
+    /// Posts the run's full tool records, pushes its memory, renews until its
+    /// usage lines fit one body, then spools and posts its report, which
+    /// carries when the sandbox the run left held lapses. Answers whether the daemon will never record the report, so
     /// the sandbox the run left held carries a run it does not know and serves
     /// no next lease.
     pub(super) async fn settle(&self, ending: &mut Ending, held_until: Option<Timestamp>) -> bool {
@@ -38,6 +39,7 @@ impl LeaseRun<'_> {
                 .take()
                 .and_then(|trace| serde_json::to_string(&trace).ok());
         }
+        renew::flush(&self.lessee.plane, &self.ids.lease, &self.meter).await;
         let report = report(
             self.lease,
             ending,
