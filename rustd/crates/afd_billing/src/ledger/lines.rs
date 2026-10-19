@@ -100,3 +100,44 @@ pub async fn log_lines<'e>(
 fn column<T>(lines: &[RatedLine], field: impl Fn(&RatedLine) -> T) -> Vec<T> {
     lines.iter().map(field).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use afd_crypto::entropy::Entropy;
+    use jiff::Timestamp;
+
+    use super::log_lines;
+    use crate::biller::{Account, Attribution, Settlement, WorkKey};
+    use crate::rates::Posture;
+
+    /// A server nothing listens on: a statement sent here fails to connect.
+    const NOWHERE: &str = "postgres://nobody@127.0.0.1:1/nowhere";
+
+    /// A settlement with no lines writes nothing, so it never reaches the
+    /// datastore: against a server nothing listens on it still answers `Ok`.
+    #[tokio::test]
+    async fn a_settlement_with_no_lines_writes_nothing() {
+        let pool = sqlx::PgPool::connect_lazy(NOWHERE)
+            .unwrap_or_else(|_malformed| unreachable!("the fixture URL parses"));
+        let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
+            .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"));
+        let settlement = Settlement {
+            work: WorkKey::AuthoringAttempt(id.clone()),
+            payer: Account {
+                tenant: id.clone(),
+                workspace: id,
+            },
+            attribution: Attribution::SetupChat,
+            provider: String::new(),
+            model: String::new(),
+            posture: Posture::Platform,
+            lines: Vec::new(),
+        };
+        let logged = log_lines(&pool, &Entropy::new(), Timestamp::UNIX_EPOCH, &settlement).await;
+        assert!(
+            logged.is_ok(),
+            "an empty settlement logs nothing: {logged:?}"
+        );
+    }
+}

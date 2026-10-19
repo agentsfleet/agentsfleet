@@ -116,10 +116,14 @@ async fn take(
         .await
         .map_err(query(context))?;
     if !debited {
+        // Bound before the macro, which repeats its field expressions in a
+        // `log` fallback no process here runs.
+        let (tenant_id, work_type, work_id) =
+            (tenant.as_str(), work.work_type(), work.id().as_str());
         tracing::warn!(
-            tenant_id = tenant.as_str(),
-            work_type = work.work_type(),
-            work_id = work.id().as_str(),
+            tenant_id,
+            work_type,
+            work_id,
             charged_nanos = total,
             event = EVENT_SETTLED_WITHOUT_WALLET,
             "settled usage for a payer with no wallet; nothing was debited"

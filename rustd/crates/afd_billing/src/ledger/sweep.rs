@@ -152,17 +152,19 @@ pub async fn unsettled<'e>(
         .map_err(query(CONTEXT_UNSETTLED))?;
     let mut works: BTreeMap<(String, String), Settlement> = BTreeMap::new();
     for row in rows {
-        let key = (row.work_type.clone(), row.work_id.clone());
-        let Some(line) = row.line()? else {
+        // A work type this build does not write, which no row it logged can
+        // carry: skipped rather than refused, so one foreign row cannot stall
+        // the sweep.
+        let Some(work) = row.work() else {
             continue;
         };
-        match works.get_mut(&key) {
-            Some(settlement) => settlement.lines.push(line),
-            None => {
-                if let Some(settlement) = row.settlement(line)? {
-                    works.insert(key, settlement);
-                }
-            }
+        let key = (row.work_type.clone(), row.work_id.clone());
+        let line = row.line()?;
+        if let Some(settlement) = works.get_mut(&key) {
+            settlement.lines.push(line);
+        } else {
+            let settlement = row.settlement(work, line)?;
+            works.insert(key, settlement);
         }
     }
     Ok(works.into_values().collect())
@@ -197,12 +199,8 @@ struct UnsettledRow {
 }
 
 impl UnsettledRow {
-    /// The row's line as the work priced it; `None` for a work type this build
-    /// does not write, which no row can carry.
-    fn line(&self) -> Result<Option<RatedLine>> {
-        if self.work().is_none() {
-            return Ok(None);
-        }
+    /// The row's line as the work priced it.
+    fn line(&self) -> Result<RatedLine> {
         let price = self
             .price_id
             .as_deref()
@@ -210,7 +208,7 @@ impl UnsettledRow {
                 Uuid7::parse(id).map_err(row_malformed(TABLE_LINES, "platform_model_price_id"))
             })
             .transpose()?;
-        Ok(Some(RatedLine {
+        Ok(RatedLine {
             usage: UsageLine {
                 seq: count(self.seq),
                 at: self.requested_at,
@@ -225,7 +223,7 @@ impl UnsettledRow {
             price,
             charged: Nanos::from_i64(self.charged_nanos),
             unpriced_tokens: u64::try_from(self.unpriced_token_count).unwrap_or(0),
-        }))
+        })
     }
 
     /// The work this row belongs to, by its stored kind.
@@ -237,11 +235,8 @@ impl UnsettledRow {
         }
     }
 
-    /// A settlement for this row's work, opening with `line`.
-    fn settlement(self, line: RatedLine) -> Result<Option<Settlement>> {
-        let Some(work) = self.work() else {
-            return Ok(None);
-        };
+    /// A settlement for this row's `work`, opening with `line`.
+    fn settlement(self, work: fn(Uuid7) -> WorkKey, line: RatedLine) -> Result<Settlement> {
         let id = |text: &str, column: &'static str| {
             Uuid7::parse(text).map_err(row_malformed(TABLE_LINES, column))
         };
@@ -253,7 +248,7 @@ impl UnsettledRow {
             },
             _ => Attribution::SetupChat,
         };
-        Ok(Some(Settlement {
+        Ok(Settlement {
             work: work(id(&self.work_id, "work_id")?),
             payer: Account {
                 tenant: id(&self.tenant_id, "tenant_id")?,
@@ -264,7 +259,7 @@ impl UnsettledRow {
             model: self.model,
             posture: Posture::parse(&self.posture).unwrap_or(Posture::Platform),
             lines: vec![line],
-        }))
+        })
     }
 }
 
