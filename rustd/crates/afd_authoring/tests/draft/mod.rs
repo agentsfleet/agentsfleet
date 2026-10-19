@@ -7,6 +7,7 @@
 
 mod admission;
 mod attempt;
+mod biller;
 mod cleanup;
 mod contention;
 mod creation;

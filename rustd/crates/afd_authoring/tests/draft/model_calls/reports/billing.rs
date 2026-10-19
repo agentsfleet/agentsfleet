@@ -7,6 +7,7 @@ use afd_authoring::Drafts;
 use afd_authoring::types::Source;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::sql::work::AUTHORING_ATTEMPT;
+use afd_core::{error_code, test_util::trace::Capture};
 use afd_crypto::entropy::Entropy;
 use afd_db::test_util::unreachable_db;
 use std::sync::Arc;
@@ -99,11 +100,25 @@ async fn lines_a_biller_could_not_settle_are_settled_and_released_by_the_sweeper
         Arc::new(LedgerBiller::on_system_clock(unreachable_db())),
     );
     let before = balance(&f).await;
+    let capture = Capture::install();
     let ack = offline
         .report(&f.runner, &a.lease, report())
         .await
         .expect("the report commits though its biller cannot answer");
+    let deferred = [
+        capture.only("setup_chat_settle_deferred"),
+        capture.only("setup_chat_release_deferred"),
+    ];
+    drop(capture);
     assert!(ack.settled, "the attempt settled; only its money waits");
+    for event in deferred {
+        assert_eq!(event.field("work_id"), Some(a.id.as_str()));
+        assert_eq!(
+            event.field("error_code"),
+            Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
+            "the outage is named: {event:?}"
+        );
+    }
     assert_eq!(
         ledger(&f, &a).await,
         (LINES, 0, true),
@@ -117,6 +132,18 @@ async fn lines_a_biller_could_not_settle_are_settled_and_released_by_the_sweeper
         .execute(&mut *f.connection().await)
         .await
         .expect("past the sweeper's grace");
+    let unreleased = afd_authoring::billing_sweep::release_finished(
+        &f.db,
+        &LedgerBiller::on_system_clock(unreachable_db()),
+    )
+    .await
+    .expect("the hold sweep reads its batch");
+    assert_eq!(
+        unreleased.released, 0,
+        "a biller that cannot answer frees nothing"
+    );
+    assert!(unreleased.release_failures >= 1, "{unreleased:?}");
+    assert_eq!(ledger(&f, &a).await, (LINES, 0, true), "the hold waits");
     let biller = crate::draft::fixture::ledger(&f.db);
     for pass in 0..2 {
         afd_billing::ledger::resettle(&f.db, biller.as_ref())
