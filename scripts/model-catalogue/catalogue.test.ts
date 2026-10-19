@@ -69,6 +69,26 @@ describe("catalogue provenance", () => {
     expect(() => parseCatalogue(document([routed]))).toThrow("context source must name its provider models API");
   });
 
+  test("a keyed provider's limit may come from OpenRouter's endpoint entry tagged with that provider's standard endpoint", () => {
+    const served = (source_url: string, overrides: Partial<Model> = {}) => document([model({
+      context: { tokens: 1_050_000, source_url, verified_at: VERIFIED }, context_unverified_reason: null, ...overrides })]);
+    const endpoints = `https://openrouter.ai/api/v1/models/openai/${MODEL}/endpoints`;
+    expect(parseCatalogue(served(`${endpoints}#openai`)).models[0]?.context?.tokens).toBe(1_050_000);
+    const gemini = { provider: "gemini" as const, model_name: "gemini-4-argon", display_name: "Gemini 4 Argon",
+      prices: [price({ source_url: "https://ai.google.dev/gemini-api/docs/pricing" })] };
+    expect(parseCatalogue(served("https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio",
+      gemini)).models[0]?.context?.tokens).toBe(1_050_000);
+    for (const refused of [`${endpoints}#azure`, `${endpoints}#openai/flex`, `${endpoints}#OpenAI`, `${endpoints}`, `${endpoints}?region=eu#openai`,
+      `https://openrouter.ai/api/v1/models/${MODEL}/endpoints#openai`, `https://example.com/api/v1/models/openai/${MODEL}/endpoints#openai`])
+      expect(() => parseCatalogue(served(refused))).toThrow("context source must name its provider models API");
+    expect(() => parseCatalogue(served("https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio/flex",
+      gemini))).toThrow("context source must name its provider models API");
+    const routed = { provider: "openrouter" as const, model_name: "google/gemini-4-argon",
+      prices: [price({ source_url: "https://openrouter.ai/google/gemini-4-argon" })] };
+    expect(() => parseCatalogue(served("https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#openrouter",
+      routed))).toThrow("context source must name its provider models API");
+  });
+
   test.each([
     model({ context_unverified_reason: null }),
     model({ context: { tokens: 1_048_576, source_url: `https://api.openai.com/v1/models/${MODEL}`, verified_at: VERIFIED } }),
