@@ -123,6 +123,12 @@ impl Fixtures {
         fixtures
     }
 
+    /// A further pool for `role` on this fixture's database — the shared lane's
+    /// or this test's private one — as a second daemon replica would hold.
+    pub(crate) async fn open(&self, role: DbRole) -> Db {
+        self.lane.open(role, &[]).await
+    }
+
     /// The store under test.
     pub(crate) const fn runners(&self) -> &Runners {
         &self.runners

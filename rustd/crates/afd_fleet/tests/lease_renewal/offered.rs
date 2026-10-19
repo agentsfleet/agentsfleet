@@ -11,7 +11,7 @@ use afd_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
-    let running = Running::create().await;
+    let running = Running::create_isolated().await;
     let seat = Seat::create(&running).await;
     let drafts = Seat::drafts(&running.fixtures.database);
     let draft = seat.queue(&drafts).await;
