@@ -99,6 +99,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.3
+      - name: Install the seeder's dependencies
+        run: bun install --frozen-lockfile
       # `_reset-test-db` brings compose up, waits for healthchecks, drops
       # schemas and flushes Dragonfly. KEEP_TEST_STATE is never set here: a
       # green run under it would prove nothing about a clean checkout.
