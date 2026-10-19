@@ -116,3 +116,52 @@ pub struct Reported {
     /// Recorded terminal message outcome.
     pub state: Outcome,
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "test target: a fixture that does not decode is a broken test"
+    )]
+
+    use serde_json::json;
+
+    use super::Report;
+
+    /// A stable report identity, as a runner mints one.
+    const REPORT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8062";
+
+    /// Text only the draft's owner may read.
+    const PRIVATE_ANSWER: &str = "the private setup the owner asked for";
+
+    /// `fields` with the accounting every fixture shares.
+    fn report(mut fields: serde_json::Value) -> Report {
+        let shared = json!({"fence": "7", "report_id": REPORT_ID, "outcome": "completed",
+            "failure_reason": null, "usage": {"knowledge": "known", "calls": 1, "runtime_ms": 0}});
+        let object = fields.as_object_mut().expect("the fixture is an object");
+        for (key, value) in shared.as_object().expect("the shared fields are an object") {
+            object.insert(key.clone(), value.clone());
+        }
+        serde_json::from_value(fields).expect("the fixture report decodes")
+    }
+
+    /// A report reaches logs through `Debug`, so its rendering carries the
+    /// accounting an operator reconciles and never the answer itself.
+    #[test]
+    fn a_reports_debug_rendering_carries_its_accounting_and_never_its_answer() {
+        let terminal = format!(
+            "{:?}",
+            report(json!({"kind": "terminal", "answer": PRIVATE_ANSWER}))
+        );
+
+        assert!(terminal.contains(REPORT_ID), "{terminal}");
+        assert!(terminal.contains("accounting"), "{terminal}");
+        assert!(!terminal.contains(PRIVATE_ANSWER), "{terminal}");
+        let accounting = report(json!({"kind": "accounting"}));
+        assert_eq!(
+            format!("{accounting:?}"),
+            terminal,
+            "both forms render as the identity they share"
+        );
+    }
+}

@@ -455,3 +455,25 @@ fn the_per_second_budget_fits_the_pinned_queue() {
         afd_otlp::SPAN_QUEUE
     );
 }
+
+/// A sampler logged at start-up names the limits it enforces and the leases it
+/// tracks; its clock and its shed counter are callbacks with nothing to show,
+/// and the rendering says so rather than pretending it is whole.
+#[test]
+fn test_a_samplers_debug_names_its_limits_and_marks_what_it_leaves_out() {
+    let pipeline = Pipeline::new(Limits {
+        per_lease: 7,
+        per_second: 11,
+    });
+
+    let rendered = format!("{:?}", pipeline.sampler);
+
+    assert!(rendered.contains("Budget"), "{rendered}");
+    assert!(rendered.contains("per_lease: 7"), "{rendered}");
+    assert!(rendered.contains("per_second: 11"), "{rendered}");
+    assert!(rendered.contains("leases"), "{rendered}");
+    assert!(
+        rendered.contains(".."),
+        "the callbacks are marked as left out: {rendered}"
+    );
+}

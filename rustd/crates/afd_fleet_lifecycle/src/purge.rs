@@ -163,8 +163,10 @@ fn report(fleet: &str, failure: &afd_dragonfly::Error, event: &'static str) {
         error_code: cause_error_code,
         reason,
     } = failure.logged();
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     tracing::warn!(
-        error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+        error_code,
         cause_error_code,
         fleet,
         reason,

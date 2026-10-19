@@ -236,7 +236,7 @@ fn closing_against_a_silent_collector_stops_at_its_budget() {
 
     assert!(
         started.elapsed() < Duration::from_secs(10),
-        "the close returned at its budget, not the export's 60 s timeout"
+        "the close returned at its budget, not at the export timeout the knob set"
     );
     assert_eq!(
         capture.only(EVENT_CLOSE_TIMED_OUT).field("budget_ms"),
@@ -271,5 +271,35 @@ fn a_second_install_is_not_the_recorder() {
     assert!(
         !second.recording(),
         "the first install in this process kept the recorder"
+    );
+}
+
+/// A close that cannot start its thread shuts the pipelines down on the
+/// caller's, unbounded, rather than exiting with the buffered spans undelivered.
+#[test]
+fn a_close_that_cannot_start_its_thread_shuts_down_on_the_callers() {
+    let telemetry = installed(&[(OTEL_ENDPOINT_KNOB, REFUSING)]);
+    let subscriber = tracing_subscriber::registry().with(telemetry.layer());
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {});
+    });
+    let lost = telemetry.exports().spans_lost().clone();
+
+    let capture = trace::Capture::install();
+    telemetry.close_on(Duration::from_millis(200), |_work| {
+        Err(std::io::Error::other("no thread to spare"))
+    });
+
+    assert_eq!(
+        lost.count(),
+        1,
+        "the buffered lease span reached the exporter on this thread"
+    );
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some(EVENT_CLOSE_TIMED_OUT)),
+        "nothing was waited on, so nothing timed out"
     );
 }
