@@ -227,3 +227,89 @@ async fn test_releasing_a_lock_over_a_killed_session_is_survived() {
     db.close().await;
     database.cleanup().await;
 }
+
+/// A benign slot, so a run has a ledger to leave behind.
+const BENIGN: &[Migration] = &[Migration::for_test(
+    9003,
+    "9003_benign.sql",
+    "CREATE TABLE public.migrate_fault_benign (id int)",
+)];
+
+/// A ledger row sqlx marked unfinished refuses the next run: a slot that died
+/// partway is not one a later binary may build on.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_unfinished_ledger_row_refuses_the_run() {
+    let database = TestDatabase::create().await;
+    let db = database.open(DbRole::Migrator, &[]).await;
+    Migrator::new()
+        .with_migrations(BENIGN)
+        .run(&db)
+        .await
+        .expect("the benign slot applies");
+
+    let mut connection = db.acquire().await.unwrap();
+    sqlx::query(
+        "INSERT INTO audit._sqlx_migrations \
+             (version, description, success, checksum, execution_time) \
+         VALUES (9004, 'died partway', FALSE, '\\x00', 0)",
+    )
+    .execute(&mut *connection)
+    .await
+    .unwrap();
+    drop(connection);
+
+    let error = Migrator::new()
+        .with_migrations(BENIGN)
+        .run(&db)
+        .await
+        .expect_err("an unfinished slot must refuse the run");
+    assert!(error.is_migration_refused(), "got {error}");
+    assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
+
+    db.close().await;
+    database.cleanup().await;
+}
+
+/// A lock poll over a session that died fails as the query it is, at once: a
+/// dropped connection is not contention, so the bound is not waited out.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_lock_poll_over_a_killed_session_fails_without_retrying() {
+    /// A bound whose first retry alone would outlast the assertion below.
+    const PATIENT: RetryPolicy = RetryPolicy::new(5, Duration::from_secs(2));
+
+    let database = TestDatabase::create().await;
+    let db = database.open(DbRole::Migrator, &[]).await;
+    let mut doomed = db.acquire().await.unwrap();
+    let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *doomed)
+        .await
+        .unwrap();
+    let mut bystander = db.acquire().await.unwrap();
+    let killed: bool = sqlx::query_scalar("SELECT pg_terminate_backend($1)")
+        .bind(pid)
+        .fetch_one(&mut *bystander)
+        .await
+        .unwrap();
+    assert!(killed, "the doomed session was terminated");
+    drop(bystander);
+
+    let started = std::time::Instant::now();
+    let error = MigrationLock::acquire(doomed, PATIENT)
+        .await
+        .expect_err("a poll on a dead session cannot take the lock");
+
+    assert!(
+        error.is_query(),
+        "a dead session is a query failure: {error}"
+    );
+    assert!(!error.is_migration_refused(), "and not contention: {error}");
+    assert!(
+        started.elapsed() < PATIENT.budget() / 5,
+        "the poll was not retried"
+    );
+
+    db.close().await;
+    database.cleanup().await;
+}

@@ -109,3 +109,20 @@ fn test_the_default_migrator_runs_the_canonical_list() {
         "Default and new() must not describe two different migrators"
     );
 }
+
+/// Each migration carries the committed file its name points at, byte for
+/// byte: the name and the SQL come from one token in the list, and this reads
+/// the file back from `schema/` to show the two never parted.
+#[test]
+fn test_every_migration_carries_its_committed_file() {
+    let schema = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../schema");
+    for migration in MIGRATIONS {
+        let committed = std::fs::read_to_string(schema.join(migration.name())).unwrap();
+        assert_eq!(
+            migration.sql(),
+            committed,
+            "{} applies SQL other than its committed file",
+            migration.name()
+        );
+    }
+}
