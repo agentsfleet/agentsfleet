@@ -47,12 +47,14 @@ const POISONED: &str = "the captured sums lock was poisoned";
 /// One series: a family and its label pairs, sorted so the spelling is one.
 type Series = (String, Vec<(String, String)>);
 
-/// The last export's `u64` sums and histogram counts, every series, and each
-/// histogram series' running total beside its count.
+/// The last export's `u64` sums and histogram counts, every series, each
+/// histogram series' running total beside its count, and every `u64` gauge's
+/// reading.
 #[derive(Debug, Default)]
 struct Captured {
     latest: Mutex<BTreeMap<Series, u64>>,
     histogram_sums: Mutex<BTreeMap<Series, f64>>,
+    gauges: Mutex<BTreeMap<Series, u64>>,
 }
 
 /// The exporter half, so the trait lands on a type this crate owns.
@@ -82,11 +84,12 @@ impl PushMetricExporter for CapturingExporter {
 }
 
 impl CapturingExporter {
-    /// Take every `u64` sum, and every `f64` histogram's count and total, out
-    /// of one export batch.
+    /// Take every `u64` sum and gauge, and every `f64` histogram's count and
+    /// total, out of one export batch.
     fn capture(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let mut captured = BTreeMap::new();
         let mut histogram_sums = BTreeMap::new();
+        let mut gauges = BTreeMap::new();
         for scope in metrics.scope_metrics() {
             for metric in scope.metrics() {
                 match metric.data() {
@@ -94,6 +97,11 @@ impl CapturingExporter {
                         for point in sum.data_points() {
                             let key = series(metric.name(), point.attributes());
                             captured.insert(key, point.value());
+                        }
+                    }
+                    AggregatedMetrics::U64(MetricData::Gauge(gauge)) => {
+                        for point in gauge.data_points() {
+                            gauges.insert(series(metric.name(), point.attributes()), point.value());
                         }
                     }
                     AggregatedMetrics::F64(MetricData::Histogram(histogram)) => {
@@ -109,6 +117,7 @@ impl CapturingExporter {
         }
         *self.sink.latest.lock().map_err(poisoned)? = captured;
         *self.sink.histogram_sums.lock().map_err(poisoned)? = histogram_sums;
+        *self.sink.gauges.lock().map_err(poisoned)? = gauges;
         Ok(())
     }
 }
@@ -245,6 +254,24 @@ impl Capture {
             .get(&wanted)
             .copied()
             .unwrap_or_default()
+    }
+
+    /// What one `u64` gauge series read at the latest export, or `None` when
+    /// its source published nothing for it: a withdrawn reading is a gap in
+    /// the export, never a zero.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::sum`].
+    #[must_use]
+    pub fn gauge(&self, family: &str, labels: &[(&str, &str)]) -> Option<u64> {
+        let wanted = self.flushed(family, labels);
+        self.captured
+            .gauges
+            .lock()
+            .expect(POISONED)
+            .get(&wanted)
+            .copied()
     }
 
     /// Flushes the provider, and answers the series `family` and `labels` name.
