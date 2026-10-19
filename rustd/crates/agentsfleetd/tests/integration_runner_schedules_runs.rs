@@ -188,17 +188,13 @@ async fn test_schedule_runs_lists_events() {
     let leased = Leased::boot(&mut supervisor, &qstash).await;
     let schedule = leased.seed(Source::Fleet, "runs-fixture").await;
     let actor = format!("{ACTOR_PREFIX}{schedule}");
-    for (event, at) in [
-        ("1700000000001-0", 1),
-        ("1700000000002-0", 2),
-        ("1700000000003-0", 3),
-    ] {
-        record_event(&leased.run, event, &actor, at).await;
+    for event in ["1700000000001-0", "1700000000002-0", "1700000000003-0"] {
+        record_event(&leased.run, event, &actor).await;
     }
     // Another schedule's run, which this list must not carry, and a longer
     // actor this one's id is a prefix of, which an exact read never matches.
-    record_event(&leased.run, "1700000000004-0", "cron:someone-else", 4).await;
-    record_event(&leased.run, "1700000000005-0", &format!("{actor}0"), 5).await;
+    record_event(&leased.run, "1700000000004-0", "cron:someone-else").await;
+    record_event(&leased.run, "1700000000005-0", &format!("{actor}0")).await;
 
     let first = format!("{}&limit=2", leased.fenced(&format!("/{schedule}/runs")));
     let (status, page) = leased.call(Method::GET, &first, None).await;
@@ -244,7 +240,7 @@ async fn test_once_schedule_retires_after_fire() {
 
     // Its run outlives the row: the history still lists it.
     let event = run["event_id"].as_str().expect("the run's event");
-    record_event(&leased.run, event, &format!("{ACTOR_PREFIX}{schedule}"), 1).await;
+    record_event(&leased.run, event, &format!("{ACTOR_PREFIX}{schedule}")).await;
     let runs = leased.fenced(&format!("/{schedule}/runs"));
     let (status, page) = leased.call(Method::GET, &runs, None).await;
     assert_eq!(status, 200, "{page}");
@@ -299,9 +295,10 @@ fn event_ids(page: &Value) -> Vec<&Value> {
         .collect()
 }
 
-/// Writes one history row for the scenario's fleet, `at` milliseconds into
-/// the epoch so the order is the test's own.
-async fn record_event(run: &Scenario, event: &str, actor: &str, at: i64) {
+/// Writes one history row for the scenario's fleet. The statement stamps
+/// `created_at` with `now()`, so rows order by the sequence the test writes
+/// them in, with `event_id` breaking a same-millisecond tie the same way.
+async fn record_event(run: &Scenario, event: &str, actor: &str) {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
         .bind(&run.fleet)
@@ -311,7 +308,6 @@ async fn record_event(run: &Scenario, event: &str, actor: &str, at: i64) {
         .bind("cron")
         .bind("{}")
         .bind(Option::<&str>::None)
-        .bind(at)
         .bind("processed")
         .fetch_one(&mut *connection)
         .await
