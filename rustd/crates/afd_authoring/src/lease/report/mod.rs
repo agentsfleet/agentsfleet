@@ -67,18 +67,22 @@ impl Drafts {
     async fn pay(&self, owing: &settle::Owing) {
         let work_id = owing.lines.work.id().as_str();
         if let Err(fault) = self.biller.settle(&owing.lines).await {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let error_code = fault.code().as_str();
             tracing::warn!(
                 error = %fault,
-                error_code = fault.code().as_str(),
+                error_code,
                 work_id,
                 event = EVENT_SETTLE_DEFERRED,
                 "the setup chat's usage is logged but not yet charged; the billing sweeper settles it"
             );
         }
         if let Err(fault) = self.biller.release(&owing.lines.work, owing.release).await {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let error_code = fault.code().as_str();
             tracing::warn!(
                 error = %fault,
-                error_code = fault.code().as_str(),
+                error_code,
                 work_id,
                 event = EVENT_RELEASE_DEFERRED,
                 "the setup chat's hold is still open; the billing sweeper releases it"

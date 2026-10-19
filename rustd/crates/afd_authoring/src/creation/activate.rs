@@ -26,8 +26,9 @@ impl Creations {
         match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await {
             Ok(result) => result,
             Err(_elapsed) => {
-                tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet,
-                    error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str());
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code);
                 Ok(())
             }
         }
@@ -73,8 +74,9 @@ impl Creations {
                     .await,
                 Ok(Ok(()))
             ) {
-                tracing::warn!(event = "fleet_setup_stream_pending", fleet_id = %fleet,
-                    error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str());
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                tracing::warn!(event = "fleet_setup_stream_pending", fleet_id = %fleet, error_code);
                 return Ok(());
             }
             let mut connection = self.setup.drafts.database.acquire().await?;

@@ -133,11 +133,14 @@ impl Creations {
             Err(unavailable) => Err(unavailable.into()),
         };
         if let Err(failed) = removed {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let cause_error_code = failed.code().as_str();
             tracing::warn!(
                 event = "system_setup_rollback_failed",
                 fleet_id = %id,
-                error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
-                cause_error_code = failed.code().as_str(),
+                error_code,
+                cause_error_code,
             );
         }
     }

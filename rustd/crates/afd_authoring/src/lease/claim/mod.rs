@@ -31,32 +31,17 @@ enum Placement {
 }
 
 impl Drafts {
-    /// Admits one oldest queued message within an eligible private draft.
+    /// Admits one oldest queued message within an eligible private draft, under
+    /// the shared poll's optimistic host choice.
     ///
     /// Capacity is shared with fleet leases. A failed model or wallet gate is
     /// terminal and durable; another poll can continue with other queued work.
     ///
     /// # Errors
-    /// Propagates datastore/entropy failures; ordinary ineligibility yields no work.
-    pub async fn claim(&self, runner: &Uuid7) -> Result<Option<Claimed>> {
-        self.select_claim(runner, None).await
-    }
-
-    /// Admit under the shared poll's optimistic host choice.
-    ///
-    /// # Errors
     /// Preserves admission failures; a concurrent winning poll yields no work.
     pub async fn claim_offered(&self, runner: &Uuid7, ticket: Ticket) -> Result<Option<Claimed>> {
-        self.select_claim(runner, Some(ticket)).await
-    }
-
-    async fn select_claim(
-        &self,
-        runner: &Uuid7,
-        ticket: Option<Ticket>,
-    ) -> Result<Option<Claimed>> {
         for hint in selection::candidates(&self.database).await? {
-            match self.admit(runner, &hint, ticket).await? {
+            match self.admit(runner, &hint, Some(ticket)).await? {
                 Placement::Admitted(lease) => return Ok(Some(*lease)),
                 Placement::Busy => return Ok(None),
                 Placement::Skipped => {}
@@ -68,7 +53,7 @@ impl Drafts {
     /// Runs the production admission transaction for one fixture-owned draft.
     ///
     /// # Errors
-    /// Preserves the same refusals and datastore failures as `claim`.
+    /// Preserves the same refusals and datastore failures as `claim_offered`.
     #[cfg(feature = "test-util")]
     pub async fn claim_queued(&self, runner: &Uuid7, draft: &Uuid7) -> Result<Option<Claimed>> {
         let hint = selection::hint(&mut *self.database.acquire().await?, draft).await?;
@@ -132,13 +117,17 @@ impl Drafts {
                 event = EVENT_HOLD_UNPLACED,
                 MESSAGE_HOLD_UNPLACED
             ),
-            Err(fault) => tracing::warn!(
-                error = %fault,
-                error_code = fault.code().as_str(),
-                work_id,
-                event = EVENT_HOLD_UNPLACED,
-                MESSAGE_HOLD_UNPLACED
-            ),
+            Err(fault) => {
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = fault.code().as_str();
+                tracing::warn!(
+                    error = %fault,
+                    error_code,
+                    work_id,
+                    event = EVENT_HOLD_UNPLACED,
+                    MESSAGE_HOLD_UNPLACED
+                );
+            }
         }
     }
 }
