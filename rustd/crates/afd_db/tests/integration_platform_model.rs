@@ -11,8 +11,14 @@ use std::error::Error as _;
 
 const PROVIDER: &str = "catalogue-fixture";
 const VERIFIED: Timestamp = Timestamp::constant(1_760_000_000, 0);
-const READ: &str = include_str!("integration_platform_model/read.sql");
-const DELETE: &str = include_str!("integration_platform_model/delete.sql");
+/// One seeded identity with its base quote, as the seed wrote them.
+const READ: &str = "\
+SELECT m.id::text, p.id::text AS price_id, m.display_name, m.context_cap_tokens,
+       m.context_source_url, m.context_verified_at, p.input_nanos_per_mtok,
+       p.cached_input_nanos_per_mtok, p.output_nanos_per_mtok
+  FROM model.platform_models m
+  JOIN model.platform_model_prices p ON p.platform_model_id = m.id
+ WHERE m.id = $1::uuid";
 
 #[derive(Debug, sqlx::FromRow)]
 struct Row {
@@ -67,10 +73,7 @@ async fn model_seeds_preserve_ids_and_update_exact_prices() -> Result<(), Box<dy
     assert_eq!(updated.input_nanos_per_mtok, 6_000_000);
     assert_eq!(updated.cached_input_nanos_per_mtok, 15_000_000);
     assert_eq!(updated.output_nanos_per_mtok, 187_500_000);
-    sqlx::query(DELETE)
-        .bind(&id)
-        .execute(&mut *connection)
-        .await?;
+    ModelSeed::remove(&mut *connection, &id).await?;
     drop(connection);
     db.close().await;
     Ok(())
@@ -112,10 +115,7 @@ async fn a_refused_seed_rolls_back_the_identity_and_preserves_the_sql_source()
             .input_nanos_per_mtok,
         0
     );
-    sqlx::query(DELETE)
-        .bind(&id)
-        .execute(&mut *connection)
-        .await?;
+    ModelSeed::remove(&mut *connection, &id).await?;
     drop(connection);
     db.close().await;
     Ok(())
