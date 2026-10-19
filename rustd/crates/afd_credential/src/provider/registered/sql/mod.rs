@@ -11,6 +11,18 @@
 //! without returning or opening them. JSON array boundaries prevent collisions
 //! between a model reference and the metadata fields beside it. The catalogue's
 //! `resource_version` rides along, so a repriced model is a new generation.
+//!
+//! # Lock order
+//!
+//! Both reads share-lock the catalogue version, the credential, the model and
+//! the entry or default they select. Postgres takes one statement's row locks
+//! in whatever order its plan reaches them. The writers take them in a fixed
+//! order instead: a catalogue edit takes the version and then the model, and an
+//! entry removal or a credential delete takes the credential and then the entry.
+//! A read holding the model while it waits on the version, or the entry while it
+//! waits on the credential, deadlocks those writers. So the read takes
+//! [`LOCK_CATALOGUE`] and then its credential lock first, each as a statement of
+//! its own, and the read proper finds both already held.
 
 /// One tenant registry entry, priced, with its credential still a usable key,
 /// the credential's endpoint restriction and the model's saved inference
@@ -25,3 +37,17 @@ pub(super) const ENTRY: &str = include_str!("entry.sql");
 ///
 /// `$1` owner, `$2` the reference, which only has to be present.
 pub(super) const PLATFORM: &str = include_str!("platform.sql");
+
+/// The catalogue version, share-locked before anything else the read locks,
+/// because a catalogue edit takes it first.
+pub(super) const LOCK_CATALOGUE: &str = include_str!("lock_catalogue.sql");
+
+/// The credential [`ENTRY`] will select, share-locked before the entry, because
+/// an entry removal and a credential delete take the credential first.
+///
+/// `$1` owner, `$2` opaque reference, as [`ENTRY`] takes them.
+pub(super) const LOCK_ENTRY_CREDENTIAL: &str = include_str!("lock_entry_credential.sql");
+
+/// The credential [`PLATFORM`] will select, share-locked before the default, for
+/// the same reason as [`LOCK_ENTRY_CREDENTIAL`]. It takes no parameters.
+pub(super) const LOCK_PLATFORM_CREDENTIAL: &str = include_str!("lock_platform_credential.sql");

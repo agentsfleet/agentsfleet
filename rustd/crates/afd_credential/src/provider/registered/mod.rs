@@ -8,8 +8,8 @@ mod sql;
 
 use afd_core::id::Uuid7;
 use afd_wire::inference::ModelInference;
-use sqlx::PgConnection;
 use sqlx::types::Json;
+use sqlx::{Connection as _, PgConnection};
 
 use crate::error::{Result, query};
 
@@ -109,17 +109,33 @@ pub(super) async fn read(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<Registration>> {
-    let statement = if reference == PLATFORM_MODEL_REF {
-        sql::PLATFORM
+    // A savepoint inside the caller's transaction, a transaction of its own
+    // on a bare connection: either way the locks below are taken in order and
+    // held together. See `sql`'s lock order.
+    let mut ordered = connection.begin().await.map_err(query(CONTEXT))?;
+    sqlx::query(sql::LOCK_CATALOGUE)
+        .execute(&mut *ordered)
+        .await
+        .map_err(query(CONTEXT))?;
+    let (credential, statement) = if reference == PLATFORM_MODEL_REF {
+        (sqlx::query(sql::LOCK_PLATFORM_CREDENTIAL), sql::PLATFORM)
     } else {
-        sql::ENTRY
+        let credential = sqlx::query(sql::LOCK_ENTRY_CREDENTIAL)
+            .bind(owner.as_str())
+            .bind(reference);
+        (credential, sql::ENTRY)
     };
+    credential
+        .execute(&mut *ordered)
+        .await
+        .map_err(query(CONTEXT))?;
     let row = sqlx::query_as::<_, RegisteredRow>(statement)
         .bind(owner.as_str())
         .bind(reference)
-        .fetch_optional(connection)
+        .fetch_optional(&mut *ordered)
         .await
         .map_err(query(CONTEXT))?;
+    ordered.commit().await.map_err(query(CONTEXT))?;
     let Some(row) = row else {
         return Ok(None);
     };
