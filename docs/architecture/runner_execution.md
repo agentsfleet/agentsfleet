@@ -116,6 +116,8 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
+**Usage rides renewals and the report, at most 512 lines a body.** Each renewal and the report carry the provider requests the daemon has not yet recorded, one line each, oldest first, capped at 512 (`afd_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`). The cap binds both bodies; what differs is the answer to a body past it. A renewal past the cap still extends the lease and records no lines, so the runner sends them again; a report past it is refused 400 `UZ-REQ-001` naming the bound. Billing §"Request lines" in [billing_and_provider_keys.md](./billing_and_provider_keys.md) has the full table.
+
 ## Crates
 
 ```

@@ -193,7 +193,16 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
 | Report | the final slice is logged in the report's transaction, settled after commit, and the hold released | `rustd/crates/afd_fleet/src/lease/report/mod.rs`, `settle.rs` |
 | Sweep | lines that committed without a settlement, and holds of leases that ended | `rustd/crates/afd_fleet/src/lease/billing_sweep.rs`, `afd_billing::ledger::resettle` |
 
-**Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`afd_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded. A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those, so a lost answer or an unreadable body re-sends its lines instead of losing them. A body breaking the 512-line bound, or numbering a line in the daemon's range, is refused.
+**Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`afd_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded. A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those, so a lost answer or an unreadable body re-sends its lines instead of losing them. One body carries at most 512 lines (`afd_wire::usage::LINES_MAX`), a cap a renewal and the report share, and the runner sends its oldest 512 unrecorded lines in each.
+
+The two paths answer a broken body differently:
+
+| Body | Renewal | Report |
+|---|---|---|
+| Will not parse, more than 512 lines, or a line numbered in the daemon's range | 200, the lease extended and no line recorded; logged `renew_body_parse_failed` under `UZ-RUN-013`, and the runner sends the lines again | 400 `UZ-REQ-001`; `detail` names the bound (`requests must carry at most 512 lines`, `requests[].seq must be at most 2147483647`) or says `Malformed report body` |
+| Carries the retired cumulative totals `input_tokens`, `cached_input_tokens` or `output_tokens` | 400 `UZ-RUN-013`, the lease not extended; `detail` names the field | 400 `UZ-REQ-001`; `detail` names the field |
+
+A runner still sending cumulative totals can never have a line recorded, so its renewal is refused rather than extended: renewing would only run it unbilled to a report refused for the same field.
 
 **Measuring run time.** `METER_LEASE` (`rustd/crates/afd_fleet/src/lease/sql/meter_lease.sql`) keeps its fence, its two deadlines and its lifetime tally, and moves no money. It answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the deadline the lease was granted, and advances that cursor. Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` serialises every pass on one lease.
 
@@ -474,7 +483,7 @@ Properties:
 
 ## 11. One billing lifecycle behind a `Biller` trait
 
-Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed: fleet runs (`afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together) and setup chat (its own reservation maths, debit and settlement SQL inside `afd_authoring`). They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. Fleet runs bill through it now (§3); setup chat moves onto it in billing run 3, and runners report one line per provider request in billing run 4.
+Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed: fleet runs (`afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together) and setup chat (its own reservation maths, debit and settlement SQL inside `afd_authoring`). They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. Fleet runs (§3) and setup chat both bill through it, and runners report one line per provider request.
 
 ```
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)

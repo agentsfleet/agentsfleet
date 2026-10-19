@@ -178,6 +178,8 @@ Events contain `{draft_id,sequence?,candidate_id?,state?,usage?,failure?}` with 
 
 Existing route identities are at `rustd/crates/afd_http/src/route/runner.rs:36–42`; path constants are at `rustd/crates/afd_wire/src/paths.rs:27–30` and `:92–95`. There is one claim: `POST /v1/runners/me/leases`. Claim input is `{holds?:UUIDv7[<=64],accepted_kinds}` and adds `accepted_kinds:["fleet","authoring"]`; absence is invalid in the cutover. It returns 200 `{lease: TaggedLease|null,retry_after_ms?:integer}`; no-work uses `lease:null` plus the backoff hint. This keeps the existing poll envelope from `rustd/crates/afd_wire/src/lease/mod.rs:178`. A host may opt into fleet-only work; both kinds still count against daemon-enforced worker_count.
 
+A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request, at most 512 lines (`afd_wire::usage::LINES_MAX`) in each body. A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`. A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) is refused on both, naming the field: 400 `UZ-RUN-013` on a renewal, which then does not extend, and 400 `UZ-REQ-001` on a report. Authoring leases carry a `Meter` instead (below), and the cap does not apply to them.
+
 ```text
 {kind:"fleet", ...existing fleet lease payload}
 {kind:"authoring",lease_id,attempt_id,draft_id,sequence,fence,
