@@ -20,6 +20,8 @@ const YEAR_START: &str = "2026-01-01T00:00:00Z";
 const MIDYEAR: &str = "2026-06-01T00:00:00Z";
 /// The UTC midnight a fixture price changes at.
 const DECEMBER: &str = "2026-12-01T00:00:00Z";
+/// The last millisecond before [`DECEMBER`].
+const LAST_NOVEMBER_INSTANT: &str = "2026-11-30T23:59:59.999Z";
 /// One million tokens: the unit every rate is published per.
 const MILLION: u32 = 1_000_000;
 /// A tenth of a million tokens, under the long-context threshold.
@@ -30,11 +32,22 @@ const DIME: i64 = 1_000;
 const TEN_DOLLARS: i64 = 100_000;
 /// Runtime a self-managed line reports.
 const RUNTIME_MS: u32 = 2_500;
-/// Sub-cent rates (0.006, 0.0375, 0.1875 USD per million) in hundredths
-/// of a cent, and the exact nanos per million each must store and bill.
-const SUB_CENT_RATES: [(i64, i64); 3] = [(60, 6_000_000), (375, 37_500_000), (1_875, 187_500_000)];
+/// Sub-cent rates (0.006, 0.015, 0.0375, 0.0625, 0.075, 0.125 and 0.1875 USD
+/// per million) in hundredths of a cent, and the exact nanos per million each
+/// must store and bill.
+const SUB_CENT_RATES: [(i64, i64); 7] = [
+    (60, 6_000_000),
+    (150, 15_000_000),
+    (375, 37_500_000),
+    (625, 62_500_000),
+    (750, 75_000_000),
+    (1_250, 125_000_000),
+    (1_875, 187_500_000),
+];
 /// A long-context threshold: 272,000 prompt tokens.
 const THRESHOLD: i32 = 272_000;
+/// Haiku 5.5's long-context threshold: 100,000 prompt tokens, cache included.
+const HAIKU_THRESHOLD: i32 = 100_000;
 /// Hundredths of a cent per million tokens, as nanos per million tokens.
 const fn usd_per_mtok(cents_hundredths: i64) -> i64 {
     cents_hundredths * NANOS_PER_USD / 10_000
@@ -137,6 +150,51 @@ fn test_context_tier_prices_the_whole_request() {
 }
 
 #[test]
+fn test_context_tier_counts_cache_reads_toward_the_haiku_threshold() {
+    // Haiku 5.5: 0.10 / 0.01 / 0.50 at base, 0.50 / 0.05 / 2.50 above 100,000.
+    let book = PriceBook::from_tiers(vec![
+        tier(
+            BASE_ID,
+            price(
+                YEAR_START,
+                None,
+                0,
+                usd_per_mtok(DIME),
+                usd_per_mtok(100),
+                usd_per_mtok(5_000),
+            ),
+        ),
+        tier(
+            UPPER_ID,
+            price(
+                YEAR_START,
+                None,
+                HAIKU_THRESHOLD,
+                usd_per_mtok(5_000),
+                usd_per_mtok(500),
+                usd_per_mtok(25_000),
+            ),
+        ),
+    ]);
+    let rater = Rater::new(&book, Posture::Platform, wide());
+    let mut at_edge = line(MIDYEAR, 99_000, 0);
+    at_edge.cached_input_tokens = 1_000;
+    let mut past = at_edge;
+    past.cached_input_tokens = 1_001;
+
+    let at_edge = rater.rate(&at_edge).expect("prices");
+    let past = rater.rate(&past).expect("prices");
+    // 100,000 prompt tokens is not ABOVE the threshold: base on every token.
+    // 99,000 × 0.10 + 1,000 × 0.01 USD/Mtok.
+    assert_eq!(at_edge.price, Some(Uuid7::parse(BASE_ID).expect("id")));
+    assert_eq!(at_edge.charged.as_i64(), 9_910_000);
+    // 100,001 is: the upper rate prices the whole request, cache read included.
+    // 99,000 × 0.50 + 1,001 × 0.05 USD/Mtok.
+    assert_eq!(past.price, Some(Uuid7::parse(UPPER_ID).expect("id")));
+    assert_eq!(past.charged.as_i64(), 49_550_050);
+}
+
+#[test]
 fn test_rater_prices_each_line_by_tier_and_date() {
     let book = tiered();
     let rater = Rater::new(&book, Posture::Platform, wide());
@@ -146,6 +204,15 @@ fn test_rater_prices_each_line_by_tier_and_date() {
     // 271,000 + 500 + 501 crosses the threshold: cache reads and writes count.
     let priced = rater.rate(&cached).expect("prices");
     assert_eq!(priced.price, Some(Uuid7::parse(UPPER_ID).expect("id")));
+
+    // One token at 0.006 USD per million is 6 nanos exactly.
+    let sub_cent = PriceBook::from_tiers(vec![tier(
+        BASE_ID,
+        price(YEAR_START, None, 0, usd_per_mtok(60), 0, 0),
+    )]);
+    let rater = Rater::new(&sub_cent, Posture::Platform, wide());
+    let one = rater.rate(&line(MIDYEAR, 1, 0)).expect("prices");
+    assert_eq!(one.charged.as_i64(), 6);
 }
 
 #[test]
@@ -176,11 +243,30 @@ fn test_effective_dates_switch_at_utc_midnight() {
     ]);
     let rater = Rater::new(&book, Posture::Platform, wide());
     let before = rater
-        .rate(&line("2026-11-30T23:59:59.999Z", MILLION, 0))
+        .rate(&line(LAST_NOVEMBER_INSTANT, MILLION, 0))
         .expect("prices");
     let after = rater.rate(&line(DECEMBER, MILLION, 0)).expect("prices");
-    assert_eq!(before.charged.as_i64(), usd_per_mtok(20_000));
-    assert_eq!(after.charged.as_i64(), usd_per_mtok(40_000));
+    assert_eq!(before.charged.as_i64(), 2_000_000_000);
+    assert_eq!(after.charged.as_i64(), 4_000_000_000);
+
+    // A million cached and a million output tokens, each side of midnight:
+    // 0.10 → 0.20 and 10.00 → 20.00 USD per million.
+    let cached = |at_text: &str| {
+        let mut cached = line(at_text, 0, 0);
+        cached.cached_input_tokens = MILLION;
+        rater.rate(&cached).expect("prices").charged.as_i64()
+    };
+    let output = |at_text: &str| {
+        rater
+            .rate(&line(at_text, 0, MILLION))
+            .expect("prices")
+            .charged
+            .as_i64()
+    };
+    assert_eq!(cached(LAST_NOVEMBER_INSTANT), 100_000_000);
+    assert_eq!(cached(DECEMBER), 200_000_000);
+    assert_eq!(output(LAST_NOVEMBER_INSTANT), 10_000_000_000);
+    assert_eq!(output(DECEMBER), 20_000_000_000);
 }
 
 #[test]
