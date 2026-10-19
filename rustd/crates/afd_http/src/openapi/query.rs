@@ -101,21 +101,6 @@ pub struct WorkspaceFilter {
     pub limit: Option<String>,
 }
 
-/// What a tenant's model registry is filtered and paged by.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct ModelEntryFilter {
-    /// Exact match on the normalized provider. At most 128 bytes once
-    /// normalized; empty after normalization is treated as absent.
-    pub provider: Option<String>,
-    /// Opaque cursor from a previous page's `next_cursor`, bound to the filters
-    /// and page size that produced it. Only the sort boundary is read from it —
-    /// the filters applied are always the request's.
-    pub starting_after: Option<String>,
-    /// Rows per page, 1..100. Defaults to 50.
-    pub limit: Option<String>,
-}
-
 /// What `GET /v1/models` is filtered and paged by.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
