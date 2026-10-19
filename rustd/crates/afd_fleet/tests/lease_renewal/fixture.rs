@@ -22,8 +22,23 @@ pub(super) struct Running {
 }
 
 impl Running {
+    /// A runtime lease on the lane's shared database.
     pub(super) async fn create() -> Self {
-        let fixtures = Fixtures::create_with_queue().await;
+        Self::issue_on(Fixtures::create_with_queue().await).await
+    }
+
+    /// The same, on a database of this test's own.
+    ///
+    /// For a test that asserts WHICH queued authoring turn the host is given.
+    /// Placement takes the oldest queued draft across every tenant, so on the
+    /// shared lane a sibling suite's leftover or backdated draft wins the slot.
+    /// A private database makes this test's draft the only candidate, and its
+    /// platform defaults the only ones. `cleanup` drops it.
+    pub(super) async fn create_isolated() -> Self {
+        Self::issue_on(Fixtures::create_isolated_with_queue().await).await
+    }
+
+    async fn issue_on(fixtures: Fixtures) -> Self {
         let Seeded {
             runners: [runner],
             fleet,

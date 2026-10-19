@@ -13,7 +13,7 @@ use super::{
 };
 use afd_authoring::{Claimed, Drafts, types::Draft};
 use afd_crypto::entropy::Entropy;
-use afd_db::{Db, config::DbRole, test_util::TestDatabase};
+use afd_db::{Db, config::DbRole};
 use afd_fleet::lease::Renewed;
 use afd_wire::lease::{AcceptedKinds, LeaseKind};
 use std::time::Duration;
@@ -48,9 +48,9 @@ async fn test_expired_runtime_renewal_and_authoring_admission_share_one_slot() {
 }
 
 async fn scenario(order: Late) {
-    let running = Running::create().await;
+    let running = Running::create_isolated().await;
     let seat = Seat::create(&running).await;
-    let replica = AuthoringReplica::start().await;
+    let replica = AuthoringReplica::start(&running).await;
     let draft = seat.queue(&replica.drafts).await;
     expire(&running).await;
     let expired = snapshot(&running).await;
@@ -131,25 +131,23 @@ async fn live_authoring(running: &Running) -> Vec<String> {
 }
 
 /// The second daemon replica: its own pool, meeting A only in rows.
+///
+/// The pool opens on A's database, which A owns and drops at its cleanup.
 struct AuthoringReplica {
-    lane: TestDatabase,
     database: Db,
     drafts: Drafts,
 }
 
 impl AuthoringReplica {
-    async fn start() -> Self {
-        let lane = TestDatabase::shared();
-        let database = lane.open(DbRole::Api, &[]).await;
+    async fn start(running: &Running) -> Self {
+        let database = running.fixtures.open(DbRole::Api).await;
         Self {
             drafts: Seat::drafts(&database),
-            lane,
             database,
         }
     }
 
     async fn stop(self) {
         self.database.close().await;
-        self.lane.cleanup().await;
     }
 }
