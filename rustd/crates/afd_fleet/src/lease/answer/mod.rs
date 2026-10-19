@@ -35,9 +35,10 @@ pub(super) const EVENT_REFUSED: &str = "runner_lease_refused";
 /// Only a serialization failure of a fixed, field-free shape, which is
 /// unreachable; it is still a `Result` so no caller has to learn that.
 pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
+    let runner_id = runner_id.as_str();
     tracing::info!(
         event = EVENT_NO_WORK,
-        runner_id = runner_id.as_str(),
+        runner_id,
         reason,
         "the poll issued no lease"
     );

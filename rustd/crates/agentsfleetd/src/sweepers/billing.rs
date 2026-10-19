@@ -59,11 +59,14 @@ async fn sweep_leases(database: &Db, biller: &dyn Biller, entropy: &Entropy) {
             );
         }
         Ok(_) => {}
-        Err(error) => tracing::warn!(
-            event = FAILED,
-            error_code = error.code().as_str(),
-            "billing sweep waits for its datastore"
-        ),
+        Err(error) => {
+            let error_code = error.code().as_str();
+            tracing::warn!(
+                event = FAILED,
+                error_code,
+                "billing sweep waits for its datastore"
+            );
+        }
     }
 }
 
@@ -79,11 +82,14 @@ async fn release_attempts(database: &Db, biller: &dyn Biller) {
             );
         }
         Ok(_) => {}
-        Err(error) => tracing::warn!(
-            event = FAILED,
-            error_code = error.code().as_str(),
-            "billing sweep waits for its datastore"
-        ),
+        Err(error) => {
+            let error_code = error.code().as_str();
+            tracing::warn!(
+                event = FAILED,
+                error_code,
+                "billing sweep waits for its datastore"
+            );
+        }
     }
 }
 

@@ -59,13 +59,16 @@ impl Plane {
                 event = EVENT_HOLD_UNPLACED,
                 MESSAGE_HOLD_UNPLACED
             ),
-            Err(fault) => tracing::warn!(
-                error = %fault,
-                error_code = fault.code().as_str(),
-                work_id,
-                event = EVENT_HOLD_UNPLACED,
-                MESSAGE_HOLD_UNPLACED
-            ),
+            Err(fault) => {
+                let error_code = fault.code().as_str();
+                tracing::warn!(
+                    error = %fault,
+                    error_code,
+                    work_id,
+                    event = EVENT_HOLD_UNPLACED,
+                    MESSAGE_HOLD_UNPLACED
+                );
+            }
         }
     }
 
@@ -73,9 +76,10 @@ impl Plane {
     pub(crate) async fn settle_usage(&self, settlement: &Settlement) {
         if let Err(fault) = self.biller.settle(settlement).await {
             let work_id = settlement.work.id().as_str();
+            let error_code = fault.code().as_str();
             tracing::warn!(
                 error = %fault,
-                error_code = fault.code().as_str(),
+                error_code,
                 work_id,
                 event = EVENT_SETTLE_DEFERRED,
                 "the usage line is logged but not yet charged; the billing sweeper settles it"
@@ -89,9 +93,10 @@ impl Plane {
         let work = WorkKey::FleetLease(lease_id.clone());
         if let Err(fault) = self.biller.release(&work, why).await {
             let work_id = lease_id.as_str();
+            let error_code = fault.code().as_str();
             tracing::warn!(
                 error = %fault,
-                error_code = fault.code().as_str(),
+                error_code,
                 work_id,
                 event = EVENT_RELEASE_DEFERRED,
                 "the lease's hold is still open; the billing sweeper releases it"
