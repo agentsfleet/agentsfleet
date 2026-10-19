@@ -53,7 +53,26 @@ async fn test_catalogue_seeder_uses_registered_schema_and_rolls_back_failures() 
         "real catalogue seeder suite failed"
     );
     assert!(
-        stderr.contains(" pass"),
+        tally(&stderr, "pass") > 0,
         "the seeder suite ran no passing tests"
     );
+    // Every database case is `describe.skipIf(!TEST_CATALOGUE_DATABASE_URL)`,
+    // so a URL that never reaches Bun skips them all and the suite still
+    // exits 0 on the cases that need no database.
+    assert_eq!(
+        tally(&stderr, "skip"),
+        0,
+        "the seeder suite skipped cases, so the database cases did not run"
+    );
+}
+
+/// The count Bun's closing summary gives `label` (`" 81 pass"`, `" 22 skip"`),
+/// zero when the summary has no such line: Bun omits a zero skip count.
+fn tally(summary: &str, label: &str) -> u64 {
+    summary
+        .lines()
+        .filter_map(|line| line.trim().split_once(' '))
+        .find(|(_, named)| *named == label)
+        .and_then(|(count, _)| count.parse().ok())
+        .unwrap_or(0)
 }
