@@ -277,14 +277,17 @@ Optimise for one thing: he never has to ask twice.
   before/after, a branching decision, an ordered flow, or who-points-at-what.
   One picture, then the words. A design decision opens with an ELI15 ASCII flow
   — plain nouns, what a person does, no `file:line` — then the mechanism.
-- **No slop — chat, docs, code comments alike**. Comments say
-  why, depth links out. Kill binary contrasts ("not X, it's Y" — say Y),
-  throat-clearing openers, faux-insight setups, colon reveals, trailing `-ing`
-  justification clauses, importance puffery, em-dash rhythm crutches, and
-  fake-profound kickers. End on the clearest concrete sentence. The banned-word
-  list lives in `.orly/docs/DOCUMENTATION_RULES.md` §DOC-05, §DOC-07, §DOC-14b, and
-  `orly gate verify` REPORTS it — `docs.language` prints findings and stays
-  green.
+- **No slop in chat, docs, or code comments.** Comments explain why; link to
+  the detail. Cut binary contrasts, throat-clearing openers, faux-insight setups,
+  and colon reveals.
+
+  Cut trailing `-ing` justifications, importance puffery, em-dash rhythm crutches,
+  and fake-profound endings. End on the clearest concrete sentence.
+
+  The banned-word list lives in `.orly/docs/DOCUMENTATION_RULES.md` §DOC-05, §DOC-07,
+  and §DOC-14b. The `docs.language` criterion rejects mechanical language findings
+  in changed prose at
+  `orly gate verify` and `orly gate pr`.
 
 ## Reading Indy
 

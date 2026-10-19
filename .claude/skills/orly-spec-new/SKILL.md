@@ -7,4 +7,6 @@ description: |
   TODO.md attempt (forbidden — every non-trivial intent becomes a spec).
 ---
 
+# Skill instructions
+
 Read and follow `.orly/skills/orly-spec-new/SKILL.md` from the repository root before acting.
