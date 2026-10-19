@@ -113,6 +113,25 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     let detail = send(router, Method::GET, runner_path, Some(&fixture.token), "").await;
     assert_eq!(detail.status(), StatusCode::OK);
     assert_eq!(text(&json_body(detail).await, "id"), fixture.runner);
+
+    // A runner that has held no lease answers an empty page of its history,
+    // not a refusal: the read is scoped by the path, so the page is this
+    // runner's alone.
+    let leases = send(
+        router,
+        Method::GET,
+        &format!("{runner_path}/leases"),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(leases.status(), StatusCode::OK);
+    let leases = json_body(leases).await;
+    assert_eq!(
+        leases.get("items").and_then(Value::as_array).map(Vec::len),
+        Some(0),
+        "{leases}"
+    );
 }
 
 async fn assert_runner_policy_and_actions(router: &axum::Router, token: &str, path: &str) {

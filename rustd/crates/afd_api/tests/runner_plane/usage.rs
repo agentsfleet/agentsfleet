@@ -142,3 +142,40 @@ async fn a_refused_report_names_the_field() {
         "the fixture is a report the daemon takes"
     );
 }
+
+/// A failed run settles like a clean one and is recorded as the failure it
+/// was, whether or not the runner classified it: an unclassified fleet error
+/// is still a fleet error, never counted as a processed run.
+#[tokio::test]
+async fn a_failed_report_settles_and_is_recorded_as_a_fleet_error() {
+    let (fleet, recorded) = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_recorded_analytics();
+    let router = fleet.router();
+    for reason in [r#""timeout_kill""#, "null"] {
+        let body = format!(
+            r#"{{"lease_id":"{LEASE_ID}","event_id":"e","fencing_token":1,"outcome":"fleet_error","failure_reason":{reason},"failure_detail":"","response_text":"","tokens":6,"requests":[{}],"telemetry":{{"time_to_first_token_ms":0,"wall_ms":1}},"checkpoint":{{"last_event_id":"e","last_response":""}}}}"#,
+            usage_line(0)
+        );
+        let settled = send(
+            &router,
+            Method::POST,
+            "/v1/runners/me/reports",
+            Some(RUNNER_TOKEN),
+            &body,
+        )
+        .await;
+        assert_eq!(settled.status(), StatusCode::OK, "{reason}");
+        assert_eq!(json_body(settled).await, serde_json::json!({"ok": true}));
+    }
+
+    let exits: Vec<String> = recorded
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            afd_observability::Telemetry::FleetCompleted { exit_status, .. } => Some(exit_status),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(exits, ["fleet_error", "fleet_error"]);
+}

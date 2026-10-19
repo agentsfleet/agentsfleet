@@ -139,6 +139,19 @@ async fn platform_key_mutations_validate_pairing_before_io() {
     )
     .await;
     assert_eq!(bad_provider.status(), StatusCode::BAD_REQUEST);
+
+    // A well-formed provider reaches the store, whose outage is the 503 the
+    // delete reports rather than an "already inactive" it cannot know.
+    let unreachable = send(
+        &admin,
+        Method::DELETE,
+        "/v1/admin/platform-keys/anthropic",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(unreachable.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(code(unreachable).await, Some("UZ-INTERNAL-001"));
 }
 
 /// Both model verbs that name an id parse it before anything else, and the
