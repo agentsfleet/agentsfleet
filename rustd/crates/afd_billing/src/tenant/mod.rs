@@ -24,6 +24,9 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
+use sqlx::postgres::{PgArguments, PgRow};
+use sqlx::query::QueryAs;
+use sqlx::{FromRow, Postgres, SqlSafeStr};
 
 use crate::{Result, Wallet, error, sql};
 
@@ -87,26 +90,58 @@ impl Billing {
         boundary: Option<&cursor::Boundary>,
     ) -> Result<Vec<ChargeRow>> {
         let mut connection = self.database.acquire().await?;
-        let query = match boundary {
-            None => sqlx::query_as(sql::SELECT_TENANT_CHARGES_FIRST)
-                .bind(tenant.as_str())
-                .bind(i64::from(limit))
-                .bind(sql::CHARGE_TYPE_AUTHORING)
-                .bind(sql::work::FLEET_LEASE)
-                .bind(sql::charge::STAGE),
-            Some(after) => sqlx::query_as(sql::SELECT_TENANT_CHARGES_AFTER)
-                .bind(tenant.as_str())
-                .bind(after.created_at.to_sqlx())
-                .bind(after.id.as_str())
-                .bind(i64::from(limit))
-                .bind(sql::CHARGE_TYPE_AUTHORING)
-                .bind(sql::work::FLEET_LEASE)
-                .bind(sql::charge::STAGE),
-        };
-        query
+        page(|statement| statement, tenant, limit, boundary)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_CHARGES))
+    }
+}
+
+/// The page [`Billing::charges`] runs, binds and all, with its statement handed
+/// through `wrap` first.
+///
+/// The paging plan proof prefixes `EXPLAIN` here, so the plan it grades is the
+/// statement and the seven binds the store sends, never a copy of them.
+#[cfg(feature = "test-util")]
+pub fn charges_query<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+    limit: u32,
+    boundary: Option<&'q cursor::Boundary>,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    page(wrap, tenant, limit, boundary)
+}
+
+/// The first page with no boundary, or a later page strictly older than it.
+fn page<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+    limit: u32,
+    boundary: Option<&'q cursor::Boundary>,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    match boundary {
+        None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
+            .bind(tenant.as_str())
+            .bind(i64::from(limit))
+            .bind(sql::CHARGE_TYPE_AUTHORING)
+            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::charge::STAGE),
+        Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
+            .bind(tenant.as_str())
+            .bind(after.created_at.to_sqlx())
+            .bind(after.id.as_str())
+            .bind(i64::from(limit))
+            .bind(sql::CHARGE_TYPE_AUTHORING)
+            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::charge::STAGE),
     }
 }
 
