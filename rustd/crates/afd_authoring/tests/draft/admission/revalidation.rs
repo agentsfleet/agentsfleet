@@ -92,3 +92,36 @@ async fn a_draft_row_in_no_known_state_refuses_the_claim_as_a_stored_fault() {
     assert_eq!(attempts(&f).await, 0);
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_claim_chosen_as_a_deadlock_victim_surfaces_the_datastore_error() {
+    let f = funded(1).await;
+    let draft = queue(&f, "Claimed into a lock cycle").await;
+    let mut holder = f.connection().await;
+    let mut held = holder.begin().await.expect("holder transaction");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM identity.users WHERE id=$1::uuid FOR UPDATE",
+    )
+    .bind(f.owner.as_str())
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the creator's account");
+    let (placed, ()) = tokio::join!(f.drafts.claim_queued(&f.runner, &draft.id), async {
+        // The claim holds the host and waits on the account; asking for the
+        // host closes the cycle, and the claim, which waited first, is the
+        // one Postgres aborts.
+        f.waits_on(pid, 1).await;
+        sqlx::query(LOCK_HOST)
+            .bind(f.runner.as_str())
+            .execute(&mut *held)
+            .await
+            .expect("the host frees once the claim is aborted");
+        held.rollback().await.expect("release both");
+    });
+    drop(holder);
+    let refused = placed.expect_err("a deadlock victim admits nothing");
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
+    assert_eq!(attempts(&f).await, 0);
+    f.cleanup().await;
+}
