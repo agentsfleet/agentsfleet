@@ -46,8 +46,6 @@ pub struct ExecutionResult<'a> {
     pub token_count: u64,
     /// Wall-clock seconds the run took.
     pub wall_seconds: u64,
-    /// Peak resident bytes observed.
-    pub memory_peak_bytes: u64,
     /// Cumulative uncached prompt tokens for the whole run: neither read
     /// from the provider's cache nor written to it.
     pub input_tokens: u64,
