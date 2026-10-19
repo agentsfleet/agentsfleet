@@ -1,5 +1,5 @@
-//! The `identity.tenants`, `identity.workspaces` and `identity.api_keys` rows a
-//! suite seeds, spelled once.
+//! The `identity.tenants`, `identity.workspaces`, `identity.users` and
+//! `identity.api_keys` rows a suite seeds, spelled once.
 //!
 //! Nearly every integration suite needs a tenant and a workspace to hang its
 //! rows from, and each used to write its own `INSERT` with the column list
@@ -22,9 +22,13 @@ const INSERT_WORKSPACE: &str = include_str!("sql/insert_workspace.sql");
 /// Every column an API key seed sets.
 const INSERT_API_KEY: &str = include_str!("sql/insert_api_key.sql");
 
+/// Every column a person seed sets.
+const INSERT_USER: &str = include_str!("sql/insert_user.sql");
+
 const CONTEXT_TENANT: &str = "seed a tenant";
 const CONTEXT_WORKSPACE: &str = "seed a workspace";
 const CONTEXT_API_KEY: &str = "seed an API key";
+const CONTEXT_USER: &str = "seed a person";
 
 /// One tenant row. Named after its own id unless the suite names it, and
 /// stamped by the database's `now()` unless the suite stamps it.
@@ -183,6 +187,71 @@ impl<'a> ApiKeySeed<'a> {
             .execute(executor)
             .await
             .map_err(|source| error::query(CONTEXT_API_KEY, source))?;
+        Ok(())
+    }
+}
+
+/// One person under a tenant, signed in as `oidc_subject`.
+///
+/// No display name unless the suite names one, and stamped by the database's
+/// `now()` unless the suite stamps it.
+#[derive(Debug, Clone, Copy)]
+#[must_use = "a seed writes nothing until `insert` runs"]
+pub struct UserSeed<'a> {
+    id: &'a str,
+    tenant_id: &'a str,
+    oidc_subject: &'a str,
+    email: &'a str,
+    display_name: Option<&'a str>,
+    created_at: Option<Timestamp>,
+}
+
+impl<'a> UserSeed<'a> {
+    /// A person `id` under `tenant_id`, signed in as `oidc_subject`.
+    pub const fn new(
+        id: &'a str,
+        tenant_id: &'a str,
+        oidc_subject: &'a str,
+        email: &'a str,
+    ) -> Self {
+        Self {
+            id,
+            tenant_id,
+            oidc_subject,
+            email,
+            display_name: None,
+            created_at: None,
+        }
+    }
+
+    /// Names the person, for a suite that asserts on the name.
+    pub const fn display_name(mut self, name: &'a str) -> Self {
+        self.display_name = Some(name);
+        self
+    }
+
+    /// Stamps both `created_at` and `updated_at` with `instant`.
+    pub const fn at(mut self, instant: Timestamp) -> Self {
+        self.created_at = Some(instant);
+        self
+    }
+
+    /// Writes the row.
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the insert fails: a missing tenant or a duplicate
+    /// id.
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<()> {
+        sqlx::query(INSERT_USER)
+            .bind(self.id)
+            .bind(self.tenant_id)
+            .bind(self.oidc_subject)
+            .bind(self.email)
+            .bind(self.display_name)
+            .bind(self.created_at.map(Timestamp::to_sqlx))
+            .execute(executor)
+            .await
+            .map_err(|source| error::query(CONTEXT_USER, source))?;
         Ok(())
     }
 }

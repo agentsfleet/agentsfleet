@@ -4,7 +4,7 @@ use super::fixture::{Fixture, now};
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_db::test_util::ModelSeed;
+use afd_db::test_util::{ModelSeed, TenantSeed, UserSeed, WorkspaceSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 
@@ -20,31 +20,43 @@ const CACHED_INPUT_NANOS_PER_MTOK: i64 = NANOS_PER_USD / 10;
 /// See [`INPUT_NANOS_PER_MTOK`].
 const OUTPUT_NANOS_PER_MTOK: i64 = 2 * NANOS_PER_USD;
 
-const PEOPLE: &str = "\
-WITH tenants AS (
- INSERT INTO identity.tenants(id,name,created_at,updated_at)
- VALUES ($1::uuid,'authoring-owner',now(),now()),($2::uuid,'authoring-member',now(),now())
-), users AS (
- INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
- VALUES ($3::uuid,$1::uuid,$3,$3,now(),now()),($4::uuid,$2::uuid,$4,$4,now(),now())
- RETURNING id
-), workspace AS (
- INSERT INTO identity.workspaces(id,tenant_id,created_at) VALUES ($5::uuid,$1::uuid,now())
-)
+/// The member joining the owner's account.
+const MEMBERSHIP: &str = "\
 INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
-SELECT $6::uuid,$1::uuid,id,'member',now() FROM users WHERE id=$4::uuid";
+VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
 
 pub(super) async fn people(f: &Fixture) {
-    sqlx::query(PEOPLE)
-        .bind(f.tenant.as_str())
-        .bind(f.member_tenant.as_str())
-        .bind(f.owner.as_str())
-        .bind(f.member.as_str())
-        .bind(f.workspace.as_str())
-        .bind(super::mint().as_str())
-        .execute(&mut *f.connection().await)
+    let mut connection = f.connection().await;
+    for (tenant, name, person) in [
+        (&f.tenant, "authoring-owner", &f.owner),
+        (&f.member_tenant, "authoring-member", &f.member),
+    ] {
+        TenantSeed::new(tenant.as_str())
+            .name(name)
+            .insert(&mut *connection)
+            .await
+            .expect("seed an isolated account");
+        UserSeed::new(
+            person.as_str(),
+            tenant.as_str(),
+            person.as_str(),
+            person.as_str(),
+        )
+        .insert(&mut *connection)
         .await
-        .expect("seed isolated people and membership");
+        .expect("seed its person");
+    }
+    WorkspaceSeed::new(f.workspace.as_str(), f.tenant.as_str())
+        .insert(&mut *connection)
+        .await
+        .expect("seed the owner's workspace");
+    sqlx::query(MEMBERSHIP)
+        .bind(super::mint().as_str())
+        .bind(f.tenant.as_str())
+        .bind(f.member.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("seed the membership");
 }
 
 pub(super) async fn credential(f: &Fixture) {

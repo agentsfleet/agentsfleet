@@ -41,7 +41,7 @@ use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_vault::Vault;
 
 /// The key every fixture in this lane seals and opens under.
@@ -85,23 +85,15 @@ impl Deployment {
         let admin = mint_id();
 
         let mut connection = database.acquire().await.expect("a pooled connection");
-        sqlx::query(
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'a connector fixture', now(), now())",
-        )
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant row must insert");
-        sqlx::query(
-            "INSERT INTO identity.workspaces (id, tenant_id, created_at) \
-             VALUES ($1::uuid, $2::uuid, now())",
-        )
-        .bind(&admin)
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin workspace row must insert");
+        TenantSeed::new(&tenant)
+            .name("a connector fixture")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant row must insert");
+        WorkspaceSeed::new(&admin, &tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the admin workspace row must insert");
         drop(connection);
 
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));

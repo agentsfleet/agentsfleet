@@ -17,7 +17,9 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+};
 use afd_vault::{SecretBody, SecretName};
 
 use super::PLATFORM_SECRET;
@@ -126,36 +128,35 @@ impl Fixture {
     async fn seed_tenant(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Approval callback live', now(), now()) \
-             ), workspaces AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'callback', now()), \
-                      ($4::uuid, $1::uuid, 'dashboard', now()), \
-                      ($5::uuid, $1::uuid, 'platform-admin', now()) \
-             ), person AS ( \
-               INSERT INTO identity.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($6::uuid, $1::uuid, $3, 'callback-live@example.test', now(), now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($7::uuid, $1::uuid, 'fixture', '', $8, $3, now(), now())",
+        TenantSeed::new(&self.tenant)
+            .name("Approval callback live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        for (workspace, name) in [
+            (&self.workspace, "callback"),
+            (&self.other_workspace, "dashboard"),
+            (&self.admin, "platform-admin"),
+        ] {
+            WorkspaceSeed::new(workspace.as_str(), &self.tenant)
+                .name(name)
+                .insert(&mut *connection)
+                .await
+                .expect("its workspaces seed");
+        }
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "callback-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(self.other_workspace.as_str())
-        .bind(self.admin.as_str())
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant and its people seed");
+        .expect("its person seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), &self.subject)
+            .insert(&mut *connection)
+            .await
+            .expect("their API key seeds");
         for (fleet, workspace, name) in [
             (&self.fleet, &self.workspace, "callback"),
             (&self.other_fleet, &self.other_workspace, "dashboard"),

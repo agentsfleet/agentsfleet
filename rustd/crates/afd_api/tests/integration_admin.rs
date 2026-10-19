@@ -11,7 +11,9 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{ModelSeed, PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, ModelSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
@@ -268,27 +270,21 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Platform catalogue', now(), now()) \
-             ), workspace AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($5::uuid, $1::uuid, 'platform-default', now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, 'platform', '', $3, $4, now(), now())",
-        )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(&self.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the platform credential seeds");
+        TenantSeed::new(&self.tenant)
+            .name("Platform catalogue")
+            .insert(&mut *connection)
+            .await
+            .expect("the platform tenant seeds");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .name("platform-default")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .name("platform")
+            .insert(&mut *connection)
+            .await
+            .expect("the platform credential seeds");
         ModelSeed::new(
             &self.platform_model_row,
             &self.provider,

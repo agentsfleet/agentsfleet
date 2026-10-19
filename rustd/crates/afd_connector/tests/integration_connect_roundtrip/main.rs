@@ -56,7 +56,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_vault::{SecretName, Vault};
@@ -225,24 +225,16 @@ async fn queue() -> Dragonfly {
 /// One tenant and its workspaces, which the vault's foreign key requires.
 async fn seed_rows(database: &Db, tenant: &str, workspaces: &[&str]) {
     let mut connection = database.acquire().await.expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-         VALUES ($1::uuid, 'a connect fixture', now(), now())",
-    )
-    .bind(tenant)
-    .execute(&mut *connection)
-    .await
-    .expect("the tenant row must insert");
-    for workspace in workspaces {
-        sqlx::query(
-            "INSERT INTO identity.workspaces (id, tenant_id, created_at) \
-             VALUES ($1::uuid, $2::uuid, now())",
-        )
-        .bind(workspace)
-        .bind(tenant)
-        .execute(&mut *connection)
+    TenantSeed::new(tenant)
+        .name("a connect fixture")
+        .insert(&mut *connection)
         .await
-        .expect("the workspace row must insert");
+        .expect("the tenant row must insert");
+    for workspace in workspaces {
+        WorkspaceSeed::new(workspace, tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace row must insert");
     }
 }
 

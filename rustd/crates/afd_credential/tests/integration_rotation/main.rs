@@ -16,7 +16,9 @@ use afd_crypto::envelope::{Envelope, Sealer};
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{DefaultSeed, ModelSeed, PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{
+    DefaultSeed, ModelSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 use jiff::Timestamp;
 
 mod activation;
@@ -85,33 +87,25 @@ impl Fixture {
     async fn seed_tenant_without_workspace(&self) -> Uuid7 {
         let orphan = id();
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'No workspace', now(), now())",
-        )
-        .bind(orphan.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the workspace-less tenant seeds");
+        TenantSeed::new(orphan.as_str())
+            .name("No workspace")
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace-less tenant seeds");
         orphan
     }
 
     async fn seed_scope(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Credential rotation', now(), now()) \
-               RETURNING id \
-             ) \
-             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             SELECT $2::uuid, id, $2, now() FROM tenant",
-        )
-        .bind(self.tenant.as_str())
-        .bind(self.workspace.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the vault scope seeds");
+        TenantSeed::new(self.tenant.as_str())
+            .name("Credential rotation")
+            .insert(&mut *connection)
+            .await
+            .expect("the vault scope's tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("the vault scope seeds");
     }
 
     async fn seed(&self, name: &str, plaintext: &[u8]) {

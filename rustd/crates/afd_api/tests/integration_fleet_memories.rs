@@ -12,7 +12,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 use sqlx::Acquire as _;
@@ -185,27 +185,20 @@ impl Fixture {
     /// to — everything the request authenticates and resolves through.
     async fn seed_owner(&self, connection: &mut sqlx::PgConnection) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Memory operator', now(), now()) \
-             ), workspace AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'memory', now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, 'fixture', '', $5, $3, now(), now())",
-        )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(SUBJECT)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated tenant seeds");
+        TenantSeed::new(&self.tenant)
+            .name("Memory operator")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("memory")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
         FleetSeed::new(
             &self.fleet,
             self.workspace.as_str(),

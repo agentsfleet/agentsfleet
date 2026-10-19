@@ -18,7 +18,7 @@ use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -102,25 +102,25 @@ impl Fixture {
     /// The tenant, its platform admin workspace, and the person who owns it.
     async fn seed_rows(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector events live', now(), now()) \
-             ), workspace AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'platform-admin', now()) \
-             ) \
-             INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'events-live@example.test', now(), now())",
+        TenantSeed::new(&self.tenant)
+            .name("Connector events live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+            .name("platform-admin")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "events-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.admin.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant and its admin workspace seed");
+        .expect("its person seeds");
     }
 
     /// Seals `document` into the admin workspace under `key`.

@@ -1,11 +1,12 @@
 //! Seeding the rows a live callback walk needs before it can run.
 //!
 //! Split from the fixture's own construction and teardown beside it: that half
-//! is about a lane and a router, and this half is a long SQL arrangement of
-//! tenant, workspaces, owner and key. They changed for different reasons and
+//! is about a lane and a router, and this half is the arrangement of tenant,
+//! workspaces, owner and key. They changed for different reasons and
 //! together they put the file over its length cap.
 
 use super::*;
+use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 
 impl Fixture {
     pub(crate) async fn seed(&self) {
@@ -26,34 +27,34 @@ impl Fixture {
     async fn seed_rows(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector callback live', now(), now()) \
-             ), workspaces AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connected', now()), \
-                      ($4::uuid, $1::uuid, 'platform-admin', now()) \
-             ), person AS ( \
-               INSERT INTO identity.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, $3, 'connector-live@example.test', now(), now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, 'fixture', '', $7, $3, now(), now())",
+        TenantSeed::new(&self.tenant)
+            .name("Connector callback live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        for (workspace, name) in [
+            (&self.workspace, "connected"),
+            (&self.admin, "platform-admin"),
+        ] {
+            WorkspaceSeed::new(workspace.as_str(), &self.tenant)
+                .name(name)
+                .insert(&mut *connection)
+                .await
+                .expect("its workspaces seed");
+        }
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "connector-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(self.admin.as_str())
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, its workspaces and its owner seed");
+        .expect("its owner seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), &self.subject)
+            .insert(&mut *connection)
+            .await
+            .expect("the owner's API key seeds");
 
         // The bystander: a second person of the same tenant, with a credential
         // of their own. Without one, presenting the starter's token would
@@ -61,25 +62,25 @@ impl Fixture {
         // than on the state binding this fixture exists to exercise.
         let bystander_digest =
             Digest::of(&Presented::new(&self.bystander_token).expect("the token is valid"));
-        sqlx::query(
-            "WITH person AS ( \
-               INSERT INTO identity.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($1::uuid, $2::uuid, $3, 'connector-bystander@example.test', now(), now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($4::uuid, $2::uuid, 'bystander', '', $5, $3, now(), now())",
+        UserSeed::new(
+            &self.bystander_user,
+            &self.tenant,
+            &self.bystander,
+            "connector-bystander@example.test",
         )
-        .bind(&self.bystander_user)
-        .bind(&self.tenant)
-        .bind(&self.bystander)
-        .bind(&self.bystander_key)
-        .bind(bystander_digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the bystander person and credential seed");
+        .expect("the bystander person seeds");
+        ApiKeySeed::new(
+            &self.bystander_key,
+            &self.tenant,
+            bystander_digest.as_str(),
+            &self.bystander,
+        )
+        .name("bystander")
+        .insert(&mut *connection)
+        .await
+        .expect("the bystander's credential seeds");
     }
 
     /// Seals `document` into the admin workspace under `key`.

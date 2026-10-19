@@ -33,7 +33,9 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -216,32 +218,29 @@ impl Holder {
         };
         let digest = Digest::of(&Presented::new(&seeded.token).expect("the token is valid"));
         let mut connection = database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Schedule ownership', now(), now()) \
-             ), workspace AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'ownership', now()) \
-             ), person AS ( \
-               INSERT INTO identity.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, $3 || '@example.test', now(), now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, now(), now())",
+        TenantSeed::new(&seeded.tenant)
+            .name("Schedule ownership")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(seeded.workspace.as_str(), &seeded.tenant)
+            .name("ownership")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &mint_id(),
+            &seeded.tenant,
+            subject,
+            &format!("{subject}@example.test"),
         )
-        .bind(&seeded.tenant)
-        .bind(seeded.workspace.as_str())
-        .bind(subject)
-        .bind(mint_id())
-        .bind(mint_id())
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, its workspace and its key seed");
+        .expect("its person seeds");
+        ApiKeySeed::new(&mint_id(), &seeded.tenant, digest.as_str(), subject)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
         FleetSeed::new(
             seeded.fleet.as_str(),
             seeded.workspace.as_str(),
