@@ -8,7 +8,6 @@
 
 use afd_core::event::status::PROCESSED;
 use afd_dragonfly::ReadyIndex;
-use sqlx::Row as _;
 
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -31,6 +30,10 @@ pub(super) struct Settled {
     pub(super) ready_depth: u64,
 }
 
+/// [`SELECT_EVENT_COUNTS`]'s one row: every event row, then the processed ones.
+#[derive(Debug, sqlx::FromRow)]
+struct EventCounts(i64, i64);
+
 /// A population's event rows, and how many of them settled processed.
 const SELECT_EVENT_COUNTS: &str = include_str!("sql/select_event_counts.sql");
 
@@ -45,19 +48,18 @@ const SELECT_CHARGE_COUNT: &str = include_str!("sql/select_charge_count.sql");
 pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<Settled> {
     let ids: Vec<&str> = fleets.iter().map(|it| it.fleet.as_str()).collect();
     let mut connection = stores.database.acquire().await?;
-    let events = sqlx::query(SELECT_EVENT_COUNTS)
+    let events: EventCounts = sqlx::query_as(SELECT_EVENT_COUNTS)
         .bind(&ids)
         .bind(PROCESSED)
         .fetch_one(&mut *connection)
         .await?;
-    let ledger: i64 = sqlx::query(SELECT_CHARGE_COUNT)
+    let ledger: i64 = sqlx::query_scalar(SELECT_CHARGE_COUNT)
         .bind(&ids)
         .fetch_one(&mut *connection)
-        .await?
-        .try_get(0)?;
+        .await?;
     Ok(Settled {
-        event_rows: count(events.try_get(0)?),
-        processed: count(events.try_get(1)?),
+        event_rows: count(events.0),
+        processed: count(events.1),
         ledger_rows: count(ledger),
         ready_depth: marked(stores, fleets).await?,
     })
