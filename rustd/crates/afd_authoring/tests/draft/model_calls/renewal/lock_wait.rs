@@ -68,3 +68,62 @@ async fn blocked(f: &Fixture, pid: i32) {
         tokio::task::yield_now().await;
     }
 }
+
+/// Leaves the attempt's lease one second live on database time.
+const ONE_SECOND_LEFT: &str = "UPDATE authoring.attempts \
+SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
+WHERE id=$1::uuid";
+
+/// Whether the attempt's lease has run out on database time.
+const LAPSED: &str =
+    "SELECT lease_expires_at <= clock_timestamp() FROM authoring.attempts WHERE id=$1::uuid";
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_clock_read() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
+    sqlx::query(ONE_SECOND_LEFT)
+        .bind(a.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("a lease about to lapse");
+    let before = snapshot(&f, &a).await;
+    let mut holder = f.connection().await;
+    let mut held = holder.begin().await.expect("holder transaction");
+    // The model check reads the owner's model FOR SHARE, after the guard has
+    // already passed the still-live lease.
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM model.tenant_models WHERE id=$1::uuid FOR UPDATE",
+    )
+    .bind(f.model.as_str())
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the owner's model");
+    let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), async {
+        f.waits_on(pid, 1).await;
+        while !sqlx::query_scalar::<_, bool>(LAPSED)
+            .bind(a.id.as_str())
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("read the lease")
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        held.rollback().await.expect("release the model");
+    });
+    drop(holder);
+    assert_eq!(
+        renewed
+            .expect_err("the lease lapsed before the final clock read")
+            .code(),
+        error_code::AUTHORING_FENCE
+    );
+    assert_eq!(
+        snapshot(&f, &a).await,
+        before,
+        "nothing extended or metered"
+    );
+    f.cleanup().await;
+}
