@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use afd_ingress::{MAX_FANOUT, Surface};
 use afd_webhook::Scheme;
 use http::{Method, StatusCode};
@@ -79,11 +79,6 @@ const STATUS_PONG: &str = "pong";
 /// Where an App's deliveries arrive.
 fn path(provider: &str) -> String {
     format!("/v1/ingress/{provider}")
-}
-
-/// The registry code, as it is spelled on the wire.
-pub(crate) fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
 }
 
 /// A deployment holding the App secret, its installation, and its subscribers.
@@ -225,11 +220,8 @@ async fn a_ping_is_answered_only_on_the_far_side_of_the_signature() {
     let document = json_body(forged).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str())
     );
     assert!(
         !document.to_string().contains(STATUS_PONG),
@@ -262,11 +254,8 @@ async fn a_matched_set_past_the_ceiling_is_refused_rather_than_truncated() {
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -290,11 +279,8 @@ async fn a_path_naming_no_served_app_is_refused_before_anything_is_read() {
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::CONNECTOR_UNKNOWN))
+        harness::error_code(&document),
+        Some(error_code::CONNECTOR_UNKNOWN.as_str())
     );
 }
 
@@ -310,11 +296,8 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_MALFORMED))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_MALFORMED.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),

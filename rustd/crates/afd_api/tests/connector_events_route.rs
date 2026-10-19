@@ -19,16 +19,12 @@
 //! without a vault is that it is unreachable until a delivery verifies.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
-)]
 
 use crate::harness;
 
 use self::harness::Fleet;
 use afd_api_ingress::BUFFER_CEILING;
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use http::{Method, StatusCode};
 
 /// A provider that delivers events to this daemon.
@@ -48,37 +44,17 @@ fn path(provider: &str) -> String {
     format!("/v1/connectors/{provider}/events")
 }
 
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
-}
-
 /// One unsigned delivery of `body` to `provider`.
 async fn deliver(provider: &str, body: &str) -> axum::response::Response {
     let router = Fleet::new().router();
     harness::send(&router, Method::POST, &path(provider), None, body).await
 }
 
-/// The registry code a response carries, asserting it refused at all.
-async fn refusal(response: axum::response::Response) -> String {
-    let status = response.status();
-    let document = harness::json_body(response).await;
-    assert!(
-        status.is_client_error(),
-        "a refusal is the sender's to fix, so it is a 4xx: {status} {document}"
-    );
-    document
-        .get("error_code")
-        .and_then(serde_json::Value::as_str)
-        .expect("every refusal carries its registry code")
-        .to_owned()
-}
-
 #[tokio::test]
 async fn a_connector_with_no_inbound_surface_is_refused_before_the_vault() {
     assert_eq!(
-        refusal(deliver(NO_EVENT_INGRESS, HANDSHAKE).await).await,
-        code(error_code::CONNECTOR_UNKNOWN),
+        harness::refusal_code(deliver(NO_EVENT_INGRESS, HANDSHAKE).await).await,
+        error_code::CONNECTOR_UNKNOWN.as_str(),
         "a connector this daemon ships but receives nothing from must answer \
          the same as one it does not ship, and answer it without a decrypt"
     );
@@ -105,8 +81,8 @@ async fn a_body_inside_the_buffer_but_past_the_cap_is_refused_in_this_daemons_vo
     let over_the_cap = "x".repeat(BUFFER_CEILING);
 
     assert_eq!(
-        refusal(deliver(DELIVERING, &over_the_cap).await).await,
-        code(error_code::WEBHOOK_PAYLOAD_TOO_LARGE),
+        harness::refusal_code(deliver(DELIVERING, &over_the_cap).await).await,
+        error_code::WEBHOOK_PAYLOAD_TOO_LARGE.as_str(),
         "a sender reading its delivery log needs a registry code to search for"
     );
 }
