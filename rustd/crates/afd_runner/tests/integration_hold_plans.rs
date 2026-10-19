@@ -27,7 +27,7 @@
 )]
 
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
 use afd_runner::sql::holds::CLEAR_DROPPED_HOLDS;
 use jiff::Timestamp;
@@ -44,10 +44,6 @@ const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 
 /// The instant every seeded row is stamped at.
 const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
-
-/// The one tenant every seeded row belongs to.
-const SEED_TENANT: &str = "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-VALUES ($1::uuid, 'hold-plan', $2, $2)";
 
 /// Runners, a fleet per slot, and the slots, dealt round the runners, every
 /// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` slots each.
@@ -122,10 +118,11 @@ async fn private_database() -> (TestDatabase, Db, String) {
         .expect("the private database must migrate");
     let tenant = mint_id();
     let mut connection = db.acquire().await.expect("a private connection");
-    sqlx::query(SEED_TENANT)
-        .bind(tenant.as_str())
-        .bind(SEEDED_AT.to_sqlx())
-        .execute(&mut *connection)
+    // The one tenant every seeded row belongs to.
+    TenantSeed::new(tenant.as_str())
+        .name("hold-plan")
+        .at(SEEDED_AT)
+        .insert(&mut *connection)
         .await
         .expect("the tenant must insert");
     drop(connection);

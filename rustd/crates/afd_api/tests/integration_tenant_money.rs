@@ -12,7 +12,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{ModelSeed, TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, ModelSeed, TenantSeed, TestDatabase, WalletSeed, mint_id};
 use http::{Method, StatusCode, header};
 use serde_json::Value;
 
@@ -220,27 +220,19 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Money lifecycle', now(), now()) \
-             ), credential AS ( \
-               INSERT INTO identity.api_keys \
-                 (id, tenant_id, name, description, key_hash, created_by_subject, \
-                  created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, now(), now()) \
-             ) \
-             INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at) \
-             VALUES ($1::uuid, $5, now(), now())",
-        )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(BALANCE)
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated tenant and wallet seed");
+        TenantSeed::new(&self.tenant)
+            .name("Money lifecycle")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
+        WalletSeed::new(&self.tenant, BALANCE)
+            .insert(&mut *connection)
+            .await
+            .expect("its wallet seeds");
 
         for (index, id) in self.model_rows.iter().enumerate() {
             ModelSeed::new(id, &self.provider, &format!("model-{index}"), 200_000)

@@ -36,7 +36,7 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{ModelSeed, TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -250,28 +250,19 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Live model registry', now(), now()) \
-               RETURNING id \
-             ), credential AS ( \
-               INSERT INTO identity.api_keys \
-                 (id, tenant_id, name, description, key_hash, created_by_subject, \
-                  created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, now(), now()) \
-             ) \
-             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             SELECT $5::uuid, id, $5, now() FROM tenant",
-        )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(self.workspace.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated tenant and its primary workspace seed");
+        TenantSeed::new(&self.tenant)
+            .name("Live model registry")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("its primary workspace seeds");
 
         for model in [&self.first_model, &self.second_model] {
             ModelSeed::new(&mint_id(), &self.provider, model, CAP)

@@ -10,7 +10,7 @@ use crate::harness;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, UserSeed, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -111,21 +111,15 @@ impl Fixture {
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'CLI lifecycle', now(), now()) \
-             ) \
-             INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, $3, 'cli-live@example.test', now(), now())",
-        )
-        .bind(&self.tenant)
-        .bind(&self.user)
-        .bind(SUBJECT)
-        .execute(&mut *connection)
-        .await
-        .expect("the CLI principal seeds");
+        TenantSeed::new(&self.tenant)
+            .name("CLI lifecycle")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        UserSeed::new(&self.user, &self.tenant, SUBJECT, "cli-live@example.test")
+            .insert(&mut *connection)
+            .await
+            .expect("its person seeds");
     }
 
     async fn assert_replaced(&self, first: &str, replacement: &str) {

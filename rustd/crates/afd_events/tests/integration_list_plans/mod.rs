@@ -32,7 +32,7 @@
 )]
 
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
 use afd_events::READ_TEXTS;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
@@ -51,10 +51,6 @@ const SPREADS: [(i32, i32, i32); 2] = [(20, 5, 40), (50, 10, 200)];
 
 /// The first decoy event's instant, and the tenant's.
 const DECOY_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
-
-/// The one tenant every decoy workspace belongs to.
-const SEED_TENANT: &str = "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-VALUES ($1::uuid, 'plan-probe', $2::timestamptz, $2::timestamptz)";
 
 /// Decoy workspaces, their fleets and their events, in one statement.
 ///
@@ -126,10 +122,11 @@ pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
         .expect("the private database must migrate");
     let tenant = mint_id();
     let mut connection = db.acquire().await.expect("a private connection");
-    sqlx::query(SEED_TENANT)
-        .bind(tenant.as_str())
-        .bind(jiff_sqlx::ToSqlx::to_sqlx(DECOY_AT))
-        .execute(&mut *connection)
+    // The one tenant every decoy workspace belongs to.
+    TenantSeed::new(tenant.as_str())
+        .name("plan-probe")
+        .at(DECOY_AT)
+        .insert(&mut *connection)
         .await
         .expect("the decoy tenant must insert");
     drop(connection);

@@ -32,7 +32,9 @@ use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{InstallSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, InstallSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -197,32 +199,29 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector status live', now(), now()) \
-             ), workspace AS ( \
-               INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connector-status', now()) \
-             ), person AS ( \
-               INSERT INTO identity.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'connector-status@example.test', now(), now()) \
-             ) \
-             INSERT INTO identity.api_keys \
-               (id, tenant_id, name, description, key_hash, created_by_subject, \
-                created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, now(), now())",
+        TenantSeed::new(&self.tenant)
+            .name("Connector status live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("connector-status")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "connector-status@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, workspace, person and credential seed");
+        .expect("its person seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), &self.subject)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
     }
 
     /// Seals `body` under `provider`'s grant key, replacing whatever was there.

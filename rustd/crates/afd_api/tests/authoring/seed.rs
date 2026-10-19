@@ -5,7 +5,7 @@ use afd_api::Services as _;
 use afd_auth::Scope;
 use afd_core::clock;
 use afd_core::money::NANOS_PER_USD;
-use afd_db::test_util::ModelSeed;
+use afd_db::test_util::{ApiKeySeed, ModelSeed};
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -25,11 +25,6 @@ const CONTEXT_CAP_TOKENS: i32 = 128_000;
 const MODEL_INFERENCE: &str =
     r#"{"api":"responses","base_url":"https://models.example.com/v1","max_output_tokens":8192}"#;
 
-/// The account's API key, the credential the router's requests present.
-const API_KEY: &str = "\
-INSERT INTO identity.api_keys(id,tenant_id,name,description,key_hash,created_by_subject,created_at,updated_at)
-VALUES ($1::uuid,$2::uuid,'fixture','',$3,$4,now(),now())";
-
 pub(super) async fn account(f: &Fixture, digest: &str) {
     sign_up(
         &f.db,
@@ -44,12 +39,9 @@ pub(super) async fn account(f: &Fixture, digest: &str) {
         },
     )
     .await;
-    sqlx::query(API_KEY)
-        .bind(mint().as_str())
-        .bind(f.tenant.as_str())
-        .bind(digest)
-        .bind(f.owner.as_str())
-        .execute(&mut *f.db.acquire().await.expect("seed connection"))
+    // The account's API key, the credential the router's requests present.
+    ApiKeySeed::new(mint().as_str(), f.tenant.as_str(), digest, f.owner.as_str())
+        .insert(&mut *f.db.acquire().await.expect("seed connection"))
         .await
         .expect("seed authenticated account");
 }

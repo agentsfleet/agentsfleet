@@ -279,15 +279,10 @@ async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
 /// A second tenant, so a cross-tenant user row can exist to be excluded.
 async fn seed_other_tenant(lane: &Lane) -> String {
     let tenant = afd_db::test_util::mint_id();
-    sqlx::query(
-        "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, $1::text, now(), now())
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(&tenant)
-    .execute(&mut *connection(lane).await)
-    .await
-    .expect("seeding the other tenant");
+    afd_db::test_util::TenantSeed::new(&tenant)
+        .insert(&mut *connection(lane).await)
+        .await
+        .expect("seeding the other tenant");
     tenant
 }
 

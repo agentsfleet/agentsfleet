@@ -73,7 +73,7 @@ pub use self::fleet::{
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
 pub use self::fleet_event::{EventKind, FleetEventSeed};
-pub use self::identity::{ApiKeySeed, TenantSeed, WorkspaceSeed};
+pub use self::identity::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
