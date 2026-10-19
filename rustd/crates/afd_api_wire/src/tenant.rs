@@ -128,14 +128,16 @@ pub struct ApiKeySummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
-    /// What remains, in nanos — one thousand-millionth of a dollar.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    /// What remains, in nanos — one thousand-millionth of a dollar. Negative
+    /// while the tenant owes a debt: a settlement takes its whole charge, and
+    /// the next grant repays the debt before any of it is spendable.
+    #[serde(with = "afd_wire::nanos::signed")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::signed::SignedDecimal))]
     pub balance_nanos: i64,
     /// When the balance last moved.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
-    /// Whether the balance has reached zero.
+    /// Whether the balance has reached zero or gone below it.
     pub is_exhausted: bool,
     /// When it did, or `null` while money remains — emitted either way, for
     /// the module's null rule.

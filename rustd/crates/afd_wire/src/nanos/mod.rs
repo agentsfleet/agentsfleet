@@ -11,8 +11,8 @@
 //! A request's string is refused rather than coerced unless it is the
 //! canonical spelling [`PATTERN`] names: digits only, no sign, no leading
 //! zero, no whitespace, and no larger than a `BIGINT` column holds. A served
-//! amount comes from a column the schema keeps non-negative, so it always
-//! matches the pattern too.
+//! amount matches it too, except a tenant's balance, which a debt takes below
+//! zero and which travels as [`signed`] instead.
 
 use std::borrow::Cow;
 
@@ -92,6 +92,8 @@ impl utoipa::ToSchema for Decimal {
         Cow::Borrowed("Nanos")
     }
 }
+
+pub mod signed;
 
 /// The same rules for an optional amount; `null` is no amount.
 pub mod option {

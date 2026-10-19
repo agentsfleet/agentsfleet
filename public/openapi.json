@@ -17994,8 +17994,8 @@
         ],
         "properties": {
           "balance_nanos": {
-            "$ref": "#/components/schemas/Nanos",
-            "description": "What remains, in nanos — one thousand-millionth of a dollar."
+            "$ref": "#/components/schemas/SignedNanos",
+            "description": "What remains, in nanos — one thousand-millionth of a dollar. Negative\nwhile the tenant owes a debt: a settlement takes its whole charge, and\nthe next grant repays the debt before any of it is spendable."
           },
           "exhausted_at": {
             "type": [
@@ -18007,7 +18007,7 @@
           },
           "is_exhausted": {
             "type": "boolean",
-            "description": "Whether the balance has reached zero."
+            "description": "Whether the balance has reached zero or gone below it."
           },
           "updated_at": {
             "type": "string",
@@ -26132,6 +26132,11 @@
             "description": "That fleet's name in the workspace."
           }
         }
+      },
+      "SignedNanos": {
+        "type": "string",
+        "description": "A whole number of nanos (10⁻⁹ US dollars) as a decimal string, negative for a debt.",
+        "pattern": "^(0|-?[1-9][0-9]*)$"
       },
       "Source_Value": {
         "oneOf": [
