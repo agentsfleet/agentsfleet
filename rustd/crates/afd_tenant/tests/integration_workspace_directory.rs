@@ -201,3 +201,53 @@ async fn should_draw_again_when_a_generated_name_collides() {
     assert_eq!(exhausted.code(), error_code::INTERNAL_DB_QUERY);
     fixture.cleanup().await;
 }
+
+/// A session naming an account with no row behind it is told to sign in again
+/// before any insert runs, rather than meeting the foreign key's failure.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_refuse_a_workspace_for_an_account_that_has_no_row() {
+    let fixture = Fixture::create().await;
+    let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
+    let vanished = Entropy::new().uuid7(LATER).expect("an identifier");
+
+    let refused = workspaces
+        .create(&vanished, None, LATER)
+        .await
+        .expect_err("no account row");
+
+    assert_eq!(refused.code(), error_code::AUTH_UNAUTHORIZED);
+    fixture.cleanup().await;
+}
+
+/// A chosen name that is free but lands on an identifier another workspace
+/// already holds is the datastore's failure, not the "taken" refusal: only the
+/// name index's violation is the caller's to fix.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_report_a_chosen_name_insert_that_fails_off_the_name_index() {
+    let fixture = Fixture::create().await;
+    let (entropy, draws) = Entropy::new_mocked();
+    let workspaces = Workspaces::new(fixture.database.clone(), entropy);
+    let tenant = id(&fixture.john.tenant);
+    let now = afd_core::clock::now();
+    let chosen = |name: &str| {
+        Chosen::parse(name)
+            .expect("a plain name")
+            .expect("a chosen name")
+    };
+
+    draws.push_bytes(&[42; ID_ENTROPY_LEN]);
+    workspaces
+        .create(&tenant, Some(chosen("first-of-two")), now)
+        .await
+        .expect("the first lands");
+    draws.push_bytes(&[42; ID_ENTROPY_LEN]);
+    let failed = workspaces
+        .create(&tenant, Some(chosen("second-of-two")), now)
+        .await
+        .expect_err("the identifier is already held");
+
+    assert_eq!(failed.code(), error_code::INTERNAL_DB_QUERY);
+    fixture.cleanup().await;
+}

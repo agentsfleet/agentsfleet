@@ -194,10 +194,10 @@ impl Sessions {
                 // an approver learning that the session it lost the race for is
                 // `consumed` rather than `verification_pending` learns whether
                 // somebody completed a login, which is not its business.
-                tracing::debug!(
-                    found = status.as_deref().unwrap_or("unknown"),
-                    event = "auth_session_approve_conflict",
-                );
+                // Hoisted: the `log` bridge duplicates field expressions and
+                // llvm-cov scores the dead copy.
+                let found = status.as_deref().unwrap_or("unknown");
+                tracing::debug!(found, event = "auth_session_approve_conflict");
                 Err(error::session_already_approved())
             }
         }

@@ -130,6 +130,49 @@ async fn a_signup_opens_every_row_an_account_needs() {
     );
 }
 
+/// A statement that fails part way through the opening leaves nothing behind
+/// and returns its own failure: the subject still owns no account when the
+/// bootstrap looks again, so this is no lost race to replay.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_signup_whose_statement_fails_opens_nothing() {
+    let (lane, signups) = lane().await;
+    let subject = subject();
+
+    // Postgres refuses a NUL byte in text, so the tenant insert fails.
+    let failed = signups
+        .bootstrap(
+            NewAccount {
+                oidc_subject: &subject,
+                email: EMAIL,
+                display_name: None,
+            },
+            "nul\0name",
+            SEED,
+        )
+        .await
+        .expect_err("the tenant insert is refused");
+
+    assert_eq!(failed.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert!(
+        std::error::Error::source(&failed).is_some(),
+        "the statement's own failure is returned, not a fresh one"
+    );
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
+    let users: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM identity.users WHERE oidc_subject = $1")
+            .bind(&subject)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the count answers");
+    assert_eq!(users, 0, "nothing of the half-opened account committed");
+}
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_replayed_delivery_answers_as_the_first_one_did() {

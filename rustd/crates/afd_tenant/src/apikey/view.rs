@@ -48,14 +48,15 @@ impl Listing {
     /// marker's columns first, then the key's, only where an identifier says
     /// a key is there.
     pub(super) fn of(rows: &[PgRow]) -> Result<Self> {
-        let Some(first) = rows.first() else {
-            // Unreachable while the lateral join stands, and answered rather
-            // than reported: a tenant with no keys and a statement that
-            // answered nothing look identical to a caller, and both mean the
-            // list is empty.
-            return Ok(Self::default());
-        };
-        let total = MarkerRow::from_row(first).map_err(row_unreadable)?.total;
+        // No rows at all cannot happen while the lateral join stands; were it
+        // to, a total of zero and no keys is what an empty list means anyway,
+        // so it folds into the same read rather than taking a branch of its own.
+        let total = rows
+            .first()
+            .map(MarkerRow::from_row)
+            .transpose()
+            .map_err(row_unreadable)?
+            .map_or(0, |marker| marker.total);
         let mut keys = Vec::with_capacity(rows.len());
         for row in rows {
             if MarkerRow::from_row(row)
