@@ -65,6 +65,17 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// operator tops up for one and revises the fleet's reviewed setup for the other.
 pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
+/// A renewal sent a body this daemon cannot read.
+///
+/// ANSWERED only for the cumulative totals a runner sent before usage moved to
+/// one line per provider request: a 400 naming the field, and the lease does not
+/// renew. A runner speaking that shape can never have its usage recorded, and
+/// its report is refused for the same field, so renewing would only run it
+/// unbilled to a result nobody keeps. Every other unreadable body is LOGGED
+/// under this code rather than answered: the lease renews, no line is recorded,
+/// and the runner sends its lines again.
+pub const RUN_RENEW_BODY_MALFORMED: ErrorCode = ErrorCode::declare("UZ-RUN-013");
+
 /// No runner row matches an operator-supplied runner id.
 ///
 /// Unlike [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on

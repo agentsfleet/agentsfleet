@@ -41,3 +41,18 @@ fn test_operation_conflict_code_registered() {
     assert!(problem.user_message().is_some());
     assert!(REGISTRY.contains(&error_code::AGENTSFLEET_OPERATION_CONFLICT));
 }
+
+/// A renewal refused for the retired cumulative shape answers 400, and its
+/// hint names the field the runner should send instead.
+///
+/// The status is the claim: the runner ends a lease on any 4xx, and this code
+/// is answered only for a body whose usage can never be recorded.
+#[test]
+fn test_renew_body_malformed_code_registered() {
+    let problem = Problem::of(error_code::RUN_RENEW_BODY_MALFORMED);
+    // pin test: literal is the contract
+    assert_eq!(problem.code().as_str(), "UZ-RUN-013");
+    assert_eq!(problem.status(), 400);
+    assert_eq!(problem.title(), "Renew body malformed");
+    assert!(problem.hint().contains("`requests`"), "{}", problem.hint());
+}

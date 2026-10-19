@@ -56,6 +56,7 @@ fn assert_every_named_code_is_registered() {
         error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
         error_code::RUN_LEASE_LOST,
         error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        error_code::RUN_RENEW_BODY_MALFORMED,
         error_code::RUN_BUDGET_EXCEEDED,
         // Was omitted when it was declared, which is the exact gap this list
         // exists to close — a code reachable from no check is a code that can
