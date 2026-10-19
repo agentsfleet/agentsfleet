@@ -108,11 +108,11 @@ export interface RunnerDetail extends RunnerListItem {
   leases_succeeded: number;
   leases_failed: number;
   leases_expired: number;
-  /** An operator's outstanding ask, epoch ms; null when none is pending. The
+  /** An operator's outstanding ask, an RFC 3339 instant; null when none is pending. The
    * daemon clears it on the beat that reports the matching verdict, so a
    * non-null value means "asked, not yet answered". */
   selftest_requested_at: string | null;
-  /** When the verdict landed, epoch ms; null until a first report. A runner may
+  /** When the verdict landed, an RFC 3339 instant; null until a first report. A runner may
    * hold a request with no result, or a result with no request (the startup
    * probe, which no operator asked for). */
   selftest_completed_at: string | null;

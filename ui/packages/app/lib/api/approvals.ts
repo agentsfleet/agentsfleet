@@ -32,11 +32,11 @@ export type ApprovalGate = {
   blast_radius: string;
   status: ApprovalStatusValue;
   detail: string;
-  /** epoch ms */
+  /** RFC 3339 instant */
   created_at: string;
-  /** epoch ms — sweeper auto-denies after this */
+  /** RFC 3339 instant — sweeper auto-denies after this */
   expires_at: string;
-  /** epoch ms; null when still pending */
+  /** RFC 3339 instant; null when still pending */
   resolved_at: string | null;
   resolved_by: string;
   /**

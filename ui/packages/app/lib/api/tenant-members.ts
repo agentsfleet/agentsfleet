@@ -15,7 +15,7 @@ export type MemberSummary = {
   display_name: string | null;
   email: string;
   role: AccountRole;
-  /** When they joined the account, epoch milliseconds. */
+  /** When they joined the account, an RFC 3339 instant. */
   joined_at: string;
 };
 
