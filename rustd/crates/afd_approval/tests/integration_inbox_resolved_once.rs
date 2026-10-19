@@ -119,3 +119,42 @@ async fn a_resolved_gate_refuses_an_unguarded_rewrite() {
     );
     assert_eq!(lane.status_of(&action).await, status::APPROVED);
 }
+
+/// A gate the daemon closed by stopping its fleet stands as it was closed: a
+/// later answer is told so, and the standing answer owes the run neither a
+/// wake nor a continuation, because there is no run left to move on.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_auto_killed_gate_owes_its_run_nothing() {
+    let lane = Lane::isolated().await;
+    let action = lane.seed_gate(Window::Open).await;
+    sqlx::query(
+        "UPDATE fleet.approval_gates
+            SET status = $2, resolved_by = $3, resolved_at = now(), updated_at = now()
+          WHERE action_id = $1 AND resolved_at IS NULL",
+    )
+    .bind(&action)
+    .bind(status::AUTO_KILLED)
+    .bind("system:fleet-kill")
+    .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
+    .await
+    .expect("the fixture closes the gate as a kill would");
+
+    let standing = match lane
+        .inbox
+        .resolve(&action, Decision::Approved, LATECOMER, NOTE, None)
+        .await
+        .expect("the resolve must not fault")
+    {
+        Resolution::AlreadyResolved(standing) => standing,
+        other => unreachable!("a closed gate is not answerable again, got {other:?}"),
+    };
+
+    assert_eq!(standing.status, status::AUTO_KILLED);
+    assert!(standing.event_id.is_some(), "the gate held a run");
+    assert_eq!(
+        standing.continuation_event_id, None,
+        "a stopped fleet's run is owed no continuation"
+    );
+    assert_eq!(lane.status_of(&action).await, status::AUTO_KILLED);
+}

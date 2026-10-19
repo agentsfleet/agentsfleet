@@ -77,3 +77,26 @@ async fn an_unread_counter_reason_carries_no_code_prefix() {
     assert_eq!(logged.field("fleet_id"), Some(FLEET_ID));
     logged.assert_uncoded_reason();
 }
+
+/// A statement the database refuses — here an id the `::uuid` cast rejects —
+/// is reported as the query it was, not as the pool's outage, and the
+/// best-effort read still answers no figures rather than zeros.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_statement_the_database_refuses_reports_the_query() {
+    let lane = afd_db::test_util::TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
+
+    let error = fleet_counters(&database, "not-a-fleet-id")
+        .await
+        .expect_err("the cast refuses the id");
+    assert_eq!(error.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert!(!error.is_pool_unavailable(), "{error:?}");
+    assert_eq!(
+        fleet_counters_best_effort(&database, "not-a-fleet-id").await,
+        None
+    );
+
+    drop(database);
+    lane.cleanup().await;
+}

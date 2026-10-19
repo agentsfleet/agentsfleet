@@ -30,14 +30,11 @@ use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use sqlx::PgConnection;
 
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::sql::SELECT_FLEET_COUNTERS;
 
 /// The context a refused counter read is reported under.
 const CONTEXT_COUNTERS: &str = "fleet activity counters";
-
-/// What a refused decode is reported as.
-const ROW: &str = "fleet counters row";
 
 /// The counters as `fleet.activity_counters` spells them.
 #[derive(sqlx::FromRow)]
@@ -56,8 +53,8 @@ const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
 /// back, so the read costs one acquire and holds nothing across the publish.
 ///
 /// # Errors
-/// Reports a pool that would not give a connection, a statement that would
-/// not run, or a row this build cannot read.
+/// Reports a pool that would not give a connection, or a statement that would
+/// not run.
 pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounters> {
     let mut connection = database.acquire().await?;
     fleet_counters_on(&mut connection, fleet_id).await
@@ -65,8 +62,11 @@ pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounte
 
 /// The fleet's counters as the database has them, read on `connection`.
 ///
+/// Both columns are `COALESCE`d `BIGINT NOT NULL` read into `i64`, so the
+/// decode cannot fail and a refused read is the statement's.
+///
 /// # Errors
-/// Reports a statement that would not run, or a row this build cannot read.
+/// Reports a statement that would not run.
 pub async fn fleet_counters_on(
     connection: &mut PgConnection,
     fleet_id: &str,
@@ -75,10 +75,7 @@ pub async fn fleet_counters_on(
         .bind(fleet_id)
         .fetch_one(&mut *connection)
         .await
-        .map_err(|failure| match failure {
-            decode @ sqlx::Error::ColumnDecode { .. } => row_malformed(ROW)(decode),
-            other => query(CONTEXT_COUNTERS)(other),
-        })?;
+        .map_err(query(CONTEXT_COUNTERS))?;
     Ok(FleetCounters {
         events_processed: stored.event_count,
         budget_used_nanos: stored.budget_used_nanos,
