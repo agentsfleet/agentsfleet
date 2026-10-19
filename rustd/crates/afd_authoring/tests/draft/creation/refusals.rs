@@ -68,7 +68,10 @@ async fn a_draft_already_saving_refuses_a_second_key() {
     let c = Case::create().await;
     let (_, request) = c.request("second-key", Start::None).await;
     let first = c.save(&mint(), request.clone()).await;
-    assert_eq!(first.status, "installing", "unfunded, so the draft stays saving");
+    assert_eq!(
+        first.status, "installing",
+        "unfunded, so the draft stays saving"
+    );
     let refused = c
         .creations
         .save(c.base.access(), &mint(), request, now())

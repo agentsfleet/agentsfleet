@@ -86,3 +86,24 @@ async fn a_completed_verdict_cannot_follow_a_failed_dispatch() {
     assert_eq!(counts(&f, &a).await, (0, 0, 0));
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn accounting_under_another_fence_is_refused_without_settling() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let _calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
+    let mut request = super::accounting(&report());
+    let Report::Accounting { accounting } = &mut request else {
+        unreachable!()
+    };
+    accounting.fence = "2".into();
+    let refused = f
+        .drafts
+        .report(&f.runner, &a.lease, request)
+        .await
+        .expect_err("the attempt was issued fence 1");
+    assert_eq!(refused.code(), error_code::AUTHORING_FENCE);
+    assert_eq!(counts(&f, &a).await, (0, 0, 0));
+    f.cleanup().await;
+}
