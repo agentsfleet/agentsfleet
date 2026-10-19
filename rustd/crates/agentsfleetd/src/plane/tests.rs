@@ -25,6 +25,15 @@ use afd_sse::{Ceiling, Live};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
 
+/// Where a person is sent, which the plane must never confuse with the API.
+const DASHBOARD: &str = "https://app.fixture.test";
+
+/// Where API calls and machine callbacks go.
+const DEPLOYMENT: &str = "https://api.fixture.test";
+
+/// Where the external scheduler delivers a fire.
+const SCHEDULE_DESTINATION: &str = "https://api.fixture.test/v1/schedules/fire";
+
 fn same<T: ?Sized>(left: &T, right: &T) -> bool {
     std::ptr::eq(left, right)
 }
@@ -64,7 +73,7 @@ fn plane() -> ServingPlane {
         schedule: crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
             token: SecretString::new(String::new()),
-            destination: String::new(),
+            destination: SCHEDULE_DESTINATION.to_owned(),
             api_base: String::new(),
             keys: None,
         },
@@ -73,9 +82,9 @@ fn plane() -> ServingPlane {
         vendor_client: reqwest::Client::new(),
         login: LoginConfig {
             code_pepper: SecretBytes::new(b"plane-test-pepper".to_vec()),
-            app_url: afd_connector::Dashboard::parse("https://app.fixture.test")
+            app_url: afd_connector::Dashboard::parse(DASHBOARD)
                 .expect("the fixture dashboard is a URL"),
-            api_url: "https://api.fixture.test".into(),
+            api_url: DEPLOYMENT.into(),
         },
     })
 }
@@ -111,8 +120,44 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     ));
     assert!(same(plane.models(), &plane.admin.models));
     assert!(same(plane.platform_keys(), &plane.admin.platform_keys));
-    assert_eq!(plane.deployment(), "https://api.fixture.test");
+    assert_eq!(plane.deployment(), DEPLOYMENT);
     assert!(plane.now() > jiff::Timestamp::UNIX_EPOCH);
+}
+
+/// The authoring, outbound and tenant surfaces each hand a route the store the
+/// plane built for it, so no two routes share one by accident.
+#[tokio::test]
+async fn production_plane_maps_every_surface_to_its_owned_store() {
+    let plane = plane();
+
+    assert!(same(plane.authoring(), &plane.authoring.drafts));
+    assert!(same(plane.authoring_setup(), &plane.authoring.setup));
+    assert!(same(plane.creations(), &plane.authoring.creations));
+    assert!(same(plane.authoring_models(), &plane.authoring.models));
+    assert!(same(plane.ingress(), &plane.activity.ingress));
+    assert!(same(plane.schedules(), &plane.outbound.schedules));
+    assert!(same(plane.connectors(), &plane.outbound.connectors));
+    assert!(same(plane.interjector(), &plane.outbound.interjector));
+    assert!(same(plane.invite_mail(), &plane.tenant.invite_mail));
+    assert!(same(plane.signups(), &plane.tenant.signups));
+    assert!(same(plane.team(), &plane.tenant.team));
+}
+
+/// Each deployment fact reaches the route that needs it as it was booted: the
+/// dashboard a person is sent to is not the API, the scheduler's destination
+/// is the configured one, and a deployment with no admin workspace, no
+/// identity secret and no signing keys answers `None` for each, which is what
+/// the routes behind them fail closed on.
+#[tokio::test]
+async fn production_plane_hands_each_route_its_deployment_facts() {
+    let plane = plane();
+
+    assert_eq!(plane.dashboard().as_str(), format!("{DASHBOARD}/"));
+    assert_ne!(plane.dashboard().as_str(), plane.deployment());
+    assert_eq!(plane.schedule_destination(), SCHEDULE_DESTINATION);
+    assert!(plane.schedule_signing_keys().is_none());
+    assert!(plane.identity_webhook_secret().is_none());
+    assert!(plane.platform_admin_workspace().is_none());
 }
 
 /// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a

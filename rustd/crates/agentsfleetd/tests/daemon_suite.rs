@@ -121,6 +121,8 @@ mod integration_rust_runner_reviews;
 mod integration_rust_runner_telemetry;
 #[path = "integration_serve.rs"]
 mod integration_serve;
+#[path = "integration_sweepers.rs"]
+mod integration_sweepers;
 #[path = "integration_telemetry.rs"]
 mod integration_telemetry;
 #[path = "integration_tenant_registry.rs"]
