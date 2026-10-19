@@ -43,6 +43,10 @@ tracing.workspace = true
 
 [dev-dependencies]
 sqlx = { workspace = true, features = ["derive"] }
+# The statements a use case joins with `const_format::concatcp!` instead of
+# keeping whole in one `.sql` file: the prepare suite (Dimension 7.4) cannot
+# find them on disk, so it names them. A dev-only cycle, which cargo allows.
+afd_fleet.workspace = true
 # Installed by the test harness so event macros evaluate their fields; see the
 # workspace manifest for why that is a correctness concern and not a coverage one.
 tracing-subscriber.workspace = true
