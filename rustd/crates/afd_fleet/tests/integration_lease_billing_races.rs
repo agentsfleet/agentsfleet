@@ -67,14 +67,8 @@ async fn two_reports_of_one_lease_log_one_final_line() {
         let lease = held.issued.lease_id.as_str();
         let requests = [request(&held, 0)];
         let report = || {
-            held.fixtures.settle_alone(
-                &held.leases,
-                lease,
-                &held.runner,
-                &requests,
-                true,
-                held.now,
-            )
+            held.fixtures
+                .settle_alone(&held.leases, lease, &held.runner, &requests, true, held.now)
         };
         let (first, second) = tokio::join!(report(), report());
 
@@ -134,9 +128,12 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             "the report wins its own lease whatever order: {settled:?}"
         );
         let lines = line_numbers(&held.fixtures, lease).await;
-        let (requested, runtime): (Vec<i64>, Vec<i64>) =
-            lines.iter().partition(|seq| **seq < BASE);
-        assert_eq!(requested, [0], "the shared request is stored once: {lines:?}");
+        let (requested, runtime): (Vec<i64>, Vec<i64>) = lines.iter().partition(|seq| **seq < BASE);
+        assert_eq!(
+            requested,
+            [0],
+            "the shared request is stored once: {lines:?}"
+        );
         let dense = runtime
             .iter()
             .zip(BASE..)

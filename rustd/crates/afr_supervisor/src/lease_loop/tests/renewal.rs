@@ -88,7 +88,10 @@ async fn a_run_cut_before_it_answered_bills_the_meter_at_renewal_and_in_its_repo
     let renewed: serde_json::Value =
         serde_json::from_slice(calls[renewal].body.as_ref().unwrap()).unwrap();
     let sent = &renewed[REQUESTS][0];
-    assert_eq!(sent[INPUT_TOKENS], 3, "the renewal carried the meter's line");
+    assert_eq!(
+        sent[INPUT_TOKENS], 3,
+        "the renewal carried the meter's line"
+    );
     assert_eq!(sent[CACHED_INPUT_TOKENS], 1);
     assert_eq!(sent[OUTPUT_TOKENS], 4);
     let report = reported(&calls);

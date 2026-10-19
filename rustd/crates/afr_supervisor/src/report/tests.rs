@@ -15,7 +15,13 @@ fn requests(report: &afd_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)
         .requests
         .0
         .iter()
-        .map(|line| (line.input_tokens, line.cached_input_tokens, line.output_tokens))
+        .map(|line| {
+            (
+                line.input_tokens,
+                line.cached_input_tokens,
+                line.output_tokens,
+            )
+        })
         .collect()
 }
 
@@ -55,7 +61,11 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
     assert_eq!(report.checkpoint.last_response, "done");
     assert_eq!(report.checkpoint.last_event_id, lease.event.event_id);
     assert_eq!(report.tokens, 8, "the result's total, for the history");
-    assert_eq!(requests(&report), [(3, 1, 4)], "the meter's one request line");
+    assert_eq!(
+        requests(&report),
+        [(3, 1, 4)],
+        "the meter's one request line"
+    );
     assert_eq!(report.telemetry.time_to_first_token_ms, 120);
     assert_eq!(report.telemetry.wall_ms, 2_000);
 }
@@ -166,7 +176,10 @@ fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
         None,
     );
 
-    assert_eq!(report.tokens, 8, "the history shows what the engine handed back");
+    assert_eq!(
+        report.tokens, 8,
+        "the history shows what the engine handed back"
+    );
     assert_eq!(
         requests(&report),
         [(100, 50, 25)],

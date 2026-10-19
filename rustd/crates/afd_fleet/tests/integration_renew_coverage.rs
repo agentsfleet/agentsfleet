@@ -208,7 +208,10 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     renew_through_a_catalogue_fault(&held, &plane, reported(&held, 1, 25_000)).await;
     assert_eq!(
         held.fixtures
-            .text(crate::rows::Row::Line(&held.event_id, "1"), "unpriced_token_count")
+            .text(
+                crate::rows::Row::Line(&held.event_id, "1"),
+                "unpriced_token_count"
+            )
             .await,
         Some("25000".to_owned()),
         "the request priced during the fault carries its tokens as unpriced"

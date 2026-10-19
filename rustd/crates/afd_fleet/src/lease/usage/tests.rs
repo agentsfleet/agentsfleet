@@ -78,7 +78,11 @@ async fn an_unreadable_catalogue_logs_the_tokens_unpriced() {
 async fn requests_keep_their_numbers_and_runtime_takes_the_daemons() {
     let pricing = pricing(Posture::SelfManaged).await;
     let settlement = pricing
-        .settlement(&test_dead::id(4), slice(ONE_SECOND_MS, 2), &[request(0), request(1)])
+        .settlement(
+            &test_dead::id(4),
+            slice(ONE_SECOND_MS, 2),
+            &[request(0), request(1)],
+        )
         .expect("prices")
         .expect("lines");
     let numbers: Vec<u32> = settlement.lines.iter().map(|line| line.usage.seq).collect();

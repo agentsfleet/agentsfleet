@@ -163,7 +163,10 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
     swept.expect("the pass reads");
 
     let charged_ms: i64 = runtime_lines(&held).await.iter().map(|(_, ms)| ms).sum();
-    assert_eq!(charged_ms, tail_ms, "the tail is billed exactly once between the two");
+    assert_eq!(
+        charged_ms, tail_ms,
+        "the tail is billed exactly once between the two"
+    );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
@@ -175,7 +178,12 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 async fn abandon(held: &Held) -> i64 {
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     let lease = held.issued.lease_id.as_str();
-    let mut connection = held.fixtures.database.acquire().await.expect("a pooled connection");
+    let mut connection = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
          last_metered_at = now() - $2::interval - $3::interval WHERE id = $1::uuid",
@@ -200,7 +208,14 @@ async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     )
     .bind(held.lease_key.as_str())
     .bind(i64::from(DAEMON_SEQ_BASE))
-    .fetch_all(&mut *held.fixtures.database.acquire().await.expect("a pooled connection"))
+    .fetch_all(
+        &mut *held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection"),
+    )
     .await
     .expect("the runtime lines read")
 }

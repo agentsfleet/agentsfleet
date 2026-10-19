@@ -44,14 +44,7 @@ async fn test_report_writes_row_parity() {
 
     let outcome = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            &[],
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
     let Settled::Claimed(settlement) = outcome else {
         unreachable!("the only holder of this fleet cannot be fenced out")
@@ -149,14 +142,7 @@ async fn test_report_stale_fence_rejected() {
     let before = held.fixtures.balance(&held.tenant).await;
     let outcome = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            &[],
-            true,
-            held.now,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, held.now)
         .await;
     assert_eq!(
         outcome,
@@ -225,14 +211,7 @@ async fn test_report_dedup_idempotent() {
 
     let first = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            &[],
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
     assert!(
         matches!(first, Settled::Claimed(_)),
@@ -247,14 +226,7 @@ async fn test_report_dedup_idempotent() {
 
     let replay = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            &[],
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
     assert_eq!(
         replay,

@@ -251,4 +251,3 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
 
     fixtures.cleanup().await;
 }
-

@@ -83,7 +83,9 @@ fn a_cumulative_report_body_is_refused() {
         .err()
         .map(|error| error.to_string());
     assert!(
-        refused.as_deref().is_some_and(|reason| reason.contains("input_tokens")),
+        refused
+            .as_deref()
+            .is_some_and(|reason| reason.contains("input_tokens")),
         "{refused:?}"
     );
     let renew = serde_json::from_str::<super::RenewRequest>(
