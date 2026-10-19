@@ -111,3 +111,86 @@ async fn a_purge_commits_when_the_queue_cannot_forget() {
     );
     lane.cleanup().await;
 }
+
+/// Serialises fixture DDL with every other suite's, so two trigger installs on
+/// one table cannot deadlock; the value is the one the authoring fixture takes.
+const FIXTURE_DDL_LOCK: i64 = 0x6166_645f_6974;
+
+/// Runs `statements` as one transaction under [`FIXTURE_DDL_LOCK`].
+async fn fixture_ddl(lane: &Lane, statements: [String; 2]) {
+    let mut connection = lane.connection().await;
+    let mut tx = sqlx::Connection::begin(&mut *connection)
+        .await
+        .expect("a fixture DDL transaction");
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(FIXTURE_DDL_LOCK)
+        .execute(&mut *tx)
+        .await
+        .expect("serialise fixture DDL");
+    for statement in statements {
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&mut *tx)
+            .await
+            .expect("the fixture DDL applies");
+    }
+    tx.commit().await.expect("the fixture DDL commits");
+}
+
+/// A purge whose parent delete removes no row is refused and commits nothing,
+/// even though the lock and the tag both passed: the delete's own status
+/// predicate is the last word. The delete is skipped by a trigger scoped to
+/// this fleet.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the lane's Postgres"]
+async fn a_purge_whose_delete_removes_no_row_is_refused_and_rolled_back() {
+    let lane = Lane::without_queue().await;
+    let fleet = lane.fleet().await;
+    let tag = lane.kill(&fleet).await;
+    // The identifier is minted, never input, which is what makes naming the
+    // trigger after it and comparing against it in the DDL safe.
+    let name = format!("afd_it_skip_{}", fleet.as_str().replace('-', ""));
+    fixture_ddl(
+        &lane,
+        [
+            format!(
+                "CREATE FUNCTION public.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ \
+                 BEGIN RETURN NULL; END $$"
+            ),
+            format!(
+                "CREATE TRIGGER {name} BEFORE DELETE ON fleet.fleets FOR EACH ROW \
+                 WHEN (OLD.id = '{fleet}'::uuid) EXECUTE FUNCTION public.{name}()"
+            ),
+        ],
+    )
+    .await;
+
+    let refused = lane
+        .fleets
+        .purge_tagged(&lane.workspace, &fleet, &tag)
+        .await
+        .expect_err("a delete that removed nothing is not a purge");
+
+    fixture_ddl(
+        &lane,
+        [
+            format!("DROP TRIGGER IF EXISTS {name} ON fleet.fleets"),
+            format!("DROP FUNCTION IF EXISTS public.{name}()"),
+        ],
+    )
+    .await;
+    assert_eq!(refused.code(), error_code::AGENTSFLEET_ALREADY_TERMINAL);
+    assert_eq!(
+        lane.fleet_column(&fleet, "status").await.as_deref(),
+        Some("killed"),
+        "the refused purge left the fleet as it found it"
+    );
+    lane.fleets
+        .purge_tagged(&lane.workspace, &fleet, &tag)
+        .await
+        .expect("with the delete free again, the same tag purges");
+    assert!(
+        lane.fleet_column(&fleet, "id").await.is_none(),
+        "the fleet is gone"
+    );
+    lane.cleanup().await;
+}

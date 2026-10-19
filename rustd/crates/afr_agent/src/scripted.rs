@@ -134,10 +134,7 @@ async fn run_tool(
         output_head: None,
         output_tail: None,
         output_line_count: None,
-        exit_code: match ending {
-            Some(Ending::Exited(code)) => Some(code),
-            _ => None,
-        },
+        exit_code: exit_code_of(ending),
     }));
     Ok(())
 }
@@ -148,6 +145,15 @@ const fn status_of(ending: Option<Ending>) -> ToolCallStatus {
         Some(Ending::Exited(0)) => ToolCallStatus::Succeeded,
         None => ToolCallStatus::Interrupted,
         Some(_) => ToolCallStatus::Failed,
+    }
+}
+
+/// The status a scripted call exited with; a call a signal, a timeout or the
+/// kernel ended, or one that never reported, has none to give.
+const fn exit_code_of(ending: Option<Ending>) -> Option<i32> {
+    match ending {
+        Some(Ending::Exited(code)) => Some(code),
+        _ => None,
     }
 }
 
@@ -180,5 +186,29 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
         memory: turn.memory,
         trace: None,
         records: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Ending, ToolCallStatus, exit_code_of, status_of};
+
+    /// Only a clean exit succeeds; a call that never reported is interrupted
+    /// rather than failed, so the operator reads "we do not know" and not "it
+    /// broke".
+    #[test]
+    fn a_completion_frame_reports_how_the_call_ended() {
+        let cases = [
+            (Some(Ending::Exited(0)), ToolCallStatus::Succeeded, Some(0)),
+            (Some(Ending::Exited(3)), ToolCallStatus::Failed, Some(3)),
+            (Some(Ending::Signaled(9)), ToolCallStatus::Failed, None),
+            (Some(Ending::TimedOut), ToolCallStatus::Failed, None),
+            (Some(Ending::OutOfMemory), ToolCallStatus::Failed, None),
+            (None, ToolCallStatus::Interrupted, None),
+        ];
+        for (ending, status, code) in cases {
+            assert_eq!(status_of(ending), status, "{ending:?}");
+            assert_eq!(exit_code_of(ending), code, "{ending:?}");
+        }
     }
 }
