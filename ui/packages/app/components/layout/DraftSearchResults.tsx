@@ -22,12 +22,13 @@ export function DraftSearchResults({history, query, onNavigate}: DraftSearchResu
       ? {...value, cards: [], more: null, fresh: null, remove: null, current: null, locked: true, status: "unavailable"} : value);
   }, [inaccessible, update, history.workspace, history.subject, history.owner]);
   if (search.view.status === STATUS.loading) return <output className="block px-md py-sm text-label text-muted-foreground">Searching chats…</output>;
-  if (search.view.status === STATUS.failed || search.view.status === STATUS.inaccessible) return <Alert variant="destructive">
-    {search.view.message}{search.view.status === STATUS.failed ? <Button variant="ghost" size="sm" onClick={search.retry}>Retry search</Button> : null}
-  </Alert>;
+  if (search.view.status === STATUS.inaccessible) return <Alert variant="destructive">{search.view.message}</Alert>;
   return <>
+    {search.view.status === STATUS.failed ? <Alert variant="destructive">
+      {search.view.message}<Button variant="ghost" size="sm" onClick={search.retry}>Retry search</Button>
+    </Alert> : null}
     <DraftChatList history={history} cards={cards} onNavigate={onNavigate} onRemoved={search.remove} />
-    {cards.length === 0 ? <p className="px-md py-sm text-label text-muted-foreground">No matching chats</p> : null}
-    {search.view.next_cursor !== null ? <DraftLoadMore className="px-md pt-sm" copy={LOAD_MORE_COPY.chats} onLoad={search.more} /> : null}
+    {cards.length === 0 && search.view.status === STATUS.ready ? <p className="px-md py-sm text-label text-muted-foreground">No matching chats</p> : null}
+    {search.view.next_cursor !== null && search.view.status === STATUS.ready ? <DraftLoadMore className="px-md pt-sm" copy={LOAD_MORE_COPY.chats} onLoad={search.more} /> : null}
   </>;
 }

@@ -14,6 +14,8 @@ This log records the requested server additions, client evidence and remaining r
 - App `c272f510d` reads bounded search pages, cancels replaced requests and ignores late responses. Search loads only after intent.
 - Ordinary history and search share row rendering, selection and confirmed deletion. Access loss clears private state through the owning client.
 - Saved entity-tag changes refresh an open search, including message-only matches. Busy-only changes preserve card references and avoid extra search requests.
+- Same-query refresh retains matches and the current cursor until the replacement page arrives. Temporary failures keep readable results and offer Retry search; current access refusal clears them. Old continuation responses cannot append to refreshed results.
+- Claude's 09:20 source review accepted the sidebar subject to this refresh repair. Its interaction regression first failed, then all four focused files / 28 tests passed (`/tmp/m229-search-refresh-red.txt`, `/tmp/m229-search-refresh-green.txt`).
 
 ## Recorded setup and publication versions
 
@@ -82,9 +84,7 @@ Post-review follow-up replaces all eight stale catalogue-table references in CLI
 ## Review and remaining release checks
 
 Native reviews are clean for the schedule/lease readers and the new CLI history source.
-Sidebar review stopped after three cycles without convergence; its final finding has a failing-before regression and a repair.
-
-Claude must inspect the final saved entity-tag propagation before final source approval. Review receipts remain under `.tmp/reviews/`.
+After the three native sidebar review cycles, Claude reviewed the final tag propagation and accepted it with one required refresh repair. That repair now has failing-before and passing-after interaction evidence. Review receipts remain under `.tmp/reviews/`.
 
 Authenticated local priming and reported-screen browser checks need the dedicated testing identity decision recorded in the mailbox.
 Read-only daemon health and readiness return HTTP 200. Anonymous browser checks do not establish authenticated behavior or scheduled delivery.

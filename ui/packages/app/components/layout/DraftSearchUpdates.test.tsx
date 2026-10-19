@@ -20,10 +20,12 @@ function Bridge({client}: {client: DraftClient}) {
 }
 afterEach(() => {cleanup(); fixture.dispose();});
 
-it("refreshes the same search when its owning chat advances and keeps fresher server facts", async () => {
+it("keeps matches visible while its owning chat refreshes, including a failed refresh and retry", async () => {
   fixture.mount();
   let revision = 1;
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: [{...CARD, candidate_revision: revision}], next_cursor: null}) : undefined;
+  const refresh = Promise.withResolvers<Response>();
+  fixture.override = ({path}) => path.endsWith("/drafts")
+    ? revision === 4 ? refresh.promise : response({items: [{...CARD, candidate_revision: revision}], next_cursor: null}) : undefined;
   const client = await fixture.ready(true);
   render(<DraftSidebarProvider><Bridge client={client} /><DraftSidebarHistory workspace={WORKSPACE} onNavigate={() => {}} /></DraftSidebarProvider>);
   revision = 3;
@@ -32,10 +34,18 @@ it("refreshes the same search when its owning chat advances and keeps fresher se
   revision = 4;
   fixture.current = {...DRAFT, etag: '"four"', candidate: DRAFT.candidate ? {...DRAFT.candidate, revision: "4"} : undefined};
   await act(async () => {await client.send("Improve the instructions");});
+  expect(screen.getByText("Setup ready · Proposed v3")).toBeTruthy();
+  expect(screen.queryByText("Searching chats…")).toBeNull();
+  await act(async () => {refresh.resolve(response({}, 503));});
+  expect(await screen.findByRole("button", {name: "Retry search"})).toBeTruthy();
+  expect(screen.getByText("Setup ready · Proposed v3")).toBeTruthy();
+  fixture.override = ({path}) => path.endsWith("/drafts")
+    ? response({items: [{...CARD, candidate_revision: revision}], next_cursor: null}) : undefined;
+  fireEvent.click(screen.getByRole("button", {name: "Retry search"}));
   expect(await screen.findByText("Setup ready · Proposed v4")).toBeTruthy();
   expect(screen.getByRole("textbox", {name: "Search all chats"})).toHaveProperty("value", "failures");
   expect(screen.queryByText("Setup ready · Proposed v3")).toBeNull();
-  expect(fixture.calls.filter(call => call.path.endsWith("/drafts"))).toHaveLength(3);
+  expect(fixture.calls.filter(call => call.path.endsWith("/drafts"))).toHaveLength(4);
 });
 
 it("finds a newly persisted message even when its chat title and setup revision stay unchanged", async () => {
