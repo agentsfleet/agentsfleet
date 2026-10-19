@@ -8,14 +8,15 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_tenant::team::EmailStatus;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
-const LATER: UnixMillis = UnixMillis::from_millis(1_767_225_660_000);
+/// The instant each identifier a case mints is minted at. Every stamp a send
+/// records is the database clock's.
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -28,7 +29,7 @@ async fn an_email_attempt_is_counted_named_and_recorded_while_latest() {
 
     // The first send is attempt 1 and names the inviter and the account.
     let first = fixture
-        .begin_email(&invite, NOW)
+        .begin_email(&invite)
         .await
         .expect("the invite is still pending");
     assert_eq!(first.attempt, 1);
@@ -39,21 +40,25 @@ async fn an_email_attempt_is_counted_named_and_recorded_while_latest() {
     // A second send begins before the first records: the first's result is
     // stale and must not land; the second's does.
     let second = fixture
-        .begin_email(&invite, LATER)
+        .begin_email(&invite)
         .await
         .expect("the invite is still pending");
     assert_eq!(second.attempt, 2);
-    for (attempt, status) in [
-        (second.attempt, EmailStatus::Sent),
-        (first.attempt, EmailStatus::Failed),
-    ] {
-        let recorded = fixture.team.record_email(&invite, attempt, status, LATER);
-        recorded.await.expect("a result is answered, stale or not");
-    }
-    assert_eq!(
-        email_record(&fixture, &invite, LATER).await,
-        (EmailStatus::Sent, Some(LATER.as_millis()))
-    );
+    let stamped = fixture
+        .team
+        .record_email(&invite, second.attempt, EmailStatus::Sent)
+        .await
+        .expect("the latest attempt's result is recorded");
+    let stale = fixture
+        .team
+        .record_email(&invite, first.attempt, EmailStatus::Failed)
+        .await
+        .expect("a stale result is answered, not refused");
+    assert_eq!(stale, None, "a stale attempt records nothing");
+    let (status, sent_at) = email_record(&fixture, &invite).await;
+    assert_eq!(status, EmailStatus::Sent, "the stale failure did not land");
+    assert!(sent_at.is_some(), "the delivery is stamped");
+    assert_eq!(sent_at, stamped, "the answer is the stored stamp");
 
     nothing_counts_but_the_pending_invite_of_its_own_account(&fixture, &invite).await;
     fixture.cleanup().await;
@@ -66,18 +71,18 @@ async fn nothing_counts_but_the_pending_invite_of_its_own_account(
     invite: &Uuid7,
 ) {
     let (tenant, other) = (id(&fixture.john.tenant), id(&fixture.carol.tenant));
-    let foreign = fixture.team.begin_email(&other, invite, LATER).await;
+    let foreign = fixture.team.begin_email(&other, invite).await;
     assert!(
         foreign.expect("another account's send answers").is_none(),
         "another account counts nothing"
     );
     fixture
         .team
-        .revoke_invitation(&tenant, invite, LATER)
+        .revoke_invitation(&tenant, invite)
         .await
         .expect("the revoke lands");
     assert_eq!(
-        fixture.begin_email(invite, LATER).await,
+        fixture.begin_email(invite).await,
         None,
         "a revoked invite counts nothing"
     );
@@ -90,66 +95,63 @@ async fn nothing_counts_but_the_pending_invite_of_its_own_account(
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_read_failed_when_attempt_began_and_never_recorded() {
     let fixture = Fixture::create().await;
-    let later = UnixMillis::from_millis(NOW.as_millis() + 1);
     let invite = fixture
         .invite(&fixture.carol.email, NOW)
         .await
         .expect("John invites Carol");
 
     fixture
-        .begin_email(&invite, NOW)
+        .begin_email(&invite)
         .await
         .expect("the invite is still pending");
     assert_eq!(
-        email_record(&fixture, &invite, NOW).await,
+        email_record(&fixture, &invite).await,
         (EmailStatus::Failed, None),
         "begun, never recorded"
     );
 
-    send(&fixture, &invite, NOW, EmailStatus::Sent).await;
-    send(&fixture, &invite, later, EmailStatus::Failed).await;
+    send(&fixture, &invite, EmailStatus::Sent).await;
+    let (_, delivered) = email_record(&fixture, &invite).await;
+    assert!(delivered.is_some(), "the delivery is stamped");
+    send(&fixture, &invite, EmailStatus::Failed).await;
     assert_eq!(
-        email_record(&fixture, &invite, later).await,
-        (EmailStatus::Failed, Some(NOW.as_millis())),
+        email_record(&fixture, &invite).await,
+        (EmailStatus::Failed, delivered),
         "the last delivery's instant survives a later failure"
     );
 
     fixture
         .team
-        .accept(&invite, &fixture.carol.invitee(), later)
+        .accept(&invite, &fixture.carol.invitee(), NOW)
         .await
         .expect("the accept lands");
     assert_eq!(
-        fixture.begin_email(&invite, later).await,
+        fixture.begin_email(&invite).await,
         None,
         "an accepted invite has nothing to send"
     );
     fixture.cleanup().await;
 }
 
-/// One send of `invite` at `at`: counted, then recorded as `status`.
-async fn send(fixture: &Fixture, invite: &Uuid7, at: UnixMillis, status: EmailStatus) {
+/// One send of `invite`: counted, then recorded as `status`.
+async fn send(fixture: &Fixture, invite: &Uuid7, status: EmailStatus) {
     let attempt = fixture
-        .begin_email(invite, at)
+        .begin_email(invite)
         .await
         .expect("the invite is still pending");
     fixture
         .team
-        .record_email(invite, attempt.attempt, status, at)
+        .record_email(invite, attempt.attempt, status)
         .await
         .expect("the send's result is recorded");
 }
 
-/// What John's invite list says of `invite`'s email at `at`.
-async fn email_record(
-    fixture: &Fixture,
-    invite: &Uuid7,
-    at: UnixMillis,
-) -> (EmailStatus, Option<i64>) {
-    let listed = fixture.johns_invites(at).await;
+/// What John's invite list says of `invite`'s email.
+async fn email_record(fixture: &Fixture, invite: &Uuid7) -> (EmailStatus, Option<Timestamp>) {
+    let listed = fixture.johns_invites().await;
     let row = listed
         .iter()
         .find(|row| row.id == *invite)
         .expect("the invite is listed");
-    (row.email_status, row.email_sent_at_ms)
+    (row.email_status, row.email_sent_at)
 }

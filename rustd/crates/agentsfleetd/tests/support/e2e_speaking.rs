@@ -80,7 +80,7 @@ impl Speaking {
             .acquire()
             .await
             .expect("a connection");
-        sqlx::query_scalar("SELECT messages_posted FROM fleet.runner_leases WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT posted_message_count FROM runner.leases WHERE id = $1::uuid")
             .bind(lease_id)
             .fetch_one(&mut *connection)
             .await
@@ -98,7 +98,7 @@ impl Speaking {
             .await
             .expect("a connection");
         sqlx::query(
-            "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1 WHERE fleet_id = $1::uuid",
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
         )
         .bind(&self.run.fleet)
         .execute(&mut *connection)

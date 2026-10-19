@@ -16,9 +16,9 @@
 //! Reading the envelope is the only way to tell, which is why this is a parse
 //! that can refuse rather than a deserialize that cannot.
 
-use afd_core::clock::UnixMillis;
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use afd_core::json::non_empty_str;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Map, Value};
 
 use crate::provider::Provider;
@@ -59,8 +59,6 @@ const WIRE_SCOPE: &str = "scope";
 /// See [`WIRE_OK`].
 const WIRE_TEAM: &str = "team";
 /// See [`WIRE_OK`].
-const WIRE_AUTHED_USER: &str = "authed_user";
-/// See [`WIRE_OK`].
 const WIRE_ID: &str = "id";
 /// See [`WIRE_OK`].
 const WIRE_NAME: &str = "name";
@@ -68,9 +66,6 @@ const WIRE_NAME: &str = "name";
 /// is Slack's wire contract and the other is this daemon's stored shape, and
 /// they are free to diverge even though they agree today.
 const WIRE_BOT_USER_ID: &str = "bot_user_id";
-
-/// Milliseconds in a second, for the expiry arithmetic.
-const MS_PER_SECOND: i64 = 1_000;
 
 /// What Slack's install answer routes back to a workspace.
 ///
@@ -82,8 +77,6 @@ pub struct Install {
     /// The provider's own id for the account — Slack's `team.id`, GitHub's
     /// installation id.
     pub external_account_id: String,
-    /// Who pressed Connect, as the provider names them.
-    pub installed_by: String,
     /// What the install actually granted, which may be less than was asked.
     pub scopes: Vec<String>,
     /// What landing this row does to one another workspace already holds.
@@ -158,11 +151,6 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
         handle,
         install: Some(Install {
             external_account_id: team_id.to_owned(),
-            installed_by: body
-                .get(WIRE_AUTHED_USER)
-                .and_then(|user| non_empty_str(user, WIRE_ID))
-                .unwrap_or_default()
-                .to_owned(),
             // Split here rather than stored as the vendor's comma-joined
             // string: the column is a `text[]`, and a reader splitting it back
             // out would be the second place the delimiter is known.
@@ -190,7 +178,7 @@ pub fn refresh_triple(
     provider: Provider,
     body: &Value,
     label: &str,
-    connected_at: UnixMillis,
+    connected_at: Timestamp,
     extras: Map<String, Value>,
 ) -> Option<Grant> {
     let expires_in = body.get(WIRE_EXPIRES_IN)?.as_i64()?;
@@ -205,14 +193,18 @@ pub fn refresh_triple(
         FIELD_REFRESH_TOKEN.into(),
         non_empty_str(body, FIELD_REFRESH_TOKEN)?.into(),
     );
+    // Stored as epoch milliseconds under `*_at_ms` keys: the handle is a
+    // sealed document the runner plane reads by those names, so the unit is
+    // its shape. `saturating_add` answers an error only for calendar units,
+    // which a `SignedDuration` is not.
+    let expires_at = connected_at
+        .saturating_add(SignedDuration::from_secs(expires_in))
+        .unwrap_or(Timestamp::MAX);
+    handle.insert(HANDLE_EXPIRES_AT.into(), expires_at.as_millisecond().into());
     handle.insert(
-        HANDLE_EXPIRES_AT.into(),
-        connected_at
-            .saturating_add_millis(expires_in.saturating_mul(MS_PER_SECOND))
-            .as_millis()
-            .into(),
+        HANDLE_CONNECTED_AT.into(),
+        connected_at.as_millisecond().into(),
     );
-    handle.insert(HANDLE_CONNECTED_AT.into(), connected_at.as_millis().into());
     handle.insert(HANDLE_LABEL.into(), label.into());
 
     Some(Grant {

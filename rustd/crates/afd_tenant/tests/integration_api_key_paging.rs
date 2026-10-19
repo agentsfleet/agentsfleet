@@ -25,19 +25,25 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::paging::Cursor;
 use afd_tenant::apikey::{ApiKeySort, Description, KeyName, KeyRow, MintRequest};
+use jiff::{SignedDuration, Timestamp};
 
 /// How far apart the corpus spaces two keys that must NOT tie.
 ///
 /// One second, which is only a readable gap — nothing depends on its size.
 /// What the suite depends on is the pair that shares an instant exactly, and
 /// naming this makes that pair legible as the deliberate exception it is.
-const STEP_MS: i64 = 1_000;
+const STEP: SignedDuration = SignedDuration::from_secs(1);
 
-use crate::apikey_lane::{ApiKeyLane, NOW_MS, PAGE_SIZE};
+use crate::apikey_lane::{ApiKeyLane, NOW, PAGE_SIZE};
+
+/// The corpus instant `steps` gaps after [`NOW`].
+fn step(steps: i32) -> Timestamp {
+    NOW.checked_add(STEP * steps)
+        .expect("the corpus instants are in range")
+}
 
 /// Dimension 2.3 — a page boundary lands exactly between two rows, ties
 /// included, and the total does not move while a client walks.
@@ -50,13 +56,12 @@ async fn test_list_keyset_pagination() {
     // the tiebreak is exercised rather than assumed. Minted oldest-first, which
     // is the opposite of the order the default sort answers in — a listing that
     // simply echoed insertion order would pass a same-order fixture.
-    let base = NOW_MS;
-    lane.mint_key("alpha", base).await;
-    lane.mint_key("bravo", base + STEP_MS).await;
-    lane.mint_key("charlie", base + 2 * STEP_MS).await;
+    lane.mint_key("alpha", step(0)).await;
+    lane.mint_key("bravo", step(1)).await;
+    lane.mint_key("charlie", step(2)).await;
     // Same instant as `charlie`, on purpose: this is the tie.
-    lane.mint_key("delta", base + 2 * STEP_MS).await;
-    lane.mint_key("echo", base + 3 * STEP_MS).await;
+    lane.mint_key("delta", step(2)).await;
+    lane.mint_key("echo", step(3)).await;
 
     let first = lane.page(ApiKeySort::CreatedDescending, None).await;
     assert_eq!(
@@ -75,7 +80,7 @@ async fn test_list_keyset_pagination() {
     // can build a cursor from — it holds no others by then.
     let boundary = first.keys.last().expect("a full page has a last row");
     let cursor = Cursor::Timestamp {
-        at_ms: boundary.created_at_ms,
+        at: boundary.created_at,
         id: boundary.id.clone(),
     };
 
@@ -118,12 +123,12 @@ async fn test_list_keyset_pagination() {
 
     // And the order across the seam, which neither page can assert alone.
     assert!(
-        boundary.created_at_ms
+        boundary.created_at
             >= second
                 .keys
                 .first()
                 .expect("the second page carries the remainder")
-                .created_at_ms,
+                .created_at,
         "the page after the boundary must not contain a row NEWER than it"
     );
 
@@ -143,11 +148,10 @@ async fn test_list_keyset_pagination() {
 async fn test_list_keyset_pagination_by_name() {
     let lane = ApiKeyLane::create().await;
 
-    let base = NOW_MS;
-    lane.mint_key("zulu", base).await;
-    lane.mint_key("yankee", base + STEP_MS).await;
-    lane.mint_key("xray", base + 2 * STEP_MS).await;
-    lane.mint_key("whiskey", base + 3 * STEP_MS).await;
+    lane.mint_key("zulu", step(0)).await;
+    lane.mint_key("yankee", step(1)).await;
+    lane.mint_key("xray", step(2)).await;
+    lane.mint_key("whiskey", step(3)).await;
 
     let first = lane.page(ApiKeySort::NameAscending, None).await;
     assert_eq!(
@@ -183,7 +187,7 @@ async fn test_list_keyset_pagination_by_name() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_refuse_duplicate_name_when_index_rejects_insert() {
     let lane = ApiKeyLane::create().await;
-    lane.mint_key("alpha", NOW_MS).await;
+    lane.mint_key("alpha", NOW).await;
     let request = MintRequest {
         tenant: &lane.tenant,
         name: KeyName::parse("alpha").expect("a well-formed name"),
@@ -192,10 +196,57 @@ async fn should_refuse_duplicate_name_when_index_rejects_insert() {
     };
     let taken = lane
         .keys
-        .mint(&request, UnixMillis::from_millis(NOW_MS + STEP_MS))
+        .mint(&request, step(1))
         .await
         .expect_err("the name is taken");
     assert_eq!(taken.code(), error_code::APIKEY_NAME_TAKEN);
+
+    lane.cleanup().await;
+}
+
+/// A tenant holding no keys answers an empty page with a total of zero: the
+/// lateral join's marker row carries the count and a null key, and the null
+/// is read as "no key here" rather than decoded into a malformed one.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_account_with_no_keys_lists_an_empty_page() {
+    let lane = ApiKeyLane::create().await;
+
+    for sort in [ApiKeySort::CreatedDescending, ApiKeySort::NameAscending] {
+        let empty = lane.page(sort, None).await;
+        assert!(empty.keys.is_empty(), "{sort:?} found keys: {empty:?}");
+        assert_eq!(empty.total, 0);
+    }
+
+    lane.cleanup().await;
+}
+
+/// A mint for an account with no row fails on the foreign key, which is the
+/// datastore's failure and not the name collision the unique index reports.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_mint_for_an_account_with_no_row_is_a_statement_failure() {
+    let lane = ApiKeyLane::create().await;
+    let absent = afd_core::id::Uuid7::encode(NOW, [7; afd_core::id::ENTROPY_LEN])
+        .expect("a well-formed identifier");
+    let request = MintRequest {
+        tenant: &absent,
+        name: KeyName::parse("alpha").expect("a well-formed name"),
+        description: Description::parse(None).expect("an absent description is legal"),
+        created_by: "fixture|apikey-orphan",
+    };
+
+    let failed = lane
+        .keys
+        .mint(&request, NOW)
+        .await
+        .expect_err("no account row to hang the key on");
+
+    assert_eq!(failed.code(), error_code::INTERNAL_DB_QUERY);
+    assert!(
+        std::error::Error::source(&failed).is_some(),
+        "the statement's own failure rides through as the cause"
+    );
 
     lane.cleanup().await;
 }
@@ -210,5 +261,5 @@ fn names(keys: &[KeyRow]) -> Vec<String> {
 /// `>=` rather than `>`: the corpus deliberately holds a tie, and a tie is
 /// ordered rather than out of order.
 fn is_newest_first(keys: &[KeyRow]) -> bool {
-    keys.is_sorted_by(|earlier, later| earlier.created_at_ms >= later.created_at_ms)
+    keys.is_sorted_by(|earlier, later| earlier.created_at >= later.created_at)
 }

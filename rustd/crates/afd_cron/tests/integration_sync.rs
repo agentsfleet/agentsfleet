@@ -19,7 +19,7 @@
 //!
 //! # The bug this suite was written against
 //!
-//! A create invents `source_key` before it has ever spoken to the scheduler
+//! A create invents `provider_schedule_id` before it has ever spoken to the scheduler
 //! (`{fleet_id}-{millis}`), and the scheduler files the schedule under an id of
 //! its own. `reconcile` used to discard that id. Since `remove` treats a 404 as
 //! success — correctly, because a schedule already gone has met the caller's
@@ -40,8 +40,9 @@ mod support;
 #[path = "support/live_qstash.rs"]
 mod live_qstash;
 
+use afd_core::id::Uuid7;
 use afd_cron::qstash::QStash;
-use afd_cron::{DesiredStatus, Reconciled, ScheduleService as Reconciler, SyncStatus};
+use afd_cron::{DesiredStatus, Reconciled, Schedule, ScheduleService as Reconciler, SyncStatus};
 
 use self::live_qstash::{LIVE_DESTINATION, against_live, live};
 use self::support::CronLane;
@@ -64,18 +65,13 @@ async fn a_real_scheduler_accepts_the_push_and_the_row_records_it() {
     let claim = CronLane::token();
     let held = lane
         .store
-        .claim_current(
-            &lane.fleet_id(),
-            &created.schedule_id,
-            &claim,
-            CronLane::now(),
-        )
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &claim)
         .await
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
 
     let reconciled = against_live(&lane, url, token)
-        .reconcile(&held, &claim, CronLane::now())
+        .reconcile(&held, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
 
@@ -89,12 +85,38 @@ async fn a_real_scheduler_accepts_the_push_and_the_row_records_it() {
     );
 }
 
+/// `schedule` claimed as it stands, under `claim`.
+async fn claimed(lane: &CronLane, schedule: &Schedule, claim: &Uuid7) -> Schedule {
+    lane.store
+        .claim_current(&lane.fleet_id(), &schedule.schedule_id, claim)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("an unheld schedule is claimable")
+}
+
+/// `schedule` marked for deletion and claimed, under `claim`.
+async fn claimed_for_deletion(lane: &CronLane, schedule: &Schedule, claim: &Uuid7) -> Schedule {
+    lane.store
+        .claim_change(
+            &lane.fleet_id(),
+            &schedule.schedule_id,
+            afd_cron::Change {
+                desired_status: Some(DesiredStatus::Deleting),
+                ..afd_cron::Change::default()
+            },
+            claim,
+        )
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the schedule is claimable for deletion")
+}
+
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and the compose qstash service"]
 async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
-    // The whole point of the suite. A create invents `source_key` locally; the
-    // scheduler files the schedule under its own id. Unless the push ADOPTS
-    // that id, every later call names a key the vendor never issued.
+    // The whole point of the suite. A create invents `provider_schedule_id`
+    // locally; the scheduler files the schedule under its own id. Unless the
+    // push ADOPTS that id, every later call names a key the vendor never issued.
     let Some((url, token)) = live() else {
         return;
     };
@@ -102,26 +124,16 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
     let invented = "key-live-adopt";
     let created = lane.settled(invented, "0 5 * * *").await;
     assert_eq!(
-        created.source_key, invented,
+        created.provider_schedule_id, invented,
         "a create stores the placeholder it invented, having spoken to nobody"
     );
 
     let claim = CronLane::token();
-    let held = lane
-        .store
-        .claim_current(
-            &lane.fleet_id(),
-            &created.schedule_id,
-            &claim,
-            CronLane::now(),
-        )
-        .await
-        .expect("the lane's Postgres must answer")
-        .expect("an unheld schedule is claimable");
+    let held = claimed(&lane, &created, &claim).await;
 
     let service = against_live(&lane, url, token);
     let reconciled = service
-        .reconcile(&held, &claim, CronLane::now())
+        .reconcile(&held, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
 
@@ -129,37 +141,20 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
         panic!("the push must have been accepted, got {reconciled:?}");
     };
     assert_ne!(
-        synced.source_key, invented,
+        synced.provider_schedule_id, invented,
         "the row must carry the scheduler's own key, not the one the create invented"
     );
     assert!(
-        !synced.source_key.is_empty(),
+        !synced.provider_schedule_id.is_empty(),
         "the adopted key is what a later delete names"
     );
 
     // And the adopted key is usable: removing under it is accepted by the
     // scheduler that issued it. Asserted rather than swallowed, because
     // `remove` reports a 404 as success — the exact reason a wrong key hides.
-    let deleting = lane
-        .store
-        .claim_change(
-            &lane.fleet_id(),
-            &synced.schedule_id,
-            afd_cron::Change {
-                cron: None,
-                timezone: None,
-                message: None,
-                desired_status: Some(DesiredStatus::Deleting),
-            },
-            &claim,
-            CronLane::now(),
-        )
-        .await
-        .expect("the lane's Postgres must answer")
-        .expect("the schedule is claimable for deletion");
-
+    let deleting = claimed_for_deletion(&lane, &synced, &claim).await;
     let removed = service
-        .reconcile(&deleting, &claim, CronLane::now())
+        .reconcile(&deleting, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
     assert!(
@@ -187,12 +182,7 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
     let claim = CronLane::token();
     let held = lane
         .store
-        .claim_current(
-            &lane.fleet_id(),
-            &created.schedule_id,
-            &claim,
-            CronLane::now(),
-        )
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &claim)
         .await
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
@@ -207,7 +197,7 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
         ),
     );
     let reconciled = stalled
-        .reconcile(&held, &claim, CronLane::now())
+        .reconcile(&held, &claim)
         .await
         .expect("an unreachable scheduler is recorded, never raised");
 
@@ -243,12 +233,7 @@ async fn a_push_under_a_lost_fence_changes_nothing() {
     let loser = CronLane::token();
     let held = lane
         .store
-        .claim_current(
-            &lane.fleet_id(),
-            &created.schedule_id,
-            &loser,
-            CronLane::now(),
-        )
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &loser)
         .await
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
@@ -257,18 +242,13 @@ async fn a_push_under_a_lost_fence_changes_nothing() {
     lane.expire_lease(&held.schedule_id).await;
     let winner = CronLane::token();
     lane.store
-        .claim_current(
-            &lane.fleet_id(),
-            &held.schedule_id,
-            &winner,
-            CronLane::now(),
-        )
+        .claim_current(&lane.fleet_id(), &held.schedule_id, &winner)
         .await
         .expect("the lane's Postgres must answer")
         .expect("an expired lease is reclaimable");
 
     let reconciled = against_live(&lane, url, token)
-        .reconcile(&held, &loser, CronLane::now())
+        .reconcile(&held, &loser)
         .await
         .expect("a reachable scheduler is not a datastore failure");
     assert!(

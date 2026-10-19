@@ -46,6 +46,8 @@
 
 use std::collections::VecDeque;
 
+use jiff::Timestamp;
+
 /// How many fleets a resume set holds when nobody says otherwise.
 ///
 /// The driver passes its own, and this is what a reset falls back to — see
@@ -63,8 +65,8 @@ pub const DEFAULT_REPAIR_CAPACITY: usize = 128;
 
 /// The fleet id every real fleet sorts above.
 ///
-/// Not a sentinel standing in for "no cursor yet": `core.fleets` constrains its
-/// primary key to `UUIDv7` (`ck_fleets_id_uuidv7`, on the fourteenth character),
+/// Not a sentinel standing in for "no cursor yet": `fleet.fleets` constrains its
+/// primary key to `UUIDv7` (`ck_fleets_id_uuidv7`, on the fifteenth character),
 /// so the nil UUID is not a representable fleet id and `fleet_id > NIL` is a
 /// true lower bound on the column's domain. That is what lets the scan keep ONE
 /// spelling with a cursor bound always present, instead of a second near-
@@ -74,7 +76,7 @@ pub(crate) const FIRST_FLEET: &str = "00000000-0000-0000-0000-000000000000";
 
 /// One fleet's resume point inside its own undelivered rows.
 ///
-/// The logical event id's two integers, which is the order
+/// The row's admission instant and its insertion sequence, which is the order
 /// [`crate::sql::SELECT_UNDELIVERED_ON_FLEET`] reads in and the order its index
 /// is built on, so resuming is an index bound rather than a scan and a skip.
 /// Ordered by the columns in the order the statement reads them, so `min`
@@ -82,20 +84,22 @@ pub(crate) const FIRST_FLEET: &str = "00000000-0000-0000-0000-000000000000";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RowKey {
     /// The admission's creation instant.
-    pub(crate) created_at: i64,
-    /// Its tiebreak inside that millisecond.
-    pub(crate) seq: i64,
+    pub(crate) created_at: Timestamp,
+    /// Its tiebreak inside that millisecond: the table's identity column.
+    pub(crate) sequence: i64,
 }
 
 impl RowKey {
     /// The key every admission sorts above.
     ///
-    /// `created_at` is a Unix millisecond and `seq` is an identity column that
-    /// starts at one, so neither is ever zero on a row this daemon wrote. Same
-    /// argument as [`FIRST_FLEET`], and the same payoff: one statement.
+    /// `created_at` is stamped by the database's `now()`, which no row this
+    /// daemon writes reads as the epoch, and `sequence` is an identity column
+    /// that starts at one. Same argument as [`FIRST_FLEET`], and the same
+    /// payoff: one statement. The epoch rather than jiff's minimum because the
+    /// key is bound as a `timestamptz`, whose range ends well short of it.
     pub(crate) const FIRST: Self = Self {
-        created_at: 0,
-        seq: 0,
+        created_at: Timestamp::UNIX_EPOCH,
+        sequence: 0,
     };
 }
 

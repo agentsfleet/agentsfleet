@@ -14,14 +14,12 @@ use crate::{
 };
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
-use serde::Deserialize;
 use sqlx::PgConnection;
 
 pub(super) struct Captured {
     pub(super) candidate: Candidate,
     pub(super) context: review::Context,
     pub(super) draft: Option<draft::read::Locked>,
-    pub(super) library_revision: Option<Uuid7>,
 }
 
 impl Creations {
@@ -43,19 +41,17 @@ impl Creations {
                     .map_err(query(CONTEXT))?;
                 let id = Uuid7::parse(&id.ok_or(ErrorKind::Hidden)?)?;
                 let locked = draft::read::lock(connection, access, person, &id).await?;
-                if locked.current_candidate_id.as_ref() != Some(draft_candidate_id) {
+                if locked.head_candidate_id.as_ref() != Some(draft_candidate_id) {
                     return Err(ErrorKind::State {
                         current: "candidate_changed",
                     }
                     .into());
                 }
                 let candidate = candidate::read(connection, &id, draft_candidate_id).await?;
-                let published = published(connection, &locked, person, &candidate).await?;
                 Ok(Captured {
                     candidate,
                     context: review::Context::from(&locked),
                     draft: Some(locked),
-                    library_revision: published,
                 })
             }
             SaveSource::Library {
@@ -66,42 +62,16 @@ impl Creations {
     }
 }
 
-async fn published(
-    connection: &mut PgConnection,
-    draft: &draft::read::Locked,
-    person: &Person,
-    candidate: &Candidate,
-) -> Result<Option<Uuid7>> {
-    let Some(receipt) = draft
-        .publication
-        .as_ref()
-        .filter(|receipt| receipt.canonical_digest == candidate.canonical_digest)
-    else {
-        return Ok(None);
-    };
-    let id: Option<String> = sqlx::query_scalar(sql::PUBLISHED)
-        .bind(receipt.library_id.as_str())
-        .bind(receipt.revision_id.as_str())
-        .bind(&candidate.canonical_digest)
-        .bind(&candidate.policy_semantics)
-        .bind(person.owner.as_str())
-        .bind(crate::library::PLATFORM)
-        .fetch_optional(connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    id.map(|id| Uuid7::parse(&id).map_err(Into::into))
-        .transpose()
-}
-
+/// [`sql::LIBRARY`]'s row, by column name.
 #[expect(
     clippy::struct_field_names,
-    reason = "`revision` is the `core.fleet_library_revisions` column, decoded from `to_jsonb(r)`"
+    reason = "`revision` is the `authoring.library_revisions` column it decodes"
 )]
-#[derive(Deserialize)]
+#[derive(sqlx::FromRow)]
 struct Revision {
-    id: Uuid7,
+    id: String,
     revision: i64,
-    definition: Definition,
+    definition: String,
     canonical_digest: String,
     policy_semantics: String,
 }
@@ -113,7 +83,7 @@ async fn library(
     library: &str,
     revision: &Uuid7,
 ) -> Result<Captured> {
-    let row: Option<String> = sqlx::query_scalar(sql::LIBRARY)
+    let row: Option<Revision> = sqlx::query_as(sql::LIBRARY)
         .bind(library)
         .bind(revision.as_str())
         .bind(person.owner.as_str())
@@ -121,7 +91,8 @@ async fn library(
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    let row: Revision = serde_json::from_str(&row.ok_or(ErrorKind::Hidden)?).map_err(stored)?;
+    let row = row.ok_or(ErrorKind::Hidden)?;
+    let definition: Definition = serde_json::from_str(&row.definition).map_err(stored)?;
     Ok(Captured {
         context: review::Context {
             subject: review::Subject::Library {
@@ -139,13 +110,12 @@ async fn library(
             }),
         },
         candidate: Candidate {
-            id: row.id,
+            id: Uuid7::parse(&row.id)?,
             revision: row.revision.to_string(),
-            definition: row.definition,
+            definition,
             canonical_digest: row.canonical_digest,
             policy_semantics: row.policy_semantics,
         },
         draft: None,
-        library_revision: Some(revision.clone()),
     })
 }

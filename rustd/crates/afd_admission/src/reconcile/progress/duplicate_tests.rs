@@ -10,6 +10,7 @@
 
 use super::tests::{BUDGET, CAPACITY, SOMEWHERE};
 use super::{Progress, Repair, RowKey};
+use jiff::Timestamp;
 
 /// One fleet holds one place in the set, however many walks report it.
 ///
@@ -33,13 +34,13 @@ use super::{Progress, Repair, RowKey};
 fn a_fleet_holds_one_place_however_many_walks_report_it() {
     /// Where the continue-walk stopped: further into the fleet's rows.
     const FURTHER: RowKey = RowKey {
-        created_at: 1_750_000_000_000,
-        seq: 90,
+        created_at: Timestamp::constant(1_750_000_000, 0),
+        sequence: 90,
     };
     /// Where the head walk stopped, having started at the first row.
     const EARLIER: RowKey = RowKey {
-        created_at: 1_600_000_000_000,
-        seq: 7,
+        created_at: Timestamp::constant(1_600_000_000, 0),
+        sequence: 7,
     };
 
     let mut progress = Progress::with_capacity(CAPACITY);
@@ -70,15 +71,15 @@ fn a_fleet_holds_one_place_however_many_walks_report_it() {
 /// different fleet is declined, and declining is where coverage degrades.
 #[test]
 fn a_repeated_fleet_does_not_crowd_out_a_different_one() {
+    /// A second report for the same fleet, from far lower in its rows.
+    const LOWEST: RowKey = RowKey {
+        created_at: Timestamp::UNIX_EPOCH,
+        sequence: 1,
+    };
+
     let mut progress = Progress::with_capacity(2);
     assert!(progress.walked("fleet-a", Some(SOMEWHERE)));
-    assert!(progress.walked(
-        "fleet-a",
-        Some(RowKey {
-            created_at: 1,
-            seq: 1
-        })
-    ));
+    assert!(progress.walked("fleet-a", Some(LOWEST)));
     assert!(
         progress.walked("fleet-b", Some(SOMEWHERE)),
         "fleet-b takes the second place, which fleet-a was not entitled to twice"

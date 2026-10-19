@@ -9,7 +9,7 @@ use afd_core::error_code;
 async fn revoked_model_leaves_a_durable_recovery_action() {
     let f = funded(1).await;
     let draft = queue(&f, "Selected model later disappears").await;
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -29,7 +29,7 @@ async fn revoked_model_leaves_a_durable_recovery_action() {
 async fn missing_wallet_is_a_durable_billing_failure_without_an_attempt() {
     let f = funded(1).await;
     let draft = queue(&f, "Owner billing is required").await;
-    sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -56,7 +56,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
         )
         .await
         .expect("member's private draft");
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(f.member.as_str())
         .execute(&mut *f.connection().await)
@@ -64,7 +64,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
         .expect("committed membership revocation");
     assert!(claim(&f, &created.draft).await.is_none());
     let state: (String, Option<String>) = sqlx::query_as(
-        "SELECT state,failure_reason FROM core.authoring_messages WHERE draft_id=$1::uuid",
+        "SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1::uuid",
     )
     .bind(created.draft.id.as_str())
     .fetch_one(&mut *f.connection().await)
@@ -80,7 +80,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
 async fn oversized_native_context_fails_before_capacity_or_provider_obligation() {
     let f = funded(1).await;
     let draft = queue(&f, &"語".repeat(10_000)).await;
-    sqlx::query("UPDATE core.model_library SET context_cap_tokens=8192 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=8192 WHERE id=$1::uuid")
         .bind(f.catalogue[0].as_str())
         .execute(&mut *f.connection().await)
         .await

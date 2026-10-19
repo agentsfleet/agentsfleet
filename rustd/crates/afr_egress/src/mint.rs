@@ -7,8 +7,8 @@
 
 use std::fmt;
 
-use afd_core::clock::UnixMillis;
 use afr_secrets::Secret;
+use jiff::Timestamp;
 
 use crate::error::Result;
 
@@ -16,13 +16,13 @@ use crate::error::Result;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Minted {
     token: Secret,
-    expires_at: UnixMillis,
+    expires_at: Timestamp,
 }
 
 impl Minted {
     /// `token`, which the daemon stops honouring at `expires_at`.
     #[must_use]
-    pub const fn new(token: Secret, expires_at: UnixMillis) -> Self {
+    pub const fn new(token: Secret, expires_at: Timestamp) -> Self {
         Self { token, expires_at }
     }
 
@@ -34,7 +34,7 @@ impl Minted {
 
     /// When the daemon stops honouring it.
     #[must_use]
-    pub const fn expires_at(&self) -> UnixMillis {
+    pub const fn expires_at(&self) -> Timestamp {
         self.expires_at
     }
 }

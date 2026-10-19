@@ -72,7 +72,7 @@ function registryList(count: number) {
       kind: "provider_key",
       has_key: true,
       active: i === 0,
-      created_at: 1_777_507_200_000,
+      created_at: "2026-04-30T00:00:00Z",
     })),
     platform_default_available: true,
   };

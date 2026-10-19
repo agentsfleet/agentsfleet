@@ -203,10 +203,13 @@ impl QStash {
     ///
     /// # Errors
     /// As [`Self::upsert`].
-    pub async fn remove(&self, source_key: &str) -> Result<()> {
+    pub async fn remove(&self, provider_schedule_id: &str) -> Result<()> {
         let answer = self
             .client
-            .delete(format!("{}{SCHEDULES_PATH}{source_key}", self.api_base))
+            .delete(format!(
+                "{}{SCHEDULES_PATH}{provider_schedule_id}",
+                self.api_base
+            ))
             .bearer_auth(self.token.expose())
             .send()
             .await?;

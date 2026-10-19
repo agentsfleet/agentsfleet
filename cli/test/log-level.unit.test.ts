@@ -16,7 +16,8 @@ const TRACE_MARKER = "http.attempt";
 
 const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
-    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active" }] }),
+    jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active",
+      created_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" }], next_cursor: null }),
 };
 
 const runAt = async (level: ReadonlyArray<string>): Promise<string> => {

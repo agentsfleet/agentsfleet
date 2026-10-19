@@ -19,23 +19,21 @@
 use std::time::{Duration, Instant};
 
 use afd_admission::Progress;
-use afd_core::clock;
 use afd_dragonfly::FleetStreams;
 use sqlx::{Connection as _, Row as _};
 
 use crate::integration_admission_recovery::{
     EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, deferring, ledger, producer_key,
 };
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
 /// Takes one admission row's lock inside the caller's transaction.
-const LOCK_ROW: &str = "SELECT 1 FROM core.fleet_admissions \
-     WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3 FOR UPDATE";
+const LOCK_ROW: &str = "SELECT 1 FROM fleet.admissions WHERE id = $1::uuid FOR UPDATE";
 
 /// Rewrites a held row's receipt, as a replay on another replica would.
-const RERECEIPT: &str = "UPDATE core.fleet_admissions SET receipt = $4 \
-     WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3";
+const RERECEIPT: &str = "UPDATE fleet.admissions SET receipt = $2 WHERE id = $1::uuid";
 
 /// This connection's server process, which a blocked statement names.
 const BACKEND_PID: &str = "SELECT pg_backend_pid()";
@@ -81,11 +79,8 @@ async fn a_reconcile_void_lands_only_on_the_receipt_it_probed() {
         .begin()
         .await
         .expect("a holding transaction");
-    let (created_at, seq) = logical(&event);
     sqlx::query(LOCK_ROW)
-        .bind(&fleet)
-        .bind(created_at)
-        .bind(seq)
+        .bind(&event)
         .execute(&mut *holder)
         .await
         .expect("the row locks");
@@ -100,13 +95,11 @@ async fn a_reconcile_void_lands_only_on_the_receipt_it_probed() {
     // its void parks behind the lock. While it is parked, the row's receipt
     // changes and commits; the void then re-reads the row and must find the
     // receipt it was told about gone.
-    let (lane_view, held_fleet, receipt) = (&fixtures, fleet.as_str(), replaced.as_str());
+    let (lane_view, held_event, receipt) = (&fixtures, event.as_str(), replaced.as_str());
     let rereceipt = async move {
         wait_until_blocked(lane_view, pid).await;
         sqlx::query(RERECEIPT)
-            .bind(held_fleet)
-            .bind(created_at)
-            .bind(seq)
+            .bind(held_event)
             .bind(receipt)
             .execute(&mut *holder)
             .await
@@ -118,28 +111,23 @@ async fn a_reconcile_void_lands_only_on_the_receipt_it_probed() {
     };
     let mut progress = Progress::default();
     let (reconciled, ()) = tokio::join!(
-        live.reconcile(clock::now(), EVERY_FLEET, EVERY_ROW, &mut progress),
+        live.reconcile(EVERY_FLEET, EVERY_ROW, &mut progress),
         rereceipt,
     );
     reconciled.expect("the pass runs against both live datastores");
 
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &event).await,
+        fixtures.text(Row::Admission(&event), "receipt").await,
         Some(replaced),
         "a void probed for one receipt must not forget the one that replaced it"
     );
 
     // Leave the row whole for whoever runs next: the replacement names no
     // entry either, so the production passes repair it the ordinary way.
-    live.reconcile(
-        clock::now(),
-        EVERY_FLEET,
-        EVERY_ROW,
-        &mut Progress::default(),
-    )
-    .await
-    .expect("the repairing pass runs");
-    live.replay(clock::now(), NO_GRACE, EVERY_ROW)
+    live.reconcile(EVERY_FLEET, EVERY_ROW, &mut Progress::default())
+        .await
+        .expect("the repairing pass runs");
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs");
     fixtures.cleanup().await;
@@ -170,29 +158,26 @@ async fn a_replay_pass_skips_the_row_another_replica_holds() {
         .begin()
         .await
         .expect("a holding transaction");
-    let (created_at, seq) = logical(&held);
     sqlx::query(LOCK_ROW)
-        .bind(&fleet)
-        .bind(created_at)
-        .bind(seq)
+        .bind(&held)
         .execute(&mut *holder)
         .await
         .expect("the row locks");
 
-    tokio::time::timeout(
-        PATIENCE,
-        ledger(&fixtures).replay(clock::now(), NO_GRACE, EVERY_ROW),
-    )
-    .await
-    .expect("a replay pass never waits on a row another replica holds")
-    .expect("the replay pass runs against both live datastores");
+    tokio::time::timeout(PATIENCE, ledger(&fixtures).replay(NO_GRACE, EVERY_ROW))
+        .await
+        .expect("a replay pass never waits on a row another replica holds")
+        .expect("the replay pass runs against both live datastores");
 
     assert!(
-        fixtures.admission_receipt(&fleet, &free).await.is_some(),
+        fixtures
+            .text(Row::Admission(&free), "receipt")
+            .await
+            .is_some(),
         "the free row was replayed"
     );
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &held).await,
+        fixtures.text(Row::Admission(&held), "receipt").await,
         None,
         "the held row was left to the replica holding it"
     );
@@ -202,19 +187,17 @@ async fn a_replay_pass_skips_the_row_another_replica_holds() {
         .await
         .expect("the holding transaction ends");
     ledger(&fixtures)
-        .replay(clock::now(), NO_GRACE, EVERY_ROW)
+        .replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs");
     assert!(
-        fixtures.admission_receipt(&fleet, &held).await.is_some(),
+        fixtures
+            .text(Row::Admission(&held), "receipt")
+            .await
+            .is_some(),
         "once released, the held row is replayed by the next pass"
     );
     fixtures.cleanup().await;
-}
-
-/// The ledger row an event id names, as its `(created_at, seq)` key.
-fn logical(event: &str) -> (i64, i64) {
-    afd_admission::logical_parts(event).expect("the ledger minted this id")
 }
 
 /// Returns once a statement is parked behind a lock `pid` holds.

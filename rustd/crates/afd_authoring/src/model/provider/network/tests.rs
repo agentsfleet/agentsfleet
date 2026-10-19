@@ -7,6 +7,7 @@
 use super::Network;
 use crate::{ProviderRequest, Transport};
 use afd_wire::authoring::ENVELOPE_BYTES_MAX;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 #[tokio::test]
@@ -30,7 +31,7 @@ async fn bounded_responses_keep_status_and_bytes_and_refuse_overflow() {
                 .uri(format!("http://{address}/inference"))
                 .body(Vec::new())
                 .expect("fixture request"),
-            timeout_ms: 5000,
+            timeout: Duration::from_secs(5),
         };
         let response = Network::new().expect("direct client").send(request).await;
         if length <= ENVELOPE_BYTES_MAX {
@@ -50,7 +51,7 @@ async fn bounded_responses_keep_status_and_bytes_and_refuse_overflow() {
 async fn a_relative_request_is_refused_before_any_socket_can_open() {
     let request = ProviderRequest {
         request: http::Request::new(Vec::new()),
-        timeout_ms: 1,
+        timeout: Duration::from_millis(1),
     };
     let error = Network::new()
         .expect("direct client")

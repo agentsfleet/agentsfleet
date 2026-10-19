@@ -2,32 +2,38 @@
 
 use crate::{
     Access, Drafts, Result, access,
-    draft::{self, read},
+    draft::{read, word},
     error::{ErrorKind, raise::query},
+    lease::meter::Metered,
+    model::dispatch_status,
     replay, sql,
     types::{Message, MessageQuery, MessageState, Page, QUEUED, RUNNING},
 };
 use afd_core::{id::Uuid7, paging::Cursor};
-use serde::Deserialize;
-use sqlx::{Connection as _, Row as _};
+use jiff::Timestamp;
+use sqlx::Connection as _;
 
 const CONTEXT: &str = "read private message page";
 const USER: &str = "user";
 const ASSISTANT: &str = "assistant";
 const CURSOR_RESOURCE: &str = "draft-messages-sequence-role";
 
-#[derive(Deserialize)]
+/// [`sql::message::PAGE`]'s row, by column name.
+#[derive(sqlx::FromRow)]
 struct Stored {
     sequence: i64,
-    operation_id: Uuid7,
-    state: MessageState,
+    operation_id: String,
+    status: String,
     user_text: String,
     answer_text: Option<String>,
-    candidate_id: Option<Uuid7>,
-    usage: Option<afd_wire::authoring::Usage>,
-    failure_reason: Option<afd_wire::authoring::FailureReason>,
-    created_at: i64,
-    finished_at: Option<i64>,
+    candidate_id: Option<String>,
+    failure_reason: Option<String>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    finished_at: Option<jiff_sqlx::Timestamp>,
+    ordinal: i32,
+    #[sqlx(flatten)]
+    metered: Metered,
 }
 
 impl Drafts {
@@ -54,13 +60,16 @@ impl Drafts {
             request.limit,
         ))?;
         let (sequence, ordinal) = boundary(request.starting_after.as_deref(), &binding)?;
-        let rows = sqlx::query(sql::message::PAGE)
+        let rows: Vec<Stored> = sqlx::query_as(sql::message::PAGE)
             .bind(id.as_str())
             .bind(sequence)
             .bind(ordinal)
             .bind(QUEUED)
             .bind(RUNNING)
             .bind(i64::from(request.limit) + 1)
+            .bind(dispatch_status::KNOWN)
+            .bind(dispatch_status::PENDING)
+            .bind(dispatch_status::UNKNOWN)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -71,11 +80,8 @@ impl Drafts {
             if items.len() == request.limit as usize {
                 break;
             }
-            let stored: Stored =
-                draft::value(&row.try_get::<String, _>(0).map_err(query(CONTEXT))?)?;
-            let role: i32 = row.try_get(1).map_err(query(CONTEXT))?;
-            next_cursor = Some(cursor(&binding, stored.sequence, role));
-            items.push(project(stored, role));
+            next_cursor = Some(cursor(&binding, row.sequence, row.ordinal));
+            items.push(project(row)?);
         }
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Page {
@@ -86,23 +92,34 @@ impl Drafts {
     }
 }
 
-fn project(stored: Stored, role: i32) -> Message {
-    Message {
+fn project(stored: Stored) -> Result<Message> {
+    let user = stored.ordinal == 0;
+    let state: MessageState = word(&stored.status)?;
+    Ok(Message {
         sequence: stored.sequence.to_string(),
-        operation_id: stored.operation_id,
-        role: if role == 0 { USER } else { ASSISTANT },
-        state: stored.state,
-        text: if role == 0 {
+        operation_id: Uuid7::parse(&stored.operation_id)?,
+        role: if user { USER } else { ASSISTANT },
+        state,
+        text: if user {
             Some(stored.user_text)
         } else {
             stored.answer_text
         },
-        candidate_id: if role == 0 { None } else { stored.candidate_id },
-        usage: stored.usage,
-        failure: stored.failure_reason.map(Into::into),
+        candidate_id: if user {
+            None
+        } else {
+            crate::draft::read::optional(stored.candidate_id.as_deref())?
+        },
+        usage: stored.metered.usage()?,
+        failure: stored
+            .failure_reason
+            .as_deref()
+            .map(word::<afd_wire::authoring::FailureReason>)
+            .transpose()?
+            .map(Into::into),
         created_at: stored.created_at,
-        finished_at: stored.finished_at,
-    }
+        finished_at: stored.finished_at.map(jiff_sqlx::Timestamp::to_jiff),
+    })
 }
 
 fn boundary(raw: Option<&str>, binding: &str) -> Result<(i64, i32)> {

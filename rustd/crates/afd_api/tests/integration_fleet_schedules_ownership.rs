@@ -33,10 +33,11 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
-use sqlx::Row as _;
 
 use self::harness::{Fleet, json_body, send};
 
@@ -217,32 +218,29 @@ impl Holder {
         };
         let digest = Digest::of(&Presented::new(&seeded.token).expect("the token is valid"));
         let mut connection = database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Schedule ownership', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'ownership', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, $3 || '@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
+        TenantSeed::new(&seeded.tenant)
+            .name("Schedule ownership")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(seeded.workspace.as_str(), &seeded.tenant)
+            .name("ownership")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &mint_id(),
+            &seeded.tenant,
+            subject,
+            &format!("{subject}@example.test"),
         )
-        .bind(&seeded.tenant)
-        .bind(seeded.workspace.as_str())
-        .bind(subject)
-        .bind(mint_id())
-        .bind(mint_id())
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, its workspace and its key seed");
+        .expect("its person seeds");
+        ApiKeySeed::new(&mint_id(), &seeded.tenant, digest.as_str(), subject)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
         FleetSeed::new(
             seeded.fleet.as_str(),
             seeded.workspace.as_str(),
@@ -250,7 +248,7 @@ impl Holder {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("ownership-fleet")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
@@ -266,11 +264,12 @@ impl Holder {
         let schedule = Uuid7::parse(&mint_id()).expect("a minted schedule is canonical");
         let mut connection = database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.fleet_schedules \
-               (id, fleet_id, source, source_key, cron_expression, timezone, message, \
-                desired_status, sync_status, generation, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, 'api', $1, '0 3 * * *', 'UTC', $3, \
-                     'active', 'failed', 1, 1, 1)",
+            "INSERT INTO fleet.schedules \
+               (id, fleet_id, source, provider_schedule_id, cron_expression, timezone, \
+                message, once, desired_status, sync_status, resource_version, created_at, \
+                updated_at) \
+             VALUES ($1::uuid, $2::uuid, 'api', $1, '0 3 * * *', 'UTC', $3, false, \
+                     'active', 'failed', 1, now(), now())",
         )
         .bind(schedule.as_str())
         .bind(self.fleet.as_str())
@@ -305,27 +304,22 @@ impl Holder {
         )
     }
 
-    /// The message, intent and generation `schedule` holds now.
+    /// The message, intent and resource version `schedule` holds now.
     async fn read_back(&self, database: &Db, schedule: &Uuid7) -> (String, String, i64) {
         let mut connection = database.acquire().await.expect("an API connection");
-        let row = sqlx::query(
-            "SELECT message, desired_status, generation FROM core.fleet_schedules \
+        sqlx::query_as(
+            "SELECT message, desired_status, resource_version FROM fleet.schedules \
              WHERE id = $1::uuid",
         )
         .bind(schedule.as_str())
         .fetch_one(&mut *connection)
         .await
-        .expect("the foreign schedule still exists");
-        (
-            row.try_get("message").expect("a message"),
-            row.try_get("desired_status").expect("an intent"),
-            row.try_get("generation").expect("a generation"),
-        )
+        .expect("the foreign schedule still exists")
     }
 
     async fn cleanup(&self, database: &Db) {
         let mut connection = database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

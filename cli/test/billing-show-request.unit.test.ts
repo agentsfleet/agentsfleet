@@ -31,7 +31,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 471 * ONE_CENT_NANOS,
+              balance_nanos: String(471 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -59,7 +59,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 100 * ONE_CENT_NANOS,
+              balance_nanos: String(100 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -72,10 +72,11 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     expect(rec.httpCalls).toContain(`${CHARGES_PATH_PREFIX}?limit=5`);
   });
 
-  test("rejects --limit 0 with ValidationError", async () => {
+  // Pin tests: each literal violates the documented integer input rule.
+  test.each(["0", "lots", "9999", "5garbage", "1.5", "1e2", "0x10", 1.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid --limit %s before making a request", async (limit) => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
-      limit: "0",
+      limit,
       cursor: undefined,
     }).pipe(
       Effect.provide(configLayer()),
@@ -88,40 +89,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     const failure = expectFailure(await runWith(program));
     expect(failure).toBeInstanceOf(ValidationError);
     expect(failure.message).toMatch(/--limit must be an integer/);
-  });
-
-  test("rejects non-numeric --limit", async () => {
-    const rec = makeRecorder();
-    const program = billingShowEffectFromArgs({
-      limit: "lots",
-      cursor: undefined,
-    }).pipe(
-      Effect.provide(configLayer()),
-      Effect.provide(credentialsLayer()),
-      Effect.provide(
-        httpClientLayer(() => Effect.succeed({}) as Effect.Effect<unknown, ServerError>, rec),
-      ),
-      Effect.provide(outputLayer(rec)),
-    );
-    const failure = expectFailure(await runWith(program));
-    expect(failure).toBeInstanceOf(ValidationError);
-  });
-
-  test("rejects --limit above max", async () => {
-    const rec = makeRecorder();
-    const program = billingShowEffectFromArgs({
-      limit: "9999",
-      cursor: undefined,
-    }).pipe(
-      Effect.provide(configLayer()),
-      Effect.provide(credentialsLayer()),
-      Effect.provide(
-        httpClientLayer(() => Effect.succeed({}) as Effect.Effect<unknown, ServerError>, rec),
-      ),
-      Effect.provide(outputLayer(rec)),
-    );
-    const failure = expectFailure(await runWith(program));
-    expect(failure).toBeInstanceOf(ValidationError);
+    expect(rec.httpCalls).toEqual([]);
   });
 
   test("rejects empty --cursor", async () => {
@@ -154,7 +122,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 100 * ONE_CENT_NANOS,
+              balance_nanos: String(100 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -179,7 +147,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 471 * ONE_CENT_NANOS,
+              balance_nanos: String(471 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -206,7 +174,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 0,
+              balance_nanos: String(0),
               is_exhausted: true,
             }) as Effect.Effect<unknown, ServerError>;
           }

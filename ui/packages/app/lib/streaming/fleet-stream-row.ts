@@ -1,4 +1,5 @@
 import type { EventDetail, EventRow } from "@/lib/api/events";
+import { readNanos } from "@/lib/api/nanos";
 import {
   EVENT_STATUS,
   THREAD_STATUS,
@@ -138,7 +139,7 @@ export type FleetEvent = {
    */
   tokens?: number | null;
   wallMs?: number | null;
-  costNanos?: number | null;
+  costNanos?: string | null;
   /** Tools called while working this event, in first-seen order. */
   tools?: FleetToolCall[];
   /** Calls the saved trace dropped to stay inside its bounds. */
@@ -171,7 +172,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
   const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
   // A list row carries no trace, and a run that recorded none carries null:
   // either way the row says nothing about its calls.
-  const trace = readSavedTrace(bodies.tool_calls, row.created_at);
+  const trace = readSavedTrace(bodies.tool_calls, Date.parse(row.created_at));
   return {
     id: row.event_id,
     role: roleFor(row.actor),
@@ -185,7 +186,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     status: row.status as FleetEventStatus,
     tokens: figure(row.tokens),
     wallMs: figure(row.wall_ms),
-    costNanos: figure(row.cost_nanos),
+    costNanos: readNanos(row.cost_nanos),
     custom: { requestJson: request_json },
     ...(trace === null ? {} : { tools: trace.calls, omittedCallCount: trace.omitted }),
   };

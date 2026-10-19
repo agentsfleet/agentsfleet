@@ -7,8 +7,8 @@
 //! # Why an age-keyed sweep can never reach live work
 //!
 //! A lease's total wall clock is capped: renewal clamps to
-//! `created_at + MAX_RUNTIME_MS`, is refused past it, and every renewal stamps
-//! `updated_at`. So a lease anything still holds is at most one `MAX_RUNTIME_MS`
+//! `created_at + MAX_RUNTIME`, is refused past it, and every renewal stamps
+//! `updated_at`. So a lease anything still holds is at most one `MAX_RUNTIME`
 //! stale, and the retention window is far longer — which is what lets the event
 //! sweep key on age alone with no lease-liveness join, and what makes flipping
 //! an aged `active` row safe.
@@ -37,8 +37,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use afd_core::clock;
-use afd_core::timing::MAX_RUNTIME_MS;
+use afd_core::timing::{DAY, MAX_RUNTIME};
 use afd_db::Db;
 use afd_db::statement::Bound;
 use afd_observability::producers;
@@ -56,11 +55,15 @@ const CONTEXT_EVENTS: &str = "retention event delete";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ABANDONED: &str = "retention abandoned lease expiry";
 
+/// How many days of history are kept past settlement.
+const RETENTION_DAYS: u32 = 30;
+
 /// How much history is kept past settlement.
 ///
 /// A month of row-level forensics, which is what an incident review a few weeks
-/// after the fact needs.
-const RETENTION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
+/// after the fact needs. Bound as an interval: the statements measure it back
+/// from the database's own clock.
+const RETENTION_WINDOW: Duration = DAY.saturating_mul(RETENTION_DAYS);
 
 /// The premise the whole age-keyed design rests on.
 ///
@@ -68,7 +71,7 @@ const RETENTION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 /// window, this sweep would delete rows
 /// belonging to work still running, and it would do it silently.
 const _: () = assert!(
-    MAX_RUNTIME_MS < RETENTION_WINDOW_MS,
+    MAX_RUNTIME.as_secs() < RETENTION_WINDOW.as_secs(),
     "the retention window must exceed the maximum lease runtime, or an age-keyed sweep reaches live work"
 );
 
@@ -195,9 +198,6 @@ impl Retention {
     /// [`Sweep::sweep`] without the recording, so the tally exists before
     /// anything is said about it.
     async fn sweep_counted(&self) -> Result<Swept> {
-        let now = clock::now().as_millis();
-        let cutoff = now.saturating_sub(RETENTION_WINDOW_MS);
-
         // Abandoned leases are flipped FIRST, so the rows this cycle strands
         // become deletable by the pass below rather than waiting a whole
         // window longer.
@@ -208,10 +208,9 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(vec![sql::LEASE_STATUS_ACTIVE])
-                        .bind(cutoff)
+                        .bind(RETENTION_WINDOW)
                         .bind(sql::LEASE_STATUS_EXPIRED)
                         .bind(BATCH_LIMIT)
-                        .bind(now)
                 },
             )
             .await?;
@@ -223,7 +222,7 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(TERMINAL_STATUSES.to_vec())
-                        .bind(cutoff)
+                        .bind(RETENTION_WINDOW)
                         .bind(BATCH_LIMIT)
                 },
             )
@@ -236,7 +235,7 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(PER_WORK_EVENTS.to_vec())
-                        .bind(cutoff)
+                        .bind(RETENTION_WINDOW)
                         .bind(BATCH_LIMIT)
                 },
             )

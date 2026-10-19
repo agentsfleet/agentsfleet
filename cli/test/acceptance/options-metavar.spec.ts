@@ -25,6 +25,7 @@ import http from "node:http";
 
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { TENANT_BILLING_PATH } from "../../src/lib/api-paths.ts";
 import type { AddressInfo } from "node:net";
 
 // Each case spawns the real CLI as a child process and awaits its exit.
@@ -55,7 +56,7 @@ interface CapturingStub {
 /**
  * Tiny capturing HTTP stub. Records every `(method, url, body)` it
  * receives and replies from a route table. Anything unmatched returns
- * an empty `{items: []}` envelope so the CLI keeps walking — the spec
+ * an empty list envelope so the CLI keeps walking — the spec
  * cares about the captured request, not the rendered response.
  */
 function startCapturingStub(routes: Readonly<Record<string, unknown>> = {}): Promise<CapturingStub> {
@@ -68,7 +69,7 @@ function startCapturingStub(routes: Readonly<Record<string, unknown>> = {}): Pro
       captured.push({ method: req.method, url: reqUrl, body });
       const key = `${req.method} ${reqUrl.split("?")[0] ?? ""}`;
       const entry = routes[key];
-      const payload = entry !== undefined ? JSON.stringify(entry) : JSON.stringify({ items: [] });
+      const payload = entry !== undefined ? JSON.stringify(entry) : JSON.stringify({ items: [], next_cursor: null });
       res.writeHead(200, {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload),
@@ -173,7 +174,12 @@ describe("validators reject invalid values with clear error stem", () => {
 
 describe("option values flow end-to-end into the wire request", () => {
   let stub: CapturingStub | null = null;
-  beforeAll(async () => { stub = await startCapturingStub(); });
+  beforeAll(async () => { stub = await startCapturingStub({
+    [`GET ${TENANT_BILLING_PATH}`]: {
+      balance_nanos: "0", is_exhausted: false,
+      updated_at: "2026-10-19T00:00:00Z", exhausted_at: null,
+    },
+  }); });
   afterAll(async () => { if (stub) await stub.close(); });
 
   function requireStub(): CapturingStub {

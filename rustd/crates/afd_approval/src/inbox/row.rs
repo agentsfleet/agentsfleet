@@ -6,14 +6,13 @@
 //! file, a verb added moves that one — and holding them apart is what keeps
 //! either at a size a reviewer reads in one pass.
 //!
-//! Both decoders read by INDEX, which is sound only because each is paired
-//! with exactly one statement in [`crate::sql`]. Neither is shared.
+//! Every decoder reads by column NAME through a `FromRow` row, so a
+//! projection and its decoder cannot drift by position; the instants decode
+//! through `jiff_sqlx`, which is why the rows are private and convert into the
+//! public shapes below.
 
-use sqlx::Row as _;
-
-use super::resolve::CONTEXT_RESOLVE;
-use crate::{Result, error};
 use afd_api_wire::approval::GateStatus;
+use jiff::Timestamp;
 
 /// One gate as the inbox shows it.
 #[derive(Debug, Clone)]
@@ -33,7 +32,7 @@ pub struct GateRow {
     /// The verb it wants.
     pub action_name: String,
     /// Which family of gate this is.
-    pub gate_kind: String,
+    pub gate_type: String,
     /// What the fleet proposes to do, in a person's words.
     pub proposed_action: String,
     /// The evidence behind the proposal, as stored JSON text.
@@ -45,21 +44,21 @@ pub struct GateRow {
     /// The resolver's note, empty while pending.
     pub detail: String,
     /// When the gate was raised.
-    pub created_at: i64,
+    pub created_at: Timestamp,
     /// When it stops waiting.
-    pub timeout_at: i64,
+    pub expires_at: Timestamp,
     /// When it was resolved, or `None` while pending.
-    pub updated_at: Option<i64>,
-    /// Who resolved it, empty while pending.
-    pub resolved_by: String,
-    /// That person's name, from `core.users`, empty when this database has no
-    /// row for the subject.
+    pub resolved_at: Option<Timestamp>,
+    /// Who resolved it, or `None` while pending.
+    pub resolved_by: Option<String>,
+    /// That person's name, from `identity.users`, or `None` when there is no
+    /// person to name.
     ///
-    /// Empty is ordinary and not an error: a pending gate has no decider, the
+    /// Absent is ordinary and not an error: a pending gate has no decider, the
     /// sweeper is not a person, and a subject this deployment never saw sign up
     /// has no row. Every one of those renders as the shortened subject, which
     /// is what the column showed before a name was joined at all.
-    pub resolved_by_name: String,
+    pub resolved_by_name: Option<String>,
 }
 
 /// Where a page resumes.
@@ -70,7 +69,7 @@ pub struct GateRow {
 #[derive(Debug, Clone, Copy)]
 pub struct Cursor<'a> {
     /// The last row's instant.
-    pub created_at: i64,
+    pub created_at: Timestamp,
     /// The last row's id, breaking the tie.
     pub gate_id: &'a str,
 }
@@ -83,7 +82,7 @@ pub struct Filter<'a> {
     /// Absent used to mean `pending`, which made the status the one filter here
     /// that could not be turned off: an inbox wanting all five states had to ask
     /// five times. `?status=` is a filter, and omitting a filter returns
-    /// everything — the same shape `fleet_id` and `gate_kind` already have in
+    /// everything — the same shape `fleet_id` and `gate_type` already have in
     /// this struct and in the predicate they share.
     ///
     /// [`GateStatus`] and not [`Decision`]: a filter names states a row can BE
@@ -93,8 +92,8 @@ pub struct Filter<'a> {
     pub status: Option<GateStatus>,
     /// Only gates raised by this fleet.
     pub fleet_id: Option<&'a str>,
-    /// Only gates of this kind.
-    pub gate_kind: Option<&'a str>,
+    /// Only gates of this type.
+    pub gate_type: Option<&'a str>,
 }
 
 /// What answering a gate did.
@@ -126,8 +125,8 @@ pub struct Resolved {
     pub fleet_id: String,
     /// Where it now stands.
     pub status: String,
-    /// When it was resolved.
-    pub updated_at: i64,
+    /// When it was resolved, on the database clock.
+    pub resolved_at: Timestamp,
     /// Who resolved it.
     pub resolved_by: String,
     /// Their note.
@@ -146,44 +145,93 @@ pub struct Resolved {
     pub continuation_event_id: Option<String>,
 }
 
-/// Reads one inbox row, through one error context.
-pub(super) fn read_gate(row: &sqlx::postgres::PgRow, context: &'static str) -> Result<GateRow> {
-    let unreadable = error::query(context);
-    Ok(GateRow {
-        gate_id: row.try_get(0).map_err(&unreadable)?,
-        fleet_id: row.try_get(1).map_err(&unreadable)?,
-        fleet_name: row.try_get(2).map_err(&unreadable)?,
-        workspace_id: row.try_get(3).map_err(&unreadable)?,
-        action_id: row.try_get(4).map_err(&unreadable)?,
-        tool_name: row.try_get(5).map_err(&unreadable)?,
-        action_name: row.try_get(6).map_err(&unreadable)?,
-        gate_kind: row.try_get(7).map_err(&unreadable)?,
-        proposed_action: row.try_get(8).map_err(&unreadable)?,
-        evidence_json: row.try_get(9).map_err(&unreadable)?,
-        blast_radius: row.try_get(10).map_err(&unreadable)?,
-        status: row.try_get(11).map_err(&unreadable)?,
-        detail: row.try_get(12).map_err(&unreadable)?,
-        created_at: row.try_get(13).map_err(&unreadable)?,
-        timeout_at: row.try_get(14).map_err(&unreadable)?,
-        updated_at: row.try_get(15).map_err(&unreadable)?,
-        resolved_by: row.try_get(16).map_err(&unreadable)?,
-        resolved_by_name: row.try_get(17).map_err(&unreadable)?,
-    })
+/// One inbox row as the page and the by-id read return it.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct StoredGate {
+    gate_id: String,
+    fleet_id: String,
+    fleet_name: String,
+    workspace_id: String,
+    action_id: String,
+    tool_name: String,
+    action_name: String,
+    gate_type: String,
+    proposed_action: String,
+    evidence_json: String,
+    blast_radius: String,
+    status: String,
+    detail: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    expires_at: Timestamp,
+    resolved_at: Option<jiff_sqlx::Timestamp>,
+    resolved_by: Option<String>,
+    resolved_by_name: Option<String>,
 }
 
-/// Reads the attribution a resolve reports.
-pub(super) fn read_resolved(row: &sqlx::postgres::PgRow) -> Result<Resolved> {
-    let unreadable = error::query(CONTEXT_RESOLVE);
-    Ok(Resolved {
-        gate_id: row.try_get(0).map_err(&unreadable)?,
-        action_id: row.try_get(1).map_err(&unreadable)?,
-        workspace_id: row.try_get(2).map_err(&unreadable)?,
-        fleet_id: row.try_get(3).map_err(&unreadable)?,
-        status: row.try_get(4).map_err(&unreadable)?,
-        updated_at: row.try_get(5).map_err(&unreadable)?,
-        resolved_by: row.try_get(6).map_err(&unreadable)?,
-        detail: row.try_get(7).map_err(&unreadable)?,
-        event_id: row.try_get(8).map_err(&unreadable)?,
-        continuation_event_id: None,
-    })
+impl From<StoredGate> for GateRow {
+    fn from(stored: StoredGate) -> Self {
+        Self {
+            gate_id: stored.gate_id,
+            fleet_id: stored.fleet_id,
+            fleet_name: stored.fleet_name,
+            workspace_id: stored.workspace_id,
+            action_id: stored.action_id,
+            tool_name: stored.tool_name,
+            action_name: stored.action_name,
+            gate_type: stored.gate_type,
+            proposed_action: stored.proposed_action,
+            evidence_json: stored.evidence_json,
+            blast_radius: stored.blast_radius,
+            status: stored.status,
+            detail: stored.detail,
+            created_at: stored.created_at,
+            expires_at: stored.expires_at,
+            resolved_at: stored.resolved_at.map(jiff_sqlx::Timestamp::to_jiff),
+            resolved_by: stored.resolved_by,
+            resolved_by_name: stored.resolved_by_name,
+        }
+    }
+}
+
+/// The attribution a resolved gate reports, as both resolve reads return it.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct StoredResolution {
+    gate_id: String,
+    action_id: String,
+    workspace_id: String,
+    fleet_id: String,
+    status: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    resolved_at: Timestamp,
+    resolved_by: String,
+    detail: String,
+    event_id: Option<String>,
+}
+
+impl From<StoredResolution> for Resolved {
+    fn from(stored: StoredResolution) -> Self {
+        Self {
+            gate_id: stored.gate_id,
+            action_id: stored.action_id,
+            workspace_id: stored.workspace_id,
+            fleet_id: stored.fleet_id,
+            status: stored.status,
+            resolved_at: stored.resolved_at,
+            resolved_by: stored.resolved_by,
+            detail: stored.detail,
+            event_id: stored.event_id,
+            continuation_event_id: None,
+        }
+    }
+}
+
+/// What the winning resolve returns: the attribution, and how many of the
+/// fleet's gates still wait once it landed.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct StoredWin {
+    #[sqlx(flatten)]
+    pub(super) resolution: StoredResolution,
+    pub(super) pending_approvals: i64,
 }

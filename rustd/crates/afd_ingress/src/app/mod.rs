@@ -13,10 +13,10 @@
 //! looked up, in this order:
 //!
 //! ```text
-//!   installation.id ──► core.connector_installs ──► workspace
-//!                       (SELECT_INSTALL_WORKSPACE)      │
-//!                                                       ▼
-//!                       core.fleets ⋈ integration_grants
+//!   installation.id ──► connector.installs ──► workspace
+//!                       (SELECT_INSTALL_WORKSPACE)  │
+//!                                                   ▼
+//!                       fleet.fleets ⋈ head revision ⋈ integration_grants
 //!                       (SELECT_APP_SUBSCRIBERS: active, granted)
 //!                                                       │
 //!                                                       ▼
@@ -40,7 +40,6 @@ use afd_api_wire::grant::status;
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use sha2::{Digest as _, Sha256};
-use sqlx::Row as _;
 
 use crate::binding::Binding;
 use crate::error::{self, Result};
@@ -98,19 +97,19 @@ impl Ingress {
         installation: &str,
     ) -> Result<Option<Uuid7>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_INSTALL_WORKSPACE)
+        let workspace: Option<String> = sqlx::query_scalar(sql::SELECT_INSTALL_WORKSPACE)
             .bind(provider)
             .bind(installation)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_INSTALL))?;
 
-        row.map(|row| {
-            let workspace: String = row.try_get(0).map_err(error::query(CONTEXT_INSTALL))?;
-            Uuid7::parse(&workspace)
-                .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))
-        })
-        .transpose()
+        workspace
+            .map(|workspace| {
+                Uuid7::parse(&workspace)
+                    .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))
+            })
+            .transpose()
     }
 
     /// The fleets in `workspace` that subscribed to this repository and event.
@@ -135,7 +134,7 @@ impl Ingress {
         event: &str,
     ) -> Result<Fanout> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_APP_SUBSCRIBERS)
+        let rows: Vec<SubscriberRow> = sqlx::query_as(sql::SELECT_APP_SUBSCRIBERS)
             .bind(workspace.as_str())
             .bind(FleetStatus::Active.as_str())
             .bind(provider)
@@ -146,15 +145,9 @@ impl Ingress {
 
         let mut matched = Vec::new();
         for row in &rows {
-            let unreadable = error::query(CONTEXT_SUBSCRIBERS);
-            let fleet: String = row.try_get(0).map_err(&unreadable)?;
-            let owner: String = row.try_get(1).map_err(&unreadable)?;
-            let fleet_status: String = row.try_get(2).map_err(&unreadable)?;
-            let document: String = row.try_get(3).map_err(&unreadable)?;
-
-            let fleet = Uuid7::parse(&fleet)
+            let fleet = Uuid7::parse(&row.fleet_id)
                 .map_err(|_shape| error::row_unreadable(error::COLUMN_FLEET))?;
-            let owner = Uuid7::parse(&owner)
+            let owner = Uuid7::parse(&row.workspace_id)
                 .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
 
             // `is_runnable` is deliberately not re-asked: the statement bound
@@ -163,9 +156,10 @@ impl Ingress {
             // per-fleet route DOES ask, because its URL reaches a paused fleet
             // on purpose and owes that sender a reason.
             let subscribed =
-                Binding::read_for_source(fleet, owner, &fleet_status, &document, provider)?.filter(
-                    |binding| binding.serves_repository(repository) && binding.admits(event),
-                );
+                Binding::read_for_source(fleet, owner, &row.status, &row.document, provider)?
+                    .filter(|binding| {
+                        binding.serves_repository(repository) && binding.admits(event)
+                    });
 
             matched.extend(subscribed);
         }
@@ -195,6 +189,19 @@ impl Ingress {
 #[must_use]
 pub fn replay_id(body: &[u8]) -> String {
     hex::encode(Sha256::digest(body))
+}
+
+/// [`sql::SELECT_APP_SUBSCRIBERS`]'s row: one active, granted fleet.
+#[derive(Debug, sqlx::FromRow)]
+struct SubscriberRow {
+    /// The fleet, as text.
+    fleet_id: String,
+    /// Its workspace, as text.
+    workspace_id: String,
+    /// The stored status word.
+    status: String,
+    /// The head revision's configuration, as JSON text.
+    document: String,
 }
 
 /// The matched set, as the three answers a route can act on.

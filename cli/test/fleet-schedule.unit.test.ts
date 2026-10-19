@@ -100,7 +100,7 @@ const provide = (
 // Ninety seconds ago, so the rendered age is a real one. A fixed future
 // instant renders the empty cell on purpose — `ago` refuses to invent an age
 // for clock disagreement — and that is not what this row is proving.
-const SCHEDULE_CREATED_AT = Date.now() - 90_000;
+const SCHEDULE_CREATED_AT = new Date(Date.now() - 90_000).toISOString();
 
 const scheduleRow = {
   schedule_id: SCHEDULE_ID,
@@ -110,7 +110,11 @@ const scheduleRow = {
   message: "summarize",
   status: "active",
   sync: "synced",
+  description: "At 9:00 AM (Asia/Kolkata)",
+  run_state: "scheduled",
+  next_run_at: "2026-11-01T03:30:00Z",
   created_at: SCHEDULE_CREATED_AT,
+  updated_at: SCHEDULE_CREATED_AT,
 };
 
 describe("schedule create/list/update/delete/sync effects", () => {

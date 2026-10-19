@@ -35,6 +35,9 @@ afd_core.workspace = true
 # `Minted` — a credential drawn once and zeroed — plus the classifier that
 # supplies its marker, and the principal a verb acts for.
 afd_auth.workspace = true
+# The catalogue's identity and price columns, decoded the one way the admin
+# service writes them (`afd_admin::catalogue`).
+afd_admin.workspace = true
 # Entropy for the identifiers these stores mint.
 afd_crypto.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
@@ -44,11 +47,15 @@ afd_db.workspace = true
 afd_dragonfly.workspace = true
 # Lower-case hex for the fingerprint digest, rather than a hand-written render.
 hex.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to and bind from `jiff::Timestamp`
+# through jiff-sqlx.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The device-flow fingerprint: a session is bound to the caller that opened it
 # by a digest of address, agent and id.
 sha2.workspace = true
 # `derive` for `FromRow`: a row with nothing to parse decodes by column name.
-sqlx = { workspace = true, features = ["derive"] }
+sqlx = { workspace = true, features = ["derive", "json"] }
 thiserror.workspace = true
 tracing.workspace = true
 # The invite domain rule reads a host the way browsers do: a name, never an
@@ -82,10 +89,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # Joins the racers so the datastore, and not the order of a test loop, decides
 # which transition arrives first.
 futures-util = { workspace = true }
-# Installs a subscriber so `tracing` event macros evaluate their fields at all;
-# without one a diagnostic line reads as unreachable to llvm-cov.
-tracing-subscriber.workspace = true
-# The crossing audit's proof reads its event back (`afd_core::test_util::trace`).
+# The crossing audit's proof reads its event back (`afd_core::test_util::trace`),
+# and the live harness installs that module's sink subscriber.
 # A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
 # The fleet row the preference suite seeds (`afd_db::test_util::FleetSeed`).

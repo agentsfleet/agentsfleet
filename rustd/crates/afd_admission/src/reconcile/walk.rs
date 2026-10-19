@@ -5,7 +5,6 @@
 //! fleets to walk and where each walk resumes; this is the walk itself, and
 //! the probe it asks per row.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::FleetStreams;
 
@@ -68,7 +67,6 @@ impl Admissions {
     pub(super) async fn void_lost_on(
         &self,
         fleet_id: &str,
-        now: UnixMillis,
         rows: i64,
         after: RowKey,
     ) -> Result<Walked> {
@@ -87,7 +85,7 @@ impl Admissions {
                 continue;
             }
             let receipt = still_held.receipt.as_str();
-            let forgotten = self.void(&candidate.id, receipt, now).await?;
+            let forgotten = self.void(&candidate.id, receipt).await?;
             voided += forgotten;
             if forgotten > 0 {
                 tracing::info!(

@@ -27,8 +27,8 @@
 //!
 //! # The sweeper is global, so its tests take a lock
 //!
-//! `Inbox::expire` is a system-wide statement by design — `WHERE status =
-//! pending AND timeout_at <= now`, no workspace or fleet in it — which is what
+//! `Inbox::expire` is a system-wide statement by design — `WHERE resolved_at
+//! IS NULL AND expires_at <= now()`, no workspace or fleet in it — which is what
 //! a sweeper must be in production and what no amount of identifier minting can
 //! isolate. A test that sweeps therefore expires every OTHER test's lapsed
 //! gate, and a test whose premise is a gate past its window finds it already
@@ -54,17 +54,23 @@
 use std::time::Duration;
 
 use afd_approval::Inbox;
-use afd_core::clock::UnixMillis;
 use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase};
+use afd_db::test_util::{FleetSeed, TestDatabase, WorkspaceSeed};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+use afd_fleet_lifecycle::FleetStatus;
+use jiff::Timestamp;
 
 #[path = "gate_lane_read.rs"]
 mod read;
+
+#[path = "gate_lane_seed.rs"]
+mod seed;
+
+pub(crate) use self::seed::Window;
 
 /// The environment knob naming the lane's Dragonfly.
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -87,26 +93,17 @@ pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> 
     SWEEPER.lock().await
 }
 
-/// The instant every fixture row is stamped with.
-pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
+/// The instant a fixture row is raised at, and identifiers are minted at.
+///
+/// Raised-at only: whether a gate has LAPSED is the database's clock against
+/// the row's `expires_at`, which [`Window`] places relative to that clock.
+pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The tenant every gate in this suite hangs from.
 ///
 /// Fixed, readable and SHARED — see the module note. Version-7 shaped so the
 /// schema's `ck_*_id_uuidv7` admits it.
 const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
-
-/// How long a fixture gate waits before the sweeper may take it.
-pub(crate) const WINDOW_MS: i64 = 60_000;
-
-/// The kind a fixture gate carries.
-///
-/// Deliberately NOT `integration_grant`: that kind makes the resolve write a
-/// second table, and these tests are about the gate row's own transition.
-const KIND: &str = "repository_write";
-
-/// The status the fixture fleet carries.
-const FLEET_ACTIVE: &str = "active";
 
 /// A migrated database, a queue, and one fleet to hang gates from.
 pub(crate) struct Lane {
@@ -163,94 +160,8 @@ impl Lane {
         lane
     }
 
-    /// The instant this suite stamps writes with.
-    pub(crate) const fn now() -> UnixMillis {
-        UnixMillis::from_millis(NOW_MS)
-    }
-
-    /// Seeds one pending gate, returning its action id.
-    ///
-    /// `timeout_at` is a parameter because the sweeper tests need a deadline in
-    /// the past and the race tests need one that has not arrived — a fixture
-    /// that fixed it would make one of the two impossible to write.
-    pub(crate) async fn seed_gate(&self, timeout_at: i64) -> String {
-        let action = afd_db::test_util::mint_id();
-        self.seed_gate_for(&action, timeout_at).await;
-        action
-    }
-
-    /// One pending gate that held no run: `event_id` is NULL, the shape of a
-    /// standing grant raised at install time rather than by an event.
-    pub(crate) async fn seed_runless_gate(&self, timeout_at: i64) -> String {
-        let action = afd_db::test_util::mint_id();
-        self.seed_row(&action, timeout_at, NOW_MS, None).await;
-        action
-    }
-
-    /// One pending gate row for an action that may already have one — a
-    /// re-raised action, which the park writes as a second row rather than
-    /// reopening the first.
-    pub(crate) async fn seed_gate_for(&self, action: &str, timeout_at: i64) {
-        self.seed_row(
-            action,
-            timeout_at,
-            NOW_MS,
-            Some(afd_db::test_util::mint_id()),
-        )
-        .await;
-    }
-
-    /// Seeds one pending gate stamped at `created_at`, returning its action id.
-    ///
-    /// Every other seeder stamps [`NOW_MS`], which is what the ordering and
-    /// keyset tests need control of: one proves the page walks newest-first and
-    /// therefore needs distinct instants, the other proves the cursor's TUPLE
-    /// comparison and therefore needs several rows sharing one.
-    pub(crate) async fn seed_gate_at(&self, created_at: i64, timeout_at: i64) -> String {
-        let action = afd_db::test_util::mint_id();
-        self.seed_row(
-            &action,
-            timeout_at,
-            created_at,
-            Some(afd_db::test_util::mint_id()),
-        )
-        .await;
-        action
-    }
-
-    /// Inserts one pending gate row: what every seeder above writes through.
-    async fn seed_row(
-        &self,
-        action: &str,
-        timeout_at: i64,
-        created_at: i64,
-        event_id: Option<String>,
-    ) {
-        sqlx::query(
-            "INSERT INTO core.fleet_approval_gates
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-                gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-                resolved_by, status, detail, created_at, updated_at, event_id,
-                spend_count, spend_ceiling)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
-                     $5, 'open a pull request', '{}'::jsonb, 'one repository',
-                     $6, '', 'pending', '', $7, NULL, $8, 0, 32)",
-        )
-        .bind(mint().as_str())
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
-        .bind(action)
-        .bind(KIND)
-        .bind(timeout_at)
-        .bind(created_at)
-        .bind(event_id)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("the gate row must insert");
-    }
-
     /// One pooled connection, for the fixture's own reads and writes.
-    async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
+    pub(super) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool
             .acquire()
             .await
@@ -260,41 +171,34 @@ impl Lane {
     /// Seeds the tenant, workspace and fleet every gate hangs from.
     async fn seed_fleet(&self) {
         let mut connection = self.connection().await;
+        // Shared, so written under `ON CONFLICT` rather than through
+        // `TenantSeed`, whose insert refuses a duplicate: whichever lane runs
+        // first writes it, and every later one finds it there.
         sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at)
-             VALUES ($1::uuid, 'fixture', $2, $2)
+            "INSERT INTO identity.tenants (id, name, created_at, updated_at)
+             VALUES ($1::uuid, 'fixture', now(), now())
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(self.tenant.as_str())
-        .bind(NOW_MS)
         .execute(&mut *connection)
         .await
         .expect("seeding a tenant");
 
-        sqlx::query(
-            // The NAME carries the id, not a fixed word: `uq_workspaces_tenant_id_name`
-            // is unique per tenant, and every isolated lane shares the tenant —
-            // so a constant name would collide where the `ON CONFLICT (id)` arm
-            // cannot see it.
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-             VALUES ($1::uuid, $2::uuid, $1::text, 'fixture', $3)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
+        // Named after its own id, which `WorkspaceSeed` does by default:
+        // `uq_workspaces_tenant_id_name` is unique per tenant, and every
+        // isolated lane shares the tenant, so a constant name would collide.
+        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
 
         FleetSeed::new(
             self.fleet.as_str(),
             self.workspace.as_str(),
             self.tenant.as_str(),
-            FLEET_ACTIVE,
+            FleetStatus::Active.as_str(),
         )
         .name("fixture-fleet")
-        .at(NOW_MS)
         .native_setup()
         .insert(&mut *connection)
         .await

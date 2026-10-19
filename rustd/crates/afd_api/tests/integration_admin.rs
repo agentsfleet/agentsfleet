@@ -11,12 +11,14 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, ModelSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
-const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
-const MODEL_UPDATE: &str = r#"{"context_cap_tokens":250000,"input_nanos_per_mtok":6,"cached_input_nanos_per_mtok":2,"output_nanos_per_mtok":30}"#;
+const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","metadata":{"display_name":"Fixture model","context_cap_tokens":200000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","context_cap_tokens":250000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"30","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
 #[path = "integration_admin/model_refusals.rs"]
 mod model_refusals;
 #[tokio::test]
@@ -37,12 +39,32 @@ async fn platform_models_and_keys_complete_real_http_lifecycles() {
         PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
     exercise_platform_keys(&router, &fixture).await;
     drop(platform_default);
+
+    // The platform library list answers over the live authoring store; what
+    // it holds is every suite's, so the claim is the shape, not the rows.
+    let libraries = send(
+        &router,
+        Method::GET,
+        "/v1/admin/fleet-libraries",
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(libraries.status(), StatusCode::OK);
+    assert!(
+        json_body(libraries)
+            .await
+            .get("entries")
+            .is_some_and(Value::is_array),
+        "the list carries an entries array"
+    );
     fixture.cleanup().await;
 }
 
 async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
     let collection = "/v1/admin/platform-keys";
     an_absent_source_workspace_is_named_as_absent(router, fixture, collection).await;
+    a_model_outside_the_catalogue_is_named_as_absent(router, fixture, collection).await;
 
     let set = send(
         router,
@@ -100,6 +122,36 @@ async fn an_absent_source_workspace_is_named_as_absent(
             .and_then(Value::as_str),
         Some("UZ-PROVIDER-011"),
         "an absent workspace must not read back as an invalid request"
+    );
+}
+
+/// A model the catalogue does not list for the provider is refused with its
+/// own code: there is nothing to price a default against.
+async fn a_model_outside_the_catalogue_is_named_as_absent(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
+    let unknown = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &serde_json::json!({
+            "provider": fixture.provider,
+            "source_workspace_id": fixture.workspace,
+            "model": format!("not-in-the-catalogue-{}", mint_id()),
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(unknown)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
+        Some(afd_core::error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE.as_str())
     );
 }
 
@@ -268,55 +320,47 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Platform catalogue', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($5::uuid, $1::uuid, 'platform-default', $4, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, 'platform', '', $3, $4, TRUE, NULL, 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("Platform catalogue")
+            .insert(&mut *connection)
+            .await
+            .expect("the platform tenant seeds");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .name("platform-default")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .name("platform")
+            .insert(&mut *connection)
+            .await
+            .expect("the platform credential seeds");
+        ModelSeed::new(
+            &self.platform_model_row,
+            &self.provider,
+            &self.platform_model,
+            200_000,
         )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(&self.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the platform credential seeds");
-        sqlx::query(
-            "INSERT INTO core.model_library \
-               (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, 1)",
-        )
-        .bind(&self.platform_model_row)
-        .bind(&self.platform_model)
-        .bind(&self.provider)
-        .execute(&mut *connection)
+        .rates(5, 1, 25)
+        .insert(&mut *connection)
         .await
         .expect("the platform-default model seeds");
     }
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.platform_provider_defaults WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_defaults WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await
             .expect("the platform default cleanup runs");
-        sqlx::query("DELETE FROM core.model_library WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
             .bind(&self.platform_model_row)
             .execute(&mut *connection)
             .await
             .expect("the platform model cleanup runs");
 
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

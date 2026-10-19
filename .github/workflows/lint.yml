@@ -71,15 +71,19 @@ jobs:
     # Repo-hygiene gates that lived under `make lint-all` but were never run by
     # CI, so a broken architecture reference, an ungated vault reader, or a
     # deploy-safety regression could merge green. Each is a static check needing
-    # only shellcheck (on the runner image) and flock (util-linux, present) — no
-    # bun or cargo build. GitHub sets CI=true, so check-deploy-safety's flock lock
-    # tests run here rather than skip.
+    # only shellcheck (on the runner image), flock (util-linux, present) and Bun,
+    # which the model seeder's secrets test runs the seeder under; no cargo build.
+    # GitHub sets CI=true, so check-deploy-safety's flock lock tests run here
+    # rather than skip.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
       - name: Architecture doc consistency

@@ -17,21 +17,17 @@
 //! "An unset bag is `{}`, never a 404" is a claim about what the STORE returns
 //! for a user with no rows. This harness's store cannot answer, so the claim is
 //! the integration suite's. What IS here is the half that fails open in front
-//! of it: a subject with no `core.users` row is refused with a sentence, not a
+//! of it: a subject with no `identity.users` row is refused with a sentence, not a
 //! 500, and the refusal names the person's context rather than the workspace's.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use afd_tenant::preference::MAX_PREF_VALUE_BYTES;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -41,23 +37,8 @@ const TENANT_KEY: &str = "agt_tdeadbeefdecafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2prefs";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A key inside the closed registry.
 const KNOWN_KEY: &str = "getting_started_dismissed";
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
-
-/// These routes carry no scope requirement of their own.
-///
-/// A preference is a property of the CALLER, not of anything they may reach, so
-/// there is no scope that would make sense to demand: a person who can act in
-/// the workspace at all can say whether they dismissed a panel. The route table
-/// spells this `Scopes::Always(NONE)`, and this constant is the suite reading
-/// that back — a test passing a rich set would prove nothing about the rung.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 
 /// A set with something in it, to prove the rung is not silently demanding one.
 const SOME_SCOPE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
@@ -93,80 +74,7 @@ async fn send(
 
 /// One authorised request, for the tests isolating an axis other than auth.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
-    send(NO_SCOPES, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Reads a problem document's registry code back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a registry code")
-        .to_owned()
-}
-
-/// Every verb on this surface, with a body that would be accepted.
-fn every_verb() -> [(Method, String, &'static str); 2] {
-    [
-        (Method::PUT, item(KNOWN_KEY), "true"),
-        (Method::GET, onboarding(), ""),
-    ]
-}
-
-/// No verb here is reachable without a credential.
-///
-/// These routes demand no SCOPE, which is exactly why this test exists: a
-/// surface with an empty requirement is one edit away from being a surface with
-/// no requirement at all.
-#[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, body) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, None, body).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} must refuse an anonymous caller"
-        );
-    }
-}
-
-/// A principal acting in somebody else's workspace runs no statement.
-///
-/// The ownership layer answers before the handler, so the refusal names the
-/// WORKSPACE — a person who reached the store would have earned the store's
-/// sentence instead.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    let paths = [
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/preferences/{KNOWN_KEY}"),
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/onboarding"),
-    ];
-    let methods = [Method::PUT, Method::GET];
-
-    for (path, method) in paths.iter().zip(methods) {
-        let response = send(NO_SCOPES, method, path, Some(TENANT_KEY), "true").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused before the handler"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_NOT_YOURS,
-            "{path}: the refusal is the ownership layer's"
-        );
-    }
+    send(ScopeSet::EMPTY, method, path, Some(TENANT_KEY), body).await
 }
 
 /// Holding a scope this surface never asks for changes nothing.
@@ -176,7 +84,14 @@ async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
 /// demanding something the route table says it does not.
 #[tokio::test]
 async fn an_unrelated_scope_neither_admits_nor_refuses() {
-    let with_none = send(NO_SCOPES, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
+    let with_none = send(
+        ScopeSet::EMPTY,
+        Method::GET,
+        &onboarding(),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
     let with_some = send(SOME_SCOPE, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
     assert_eq!(
         with_none.status(),
@@ -274,43 +189,20 @@ async fn a_write_with_no_body_is_refused() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// The collection serves nothing and the item answers no GET.
+/// The collection serves nothing.
 ///
 /// Preferences are written one key at a time and read through the onboarding
 /// checklist, so a read or write of the whole bag would be a second shape for a
-/// job that already has one.
+/// job that already has one. That the item answers no GET is the route walk's
+/// `405` rung.
 #[tokio::test]
-async fn the_templates_carry_only_the_methods_they_document() {
+async fn the_collection_is_not_a_route() {
     for method in [Method::GET, Method::PUT] {
         let response = authorised(method.clone(), &collection(), "true").await;
         assert_eq!(
             response.status(),
             StatusCode::NOT_FOUND,
             "{method}: the bag is neither read nor written whole"
-        );
-    }
-
-    let item_get = authorised(Method::GET, &item(KNOWN_KEY), "").await;
-    assert_eq!(
-        item_get.status(),
-        StatusCode::METHOD_NOT_ALLOWED,
-        "one key is not read alone"
-    );
-}
-
-/// Onboarding answers no write of any kind.
-///
-/// The checklist is DERIVED — five signals and three preference reads — so
-/// there is no state here to set. A client that wants to change it writes a
-/// preference.
-#[tokio::test]
-async fn the_checklist_is_read_only() {
-    for method in [Method::PUT, Method::POST, Method::DELETE, Method::PATCH] {
-        let response = authorised(method.clone(), &onboarding(), "true").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::METHOD_NOT_ALLOWED,
-            "{method} must not reach the checklist"
         );
     }
 }

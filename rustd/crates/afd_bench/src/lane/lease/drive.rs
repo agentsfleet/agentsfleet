@@ -28,7 +28,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Leases;
 
@@ -83,7 +82,7 @@ pub async fn poll_until(
     let token = shared.abort.token();
     while Instant::now() < shared.deadline && !token.is_cancelled() && !shared.exhausted() {
         let started = Instant::now();
-        match leases.select(runner, &[], clock::now()).await {
+        match leases.select(runner, &[]).await {
             Ok(Some(_acquired)) => {
                 outcomes.succeeded(started.elapsed())?;
                 shared.leased.fetch_add(1, Ordering::Relaxed);

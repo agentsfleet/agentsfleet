@@ -26,11 +26,11 @@
 //! the spend is the last thing before the vendor call. The header of
 //! `crate::state` states the same ordering rule from the state's side.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::Dragonfly;
+use jiff::Timestamp;
 
 use crate::app::PlatformApp;
 use crate::error::Result;
@@ -151,7 +151,7 @@ impl Connectors {
     /// # Errors
     /// Reports a host short of entropy, a store that would not remember the
     /// nonce, and a vault that would not answer for this deployment's app.
-    pub async fn start(&self, starting: Starting<'_>, now: UnixMillis) -> Result<Started> {
+    pub async fn start(&self, starting: Starting<'_>, now: Timestamp) -> Result<Started> {
         let Starting {
             admin,
             workspace,
@@ -190,24 +190,22 @@ impl Connectors {
             },
         };
 
-        let Some(url) = oauth::authorize_url(flow, &credentials.client_id, redirect_uri, &state)
-        else {
-            // A shipped connector's endpoint is a URL — `crate::registry`'s
-            // suite pins every one — so this is a registry edit that broke one,
-            // and refusing the connect beats sending a person to nowhere.
-            tracing::error!(
-                provider = provider.id(),
-                event = "connector_authorize_endpoint_unusable",
-            );
-            return Ok(Started::NotConfigured);
-        };
-
+        // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+        // scores the dead copy.
+        let workspace_id = workspace.as_str();
+        let provider = provider.id();
         tracing::debug!(
-            workspace_id = workspace.as_str(),
-            provider = provider.id(),
-            event = "connector_connect_initiated",
+            workspace_id,
+            provider,
+            event = "connector_connect_initiated"
         );
-        Ok(Started::Consent(url))
+        // Every shipped endpoint parses — `crate::registry`'s suite pins each
+        // one — so only a registry edit that broke one reaches the refusal,
+        // and refusing the connect beats sending a person to nowhere.
+        Ok(
+            oauth::authorize_url(flow, &credentials.client_id, redirect_uri, &state)
+                .map_or(Started::NotConfigured, Started::Consent),
+        )
     }
 
     /// Verifies a presented state and that this is the person who started it.
@@ -225,7 +223,7 @@ impl Connectors {
         secret: &SecretBytes,
         presented: &str,
         subject: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> core::result::Result<Verified, Rejected> {
         let binding = provider.state_binding();
         let verified = state::verify(binding, secret, presented, now)?;

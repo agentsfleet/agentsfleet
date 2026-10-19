@@ -19,8 +19,8 @@
 //! not do is decide which event to run it over. A gate proven through this
 //! entry is proven for the production path, because there is only one.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
@@ -36,7 +36,7 @@ impl Plane {
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<String> {
         self.run_claimed(acquired, runner_id, now, std::time::Instant::now())
             .await

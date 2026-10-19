@@ -56,7 +56,7 @@ export const ACTION_CONFIG: Record<RunnerStateAction, {
 };
 
 // Delete is deliberately NOT a member of ACTION_CONFIG: that map is keyed on
-// RunnerStateAction, the PATCH verbs that MOVE admin_state, and widening it
+// RunnerStateAction, the PATCH verbs that MOVE status, and widening it
 // would loosen an exhaustive type that actionsFor and RunnerHeader lean on.
 // Delete is a different HTTP verb with a different lifecycle, so it gets its own
 // config and its own trigger. `self_test` is out for the same reason from the

@@ -65,8 +65,7 @@ async fn seed_unreadable_fleet(run: &Scenario) -> String {
     let fleet = format!("{}00f0", &run.fleet[..run.fleet.len() - 4]);
     FleetSeed::new(&fleet, &run.workspace, &run.tenant, FLEET_STATUS_ACTIVE)
         .name("e2e-unreadable-fleet")
-        .config(UNREADABLE_CONFIG)
-        .at(run.seeded_at.as_millis())
+        .at(run.seeded_at)
         .setup(SetupRevision {
             definition: UNREADABLE_CONFIG,
             digest: UNREADABLE_DIGEST,
@@ -121,7 +120,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     .await;
     assert!(refused, "the unreadable fleet's own event is ended");
     assert_eq!(
-        event_column_of(&run, &poisoned, &poisoned_event, "failure_label").await,
+        event_column_of(&run, &poisoned, &poisoned_event, "failure_reason").await,
         Some(CONFIG_UNREADABLE.to_owned()),
         "and the row names the document rather than the runner or the money"
     );

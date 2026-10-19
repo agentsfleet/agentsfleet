@@ -31,7 +31,7 @@ fn test_every_version_is_its_filename_prefix() {
             .take_while(char::is_ascii_digit)
             .collect();
         assert_eq!(
-            prefix.parse::<i32>().unwrap(),
+            prefix.parse::<i64>().unwrap(),
             migration.version(),
             "{} does not apply as its slot number",
             migration.name()
@@ -44,19 +44,19 @@ fn test_every_version_is_its_filename_prefix() {
 /// order an empty database must create them in.
 #[test]
 fn test_migrations_are_in_ascending_version_order() {
-    let versions: Vec<i32> = MIGRATIONS.iter().map(Migration::version).collect();
+    let versions: Vec<i64> = MIGRATIONS.iter().map(Migration::version).collect();
     let mut sorted = versions.clone();
     sorted.sort_unstable();
     assert_eq!(versions, sorted, "the list is out of dependency order");
 
-    let distinct: BTreeSet<i32> = versions.iter().copied().collect();
+    let distinct: BTreeSet<i64> = versions.iter().copied().collect();
     assert_eq!(distinct.len(), versions.len(), "two files claim one slot");
 }
 
 /// The slot-number derivation, run rather than compiled.
 ///
 /// Every production call site is a `static` initialiser, so the build proves
-/// the 47 real filenames derive correctly and nothing proves what the function
+/// every real filename derives correctly and nothing proves what the function
 /// does with anything else. `version_from_name` is the same body called at
 /// runtime, which is where the edges live: a name with no digits, a name whose
 /// digits are not followed by an underscore, a number wider than the slots in
@@ -67,7 +67,7 @@ fn test_version_derivation_reads_the_leading_slot_number() {
         ("100_schemas.sql", 100),
         ("0_zero.sql", 0),
         ("890_fleet_activity_counter_triggers.sql", 890),
-        ("2147483647_max.sql", i32::MAX),
+        ("9223372036854775807_max.sql", i64::MAX),
     ] {
         assert_eq!(
             afd_db::migration::version_from_name(name),
@@ -101,11 +101,28 @@ fn test_version_derivation_refuses_a_name_without_a_slot_number() {
 /// migrator running a DIFFERENT list than the one this crate ships.
 #[test]
 fn test_the_default_migrator_runs_the_canonical_list() {
-    let canonical: Vec<i32> = MIGRATIONS.iter().map(Migration::version).collect();
+    let canonical: Vec<i64> = MIGRATIONS.iter().map(Migration::version).collect();
     assert_eq!(afd_db::Migrator::default().canonical_versions(), canonical);
     assert_eq!(
         afd_db::Migrator::default().canonical_versions(),
         afd_db::Migrator::new().canonical_versions(),
         "Default and new() must not describe two different migrators"
     );
+}
+
+/// Each migration carries the committed file its name points at, byte for
+/// byte: the name and the SQL come from one token in the list, and this reads
+/// the file back from `schema/` to show the two never parted.
+#[test]
+fn test_every_migration_carries_its_committed_file() {
+    let schema = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../schema");
+    for migration in MIGRATIONS {
+        let committed = std::fs::read_to_string(schema.join(migration.name())).unwrap();
+        assert_eq!(
+            migration.sql(),
+            committed,
+            "{} applies SQL other than its committed file",
+            migration.name()
+        );
+    }
 }

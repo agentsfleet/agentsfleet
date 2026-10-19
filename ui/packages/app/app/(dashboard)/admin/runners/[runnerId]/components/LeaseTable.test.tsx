@@ -83,7 +83,7 @@ it("LeaseTable > suppresses the outcome fabrication for a lease with no recorded
       }}
       pageSize={25}
     />, { wrapper: TooltipProvider });
-  expect(screen.getByText("Outcome not recorded")).toBeTruthy();
+  expect(screen.getByText("Status not recorded")).toBeTruthy();
 });
 
 it("LeaseTable > test_review_lease_renders_lease_facts (from the row, and released on close)", () => {
@@ -99,7 +99,7 @@ it("LeaseTable > test_review_lease_renders_lease_facts (from the row, and releas
   // The fencing token lives only in Review lease — absent until a row is
   // activated, present after, gone again once the panel closes.
   expect(screen.queryByText("1,884")).toBeNull();
-  fireEvent.click(screen.getByText(agentDisplayName("fleet-1")));
+  fireEvent.click(screen.getByRole("button", {name: `View lease for ${agentDisplayName("fleet-1")}`}));
   fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
   expect(screen.getByText("1,884")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /close/i }));
@@ -300,8 +300,8 @@ it("LeaseTable > should sort by Created through the standard header control", ()
     <LeaseTable
       initial={{
         items: [
-          lease({ id: "older", fleet_id: "fleet-older", created_at: OLDER_INSTANT_MS, outcome: "succeeded" }),
-          lease({ id: "newer", fleet_id: "fleet-newer", created_at: NEWER_INSTANT_MS, outcome: "succeeded" }),
+          lease({ id: "older", fleet_id: "fleet-older", created_at: new Date(OLDER_INSTANT_MS).toISOString(), outcome: "succeeded" }),
+          lease({ id: "newer", fleet_id: "fleet-newer", created_at: new Date(NEWER_INSTANT_MS).toISOString(), outcome: "succeeded" }),
         ],
         // total unknown (null) — the pager renders without a fabricated count.
         total: null,

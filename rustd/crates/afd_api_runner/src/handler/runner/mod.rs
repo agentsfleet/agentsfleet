@@ -30,3 +30,4 @@ pub(crate) mod schedule_edit;
 pub(crate) mod schedule_run;
 pub(crate) mod self_record;
 pub(crate) mod tool_call;
+mod usage;

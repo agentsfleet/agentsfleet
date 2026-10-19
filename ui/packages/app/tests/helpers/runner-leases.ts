@@ -33,6 +33,7 @@ export function lease(overrides: Partial<RunnerLease>): RunnerLease {
     id: `lease-${Math.random().toString(36).slice(2)}`,
     fleet_id: "fleet-1",
     fleet_name: "Search Services",
+    destination: "available",
     workspace_id: "ws-1",
     event_id: "evt-1",
     event_type: "index_build",
@@ -49,8 +50,8 @@ export function lease(overrides: Partial<RunnerLease>): RunnerLease {
     metered_cached_tokens: 4096,
     metered_output_tokens: 2881,
     wall_ms: 242_000,
-    lease_expires_at: Date.now(),
-    created_at: Date.now(),
+    lease_expires_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     ...overrides,
   };
 }

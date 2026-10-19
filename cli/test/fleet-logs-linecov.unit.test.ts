@@ -7,7 +7,8 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
+import { logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
+import { instantCell } from "../src/output/index.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
@@ -157,7 +158,7 @@ describe("logsEffectFromFlags — JSON mode", () => {
     const httpSpy: HttpSpy = { requestedPath: null };
     const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
     const response = {
-      items: [{ created_at: 1700000000000, actor: "fleet", status: "done" }],
+      items: [{ created_at: "2023-11-14T22:13:20Z", actor: "fleet", status: "done" }],
       next_cursor: "next_xyz",
     };
     const exit = await runWith(
@@ -216,29 +217,31 @@ describe("logsEffectFromFlags — cursor pagination", () => {
 
 const FALLBACK = "—";
 
-describe("formatTimestamp — malformed input never throws", () => {
-  test("falls back to the em-dash literal for unparseable / out-of-range input", () => {
-    // Truthy-but-unparseable and out-of-range values used to throw
-    // `RangeError: Invalid time value`, crashing the whole `logs` command.
-    expect(() => formatTimestamp("garbage")).not.toThrow();
-    expect(formatTimestamp("garbage")).toBe(FALLBACK);
-    expect(formatTimestamp(NaN)).toBe(FALLBACK);
-    expect(formatTimestamp(Number.MAX_VALUE)).toBe(FALLBACK);
-    expect(formatTimestamp("not-a-date")).toBe(FALLBACK);
+describe("instantCell — malformed input never throws", () => {
+  test("falls back to the em-dash literal for anything that is not an instant", () => {
+    // Truthy-but-unparseable values used to throw `RangeError: Invalid time
+    // value`, crashing the whole `logs` command.
+    expect(() => instantCell("garbage")).not.toThrow();
+    expect(instantCell("garbage")).toBe(FALLBACK);
+    expect(instantCell("2025-13-01T00:00:00Z")).toBe(FALLBACK);
+    expect(instantCell("2025-01-01")).toBe(FALLBACK);
   });
 
-  test("falsy input still renders the fallback literal", () => {
-    expect(formatTimestamp(null)).toBe(FALLBACK);
-    expect(formatTimestamp(undefined)).toBe(FALLBACK);
-    expect(formatTimestamp(0)).toBe(FALLBACK);
-    expect(formatTimestamp("")).toBe(FALLBACK);
+  test("refuses an epoch-millisecond number", () => {
+    expect(instantCell(1735689600000)).toBe(FALLBACK);
+    expect(instantCell(Number.NaN)).toBe(FALLBACK);
   });
 
-  test("valid timestamps still render an ISO string (regression)", () => {
-    expect(formatTimestamp(1735689600000)).toBe("2025-01-01T00:00:00.000Z");
-    expect(formatTimestamp("2025-01-01T00:00:00.000Z")).toBe(
-      "2025-01-01T00:00:00.000Z",
-    );
+  test("absent input renders the fallback literal, or the caller's own", () => {
+    expect(instantCell(null)).toBe(FALLBACK);
+    expect(instantCell(undefined)).toBe(FALLBACK);
+    expect(instantCell("")).toBe(FALLBACK);
+    expect(instantCell(null, "never")).toBe("never");
+  });
+
+  test("an instant renders exactly as the daemon wrote it", () => {
+    expect(instantCell("2025-01-01T00:00:00Z")).toBe("2025-01-01T00:00:00Z");
+    expect(instantCell("2025-01-01T00:00:00.25Z")).toBe("2025-01-01T00:00:00.25Z");
   });
 
   test("a malformed created_at does not crash the human-readable event stream", async () => {

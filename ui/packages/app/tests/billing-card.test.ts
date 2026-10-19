@@ -11,8 +11,8 @@ import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/Bi
 import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
-  balance_nanos: 4_710_000_000,
-  updated_at: 1,
+  balance_nanos: "4710000000",
+  updated_at: "1970-01-01T00:00:00.001Z",
   is_exhausted: false,
   exhausted_at: null,
 };
@@ -49,15 +49,17 @@ describe("BillingBalanceCard", () => {
     expect(link.getAttribute("aria-disabled")).toBeNull();
   });
 
-  it("surfaces an alert banner when the balance is exhausted", () => {
-    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
+  it.each([["0", "$0.00"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"]])(
+    "shows exhausted balance %s and a top-up alert", (balance_nanos, expected) => {
+    renderCard({ ...HEALTHY, balance_nanos, is_exhausted: true });
+    expect(screen.getByTestId("balance-headline").textContent).toBe(expected);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Balance exhausted/);
     expect(alert.textContent).toMatch(/top up/i);
   });
 
   it("applies destructive treatment to the balance headline when exhausted", () => {
-    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
+    renderCard({ ...HEALTHY, balance_nanos: "0", is_exhausted: true });
     const headline = screen.getByTestId("balance-headline");
     expect(headline.getAttribute("data-exhausted")).toBe("true");
     expect(headline.className).toContain("text-destructive");
@@ -78,7 +80,7 @@ describe("BillingBalanceCard", () => {
   });
 
   it("renders the support email link using SUPPORT_EMAIL when exhausted", () => {
-    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
+    renderCard({ ...HEALTHY, balance_nanos: "0", is_exhausted: true });
     const link = screen.getByRole("link", { name: /support/i }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("mailto:agentsfleet@agentmail.to");
   });

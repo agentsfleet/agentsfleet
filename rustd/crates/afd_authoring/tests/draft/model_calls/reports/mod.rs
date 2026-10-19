@@ -1,15 +1,13 @@
 //! Reports use real dispatch receipts and wallet rows, independently of private text.
 
+mod billing;
 mod failure_facts;
 mod replay;
 mod uncertainty;
 mod validation;
+mod verdicts;
 
-use super::super::{
-    attempt::Attempt,
-    fixture::{Fixture, now},
-    mint,
-};
+use super::super::{attempt::Attempt, fixture::Fixture, mint};
 use super::fixture;
 use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 
@@ -17,7 +15,6 @@ fn report() -> Report {
     Report::Terminal {
         accounting: Accounting {
             fence: "1".into(),
-            deletion_generation: "0".into(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,
@@ -45,7 +42,7 @@ fn accounting(request: &Report) -> Report {
 }
 
 async fn balance(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .fetch_one(&mut *f.connection().await)
         .await
@@ -54,9 +51,9 @@ async fn balance(f: &Fixture) -> i64 {
 
 async fn counts(f: &Fixture, a: &Attempt) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM billing.authoring_settlements WHERE attempt_id=$1::uuid), \
+        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid AND outcome IS NOT NULL), \
         (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1::uuid), \
-        (SELECT count(*) FROM core.authoring_answer_receipts WHERE attempt_id=$1::uuid)",
+        (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1::uuid)",
     )
     .bind(a.id.as_str())
     .fetch_one(&mut *f.connection().await)

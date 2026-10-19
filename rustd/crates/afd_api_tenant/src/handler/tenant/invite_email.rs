@@ -11,7 +11,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_api_wire::team::InviteEmailResponse;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_mail::{InviteLetter, InviteSend};
@@ -43,7 +42,8 @@ const DETAIL_UNAVAILABLE: &str = "The invite email could not be sent";
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Emailed {
     pub(super) status: EmailStatus,
-    pub(super) at: UnixMillis,
+    /// The invite's stored send instant, once the store recorded this send.
+    pub(super) sent_at: Option<jiff::Timestamp>,
 }
 
 /// Sends a just-created invite's email and folds the result into `invite`.
@@ -60,8 +60,7 @@ pub(super) async fn email_new_invite<D: Services>(
     match sent {
         Ok(Some(emailed)) => {
             invite.email_status = emailed.status;
-            invite.email_sent_at_ms =
-                (emailed.status == EmailStatus::Sent).then(|| emailed.at.as_millis());
+            invite.email_sent_at = emailed.sent_at;
         }
         Ok(None) => {}
         Err(error) => unrecorded(&invite.id, &error),
@@ -78,11 +77,7 @@ pub(super) async fn email_invite<D: Services>(
     actor: &str,
     link: &str,
 ) -> afd_tenant::Result<Option<Emailed>> {
-    let Some(attempt) = services
-        .team()
-        .begin_email(tenant, invite, services.now())
-        .await?
-    else {
+    let Some(attempt) = services.team().begin_email(tenant, invite).await? else {
         return Ok(None);
     };
     let outcome = services
@@ -92,17 +87,19 @@ pub(super) async fn email_invite<D: Services>(
             &send_of(invite, &attempt, link),
         )
         .await;
-    let emailed = Emailed {
-        status: status_of(outcome),
-        at: services.now(),
-    };
-    if let Err(error) = services
+    let status = status_of(outcome);
+    let sent_at = match services
         .team()
-        .record_email(invite, attempt.attempt, emailed.status, emailed.at)
+        .record_email(invite, attempt.attempt, status)
         .await
     {
-        unrecorded(invite, &error);
-    }
+        Ok(stamped) => stamped,
+        Err(error) => {
+            unrecorded(invite, &error);
+            None
+        }
+    };
+    let emailed = Emailed { status, sent_at };
     // Built only for a deployment that reports: the event owns its strings,
     // and a silent sink would copy three of them to discard them.
     let analytics = services.analytics();
@@ -261,8 +258,7 @@ mod tests {
         unrecorded(&invite, &failure);
 
         let logged = capture.only(EVENT_UNRECORDED);
-        let reason = logged.field("reason").expect("the line says why");
-        assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+        logged.assert_uncoded_reason();
         assert_eq!(logged.field("error_code"), Some(failure.code().as_str()));
     }
 }

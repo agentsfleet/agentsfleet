@@ -5,11 +5,11 @@ import { ActivityIcon } from "lucide-react";
 import {
   DataTable,
   EmptyState,
+  EYEBROW_CLASS,
   PAGINATION_KIND,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { AgentLabel } from "@/components/domain/AgentLabel";
 import {
   chargeAgentLabel,
   displayModelName,
@@ -20,6 +20,7 @@ import {
 } from "../lib/charges";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
+import { compareNanos } from "@/lib/money";
 
 export type BillingUsageTabProps = {
   initialCharges: ChargeRow[];
@@ -62,13 +63,13 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "created",
     header: TIME_LABEL.created,
     hideOnMobile: true,
-    sortValue: (c) => c.recorded_at,
+    sortValue: (c) => Date.parse(c.recorded_at),
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
     // The label already IS the precise instant, so no hover tooltip is added.
     cell: (c) => (
       <Time
-        value={new Date(c.recorded_at)}
+        value={c.recorded_at}
         label={formatChargeTimestamp(c.recorded_at)}
         className="font-mono text-mono leading-mono"
       />
@@ -78,11 +79,12 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "amount",
     header: "Amount",
     numeric: true,
-    sortValue: (c) => -c.credit_deducted_nanos,
+    sortValue: (c) => c.credit_deducted_nanos,
+    compare: (a, b) => compareNanos(b.credit_deducted_nanos, a.credit_deducted_nanos),
     cell: (c) => (
       <span
         className="whitespace-nowrap font-mono tabular-nums text-destructive data-[zero=true]:text-muted-foreground"
-        data-zero={c.credit_deducted_nanos === 0 ? "true" : undefined}
+        data-zero={c.credit_deducted_nanos === "0" ? "true" : undefined}
       >
         {formatChargeAmount(c.credit_deducted_nanos)}
       </span>
@@ -91,8 +93,9 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
 ];
 
 function ChargeIdentityCell({ charge }: { charge: ChargeRow }) {
+  const label = chargeAgentLabel(charge);
   return <div className="space-y-xs sm:space-y-0">
-    <AgentLabel fleetId={charge.fleet_id} fleetName={charge.fleet_id === null ? chargeAgentLabel(charge) : charge.fleet_name} className="text-foreground" />
+    <span className={EYEBROW_CLASS} data-agent-name={label}>{label}</span>
     <div className="space-y-xs text-label text-muted-foreground sm:hidden">
       <p>{displayModelName(charge.model)} · {describeCharge(charge)}</p>
       <Time value={new Date(charge.recorded_at)} label={formatChargeTimestamp(charge.recorded_at)} />

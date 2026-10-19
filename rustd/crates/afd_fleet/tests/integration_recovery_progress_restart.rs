@@ -12,13 +12,13 @@
 )]
 
 use afd_admission::{Admissions, Progress};
-use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
     EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, ledger, producer_key,
 };
 use crate::integration_recovery_progress::{ONE_ROW, deliver};
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -80,7 +80,7 @@ async fn a_failed_pass_keeps_the_repairs_it_drained() {
     // serially, which is the signature of exactly this. One row per walk still,
     // so the first pass fills its batch and files where it stopped.
     let mut progress = Progress::default();
-    live.reconcile(clock::now(), EVERY_FLEET, ONE_ROW, &mut progress)
+    live.reconcile(EVERY_FLEET, ONE_ROW, &mut progress)
         .await
         .expect("the first pass runs against both live datastores");
     assert!(
@@ -90,7 +90,7 @@ async fn a_failed_pass_keeps_the_repairs_it_drained() {
 
     // The second pass takes that repair out of the set and then cannot walk it.
     let failed = dead_ledger(&fixtures)
-        .reconcile(clock::now(), EVERY_FLEET, ONE_ROW, &mut progress)
+        .reconcile(EVERY_FLEET, ONE_ROW, &mut progress)
         .await;
     assert!(
         failed.is_err(),
@@ -104,17 +104,16 @@ async fn a_failed_pass_keeps_the_repairs_it_drained() {
 
     // And the repair really does carry on, against a ledger that answers again.
     for _pass in 0..4 {
-        let at = clock::now();
-        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+        live.reconcile(EVERY_FLEET, ONE_ROW, &mut progress)
             .await
             .expect("the recovering pass runs");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs");
     }
     for event_id in &owed {
         let receipt = fixtures
-            .admission_receipt(&fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
         assert!(
@@ -167,12 +166,11 @@ async fn a_restart_resets_progress_without_losing_coverage() {
         .expect("destroying this fleet's stream data");
 
     // One pass repairs the first row and files where it stopped.
-    let at = clock::now();
     let mut before_restart = Progress::default();
-    live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut before_restart)
+    live.reconcile(EVERY_FLEET, ONE_ROW, &mut before_restart)
         .await
         .expect("the first pass runs");
-    live.replay(at, NO_GRACE, EVERY_ROW)
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs");
     assert!(
@@ -188,7 +186,7 @@ async fn a_restart_resets_progress_without_losing_coverage() {
     // fleet's oldest undelivered receipt is a dead one again.
     for event_id in &owed {
         let receipt = fixtures
-            .admission_receipt(&fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .expect("every row holds a receipt");
         if streams
@@ -201,18 +199,17 @@ async fn a_restart_resets_progress_without_losing_coverage() {
     }
 
     for _pass in 0..6 {
-        let at = clock::now();
-        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut after_restart)
+        live.reconcile(EVERY_FLEET, ONE_ROW, &mut after_restart)
             .await
             .expect("a pass after the restart runs");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs");
     }
 
     for event_id in &owed {
         let receipt = fixtures
-            .admission_receipt(&fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
         let held = streams
@@ -221,7 +218,7 @@ async fn a_restart_resets_progress_without_losing_coverage() {
             .expect("the stream answers");
         assert!(
             held || fixtures
-                .admission_delivered_at(&fleet, event_id)
+                .instant(Row::Admission(event_id), "delivered_at")
                 .await
                 .is_some(),
             "{event_id} survived a restart mid-repair: it is queued again or delivered"

@@ -5,9 +5,10 @@
 //!
 //! A fleet's behaviour is authored in chat as a typed JSON Definition — a
 //! description, instructions and a configuration document — and the configuration
-//! is stored as JSON in `core.fleets.config_json`. At claim time the daemon has
-//! to turn that document into decisions: what may wake this fleet, what it may
-//! spend, which of its actions need a human, how far its credentials reach.
+//! is stored as the `config` key of the head `fleet.revisions.definition`. At
+//! claim time the daemon has to turn that document into decisions: what may
+//! wake this fleet, what it may spend, which of its actions need a human, how
+//! far its credentials reach.
 //! This crate is that transformation, and nothing else. It opens no socket,
 //! touches no datastore, and holds no clock.
 //!

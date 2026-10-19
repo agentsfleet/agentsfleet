@@ -83,14 +83,14 @@ mod tests {
     fn only_an_admission_yields_billing() {
         let billed = super::Billed {
             tenant_id: afd_core::id::Uuid7::encode(
-                afd_core::clock::UnixMillis::from_millis(1_767_225_600_000),
+                jiff::Timestamp::constant(1_767_225_600, 0),
                 [9; afd_core::id::ENTROPY_LEN],
             )
             .expect("a fixed, in-range instant encodes"),
             posture: afd_billing::rates::Posture::Platform,
             provider: "anthropic".into(),
             model: "claude-fixture".into(),
-            drained: afd_billing::Nanos::ZERO,
+            floor: afd_billing::Nanos::ZERO,
         };
         assert_eq!(Admission::Admit(billed.clone()).admitted(), Ok(billed));
         assert!(matches!(

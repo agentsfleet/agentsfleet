@@ -13,7 +13,7 @@ pub(super) async fn lock(
     connection: &mut PgConnection,
     set: &RecipeSet<'_>,
 ) -> Result<Vec<Stored>> {
-    let owned: Option<String> = sqlx::query_scalar(sql::LOCK)
+    let owned: Option<String> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
         .bind(set.fleet.as_str())
         .bind(set.workspace.as_str())
         .fetch_optional(&mut *connection)
@@ -33,7 +33,7 @@ pub(super) async fn lock(
     if rows.iter().any(|row| row.held) {
         return Err(ErrorKind::Held.into());
     }
-    let independent: i64 = sqlx::query_scalar(sql::COUNT)
+    let independent: i64 = sqlx::query_scalar(crate::sql::COUNT_INDEPENDENT)
         .bind(set.fleet.as_str())
         .fetch_one(connection)
         .await

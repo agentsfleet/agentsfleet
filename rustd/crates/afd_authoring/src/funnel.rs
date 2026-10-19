@@ -28,9 +28,6 @@ use crate::{Access, Drafts, Result, error::raise::query, lease::guard::Attempt};
 
 const CONTEXT: &str = "attribute a private-chat funnel step";
 
-/// The person a creator id names, as the subject the browser identifies them by.
-const CREATOR: &str = "SELECT oidc_subject FROM core.users WHERE id=$1::uuid";
-
 /// A first publication creates the Library entry.
 pub(crate) const PUBLISHED_ENTRY: &str = "entry";
 
@@ -61,7 +58,7 @@ impl<'a> From<&'a Attempt> for Message<'a> {
     fn from(attempt: &'a Attempt) -> Self {
         Self {
             workspace: &attempt.workspace_id,
-            creator: &attempt.creator_id,
+            creator: &attempt.user_id,
             draft: &attempt.draft_id,
         }
     }
@@ -83,7 +80,7 @@ impl Owed {
         message: Message<'_>,
         state: &'static str,
     ) -> Result<()> {
-        let subject: Option<String> = sqlx::query_scalar(CREATOR)
+        let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
             .bind(message.creator.as_str())
             .fetch_optional(connection)
             .await

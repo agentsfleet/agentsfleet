@@ -55,7 +55,7 @@ interface GateListRow {
   readonly gate_id?: string;
   readonly fleet_id?: string;
   readonly status?: string;
-  readonly gate_kind?: string;
+  readonly gate_type?: string;
   readonly blast_radius?: string;
 }
 

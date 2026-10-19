@@ -1,4 +1,4 @@
-//! `core.fleet_obligations` — every statement that touches the table, and the
+//! `fleet.obligations` — every statement that touches the table, and the
 //! two shapes that address it.
 //!
 //! # Why one module owns the table
@@ -28,8 +28,9 @@
 //! an answer the queue carried and nobody received, which is exactly the set
 //! the producer's recovery scan re-offers.
 
+use std::time::Duration;
+
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_db::Db;
 use afd_dragonfly::OutboundJob;
 
@@ -166,7 +167,6 @@ pub async fn owe(
     connection: &mut sqlx::PgConnection,
     row_id: &str,
     delivery: Delivery<'_>,
-    now: UnixMillis,
 ) -> Result<bool> {
     if delivery.answer.is_empty() {
         return Ok(false);
@@ -178,7 +178,6 @@ pub async fn owe(
         .bind(delivery.provider.id())
         .bind(delivery.event_id)
         .bind(delivery.answer)
-        .bind(now.as_millis())
         .bind(delivery.destination)
         .fetch_optional(&mut *connection)
         .await
@@ -195,35 +194,40 @@ pub async fn owe(
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn receipt(database: &Db, obligation: &str, entry: &str, now: UnixMillis) -> Result<()> {
-    write_receipt(database, sql::RECEIPT_DELIVERY, obligation, entry, now).await
+pub async fn receipt(database: &Db, obligation: &str, entry: &str) -> Result<()> {
+    write_receipt(database, sql::RECEIPT_DELIVERY, obligation, entry).await
 }
 
-/// Answers committed but never queued.
+/// Answers committed but never queued, at least `min_age` old by the
+/// database's clock.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn unreceipted(database: &Db, before: UnixMillis, limit: i64) -> Result<Vec<Owed>> {
-    scan(database, sql::SELECT_UNRECEIPTED, before, limit).await
+pub async fn unreceipted(database: &Db, min_age: Duration, limit: i64) -> Result<Vec<Owed>> {
+    scan(database, sql::SELECT_UNRECEIPTED, min_age, limit).await
 }
 
-/// Answers queued but never received.
+/// Answers queued but never received, untouched for at least `lost_after` by
+/// the database's clock.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn undelivered(database: &Db, before: UnixMillis, limit: i64) -> Result<Vec<Owed>> {
-    scan(database, sql::SELECT_UNDELIVERED, before, limit).await
+pub async fn undelivered(database: &Db, lost_after: Duration, limit: i64) -> Result<Vec<Owed>> {
+    scan(database, sql::SELECT_UNDELIVERED, lost_after, limit).await
 }
 
+/// Runs one scan. `age` is bound as an interval the statement subtracts from
+/// `statement_timestamp()`, so the cut-off is measured on the database's
+/// clock, the one that stamped the rows it compares.
 async fn scan(
     database: &Db,
     statement: &'static str,
-    before: UnixMillis,
+    age: Duration,
     limit: i64,
 ) -> Result<Vec<Owed>> {
     let mut connection = database.acquire().await?;
     sqlx::query_as::<_, Owed>(statement)
-        .bind(before.as_millis())
+        .bind(age)
         .bind(limit)
         .fetch_all(&mut *connection)
         .await
@@ -237,32 +241,25 @@ const CONTEXT_RECEIPT: &str = "record receipt";
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn record_reappended(
-    database: &Db,
-    obligation: &str,
-    entry: &str,
-    now: UnixMillis,
-) -> Result<()> {
-    write_receipt(database, sql::REAPPEND_RECEIPT, obligation, entry, now).await
+pub async fn record_reappended(database: &Db, obligation: &str, entry: &str) -> Result<()> {
+    write_receipt(database, sql::REAPPEND_RECEIPT, obligation, entry).await
 }
 
 /// The body both receipt writers share.
 ///
 /// The two statements differ by one guard and nothing else, so they bind the
-/// same three parameters in the same order — which is exactly the kind of pair
+/// same two parameters in the same order — which is exactly the kind of pair
 /// that drifts when each carries its own copy of the binding.
 async fn write_receipt(
     database: &Db,
     statement: &'static str,
     obligation: &str,
     entry: &str,
-    now: UnixMillis,
 ) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(statement)
         .bind(obligation)
         .bind(entry)
-        .bind(now.as_millis())
         .execute(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_RECEIPT))?;

@@ -113,7 +113,7 @@ fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> 
 /// One column of a lease row, as text.
 pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.runner_leases WHERE id = $1::uuid"
+        "SELECT {column}::text FROM runner.leases WHERE id = $1::uuid"
     ));
     let mut connection = run
         .booted
@@ -146,7 +146,7 @@ pub(crate) async fn event_column_of(
     column: &str,
 ) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM core.fleet_events \
+        "SELECT {column}::text FROM fleet.events \
          WHERE fleet_id = $1::uuid AND event_id = $2"
     ));
     let mut connection = run
@@ -172,7 +172,7 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+    sqlx::query("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
         .bind(&run.tenant)
         .fetch_optional(&mut *connection)
         .await
@@ -180,28 +180,41 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
         .map(|row| row.try_get(0).expect("the balance is a bigint"))
 }
 
-/// How many ledger rows the scenario's event has, across every charge type.
+/// How many usage lines the scenario's event has logged: one per slice that
+/// measured something, the report's final slice among them.
 pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
-    let mut connection = run
-        .booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM billing.usage_ledger WHERE event_id = $1")
-        .bind(&run.event_id)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the ledger count must run")
-        .try_get(0)
-        .expect("a count is a bigint")
+    count_lines(
+        run,
+        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1",
+    )
+    .await
 }
 
-/// One column of the scenario runner's lifetime counters, as text.
-pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<String> {
-    let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid"
-    ));
+/// The completion tokens the scenario's event's usage lines record.
+pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
+    count_lines(
+        run,
+        "SELECT COALESCE(sum(output_token_count), 0)::bigint FROM billing.usage_lines \
+         WHERE event_id = $1",
+    )
+    .await
+}
+
+/// How many of those lines the biller has not yet settled.
+///
+/// Zero once a report has answered: the lease path settles its lines after
+/// commit and before it replies, and only a failed settle leaves one for the
+/// billing sweeper.
+pub(crate) async fn unsettled_lines(run: &Scenario) -> i64 {
+    count_lines(
+        run,
+        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1 AND settled_at IS NULL",
+    )
+    .await
+}
+
+/// One count over the scenario event's usage lines.
+async fn count_lines(run: &Scenario, statement: &'static str) -> i64 {
     let mut connection = run
         .booted
         .database
@@ -209,11 +222,30 @@ pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<Strin
         .await
         .expect("a pooled connection");
     sqlx::query(statement)
+        .bind(&run.event_id)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the usage count must run")
+        .try_get(0)
+        .expect("a count is a bigint")
+}
+
+/// One column of the scenario runner's lifetime counters, as text.
+pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<String> {
+    let statement = AssertSqlSafe(format!(
+        "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1::uuid"
+    ));
+    let mut connection = run
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query_scalar(statement)
         .bind(run.runner_id.as_str())
         .fetch_optional(&mut *connection)
         .await
         .expect("the counter read must run")
-        .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 
 /// How many lease rows this scenario's runner holds on the fleet under test,
@@ -232,7 +264,7 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT count(*) FROM fleet.runner_leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
+        "SELECT count(*) FROM runner.leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
     )
     .bind(run.runner_id.as_str())
     .bind(&run.fleet)

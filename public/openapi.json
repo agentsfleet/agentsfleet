@@ -3335,7 +3335,7 @@
           {
             "name": "since",
             "in": "query",
-            "description": "Lower bound on occurred_at, epoch milliseconds (inclusive).",
+            "description": "Lower bound on occurred_at, an RFC 3339 instant (inclusive).",
             "required": false,
             "schema": {
               "type": "string"
@@ -3344,7 +3344,7 @@
           {
             "name": "until",
             "in": "query",
-            "description": "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since.",
+            "description": "Upper bound on occurred_at, an RFC 3339 instant (inclusive). Must be >= since.",
             "required": false,
             "schema": {
               "type": "string"
@@ -3446,7 +3446,7 @@
           "Fleet"
         ],
         "summary": "List a runner's leases",
-        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`. Settled leases are retained for 30 days. The window is measured from settlement, not from acquisition. A lease acquired long ago and settled yesterday keeps its full window. A background sweep deletes them past that window. A lease still running or renewing is never swept. The per-lease activity records (`lease_acquired`, `lease_released`) are swept on the same 30-day window. Each record ages from when it occurred, not from its lease's settlement. A long run's opening record can therefore be pruned shortly before its lease row. The runner's lifecycle activity is kept at any age, so a long-lived runner's feed never empties. A lease whose runner died without reporting is marked expired once it passes the same window. It then keeps its own window, like any settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected by any of this. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns. ",
+        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. A settled lease outlives a fleet purge and its event's retention. Its fleet and event fields are then null. `destination` is `available` when the fleet exists in the caller's own account. It is `fleet_deleted` after a purge, and `not_permitted` for a fleet in another account. Stripe-style keyset pagination —`starting_after` is a lease id from a previous page's `next_cursor`. Settled leases are retained for 30 days. The window is measured from settlement, not from acquisition. A lease acquired long ago and settled yesterday keeps its full window. A background sweep deletes them past that window. A lease still running or renewing is never swept. The per-lease activity records (`lease_acquired`, `lease_released`) are swept on the same 30-day window. Each record ages from when it occurred, not from its lease's settlement. A long run's opening record can therefore be pruned shortly before its lease row. The runner's lifecycle activity is kept at any age, so a long-lived runner's feed never empties. A lease whose runner died without reporting is marked expired once it passes the same window. It then keeps its own window, like any settled lease. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected by any of this. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns. ",
         "operationId": "list_fleet_runner_leases",
         "parameters": [
           {
@@ -3867,16 +3867,25 @@
           {
             "name": "provider",
             "in": "query",
-            "description": "Exact match on the normalized provider. At most 128 bytes once\nnormalized; empty after normalization is treated as absent.",
+            "description": "Exact match on the normalized provider. At most 64 bytes once\nnormalized; empty after normalization is treated as absent.",
             "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
+            "name": "advanced",
+            "in": "query",
+            "description": "`true` adds the advanced models a picker offers on request. The page\nthen lists the ordinary catalogue and the advanced models together.\n`false` or absent lists the ordinary catalogue alone. No other spelling\nis accepted.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "starting_after",
             "in": "query",
-            "description": "Opaque cursor from a previous page's `next_cursor`, bound to the filters\nand page size that produced it. Only the sort boundary is read from it —\nthe filters applied are always the request's.",
+            "description": "Opaque cursor from a previous page's `next_cursor`, bound to the filters\nand page size that produced it.",
             "required": false,
             "schema": {
               "type": "string"
@@ -4917,10 +4926,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/HeartbeatRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/HeartbeatRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -5375,7 +5384,7 @@
           "Runners"
         ],
         "summary": "Extend a live lease",
-        "description": "A run buying more time before its lease expires. The body is optional and carries the run's cumulative token counts. A body that will not parse is read as asserting no tokens and logged as `renew_body_parse_failed`. The lease is still extended, so a counting mistake never ends a run. ",
+        "description": "A run buying more time before its lease expires. The body is optional and carries one line per provider request since the last recorded renewal, at most 512. The answer's `recorded_through` names the highest line recorded, and the runner sends the rest again. A body that will not parse, or breaks a bound, records no lines and is logged as `renew_body_parse_failed`. The lease is still extended, so a counting mistake never ends a run. One body is refused instead. A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) answers 400 `UZ-RUN-013`. Its `detail` names the field, and the lease is not extended. ",
         "operationId": "runner_renew_lease",
         "parameters": [
           {
@@ -5394,10 +5403,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/RenewRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/RenewRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -6881,7 +6890,7 @@
           "Runners"
         ],
         "summary": "Report the result of one run",
-        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. The lease id is this endpoint's idempotency key, so it takes no `Idempotency-Key` header. Send the same report again after a lost response and the stored outcome is returned. The repeat charges nothing and counts the run once. ",
+        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. The lease id is this endpoint's idempotency key, so it takes no `Idempotency-Key` header. Send the same report again after a lost response and the stored outcome is returned. The repeat charges nothing and counts the run once. A body that will not read is refused with `UZ-REQ-001`. Its `detail` names a retired cumulative total (`input_tokens`, `cached_input_tokens` or `output_tokens`) when the body carries one. It also names the bound a body breaks: more than 512 `requests` lines, or a line `seq` above 2147483647. ",
         "operationId": "runner_report",
         "requestBody": {
           "content": {
@@ -6900,6 +6909,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
                 }
               }
             }
@@ -8390,7 +8409,7 @@
           "Tenant"
         ],
         "summary": "Reset tenant LLM provider to platform default",
-        "description": "Equivalent to `PUT {mode: \"platform\"}`. Writes the explicit mode=platform row so the dashboard can distinguish \"never configured\" from \"explicitly reset\". ",
+        "description": "Equivalent to `PUT {mode: \"platform\"}`. Writes an explicit platform selection so the dashboard can distinguish \"never configured\" from \"explicitly reset\". ",
         "operationId": "delete_tenant_provider",
         "responses": {
           "200": {
@@ -9388,10 +9407,10 @@
               "schema": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/CreateWorkspaceRequest"
                   },
                   {
-                    "$ref": "#/components/schemas/CreateWorkspaceRequest"
+                    "type": "null"
                   }
                 ]
               }
@@ -9533,7 +9552,7 @@
             }
           },
           {
-            "name": "gate_kind",
+            "name": "gate_type",
             "in": "query",
             "required": false,
             "schema": {
@@ -10412,6 +10431,15 @@
             "name": "linked_fleet_id",
             "in": "query",
             "description": "Related fleet UUIDv7.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Case-insensitive search of your chat titles and message text, 1..200 characters after trimming. Bound into the cursor.",
             "required": false,
             "schema": {
               "type": "string"
@@ -13002,7 +13030,7 @@
           {
             "name": "starting_after",
             "in": "query",
-            "description": "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.",
+            "description": "Opaque page token from a prior response's `next_cursor` field. Omit for the first page.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17199,24 +17227,19 @@
         "description": "Shared accounting fields; the answer is deliberately absent.",
         "required": [
           "fence",
-          "deletion_generation",
           "report_id",
           "outcome",
           "usage"
         ],
         "properties": {
-          "deletion_generation": {
-            "type": "string",
-            "description": "Decimal generation originally issued with the attempt."
-          },
           "failure_reason": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/FailureReason",
                 "description": "Required for `failed`/`timed_out` and absent otherwise."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17371,41 +17394,47 @@
         "additionalProperties": false
       },
       "AdminModelCreate": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Rates and context cap flattened on the existing wire."
-          },
-          {
-            "type": "object",
-            "required": [
-              "provider",
-              "model_id"
-            ],
-            "properties": {
-              "inference": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Explicit inference settings; omitted rows remain unavailable for inference."
-                  }
-                ]
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-native model identity."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Provider identity."
-              }
-            }
-          }
+        "type": "object",
+        "description": "`POST /v1/admin/models` input: one identity, its evidence, its complete\nprice schedule and, optionally, its inference settings.",
+        "required": [
+          "provider",
+          "model_id",
+          "metadata",
+          "prices"
         ],
-        "description": "`POST /v1/admin/models` input."
+        "properties": {
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Explicit inference settings; omitted rows remain unavailable for inference."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Provider-native model identity."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "Every prompt tier across every date range, in integer nanos per\nmillion tokens."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider identity."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelCreated": {
         "allOf": [
@@ -17429,71 +17458,85 @@
         "description": "Successful model creation."
       },
       "AdminModelItem": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Rates and context cap flattened on the existing wire."
-          },
-          {
-            "type": "object",
-            "required": [
-              "id",
-              "provider",
-              "model_id"
-            ],
-            "properties": {
-              "id": {
-                "type": "string",
-                "description": "Opaque `UUIDv7` row identity."
-              },
-              "inference": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Non-secret settings used by setup chat and runtime leases."
-                  }
-                ]
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-native model identity."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Provider identity."
-              }
-            }
-          }
+        "type": "object",
+        "description": "One model in the admin list.",
+        "required": [
+          "id",
+          "provider",
+          "model_id",
+          "metadata",
+          "prices"
         ],
-        "description": "One priced model row in the admin list."
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Opaque `UUIDv7` row identity."
+          },
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Non-secret settings used by setup chat and runtime leases."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Provider-native model identity."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The complete schedule, ordered by tier then start."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider identity."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelPatch": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ModelRates",
-            "description": "Existing rate fields remain flattened on the wire."
-          },
-          {
-            "type": "object",
-            "properties": {
-              "inference": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ModelInference",
-                    "description": "Omission preserves the current inference settings."
-                  }
-                ]
-              }
-            }
-          }
+        "type": "object",
+        "description": "`PATCH /v1/admin/models/{id}` input: a complete replacement of the\nevidence and the price schedule, and optionally of the inference settings.",
+        "required": [
+          "metadata",
+          "prices"
         ],
-        "description": "Mutable model rates and optional replacement inference settings."
+        "properties": {
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelInference",
+                "description": "Omission preserves the current inference settings."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CatalogueMetadata",
+            "description": "Label and context evidence."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The whole schedule; a range absent here is removed."
+          }
+        },
+        "additionalProperties": false
       },
       "AdminModelUpdated": {
         "type": "object",
@@ -17567,8 +17610,8 @@
             "description": "Whether it still authenticates."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was minted."
           },
           "id": {
@@ -17581,10 +17624,10 @@
           },
           "revoked_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
           }
         }
@@ -17673,13 +17716,13 @@
           "action_id",
           "tool_name",
           "action_name",
-          "gate_kind",
+          "gate_type",
           "proposed_action",
           "blast_radius",
           "status",
           "detail",
           "created_at",
-          "timeout_at",
+          "expires_at",
           "resolved_by",
           "resolved_by_name"
         ],
@@ -17697,8 +17740,8 @@
             "description": "How far the consequences reach."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was raised."
           },
           "detail": {
@@ -17712,6 +17755,11 @@
             ],
             "description": "The evidence behind the proposal, verbatim."
           },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops waiting."
+          },
           "fleet_id": {
             "type": "string",
             "description": "The fleet that raised it."
@@ -17724,13 +17772,21 @@
             "type": "string",
             "description": "The gate's own row id — what a decision addresses it by."
           },
-          "gate_kind": {
+          "gate_type": {
             "type": "string",
             "description": "Which family of gate this is."
           },
           "proposed_action": {
             "type": "string",
             "description": "What the fleet proposes, in a person's words."
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was resolved, or `null` while pending."
           },
           "resolved_by": {
             "type": "string",
@@ -17744,22 +17800,9 @@
             "type": "string",
             "description": "Where the gate stands."
           },
-          "timeout_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops waiting."
-          },
           "tool_name": {
             "type": "string",
             "description": "The tool asking."
-          },
-          "updated_at": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "When it was resolved, or `null` while pending."
           },
           "workspace_id": {
             "type": "string",
@@ -17888,11 +17931,11 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CandidateVersion",
                 "description": "Originally committed version, independent of the current head."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17907,7 +17950,6 @@
         "description": "One contiguous, replay-safe activity submission.",
         "required": [
           "fence",
-          "deletion_generation",
           "sequence",
           "activity_sequence",
           "event"
@@ -17916,10 +17958,6 @@
           "activity_sequence": {
             "type": "string",
             "description": "Contiguous activity number, beginning at one."
-          },
-          "deletion_generation": {
-            "type": "string",
-            "description": "Generation whose private text the lease may update."
           },
           "event": {
             "$ref": "#/components/schemas/ActivityEvent_Value_Value_Value",
@@ -17956,25 +17994,24 @@
         ],
         "properties": {
           "balance_nanos": {
-            "type": "integer",
-            "format": "int64",
-            "description": "What remains, in nanos — one thousand-millionth of a dollar."
+            "$ref": "#/components/schemas/SignedNanos",
+            "description": "What remains, in nanos — one thousand-millionth of a dollar. Negative\nwhile the tenant owes a debt. A settlement takes its whole charge, and\nthe next grant repays the debt before any of it is spendable."
           },
           "exhausted_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When it did, or `null` while money remains — emitted either way, for\nthe module's null rule."
           },
           "is_exhausted": {
             "type": "boolean",
-            "description": "Whether the balance has reached zero."
+            "description": "Whether the balance has reached zero or gone below it."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the balance last moved."
           }
         }
@@ -18133,8 +18170,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "description": {
@@ -18186,8 +18223,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "description": {
@@ -18256,21 +18293,65 @@
           }
         }
       },
+      "CatalogueMetadata": {
+        "type": "object",
+        "description": "One exact provider/model identity's label and context evidence.",
+        "required": [
+          "display_name",
+          "context_cap_tokens",
+          "context_source_url",
+          "context_verified_at",
+          "advanced"
+        ],
+        "properties": {
+          "advanced": {
+            "type": "boolean",
+            "description": "Whether a picker lists the model only when asked for advanced models."
+          },
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The exact served context limit, from the provider's own models API."
+          },
+          "context_source_url": {
+            "type": "string",
+            "description": "The provider models API response that supplied the limit."
+          },
+          "context_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that response was verified."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable label; never used to route a request."
+          }
+        },
+        "additionalProperties": false
+      },
       "CatalogueModel": {
         "type": "object",
-        "description": "One priced model as the catalogue shows it.\n\n`id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),\nnever the row's own id — that one is admin-plane identity and rides the\ncursor opaquely instead.",
+        "description": "One priced model as the catalogue shows it. Every rate is integer nanos per\nmillion tokens.\n\n`id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),\nnever the row's own id — that one is admin-plane identity and rides the\ncursor opaquely instead.",
         "required": [
           "id",
           "provider",
           "context_cap_tokens",
           "input_nanos_per_mtok",
           "cached_input_nanos_per_mtok",
-          "output_nanos_per_mtok"
+          "output_nanos_per_mtok",
+          "display_name",
+          "advanced",
+          "context_source_url",
+          "context_verified_at",
+          "prices"
         ],
         "properties": {
+          "advanced": {
+            "type": "boolean",
+            "description": "Listed only when the caller asks for advanced models."
+          },
           "cached_input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The cached-input rate, likewise."
           },
           "context_cap_tokens": {
@@ -18278,25 +18359,136 @@
             "format": "int32",
             "description": "The context window the price is quoted for."
           },
+          "context_source_url": {
+            "type": "string",
+            "description": "The provider models API response the context limit came from."
+          },
+          "context_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that response was verified."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The label a picker shows; never used to route a request."
+          },
           "id": {
             "type": "string",
             "description": "The model identifier a tenant selects by."
           },
           "input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The input rate, in nanos per million tokens."
           },
           "output_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "The output rate, likewise."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The complete schedule, ordered by tier then start. The three rates\nabove are its base tier as it stands now."
           },
           "provider": {
             "type": "string",
             "description": "The provider hosting it."
           }
         }
+      },
+      "CataloguePrice": {
+        "type": "object",
+        "description": "One prompt-size tier's rates during a half-open date range.",
+        "required": [
+          "effective_from",
+          "prompt_tokens_above",
+          "input_nanos_per_mtok",
+          "cached_input_nanos_per_mtok",
+          "output_nanos_per_mtok",
+          "source_url",
+          "verified_at",
+          "conditions"
+        ],
+        "properties": {
+          "cache_write_1h_nanos_per_mtok": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes with a one-hour lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cache_write_5m_nanos_per_mtok": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes with a five-minute lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cache_write_nanos_per_mtok": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "Cache writes whose provider reports no lifetime."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cached_input_nanos_per_mtok": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Input read from the provider's cache."
+          },
+          "conditions": {
+            "type": "string",
+            "description": "Scope, exclusions and provider-specific conditions; may be empty."
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The first instant this quote applies."
+          },
+          "effective_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The first instant it no longer applies, or `null` for an open range."
+          },
+          "input_nanos_per_mtok": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Uncached input."
+          },
+          "output_nanos_per_mtok": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Output, reasoning included once where the provider bills it."
+          },
+          "prompt_tokens_above": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The tier applies to a request whose whole prompt exceeds this many\ntokens; `0` is the base tier."
+          },
+          "source_url": {
+            "type": "string",
+            "description": "The provider's pricing page or response the quote came from."
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the quote was verified."
+          }
+        },
+        "additionalProperties": false
       },
       "CatalogueResponse": {
         "type": "object",
@@ -18340,6 +18532,7 @@
         "required": [
           "id",
           "tenant_id",
+          "workspace_id",
           "charge_type",
           "posture",
           "model",
@@ -18352,15 +18545,14 @@
               "string",
               "null"
             ],
-            "description": "The setup attempt, or `null` for runtime events. Identifies accounting\nwithout exposing private chat content or depending on its retention."
+            "description": "The setup attempt, or `null` for a fleet run. Identifies the charge\nwithout exposing the chat's content or depending on its retention."
           },
           "charge_type": {
             "type": "string",
             "description": "`receive`, `stage`, or `authoring` (a settled setup-chat attempt)."
           },
           "credit_deducted_nanos": {
-            "type": "integer",
-            "format": "int64",
+            "$ref": "#/components/schemas/Nanos",
             "description": "What this row drained, in nanos."
           },
           "event_id": {
@@ -18368,21 +18560,21 @@
               "string",
               "null"
             ],
-            "description": "The runtime event, or `null` for setup chats."
+            "description": "The event that triggered the work, or `null` for a setup chat."
           },
           "fleet_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The runtime fleet identity survives deletion. For setup chats this is\nthe saved fleet linked by the retained draft, or `null` if unavailable."
+            "description": "The fleet it was incurred by. A fleet run's charge always names it,\nthrough the fleet's deletion; the dashboard derives the callsign from\nit. A setup chat names the fleet its draft was saved as, or `null`\nwhile the draft has none."
           },
           "fleet_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Runtime charges keep the fleet name captured when charged, including\nafter a rename or deletion. Setup chats use the linked public fleet's\ncurrent name. `null` when no public fleet name is available."
+            "description": "That fleet's name. A fleet run's charge keeps the name captured when it\nwas written, so a later rename never reaches it. A fleet purged before\nits charge landed leaves its own identifier here. When this value equals\n`fleet_id`, the charge captured no name. A setup chat shows the saved\nfleet's current name, or `null` without one."
           },
           "id": {
             "type": "string",
@@ -18397,8 +18589,8 @@
             "description": "Whose model bill the tokens landed on."
           },
           "recorded_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the row was written — the walk's sort key, and what its cursor\nhalf is rendered from."
           },
           "tenant_id": {
@@ -18430,11 +18622,8 @@
             "description": "Recorded runtime in milliseconds."
           },
           "workspace_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The workspace it was incurred in — `null` once that workspace is\ndeleted, because a charge outlives what it was incurred on."
+            "type": "string",
+            "description": "The workspace it was incurred in. It survives that workspace's\ndeletion, because a charge outlives what it was incurred on."
           }
         }
       },
@@ -18662,11 +18851,11 @@
               "accepted": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DraftMessageAccepted",
                     "description": "Present only when creation accepted an initial message."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -18776,8 +18965,8 @@
               ],
               "properties": {
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "UTC milliseconds."
                 },
                 "description": {
@@ -18853,17 +19042,25 @@
                 "updated_at"
               ],
               "properties": {
+                "candidate_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The current candidate's revision; null before the chat proposes one."
+                },
                 "etag": {
                   "type": "string",
                   "description": "Strong resource version."
                 },
                 "expires_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
-                  "description": "Private retention deadline, Unix milliseconds."
+                  "format": "date-time",
+                  "description": "Private retention deadline."
                 },
                 "id": {
                   "type": "string",
@@ -18876,6 +19073,22 @@
                   ],
                   "description": "Related fleet, when available."
                 },
+                "publication_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The Library revision this chat published; null until it publishes."
+                },
+                "setup_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "The saved fleet's current setup revision; null while no fleet is saved."
+                },
                 "state": {
                   "type": "string",
                   "description": "editing, saving or closed."
@@ -18885,9 +19098,9 @@
                   "description": "Human display title."
                 },
                 "updated_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Last mutation, Unix milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Last mutation."
                 }
               }
             },
@@ -18939,27 +19152,27 @@
                   "description": "Accepted assistant proposal, when present."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "Acceptance time, Unix milliseconds."
                 },
                 "failure": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/Failure",
                       "description": "Daemon-derived bounded failure and recovery action."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
                 "finished_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
+                  "format": "date-time",
                   "description": "Terminal time, Unix milliseconds."
                 },
                 "operation_id": {
@@ -18988,11 +19201,11 @@
                 "usage": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/Usage",
                       "description": "Provider usage and cumulative runtime charge, when recorded."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 }
@@ -19042,8 +19255,8 @@
                   "description": "Content identity."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "UTC milliseconds."
                 },
                 "id": {
@@ -19328,22 +19541,22 @@
           "context_cap_tokens": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "The most tokens a run's assembled context may hold."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "memory_checkpoint_every": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "How often a run saves its memory."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19360,11 +19573,11 @@
           "tool_window": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContextSetting",
                 "description": "How much of the context tool output may fill."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -19573,11 +19786,11 @@
           "context": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionContext",
                 "description": "Context-size settings for each run."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19597,11 +19810,11 @@
           "gates": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionGates",
                 "description": "Which tool actions need a person's approval, and which repeated actions stop a run."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19616,11 +19829,11 @@
           "network": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionNetwork",
                 "description": "The hosts this fleet may reach."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19641,11 +19854,11 @@
           "repository_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DefinitionRepositoryAccess",
                 "description": "How far those credentials reach. Set together with `repositories`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19729,11 +19942,11 @@
               "signature": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DefinitionWebhookSignature",
                     "description": "How the delivery proves it came from the provider."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -19880,20 +20093,20 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Candidate_Value",
                 "description": "Latest accepted setup, absent before the first candidate."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "closed_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Closing time in Unix milliseconds."
           },
           "etag": {
@@ -19902,10 +20115,10 @@
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Private retention deadline in Unix milliseconds."
           },
           "id": {
@@ -19922,11 +20135,11 @@
           "publication": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Publication",
                 "description": "Explicit publication receipt, never synthesized by Save."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19958,17 +20171,25 @@
           "updated_at"
         ],
         "properties": {
+          "candidate_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The current candidate's revision; null before the chat proposes one."
+          },
           "etag": {
             "type": "string",
             "description": "Strong resource version."
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "Private retention deadline, Unix milliseconds."
+            "format": "date-time",
+            "description": "Private retention deadline."
           },
           "id": {
             "type": "string",
@@ -19981,6 +20202,22 @@
             ],
             "description": "Related fleet, when available."
           },
+          "publication_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The Library revision this chat published; null until it publishes."
+          },
+          "setup_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The saved fleet's current setup revision; null while no fleet is saved."
+          },
           "state": {
             "type": "string",
             "description": "editing, saving or closed."
@@ -19990,9 +20227,9 @@
             "description": "Human display title."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last mutation, Unix milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last mutation."
           }
         }
       },
@@ -20100,20 +20337,20 @@
           "candidate": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Candidate_Value",
                 "description": "Latest accepted setup, absent before the first candidate."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "closed_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Closing time in Unix milliseconds."
           },
           "etag": {
@@ -20122,10 +20359,10 @@
           },
           "expires_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Private retention deadline in Unix milliseconds."
           },
           "id": {
@@ -20142,11 +20379,11 @@
           "publication": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Publication",
                 "description": "Explicit publication receipt, never synthesized by Save."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20213,17 +20450,20 @@
             "description": "Who or what produced the event."
           },
           "cost_nanos": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "What this event actually cost, summed over its telemetry rows."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row was created."
           },
           "event_id": {
             "type": "string",
@@ -20284,20 +20524,20 @@
           "tool_calls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ToolTrace",
                 "description": "Every tool call the run made, with its arguments and how it ended.\n\n`null` when nothing was recorded. That is a run older than this field,\na runner that does not record calls, or a trace dropped for breaking a\nbound. `null` never means no tools ran."
+              },
+              {
+                "type": "null"
               }
             ],
             "description": "Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row last changed."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row last changed."
           },
           "wall_ms": {
             "type": [
@@ -20332,9 +20572,9 @@
             "description": "Who or what produced the event."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds at which the event was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event was created."
           },
           "event_id": {
             "type": "string",
@@ -20377,17 +20617,20 @@
             "description": "Who or what produced the event."
           },
           "cost_nanos": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "What this event actually cost, summed over its telemetry rows."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "What this event actually cost, summed over its telemetry rows."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row was created."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row was created."
           },
           "event_id": {
             "type": "string",
@@ -20435,9 +20678,9 @@
             "description": "Tokens the run spent, absent until a runner reports."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds the row last changed."
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row last changed."
           },
           "wall_ms": {
             "type": [
@@ -20541,11 +20784,11 @@
           "inference": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelInference",
                 "description": "Saved model inference settings, required for runtime provider connections."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20577,11 +20820,11 @@
           "repository_binding": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RepositoryBinding",
                 "description": "Repositories the run is bound to, when it is bound to any."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20772,12 +21015,12 @@
         ],
         "properties": {
           "budget_used_nanos": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Creation time in Unix milliseconds."
           },
           "definition": {
@@ -20845,8 +21088,8 @@
             "description": "Current lifecycle state."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last mutation in Unix milliseconds."
           },
           "webhook_urls": {
@@ -20914,13 +21157,20 @@
         ],
         "properties": {
           "budget_used_nanos": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Exact lifetime spend in nanos."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Creation time in Unix milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation time."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The saved purpose, as the fleet's setup describes it; null while the\nfleet has no saved setup."
           },
           "events_processed": {
             "type": "string",
@@ -20946,9 +21196,9 @@
             "description": "Authored trigger projection."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last mutation in Unix milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last mutation."
           }
         }
       },
@@ -20996,15 +21246,15 @@
         "properties": {
           "approved_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When a person approved it, or `null`."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the grant was raised."
           },
           "id": {
@@ -21017,10 +21267,10 @@
           },
           "revoked_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "When a person took that back, or `null`."
           },
           "service": {
@@ -21066,11 +21316,11 @@
           "capability_report": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "What this host can enforce, when the probe result is being reported."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21091,11 +21341,11 @@
           "selftest": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SelftestReport",
                 "description": "A verdict produced since the last beat, by request or by startup probe."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -21307,7 +21557,9 @@
         "enum": [
           "chat",
           "responses",
-          "messages"
+          "messages",
+          "gemini",
+          "ollama"
         ]
       },
       "InviteEmailResponse": {
@@ -21337,9 +21589,9 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was issued, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was issued."
           },
           "email": {
             "type": "string",
@@ -21347,20 +21599,20 @@
           },
           "email_sent_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+            "format": "date-time",
+            "description": "When the relay last accepted its email; `null` if\nit never has."
           },
           "email_status": {
             "type": "string",
             "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops being acceptable, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops being acceptable."
           },
           "id": {
             "type": "string",
@@ -21394,8 +21646,8 @@
             "description": "Whether new tenant discovery and installation are allowed."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last metadata mutation, in Unix milliseconds."
           }
         }
@@ -21418,8 +21670,8 @@
             "description": "Whether new tenant discovery and installation are allowed."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Last metadata mutation, in Unix milliseconds."
           }
         }
@@ -21430,6 +21682,15 @@
         "enum": [
           "known",
           "unknown"
+        ]
+      },
+      "LeaseDestination": {
+        "type": "string",
+        "description": "Whether the signed-in operator can open the lease's fleet.",
+        "enum": [
+          "available",
+          "fleet_deleted",
+          "not_permitted"
         ]
       },
       "LeaseKind": {
@@ -21488,9 +21749,9 @@
             "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
           },
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds after which the event becomes reclaimable."
+            "type": "string",
+            "format": "date-time",
+            "description": "The instant after which the event becomes reclaimable."
           },
           "lease_id": {
             "type": "string",
@@ -21499,11 +21760,11 @@
           "limits": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SandboxLimits",
                 "description": "The sandbox to run in; null uses this runner's configured defaults."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21557,11 +21818,11 @@
           "lease": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TaggedLease_Value",
                 "description": "The work, when there is any."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21593,7 +21854,6 @@
           "draft_id",
           "sequence",
           "fence",
-          "deletion_generation",
           "expires_at",
           "deadline",
           "model",
@@ -21614,22 +21874,18 @@
             "description": "Current immutable candidate, including its identity and revision."
           },
           "deadline": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Original attempt deadline; renewal cannot extend it."
-          },
-          "deletion_generation": {
             "type": "string",
-            "description": "Decimal private deletion generation."
+            "format": "date-time",
+            "description": "Original attempt deadline; renewal cannot extend it."
           },
           "draft_id": {
             "type": "string",
             "description": "Private source conversation identity."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Lease deadline in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "The lease deadline."
           },
           "fence": {
             "type": "string",
@@ -21803,9 +22059,9 @@
             "description": "Their address."
           },
           "joined_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When they joined the account, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When they joined the account."
           },
           "role": {
             "type": "string",
@@ -21958,9 +22214,9 @@
             "description": "The stable key the fleet remembers this under."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds, as a JSON NUMBER — never a decimal string."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last written."
           },
           "visibility": {
             "$ref": "#/components/schemas/Visibility",
@@ -22104,27 +22360,27 @@
             "description": "Accepted assistant proposal, when present."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Acceptance time, Unix milliseconds."
           },
           "failure": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Failure",
                 "description": "Daemon-derived bounded failure and recovery action."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "finished_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "Terminal time, Unix milliseconds."
           },
           "operation_id": {
@@ -22153,11 +22409,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Usage",
                 "description": "Provider usage and cumulative runtime charge, when recorded."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -22319,13 +22575,13 @@
         "description": "`POST /v1/runners/me/credentials/mint` reply.",
         "required": [
           "token",
-          "expires_at_ms"
+          "expires_at"
         ],
         "properties": {
-          "expires_at_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds after which it stops working, so the caller re-mints\nbefore expiry rather than on failure."
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops working, so the caller re-mints before expiry rather than\non failure. A credential with no upstream expiry carries the far-future\ninstant `9999-12-30T22:00:00.999Z`, so the caller's one comparison covers\nit."
           },
           "token": {
             "type": "string",
@@ -22362,8 +22618,8 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was minted."
           },
           "id": {
@@ -22418,8 +22674,8 @@
         ],
         "properties": {
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "Current lease expiry, capped by the attempt deadline."
           },
           "invocation_path": {
@@ -22439,7 +22695,6 @@
           "capability_token",
           "attempt_id",
           "fence",
-          "deletion_generation",
           "dispatch_id",
           "call_index",
           "request"
@@ -22458,10 +22713,6 @@
           "capability_token": {
             "type": "string",
             "description": "Random 256-bit base64url lease capability; never logged or spooled."
-          },
-          "deletion_generation": {
-            "type": "string",
-            "description": "Current private-text generation."
           },
           "dispatch_id": {
             "type": "string",
@@ -22503,11 +22754,11 @@
           "platform_default": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PlatformDefaultRow",
                 "description": "The default's identity, when there is one."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -22551,12 +22802,15 @@
             "description": "The custom endpoint, where one may be displayed."
           },
           "cached_input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The cached-input rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The cached-input rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "context_cap_tokens": {
             "type": [
@@ -22568,9 +22822,16 @@
             "minimum": 0
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The catalogue's label for the model. Absent for a model the catalogue\ndoes not carry, which a picker shows by its `model_id`."
           },
           "has_key": {
             "type": "boolean",
@@ -22581,12 +22842,15 @@
             "description": "The entry's identity."
           },
           "input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The input rate, in nanos per million tokens."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The input rate, in nanos per million tokens."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "kind": {
             "type": "string",
@@ -22597,12 +22861,15 @@
             "description": "The model this entry configures."
           },
           "output_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The output rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The output rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider": {
             "type": [
@@ -22639,7 +22906,7 @@
               "string",
               "null"
             ],
-            "description": "Registered rig dialect, or absent for a plain compatible gateway."
+            "description": "Registered rig dialect, or absent for a plain compatible gateway. The\nnative Gemini and Ollama APIs take none."
           },
           "max_output_tokens": {
             "type": "integer",
@@ -22738,51 +23005,18 @@
         ],
         "properties": {
           "input_nanos_per_million": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Input nanos per million tokens."
           },
           "output_nanos_per_million": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Output nanos per million tokens."
           },
           "runtime_nanos_per_second": {
-            "type": "string",
+            "$ref": "#/components/schemas/Nanos",
             "description": "Runtime nanos per second."
           }
         }
-      },
-      "ModelRates": {
-        "type": "object",
-        "description": "Mutable rate fields shared by admin model create and patch.",
-        "required": [
-          "context_cap_tokens",
-          "input_nanos_per_mtok",
-          "cached_input_nanos_per_mtok",
-          "output_nanos_per_mtok"
-        ],
-        "properties": {
-          "cached_input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Cached-input nanos per million tokens."
-          },
-          "context_cap_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum context tokens."
-          },
-          "input_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Input-token nanos per million tokens."
-          },
-          "output_nanos_per_mtok": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Output-token nanos per million tokens."
-          }
-        },
-        "additionalProperties": false
       },
       "ModelRequest_Value_Value_Value": {
         "type": "object",
@@ -22910,6 +23144,11 @@
           }
         ],
         "description": "Provider usage is either authoritative or unknown; estimates cannot clear liability."
+      },
+      "Nanos": {
+        "type": "string",
+        "description": "A whole number of nanos (10⁻⁹ US dollars) as a decimal string.",
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "NetworkPolicy": {
         "type": "object",
@@ -23061,11 +23300,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Status",
                 "description": "Replacement firing intent."
+              },
+              {
+                "type": "null"
               }
             ],
             "default": null
@@ -23122,8 +23361,8 @@
                   "description": "Whether it still authenticates."
                 },
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
+                  "type": "string",
+                  "format": "date-time",
                   "description": "When it was minted."
                 },
                 "id": {
@@ -23136,10 +23375,10 @@
                 },
                 "revoked_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
+                  "format": "date-time",
                   "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
                 }
               }
@@ -23184,9 +23423,9 @@
               ],
               "properties": {
                 "created_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it was issued, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it was issued."
                 },
                 "email": {
                   "type": "string",
@@ -23194,20 +23433,20 @@
                 },
                 "email_sent_at": {
                   "type": [
-                    "integer",
+                    "string",
                     "null"
                   ],
-                  "format": "int64",
-                  "description": "When the relay last accepted its email, epoch milliseconds; `null` if\nit never has."
+                  "format": "date-time",
+                  "description": "When the relay last accepted its email; `null` if\nit never has."
                 },
                 "email_status": {
                   "type": "string",
                   "description": "What became of its most recent email: `sent`, `failed`, or\n`unconfigured` when this deployment has no mail relay set up."
                 },
                 "expires_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it stops being acceptable, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it stops being acceptable."
                 },
                 "id": {
                   "type": "string",
@@ -23271,9 +23510,9 @@
                   "description": "Their address."
                 },
                 "joined_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When they joined the account, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When they joined the account."
                 },
                 "role": {
                   "type": "string",
@@ -23325,9 +23564,9 @@
                   "description": "The account accepting it joins."
                 },
                 "expires_at": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "When it stops being acceptable, epoch milliseconds."
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it stops being acceptable."
                 },
                 "id": {
                   "type": "string",
@@ -23435,11 +23674,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PatchStatus",
                 "description": "Supported lifecycle target, omitted to keep current state."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -23465,12 +23704,15 @@
         ],
         "properties": {
           "cached_input_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The cached-input rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The cached-input rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "context_cap_tokens": {
             "type": "integer",
@@ -23478,25 +23720,38 @@
             "description": "The context window the catalogue prices it at.",
             "minimum": 0
           },
-          "input_nanos_per_mtok": {
+          "display_name": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "The input rate, in nanos per million tokens."
+            "description": "The catalogue's label for the model. Absent when the catalogue\ncarries no price for it."
+          },
+          "input_nanos_per_mtok": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The input rate, in nanos per million tokens."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model": {
             "type": "string",
             "description": "The model it selects."
           },
           "output_nanos_per_mtok": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The output rate, likewise."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Nanos",
+                "description": "The output rate, likewise."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider": {
             "type": "string",
@@ -23558,9 +23813,9 @@
             "description": "Workspace holding the key."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last mutation instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last mutation instant."
           }
         },
         "additionalProperties": false
@@ -23700,17 +23955,17 @@
           "status",
           "cli_public_key",
           "token_name",
-          "expires_at_ms"
+          "expires_at"
         ],
         "properties": {
           "cli_public_key": {
             "type": "string",
             "description": "The public key the command line presented, echoed back."
           },
-          "expires_at_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When the window closes, in milliseconds since the epoch."
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the window closes."
           },
           "status": {
             "type": "string",
@@ -23835,10 +24090,10 @@
           },
           "resolved_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
+            "format": "date-time",
             "description": "On that 409 only: when the standing answer was given."
           },
           "resolved_by": {
@@ -24117,14 +24372,9 @@
         "description": "Own-lease renewal with cumulative observations.",
         "required": [
           "fence",
-          "deletion_generation",
           "usage"
         ],
         "properties": {
-          "deletion_generation": {
-            "type": "string",
-            "description": "Decimal private deletion generation."
-          },
           "fence": {
             "type": "string",
             "description": "Decimal current fence."
@@ -24138,30 +24388,14 @@
       },
       "RenewRequest": {
         "type": "object",
-        "description": "`POST /v1/runners/me/leases/{lease_id}/renew` request.\n\nCumulative token counts for the run so far, never deltas. Only the\ndifference since the last renewal is charged, so a retry that re-sends the\nsame totals charges nothing new.",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/renew` request.\n\nThe provider requests the run made since its last acknowledged renewal,\none line each. Lines are stored once per number, so a retry that re-sends\nthem charges nothing new; the daemon measures the run's time itself.",
         "required": [
-          "input_tokens",
-          "cached_input_tokens",
-          "output_tokens"
+          "requests"
         ],
         "properties": {
-          "cached_input_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative cache-read tokens.",
-            "minimum": 0
-          },
-          "input_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative prompt tokens.",
-            "minimum": 0
-          },
-          "output_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative completion tokens.",
-            "minimum": 0
+          "requests": {
+            "$ref": "#/components/schemas/RequestLines",
+            "description": "One line per provider request, possibly none."
           }
         },
         "additionalProperties": false
@@ -24174,9 +24408,18 @@
         ],
         "properties": {
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of the new deadline."
+            "type": "string",
+            "format": "date-time",
+            "description": "The new deadline."
+          },
+          "recorded_through": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The highest request line this renewal recorded, when it recorded any.\n\nThe runner forgets only the lines at or below it and sends the rest\nagain, with its next renewal or its report. A body the daemon could not\nread records none, so its lines are never lost to a renewal that still\nextended the lease.",
+            "minimum": 0
           }
         }
       },
@@ -24191,13 +24434,13 @@
         ],
         "properties": {
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Extended Unix-millisecond deadline."
+            "type": "string",
+            "format": "date-time",
+            "description": "The lease's extended expiry."
           },
           "model_access_expires_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "The original capability remains bound to the renewed lease."
           },
           "remaining_output_tokens": {
@@ -24321,19 +24564,11 @@
           "failure_detail",
           "response_text",
           "tokens",
-          "input_tokens",
-          "cached_input_tokens",
-          "output_tokens",
+          "requests",
           "telemetry",
           "checkpoint"
         ],
         "properties": {
-          "cached_input_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative cache-read tokens for the whole run.",
-            "minimum": 0
-          },
           "checkpoint": {
             "$ref": "#/components/schemas/ReportCheckpoint",
             "description": "Where to resume this session."
@@ -24349,11 +24584,11 @@
           "failure_reason": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/FailureClass",
                 "description": "The granular cause when the run failed."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24363,19 +24598,13 @@
             "description": "Monotonic guard, verified against the fleet's live sequence.",
             "minimum": 0
           },
-          "held_until_ms": {
+          "held_until": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "Epoch milliseconds until which this runner holds the run's sandbox,\nfrozen, for the fleet's next event. Absent when it holds none."
-          },
-          "input_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative prompt tokens for the whole run.",
-            "minimum": 0
+            "format": "date-time",
+            "description": "Until when this runner holds the run's sandbox, frozen, for the\nfleet's next event. Absent when it holds none."
           },
           "lease_id": {
             "type": "string",
@@ -24385,11 +24614,9 @@
             "$ref": "#/components/schemas/Outcome",
             "description": "The binary verdict."
           },
-          "output_tokens": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Cumulative completion tokens for the whole run.",
-            "minimum": 0
+          "requests": {
+            "$ref": "#/components/schemas/RequestLines",
+            "description": "The provider requests no renewal acknowledged yet, one line each."
           },
           "response_text": {
             "type": "string",
@@ -24402,17 +24629,17 @@
           "tokens": {
             "type": "integer",
             "format": "int64",
-            "description": "The run's total tokens, for reporting. Billing charges the three\ncumulative fields below, which settle against the usage ledger.",
+            "description": "The run's total tokens, for the event history. Billing charges\n`requests`, never this sum.",
             "minimum": 0
           },
           "tool_calls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ToolTrace",
                 "description": "Every tool call the run made, kept with its answer. Absent from\nrunners that do not record one. A trace that is not one, or that\nbreaks a bound, is dropped and the report still settles."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -24517,6 +24744,83 @@
           }
         }
       },
+      "RequestLines": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RequestUsage"
+        },
+        "description": "The request lines one renewal or report carries: none to [`LINES_MAX`].\n\nA renewal that saw no provider request since the last one sends none; the\ndaemon still logs the time it ran."
+      },
+      "RequestUsage": {
+        "type": "object",
+        "description": "One provider request's token counts, as the runner reports it.\n\nEach token is counted once: cached reads are not also input, cache writes\nare not also input, and reasoning is part of `output_tokens` exactly once.\nCache writes split by the lifetime the provider reported; a write with no\nreported lifetime is `cache_write_tokens`, never folded into either\nlifetime. Runtime is not here: the daemon measures it.",
+        "required": [
+          "seq",
+          "at",
+          "input_tokens",
+          "cached_input_tokens",
+          "cache_write_tokens",
+          "cache_write_5m_tokens",
+          "cache_write_1h_tokens",
+          "output_tokens"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the request was made, RFC 3339. The daemon clamps it to the work's\nown window before pricing."
+          },
+          "cache_write_1h_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cache writes with a one-hour lifetime.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "cache_write_5m_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cache writes with a five-minute lifetime.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "cache_write_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cache writes the provider reported no lifetime for.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens read from the provider's cache.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Uncached prompt tokens.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Completion tokens, reasoning included once.",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int32",
+            "description": "This request's number within its run, from zero.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "ResolveApprovalRequest": {
         "type": "object",
         "description": "The body a decision may carry.\n\nEvery field is optional, and so is the whole body. A decision is complete\nwithout a note, and demanding one would make the common answer the awkward\none.",
@@ -24578,8 +24882,8 @@
             "description": "Where it now stands."
           },
           "resolved_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was decided."
           },
           "resolved_by": {
@@ -24621,8 +24925,8 @@
             "description": "Content identity."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "id": {
@@ -24654,8 +24958,8 @@
             "description": "Canonical content identity."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "UTC milliseconds."
           },
           "definition": {
@@ -24702,11 +25006,21 @@
             "description": "The key's identifier."
           },
           "revoked_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When the row records it stopped working."
           }
         }
+      },
+      "RunState": {
+        "type": "string",
+        "description": "Whether a schedule will run, so a client never computes a run time for one\nthat is paused, unregistered or unreadable.",
+        "enum": [
+          "scheduled",
+          "paused",
+          "activation_pending",
+          "next_run_unavailable"
+        ]
       },
       "RunnerAdminAction": {
         "type": "string",
@@ -24726,22 +25040,22 @@
           "action": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RunnerAdminAction",
                 "description": "A state transition, token rotation, or self-test request. Sent alone."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "assigned_policy": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AssignedPolicy",
                 "description": "A policy re-assignment, which reaches the host on its next heartbeat."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24763,21 +25077,17 @@
         "description": "`PATCH /v1/fleets/runners/{id}` reply.",
         "required": [
           "id",
-          "admin_state"
+          "status"
         ],
         "properties": {
-          "admin_state": {
-            "$ref": "#/components/schemas/AdminState",
-            "description": "Its state after the change."
-          },
           "assigned_policy": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AssignedPolicy",
                 "description": "The assignment as stored, on the policy-update path."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -24797,11 +25107,15 @@
           },
           "selftest_requested_at": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "int64",
-            "description": "When the self-test request was recorded, epoch milliseconds.\n\nThe reply is the REQUEST, never a verdict — the daemon picks the ask up\non its next beat, so a result cannot exist yet. Returning the instant\nlets a reader age the pending state instead of spinning with no clock."
+            "format": "date-time",
+            "description": "When the self-test request was recorded.\n\nThe reply is the REQUEST, never a verdict — the daemon picks the ask up\non its next beat, so a result cannot exist yet. Returning the instant\nlets a reader age the pending state instead of spinning with no clock."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AdminState",
+            "description": "Its operator state after the change."
           }
         },
         "additionalProperties": false
@@ -24856,28 +25170,28 @@
               "selftest": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/SelftestReport",
                     "description": "Latest complete self-test report."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
               "selftest_completed_at": {
                 "type": [
-                  "integer",
+                  "string",
                   "null"
                 ],
-                "format": "int64",
+                "format": "date-time",
                 "description": "Latest self-test completion instant."
               },
               "selftest_requested_at": {
                 "type": [
-                  "integer",
+                  "string",
                   "null"
                 ],
-                "format": "int64",
+                "format": "date-time",
                 "description": "Outstanding self-test request instant."
               }
             }
@@ -24908,9 +25222,9 @@
             "description": "Event-specific detail. Free-form by design."
           },
           "occurred_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When."
           },
           "runner_id": {
             "type": "string",
@@ -24973,7 +25287,7 @@
           "id",
           "host_id",
           "sandbox_tier",
-          "admin_state",
+          "status",
           "liveness",
           "labels",
           "last_seen_at",
@@ -24985,26 +25299,22 @@
           "achievable": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "Capability report most recently supplied by the host."
+              },
+              {
+                "type": "null"
               }
             ]
-          },
-          "admin_state": {
-            "$ref": "#/components/schemas/AdminState",
-            "description": "Operator-controlled admission state."
           },
           "assigned_policy": {
             "$ref": "#/components/schemas/AssignedPolicy",
             "description": "Policy currently assigned to the host."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Enrolment instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Enrolment instant."
           },
           "degraded": {
             "type": "boolean",
@@ -25033,9 +25343,9 @@
             "description": "Placement labels."
           },
           "last_seen_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Last heartbeat instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Last heartbeat instant."
           },
           "liveness": {
             "$ref": "#/components/schemas/RunnerLiveness",
@@ -25044,6 +25354,10 @@
           "sandbox_tier": {
             "type": "string",
             "description": "Assigned isolation tier spelling."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AdminState",
+            "description": "Operator-controlled admission state."
           }
         },
         "additionalProperties": false
@@ -25054,10 +25368,9 @@
         "required": [
           "id",
           "fleet_id",
+          "destination",
           "workspace_id",
           "event_id",
-          "event_type",
-          "actor",
           "outcome",
           "kind",
           "fencing_token",
@@ -25072,21 +25385,31 @@
         ],
         "properties": {
           "actor": {
-            "type": "string",
-            "description": "Actor recorded on the Fleet event."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Actor recorded on the Fleet event, absent once the event row is gone."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Claim instant in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Claim instant."
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LeaseDestination",
+            "description": "Whether the caller can open the fleet. Never inferred from the name."
           },
           "event_id": {
             "type": "string",
             "description": "Fleet event identifier."
           },
           "event_type": {
-            "type": "string",
-            "description": "Fleet event type."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fleet event type, absent once the event row is gone."
           },
           "failure_detail": {
             "type": [
@@ -25127,9 +25450,9 @@
             "description": "Whether this was the first claim or a reclaim."
           },
           "lease_expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Holder deadline in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "Holder deadline."
           },
           "metered_cached_tokens": {
             "type": "integer",
@@ -25434,22 +25757,22 @@
           "override": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Override",
                 "description": "Present null restores inherited setup; an object replaces the overlay."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Status",
                 "description": "Independent-schedule firing intent."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25588,9 +25911,9 @@
             "description": "The custom endpoint, where one may be displayed."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
           },
           "kind": {
             "type": "string",
@@ -25669,11 +25992,11 @@
           "achievable": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CapabilityReport",
                 "description": "What the host reported it can actually enforce."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25701,9 +26024,9 @@
             "description": "The runner's identifier."
           },
           "last_seen_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of the last beat; zero when never seen."
+            "type": "string",
+            "format": "date-time",
+            "description": "The last beat; the Unix epoch when never seen."
           },
           "sandbox_tier": {
             "type": "string",
@@ -25796,9 +26119,9 @@
             "description": "The key its writer stored it under."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Epoch milliseconds of its last write."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last written."
           },
           "writer_fleet_id": {
             "type": "string",
@@ -25809,6 +26132,11 @@
             "description": "That fleet's name in the workspace."
           }
         }
+      },
+      "SignedNanos": {
+        "type": "string",
+        "description": "A whole number of nanos (10⁻⁹ US dollars) as a decimal string, negative for a debt.",
+        "pattern": "^(0|-?[1-9][0-9]*)$"
       },
       "Source_Value": {
         "oneOf": [
@@ -26064,9 +26392,9 @@
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it was first stored, in epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first stored."
           },
           "id": {
             "type": "string",
@@ -26730,18 +27058,24 @@
           "status",
           "sync",
           "etag",
+          "description",
+          "run_state",
           "created_at",
           "updated_at"
         ],
         "properties": {
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was created."
           },
           "cron": {
             "type": "string",
             "description": "The expression it fires on."
+          },
+          "description": {
+            "type": "string",
+            "description": "The expression in words, with the zone it is read in, for example\n`At 9:00 AM (Asia/Kolkata)`."
           },
           "etag": {
             "type": "string",
@@ -26762,6 +27096,14 @@
             "type": "string",
             "description": "What the fleet is asked to do."
           },
+          "next_run_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it next runs, computed by the server from the expression and its\nzone. Null unless `run_state` is `scheduled`."
+          },
           "once": {
             "type": "boolean",
             "description": "Whether it retires after its first fire. Beta: this field may change shape before it is stable.",
@@ -26770,13 +27112,17 @@
           "override": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Override",
                 "description": "Explicit instance overlay, omitted when the pinned recipe is inherited."
+              },
+              {
+                "type": "null"
               }
             ]
+          },
+          "run_state": {
+            "$ref": "#/components/schemas/RunState",
+            "description": "Whether the schedule will run, as the server reads it now."
           },
           "schedule_id": {
             "type": "string",
@@ -26800,8 +27146,8 @@
             "description": "The zone that expression is read in."
           },
           "updated_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was last changed."
           }
         }
@@ -26828,9 +27174,9 @@
             "description": "The account accepting it joins."
           },
           "expires_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "When it stops being acceptable, epoch milliseconds."
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops being acceptable."
           },
           "id": {
             "type": "string",
@@ -26971,8 +27317,8 @@
             "description": "The account it belongs to, which is how a dashboard groups the list."
           },
           "created_at": {
-            "type": "integer",
-            "format": "int64",
+            "type": "string",
+            "format": "date-time",
             "description": "When it was created; the walk's sort key."
           },
           "id": {

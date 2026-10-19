@@ -116,7 +116,7 @@ export async function listGatesForFleet(
   workspaceId: string,
   fleetId: string,
 ): Promise<ApprovalGate[]> {
-  const query = new URLSearchParams({ fleet_id: fleetId, gate_kind: KIND_INTEGRATION_GRANT });
+  const query = new URLSearchParams({ fleet_id: fleetId, gate_type: KIND_INTEGRATION_GRANT });
   const page = await clientFor(handle).get<ApprovalsListResponse>(
     `${APPROVALS_PATH(workspaceId)}?${query.toString()}`,
   );
@@ -167,8 +167,8 @@ export interface IntegrationGrant {
   readonly id: string;
   readonly service: string;
   readonly status: string;
-  readonly approved_at: number | null;
-  readonly revoked_at: number | null;
+  readonly approved_at: string | null;
+  readonly revoked_at: string | null;
   readonly reason: string | null;
 }
 
@@ -241,12 +241,12 @@ export async function readTenantBilling(handle: ClientHandle): Promise<TenantBil
 export async function chargedToFleets(
   handle: ClientHandle,
   fleetIds: readonly string[],
-): Promise<number> {
+): Promise<bigint> {
   const wanted = new Set(fleetIds);
   const page = await clientFor(handle).get<TenantBillingChargesResponse>(
     `${TENANT_CHARGES_PATH}?limit=${CHARGES_PAGE_LIMIT}`,
   );
   return page.items
     .filter((row) => row.fleet_id !== null && wanted.has(row.fleet_id))
-    .reduce((total, row) => total + row.credit_deducted_nanos, 0);
+    .reduce((total, row) => total + BigInt(row.credit_deducted_nanos), 0n);
 }

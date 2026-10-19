@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { SECRET_ROW_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
 
 const routerRefresh = vi.fn();
 
@@ -52,9 +51,9 @@ afterEach(() => cleanup());
 
 describe("SecretsList component", () => {
   async function renderList(
-    secrets: Array<{ name: string; created_at: number }> = [
-      { name: "fly", created_at: Date.UTC(2026, 3, 26, 12) },
-      { name: "slack", created_at: Date.UTC(2026, 3, 26, 12, 1) },
+    secrets: Array<{ name: string; created_at: string }> = [
+      { name: "fly", created_at: new Date(Date.UTC(2026, 3, 26, 12)).toISOString() },
+      { name: "slack", created_at: new Date(Date.UTC(2026, 3, 26, 12, 1)).toISOString() },
     ],
     protectedSecretName?: string | null,
   ) {
@@ -127,7 +126,7 @@ describe("SecretsList component", () => {
     const { container } = await renderList();
     expect(screen.getByText("fly")).toBeTruthy();
     expect(screen.getByText("slack")).toBeTruthy();
-    expect(screen.getAllByText(SECRET_ROW_DESCRIPTION)).toHaveLength(2);
+    expect(screen.queryByText("Encrypted and hidden.")).toBeNull();
     // Created now renders a relative <Time> ("… ago"); the absolute Apr 26 2026
     // string moved into the hover tooltip. Each row carries a desktop and a
     // mobile timestamp; CSS selects one at each width.
@@ -152,10 +151,10 @@ describe("SecretsList component", () => {
   it("test_secret_write_only_masked: stored secret is masked (suffix only), Replace present, never re-revealed", async () => {
     const user = userEvent.setup();
     // The vault never returns plaintext, so the list renders only the name +
-    // the "write-only" label — the secret value never appears in the DOM.
-    await renderList([{ name: "openai-key", created_at: Date.UTC(2026, 3, 26, 12) }]);
+    // creation date — the secret value never appears in the DOM.
+    await renderList([{ name: "openai-key", created_at: new Date(Date.UTC(2026, 3, 26, 12)).toISOString() }]);
     expect(screen.getByText("openai-key")).toBeTruthy();
-    expect(screen.getByText(SECRET_ROW_DESCRIPTION)).toBeTruthy();
+    expect(screen.queryByText("Encrypted and hidden.")).toBeNull();
     // No plaintext secret is rendered anywhere.
     expect(document.body.textContent).not.toMatch(/sk-[a-z0-9]/i);
 
@@ -225,7 +224,7 @@ describe("SecretsList component", () => {
 
   it("confirm on an empty-named secret is a no-op", async () => {
     const user = userEvent.setup();
-    await renderList([{ name: "", created_at: Date.UTC(2026, 3, 26, 12, 2) }]);
+    await renderList([{ name: "", created_at: new Date(Date.UTC(2026, 3, 26, 12, 2)).toISOString() }]);
     await user.click(screen.getByLabelText(/^Delete secret\s*$/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^delete$/i }));

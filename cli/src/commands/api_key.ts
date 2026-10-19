@@ -16,6 +16,7 @@ import {
   tenantApiKeyPath,
 } from "../lib/api-paths.ts";
 import { UnexpectedError, ValidationError, type CliError } from "../errors/index.ts";
+import { instantCell } from "../output/index.ts";
 import {
   API_KEY_CREATED_AT,
   API_KEY_KEY_NAME,
@@ -39,15 +40,15 @@ interface CreatedApiKey {
   readonly id?: string;
   readonly key_name?: string;
   readonly key?: string;
-  readonly created_at?: number | string | null;
+  readonly created_at?: string | null;
 }
 
 interface ApiKeyRow {
   readonly id?: string;
   readonly key_name?: string;
   readonly active?: boolean;
-  readonly created_at?: number | string | null;
-  readonly revoked_at?: number | string | null;
+  readonly created_at?: string | null;
+  readonly revoked_at?: string | null;
 }
 
 interface ApiKeyListResponse {
@@ -59,7 +60,7 @@ interface ApiKeyListResponse {
 interface RevokedApiKey {
   readonly id?: string;
   readonly active?: boolean;
-  readonly revoked_at?: number | string | null;
+  readonly revoked_at?: string | null;
 }
 
 const KEY_NAME = API_KEY_KEY_NAME;
@@ -89,11 +90,6 @@ const parseSort = (raw: string | undefined): Effect.Effect<string, ValidationErr
     }),
   );
 };
-
-const formatTime = (
-  value: number | string | null | undefined,
-  missing: string,
-): string => (value ? new Date(value).toISOString() : missing);
 
 const queryForList = (sort: string, startingAfter: string | undefined): string => {
   const query = new URLSearchParams();
@@ -154,7 +150,7 @@ export const apiKeyCreateEffectFromArgs = (
       [
         { label: API_KEY_ID, value: res.id ?? "" },
         { label: KEY_NAME, value: res.key_name ?? name },
-        { label: CREATED_AT, value: formatTime(res.created_at, TIME_MISSING) },
+        { label: CREATED_AT, value: instantCell(res.created_at, TIME_MISSING) },
       ],
     );
   });

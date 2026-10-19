@@ -53,17 +53,17 @@ async fn the_scheduler_files_the_schedule_under_the_id_a_fire_resolves() {
 
     let registered = push(&lane, &service, &created.schedule_id, Change::default()).await;
     assert_eq!(
-        registered.source_key,
+        registered.provider_schedule_id,
         upstream_id(&created.schedule_id),
         "the scheduler must file the schedule under the id this daemon named"
     );
     assert_eq!(
-        schedule_of(&registered.source_key),
+        schedule_of(&registered.provider_schedule_id),
         Some(created.schedule_id.clone()),
         "the id a fire carries back must resolve to this row"
     );
     assert_eq!(
-        held_cron(&url, &token, &registered.source_key).await,
+        held_cron(&url, &token, &registered.provider_schedule_id).await,
         FIRST_CRON
     );
 
@@ -75,11 +75,11 @@ async fn the_scheduler_files_the_schedule_under_the_id_a_fire_resolves() {
     };
     let repushed = push(&lane, &service, &created.schedule_id, edited).await;
     assert_eq!(
-        repushed.source_key, registered.source_key,
+        repushed.provider_schedule_id, registered.provider_schedule_id,
         "a repeat push keeps the one registration"
     );
     assert_eq!(
-        held_cron(&url, &token, &registered.source_key).await,
+        held_cron(&url, &token, &registered.provider_schedule_id).await,
         EDITED_CRON,
         "the registration under the same id carries the edit"
     );
@@ -143,7 +143,6 @@ async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
             &created.schedule_id,
             status(DesiredStatus::Paused),
             &stale,
-            CronLane::now(),
         )
         .await
         .expect("the lane's Postgres must answer")
@@ -158,10 +157,13 @@ async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
         status(DesiredStatus::Active),
     )
     .await;
-    assert_eq!(resumed.source_key, registered.source_key);
+    assert_eq!(
+        resumed.provider_schedule_id,
+        registered.provider_schedule_id
+    );
 
     let overtaken = service
-        .reconcile(&pausing, &stale, CronLane::now())
+        .reconcile(&pausing, &stale)
         .await
         .expect("a reachable scheduler is not a datastore failure");
     assert!(
@@ -169,7 +171,7 @@ async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
         "the overtaken pause is refused, got {overtaken:?}"
     );
     assert!(
-        holds(&url, &token, &registered.source_key).await,
+        holds(&url, &token, &registered.provider_schedule_id).await,
         "the old pause must not remove the registration the newer resume made"
     );
 }
@@ -191,18 +193,12 @@ async fn delete(lane: &CronLane, service: &Reconciler, schedule: &Uuid7) -> Reco
     let claim = CronLane::token();
     let deleting = lane
         .store
-        .claim_change(
-            &lane.fleet_id(),
-            schedule,
-            removing,
-            &claim,
-            CronLane::now(),
-        )
+        .claim_change(&lane.fleet_id(), schedule, removing, &claim)
         .await
         .expect("the lane's Postgres must answer")
         .expect("the schedule is claimable for deletion");
     service
-        .reconcile(&deleting, &claim, CronLane::now())
+        .reconcile(&deleting, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure")
 }
@@ -217,12 +213,12 @@ async fn push(
     let claim = CronLane::token();
     let held = lane
         .store
-        .claim_change(&lane.fleet_id(), schedule, change, &claim, CronLane::now())
+        .claim_change(&lane.fleet_id(), schedule, change, &claim)
         .await
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
     let reconciled = service
-        .reconcile(&held, &claim, CronLane::now())
+        .reconcile(&held, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
     let Reconciled::Synced(row) = reconciled else {

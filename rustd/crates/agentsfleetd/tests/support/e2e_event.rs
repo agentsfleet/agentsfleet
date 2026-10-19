@@ -32,14 +32,14 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_admission::{Admission, Admissions, Key, Producer, logical_id};
-use afd_core::clock::UnixMillis;
+use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_wire::event::{Entry, EventType};
 use agentsfleetd::serve::Booted;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::e2e::{ACTOR, REQUEST_JSON};
 
@@ -97,11 +97,12 @@ pub(crate) async fn enqueue_unsupported(
     fleet: &str,
     workspace: &str,
     event_type: &str,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> String {
     ensure_group(booted, fleet).await;
-    let (row_id, event_id) = insert_admission(booted, fleet, workspace, event_type, now).await;
-    let created_at = now.as_millis().to_string();
+    let row_id = insert_admission(booted, fleet, workspace, event_type, now).await;
+    let event_id = row_id.as_str().to_owned();
+    let created_at = now.to_string();
     let entry = Entry {
         actor: ACTOR,
         event_type,
@@ -113,21 +114,18 @@ pub(crate) async fn enqueue_unsupported(
         .append(fleet, &entry.queued_pairs(&event_id))
         .await
         .expect("the entry must append");
-    sqlx::query(
-        "UPDATE core.fleet_admissions SET receipt = $2, updated_at = $3 WHERE id = $1::uuid",
-    )
-    .bind(row_id.as_str())
-    .bind(receipt.as_str())
-    .bind(now.as_millis())
-    .execute(
-        &mut *booted
-            .database
-            .acquire()
-            .await
-            .expect("a pooled connection"),
-    )
-    .await
-    .expect("the receipt must record");
+    sqlx::query("UPDATE fleet.admissions SET receipt = $2, updated_at = now() WHERE id = $1::uuid")
+        .bind(row_id.as_str())
+        .bind(receipt.as_str())
+        .execute(
+            &mut *booted
+                .database
+                .acquire()
+                .await
+                .expect("a pooled connection"),
+        )
+        .await
+        .expect("the receipt must record");
     ReadyIndex::new(booted.queue.clone())
         .mark(fleet)
         .await
@@ -135,15 +133,14 @@ pub(crate) async fn enqueue_unsupported(
     event_id
 }
 
-/// The ledger row for [`enqueue_unsupported`]: its id, and the logical id the
-/// row's own `created_at` and `seq` spell.
+/// The ledger row for [`enqueue_unsupported`]: its id, which is the event's.
 async fn insert_admission(
     booted: &Booted,
     fleet: &str,
     workspace: &str,
     event_type: &str,
-    now: UnixMillis,
-) -> (Uuid7, String) {
+    now: Timestamp,
+) -> Uuid7 {
     let row_id = Uuid7::encode(
         now,
         Entropy::new()
@@ -151,13 +148,12 @@ async fn insert_admission(
             .expect("the host's entropy must answer"),
     )
     .expect("a version-7 id");
-    let row = sqlx::query(
-        "INSERT INTO core.fleet_admissions
+    sqlx::query(
+        "INSERT INTO fleet.admissions
            (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
             actor, event_type, request_json, event_created_at, replay_count,
             created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $1, $5, $6, $7, $8, $9, $10, $9, $9)
-         RETURNING created_at, seq",
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $1, $5, $6, $7, $8, $9, $10, $9, $9)",
     )
     .bind(row_id.as_str())
     .bind(fleet)
@@ -167,9 +163,9 @@ async fn insert_admission(
     .bind(ACTOR)
     .bind(event_type)
     .bind(REQUEST_JSON)
-    .bind(now.as_millis())
+    .bind(now.to_sqlx())
     .bind(NO_REPLAYS)
-    .fetch_one(
+    .execute(
         &mut *booted
             .database
             .acquire()
@@ -178,9 +174,7 @@ async fn insert_admission(
     )
     .await
     .expect("the admission row must insert");
-    let created_at: i64 = row.try_get(0).expect("created_at is a bigint");
-    let seq: i64 = row.try_get(1).expect("seq is a bigint");
-    (row_id, logical_id(created_at, seq))
+    row_id
 }
 
 /// The consumer group the daemon reads the fleet under.

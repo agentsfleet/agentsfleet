@@ -10,21 +10,21 @@ use crate::harness;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{ApiKeySeed, TenantSeed, TestDatabase, mint_id};
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
+use jiff::Timestamp;
 use std::borrow::Cow;
 
 use self::harness::{Fleet, json_body, send};
 
 const OPERATOR: &str = "fixture:platform-operator";
-const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -80,6 +80,23 @@ async fn platform_operator_rotates_runner_token_once() {
     assert_eq!(replacement.status(), StatusCode::OK);
     assert_eq!(fixtures.rotation_actor(&runner_id).await, OPERATOR);
 
+    // A runner the platform never enrolled has no token to rotate, and the
+    // refusal reveals nothing a client could hold.
+    let unknown = afd_db::test_util::mint_id();
+    let refused = send(
+        &router,
+        Method::PATCH,
+        &format!("/v1/fleets/runners/{unknown}"),
+        Some(&fixtures.operator_token),
+        r#"{"action":"rotate"}"#,
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    assert!(
+        json_body(refused).await.get("runner_token").is_none(),
+        "a refused rotation carries no token"
+    );
+
     fixtures.cleanup().await;
 }
 
@@ -107,12 +124,11 @@ struct Fixtures {
 impl Fixtures {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let first = afd_db::test_util::mint_id().replace('-', "");
-        let second = afd_db::test_util::mint_id().replace('-', "");
+        let first = mint_id().replace('-', "");
+        let second = mint_id().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            tenant: Uuid7::parse(&afd_db::test_util::mint_id())
-                .expect("the fixture tenant id is well formed"),
+            tenant: Uuid7::parse(&mint_id()).expect("the fixture tenant id is well formed"),
             operator_token: format!("agt_t{first}{second}"),
             lane,
         }
@@ -122,30 +138,23 @@ impl Fixtures {
         let digest =
             Digest::of(&Presented::new(&self.operator_token).expect("fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS (\
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($2::uuid, 'Rotation test', 1, 1)\
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, \
-                active, revoked_at, created_at, updated_at) \
-             VALUES ($3::uuid, $2::uuid, 'operator', '', \
-                     $1, $4, TRUE, NULL, 1, 1)",
-        )
-        .bind(digest.as_str())
-        .bind(self.tenant.as_str())
-        .bind(afd_db::test_util::mint_id())
-        .bind(OPERATOR)
-        .execute(&mut *connection)
-        .await
-        .expect("the operator credential seeds");
+        TenantSeed::new(self.tenant.as_str())
+            .name("Rotation test")
+            .insert(&mut *connection)
+            .await
+            .expect("the operator's tenant seeds");
+        let key = mint_id();
+        ApiKeySeed::new(&key, self.tenant.as_str(), digest.as_str(), OPERATOR)
+            .name("operator")
+            .insert(&mut *connection)
+            .await
+            .expect("the operator credential seeds");
     }
 
     async fn rotation_actor(&self, runner_id: &str) -> String {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT metadata ->> 'actor_id' FROM fleet.runner_events \
+            "SELECT metadata ->> 'actor_id' FROM runner.events \
              WHERE runner_id = $1::uuid AND event_type = 'runner_token_rotated'",
         )
         .bind(runner_id)

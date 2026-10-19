@@ -6,14 +6,17 @@
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
+use jiff::Timestamp;
 
 use super::ReadyToken;
 
 /// An instant every test here mints at, so the two tokens a test compares
 /// can differ only by their random half.
-const SAME_INSTANT: UnixMillis = UnixMillis::from_millis(1_759_000_000_000);
+const SAME_INSTANT: Timestamp = Timestamp::constant(1_759_000_000, 0);
+
+/// A second before the epoch, which no `UUIDv7` can carry.
+const PRE_EPOCH: Timestamp = Timestamp::constant(-1, 0);
 
 /// Two marks of one fleet in the same millisecond still mint two tokens, so a
 /// poll holding the first cannot clear the second.
@@ -75,7 +78,7 @@ fn a_refused_draw_mints_nothing() {
 /// An instant with no version-7 spelling is refused the same way.
 #[test]
 fn an_instant_before_the_epoch_mints_nothing() {
-    let refused = ReadyToken::mint(&Entropy::new(), UnixMillis::from_millis(-1))
+    let refused = ReadyToken::mint(&Entropy::new(), PRE_EPOCH)
         .expect_err("a negative instant has no version-7 spelling");
 
     assert!(refused.is_unmintable(), "{refused}");

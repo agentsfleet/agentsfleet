@@ -28,6 +28,9 @@ const_format.workspace = true
 # Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
 # types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true
+# Every `_at` field is a `jiff::Timestamp`, written by `crate::instant` as RFC
+# 3339 in UTC with three fraction digits.
+jiff.workspace = true
 # Free-form wire fields (`secrets_map`, event `metadata`) are opaque documents
 # the daemon carries verbatim. `preserve_order` is load-bearing: without it an
 # object's keys re-serialize in hash order and the byte comparison fails.
@@ -42,12 +45,14 @@ afd_fleet_runtime = { workspace = true, optional = true }
 
 [features]
 # Generates the OpenAPI schemas for these wire types. NOT default: the shipped
-# daemon resolves a dependency graph carrying serde and serde_json alone.
+# daemon resolves a dependency graph carrying serde, serde_json and jiff alone.
 openapi = ["dep:utoipa", "dep:afd_fleet_runtime", "afd_fleet_runtime/openapi"]
 
 [dev-dependencies]
 # Pins every route template in one reviewed snapshot.
 insta.workspace = true
+# Checks the published nanos patterns against the strings serde writes.
+regex.workspace = true
 serde_json.workspace = true
 
 [lints]

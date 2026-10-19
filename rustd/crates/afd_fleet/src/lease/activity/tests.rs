@@ -8,11 +8,11 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
+use jiff::Timestamp;
 
 use super::{Published, Target, first_visible_candidate_ms};
 
@@ -27,13 +27,12 @@ const TOOL: &str = "shell";
 
 /// A lease holder's target, eligible for timing.
 fn target() -> Target {
-    const FIXTURE_MILLIS: i64 = 1_000;
+    const FIXTURE: Timestamp = Timestamp::constant(1, 0);
     Target {
-        fleet_id: Uuid7::encode(UnixMillis::from_millis(FIXTURE_MILLIS), [0; ENTROPY_LEN])
-            .expect("fixture fleet id"),
+        fleet_id: Uuid7::encode(FIXTURE, [0; ENTROPY_LEN]).expect("fixture fleet id"),
         event_id: "event".to_owned(),
-        lease_created_at: 0,
-        event_created_at: 0,
+        lease_created_at: Timestamp::UNIX_EPOCH,
+        event_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,
         fence: FENCE,
     }

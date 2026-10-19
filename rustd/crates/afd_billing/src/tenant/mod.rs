@@ -22,19 +22,19 @@ pub mod cursor;
 
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+use sqlx::postgres::{PgArguments, PgRow};
+use sqlx::query::QueryAs;
+use sqlx::{FromRow, Postgres, SqlSafeStr};
 
-use crate::tenant_sql as sql;
-use crate::{Result, error};
+use crate::{Result, Wallet, error, sql};
 
 /// The context a datastore failure on the snapshot path reports under.
 const CONTEXT_SNAPSHOT: &str = "read tenant wallet";
 
 /// The context the charges walk reports under.
 const CONTEXT_CHARGES: &str = "list tenant charges";
-
-/// The context a column this daemon cannot read reports under.
-const CONTEXT_ROW: &str = "read charge row";
 
 /// The most rows one charges page may carry.
 ///
@@ -66,19 +66,12 @@ impl Billing {
     /// it is. Reports a datastore that would not answer.
     pub async fn snapshot(&self, tenant: &Uuid7) -> Result<Wallet> {
         let mut connection = self.database.acquire().await?;
-        let row: Option<(i64, i64, Option<i64>)> = sqlx::query_as(sql::SELECT_TENANT_BALANCE)
+        let wallet: Option<Wallet> = sqlx::query_as(sql::SELECT_WALLET)
             .bind(tenant.as_str())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_SNAPSHOT))?;
-
-        let (balance_nanos, updated_at_ms, exhausted_at_ms) =
-            row.ok_or_else(error::billing_wallet_missing)?;
-        Ok(Wallet {
-            balance_nanos,
-            updated_at_ms,
-            exhausted_at_ms,
-        })
+        wallet.ok_or_else(error::billing_wallet_missing)
     }
 
     /// One page of the tenant's charges, newest first.
@@ -97,98 +90,103 @@ impl Billing {
         boundary: Option<&cursor::Boundary>,
     ) -> Result<Vec<ChargeRow>> {
         let mut connection = self.database.acquire().await?;
-        let query = match boundary {
-            None => sqlx::query(sql::SELECT_TENANT_CHARGES_PAGE_FIRST)
-                .bind(tenant.as_str())
-                .bind(i64::from(limit)),
-            Some(after) => sqlx::query(sql::SELECT_TENANT_CHARGES_PAGE_AFTER)
-                .bind(tenant.as_str())
-                .bind(after.recorded_at)
-                .bind(after.id.as_str())
-                .bind(i64::from(limit)),
-        };
-        let rows = query
+        page(|statement| statement, tenant, limit, boundary)
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_CHARGES))?;
-
-        rows.iter().map(ChargeRow::read).collect()
+            .map_err(error::query(CONTEXT_CHARGES))
     }
 }
 
-/// The wallet, as the dashboard's Billing tab reads it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Wallet {
-    /// What remains, in nanos — one thousand-millionth of a dollar.
-    pub balance_nanos: i64,
-    /// When the balance last moved.
-    pub updated_at_ms: i64,
-    /// When the balance reached zero, if it has.
-    pub exhausted_at_ms: Option<i64>,
+/// The page [`Billing::charges`] runs, binds and all, with its statement handed
+/// through `wrap` first.
+///
+/// The paging plan proof prefixes `EXPLAIN` here, so the plan it grades is the
+/// statement and the seven binds the store sends, never a copy of them.
+#[cfg(feature = "test-util")]
+pub fn charges_query<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+    limit: u32,
+    boundary: Option<&'q cursor::Boundary>,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    page(wrap, tenant, limit, boundary)
 }
 
-/// One runtime ledger row or setup settlement, as the charges response shows it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The first page with no boundary, or a later page strictly older than it.
+fn page<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+    limit: u32,
+    boundary: Option<&'q cursor::Boundary>,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    match boundary {
+        None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
+            .bind(tenant.as_str())
+            .bind(i64::from(limit))
+            .bind(sql::CHARGE_TYPE_AUTHORING)
+            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::charge::STAGE),
+        Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
+            .bind(tenant.as_str())
+            .bind(after.created_at.to_sqlx())
+            .bind(after.id.as_str())
+            .bind(i64::from(limit))
+            .bind(sql::CHARGE_TYPE_AUTHORING)
+            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::charge::STAGE),
+    }
+}
+
+/// One fleet charge or setup settlement, as the charges response shows it.
+///
+/// Decoded by name through `FromRow`, so each field is its column's name.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct ChargeRow {
-    /// The ledger row's or setup settlement's identifier.
+    /// The charge's or settlement's identifier.
     pub id: String,
     /// Whose charge it is.
     pub tenant_id: String,
-    /// The workspace it was incurred in, until that workspace is deleted.
-    pub workspace_id: Option<String>,
-    /// Runtime fleet identity survives deletion. Setup may have no fleet yet;
-    /// when its private draft remains, its public saved-fleet link is used.
+    /// The workspace it was incurred in. No foreign key on either source, so
+    /// it outlives the workspace.
+    pub workspace_id: String,
+    /// The fleet it was incurred by. A fleet charge always names it, and the
+    /// name OUTLIVES the fleet: no foreign key, so a purged fleet's charges
+    /// still name themselves. A setup settlement names the fleet its draft was
+    /// saved as, and nothing while the draft has none.
     pub fleet_id: Option<String>,
-    /// Runtime rows keep the name captured when charged. Setup rows use the
-    /// linked public fleet's current name, or `None` without a retained link.
+    /// That fleet's name. A fleet charge's is a snapshot taken when it was
+    /// written, so a later rename never reaches it, and a fleet purged before
+    /// the charge landed leaves its identifier here, equal to `fleet_id`. A
+    /// setup settlement's is the saved fleet's current name.
     pub fleet_name: Option<String>,
-    /// The runtime event, absent for setup chats.
+    /// The event that triggered the work; a setup chat has none.
     pub event_id: Option<String>,
-    /// Content-free setup attempt identity, absent for runtime events.
+    /// The setup attempt a settlement paid for; a fleet charge has none.
     pub authoring_attempt_id: Option<String>,
-    /// `receive`, `stage`, or `authoring`.
+    /// `stage` for one usage line of a fleet run, or
+    /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,
     /// The model the stage ran against.
     pub model: String,
     /// What this row drained, in nanos.
-    pub credit_deducted_nanos: i64,
+    pub charged_nanos: i64,
     /// Tokens in, on stage rows that have settled.
-    pub token_count_input: Option<i64>,
+    pub input_token_count: Option<i64>,
     /// Tokens out, likewise.
-    pub token_count_output: Option<i64>,
+    pub output_token_count: Option<i64>,
     /// How long the stage ran.
     pub wall_ms: Option<i64>,
-    /// When the row was written — the walk's sort key.
-    pub recorded_at: i64,
-}
-
-impl ChargeRow {
-    /// Reads one row by column name.
-    ///
-    /// Through [`error::query`] with one context, the way the api-key reader
-    /// is: a `try_get` failure already names the column and the type it
-    /// refused, so a second spelling of the column here would be the same fact
-    /// twice.
-    fn read(row: &sqlx::postgres::PgRow) -> Result<Self> {
-        let unreadable = error::query(CONTEXT_ROW);
-        Ok(Self {
-            id: row.try_get("id").map_err(&unreadable)?,
-            tenant_id: row.try_get("tenant_id").map_err(&unreadable)?,
-            workspace_id: row.try_get("workspace_id").map_err(&unreadable)?,
-            fleet_id: row.try_get("fleet_id").map_err(&unreadable)?,
-            event_id: row.try_get("event_id").map_err(&unreadable)?,
-            authoring_attempt_id: row.try_get("authoring_attempt_id").map_err(&unreadable)?,
-            charge_type: row.try_get("charge_type").map_err(&unreadable)?,
-            posture: row.try_get("posture").map_err(&unreadable)?,
-            model: row.try_get("model").map_err(&unreadable)?,
-            fleet_name: row.try_get("fleet_name").map_err(&unreadable)?,
-            credit_deducted_nanos: row.try_get("credit_deducted_nanos").map_err(&unreadable)?,
-            token_count_input: row.try_get("token_count_input").map_err(&unreadable)?,
-            token_count_output: row.try_get("token_count_output").map_err(&unreadable)?,
-            wall_ms: row.try_get("wall_ms").map_err(&unreadable)?,
-            recorded_at: row.try_get("created_at").map_err(&unreadable)?,
-        })
-    }
+    /// When the row was written: the walk's sort key.
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub created_at: Timestamp,
 }

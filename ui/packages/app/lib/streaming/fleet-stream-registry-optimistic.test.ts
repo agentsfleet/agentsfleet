@@ -54,7 +54,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
 
     reconcileOptimistic(Z_A, tempId, "evt_mine", false);
     expect(getSnapshot(Z_A).events[0]?.submittedAtMs).toBe(stamped);
-    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_mine", actor: "steer:k@e2e.com", created_at: Date.UTC(2026, 0, 1) });
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_mine", actor: "steer:k@e2e.com", created_at: new Date(Date.UTC(2026, 0, 1)).toISOString() });
     // A frame that lands on the row synchronously, so nothing here waits.
     sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_mine", name: "read_file", args_redacted: true });
     expect(getSnapshot(Z_A).events).toHaveLength(1);
@@ -68,7 +68,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "keep this turn visible", "steer:k@e2e.com");
     reconcileOptimistic(Z_A, tempId, "evt_ack", false);
-    const newerRow = row({ event_id: "evt_other", status: "processed", created_at: Date.UTC(2026, 4, 15) });
+    const newerRow = row({ event_id: "evt_other", status: "processed", created_at: new Date(Date.UTC(2026, 4, 15)).toISOString() });
 
     reconcileServerRows(Z_A, [newerRow]);
     expect(getSnapshot(Z_A).events.at(-1)?.id).toBe("evt_ack");
@@ -78,7 +78,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
       kind: FRAME_KIND.EVENT_RECEIVED,
       event_id: "evt_ack",
       actor: "steer:k@e2e.com",
-      created_at: clientInstant,
+      created_at: new Date(clientInstant).toISOString(),
     });
     reconcileServerRows(Z_A, [newerRow]);
     expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual(["evt_ack", "evt_other"]);

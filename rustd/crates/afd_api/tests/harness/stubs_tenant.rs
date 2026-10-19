@@ -30,6 +30,9 @@ use super::readiness::unreachable_pool;
 /// half. Any other well-formed identifier is somebody else's.
 pub(crate) const OWNED_WORKSPACE: &str = "01924f4e-0000-7000-8000-00000000beef";
 
+/// A well-formed workspace identifier [`OneWorkspace`] does not own.
+pub(crate) const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
+
 /// The deployment every fixture credential records.
 pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
 

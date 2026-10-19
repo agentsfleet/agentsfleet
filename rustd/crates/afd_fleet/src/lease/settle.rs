@@ -1,5 +1,5 @@
 //! The report's money half: the lease it is about, and the one statement that
-//! claims it and charges its final slice.
+//! claims it and measures its final slice.
 //!
 //! Split from [`super::report`] the way [`super::affinity`] is split from
 //! [`super::pull`] — this file is what the datastore does, that one is the
@@ -7,27 +7,27 @@
 //!
 //! # `Settled` is an enum
 //!
-//! Whether the claim won and what it charged are not independent: a report
-//! that lost the fence charges nothing. A `{ claimed: bool, charged: i64 }`
-//! pair would permit `claimed = false` with a non-zero amount and leave every
-//! caller free to read the amount without checking the flag, one `if` away
-//! at every call site.
+//! Whether the claim won and what it logged are not independent: a report that
+//! lost the fence logs nothing. A `{ claimed: bool, line: Option<..> }` pair
+//! would permit `claimed = false` with a line and leave every caller free to
+//! read the line without checking the flag, one `if` away at every call site.
 //!
-//! The enum says it once: [`Settled::Claimed`] CARRIES the amount and neither
-//! [`Settled::Fenced`] nor [`Settled::AlreadySettled`] has anywhere to put
-//! one. Reading a charge without having established the claim is not a mistake
-//! to avoid; it does not compile.
+//! The enum says it once: [`Settled::Claimed`] CARRIES the final slice's usage
+//! line and neither [`Settled::Fenced`] nor [`Settled::AlreadySettled`] has
+//! anywhere to put one. Reading a charge without having established the claim
+//! is not a mistake to avoid; it does not compile.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _};
+use jiff::Timestamp;
+use sqlx::{FromRow as _, PgConnection};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::affinity::Fence;
 use crate::lease::sql;
-use crate::lease::sql::report::SettleRow;
+use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
-use afd_billing::{Meter, Nanos};
+use crate::lease::usage::{self, Pricing, SliceColumns};
+use afd_billing::biller::Settlement;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "report lease load";
@@ -39,7 +39,7 @@ const CONTEXT_SETTLE: &str = "report claim and settle";
 const CONTEXT_DISPOSITION: &str = "report lease disposition";
 
 /// The table a malformed identifier column is reported against.
-const TABLE_LEASES: &str = "fleet.runner_leases";
+const TABLE_LEASES: &str = "runner.leases";
 
 /// The lease a report is about, as the row holds it.
 ///
@@ -88,17 +88,17 @@ pub struct Reported {
 /// it already achieved. A runner that loses the response to a terminal report
 /// and retries into a permanent refusal has thrown a finished run's answer
 /// away — RULE IDMP, and the reason [`Settled::AlreadySettled`] exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settled {
-    /// This holder won the report. The final slice drained this much — which
-    /// may legitimately be zero, when the run's last window was short enough
-    /// or the wallet was already empty.
-    Claimed(Nanos),
+    /// This holder won the report. Carries the final slice's usage line,
+    /// logged in the report's transaction and still to be settled; `None` when
+    /// the last window measured nothing.
+    Claimed(Option<Settlement>),
     /// This runner already settled this lease. Nothing was written and nothing
-    /// charged, because the first report wrote and charged it; the outcome the
+    /// logged, because the first report wrote and logged it; the outcome the
     /// caller owes its runner is the one already durable.
     AlreadySettled,
-    /// A newer holder has the fleet. Nothing was written and nothing charged.
+    /// A newer holder has the fleet. Nothing was written and nothing logged.
     Fenced,
 }
 
@@ -118,94 +118,69 @@ impl Leases {
         runner_id: &Uuid7,
     ) -> Result<Option<Reported>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::report::SELECT_LEASE_FOR_REPORT)
+        let found: Option<LeaseForReport> = sqlx::query_as(sql::report::SELECT_LEASE_FOR_REPORT)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-
-        let Some(row) = found else {
-            return Ok(None);
-        };
-        let text = |index: usize| -> Result<String> {
-            row.try_get::<String, _>(index).map_err(query(CONTEXT_LOAD))
-        };
-        let id = |index: usize, column: &'static str| -> Result<Uuid7> {
-            Uuid7::parse(&text(index)?).map_err(row_malformed(TABLE_LEASES, column))
-        };
-        let fence: i64 = row.try_get(8).map_err(query(CONTEXT_LOAD))?;
-        Ok(Some(Reported {
-            fleet_id: id(0, "fleet_id")?,
-            workspace_id: id(1, "workspace_id")?,
-            tenant_id: id(2, "tenant_id")?,
-            event_id: text(3)?,
-            receipt: text(9)?,
-            actor: text(4)?,
-            posture: text(5)?,
-            provider: text(6)?,
-            model: text(7)?,
-            fence: Fence::from_i64(fence),
-        }))
+        found.map(LeaseForReport::into_reported).transpose()
     }
 
-    /// Flip the lease to `reported` and charge its final slice, atomically.
+    /// Flip the lease to `reported`, measure its final slice and log that
+    /// slice's usage line, atomically.
     ///
-    /// The fence check, the flip, both metering cursors, the wallet drain, the
-    /// ledger row and the lifetime tally ride ONE statement. A superseded
-    /// holder writes none of them — see [`sql::report::CLAIM_AND_SETTLE`] for
-    /// why fusing them is what makes the cap path safe.
+    /// The fence check, the flip, both metering cursors and the lifetime tally
+    /// ride ONE statement, and the line is logged right behind it on the same
+    /// connection. A superseded holder writes none of them — see
+    /// [`sql::meter::METER_LEASE`].
     ///
-    /// Runs on a connection the CALLER owns, because the money is one statement
-    /// in a transaction that carries several: the result, the checkpoint and
-    /// the freed slot commit with it or not at all
+    /// Runs on a connection the CALLER owns, because the line is one write in
+    /// a transaction that carries several: the result, the checkpoint and the
+    /// freed slot commit with it or not at all
     /// ([`Leases::commit_report`](crate::lease::commit)). Acquiring a second
-    /// connection here would put the charge outside that boundary and hold two
-    /// connections of a five-connection pool for one report (RULE CNX).
+    /// connection here would put the line outside that boundary and hold two
+    /// connections of a five-connection pool for one report (RULE CNX). Money
+    /// moves after commit, through the caller's biller. The caller also holds
+    /// the host's capacity lock first, which is what numbers this line after a
+    /// racing renewal's (see [`sql::meter::METER_LEASE`]).
     ///
     /// # Errors
-    /// Reports an entropy source that could not produce the ledger row's
-    /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer. A LOST fence is [`Settled::Fenced`] and an
-    /// already-settled lease is [`Settled::AlreadySettled`], neither an error:
-    /// nothing failed, and what the caller owes the runner differs between them.
+    /// Reports an entropy source that could not produce the line's
+    /// identifier, an instant that cannot be encoded, a charge past a 64-bit
+    /// nano count, and a datastore that would not answer. A LOST fence is
+    /// [`Settled::Fenced`] and an already-settled lease is
+    /// [`Settled::AlreadySettled`], neither an error: nothing failed, and what
+    /// the caller owes the runner differs between them.
     pub async fn claim_and_settle(
         &self,
         connection: &mut PgConnection,
-        lease_id: &str,
-        runner_id: &Uuid7,
-        meter: Meter,
+        lease: Metering<'_>,
+        lease_key: &Uuid7,
+        pricing: &Pricing,
         succeeded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Settled> {
-        let ledger_id = self.entropy().uuid7(now)?;
-
-        let settle = SettleRow {
-            lease_id,
-            runner_id,
-            now,
-            meter,
-            ledger_id: &ledger_id,
-            succeeded,
-        };
-        let row = settle
-            .bind()
+        let row = lease
+            .bind(Ending::Settle { succeeded })
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_SETTLE))?;
+        let answer = SettleAnswer::from_row(&row).map_err(query(CONTEXT_SETTLE))?;
 
-        // `charged` is nullable because the guard may yield no row at all; the
-        // claim count is the authority on whether this holder won, and the
-        // amount is only read on the arm where it did.
-        let claimed: i64 = row.try_get(1).map_err(query(CONTEXT_SETTLE))?;
-        if claimed == 0 {
-            return disposition(connection, lease_id, runner_id).await;
+        // The claim count is the authority on whether this holder won; the
+        // slice is only read on the arm where it did.
+        if answer.claimed == 0 {
+            return disposition(connection, lease.lease_id, lease.runner_id).await;
         }
-        let charged: Option<i64> = row.try_get(0).map_err(query(CONTEXT_SETTLE))?;
-        // A surviving guard row always prices a charge, so a null here would
-        // mean the claim flipped without `calc` — read as zero drain rather
-        // than reporting a debit the wallet never took.
-        Ok(Settled::Claimed(Nanos::from_i64(charged.unwrap_or(0))))
+        let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_SETTLE))?;
+        // A won claim is the guard row matching, and the slice is read off that
+        // same row, so it is always present here.
+        let settlement = slice.into_slice().map_or(Ok(None), |slice| {
+            pricing.settlement(lease_key, slice, lease.requests)
+        })?;
+        usage::log_measured(connection, self.entropy(), now, settlement.as_ref()).await?;
+        Ok(Settled::Claimed(settlement))
     }
 }
 
@@ -223,18 +198,13 @@ async fn disposition(
     lease_id: &str,
     runner_id: &Uuid7,
 ) -> Result<Settled> {
-    let found = sqlx::query(sql::report::SELECT_LEASE_DISPOSITION)
+    let status: Option<String> = sqlx::query_scalar(sql::report::SELECT_LEASE_DISPOSITION)
         .bind(lease_id)
         .bind(runner_id.as_str())
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT_DISPOSITION))?;
-
-    let Some(row) = found else {
-        return Ok(Settled::Fenced);
-    };
-    let status: String = row.try_get(0).map_err(query(CONTEXT_DISPOSITION))?;
-    Ok(if status == sql::LEASE_STATUS_REPORTED {
+    Ok(if status.as_deref() == Some(sql::LEASE_STATUS_REPORTED) {
         Settled::AlreadySettled
     } else {
         Settled::Fenced
@@ -244,33 +214,67 @@ async fn disposition(
 #[cfg(test)]
 mod tests {
     use super::Settled;
-    use afd_billing::Nanos;
 
-    /// Only a won claim carries a charge, and the two empty claims differ.
+    /// Only a won claim carries a usage line, and the two empty claims differ.
     ///
     /// The property the enum exists for, asserted as the shape rather than as a
     /// value: neither `Settled::Fenced` nor `Settled::AlreadySettled` takes a
-    /// payload, so no caller can read an amount off a report that charged
-    ///
-    /// The last assertion is the one §7 added: a superseded holder and a
-    /// runner re-sending a settled report both write nothing, and collapsing
-    /// them into one value is how a finished run's answer gets refused forever.
+    /// payload, so no caller can read a line off a report that logged none.
+    /// A superseded holder and a runner re-sending a settled report both write
+    /// nothing, and collapsing them into one value is how a finished run's
+    /// answer gets refused forever.
     #[test]
-    fn test_only_a_claimed_settle_carries_a_charge() {
-        let claimed = Settled::Claimed(Nanos::from_i64(42));
-        assert!(
-            matches!(claimed, Settled::Claimed(nanos) if nanos.as_i64() == 42),
-            "a won claim reports what it drained"
-        );
+    fn test_only_a_claimed_settle_carries_a_line() {
         assert_ne!(
             Settled::Fenced,
-            Settled::Claimed(Nanos::ZERO),
-            "a fenced report is not a claim that happened to charge nothing"
+            Settled::Claimed(None),
+            "a fenced report is not a claim that happened to measure nothing"
         );
         assert_ne!(
             Settled::AlreadySettled,
             Settled::Fenced,
             "a report already settled by this runner is not a report it lost"
         );
+    }
+}
+
+/// The column of [`sql::meter::METER_LEASE`]'s answer a settle reads.
+#[derive(sqlx::FromRow)]
+struct SettleAnswer {
+    claimed: i64,
+}
+
+/// [`sql::report::SELECT_LEASE_FOR_REPORT`]'s row, ids still as stored text.
+#[derive(sqlx::FromRow)]
+struct LeaseForReport {
+    fleet_id: String,
+    workspace_id: String,
+    tenant_id: String,
+    event_id: String,
+    actor: String,
+    posture: String,
+    provider: String,
+    model: String,
+    fencing_token: i64,
+    receipt: String,
+}
+
+impl LeaseForReport {
+    fn into_reported(self) -> Result<Reported> {
+        let id = |text: &str, column: &'static str| {
+            Uuid7::parse(text).map_err(row_malformed(TABLE_LEASES, column))
+        };
+        Ok(Reported {
+            fleet_id: id(&self.fleet_id, "fleet_id")?,
+            workspace_id: id(&self.workspace_id, "workspace_id")?,
+            tenant_id: id(&self.tenant_id, "tenant_id")?,
+            event_id: self.event_id,
+            receipt: self.receipt,
+            actor: self.actor,
+            posture: self.posture,
+            provider: self.provider,
+            model: self.model,
+            fence: Fence::from_i64(self.fencing_token),
+        })
     }
 }

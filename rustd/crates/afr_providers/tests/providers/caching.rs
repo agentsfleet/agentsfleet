@@ -12,7 +12,7 @@ use serde_json::value::RawValue;
 use serde_json::{Value, json};
 
 use super::ANSWER;
-use super::support::wires::{CACHED_TOKENS, Wire};
+use super::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
 use super::support::{Fake, Reply, connector, engine, lease, run};
 
 /// The model every request here names.
@@ -29,9 +29,13 @@ const CACHE_CONTROL: &str = "cache_control";
 const ASKED: &str = "what is 2+2?";
 const FOLLOW_UP: &str = "and doubled?";
 /// The Messages usage field counting the prompt tokens a turn wrote to the
-/// provider's cache, and how many a turn here writes.
+/// provider's cache, the field Responses and Chat count them in, how many a
+/// turn here writes, and how Messages splits them by lifetime.
 const CACHE_CREATION_INPUT_TOKENS: &str = "cache_creation_input_tokens";
+const CACHE_WRITE_TOKENS: &str = "cache_write_tokens";
 const WRITTEN: u64 = 100;
+const WRITTEN_5M: u64 = 60;
+const WRITTEN_1H: u64 = 40;
 /// Where a Server-Sent Event's payload starts.
 const DATA: &str = "data: ";
 /// The name, and the rig dialect, of a chat route speaking `OpenRouter`'s
@@ -166,30 +170,87 @@ async fn test_chat_completions_sends_no_cache_marker() {
     }
 }
 
-/// A Messages turn that wrote part of its prompt to the provider's cache
-/// reports what it wrote apart from what it read.
+/// Each wire's turn that wrote part of its prompt to the provider's cache
+/// reports what it wrote apart from what it read and from fresh input, by the
+/// lifetime the wire names: Messages splits five minutes from one hour,
+/// Responses and Chat name none.
 #[tokio::test]
-async fn test_messages_cache_writes_are_reported() {
-    let Reply::Stream(mut events) = Wire::Messages.answer(ANSWER) else {
-        panic!("an answer streams");
+async fn test_cache_writes_are_reported_by_lifetime() {
+    let fresh = PROMPT_TOKENS - CACHED_TOKENS;
+    let wires = [
+        (Wire::Messages, (0, WRITTEN_5M, WRITTEN_1H)),
+        (Wire::Responses, (WRITTEN, 0, 0)),
+        (Wire::Chat, (WRITTEN, 0, 0)),
+    ];
+    for (wire, lifetimes) in wires {
+        let Reply::Stream(events) = wire.answer(ANSWER) else {
+            panic!("an answer streams");
+        };
+        let writing = events.iter().map(|event| writes(wire, event)).collect();
+        let fake = Fake::serve(vec![Reply::Stream(writing)]).await;
+
+        let streamed = turn(&connector(&fake), &wire.provider()).await;
+
+        let spent: Vec<_> = streamed
+            .into_iter()
+            .filter_map(|chunk| match chunk {
+                Ok(Chunk::Usage(usage)) => Some(usage),
+                _ => None,
+            })
+            .collect();
+        let [usage] = spent.as_slice() else {
+            panic!("{wire:?}: one usage chunk, got {spent:?}");
+        };
+        assert_eq!(
+            (usage.input, usage.cached_input),
+            (fresh, CACHED_TOKENS),
+            "{wire:?}: fresh input, then reads"
+        );
+        assert_eq!(
+            (
+                usage.cache_write,
+                usage.cache_write_5m,
+                usage.cache_write_1h
+            ),
+            lifetimes,
+            "{wire:?}: writes by lifetime"
+        );
+    }
+}
+
+/// `event`, one Server-Sent Event of a `wire` turn, reporting [`WRITTEN`]
+/// cache-write tokens where that wire's provider reports them.
+fn writes(wire: Wire, event: &str) -> String {
+    let Some((head, data)) = event.split_once(DATA) else {
+        return event.to_owned();
     };
-    let (head, data) = events[0].split_once(DATA).unwrap();
-    let mut start: Value = serde_json::from_str(data.trim_end()).unwrap();
-    start["message"]["usage"][CACHE_CREATION_INPUT_TOKENS] = json!(WRITTEN);
-    let writing = format!("{head}{DATA}{start}\n\n");
-    events[0] = writing;
-    let fake = Fake::serve(vec![Reply::Stream(events)]).await;
-
-    let streamed = turn(&connector(&fake), &Wire::Messages.provider()).await;
-
-    let spent: Vec<(u64, u64)> = streamed
-        .into_iter()
-        .filter_map(|chunk| match chunk {
-            Ok(Chunk::Usage(usage)) => Some((usage.cache_written, usage.cached_input)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(spent, [(WRITTEN, CACHED_TOKENS)], "written, then read");
+    let Ok(mut payload) = serde_json::from_str::<Value>(data.trim_end()) else {
+        return event.to_owned();
+    };
+    let usage = match wire {
+        Wire::Messages => payload.pointer_mut("/message/usage"),
+        Wire::Responses => payload.pointer_mut("/response/usage"),
+        Wire::Chat => payload.get_mut("usage"),
+    };
+    let Some(usage @ Value::Object(_)) = usage else {
+        return event.to_owned();
+    };
+    match wire {
+        Wire::Messages => {
+            usage[CACHE_CREATION_INPUT_TOKENS] = json!(WRITTEN);
+            usage["cache_creation"] = json!({"ephemeral_5m_input_tokens": WRITTEN_5M,
+                "ephemeral_1h_input_tokens": WRITTEN_1H});
+        }
+        Wire::Responses => {
+            usage["input_tokens"] = json!(PROMPT_TOKENS + WRITTEN);
+            usage["input_tokens_details"][CACHE_WRITE_TOKENS] = json!(WRITTEN);
+        }
+        Wire::Chat => {
+            usage["prompt_tokens"] = json!(PROMPT_TOKENS + WRITTEN);
+            usage["prompt_tokens_details"][CACHE_WRITE_TOKENS] = json!(WRITTEN);
+        }
+    }
+    format!("{head}{DATA}{payload}\n\n")
 }
 
 /// A follow-up's first request repeats the earlier lease's on the wire, byte

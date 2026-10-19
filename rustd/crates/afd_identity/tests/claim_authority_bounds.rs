@@ -16,7 +16,7 @@
 use afd_auth::verifier::VerifyError;
 
 use crate::support::signing::{
-    AUDIENCE, ISSUER, NOT_EXPIRED, NOW_MS, NOW_S, TENANT, WORKSPACE, verify, verify_at,
+    AUDIENCE, ISSUER, NOT_EXPIRED, NOW, NOW_S, TENANT, WORKSPACE, verify, verify_at,
 };
 
 /// A well-formed payload carrying `extra` verbatim before the closing brace.
@@ -178,10 +178,14 @@ fn test_a_token_with_no_validity_start_verifies() {
 fn test_validity_start_is_decided_by_the_injected_clock() {
     let token = payload_with(&format!(",\"nbf\":{}", NOW_S + A_MINUTE_S));
 
-    let refused = verify_at(&token, NOW_MS).expect_err("before the window opens");
+    let refused = verify_at(&token, NOW).expect_err("before the window opens");
     assert_eq!(refused, VerifyError::NotYetValid);
 
-    verify_at(&token, NOW_MS + 120_000).expect("after the window opens");
+    verify_at(
+        &token,
+        afd_core::clock::after(NOW, std::time::Duration::from_secs(120)),
+    )
+    .expect("after the window opens");
 }
 
 // ── The payload's shape at the trust boundary ────────────────────────────

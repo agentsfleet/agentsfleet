@@ -9,8 +9,9 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_api_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
+use afd_billing::Wallet;
 use afd_billing::tenant::cursor;
-use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow, Wallet};
+use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow};
 use afd_core::paging::{Ceiling, QUERY_LIMIT};
 use afd_validate::{Limit, LimitBreak};
 use axum::Json;
@@ -142,10 +143,10 @@ pub(crate) async fn charges<D: Services>(
 /// response site.
 const fn wallet_response(wallet: &Wallet) -> BillingResponse {
     BillingResponse {
-        balance_nanos: wallet.balance_nanos,
-        updated_at: wallet.updated_at_ms,
-        is_exhausted: wallet.exhausted_at_ms.is_some(),
-        exhausted_at: wallet.exhausted_at_ms,
+        balance_nanos: wallet.balance.as_i64(),
+        updated_at: wallet.updated_at,
+        is_exhausted: wallet.exhausted_at.is_some(),
+        exhausted_at: wallet.exhausted_at,
     }
 }
 
@@ -162,7 +163,7 @@ fn page_response(rows: &[ChargeRow], limit: u32) -> ChargesResponse<'_> {
     let next_cursor = full
         .then(|| rows.last())
         .flatten()
-        .map(|last| Cow::Owned(cursor::render(last.recorded_at, &last.id)));
+        .map(|last| Cow::Owned(cursor::render(last.created_at, &last.id)));
     ChargesResponse {
         items: rows.iter().map(summary).collect(),
         next_cursor,
@@ -174,7 +175,7 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
     ChargeSummary {
         id: Cow::Borrowed(&row.id),
         tenant_id: Cow::Borrowed(&row.tenant_id),
-        workspace_id: row.workspace_id.as_deref().map(Cow::Borrowed),
+        workspace_id: Cow::Borrowed(&row.workspace_id),
         fleet_id: row.fleet_id.as_deref().map(Cow::Borrowed),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
         event_id: row.event_id.as_deref().map(Cow::Borrowed),
@@ -182,11 +183,11 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
         model: Cow::Borrowed(&row.model),
-        credit_deducted_nanos: row.credit_deducted_nanos,
-        token_count_input: row.token_count_input,
-        token_count_output: row.token_count_output,
+        credit_deducted_nanos: row.charged_nanos,
+        token_count_input: row.input_token_count,
+        token_count_output: row.output_token_count,
         wall_ms: row.wall_ms,
-        recorded_at: row.recorded_at,
+        recorded_at: row.created_at,
     }
 }
 

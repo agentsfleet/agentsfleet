@@ -7,7 +7,7 @@
 //!
 //! # Every case mints its own subject
 //!
-//! `core.users.oidc_subject` carries a GLOBAL unique index, so two cases in one
+//! `identity.users.oidc_subject` carries a GLOBAL unique index, so two cases in one
 //! file sharing a subject would race: whichever lost would trip the index and
 //! the other would then fail for an unrelated reason. One subject per case,
 //! minted, never a constant.
@@ -17,21 +17,18 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::signup::{NewAccount, STARTER_CREDIT_NANOS, Signups, personal_tenant_name};
+use jiff::Timestamp;
 
-/// The instant every row is stamped with.
-const SEED_MS: i64 = 1_760_000_000_000;
+/// The instant every identifier is minted at; the rows are stamped by the
+/// database clock.
+const SEED: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The address every case opens an account under.
 const EMAIL: &str = "ada@example.test";
-
-fn now() -> UnixMillis {
-    UnixMillis::from_millis(SEED_MS)
-}
 
 /// A subject nothing else in the lane addresses.
 fn subject() -> String {
@@ -61,7 +58,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
                 display_name: Some("Ada Lovelace"),
             },
             tenant_name,
-            now(),
+            SEED,
         )
         .await
         .expect("the lane's Postgres must answer");
@@ -82,7 +79,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
         .await
         .expect("a connection");
     let user: (String, String) =
-        sqlx::query_as("SELECT tenant_id::text, email FROM core.users WHERE oidc_subject = $1")
+        sqlx::query_as("SELECT tenant_id::text, email FROM identity.users WHERE oidc_subject = $1")
             .bind(&subject)
             .fetch_one(&mut *connection)
             .await
@@ -91,7 +88,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
     assert_eq!(user.1, EMAIL);
 
     let role: String = sqlx::query_scalar(
-        "SELECT role FROM core.memberships WHERE user_id = $1::uuid AND tenant_id = $2::uuid",
+        "SELECT role FROM identity.memberships WHERE user_id = $1::uuid AND tenant_id = $2::uuid",
     )
     .bind(&opened.user_id)
     .bind(&opened.tenant_id)
@@ -101,7 +98,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
     assert_eq!(role, "owner", "a personal account's one member owns it");
 
     let workspace: (String, String) =
-        sqlx::query_as("SELECT tenant_id::text, name FROM core.workspaces WHERE id = $1::uuid")
+        sqlx::query_as("SELECT tenant_id::text, name FROM identity.workspaces WHERE id = $1::uuid")
             .bind(&opened.workspace_id)
             .fetch_one(&mut *connection)
             .await
@@ -109,28 +106,71 @@ async fn a_signup_opens_every_row_an_account_needs() {
     assert_eq!(workspace.0, opened.tenant_id);
     assert_eq!(workspace.1, opened.workspace_name);
 
-    let balance: i64 = sqlx::query_scalar(
-        "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
-    )
-    .bind(&opened.tenant_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the wallet row lands");
+    let balance: i64 =
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+            .bind(&opened.tenant_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the wallet row lands");
     assert_eq!(
         balance, STARTER_CREDIT_NANOS,
         "a tenant with no wallet answers 500 on every billing read, so the \
          grant is part of the bootstrap rather than a later step"
     );
 
-    let tenant: String = sqlx::query_scalar("SELECT name FROM core.tenants WHERE id = $1::uuid")
-        .bind(&opened.tenant_id)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the tenant row lands");
+    let tenant: String =
+        sqlx::query_scalar("SELECT name FROM identity.tenants WHERE id = $1::uuid")
+            .bind(&opened.tenant_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the tenant row lands");
     assert_eq!(
         tenant, "ada",
         "the tenant is named for the address's local part"
     );
+}
+
+/// A statement that fails part way through the opening leaves nothing behind
+/// and returns its own failure: the subject still owns no account when the
+/// bootstrap looks again, so this is no lost race to replay.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_signup_whose_statement_fails_opens_nothing() {
+    let (lane, signups) = lane().await;
+    let subject = subject();
+
+    // Postgres refuses a NUL byte in text, so the tenant insert fails.
+    let failed = signups
+        .bootstrap(
+            NewAccount {
+                oidc_subject: &subject,
+                email: EMAIL,
+                display_name: None,
+            },
+            "nul\0name",
+            SEED,
+        )
+        .await
+        .expect_err("the tenant insert is refused");
+
+    assert_eq!(failed.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert!(
+        std::error::Error::source(&failed).is_some(),
+        "the statement's own failure is returned, not a fresh one"
+    );
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
+    let users: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM identity.users WHERE oidc_subject = $1")
+            .bind(&subject)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the count answers");
+    assert_eq!(users, 0, "nothing of the half-opened account committed");
 }
 
 #[tokio::test]
@@ -148,11 +188,11 @@ async fn a_replayed_delivery_answers_as_the_first_one_did() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let first = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
     let second = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success, never an error");
 
@@ -182,7 +222,7 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let opened = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
 
@@ -192,24 +232,23 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
         .acquire()
         .await
         .expect("a connection");
-    sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
         .bind(&opened.tenant_id)
         .execute(&mut *connection)
         .await
         .expect("the fixture removes the wallet it is about to have healed");
 
     signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success");
 
-    let balance: i64 = sqlx::query_scalar(
-        "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
-    )
-    .bind(&opened.tenant_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the replay put the wallet back");
+    let balance: i64 =
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+            .bind(&opened.tenant_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the replay put the wallet back");
     assert_eq!(balance, STARTER_CREDIT_NANOS);
 }
 
@@ -230,7 +269,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
     let tenant_name = personal_tenant_name(EMAIL).expect("the fixture address has a local part");
 
     let opened = signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("the lane's Postgres must answer");
 
@@ -241,7 +280,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .acquire()
         .await
         .expect("a connection");
-    sqlx::query("UPDATE billing.tenant_wallet SET balance_nanos = $2 WHERE tenant_id = $1::uuid")
+    sqlx::query("UPDATE billing.wallets SET balance_nanos = $2 WHERE tenant_id = $1::uuid")
         .bind(&opened.tenant_id)
         .bind(spent)
         .execute(&mut *connection)
@@ -249,17 +288,16 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .expect("the fixture spends the grant down");
 
     signups
-        .bootstrap(account, tenant_name, now())
+        .bootstrap(account, tenant_name, SEED)
         .await
         .expect("a replay is a success");
 
-    let balance: i64 = sqlx::query_scalar(
-        "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
-    )
-    .bind(&opened.tenant_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the wallet is still there");
+    let balance: i64 =
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+            .bind(&opened.tenant_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the wallet is still there");
     assert_eq!(
         balance, spent,
         "a replay heals an ABSENT wallet and never refills a present one"
@@ -291,7 +329,7 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
                         display_name: None,
                     },
                     tenant_name,
-                    now(),
+                    SEED,
                 )
                 .await
             },
@@ -303,7 +341,7 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
                         display_name: None,
                     },
                     tenant_name,
-                    now(),
+                    SEED,
                 )
                 .await
             }
@@ -328,10 +366,11 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
         .acquire()
         .await
         .expect("a connection");
-    let users: i64 = sqlx::query_scalar("SELECT count(*) FROM core.users WHERE oidc_subject = $1")
-        .bind(&subject)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("counting the subject's users");
+    let users: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM identity.users WHERE oidc_subject = $1")
+            .bind(&subject)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("counting the subject's users");
     assert_eq!(users, 1, "one subject, one person");
 }

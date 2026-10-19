@@ -32,7 +32,7 @@ import {
 // A fixed epoch-ms instant so the ISO datetime attribute is deterministic.
 const RECORDED_AT_MS = 1_700_000_000_000;
 /** Fixture-only charge amount; nothing asserts on it. */
-const CREDIT_DEDUCTED_NANOS = 1_000_000;
+const CREDIT_DEDUCTED_NANOS = "1000000";
 /**
  * A purged fleet's identifier, kept on the charge since slot 915.
  *
@@ -50,7 +50,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
-    fleet_name: null,
+    fleet_name: "z_1",
     event_id: "evt_1",
     authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
@@ -60,7 +60,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: RECORDED_AT_MS,
+    recorded_at: new Date(RECORDED_AT_MS).toISOString(),
     ...over,
   };
 }
@@ -80,25 +80,14 @@ describe("BillingUsageTab charge cell", () => {
     const time = container.querySelector("time");
     expect(time).not.toBeNull();
     // Visible text is still the approved ledger string ("MMM DD, YYYY · HH:MM").
-    expect(time?.textContent).toBe(formatChargeTimestamp(RECORDED_AT_MS));
+    expect(time?.textContent).toBe(formatChargeTimestamp(new Date(RECORDED_AT_MS).toISOString()));
     // The datetime attribute is the canonical ISO instant.
     expect(time?.getAttribute("datetime")).toBe(
       new Date(RECORDED_AT_MS).toISOString(),
     );
   });
 
-  // Dimension 3.2. The charge of a fleet that no longer exists still names it.
-  //
-  // This is the defect the whole slot exists to end, read from the surface an
-  // operator actually looks at. Both halves are asserted because they come from
-  // different places and fail apart: the callsign is derived from the retained
-  // identifier, the name is the copy the ledger snapshotted at charge time.
-  //
-  // The absence assertion is the one that would have caught the original bug.
-  // A cell showing only the callsign is a pass on the first two checks and
-  // still a regression, so the deleted label is required to be gone from the
-  // whole rendered tab rather than merely absent from the text we looked at.
-  it("test_m201_billing_renders_callsign_and_name", () => {
+  it("renders only the retained callsign after fleet deletion", () => {
     const { container } = render(
       React.createElement(BillingUsageTab, {
         initialCharges: [
@@ -109,11 +98,36 @@ describe("BillingUsageTab charge cell", () => {
       }),
     );
 
-    const expected = agentDisplayName(PURGED_FLEET_ID, CAPTURED_NAME);
+    const expected = agentDisplayName(PURGED_FLEET_ID);
     const label = container.querySelector(`[data-agent-name="${expected}"]`);
     expect(label).not.toBeNull();
-    expect(label?.textContent).toContain(CAPTURED_NAME);
+    expect(container.textContent).not.toContain(CAPTURED_NAME);
     expect(label?.textContent).toContain("AGENT ");
+    expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
+  });
+
+  // The orphan case: the server wrote the fleet's identifier as its name, and
+  // the cell must not print that identifier where a name belongs.
+  it("renders the callsign alone when the charge captured no name", () => {
+    const { container } = render(
+      React.createElement(BillingUsageTab, {
+        initialCharges: [
+          charge({ fleet_id: PURGED_FLEET_ID, fleet_name: PURGED_FLEET_ID }),
+        ],
+        initialCursor: null,
+        pageSize: 25,
+      }),
+    );
+
+    const expected = agentDisplayName(PURGED_FLEET_ID);
+    expect(container.querySelector(`[data-agent-name="${expected}"]`)).not.toBeNull();
+    expect(container.textContent).not.toContain(PURGED_FLEET_ID);
+  });
+  it("labels an unsaved authoring charge as Setup chat", () => {
+    const {container} = render(<BillingUsageTab initialCharges={[
+      charge({fleet_id: null, fleet_name: null, charge_type: CHARGE_TYPE.authoring}),
+    ]} initialCursor={null} pageSize={25} />);
+    expect(container.querySelector('[data-agent-name="Setup chat"]')?.textContent).toBe("Setup chat");
     expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
   });
 });

@@ -11,17 +11,18 @@
 
 use super::*;
 
-/// A cursor in the clear `{millis}:{id}` form this inbox issues.
-const CLEAR_CURSOR: &str = "1735689600000:01924f4e-0000-7000-8000-00000000a11e";
+/// A cursor in the clear `{instant}:{id}` form this inbox issues.
+const CLEAR_CURSOR: &str = "2025-01-01T00:00:00Z:01924f4e-0000-7000-8000-00000000a11e";
 
 /// The boundary instant that cursor carries.
-const CLEAR_CURSOR_AT: i64 = 1_735_689_600_000;
+const CLEAR_CURSOR_AT: jiff::Timestamp = jiff::Timestamp::constant(1_735_689_600, 0);
 
 /// The boundary gate that cursor carries.
 const CLEAR_CURSOR_GATE: &str = "01924f4e-0000-7000-8000-00000000a11e";
 
 /// The same cursor as a browser puts it on the wire.
-const CLEAR_CURSOR_ENCODED: &str = "1735689600000%3A01924f4e-0000-7000-8000-00000000a11e";
+const CLEAR_CURSOR_ENCODED: &str =
+    "2025-01-01T00%3A00%3A00Z%3A01924f4e-0000-7000-8000-00000000a11e";
 
 /// What a refused parse answers.
 const BAD_REQUEST: u16 = 400;
@@ -44,18 +45,18 @@ fn an_empty_query_is_every_state_at_the_default_size() {
     assert_eq!(listing.limit, i64::from(DEFAULT_LIMIT));
     assert!(listing.status.is_none(), "absent narrows nothing");
     assert!(listing.fleet_id.is_none());
-    assert!(listing.gate_kind.is_none());
+    assert!(listing.gate_type.is_none());
     assert!(listing.cursor.is_none());
 }
 
 #[test]
 fn the_three_filters_are_read_off_the_string() {
     let listing = parsed(&format!(
-        "status=denied&fleet_id={CLEAR_CURSOR_GATE}&gate_kind=spend"
+        "status=denied&fleet_id={CLEAR_CURSOR_GATE}&gate_type=spend"
     ));
     assert_eq!(listing.status, Some(GateStatus::Denied));
     assert_eq!(listing.fleet_id.as_deref(), Some(CLEAR_CURSOR_GATE));
-    assert_eq!(listing.gate_kind.as_deref(), Some("spend"));
+    assert_eq!(listing.gate_type.as_deref(), Some("spend"));
 }
 
 #[test]
@@ -105,19 +106,19 @@ fn a_fleet_id_that_is_not_an_identifier_is_refused_here() {
 }
 
 #[test]
-fn a_gate_kind_is_bounded_on_its_decoded_bytes() {
-    let at_bound = format!("gate_kind={}", "k".repeat(MAX_GATE_KIND_BYTES));
+fn a_gate_type_is_bounded_on_its_decoded_bytes() {
+    let at_bound = format!("gate_type={}", "k".repeat(MAX_GATE_TYPE_BYTES));
     assert_eq!(
-        parsed(&at_bound).gate_kind.map(|kind| kind.len()),
-        Some(MAX_GATE_KIND_BYTES)
+        parsed(&at_bound).gate_type.map(|kind| kind.len()),
+        Some(MAX_GATE_TYPE_BYTES)
     );
-    let past = format!("gate_kind={}", "k".repeat(MAX_GATE_KIND_BYTES + 1));
+    let past = format!("gate_type={}", "k".repeat(MAX_GATE_TYPE_BYTES + 1));
     assert_eq!(refusal_status(&past), BAD_REQUEST);
 }
 
 #[test]
 fn a_broken_escape_refuses_the_request() {
-    assert_eq!(refusal_status("gate_kind=%zz"), BAD_REQUEST);
+    assert_eq!(refusal_status("gate_type=%zz"), BAD_REQUEST);
 }
 
 #[test]
@@ -175,6 +176,9 @@ fn a_cursor_this_endpoint_never_issued_is_refused() {
         "cursor=1735689600000:",
         "cursor=abc:01924f4e",
         "cursor=",
+        // A well-formed instant with a gate id that is not one: the statement
+        // casts it to `uuid`, so it must stop here as a 400, not a 500.
+        "cursor=2025-01-01T00:00:00Z:not-a-gate",
     ] {
         assert_eq!(refusal_status(unminted), BAD_REQUEST, "{unminted}");
     }

@@ -41,7 +41,6 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
@@ -49,6 +48,7 @@ use afd_runner::Runners;
 use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
+use jiff::Timestamp;
 
 pub(crate) use crate::e2e_db::daemon_environment;
 use crate::e2e_db::scenario_database;
@@ -184,7 +184,7 @@ pub(crate) struct Scenario {
     /// Its bearer token, revealed once at enrolment.
     pub(crate) token: String,
     /// The instant the seed was stamped with.
-    pub(crate) seeded_at: UnixMillis,
+    pub(crate) seeded_at: Timestamp,
     /// This scenario's hold on the platform default, released after the daemon
     /// above has stopped and before the stream guard below.
     pub(crate) _default: afd_db::test_util::PlatformDefault,
@@ -200,7 +200,7 @@ pub(crate) struct Scenario {
 ///
 /// The order is the daemon's own: nothing is put on the stream until the fleet
 /// row it joins against exists, because the assignment pass filters candidates
-/// through `core.fleets` and a mark with no row makes a correct refusal look
+/// through `fleet.fleets` and a mark with no row makes a correct refusal look
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     scenario_with_provider(supervisor, None).await

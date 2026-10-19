@@ -10,14 +10,13 @@ use std::time::Instant;
 use afd_dragonfly::{Dragonfly, Partition, ReadyCursor, ReadyIndex, fleet_stream_key};
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
-use sqlx::Row as _;
 
 use crate::datastores::command::{COUNT, RANGE_END, RANGE_START, XRANGE};
 use crate::datastores::{Datastores, postgres_count};
 use crate::error::{ErrorKind, Result};
 use crate::report::Report;
 
-/// Measurement key: `core.fleets` on disk at population, bytes.
+/// Measurement key: `fleet.fleets` on disk at population, bytes.
 pub(super) const FLEETS_TABLE_BYTES: &str = "postgres_fleets_table_bytes";
 
 /// Measurement key: the candidate query's execution time at population.
@@ -44,11 +43,11 @@ pub(super) const PLANNING_TIME: &str = "Planning Time: ";
 /// Milliseconds in a second, for reporting a sampled duration.
 const MILLIS_PER_SECOND: f64 = 1_000.0;
 
-/// `core.fleets` and every index on it, in bytes.
-const TABLE_SIZE_QUERY: &str = "SELECT pg_total_relation_size('core.fleets')";
+/// `fleet.fleets` and every index on it, in bytes.
+const TABLE_SIZE_QUERY: &str = include_str!("sql/select_fleets_size.sql");
 
 /// How many fleets exist, whatever their readiness.
-const POPULATION_QUERY: &str = "SELECT count(*) FROM core.fleets";
+const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 
 /// The datastore named when a Dragonfly sample set is empty.
 const DRAGONFLY: &str = "dragonfly";
@@ -141,28 +140,23 @@ pub(super) async fn postgres_at_population(
     let ready = ready_across_partitions(&stores.queue).await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
-    let lines: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
+    let lines: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "{EXPLAIN}{SELECT_READY_CANDIDATES}"
     )))
     .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
     .bind(runner)
     .bind(&ready)
     .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-    // The instant the held-slot filter compares against, as the lease path
-    // binds it: now, so the plan is the one a live poll gets.
-    .bind(afd_core::clock::now().as_millis())
-    // How long a silent holder binds, and the admin state a holder must be in
-    // to bind at all: the lease path's own binds for the hold condition.
-    .bind(afd_core::timing::RUNNER_OFFLINE_AFTER_MS)
-    .bind(afd_fleet::lease::sql::ADMIN_STATE_ACTIVE)
+    // How long a silent holder binds, and the status a holder must be in to
+    // bind at all: the lease path's own binds for the hold condition. The
+    // instant they compare against is the statement's own clock.
+    .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+    .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
     // The ids the cursor's partition offered, which sort first: every sampled
     // id here, as a held-first poll binds them, so the plan carries the key.
     .bind(&ready)
     .fetch_all(&mut *connection)
-    .await?
-    .iter()
-    .filter_map(|row| row.try_get::<String, _>(0).ok())
-    .collect();
+    .await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
         report.measurement(CANDIDATE_QUERY_MS, execution);
     }
@@ -183,7 +177,7 @@ pub(crate) fn plan_time(lines: &[String], label: &str) -> Option<f64> {
         .and_then(|rest| rest.trim_end_matches(" ms").parse().ok())
 }
 
-/// `core.fleets` with its indexes, in bytes.
+/// `fleet.fleets` with its indexes, in bytes.
 pub(super) async fn table_sizes(database: &afd_db::Db) -> Result<u64> {
     postgres_count(
         scalar(database, TABLE_SIZE_QUERY).await?,
@@ -199,10 +193,9 @@ pub(super) async fn fleet_population(database: &afd_db::Db) -> Result<u64> {
 /// One bigint out of a constant statement.
 async fn scalar(database: &afd_db::Db, statement: &'static str) -> Result<i64> {
     let mut connection = database.acquire().await?;
-    Ok(sqlx::query(statement)
+    Ok(sqlx::query_scalar(statement)
         .fetch_one(&mut *connection)
-        .await?
-        .try_get(0)?)
+        .await?)
 }
 
 /// The middle sample in milliseconds, or nothing for no samples.

@@ -11,7 +11,7 @@ function headers(map: Record<string, string> = {}): Headers {
 
 describe("listMemories", () => {
   it("GET …/memories returns entries with content/category/updated_at", async () => {
-    const entry = { key: "convention", content: "reviewers use spaces", category: "core", updated_at: 5 };
+    const entry = { key: "convention", content: "reviewers use spaces", category: "core", updated_at: "1970-01-01T00:00:00.005Z" };
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -47,8 +47,8 @@ describe("listAllMemories", () => {
     // Two-read fixture: the first page carries a continuation, the second
     // ends the walk — the panel's data path renders both pages' entries,
     // never just the first bounded read.
-    const alpha = { key: "alpha", content: "a", category: "core", updated_at: 2 };
-    const beta = { key: "beta", content: "b", category: "core", updated_at: 1 };
+    const alpha = { key: "alpha", content: "a", category: "core", updated_at: "1970-01-01T00:00:00.002Z" };
+    const beta = { key: "beta", content: "b", category: "core", updated_at: "1970-01-01T00:00:00.001Z" };
     fetchMock
       .mockResolvedValueOnce({
         ok: true,

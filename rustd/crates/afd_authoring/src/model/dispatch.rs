@@ -1,13 +1,16 @@
 //! Commit the physical call identity before crossing the provider boundary.
 
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::time::Instant;
 
 use super::{
-    ModelCallInput, ModelCallResult, Transport, budget, capability, prepare, provider, receipt, sql,
+    ModelCallInput, ModelCallResult, Transport, budget, capability, dispatch_status, prepare,
+    provider, receipt, sql,
 };
 use crate::{
     Drafts, Error, Result,
@@ -39,31 +42,28 @@ impl Intent {
         attempt: guard::Attempt,
         key: afd_crypto::secret::SecretString,
         prepared: prepare::Prepared,
-        now: UnixMillis,
+        now: Timestamp,
         authorized_at: Instant,
-    ) -> Result<Self> {
-        let timeout_ms = (attempt.deadline - now.as_millis())
-            .min(budget::PROVIDER_TIMEOUT_MS)
-            .cast_unsigned();
+    ) -> Self {
+        let remaining = attempt
+            .expires_at
+            .duration_since(now)
+            .try_into()
+            .unwrap_or(Duration::ZERO);
         let outbound = provider::Outbound {
             key,
             body: prepared.body,
-            timeout_ms,
-            inference: attempt
-                .model_snapshot
-                .inference
-                .clone()
-                .ok_or(ErrorKind::Model)?,
+            timeout: remaining.min(budget::PROVIDER_TIMEOUT),
+            inference: prepared.inference,
             model: attempt.model_snapshot.model.clone(),
-            context_tokens: u32::try_from(attempt.model_snapshot.context_window_tokens)
-                .map_err(|_invalid| ErrorKind::Model)?,
+            context_tokens: prepared.context_tokens,
         };
-        Ok(Self {
+        Self {
             outbound,
             attempt,
             authorized_at,
             output_limit: prepared.output_limit,
-        })
+        }
     }
 }
 
@@ -110,9 +110,8 @@ impl ModelCalls {
             authorized_at,
             output_limit,
         } = *intent;
-        let elapsed = u64::try_from(authorized_at.elapsed().as_millis()).unwrap_or(u64::MAX);
-        outbound.timeout_ms = outbound.timeout_ms.saturating_sub(elapsed);
-        let decoded = if outbound.timeout_ms == 0 {
+        outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
+        let decoded = if outbound.timeout.is_zero() {
             Err(ErrorKind::Unknown.into())
         } else {
             provider::complete(outbound, Arc::clone(&self.transport))
@@ -149,11 +148,11 @@ impl ModelCalls {
         let digest = replay::digest(&(
             &request.attempt_id,
             &request.fence,
-            &request.deletion_generation,
             &request.dispatch_id,
             request.call_index,
             &request.request,
         ))?;
+        let held = budget::held(&self.drafts, runner, lease).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
@@ -169,7 +168,7 @@ impl ModelCalls {
             if let Some(prior) = receipt::prior(&mut tx, &guarded, request, &digest).await? {
                 Ok(prior)
             } else {
-                self.next(&mut tx, guarded, request, counters, &digest)
+                self.next(&mut tx, guarded, request, counters, &digest, held)
                     .await
             }
         }
@@ -194,25 +193,22 @@ impl ModelCalls {
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         digest: &str,
+        held: Result<()>,
     ) -> Result<Decision> {
-        if guarded.attempt.calls.checked_add(1).map(i64::from)
+        if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {
             return Err(ErrorKind::Replay.into());
         }
         if i64::from(request.request.max_output_tokens)
-            > budget::output_limit(&guarded.attempt.model_snapshot) - guarded.attempt.output_tokens
+            > budget::output_limit(&guarded.attempt.model_snapshot)
+                - guarded.attempt.output_token_count
         {
             return Err(ErrorKind::Token.into());
         }
-        budget::coverage(connection, &guarded.attempt).await?;
-        let continuations = super::continuation::read(
-            connection,
-            &guarded.attempt,
-            request,
-            guarded.now.as_millis(),
-        )
-        .await?;
+        held?;
+        let continuations =
+            super::continuation::read(connection, &guarded.attempt, request, guarded.now).await?;
         let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
         let key = self
             .providers
@@ -225,22 +221,14 @@ impl ModelCalls {
             .ok_or(ErrorKind::Model)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
-        insert(
-            connection,
-            request,
-            &guarded.attempt,
-            digest,
-            now,
-            prepared.output_limit,
-        )
-        .await?;
+        insert(connection, request, &guarded.attempt, digest).await?;
         Ok(Decision::Send(Box::new(Intent::new(
             guarded.attempt,
             key,
             prepared,
             now,
             authorized_at,
-        )?)))
+        ))))
     }
 }
 
@@ -249,17 +237,14 @@ async fn insert(
     request: &garde::Valid<ModelCallInput>,
     attempt: &guard::Attempt,
     digest: &str,
-    now: UnixMillis,
-    output_limit: u32,
 ) -> Result<()> {
     let inserted = sqlx::query(sql::INSERT)
         .bind(&request.dispatch_id)
         .bind(attempt.id.as_str())
         .bind(i64::from(request.call_index))
         .bind(digest)
-        .bind(i64::from(output_limit))
-        .bind(now.as_millis() + budget::PRIVATE_TTL_MS)
-        .bind(now.as_millis())
+        .bind(dispatch_status::PENDING)
+        .bind(budget::PRIVATE_TTL)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -268,7 +253,6 @@ async fn insert(
     }
     sqlx::query(sql::ADVANCE)
         .bind(attempt.id.as_str())
-        .bind(now.as_millis())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

@@ -1,3 +1,4 @@
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
@@ -51,7 +52,7 @@ describe("fleets routes — detail lifecycle states", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).not.toContain("Balance exhausted");
   });
 
@@ -77,7 +78,7 @@ describe("fleets routes — detail lifecycle states", () => {
     expect(markup).not.toContain("Pending approvals");
   });
 
-  it("fleet Trigger view degrades cleanly and never renders a webhook box", async () => {
+  it("fleet Setup view degrades cleanly and never renders a webhook box", async () => {
     const respond = mockFetchBilling(happyBilling);
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/approvals")) throw new Error("approvals down");
@@ -90,12 +91,12 @@ describe("fleets routes — detail lifecycle states", () => {
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "trigger" }),
+        searchParams: Promise.resolve({ view: "setup" }),
       }),
     );
-    expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Configured triggers");
-    expect(markup).toContain("Chat and steer messages only");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
+    expect(markup).toContain("Schedule");
+    expect(markup).toContain("No schedule set.");
     expect(markup).not.toContain("Webhook URL");
   });
 });

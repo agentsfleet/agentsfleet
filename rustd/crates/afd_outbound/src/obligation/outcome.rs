@@ -5,7 +5,6 @@
 //! the worker's side of the queue, once per cycle, and each write is guarded so
 //! a duplicate queue entry for the same answer changes nothing.
 
-use afd_core::clock::UnixMillis;
 use afd_db::Db;
 
 use super::sql;
@@ -66,17 +65,11 @@ impl AbandonReason {
 /// # Errors
 /// Reports a database that would not answer. A caller must log that and DELIVER
 /// ANYWAY: the answer is owed to a person and bookkeeping is not.
-pub async fn count_attempt(
-    database: &Db,
-    fleet_id: &str,
-    event_id: &str,
-    now: UnixMillis,
-) -> Result<Option<i64>> {
+pub async fn count_attempt(database: &Db, fleet_id: &str, event_id: &str) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::COUNT_ATTEMPT)
         .bind(fleet_id)
         .bind(event_id)
-        .bind(now.as_millis())
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_COUNT))
@@ -86,17 +79,11 @@ pub async fn count_attempt(
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn stamp_delivered(
-    database: &Db,
-    fleet_id: &str,
-    event_id: &str,
-    now: UnixMillis,
-) -> Result<()> {
+pub async fn stamp_delivered(database: &Db, fleet_id: &str, event_id: &str) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(sql::STAMP_DELIVERED)
         .bind(fleet_id)
         .bind(event_id)
-        .bind(now.as_millis())
         .execute(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_STAMP))?;
@@ -116,13 +103,11 @@ pub async fn abandon(
     fleet_id: &str,
     event_id: &str,
     reason: AbandonReason,
-    now: UnixMillis,
 ) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::ABANDON)
         .bind(fleet_id)
         .bind(event_id)
-        .bind(now.as_millis())
         .bind(reason.as_str())
         .fetch_optional(&mut *connection)
         .await

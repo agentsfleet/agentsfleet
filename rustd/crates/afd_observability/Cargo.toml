@@ -19,9 +19,11 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the labelled sample of every refusal, so a caller's suite
 # can grade this crate's error surface without a census on disk.
-test-util = []
+test-util = ["afd_core/test-util"]
 
 [dependencies]
+# A runner's last-seen stamp arrives as a `jiff::Timestamp`.
+jiff.workspace = true
 # The shared error hull (`error_shell!`/`error_lifts!`) and the registry codes a
 # census defect is read under. Referenced, never re-declared.
 afd_core.workspace = true

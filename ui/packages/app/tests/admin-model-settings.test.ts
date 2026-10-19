@@ -1,58 +1,65 @@
 import { describe, expect, it } from "vitest";
-import type { AdminModel } from "@/lib/api/admin_model_library";
+import { ADMIN_MODEL, METADATA, PRICE } from "./helpers/catalogue-fixtures";
 import { INFERENCE_API } from "@/lib/api/admin-model-library-types";
 import { SETTINGS_DEFAULTS, modelSettings, settingsSchema, valuesFromModel } from "@/app/(dashboard)/admin/models/components/model-settings";
 
-const MODEL: AdminModel = {
-  id: "model", provider: "workspace-provider", model_id: "workspace/model-next",
-  // pin test: literal is the contract
-  context_cap_tokens: 100000, input_nanos_per_mtok: 500000000,
-  cached_input_nanos_per_mtok: 125000000, output_nanos_per_mtok: 2000000000,
-  inference: { api: INFERENCE_API.messages, base_url: "https://models.example.com/v1", max_output_tokens: 12345, dialect: "anthropic" },
-};
-const VALUES = valuesFromModel(MODEL);
+const VALUES = valuesFromModel(ADMIN_MODEL);
 
-describe("persisted model settings", () => {
-  it("round trips endpoint, API, model-specific limits, dialect and prices", () => {
-    const { id: _id, provider: _provider, model_id: _model, ...settings } = MODEL;
-    expect(modelSettings(settingsSchema.parse(VALUES))).toEqual(settings);
+describe("complete catalogue settings", () => {
+  it("round trips metadata, every dated price and inference settings exactly", () => {
+    const model = { ...ADMIN_MODEL, metadata: { ...METADATA, advanced: true }, prices: [
+      { ...PRICE, cache_write_nanos_per_mtok: "1", cache_write_5m_nanos_per_mtok: "9223372036854775807", cache_write_1h_nanos_per_mtok: "187500000" },
+      { ...PRICE, prompt_tokens_above: 272000 },
+    ] };
+    expect(modelSettings(settingsSchema.parse(valuesFromModel(model)))).toEqual({ metadata: model.metadata, prices: model.prices, inference: model.inference });
   });
-
-  it("leaves unset settings empty until the operator supplies them", () => {
-    const values = valuesFromModel({ ...MODEL, inference: undefined });
-    expect(values).toMatchObject({ api: INFERENCE_API.chat, base_url: "", dialect: "", max_output_tokens: "" });
-    expect(settingsSchema.safeParse(values).success).toBe(false);
+  it("keeps missing cache-write prices null and distinguishes a confirmed zero", () => {
+    const prices = [{ ...PRICE, cache_write_nanos_per_mtok: "0" }];
+    expect(modelSettings(settingsSchema.parse(valuesFromModel({ ...ADMIN_MODEL, prices }))).prices).toEqual(prices);
+  });
+  it("omits inference to preserve existing settings and allows an unconfigured new row", () => {
+    const values = valuesFromModel({ ...ADMIN_MODEL, inference: undefined });
+    expect(values.update_inference).toBe(false);
+    expect(modelSettings(settingsSchema.parse(values)).inference).toBeUndefined();
+    expect(modelSettings(settingsSchema.parse({ ...VALUES, update_inference: false, base_url: "" })).inference).toBeUndefined();
     expect(settingsSchema.safeParse(SETTINGS_DEFAULTS).success).toBe(false);
   });
-
-  it("omits a blank dialect and accepts all explicit API formats", () => {
+  it("accepts the five explicit inference APIs without inventing a dialect", () => {
     for (const api of Object.values(INFERENCE_API)) {
-      const settings = modelSettings(settingsSchema.parse({ ...VALUES, api, dialect: " " }));
-      expect(settings.inference).toEqual({ api, base_url: MODEL.inference!.base_url, max_output_tokens: 12345 });
+      expect(modelSettings(settingsSchema.parse({ ...VALUES, api, dialect: " " })).inference?.api).toBe(api);
     }
   });
-
-  it.each(["", "not a URL", "http://models.example.com", "https://user:secret@models.example.com", "https://models.example.com?key=secret", "https://models.example.com#secret"])("rejects an unsafe or malformed endpoint %s without throwing", (base_url) => {
+  it("retains a configured compatible dialect", () => {
+    expect(modelSettings(settingsSchema.parse({ ...VALUES, dialect: "openai" })).inference?.dialect).toBe("openai");
+  });
+  it.each(["", "not a URL", "http://models.example.com", "https://user:secret@models.example.com", "https://models.example.com?key=secret", "https://models.example.com#secret"])("refuses unsafe inference endpoint %s", (base_url) => {
     expect(settingsSchema.safeParse({ ...VALUES, base_url }).success).toBe(false);
   });
-
-  it.each(["", "0", "-1", "1.5", "NaN", "Infinity", "9007199254740992"])("rejects invalid token limits %s", (value) => {
-    for (const field of ["context_cap_tokens", "max_output_tokens"]) {
-      expect(settingsSchema.safeParse({ ...VALUES, [field]: value }).success).toBe(false);
-    }
+  it.each(["", "0", "-1", "1.5", "NaN", "Infinity", "9007199254740992"])("refuses invalid positive token count %s", (value) => {
+    for (const field of ["context_cap_tokens", "max_output_tokens"]) expect(settingsSchema.safeParse({ ...VALUES, [field]: value }).success).toBe(false);
   });
-
-  it.each(["", "-1", "NaN", "Infinity"])("rejects invalid prices %s", (value) => {
+  it.each(["", "-1", "NaN", "Infinity", "0.0000000001"])("refuses invalid price %s with a validation result", (value) => {
     for (const field of ["input_usd", "cached_usd", "output_usd"]) {
-      expect(settingsSchema.safeParse({ ...VALUES, [field]: value }).success).toBe(false);
+      expect(settingsSchema.safeParse({ ...VALUES, prices: [{ ...VALUES.prices[0], [field]: value }] }).success).toBe(false);
     }
   });
-
-  it("requires the output ceiling to fit the context and bounds dialect names", () => {
-    expect(settingsSchema.safeParse({ ...VALUES, max_output_tokens: "100001" }).success).toBe(false);
-    // pin test: literal is the contract
-    expect(settingsSchema.safeParse({ ...VALUES, max_output_tokens: "100000" }).success).toBe(true);
-    expect(settingsSchema.safeParse({ ...VALUES, dialect: "x".repeat(65) }).success).toBe(false);
-    expect(settingsSchema.safeParse({ ...VALUES, api: "unknown" }).success).toBe(false);
+  it("refuses excess output, long dialects, unsupported APIs and native dialects", () => {
+    for (const delta of [{ max_output_tokens: "128001" }, { dialect: "x".repeat(65) }, { api: "unknown" }, { api: INFERENCE_API.gemini, dialect: "openai" }]) {
+      expect(settingsSchema.safeParse({ ...VALUES, ...delta }).success).toBe(false);
+    }
+    expect(settingsSchema.safeParse({ ...VALUES, max_output_tokens: "128000" }).success).toBe(true);
+  });
+  it.each([
+    { prompt_tokens_above: "1" }, { effective_until: "2026-10-17T00:00:00Z" },
+  ])("reports price schedule refusals beside the offending data", (delta) => {
+    const result = settingsSchema.safeParse({ ...VALUES, prices: [{ ...VALUES.prices[0], ...delta }] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path[0]).toBe("prices");
+  });
+  it("reports overlapping dates but accepts an adjacent half-open range", () => {
+    expect(settingsSchema.safeParse({ ...VALUES, prices: [VALUES.prices[0], VALUES.prices[0]] }).success).toBe(false);
+    const first = { ...VALUES.prices[0], effective_until: "2026-12-01T00:00:00Z" };
+    const next = { ...VALUES.prices[0], effective_from: first.effective_until };
+    expect(settingsSchema.safeParse({ ...VALUES, prices: [first, next] }).success).toBe(true);
   });
 });

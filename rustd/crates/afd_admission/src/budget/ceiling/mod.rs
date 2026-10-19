@@ -31,7 +31,7 @@
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 
 use crate::budget::REPLAY_BACKLOG_BUDGET;
 
@@ -57,6 +57,10 @@ const REFUSING_INTERVAL: Duration = Duration::from_millis(500);
 
 /// The instant no sample has been taken at, which is every instant before the
 /// first one.
+///
+/// The figure's clock is this process's and its storage an atomic, so the
+/// instant is held as epoch milliseconds: a `Timestamp` has no atomic form, and
+/// the cadence it paces is whole milliseconds anyway.
 const NEVER: i64 = i64::MIN;
 
 // Decidable where they are written, so checked there. A runtime test could
@@ -128,7 +132,7 @@ impl Ceiling {
     ///
     /// `estimate` and `budget` decide WHICH interval applies, so a refusing
     /// deployment resamples on the short one and clears promptly.
-    pub(crate) fn due(&self, now: UnixMillis, estimate: u64, budget: u64) -> bool {
+    pub(crate) fn due(&self, now: Timestamp, estimate: u64, budget: u64) -> bool {
         let read_at = self.read_at.load(Ordering::Relaxed);
         if read_at == NEVER {
             return true;
@@ -141,7 +145,7 @@ impl Ceiling {
         } else {
             SAMPLE_INTERVAL
         };
-        let age = now.as_millis().saturating_sub(read_at);
+        let age = now.as_millisecond().saturating_sub(read_at);
         u128::try_from(age).unwrap_or(0) >= interval.as_millis()
     }
 
@@ -195,7 +199,7 @@ impl Claim<'_> {
     /// Saturating because the claim is exclusive but the subtraction is not
     /// worth a wrap on the one path that would make a full deployment read
     /// empty.
-    pub(crate) fn publish(&self, rows: u64, now: UnixMillis) {
+    pub(crate) fn publish(&self, rows: u64, now: Timestamp) {
         let counted = self.counted;
         self.ceiling.sampled.store(rows, Ordering::Relaxed);
         let _ = self
@@ -206,7 +210,7 @@ impl Claim<'_> {
             });
         self.ceiling
             .read_at
-            .store(now.as_millis(), Ordering::Relaxed);
+            .store(now.as_millisecond(), Ordering::Relaxed);
     }
 }
 

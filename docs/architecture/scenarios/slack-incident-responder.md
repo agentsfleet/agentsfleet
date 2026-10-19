@@ -45,7 +45,7 @@ later, in the same thread:  "@agentsfleet-dev ci-dev-repairer open the fix"
 | | Slack connector | Channel resident | Channel subscription |
 |---|---|---|---|
 | What it is | a workspace's Slack credential and team routing | the channel's memory namespace and front desk | a fleet that answers mentions in one channel |
-| Where it lives | vault handle `slack` + `core.connector_installs (slack, team_id)` | `core.connector_channels`, `kind` resident, one row per channel | the fleet's reviewed setup: a trigger with `type: mention`, `source: slack`, `channels: [<channel identifier>]` |
+| Where it lives | vault handle `slack` + `connector.installs (slack, team_id)` | `connector.channels`, `kind` resident, one row per channel | the fleet's reviewed setup: a trigger with `type: mention`, `source: slack`, `channels: [<channel identifier>]` |
 | Created by | Connect Slack (Open Authorization (OAuth)) | the first mention in the channel | a workspace member who asks for the channel in chat, reviews the setup and Saves it, or applies a reviewed improvement |
 | Proves | the daemon may post into that team | nothing about which fleet answers | this fleet answers mentions here |
 
@@ -56,7 +56,7 @@ A connected card proves only the first column. The catalogue's "Connected" is va
 | Question | GitHub App ✅ | Slack mention ✅ |
 |---|---|---|
 | Ceiling | the repositories the App installation covers | the channels the bot user is a member of |
-| Workspace routing | `installation.id` → `core.connector_installs` (`SELECT_INSTALL_WORKSPACE`, `afd_ingress/src/sql.rs:43-46`) | `team_id` → the same table and statement |
+| Workspace routing | `installation.id` → `connector.installs` (`SELECT_INSTALL_WORKSPACE`, `afd_ingress/src/sql.rs:43-46`) | `team_id` → the same table and statement |
 | Subscription | `webhook` trigger: `source: github`, `repositories`, `events` | `mention` trigger: `source: slack`, `channels` |
 | Subscription identity | repository full name, compared case-insensitively (`serves_repository`, `afd_ingress/src/binding/mod.rs:250-256`); a rename stops routing | channel identifier (ID); a rename changes nothing |
 | Who receives it | every matching fleet (fan-out) | exactly one fleet, or one notice |
@@ -83,7 +83,7 @@ Fleets are attached, never created per message: a fleet per message would start 
 One mention produces one event or one notice, never both and never two.
 
 1. **Filter.** Only `event_callback` with `event.type` `app_mention`. A message carrying `bot_id` or `subtype`, or sent by the bot user itself (`bot_user_id` is in the Slack handle, `afd_connector/src/grant/parse/mod.rs:146-149`; compared at `afd_api_ingress/src/handler/mention/mod.rs:252`), is acknowledged and dropped.
-2. **Name.** Strip the leading bot mention. If the first word, without a trailing `:` or `,`, equals one subscribed fleet's name ignoring case, the mention is **addressed** to that fleet. Names are unique per workspace but case-sensitive (`schema/500_fleets.sql:56`), so two subscribed fleets whose names differ only in case make that word ambiguous.
+2. **Name.** Strip the leading bot mention. If the first word, without a trailing `:` or `,`, equals one subscribed fleet's name ignoring case, the mention is **addressed** to that fleet. Names are unique per workspace but case-sensitive (`schema/1500_fleet_fleets.sql:56`), so two subscribed fleets whose names differ only in case make that word ambiguous.
 3. **Choose.**
 
 | Subscribed fleets in the channel | Addressed | Unaddressed |
@@ -94,7 +94,7 @@ One mention produces one event or one notice, never both and never two.
 | several | the named one | notice listing the names; no model runs |
 | any paused, named | notice: paused, and who can resume it | not eligible |
 
-4. **Admit.** One `core.fleet_admissions` row, producer `slack_mention`, key `<team_id>:<event_id>`. The unique `(producer, producer_key)` (`schema/910_fleet_admissions.sql`) turns every Slack retry into the first answer. Notices are keyed the same way, so a retried ambiguous mention is not answered twice.
+4. **Admit.** One `fleet.admissions` row, producer `slack_mention`, key `<team_id>:<event_id>`. The unique `(producer, producer_key)` (`schema/1720_fleet_admissions.sql`) turns every Slack retry into the first answer. Notices are keyed the same way, so a retried ambiguous mention is not answered twice.
 
 The resident is materialised on the first mention in any channel, whatever the routing outcome, because it owns the channel's notices. It answers with a model only when no fleet subscribes, and when asked for something it cannot reach it names the attach command with this channel's identifier filled in.
 
@@ -110,7 +110,7 @@ The producer that owns a reply surface records the reply destination on the admi
 
 The report parses the recorded connector once, so the lease's **model** provider never reaches the delivery ledger (`afd_fleet/src/lease/obligation.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
-A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb/mod.rs`). The lease plane fences each line and counts it in `fleet.runner_leases.messages_posted` (`schema/929_runner_leases_messages_posted.sql`), so a reclaimed lease starts a new count. The daemon posts every Slack text, interim line and answer alike, as literal text, with `&`, `<` and `>` sent as Slack entities (`afd_outbound/src/slack/escape/mod.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered/mod.rs`), so a repeat finds only its own line and never silences the answer.
+A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb/mod.rs`). The lease plane fences each line and counts it in `runner.leases.posted_message_count` (`schema/1810_runner_leases.sql`), so a reclaimed lease starts a new count. The daemon posts every Slack text, interim line and answer alike, as literal text, with `&`, `<` and `>` sent as Slack entities (`afd_outbound/src/slack/escape/mod.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered/mod.rs`), so a repeat finds only its own line and never silences the answer.
 
 ## 7. Four stages, four authorities
 
@@ -135,7 +135,7 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 
 | Integration | Connector (auth) | Events in | Actions out | In the first drill |
 |---|---|---|---|---|
-| GitHub | App install; per-lease installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure` only; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github/mod.rs:155-181`, `app_route.rs:22-29`) | fleet `http_request` inside egress rules | read token only |
+| GitHub | App install; per-lease installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure` only; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github/mod.rs:106-154`, `app_route.rs:22-29`) | fleet `http_request` inside egress rules | read token only |
 | Slack | OAuth bot token: `app_mentions:read`, `chat:write`, `channels:history` | `app_mention` (M206_002) | daemon `chat.postMessage` | yes |
 | Grafana | none; workspace secret | none | fleet reads | yes, read-only |
 | Zoho Desk | OAuth refresh, multi-data-center, `Desk.*.READ` | none | none | no |
@@ -152,7 +152,7 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs:59-64`, `afd_admission/src/admission.rs:33`) | — | M206_002 |
 | Channel → fleet | ✅ subscriptions: a `mention` trigger in the reviewed setup names the channel, matched by `is_attached_to` (`afd_fleet_runtime/src/config/attach.rs:17`) and read per mention (`mention_subscribers`, `afd_ingress/src/slack/mod.rs:73`); the resident: written as native system setup on the first mention in a channel and bound once (`resident`, `afd_api_ingress/src/handler/mention/resident.rs:110`; `Creations::materialise`, `afd_authoring/src/creation/system.rs:46`) | — | M206_002 |
 | Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies/mod.rs:48-51,183`, `afd_ingress/src/slack/message.rs:20,52`) | — | M206_002 |
-| Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slots 918–920) | — | M206_001 |
+| Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slot 1740) | — | M206_001 |
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack/mod.rs`) | — | M206_001 |
 | Write reach from Slack | ✅ one ref and one draft PR, proven for a Slack-requested lease with no approval asked (`afd_gate/src/policy/egress/tests/slack.rs`, `afd_fleet/tests/integration_lease_gates/slack.rs`) | — | M206_003 |
 | One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:164-165`) while approval also admits a continuation (`afd_approval/src/inbox/resolve/mod.rs:149-152`) | exactly one run | its own spec; off this path, since Slack requests do not park |

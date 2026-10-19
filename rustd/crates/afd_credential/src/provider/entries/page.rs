@@ -25,23 +25,31 @@ use std::collections::HashMap;
 
 use afd_core::id::Uuid7;
 use afd_vault::{Descriptor, Directory};
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
+use jiff_sqlx::ToSqlx as _;
 
 use super::sql;
-use super::{Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, is_active};
-use crate::error::{Result, query, row_malformed};
+use super::{
+    Boundary, CatalogueRate, Entry, EntryRow, PricedDefault, RegistryPage, RegistryRow, is_active,
+};
+use crate::error::{Result, query};
 use crate::provider::cap;
 use crate::provider::store::Providers;
 
 /// The context a failed page read reports under.
 const CONTEXT_PAGE: &str = "tenant model registry page";
 
-/// The table an unreadable identifier is reported against.
-const TABLE_ENTRIES: &str = "core.tenant_model_entries";
-
-/// The column an unreadable identifier is reported against.
-const COLUMN_ID: &str = "id";
+/// One [`sql::SELECT_RATES_FOR_PAIRS`] row, by its column names.
+#[derive(Debug, sqlx::FromRow)]
+struct RateRow {
+    provider: String,
+    model_name: String,
+    #[sqlx(flatten)]
+    metadata: afd_admin::catalogue::MetadataColumns,
+    context_cap_tokens: i32,
+    input_nanos_per_mtok: i64,
+    cached_input_nanos_per_mtok: i64,
+    output_nanos_per_mtok: i64,
+}
 
 impl Providers {
     /// One page of `tenant`'s registry, newest first.
@@ -52,9 +60,8 @@ impl Providers {
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a stored row this daemon
-    /// cannot read, and a `mode` column holding a word neither posture spells.
-    /// A credential deleted out of band is not an error — its row lists
-    /// degraded.
+    /// cannot read, and a selection pointing at no readable entry. A credential
+    /// deleted out of band is not an error — its row lists degraded.
     pub async fn registry_page(
         &self,
         tenant: &Uuid7,
@@ -73,7 +80,7 @@ impl Providers {
             .into_iter()
             .map(|entry| {
                 let credential = credentials.get(&entry.secret_ref).cloned();
-                let rate = rate_for(&rates, credential.as_ref(), &entry.model_id);
+                let rate = rate_for(&rates, credential.as_ref(), &entry.model_name);
                 RegistryRow {
                     active: is_active(&entry, chosen.as_ref()),
                     credential,
@@ -89,7 +96,7 @@ impl Providers {
             platform_default: default.map(|default| PricedDefault {
                 rate: rates
                     .get(&(default.provider.to_string(), default.model.to_string()))
-                    .copied(),
+                    .cloned(),
                 default,
             }),
         })
@@ -112,12 +119,12 @@ impl Providers {
     ) -> Result<(Vec<Entry>, Option<Boundary>)> {
         let fetch = i64::from(limit) + 1;
         let statement = match after {
-            None => sqlx::query(sql::SELECT_FIRST_PAGE)
+            None => sqlx::query_as::<_, EntryRow>(sql::SELECT_FIRST_PAGE)
                 .bind(tenant.as_str())
                 .bind(fetch),
-            Some(boundary) => sqlx::query(sql::SELECT_PAGE_AFTER)
+            Some(boundary) => sqlx::query_as::<_, EntryRow>(sql::SELECT_PAGE_AFTER)
                 .bind(tenant.as_str())
-                .bind(boundary.created_at_ms)
+                .bind(boundary.created_at.to_sqlx())
                 .bind(boundary.id.as_str())
                 .bind(fetch),
         };
@@ -130,9 +137,9 @@ impl Providers {
 
         let has_more = rows.len() > limit as usize;
         let entries: Vec<Entry> = rows
-            .iter()
+            .into_iter()
             .take(limit as usize)
-            .map(read_entry)
+            .map(EntryRow::into_entry)
             .collect::<Result<_>>()?;
 
         // From the last SERVED row, never the extra one: the seek is exclusive,
@@ -193,14 +200,14 @@ impl Providers {
 
         let (providers, models): (Vec<&str>, Vec<&str>) = pairs.into_iter().unzip();
         let mut connection = self.pool().acquire().await?;
-        let rows = sqlx::query(sql::SELECT_RATES_FOR_PAIRS)
+        let rows = sqlx::query_as::<_, RateRow>(sql::SELECT_RATES_FOR_PAIRS)
             .bind(&providers)
             .bind(&models)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_PAGE))?;
 
-        rows.iter().map(read_rate).collect()
+        Ok(rows.into_iter().map(RateRow::into_rate).collect())
     }
 }
 
@@ -219,7 +226,7 @@ fn wanted_pairs<'a>(
 ) -> Vec<(&'a str, &'a str)> {
     let from_entries = entries.iter().filter_map(|entry| {
         let provider = credentials.get(&entry.secret_ref)?.provider()?;
-        Some((provider, &*entry.model_id))
+        Some((provider, &*entry.model_name))
     });
     let from_default = default.map(|default| (&*default.provider, &*default.model));
 
@@ -244,60 +251,35 @@ fn rate_for(
     model: &str,
 ) -> Option<CatalogueRate> {
     let provider = credential?.provider()?;
-    rates.get(&(provider.to_owned(), model.to_owned())).copied()
+    rates.get(&(provider.to_owned(), model.to_owned())).cloned()
 }
 
 /// Where a later page resumes after `entry`.
 ///
 /// Built from the entry ROW rather than from anything projected beside it: the
-/// seek predicate compares against `core.tenant_model_entries` columns, and a
+/// seek predicate compares against `model.tenant_models` columns, and a
 /// rendered view may not round-trip them.
 fn boundary_of(entry: &Entry) -> Boundary {
     Boundary {
-        created_at_ms: entry.created_at_ms,
+        created_at: entry.created_at,
         id: entry.id.clone(),
     }
 }
 
-/// Reads one entry row.
-///
-/// Positional, matching every other read in this workspace: the statement's
-/// projection and this function are one contract, and reading by name would
-/// hide a projection that had drifted out of order.
-pub(super) fn read_entry(row: &PgRow) -> Result<Entry> {
-    let unreadable = query(CONTEXT_PAGE);
-    let id: String = row.try_get(0).map_err(&unreadable)?;
-    let model_id: String = row.try_get(1).map_err(&unreadable)?;
-    let secret_ref: String = row.try_get(2).map_err(&unreadable)?;
-    let created_at_ms: i64 = row.try_get(3).map_err(&unreadable)?;
-
-    Ok(Entry {
-        id: Uuid7::parse(&id).map_err(row_malformed(TABLE_ENTRIES, COLUMN_ID))?,
-        model_id: model_id.into_boxed_str(),
-        secret_ref: secret_ref.into_boxed_str(),
-        created_at_ms,
-    })
-}
-
-/// Reads one catalogue rate into its map entry.
-///
-/// The ceiling is clamped the way every other reader of this column clamps it:
-/// `core.model_library.context_cap_tokens` is `INTEGER NOT NULL` with no
-/// nonnegative constraint, because RULE STS keeps bounds in the application, so
-/// a negative row is one the schema permits and a page must not render.
-fn read_rate(row: &PgRow) -> Result<((String, String), CatalogueRate)> {
-    let unreadable = query(CONTEXT_PAGE);
-    let provider: String = row.try_get(0).map_err(&unreadable)?;
-    let model: String = row.try_get(1).map_err(&unreadable)?;
-    let stored_cap: i32 = row.try_get(2).map_err(&unreadable)?;
-
-    Ok((
-        (provider, model),
-        CatalogueRate {
-            context_cap_tokens: cap::stored(stored_cap),
-            input_nanos_per_mtok: row.try_get(3).map_err(&unreadable)?,
-            cached_input_nanos_per_mtok: row.try_get(4).map_err(&unreadable)?,
-            output_nanos_per_mtok: row.try_get(5).map_err(&unreadable)?,
-        },
-    ))
+impl RateRow {
+    /// The row as its map entry.
+    ///
+    /// Uses the shared stored-context conversion; catalogue contexts are positive.
+    fn into_rate(self) -> ((String, String), CatalogueRate) {
+        (
+            (self.provider, self.model_name),
+            CatalogueRate {
+                metadata: self.metadata.into(),
+                context_cap_tokens: cap::stored(self.context_cap_tokens),
+                input_nanos_per_mtok: self.input_nanos_per_mtok,
+                cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,
+                output_nanos_per_mtok: self.output_nanos_per_mtok,
+            },
+        )
+    }
 }

@@ -55,7 +55,6 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::VerifyError;
 use afd_billing::tenant::Billing;
-use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
@@ -78,6 +77,7 @@ use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+use jiff::Timestamp;
 // Aliased for the reason the composition root aliases it: `afd_credential::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
 use afd_admin::{Models as AdminModels, PlatformKeys};
@@ -105,7 +105,9 @@ pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_provider::HarnessProviders;
 pub(crate) use self::stubs_runner::NoWork;
-pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace, Ownership};
+pub(crate) use self::stubs_tenant::{
+    DEPLOYMENT, FOREIGN_WORKSPACE, OWNED_WORKSPACE, OneWorkspace, Ownership,
+};
 pub(crate) use self::team_faults::{Failpoint, HarnessTeam, TeamStep};
 /// Where this fixture deployment's schedule fires would arrive.
 ///
@@ -125,8 +127,9 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    ERROR_CODE, concrete_path, connect_redis, dragonfly_config, error_code, exchange, file_runner,
-    items, json_body, live_hub, presented, runner_id, send, send_with_headers, tenant, text,
+    ERROR_CODE, assert_reached_the_verb, code_of, concrete_path, connect_redis, detail_of,
+    dragonfly_config, error_code, exchange, field_of, file_runner, items, json_body, live_hub,
+    presented, problem, refusal_code, runner_id, send, send_with_headers, tenant, text,
 };
 
 /// A Postgres nobody is listening on.
@@ -147,10 +150,7 @@ const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 /// A fixed instant, so every row a verb writes is stamped predictably.
-const FROZEN: i64 = 1_760_000_000_000;
-
-/// Milliseconds in a second, named because two units meet here.
-const MILLIS_PER_SECOND: i64 = 1_000;
+const FROZEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
 /// [`FROZEN`] as whole seconds — the unit a signed timestamp header carries.
 ///
@@ -159,8 +159,8 @@ const MILLIS_PER_SECOND: i64 = 1_000;
 /// test that built its timestamps from `SystemTime::now` would be sixty-odd
 /// million seconds adrift and read every delivery as stale, whatever it was
 /// actually testing.
-pub(crate) const fn frozen_unix_seconds() -> i64 {
-    FROZEN / MILLIS_PER_SECOND
+pub(crate) fn frozen_unix_seconds() -> i64 {
+    FROZEN.as_second()
 }
 
 /// The process key the secret store seals under.
@@ -276,7 +276,7 @@ pub(crate) struct Fleet {
     runner_lease_history: RunnerLeaseHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
-    now: UnixMillis,
+    now: Timestamp,
 }
 
 /// The same auth seam backed either by the fast map or production Postgres.

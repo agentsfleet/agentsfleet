@@ -34,11 +34,11 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: "runner-1",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "online",
     labels: [],
-    last_seen_at: 1_760_000_000_000,
-    created_at: 1_759_000_000_000,
+    last_seen_at: "2025-10-09T08:53:20Z",
+    created_at: "2025-09-27T19:06:40Z",
     assigned_policy: ASSIGNED,
     achievable: null,
     degraded: false,
@@ -69,7 +69,7 @@ describe("RunnerChecksReport — self-test half", () => {
 
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
-    renderPanel(<RunnerChecksReport runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest_requested_at: "2025-10-09T08:53:20Z" })} />);
     expect(within(panel()).getByText(/Checks are outstanding/)).toBeTruthy();
   });
 
@@ -78,7 +78,7 @@ describe("RunnerChecksReport — self-test half", () => {
   it("test_selftest_result_renders_per_check", () => {
     renderPanel(
       <RunnerChecksReport
-        runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
+        runner={detail({ selftest: PASSING, selftest_completed_at: "2025-10-09T08:53:20Z" })}
       />,
     );
     expect(within(panel()).getByText("all checks passed")).toBeTruthy();
@@ -97,13 +97,13 @@ describe("RunnerChecksReport — self-test half", () => {
         { name: "the inference endpoint is reachable", ok: true, detail: "no fault detected" },
       ],
     };
-    renderPanel(<RunnerChecksReport runner={detail({ selftest: failing, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: failing, selftest_completed_at: "1970-01-01T00:00:00.001Z" })} />);
     expect(within(panel()).getByText("2 failed")).toBeTruthy();
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
   });
 
   it("keeps the report free of relative timestamps", () => {
-    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: "2025-10-09T08:53:20Z" })} />);
     expect(panel().querySelector("time")).toBeNull();
   });
 
@@ -114,7 +114,7 @@ describe("RunnerChecksReport — self-test half", () => {
       <RunnerChecksReport
         runner={detail({
           selftest: { ...PASSING, network_policy: "allow_all" },
-          selftest_completed_at: 1,
+          selftest_completed_at: "1970-01-01T00:00:00.001Z",
         })}
       />,
     );
@@ -123,7 +123,7 @@ describe("RunnerChecksReport — self-test half", () => {
   });
 
   it("shows no stale marking when the verdict names the assignment still in force", () => {
-    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerChecksReport runner={detail({ selftest: PASSING, selftest_completed_at: "1970-01-01T00:00:00.001Z" })} />);
     expect(within(panel()).queryByText("stale")).toBeNull();
   });
 });

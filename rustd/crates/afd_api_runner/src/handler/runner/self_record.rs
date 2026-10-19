@@ -69,16 +69,13 @@ pub(crate) async fn handle<D: Services>(
 fn payload(row: &SelfRow) -> afd_runner::Result<SelfResponse<'_>> {
     Ok(SelfResponse {
         id: Cow::Borrowed(row.id.as_str()),
-        // The column is `admin_state`; the runner-facing field has always been
-        // `status`. The rename stopped at the schema, and this is where that
-        // stops being visible to a host.
         status: Cow::Borrowed(&row.status),
         host_id: Cow::Borrowed(&row.host_id),
         sandbox_tier: Cow::Borrowed(&row.assignment.sandbox_tier),
         last_seen_at: row.last_seen_at,
         assigned_policy: row.assignment.decode()?,
         achievable: capability(row.capability_report_json.as_deref()),
-        degraded: row.verdict.degraded,
+        degraded: row.verdict.is_degraded(),
         degraded_reason: row.verdict.reason.as_deref().map(Cow::Borrowed),
     })
 }

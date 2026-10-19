@@ -1,6 +1,6 @@
 //! Which workspace a fleet is in, and the two shared-memory grants it holds.
 //!
-//! Read and written on `core.fleets` as the api role, BEFORE any store takes
+//! Read and written on `fleet.fleets` as the api role, BEFORE any store takes
 //! the memory role — `memory_runtime` cannot see `core`, and whichever store
 //! holds the rows, the grants are this control plane's to enforce.
 
@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use sqlx::Row as _;
 
 use crate::error::{Result, query};
 
@@ -19,25 +18,41 @@ const CONTEXT_GRANT: &str = "memory access change";
 const CONTEXT_NAMES: &str = "memory writer names";
 
 /// A fleet's workspace and grants. `$1` fleet.
-const SELECT_ACCESS: &str = "\
-SELECT workspace_id::text, memory_reads_workspace, memory_publishes_workspace
-FROM core.fleets WHERE id = $1::uuid";
+const SELECT_ACCESS: &str = include_str!("sql/select_access.sql");
 
 /// Sets either grant, keeping the other when its parameter is NULL, and only
 /// on a fleet the named workspace holds.
 ///
 /// `$1` fleet, `$2` workspace, `$3` read, `$4` publish.
-const UPDATE_ACCESS: &str = "\
-UPDATE core.fleets
-SET memory_reads_workspace = COALESCE($3, memory_reads_workspace),
-    memory_publishes_workspace = COALESCE($4, memory_publishes_workspace)
-WHERE id = $1::uuid AND workspace_id = $2::uuid
-RETURNING memory_reads_workspace, memory_publishes_workspace";
+const UPDATE_ACCESS: &str = include_str!("sql/update_access.sql");
 
 /// Every fleet's name in a workspace, for naming a shared entry's writer.
 /// `$1` workspace.
-const SELECT_FLEET_NAMES: &str = "\
-SELECT id::text, name FROM core.fleets WHERE workspace_id = $1::uuid";
+const SELECT_FLEET_NAMES: &str = include_str!("sql/select_fleet_names.sql");
+
+/// A fleet's two grants, as the statements return them.
+#[derive(Debug, sqlx::FromRow)]
+struct GrantsRow {
+    memory_reads_workspace: bool,
+    memory_publishes_workspace: bool,
+}
+
+impl From<GrantsRow> for MemoryAccess {
+    fn from(row: GrantsRow) -> Self {
+        Self {
+            read: row.memory_reads_workspace,
+            publish: row.memory_publishes_workspace,
+        }
+    }
+}
+
+/// A fleet's workspace beside its grants.
+#[derive(Debug, sqlx::FromRow)]
+struct AccessRow {
+    workspace_id: String,
+    #[sqlx(flatten)]
+    grants: GrantsRow,
+}
 
 /// Where a fleet is and what it may do with the workspace's shared memory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +70,7 @@ pub(crate) struct Directory {
 }
 
 impl Directory {
-    /// A directory reading `core.fleets` through `database`.
+    /// A directory reading `fleet.fleets` through `database`.
     pub(crate) const fn new(database: Db) -> Self {
         Self { database }
     }
@@ -63,7 +78,7 @@ impl Directory {
     /// `fleet`'s workspace and grants, or `None` for a fleet that does not exist.
     pub(crate) async fn of(&self, fleet: &Uuid7) -> Result<Option<Access>> {
         let mut connection = self.database.acquire().await?;
-        let Some(row) = sqlx::query(SELECT_ACCESS)
+        let Some(row) = sqlx::query_as::<_, AccessRow>(SELECT_ACCESS)
             .bind(fleet.as_str())
             .fetch_optional(&mut *connection)
             .await
@@ -71,13 +86,9 @@ impl Directory {
         else {
             return Ok(None);
         };
-        let workspace: String = row.try_get(0).map_err(query(CONTEXT_ACCESS))?;
         Ok(Some(Access {
-            workspace: Uuid7::parse(&workspace)?,
-            grants: MemoryAccess {
-                read: row.try_get(1).map_err(query(CONTEXT_ACCESS))?,
-                publish: row.try_get(2).map_err(query(CONTEXT_ACCESS))?,
-            },
+            workspace: Uuid7::parse(&row.workspace_id)?,
+            grants: row.grants.into(),
         }))
     }
 
@@ -90,7 +101,7 @@ impl Directory {
         change: MemoryAccessRequest,
     ) -> Result<Option<MemoryAccess>> {
         let mut connection = self.database.acquire().await?;
-        sqlx::query(UPDATE_ACCESS)
+        Ok(sqlx::query_as::<_, GrantsRow>(UPDATE_ACCESS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
             .bind(change.read)
@@ -98,30 +109,18 @@ impl Directory {
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_GRANT))?
-            .map(|row| {
-                Ok(MemoryAccess {
-                    read: row.try_get(0).map_err(query(CONTEXT_GRANT))?,
-                    publish: row.try_get(1).map_err(query(CONTEXT_GRANT))?,
-                })
-            })
-            .transpose()
+            .map(MemoryAccess::from))
     }
 
     /// Every fleet's name in `workspace`, keyed by its identifier.
     pub(crate) async fn names(&self, workspace: &Uuid7) -> Result<HashMap<String, String>> {
         let mut connection = self.database.acquire().await?;
-        sqlx::query(SELECT_FLEET_NAMES)
+        Ok(sqlx::query_as::<_, (String, String)>(SELECT_FLEET_NAMES)
             .bind(workspace.as_str())
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_NAMES))?
-            .iter()
-            .map(|row| {
-                Ok((
-                    row.try_get(0).map_err(query(CONTEXT_NAMES))?,
-                    row.try_get(1).map_err(query(CONTEXT_NAMES))?,
-                ))
-            })
-            .collect()
+            .into_iter()
+            .collect())
     }
 }

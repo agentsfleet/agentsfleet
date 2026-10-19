@@ -130,6 +130,8 @@ test_arch_doc_missing_dir_fails_loud() {
 # and fixture builders. Split at the length cap.
 # shellcheck source=scripts/check_architecture_doc_test_citations.sh
 . "$SCRIPT_DIR/check_architecture_doc_test_citations.sh"
+# shellcheck source=scripts/check_architecture_doc_test_schema.sh
+. "$SCRIPT_DIR/check_architecture_doc_test_schema.sh"
 
 test_arch_doc_validates_all_m_ids
 test_arch_doc_unresolved_ref_names_the_milestone
@@ -139,7 +141,7 @@ test_arch_doc_no_retired_slot_numbers() {
   # A published decision record keeps its own title, so link text is exempt while
   # the same number in prose is not. Both halves are asserted.
   assert_citation_shape "$name" slots \
-    'Indexes live in `schema/620_runner_lease_indexes.sql`, per [Index audit — slots 033 & 034](https://example.invalid/a).' \
+    'Indexes live in `schema/1810_runner_leases.sql`, per [Index audit — slots 033 & 034](https://example.invalid/a).' \
     'Indexes live in slot 033.'
 }
 
@@ -329,6 +331,7 @@ test_arch_doc_carries_no_conflict_marker
 test_arch_doc_published_links_resolve
 test_arch_doc_only_link_targets_are_checked
 test_arch_doc_every_clickable_link_form_is_checked
+test_arch_schema_layout_matches_doc
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

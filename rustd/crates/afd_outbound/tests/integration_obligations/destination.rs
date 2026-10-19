@@ -10,8 +10,8 @@ use super::*;
 /// Every other case in this file calls a scan and then enqueues by hand. That
 /// grades `obligation::unreceipted` and the queue, and it is exactly why "a
 /// daemon producer enqueues it" had no proof. `Producer::run` is the loop
-/// `agentsfleetd` spawns (`agentsfleetd/src/outbound.rs:95`); it computes its
-/// OWN cutoffs from `clock::now()` rather than taking them as parameters, it
+/// `agentsfleetd` spawns (`agentsfleetd/src/outbound.rs:95`); it scans at its
+/// OWN spans, measured on the database clock, rather than taking them as parameters, it
 /// appends every row a scan answers, and it records each entry as that row's
 /// receipt. None of that is reached by calling a scan directly, and none of it
 /// had a test: nothing under `tests/` named `afd_outbound::producer`, and
@@ -21,8 +21,8 @@ use super::*;
 /// nothing in the daemon called `OutboundQueue::enqueue`. This is the test that
 /// fails if that becomes true again.
 ///
-/// No clock is waited on. `SEEDED_AT` is older than `producer::MIN_AGE` by
-/// years, so the producer's first pass already finds the row.
+/// No clock is waited on. The owed row is aged past `producer::MIN_AGE`, so the
+/// producer's first pass already finds it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
@@ -114,6 +114,66 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
         0,
         "nothing was appended for an answer no poster could take"
     );
+}
+
+/// The trigger standing in for a ledger that takes the append's receipt badly.
+const RECEIPT_REFUSAL: &str = "afd_it_outbound_receipt_refused";
+
+/// A re-append whose receipt the ledger refuses is still on the queue, and the
+/// row stays owed: the next pass appends it again, and the destination may see
+/// the answer twice — the direction the producer already accepts, over losing
+/// it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn a_reappend_whose_receipt_is_refused_stays_owed() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = ready().await;
+    let redis = datastore().await;
+    let event = "1700000000-9";
+    assert!(owe_committed(&harness, &obligation_id(11), event).await);
+    refuse_receipts(&harness, Some(event)).await;
+
+    let appended = producer_until(&harness, async || entries_naming(&redis, event).await > 0).await;
+    refuse_receipts(&harness, None).await;
+
+    assert!(appended, "the append itself went through");
+    assert_eq!(
+        awaiting_append(&harness).await,
+        vec![event.to_owned()],
+        "the refused receipt leaves the row for the next pass"
+    );
+}
+
+/// Installs, for `event`, or removes, for `None`, a trigger refusing every
+/// receipt written to that event's row.
+async fn refuse_receipts(harness: &OutboundHarness, event: Option<&str>) {
+    let mut connection = harness
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
+    let mut statements = vec![
+        format!("DROP TRIGGER IF EXISTS {RECEIPT_REFUSAL} ON fleet.obligations"),
+        format!("DROP FUNCTION IF EXISTS public.{RECEIPT_REFUSAL}()"),
+    ];
+    // The event is this suite's own constant, never input.
+    if let Some(event) = event {
+        statements.push(format!(
+            "CREATE FUNCTION public.{RECEIPT_REFUSAL}() RETURNS trigger LANGUAGE plpgsql AS $$ \
+             BEGIN RAISE EXCEPTION 'receipt fixture refusal'; END $$"
+        ));
+        statements.push(format!(
+            "CREATE TRIGGER {RECEIPT_REFUSAL} BEFORE UPDATE ON fleet.obligations FOR EACH ROW \
+             WHEN (NEW.event_id = '{event}' AND NEW.receipt IS NOT NULL) \
+             EXECUTE FUNCTION public.{RECEIPT_REFUSAL}()"
+        ));
+    }
+    for statement in statements {
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&mut *connection)
+            .await
+            .expect("the receipt fault installs and removes");
+    }
 }
 
 /// Runs the daemon's own producer until `done` holds or [`PRODUCER_PASS`]

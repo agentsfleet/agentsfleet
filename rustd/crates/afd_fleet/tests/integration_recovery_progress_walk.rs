@@ -13,13 +13,13 @@
 )]
 
 use afd_admission::Progress;
-use afd_core::clock;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
     EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, ledger, producer_key,
 };
 use crate::integration_recovery_progress::{ONE_ROW, deliver};
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -65,7 +65,7 @@ async fn a_walk_resumes_past_the_rows_it_already_repaired() {
     let before_loss: Vec<Option<String>> = {
         let mut receipts = Vec::new();
         for event_id in &owed {
-            receipts.push(fixtures.admission_receipt(&fleet, event_id).await);
+            receipts.push(fixtures.text(Row::Admission(event_id), "receipt").await);
         }
         receipts
     };
@@ -84,18 +84,17 @@ async fn a_walk_resumes_past_the_rows_it_already_repaired() {
     // already made healthy. The third and fourth are slack.
     let mut progress = Progress::default();
     for _pass in 0..4 {
-        let at = clock::now();
-        live.reconcile(at, EVERY_FLEET, TWO_ROWS, &mut progress)
+        live.reconcile(EVERY_FLEET, TWO_ROWS, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
     }
 
     for (which, (event_id, destroyed)) in owed.iter().zip(&before_loss).enumerate() {
         let receipt = fixtures
-            .admission_receipt(&fleet, event_id)
+            .text(Row::Admission(event_id), "receipt")
             .await
             .unwrap_or_else(|| panic!("row {which} is accepted work and must hold a receipt"));
         assert_ne!(
@@ -111,7 +110,10 @@ async fn a_walk_resumes_past_the_rows_it_already_repaired() {
             "row {which} sits past the walk's batch and was still recovered"
         );
         assert_eq!(
-            fixtures.admission_replays(&fleet, event_id).await,
+            fixtures
+                .value::<i64>(Row::Admission(event_id), "replay_count")
+                .await
+                .expect("replay_count is NOT NULL"),
             1,
             "row {which} was re-appended exactly once, however many passes ran"
         );
@@ -171,13 +173,12 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
     let mut progress = Progress::with_capacity(ROOM_FOR_ONE);
     let mut declined = 0;
     for _pass in 0..4 {
-        let at = clock::now();
         declined += live
-            .reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+            .reconcile(EVERY_FLEET, ONE_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores")
             .declined;
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
     }
@@ -189,10 +190,13 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
 
     // Nothing was lost: every row still holds a receipt, live or dead, and a
     // dead one is a row the replay sweeper still owes.
-    for (fleet, owed) in &lost {
+    for owed in lost.iter().map(|(_, owed)| owed) {
         for event_id in owed {
             assert!(
-                fixtures.admission_receipt(fleet, event_id).await.is_some(),
+                fixtures
+                    .text(Row::Admission(event_id), "receipt")
+                    .await
+                    .is_some(),
                 "{event_id} is accepted work and must still hold a receipt"
             );
         }
@@ -204,7 +208,7 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
     for (fleet, owed) in &lost {
         for event_id in owed {
             let receipt = fixtures
-                .admission_receipt(fleet, event_id)
+                .text(Row::Admission(event_id), "receipt")
                 .await
                 .expect("every row holds a receipt");
             if streams
@@ -218,11 +222,10 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
     }
 
     for _pass in 0..4 {
-        let at = clock::now();
-        live.reconcile(at, EVERY_FLEET, ONE_ROW, &mut progress)
+        live.reconcile(EVERY_FLEET, ONE_ROW, &mut progress)
             .await
             .expect("the reconcile pass runs against both live datastores");
-        live.replay(at, NO_GRACE, EVERY_ROW)
+        live.replay(NO_GRACE, EVERY_ROW)
             .await
             .expect("the replay pass runs against both live datastores");
     }
@@ -230,7 +233,7 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
     for (fleet, owed) in &lost {
         for event_id in owed {
             let receipt = fixtures
-                .admission_receipt(fleet, event_id)
+                .text(Row::Admission(event_id), "receipt")
                 .await
                 .unwrap_or_else(|| panic!("{event_id} is accepted work and must hold a receipt"));
             let held = streams
@@ -239,7 +242,7 @@ async fn a_full_resume_set_declines_a_repair_and_still_recovers_it() {
                 .expect("the stream answers");
             assert!(
                 held || fixtures
-                    .admission_delivered_at(fleet, event_id)
+                    .instant(Row::Admission(event_id), "delivered_at")
                     .await
                     .is_some(),
                 "{event_id} was on a declined repair and is neither delivered nor re-queued"

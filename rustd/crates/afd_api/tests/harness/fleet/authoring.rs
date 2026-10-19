@@ -15,7 +15,13 @@ pub(super) fn stores(
     ledger: &afd_admission::Admissions,
     providers: &HarnessProviders,
 ) -> Stores {
-    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new());
+    let drafts = afd_authoring::Drafts::new(
+        database.clone(),
+        Entropy::new(),
+        std::sync::Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
+            database.clone(),
+        )),
+    );
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::new(Kek::from_bytes(FIXTURE_KEK)));
     Stores {
         creations: afd_authoring::Creations::new(setup.clone(), queue.clone(), ledger.clone()),

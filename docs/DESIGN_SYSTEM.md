@@ -166,7 +166,7 @@ Presentation changes must preserve keyboard interactions, loading state, and acc
 Use shared primitives before adding consumer markup with equivalent behavior.
 Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
 Use Activity for the workspace feed and fleet section. Individual records remain events; existing event URLs retain their meaning.
-In fleet Setup, explain what the fleet does and label its saved instructions separately from product guidance. Use **Edit fleet** for the action that opens a private setup chat, with review before applying changes. Keep version details and raw configuration inside **Advanced settings**.
+In fleet Setup, show the saved purpose, instructions, version and read-only schedule together. Use **Edit fleet** to open its private setup chat. The chat offers **Save fleet** or **Save changes**; Setup shows what was saved and when it will run next.
 
 ### Compact density
 

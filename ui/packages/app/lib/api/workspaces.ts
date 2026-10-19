@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { isNonEmptyString, isRecord } from "./decode";
+import { isNonEmptyString, isRecord, isInstant } from "./decode";
 import { ACCOUNT_ROLE, type AccountRole } from "./workspaces-types";
 
 const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
@@ -17,7 +17,7 @@ export type WorkspaceAccount = {
 export type TenantWorkspace = {
   id: string;
   name: string | null;
-  created_at: number;
+  created_at: string;
   account: WorkspaceAccount;
   role: AccountRole;
 };
@@ -64,7 +64,7 @@ const decodeWorkspace = (value: unknown): TenantWorkspace => {
   if (
     !isNonEmptyString(value.id) ||
     (value.name !== null && typeof value.name !== "string") ||
-    !Number.isSafeInteger(value.created_at) ||
+    !isInstant(value.created_at) ||
     !isAccountRole(value.role)
   ) {
     throw new Error("workspace item is invalid");
@@ -72,7 +72,7 @@ const decodeWorkspace = (value: unknown): TenantWorkspace => {
   return {
     id: value.id,
     name: value.name,
-    created_at: value.created_at as number,
+    created_at: value.created_at,
     account: decodeWorkspaceAccount(value.account),
     role: value.role,
   };

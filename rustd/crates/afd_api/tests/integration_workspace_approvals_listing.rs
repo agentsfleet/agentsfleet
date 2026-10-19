@@ -95,7 +95,7 @@ async fn assert_filters_narrow(
         "an absent status reads every state: {all}"
     );
 
-    let by_kind = read(router, &fixture.token, collection, "?gate_kind=spend").await;
+    let by_kind = read(router, &fixture.token, collection, "?gate_type=spend").await;
     assert_eq!(ids(&by_kind), vec![second.to_owned()], "{by_kind}");
 
     // Asserted by EXCLUSION, not by count: a filter that is ignored returns

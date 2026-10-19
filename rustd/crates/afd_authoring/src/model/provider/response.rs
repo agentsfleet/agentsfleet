@@ -23,7 +23,6 @@ pub(in crate::model) struct Decoded {
     pub(in crate::model) result: Option<ModelCallResult>,
     pub(in crate::model) continuation: Option<serde_json::Value>,
     pub(in crate::model) usage: ModelUsage,
-    pub(in crate::model) input: i64,
     pub(in crate::model) output: i64,
 }
 
@@ -34,7 +33,7 @@ pub(in crate::model) fn decode(
     model: &RegisteredModel,
     output_limit: u32,
 ) -> Result<Decoded> {
-    let (known, input, output) = usage(response, model, output_limit)?;
+    let (known, output) = usage(response, model, output_limit)?;
     // Rig names an incomplete response without a reason as an error. It still
     // reports authoritative usage; return a cut turn with no executable tools.
     let incomplete = matches!(response.finish_reason(), Some(FinishReason::Other(reason)) if reason == "incomplete");
@@ -59,7 +58,6 @@ pub(in crate::model) fn decode(
         result,
         continuation,
         usage: known,
-        input,
         output,
     })
 }
@@ -68,7 +66,7 @@ fn usage(
     response: &CompletionResponse,
     model: &RegisteredModel,
     output_limit: u32,
-) -> Result<(ModelUsage, i64, i64)> {
+) -> Result<(ModelUsage, i64)> {
     let input = response
         .usage
         .input_tokens
@@ -91,7 +89,7 @@ fn usage(
         output_tokens: output.cast_unsigned(),
         provider_cost_nanos: cost.to_string(),
     };
-    Ok((known, input, output))
+    Ok((known, output))
 }
 
 fn content(

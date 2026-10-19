@@ -22,7 +22,7 @@ categories.workspace = true
 # crate's idea of a ledger outage drift from the ledger's. `afd_crypto`'s is
 # the mocked entropy source a failed draw for a binding id is sampled from, and
 # `afd_outbound`'s the ledger failures a notice's obligation can raise.
-test-util = ["afd_admission/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
+test-util = ["afd_admission/test-util", "afd_core/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The
@@ -34,7 +34,7 @@ afd_admission.workspace = true
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
 # The obligation ledger a notice is owed through: the one module that owns
-# `core.fleet_obligations`, so a notice and an answer are owed alike.
+# `fleet.obligations`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true
@@ -43,7 +43,7 @@ afd_core.workspace = true
 afd_crypto.workspace = true
 # The Postgres pool the fleet row is read on.
 afd_db.workspace = true
-# The typed reader for a stored `config_json`. Its `Trigger::Webhook` is where a
+# The typed reader for a stored revision `config`. Its `Trigger::Webhook` is where a
 # binding is read, typed, rather than picked out of jsonb in SQL — see `binding`.
 afd_fleet_runtime.workspace = true
 # `FleetStatus`, so "will this fleet take work" is asked of a type rather than
@@ -65,6 +65,8 @@ serde_json.workspace = true
 # The App ingress keys its at-most-once claim on the body's digest rather than
 # on the provider's unsigned delivery header — see `app::replay_id`.
 sha2.workspace = true
+# The instant a channel binding's or a notice's id is minted at.
+jiff.workspace = true
 # That digest is rendered lowercase hex, one spelling, so every redelivery of
 # the same body claims the same key.
 hex.workspace = true

@@ -17,8 +17,6 @@
 //! decrypting here: that would put an envelope open back on this path.
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use crate::classified::Classified;
 use crate::error::{Result, query};
@@ -42,8 +40,8 @@ const CONTEXT_LIST: &str = "list workspace secrets";
 pub struct SecretSummary {
     /// The name the secret is stored and interpolated under.
     pub name: String,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at_ms: i64,
+    /// When it was first stored.
+    pub created_at: jiff::Timestamp,
     /// What it is, as the server classified it at write time.
     ///
     /// A sum type, not a kind beside two options: the dashboard narrows on a
@@ -87,33 +85,40 @@ impl Directory {
     /// error — see the module note.
     pub async fn list(&self, workspace: &Uuid7) -> Result<Vec<SecretSummary>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_SECRET_PROJECTIONS)
+        let rows = sqlx::query_as::<_, ProjectionRow>(sql::SELECT_SECRET_PROJECTIONS)
             .bind(workspace.as_str())
             .fetch_all(connection.as_mut())
             .await
             .map_err(query(CONTEXT_LIST))?;
 
-        rows.iter().map(read_row).collect()
+        Ok(rows.into_iter().map(SecretSummary::from).collect())
     }
 }
 
-/// Reads one projection row.
-///
-/// Positional, matching every other read in this workspace: the statement's
-/// projection and this function are one contract, and reading by name would
-/// hide a projection that had drifted out of order.
-fn read_row(row: &PgRow) -> Result<SecretSummary> {
-    let unreadable = query(CONTEXT_LIST);
-    let name: String = row.try_get(0).map_err(&unreadable)?;
-    let created_at_ms: i64 = row.try_get(1).map_err(&unreadable)?;
-    let stored_kind: Option<String> = row.try_get(2).map_err(&unreadable)?;
-    let provider: Option<String> = row.try_get(3).map_err(&unreadable)?;
-    let base_url: Option<String> = row.try_get(4).map_err(&unreadable)?;
+/// One projection row, read by column name: a renamed or dropped column fails
+/// the decode, and `test_every_sql_file_prepares` catches it before merge.
+#[derive(Debug, sqlx::FromRow)]
+struct ProjectionRow {
+    key_name: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: jiff::Timestamp,
+    meta_kind: Option<String>,
+    meta_provider: Option<String>,
+    meta_base_url: Option<String>,
+}
 
-    let classified = Classified::classify(stored_kind.as_deref(), &name, provider, base_url);
-    Ok(SecretSummary {
-        name,
-        created_at_ms,
-        classified,
-    })
+impl From<ProjectionRow> for SecretSummary {
+    fn from(row: ProjectionRow) -> Self {
+        let classified = Classified::classify(
+            row.meta_kind.as_deref(),
+            &row.key_name,
+            row.meta_provider,
+            row.meta_base_url,
+        );
+        Self {
+            name: row.key_name,
+            created_at: row.created_at,
+            classified,
+        }
+    }
 }

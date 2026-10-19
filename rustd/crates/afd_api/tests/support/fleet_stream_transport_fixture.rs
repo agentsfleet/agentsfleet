@@ -17,6 +17,10 @@ use crate::harness::{self, Fleet};
 
 pub(super) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
+/// The completed event's stamps, its update a millisecond after its creation.
+const EVENT_CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 10_000_000);
+const EVENT_UPDATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 11_000_000);
+
 /// The sequence a control frame rides.
 ///
 /// Zero, and deliberately not a number from the connection's counter:
@@ -153,11 +157,12 @@ impl Watched {
     pub(super) async fn commit_without_publish(&self) -> String {
         let event_id = afd_db::test_util::mint_id();
         sqlx::query(
-            "INSERT INTO core.fleet_events \
+            "INSERT INTO fleet.events \
             (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, \
-             response_text, tokens, wall_ms, created_at, updated_at) \
+             response_text, token_count, wall_ms, created_at, updated_at) \
             VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', $4, \
-                    '{}', 'recovered answer', 7, 12, 10, 11)",
+                    '{}', 'recovered answer', 7, 12, \
+                    '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
         .bind(&self.fixture.fleet)
         .bind(self.fixture.workspace.as_str())
@@ -248,8 +253,8 @@ pub(super) fn completion(event_id: &str) -> Value {
             failure_label: None,
             failure_detail: None,
             resumes_event_id: None,
-            created_at: 10,
-            updated_at: 11,
+            created_at: EVENT_CREATED_AT,
+            updated_at: EVENT_UPDATED_AT,
             cost_nanos: None,
         }),
         final_reply: None,

@@ -10,10 +10,10 @@ setupBackfillTests();
 describe("fleet-stream-registry — watermark", () => {
   it("advances the since watermark only via successful backfill pages", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]),
+      pageWith([row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]),
     );
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es1 = reconnect();
     await flushBackfill();
     reconnectAgain(es1);
@@ -29,7 +29,7 @@ describe("fleet-stream-registry — watermark", () => {
     // Live frames are stamped with the client clock; a skewed clock keying
     // the cursor would push `since` past frames published in the outage.
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es0 = sourceAt(0);
     es0.open();
     es0.heartbeat();
@@ -54,7 +54,7 @@ describe("fleet-stream-registry — watermark", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchSpy.mockRejectedValueOnce(new Error("network drop"));
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es1 = reconnect();
     await flushBackfill();
     reconnectAgain(es1);
@@ -71,7 +71,7 @@ describe("fleet-stream-registry — watermark", () => {
     const pendingFetch = Promise.withResolvers<unknown>();
     fetchSpy.mockReturnValueOnce(pendingFetch.promise);
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es1 = reconnect();
     reconnectAgain(es1);
     await flushBackfill();

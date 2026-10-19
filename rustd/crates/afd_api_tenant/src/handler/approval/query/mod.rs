@@ -40,7 +40,7 @@ use crate::handler::{Refusal, decoded_parameter, parameter};
 /// The parameter names, spelled once each (RULE UFS).
 const QUERY_STATUS: &str = "status";
 const QUERY_FLEET_ID: &str = "fleet_id";
-const QUERY_GATE_KIND: &str = "gate_kind";
+const QUERY_GATE_TYPE: &str = "gate_type";
 const QUERY_LIMIT: &str = "limit";
 const QUERY_CURSOR: &str = "cursor";
 
@@ -53,15 +53,15 @@ const MAX_LIMIT: u32 = 200;
 /// The inbox's bound on `?limit`.
 const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
 
-/// The longest `gate_kind` filter, decoded.
+/// The longest `gate_type` filter, decoded.
 ///
 /// A gate kind is a short family name a gate is filed under (`spend`,
 /// `tool_call`); a filter longer than any family is not a filter.
-const MAX_GATE_KIND_BYTES: usize = 64;
+const MAX_GATE_TYPE_BYTES: usize = 64;
 
-/// The refusal an over-long `gate_kind` filter earns.
-const DETAIL_GATE_KIND: &str =
-    concatcp!("gate_kind must be at most ", MAX_GATE_KIND_BYTES, " bytes");
+/// The refusal an over-long `gate_type` filter earns.
+const DETAIL_GATE_TYPE: &str =
+    concatcp!("gate_type must be at most ", MAX_GATE_TYPE_BYTES, " bytes");
 
 /// The refusal a page size outside the served band earns.
 ///
@@ -95,7 +95,7 @@ const DETAIL_QUERY: &str = "malformed query string";
 #[derive(Debug)]
 pub(super) struct Resume {
     /// The boundary row's instant.
-    created_at: i64,
+    created_at: jiff::Timestamp,
     /// The boundary row's gate id, breaking ties inside one millisecond.
     gate_id: String,
 }
@@ -118,7 +118,7 @@ pub(super) struct Listing {
     /// The fleet the page is narrowed to.
     pub(super) fleet_id: Option<String>,
     /// The gate family the page is narrowed to.
-    pub(super) gate_kind: Option<String>,
+    pub(super) gate_type: Option<String>,
     /// Where the page resumes, absent on the first one.
     pub(super) cursor: Option<Resume>,
     /// How many rows the page may carry.
@@ -132,7 +132,7 @@ impl Listing {
     ///
     /// # Which parameters are decoded, and why not all of them
     ///
-    /// `cursor` and `gate_kind` are decoded; `limit`, `status` and `fleet_id`
+    /// `cursor` and `gate_type` are decoded; `limit`, `status` and `fleet_id`
     /// are drawn from alphabets RFC 3986 leaves alone, so reading them raw is
     /// honest. The cursor is the one that MATTERS: its wire form is
     /// `{millis}:{id}` in the clear, and a browser building the query with
@@ -148,7 +148,7 @@ impl Listing {
             cursor: parse_cursor(decoded(query, QUERY_CURSOR)?.as_deref())?,
             status: parse_status(parameter(query, QUERY_STATUS))?,
             fleet_id: parse_fleet_id(parameter(query, QUERY_FLEET_ID))?,
-            gate_kind: parse_gate_kind(decoded(query, QUERY_GATE_KIND)?)?,
+            gate_type: parse_gate_type(decoded(query, QUERY_GATE_TYPE)?)?,
         })
     }
 }
@@ -164,21 +164,21 @@ fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
         .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
 }
 
-/// A `gate_kind` filter as the caller sent it, decoded.
+/// A `gate_type` filter as the caller sent it, decoded.
 #[derive(Debug, garde::Validate)]
 struct GateKindFilter<'q> {
-    #[garde(length(bytes, max = MAX_GATE_KIND_BYTES))]
-    gate_kind: Cow<'q, str>,
+    #[garde(length(bytes, max = MAX_GATE_TYPE_BYTES))]
+    gate_type: Cow<'q, str>,
 }
 
 /// The gate family the page is narrowed to, inside its bound.
-fn parse_gate_kind(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
-    raw.map(|gate_kind| {
-        let filter = GateKindFilter { gate_kind };
+fn parse_gate_type(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
+    raw.map(|gate_type| {
+        let filter = GateKindFilter { gate_type };
         filter
             .validate()
-            .map_err(|_report| Refusal::malformed(DETAIL_GATE_KIND))?;
-        Ok(filter.gate_kind.into_owned())
+            .map_err(|_report| Refusal::malformed(DETAIL_GATE_TYPE))?;
+        Ok(filter.gate_type.into_owned())
     })
     .transpose()
 }
@@ -187,16 +187,21 @@ fn parse_gate_kind(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal>
 ///
 /// A text-boundary cursor is refused as malformed rather than mapped: this
 /// listing orders by instant alone, and a name boundary would resume a walk
-/// through an ordering it never served.
+/// through an ordering it never served. The gate id is proved an identifier
+/// here for the reason [`DETAIL_FLEET_ID`] gives: `SELECT_GATE_PAGE` casts it
+/// to `uuid`, and a forged one would come back as the store's 500.
 fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
     match CoreCursor::parse(raw) {
-        Ok(CoreCursor::Timestamp { at_ms, id }) => Ok(Some(Resume {
-            created_at: at_ms,
-            gate_id: id,
-        })),
+        Ok(CoreCursor::Timestamp { at, id }) => {
+            let gate = parse_id(&id, DETAIL_CURSOR)?;
+            Ok(Some(Resume {
+                created_at: at,
+                gate_id: gate.as_str().to_owned(),
+            }))
+        }
         Ok(CoreCursor::Text { .. }) | Err(InvalidCursor) => Err(Refusal::malformed(DETAIL_CURSOR)),
     }
 }

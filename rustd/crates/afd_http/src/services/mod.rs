@@ -55,7 +55,7 @@ mod vault;
 
 pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
-pub use self::catalogue::ModelCatalogue;
+pub use self::catalogue::{ModelCatalogue, metadata_store, metadata_wire, price_store, price_wire};
 pub use self::connector::WorkspaceConnectors;
 pub use self::device_flow::DeviceFlow;
 pub use self::event::{FleetSteering, WorkspaceEvents};

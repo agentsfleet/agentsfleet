@@ -9,10 +9,10 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_tenant::cli_credential::{CliCredentials, MachineName, MintRequest};
+use jiff::Timestamp;
 
 use crate::integration_identity::Fixture;
 
@@ -20,7 +20,7 @@ use crate::integration_identity::Fixture;
 const MACHINE: &str = "identity-race.local";
 const DEPLOYMENT: &str = "https://api.identity.test";
 const FROM_ADDRESS: &str = "127.0.0.1";
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// The racer's address and account name.
 const RACER_EMAIL: &str = "racer@identity.test";
@@ -57,7 +57,7 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
     let mut hold = sqlx::Connection::begin(&mut *blocker)
         .await
         .expect("the hold opens");
-    sqlx::query("SELECT 1 FROM core.users WHERE id = $1::uuid FOR UPDATE")
+    sqlx::query("SELECT 1 FROM identity.users WHERE id = $1::uuid FOR UPDATE")
         .bind(&fixture.user)
         .execute(&mut *hold)
         .await
@@ -95,12 +95,12 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $2, 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, $2, now(), now()) \
              ) \
-             INSERT INTO core.users \
+             INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3::uuid, $1::uuid, $4, $5, NULL, 1, 1)",
+             VALUES ($3::uuid, $1::uuid, $4, $5, NULL, now(), now())",
         )
         .bind(&self.tenant)
         .bind(RACER_TENANT_NAME)
@@ -142,8 +142,8 @@ impl Fixture {
     /// sits beside exactly one revoked row: one row per login, one live.
     async fn the_one_live_credential_on(&self, machine: &str) -> String {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let rows: Vec<(String, Option<i64>)> = sqlx::query_as(
-            "SELECT id::text, revoked_at FROM core.cli_credentials \
+        let rows: Vec<(String, bool)> = sqlx::query_as(
+            "SELECT id::text, revoked_at IS NULL FROM identity.cli_credentials \
              WHERE user_id = $1::uuid AND machine_name = $2",
         )
         .bind(&self.user)
@@ -151,7 +151,7 @@ impl Fixture {
         .fetch_all(&mut *connection)
         .await
         .expect("the credentials read");
-        let mut live = rows.iter().filter(|(_, revoked_at)| revoked_at.is_none());
+        let mut live = rows.iter().filter(|(_, live)| *live);
         let (id, _) = live.next().expect("one credential is live");
         assert!(
             live.next().is_none(),

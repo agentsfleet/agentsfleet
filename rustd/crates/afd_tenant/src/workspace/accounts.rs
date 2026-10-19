@@ -7,11 +7,9 @@
 
 use afd_auth::principal::Person;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use super::access::{ROLE_OWNER, Role};
-use super::{Workspaces, held_row, reads_user_row};
+use super::{HeldRow, Workspaces, reads_user_row};
 use crate::sql::workspace as sql;
 use crate::{Result, error, stored};
 
@@ -80,32 +78,36 @@ impl Workspaces {
     /// Every account a signed-in person holds, or `None` with no user row.
     async fn subject_accounts(&self, person: &Person) -> Result<Option<Accounts>> {
         let mut connection = self.database.acquire().await?;
-        let unreadable = error::query(CONTEXT_ACCOUNTS);
-        let rows = sqlx::query(sql::SELECT_SUBJECT_ACCOUNTS)
+        let rows: Vec<AccountRow> = sqlx::query_as(sql::SELECT_SUBJECT_ACCOUNTS)
             .bind(person.subject().as_str())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
             .await
-            .map_err(&unreadable)?;
+            .map_err(error::query(CONTEXT_ACCOUNTS))?;
         let Some(first) = rows.first() else {
             return Ok(None);
         };
-        let home: String = first.try_get("home_tenant_id").map_err(&unreadable)?;
-        let home = stored::tenant(&home)?;
-        let held = rows.iter().map(account).collect::<Result<_>>()?;
+        let home = stored::tenant(&first.home_tenant_id)?;
+        let held = rows
+            .into_iter()
+            .map(AccountRow::parse)
+            .collect::<Result<_>>()?;
         Ok(Some(Accounts { home, held }))
     }
 
     /// The one account a claim names, held as its owner.
     async fn claimed_account(&self, person: &Person) -> Result<Accounts> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_TENANT_ACCOUNT)
+        let rows: Vec<AccountRow> = sqlx::query_as(sql::SELECT_TENANT_ACCOUNT)
             .bind(person.tenant().as_str())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_ACCOUNTS))?;
-        let held = rows.iter().map(account).collect::<Result<_>>()?;
+        let held = rows
+            .into_iter()
+            .map(AccountRow::parse)
+            .collect::<Result<_>>()?;
         Ok(Accounts {
             home: person.tenant().clone(),
             held,
@@ -113,14 +115,24 @@ impl Workspaces {
     }
 }
 
-/// One held account from its row, held as the access check holds it.
-fn account(row: &PgRow) -> Result<Account> {
-    let (tenant, role) = held_row(row, CONTEXT_ACCOUNTS)?;
-    Ok(Account {
-        tenant,
-        role,
-        owner_name: row
-            .try_get(crate::sql::COLUMN_OWNER_NAME)
-            .map_err(error::query(CONTEXT_ACCOUNTS))?,
-    })
+/// One held account's row: the access columns, the account's name, and the
+/// caller's own account, repeated on every row.
+#[derive(Debug, sqlx::FromRow)]
+struct AccountRow {
+    #[sqlx(flatten)]
+    held: HeldRow,
+    owner_name: String,
+    home_tenant_id: String,
+}
+
+impl AccountRow {
+    /// The held account, held as the access check holds it.
+    fn parse(self) -> Result<Account> {
+        let (tenant, role) = self.held.parse()?;
+        Ok(Account {
+            tenant,
+            role,
+            owner_name: self.owner_name,
+        })
+    }
 }

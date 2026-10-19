@@ -1,3 +1,4 @@
+import { tenantModelPageSchema, storedModelEntrySchema } from "./tenant-model-schemas";
 import { request } from "./client";
 import type {
   TenantModelEntryList,
@@ -13,12 +14,6 @@ import type {
 // above 100 (`UZ-LIBRARY-003`), so asking for the maximum gives the largest
 // window one round-trip can buy.
 const REGISTRY_PAGE_LIMIT = 100;
-
-/** One wire page: `models` is that page alone, `next_cursor` null on the last. */
-type TenantModelEntryPage = TenantModelEntryList & {
-  total: number | null;
-  next_cursor: string | null;
-};
 
 /** A page plus the cursor and total the caller needs to retain and disclose. */
 export type TenantModelEntryPageResult = TenantModelEntryList & {
@@ -43,11 +38,11 @@ export async function listTenantModelEntries(
   const params = new URLSearchParams({ limit: String(REGISTRY_PAGE_LIMIT) });
   if (startingAfter !== null) params.set("starting_after", startingAfter);
 
-  const body = await request<TenantModelEntryPage>(
+  const body = tenantModelPageSchema.parse(await request<unknown>(
     `/v1/tenants/me/models?${params.toString()}`,
     { method: "GET" },
     token,
-  );
+  ));
 
   // Both platform-default fields describe the tenant rather than the page, and
   // every page recomputes them, so any page's answer is authoritative.
@@ -64,11 +59,11 @@ export async function createTenantModelEntry(
   body: { model_id: string; secret_ref: string },
   token: string,
 ): Promise<TenantModelEntryWriteResult> {
-  return request<TenantModelEntryWriteResult>(
+  return storedModelEntrySchema.parse(await request<unknown>(
     "/v1/tenants/me/models",
     { method: "POST", body: JSON.stringify(body) },
     token,
-  );
+  ));
 }
 
 export async function updateTenantModelEntry(
@@ -76,11 +71,11 @@ export async function updateTenantModelEntry(
   body: { model_id: string },
   token: string,
 ): Promise<TenantModelEntryWriteResult> {
-  return request<TenantModelEntryWriteResult>(
+  return storedModelEntrySchema.parse(await request<unknown>(
     `/v1/tenants/me/models/${encodeURIComponent(id)}`,
     { method: "PATCH", body: JSON.stringify(body) },
     token,
-  );
+  ));
 }
 
 export async function deleteTenantModelEntry(id: string, token: string): Promise<void> {

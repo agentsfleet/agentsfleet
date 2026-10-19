@@ -99,7 +99,6 @@ async fn decided_on_a_dead_ledger(
     use afd_fleet_runtime::FleetConfig;
 
     use super::{Request, money_gates};
-    use crate::lease::event::Delivery;
     use crate::lease::test_dead;
 
     let log = Capture::install();
@@ -108,21 +107,20 @@ async fn decided_on_a_dead_ledger(
     )
     .expect("the fixture document is authorable");
     let (workspace, fleet, tenant) = (test_dead::id(2), test_dead::id(1), test_dead::id(3));
-    let accounts =
-        afd_billing::Accounts::new(test_dead::database(), afd_crypto::entropy::Entropy::new());
+    let accounts = afd_billing::Accounts::new(test_dead::database());
+    let biller = test_dead::biller();
     let decided = money_gates(
         &accounts,
+        &biller,
         Ok(Some(tenant)),
         Request {
             workspace_id: &workspace,
             fleet_id: &fleet,
             event_id: "1767225600000-1",
-            event_created_at: test_dead::AT,
             budget: config.budget(),
             posture,
             provider: "anthropic",
             model: "claude-fixture",
-            delivery: Delivery::First,
         },
         test_dead::AT,
     )
@@ -131,24 +129,20 @@ async fn decided_on_a_dead_ledger(
     (decided, log)
 }
 
-/// Asserts the dead-ledger outcome: the read gates failed open under their own
-/// names, and the receive debit ended the pass in a retry naming it.
+/// Asserts the dead-ledger outcome: both read gates failed open under their own
+/// names and the run was admitted. Nothing is charged at admission, so no
+/// write gate is left to end the pass; the lease's hold and usage are the
+/// biller's, after the lease is issued.
 #[cfg(feature = "test-util")]
-fn assert_read_gates_fail_open_and_the_debit_retries(
+fn assert_read_gates_fail_open_and_admit(
     decided: &super::Admission,
     log: &afd_core::test_util::trace::Capture,
 ) {
-    assert_eq!(
-        *decided,
-        super::Admission::Retry(Transient {
-            at: "lease_receive_debit_unavailable"
-        })
+    assert!(
+        matches!(decided, super::Admission::Admit(_)),
+        "an unreadable ledger admits: {decided:?}"
     );
-    for event in [
-        "lease_balance_unavailable",
-        "lease_budget_unavailable",
-        "lease_receive_debit_unavailable",
-    ] {
+    for event in ["lease_balance_unavailable", "lease_budget_unavailable"] {
         let line = log.only(event).fields;
         assert_eq!(
             line.get("error_code").map(String::as_str),
@@ -168,22 +162,21 @@ fn assert_read_gates_fail_open_and_the_debit_retries(
     }
 }
 
-/// With the ledger unreachable, the rate lookup fails first: the read gates
-/// fail open and the receive debit — the one write — ends the pass in a retry
-/// that names it. Nothing is charged, and nothing runs that was not paid for.
+/// With the ledger unreachable, the catalogue read fails first: both read gates
+/// fail open and the run is admitted, with a floor of nothing to hold.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn an_unwritable_receive_debit_retries_after_the_read_gates_fail_open() {
+async fn an_unreadable_catalogue_and_budget_fail_open_and_admit() {
     let (decided, log) = decided_on_a_dead_ledger(afd_billing::rates::Posture::Platform).await;
-    assert_read_gates_fail_open_and_the_debit_retries(&decided, &log);
+    assert_read_gates_fail_open_and_admit(&decided, &log);
 }
 
 /// A self-managed key is priced without the catalogue, so the estimate
-/// answers and the WALLET read is the balance gate's failure — which fails
+/// answers and the BALANCE read is the balance gate's failure — which fails
 /// open the same way, rather than refusing a tenant whose balance is unknown.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn an_unreadable_wallet_fails_open_like_an_unreadable_rate() {
+async fn an_unreadable_balance_fails_open_like_an_unreadable_rate() {
     let (decided, log) = decided_on_a_dead_ledger(afd_billing::rates::Posture::SelfManaged).await;
-    assert_read_gates_fail_open_and_the_debit_retries(&decided, &log);
+    assert_read_gates_fail_open_and_admit(&decided, &log);
 }

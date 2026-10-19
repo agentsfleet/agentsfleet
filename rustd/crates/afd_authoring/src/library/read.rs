@@ -1,10 +1,9 @@
 //! Library Inspect derives live readiness in the requesting workspace.
 
-use super::{CONTEXT, Entry, PLATFORM, Revision, TENANT, sql};
+use super::{CONTEXT, Entry, EntryRow, PLATFORM, Revision, RevisionRow, TENANT, sql};
 use crate::{
     Access, Result, Setup,
     access::{self, Person},
-    draft,
     error::{ErrorKind, raise::query},
     review,
     types::{Library, SourcePin},
@@ -41,7 +40,7 @@ impl Setup {
             &mut tx,
             &context(access, &person, &entry.public_id(), &selected),
             &selected.candidate(),
-            clock::now().as_millis(),
+            clock::now(),
         )
         .await?;
         let result = Library {
@@ -62,14 +61,14 @@ pub(super) async fn entry(
     must_own: bool,
 ) -> Result<Entry> {
     valid_id(library)?;
-    let row: Option<String> = sqlx::query_scalar(if must_own { sql::OWNED } else { sql::ENTRY })
+    let row: Option<EntryRow> = sqlx::query_as(if must_own { sql::OWNED } else { sql::ENTRY })
         .bind(library)
         .bind(owner.as_str())
         .bind(if must_own { TENANT } else { PLATFORM })
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    draft::value(&row.ok_or(ErrorKind::Hidden)?)
+    row.ok_or(ErrorKind::Hidden)?.decode()
 }
 
 pub(super) async fn revision(
@@ -77,13 +76,13 @@ pub(super) async fn revision(
     library: &Uuid7,
     id: &Uuid7,
 ) -> Result<Revision> {
-    let row: Option<String> = sqlx::query_scalar(sql::REVISION)
+    let row: Option<RevisionRow> = sqlx::query_as(sql::REVISION)
         .bind(library.as_str())
         .bind(id.as_str())
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    draft::value(&row.ok_or(ErrorKind::Hidden)?)
+    row.ok_or(ErrorKind::Hidden)?.decode()
 }
 
 pub(crate) fn context(

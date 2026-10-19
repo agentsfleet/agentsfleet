@@ -6,13 +6,12 @@
 use std::sync::Arc;
 
 use afd_connector::{Grants, Provider};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_dragonfly::OutboundDelivery;
 use afd_dragonfly::streams::EventId;
 use afd_vault::{SecretBody, SecretName, Vault};
@@ -88,28 +87,30 @@ impl Fixture {
     /// Seeds the tenant, workspace and fleet whose grant the poster opens.
     ///
     /// No event row: where the answer belongs rides the job, and a poster that
-    /// still read `core.fleet_events` would find nothing here and fail.
+    /// still read `fleet.events` would find nothing here and fail.
     pub(super) async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
+        TenantSeed::new(&self.tenant)
+            .name("Slack poster live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("slack-poster")
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
         sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Slack poster live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'slack-poster', $3, 1) \
-             ) \
-             INSERT INTO core.users \
+            "INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'slack-poster@example.test', 1, 1)",
+             VALUES ($1::uuid, $2::uuid, $3, 'slack-poster@example.test', now(), now())",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
         .bind(&self.user)
+        .bind(&self.tenant)
+        .bind(&self.subject)
         .execute(&mut *connection)
         .await
-        .expect("the tenant, workspace and person seed");
+        .expect("the person seeds");
         FleetSeed::new(
             self.fleet.as_str(),
             self.workspace.as_str(),
@@ -117,10 +118,9 @@ impl Fixture {
             FLEET_ACTIVE,
         )
         .name("slack-poster-fleet")
-        .at(1)
         .insert(&mut *connection)
         .await
-        .expect("the tenant, workspace and fleet seed");
+        .expect("the fleet seeds");
     }
 
     /// Seals a Slack grant carrying `token` and the bot user it posts as.
@@ -150,7 +150,7 @@ impl Fixture {
                 &SecretName::parse(Provider::Slack.grant_key())
                     .expect("a provider key is storable"),
                 &SecretBody::parse(&raw).expect("the fixture handle is a storable body"),
-                UnixMillis::from_millis(1),
+                jiff::Timestamp::now(),
             )
             .await;
         assert!(sealed.is_ok(), "the fixture grant seals: {sealed:?}");
@@ -166,7 +166,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed grant cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

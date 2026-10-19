@@ -5,7 +5,7 @@
 mod fixture;
 
 use afd_crypto::entropy::Entropy;
-use afd_gate::gate::{Gates, Trigger, Verdict, Waiting};
+use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
 
 use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
 
@@ -90,6 +90,45 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
     assert_eq!(
         gates.check(fixture.check("event-ruled", &ruled), NOW).await,
         Verdict::Pass
+    );
+
+    fixture.cleanup().await;
+}
+
+/// A pending gate lapses on the database's clock, and the poll that reads it
+/// ends the event.
+///
+/// The deadline is the row's `expires_at`, stamped `now()` plus the rule's
+/// timeout when the gate was raised; the poll compares it against
+/// `statement_timestamp()`. Moving the deadline behind that clock is what a
+/// day passing would do, and the very next poll answers Expired.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let gates = Gates::new(
+        fixture.database.clone(),
+        connect_redis().await,
+        Entropy::new(),
+    );
+    let ruled = config_gates(APPROVE_EVERY_CHAT);
+    let event = "event-lapsing";
+    assert_eq!(
+        gates.check(fixture.check(event, &ruled), NOW).await,
+        Verdict::Await(Waiting::Parked)
+    );
+    assert_eq!(
+        gates.check(fixture.check(event, &ruled), NOW).await,
+        Verdict::Await(Waiting::Pending),
+        "inside its window the gate waits"
+    );
+
+    fixture.lapse(event).await;
+    assert_eq!(
+        gates.check(fixture.check(event, &ruled), NOW).await,
+        Verdict::Refuse(Refused::Expired),
+        "past its deadline on the database's clock, the event ends"
     );
 
     fixture.cleanup().await;

@@ -2,6 +2,7 @@
 
 mod attempts;
 mod privacy;
+mod sql;
 
 use crate::{Drafts, Result};
 
@@ -14,6 +15,8 @@ pub struct Maintenance {
     pub purged_drafts: u64,
     /// Provider receipts whose private result was removed.
     pub expired_results: u64,
+    /// Replay receipts deleted after their retry window closed.
+    pub expired_receipts: u64,
 }
 
 impl Drafts {
@@ -26,6 +29,7 @@ impl Drafts {
             interrupted: attempts::expire(self).await?,
             purged_drafts: privacy::drafts(self).await?,
             expired_results: privacy::results(self).await?,
+            expired_receipts: crate::replay::sweep(&mut *self.database.acquire().await?).await?,
         })
     }
 }

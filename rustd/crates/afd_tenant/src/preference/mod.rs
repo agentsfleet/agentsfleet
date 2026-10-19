@@ -23,11 +23,10 @@
 //! Splitting the halves across two modules would put one HTTP call's data in
 //! two places whose only relationship is that they are always read together.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::sql::preference as sql;
 use crate::{Result, error};
@@ -105,9 +104,10 @@ impl PrefKey {
 }
 
 /// One stored preference, as the column holds it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Pref {
     /// The registry key, as stored.
+    #[sqlx(rename = "name")]
     pub key: String,
     /// Raw JSON text, exactly as the client wrote it.
     pub value: String,
@@ -159,7 +159,7 @@ impl Preferences {
 
     /// The internal user id this external subject maps to.
     ///
-    /// `Ok(None)` for a subject authenticated against no `core.users` row.
+    /// `Ok(None)` for a subject authenticated against no `identity.users` row.
     /// Inventing one here would fork identity ownership away from the signup
     /// bootstrap that owns it, so the caller refuses instead.
     ///
@@ -167,17 +167,11 @@ impl Preferences {
     /// Reports a datastore that would not answer.
     pub async fn resolve_user(&self, subject: &str) -> Result<Option<String>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_USER_ID_BY_SUBJECT)
+        sqlx::query_scalar(sql::SELECT_USER_ID_BY_SUBJECT)
             .bind(subject)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(error::query(CONTEXT_USER))?;
-
-        row.map(|row| {
-            row.try_get::<String, _>(0)
-                .map_err(error::query(CONTEXT_USER))
-        })
-        .transpose()
+            .map_err(error::query(CONTEXT_USER))
     }
 
     /// Every preference this user has set in this workspace.
@@ -189,25 +183,18 @@ impl Preferences {
     /// Reports a datastore that would not answer.
     pub async fn bag(&self, user: &str, workspace: &Uuid7) -> Result<Vec<Pref>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_BAG)
+        sqlx::query_as(sql::SELECT_BAG)
             .bind(user)
             .bind(workspace.as_str())
             .fetch_all(&mut *connection)
             .await
-            .map_err(error::query(CONTEXT_BAG))?;
-
-        rows.iter()
-            .map(|row| {
-                let unreadable = error::query(CONTEXT_BAG);
-                Ok(Pref {
-                    key: row.try_get(0).map_err(&unreadable)?,
-                    value: row.try_get(1).map_err(&unreadable)?,
-                })
-            })
-            .collect()
+            .map_err(error::query(CONTEXT_BAG))
     }
 
     /// Writes one key. Last-write-wins.
+    ///
+    /// `now` mints the row identifier a first write inserts; both stamps are
+    /// the database clock's.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or entropy that would not
@@ -218,7 +205,7 @@ impl Preferences {
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(sql::UPSERT_PREF)
@@ -227,7 +214,6 @@ impl Preferences {
             .bind(workspace.as_str())
             .bind(key.as_str())
             .bind(value)
-            .bind(now.as_millis())
             .execute(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_UPSERT))?;
@@ -245,35 +231,45 @@ impl Preferences {
     /// Reports a datastore that would not answer.
     pub async fn signals(&self, workspace: &Uuid7, tenant: &Uuid7) -> Result<Signals> {
         let mut connection = self.database.acquire().await?;
-        let unreadable = error::query(CONTEXT_SIGNALS);
-        let row = sqlx::query(sql::SELECT_SIGNALS)
+        let row: SignalsRow = sqlx::query_as(sql::SELECT_SIGNALS)
             .bind(workspace.as_str())
             .bind(STEER_ACTOR_LIKE)
             .bind(tenant.as_str())
             .fetch_one(&mut *connection)
             .await
-            .map_err(&unreadable)?;
+            .map_err(error::query(CONTEXT_SIGNALS))?;
 
-        let tenant_model: bool = row.try_get(4).map_err(&unreadable)?;
-        let model_configured = if tenant_model {
+        let model_configured = if row.tenant_model {
             true
         } else {
-            sqlx::query(sql::SELECT_PLATFORM_DEFAULT_MODEL)
+            sqlx::query_scalar(sql::SELECT_PLATFORM_DEFAULT_MODEL)
                 .fetch_one(&mut *connection)
                 .await
-                .map_err(error::query(CONTEXT_PLATFORM_MODEL))?
-                .try_get(0)
                 .map_err(error::query(CONTEXT_PLATFORM_MODEL))?
         };
 
         Ok(Signals {
-            has_fleet: row.try_get(0).map_err(&unreadable)?,
-            has_secret: row.try_get(1).map_err(&unreadable)?,
-            has_processed_event: row.try_get(2).map_err(&unreadable)?,
-            has_steer_event: row.try_get(3).map_err(&unreadable)?,
+            has_fleet: row.has_fleet,
+            has_secret: row.has_secret,
+            has_processed_event: row.has_event,
+            has_steer_event: row.has_steer,
             model_configured,
         })
     }
+}
+
+/// The signals statement's row, by the names it aliases each `EXISTS`.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one flag per `EXISTS` the statement answers; `Signals` explains why"
+)]
+#[derive(Debug, sqlx::FromRow)]
+struct SignalsRow {
+    has_fleet: bool,
+    has_secret: bool,
+    has_event: bool,
+    has_steer: bool,
+    tenant_model: bool,
 }
 
 /// Whether `bag` holds `key` set to the JSON literal `true`.

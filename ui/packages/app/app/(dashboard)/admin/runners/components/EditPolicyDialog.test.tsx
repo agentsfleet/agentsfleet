@@ -79,7 +79,7 @@ describe("EditPolicyDialog", () => {
     // landed PATCH — the dashboard is the fix path for a degraded runner.
     updateRunnerActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { id: "r-edit-1", admin_state: "active", assigned_policy: { ...CURRENT, worker_count: 4 } },
+      data: { id: "r-edit-1", status: "active", assigned_policy: { ...CURRENT, worker_count: 4 } },
     });
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={onSaved} />);
@@ -109,7 +109,7 @@ describe("EditPolicyDialog", () => {
     };
     updateRunnerActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { id: "r-edit-3", admin_state: "active", assigned_policy: withBind },
+      data: { id: "r-edit-3", status: "active", assigned_policy: withBind },
     });
     render(<EditPolicyDialog runnerId="r-edit-3" current={withBind} onSaved={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));

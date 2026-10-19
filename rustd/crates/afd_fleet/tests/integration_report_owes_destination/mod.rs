@@ -3,7 +3,7 @@
 //!
 //! Driven end to end through the real verbs: `Admissions::admit` records the
 //! event and its destination, the lease path takes it, and `commit_report`
-//! settles it. What is read back is `core.fleet_obligations` for this test's
+//! settles it. What is read back is `fleet.obligations` for this test's
 //! own fleet (ISO-1). No suite drove a report into that table before this one,
 //! which is how every non-empty answer came to be owed to `anthropic` unseen.
 //!
@@ -20,7 +20,6 @@ use std::borrow::Cow;
 
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_fleet::lease::Committed;
 use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
@@ -30,7 +29,7 @@ use crate::report_commit::{
 use crate::report_seed::SLICE_MS;
 use crate::seed::PROVIDER;
 
-mod stage;
+pub(crate) mod stage;
 
 use self::stage::{Obligation, obligations, owed_by, stage};
 
@@ -155,7 +154,7 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
+    let now = stage.fixtures.enrolled_at();
     let (lease_id, lease) = stage.lease_next(now).await;
 
     let refused = stage
@@ -246,7 +245,7 @@ async fn an_event_the_ledger_never_minted_owes_nothing() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
+    let now = stage.fixtures.enrolled_at();
     let (lease_id, mut lease) = stage.lease_next(now).await;
     lease.event_id = PRE_LEDGER_EVENT.to_owned();
 
@@ -276,7 +275,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
             },
         )
         .await;
-    let now = UnixMillis::from_millis(stage.fixtures.enrolled_at());
+    let now = stage.fixtures.enrolled_at();
     let (lease_id, lease) = stage.lease_next(now).await;
 
     let request = ReportRequest {
@@ -288,9 +287,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
         tokens: 0,
-        input_tokens: 0,
-        cached_input_tokens: 0,
-        output_tokens: 0,
+        requests: afd_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
@@ -300,12 +297,21 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
-        held_until_ms: None,
+        held_until: None,
     };
     stage
         .fixtures
         .plane()
-        .report(&stage.runner, &request, now.saturating_add_millis(SLICE_MS))
+        .report(
+            &stage.runner,
+            &request,
+            afd_core::clock::after(
+                now,
+                std::time::Duration::from_millis(
+                    u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
+                ),
+            ),
+        )
         .await
         .expect("the plane settles the report");
 
@@ -316,7 +322,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         .await
         .expect("a pooled connection");
     let receipt: Option<String> = sqlx::query_scalar(
-        "SELECT receipt FROM core.fleet_obligations
+        "SELECT receipt FROM fleet.obligations
           WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(&stage.fleet)

@@ -1,5 +1,9 @@
 //! Every statement this crate runs, and nothing else.
 //!
+//! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
+//! checked against the rebuilt schema by `afd_db`'s
+//! `test_every_sql_file_prepares`.
+//!
 //! # Every statement carries the workspace in its predicate
 //!
 //! Not one of them trusts the handler to have checked first. A fleet id
@@ -12,9 +16,9 @@
 //!
 //! # The counters are read per row, never re-aggregated
 //!
-//! `events_processed` and `budget_used_nanos` come from the one-to-one
-//! `core.fleet_activity_counters` row migration-030's triggers maintain, never
-//! from a subselect over `core.fleet_events`.
+//! `event_count` and `budget_used_nanos` come from the one-to-one
+//! `fleet.activity_counters` row its triggers maintain, never from a subselect
+//! over `fleet.events`.
 //!
 //! A page reaches that row by PRIMARY-KEY lookup per fleet rather than by
 //! joining, and the difference is measured: `LEFT JOIN` plans as a hash join
@@ -23,79 +27,68 @@
 //! is 1.69 ms against 0.21 ms, and the gap grows with the counters table
 //! because the scan is O(counters) where the lookups are O(page). `LEFT JOIN
 //! LATERAL` does not help; the planner flattens it back into the same join.
+//! The head revision's triggers are reached the same way, for the same reason.
 //!
 //! An INNER JOIN is wrong in either shape: a fleet that has never run has no
-//! counter row, and dropping those empties the list. On the development
-//! database 126 of 174 fleets have no counter.
+//! counter row, and dropping those empties the list.
 
-pub(crate) mod live_set;
-pub(crate) mod purge;
-
-/// The columns a list page reads, in the order [`crate::read`] indexes them.
+/// One page of a workspace's fleets, newest first.
 ///
-/// A macro expanding to a LITERAL rather than a `const`, because `concat!`
-/// takes literals only and the two page statements must not carry two
-/// hand-kept copies of eight column expressions. A column added to one spelling
-/// and not the other would not fail to compile — it would shift every field
-/// after it and mis-read the row (RULE UFS).
-macro_rules! page_columns {
-    () => {
-        "SELECT f.id::text, f.name, f.status, f.created_at, f.updated_at, \
-                (f.config_json->'x-agentsfleet'->'triggers')::text, \
-                COALESCE((SELECT c.events_processed FROM core.fleet_activity_counters c \
-                           WHERE c.fleet_id = f.id), 0), \
-                COALESCE((SELECT c.budget_used_nanos FROM core.fleet_activity_counters c \
-                           WHERE c.fleet_id = f.id), 0) \
-         FROM core.fleets f "
-    };
-}
-
-/// The first page of a workspace's fleets, newest first.
+/// `$1` workspace · `$2` how many rows to fetch · `$3` and `$4` the boundary
+/// the last page ended on, both NULL for the first page. The caller asks for
+/// ONE more row than the page it will serve, so whether a next page exists is
+/// a fact about the walk rather than a guess from a full page.
 ///
-/// `$1` workspace · `$2` how many rows to fetch. The caller asks for ONE more
-/// row than the page it will serve, so whether a next page exists is a fact
-/// about the walk rather than a guess from a full page.
-pub(crate) const SELECT_FLEET_PAGE_FIRST: &str = concat!(
-    page_columns!(),
-    "WHERE f.workspace_id = $1::uuid \
-     ORDER BY f.created_at DESC, f.id DESC \
-     LIMIT $2"
-);
+/// One statement for every page: an absent boundary falls back to `infinity`,
+/// which every `created_at` sorts before, so the first page and a resumed one
+/// both seek `idx_fleets_workspace_id_created_at_id` on the same row
+/// comparison, and the column list has one spelling.
+pub(crate) const SELECT_FLEET_PAGE: &str = include_str!("select_fleet_page.sql");
 
-/// A later page, resumed from the boundary the last one ended on.
-///
-/// `$1` workspace · `$2` boundary instant · `$3` boundary id · `$4` fetch count.
-///
-/// The tuple comparison is spelled out rather than written as a row constructor
-/// because `f.id` is compared as TEXT: the cursor carries the identifier's
-/// canonical spelling, and a `uuid` comparison would order by byte layout
-/// instead — a different walk for two fleets minted in the same millisecond,
-/// which is exactly the case the composite key exists to get right.
-pub(crate) const SELECT_FLEET_PAGE_AFTER: &str = concat!(
-    page_columns!(),
-    "WHERE f.workspace_id = $1::uuid \
-       AND (f.created_at < $2 OR (f.created_at = $2 AND f.id::text < $3)) \
-     ORDER BY f.created_at DESC, f.id DESC \
-     LIMIT $4"
-);
-
-/// The status alone, for the purge's pre-flight and the steer's ingress check.
+/// The status alone, for the steer's ingress check.
 ///
 /// `$1` fleet · `$2` workspace.
-pub(crate) const SELECT_FLEET_STATUS: &str = "\
-SELECT status FROM core.fleets \
-WHERE id = $1::uuid AND workspace_id = $2::uuid \
-LIMIT 1";
+pub(crate) const SELECT_FLEET_STATUS: &str = include_str!("select_fleet_status.sql");
+
+/// Locks the fleet row before its conditional purge, reading the status and
+/// resource version the tag check compares against.
+///
+/// `$1` fleet · `$2` workspace.
+pub(crate) const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
 
 /// Deletes only from the expected status, reporting whether it happened.
 ///
 /// `$1` fleet · `$2` workspace · `$3` the status the row must hold.
 ///
-/// `RETURNING id` is what lets the caller tell "already gone" from "still
-/// running, refused" without a second read, and it closes the window between
-/// the pre-flight probe and this statement where a concurrent PATCH could have
-/// brought the fleet back.
-pub(crate) const DELETE_FLEET_IN_STATUS: &str = "\
-DELETE FROM core.fleets \
-WHERE id = $1::uuid AND workspace_id = $2::uuid AND status = $3 \
-RETURNING id";
+/// `RETURNING id::text` is what lets the caller tell "already gone" from "still
+/// running, refused" without a second read. Every child row cascades from
+/// this one (deletion matrix: Fleet), approval gates included: their table
+/// grants no DELETE, and the cascade runs as the table owner. Runner leases are
+/// the exception: [`DELETE_ACTIVE_LEASES`] runs first, and settled ones stay.
+pub(crate) const DELETE_FLEET_IN_STATUS: &str = include_str!("delete_fleet_in_status.sql");
+
+/// Deletes one fleet's live leases inside its purge.
+///
+/// `$1` fleet · `$2` the live lease status. `runner.leases` holds no foreign key
+/// to the fleet, so a settled lease outlives the purge for its own retention
+/// window; a live one would name a fleet that no longer exists, and goes here.
+pub(crate) const DELETE_ACTIVE_LEASES: &str = include_str!("delete_active_leases.sql");
+
+/// Every fleet identifier in one workspace.
+///
+/// `$1` workspace. No ORDER BY: the caller collects into a `BTreeSet`, which
+/// is what makes the order stable, and asking Postgres to sort a set the caller
+/// re-sorts anyway would be paying twice.
+pub(crate) const SELECT_FLEET_IDS: &str = include_str!("select_fleet_ids.sql");
+
+/// The activity counters of every fleet in a set, one row per fleet.
+///
+/// `$1` workspace · `$2` the fleet identifiers, as text. Driven from
+/// `fleet.fleets` rather than from the counters table so a fleet that has never
+/// run — and so has no counter row — still answers, with the zeros the page
+/// shows for it. The workspace rides the predicate like every other statement
+/// here, even though the one caller hands over a set it enumerated for that
+/// workspace: an identifier from another workspace answers NO ROW rather than
+/// its spend.
+pub(crate) const SELECT_FLEET_COUNTERS_FOR_SET: &str =
+    include_str!("select_fleet_counters_for_set.sql");

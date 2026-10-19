@@ -16,11 +16,9 @@
 )]
 
 use afd_admission::{Admission, Admissions, Budgets, Key, Producer};
-use afd_core::clock;
 use afd_core::error_code;
 use afd_dragonfly::streams::FleetStreams;
 use afd_wire::event::EventType;
-use sqlx::Row as _;
 
 use crate::support::EventsLane;
 
@@ -29,6 +27,16 @@ const FLEET_BUDGET: u64 = 3;
 
 /// The consumer the test drains one entry under.
 const CONSUMER: &str = "budget-reader";
+
+/// A delivery key no earlier run holds.
+///
+/// A repeated key is unique per producer, not per fleet, so a fixed name
+/// admitted by a run against a database the lane did not reset
+/// (`KEEP_TEST_STATE=1`) would read as already admitted. The lane's fleet is
+/// minted per run, so prefixing it keeps each run's keys its own.
+fn delivery(lane: &EventsLane, name: &str) -> String {
+    format!("{}-{name}", lane.fleet)
+}
 
 /// One webhook admission for the lane's fleet, keyed by `delivery`.
 fn admission<'a>(lane: &'a EventsLane, delivery: &'a str) -> Admission<'a> {
@@ -47,13 +55,11 @@ fn admission<'a>(lane: &'a EventsLane, delivery: &'a str) -> Admission<'a> {
 /// How many ledger rows the lane's fleet holds.
 async fn rows_for(lane: &EventsLane) -> i64 {
     let mut connection = lane.connection().await;
-    sqlx::query("SELECT count(*) FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
         .bind(lane.fleet.as_str())
         .fetch_one(&mut *connection)
         .await
         .expect("the ledger answers")
-        .try_get(0)
-        .expect("count answers a bigint")
 }
 
 /// The one shape every capacity refusal has: retryable to the caller,
@@ -86,16 +92,16 @@ async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer(
     });
 
     for index in 0..FLEET_BUDGET {
-        let delivery = format!("within-{index}");
+        let key = delivery(&lane, &format!("within-{index}"));
         ledger
-            .admit(admission(&lane, &delivery))
+            .admit(admission(&lane, &key))
             .await
             .expect("an admission inside the budget is taken");
     }
     let before = rows_for(&lane).await;
 
     let refused = ledger
-        .admit(admission(&lane, "one-over"))
+        .admit(admission(&lane, &delivery(&lane, "one-over")))
         .await
         .expect_err("the fleet holds its budget");
     assert_capacity_refusal(&refused);
@@ -113,7 +119,7 @@ async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer(
         .expect("an entry is outstanding");
     assert!(streams.ack(&lane.fleet, &event.receipt).await.expect("ack"));
     ledger
-        .admit(admission(&lane, "one-over"))
+        .admit(admission(&lane, &delivery(&lane, "one-over")))
         .await
         .expect("room was made");
 
@@ -138,7 +144,7 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
         .expect("group create");
     let open = lane.admissions();
     let admitted = open
-        .admit(admission(&lane, "already-admitted"))
+        .admit(admission(&lane, &delivery(&lane, "already-admitted")))
         .await
         .expect("admitted while the budget is open");
 
@@ -148,14 +154,14 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
     });
     let before = rows_for(&lane).await;
     let refused = spent
-        .admit(admission(&lane, "new-work"))
+        .admit(admission(&lane, &delivery(&lane, "new-work")))
         .await
         .expect_err("a spent deployment budget refuses new work");
     assert_capacity_refusal(&refused);
     assert_eq!(rows_for(&lane).await, before, "a refusal commits nothing");
 
     let retried = spent
-        .admit(admission(&lane, "already-admitted"))
+        .admit(admission(&lane, &delivery(&lane, "already-admitted")))
         .await
         .expect("a retry of admitted work is answered whatever the budget");
     assert!(retried.replayed, "the retry is recognised as one");
@@ -190,13 +196,13 @@ async fn the_ledger_reports_its_unconfirmed_rows_and_the_age_of_the_oldest() {
     .expect("a pending handle is built without a socket");
     let deferring = Admissions::for_tests(lane.database.clone(), unreachable);
     deferring
-        .admit(admission(&lane, "deferred"))
+        .admit(admission(&lane, &delivery(&lane, "deferred")))
         .await
         .expect("the row commits whatever the queue does");
 
     let backlog = lane
         .admissions()
-        .backlog(clock::now())
+        .backlog()
         .await
         .expect("the ledger answers");
     assert!(

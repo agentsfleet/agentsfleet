@@ -109,8 +109,8 @@ describe("app components", () => {
         Shell,
         {
           workspaces: [
-            { id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT },
-            { id: "ws_2", name: "Beta", created_at: 2, ...OWN_ACCOUNT },
+            { id: "ws_1", name: "Alpha", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT },
+            { id: "ws_2", name: "Beta", created_at: "1970-01-01T00:00:00.002Z", ...OWN_ACCOUNT },
           ],
         } as never,
         React.createElement("div", null, "content"),
@@ -123,8 +123,8 @@ describe("app components", () => {
         Shell,
         {
           workspaces: [
-            { id: "ws_1", name: "Alpha", created_at: 1, ...OWN_ACCOUNT },
-            { id: "ws_2", name: "Beta", created_at: 2, ...OWN_ACCOUNT },
+            { id: "ws_1", name: "Alpha", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT },
+            { id: "ws_2", name: "Beta", created_at: "1970-01-01T00:00:00.002Z", ...OWN_ACCOUNT },
           ],
         } as never,
         React.createElement("div", null, "next route content"),

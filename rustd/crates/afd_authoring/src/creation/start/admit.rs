@@ -19,7 +19,7 @@ impl Creations {
     ) -> Result<Prepared<'a>> {
         // System setup has no person to attribute a run to and always stores
         // `Start::None`, so only a person's Save reaches the admission.
-        let (Some(payload), Some(actor)) = (payload, &row.setup_context.context.creator_id) else {
+        let (Some(payload), Some(actor)) = (payload, &row.accepted.context.creator_id) else {
             return Ok(Prepared::None);
         };
         let admission = Admission {

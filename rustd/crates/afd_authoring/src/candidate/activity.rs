@@ -13,11 +13,9 @@ use afd_core::id::Uuid7;
 use afd_wire::authoring::{ActivityAccepted, ENVELOPE_BYTES_MAX};
 use sqlx::Connection as _;
 
-use super::{proposal, receipt};
+use super::{proposal, receipt, sql};
 
 const CONTEXT: &str = "commit authoring activity receipt";
-const ADVANCE: &str =
-    "UPDATE fleet.authoring_attempts SET activity_sequence=$2, updated_at=$3 WHERE id=$1::uuid";
 
 #[derive(garde::Validate)]
 struct Envelope<'a> {
@@ -47,17 +45,15 @@ impl Drafts {
         let sequence = counters.activity;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        // The publication guard refuses an attempt whose usage is unknown.
         let guarded = guard::publication(&mut tx, runner, lease, &counters).await?;
-        if guarded.attempt.usage_unknown {
-            return Err(ErrorKind::Fence.into());
-        }
         if let Some(receipt) =
             receipt::find(&mut tx, &guarded.attempt.id, sequence, &digest).await?
         {
             tx.commit().await.map_err(query(CONTEXT))?;
             return Ok(receipt);
         }
-        if guarded.attempt.activity_sequence.checked_add(1) != Some(sequence) {
+        if guarded.attempt.last_activity_sequence.checked_add(1) != Some(sequence) {
             return Err(ErrorKind::Replay.into());
         }
         let candidate = proposal::apply(self, &mut tx, &guarded, &request).await?;
@@ -70,10 +66,9 @@ impl Drafts {
             candidate.as_ref(),
         )
         .await?;
-        sqlx::query(ADVANCE)
+        sqlx::query(sql::ADVANCE)
             .bind(guarded.attempt.id.as_str())
             .bind(sequence)
-            .bind(guarded.now.as_millis())
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

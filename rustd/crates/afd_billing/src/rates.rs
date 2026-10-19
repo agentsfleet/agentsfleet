@@ -21,32 +21,14 @@
 //! IS the charge. That inversion is why pricing returns a value describing what
 //! happened rather than a bare `Option` that has already chosen for both.
 
-use sqlx::Row as _;
+use afd_wire::usage::UsageLine;
+use jiff::Timestamp;
 
-use crate::error::{Result, query};
+use crate::error::Result;
+use crate::price::{PriceBook, Rater, Window};
 use crate::sql;
 use crate::store::Accounts;
-use crate::{
-    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, RUN_NANOS_PER_SEC,
-    SliceRates, slice_charge,
-};
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RATE: &str = "model rate at revision";
-
-/// No time has elapsed at lease issue, so the estimate carries no run fee.
-///
-/// Named rather than passed as a bare `0`: the run fee accrues per renewal once
-/// the fleet is actually running, and a reader meeting `0` at this call site
-/// would reasonably wonder whether it was a placeholder.
-const ELAPSED_AT_ISSUE_MS: i64 = 0;
-
-/// The cached-input token count the issue-time floor assumes.
-///
-/// Zero, and deliberately not a third floor constant: a fresh run has no cache
-/// to hit, so assuming cached input would price the estimate BELOW what the
-/// run will cost.
-const CACHED_TOKENS_AT_ISSUE: i64 = 0;
+use crate::{ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos};
 
 /// Who supplies the provider key, and therefore who pays for tokens.
 ///
@@ -85,28 +67,6 @@ impl Posture {
             _unknown => None,
         }
     }
-
-    /// The rates this posture prices at without consulting the catalogue.
-    ///
-    /// `None` means the catalogue is required, which is `Platform` and only
-    /// `Platform`. Split out so the self-managed branch costs no statement and
-    /// stays provable with no database in the test.
-    ///
-    /// If this ever answered `Some` for `Platform`, every metered slice would
-    /// price from a constant — which is the exact defect that once made stage
-    /// billing charge nothing at all.
-    #[must_use]
-    const fn rates_without_catalogue(self) -> Option<SliceRates> {
-        match self {
-            Self::SelfManaged => Some(SliceRates {
-                run_nanos_per_sec: RUN_NANOS_PER_SEC,
-                input_nanos_per_mtok: 0,
-                cached_input_nanos_per_mtok: 0,
-                output_nanos_per_mtok: 0,
-            }),
-            Self::Platform => None,
-        }
-    }
 }
 
 /// What the issue-time gate will check a balance against.
@@ -139,85 +99,57 @@ impl Estimate {
 }
 
 impl Accounts {
-    /// The floor cost of one run under `posture`, for the credit gate.
+    /// The floor cost of one run under `posture` at `now`, for the credit gate.
     ///
-    /// Prices the conservative token floor and no run fee: the runner does not
-    /// know its real token counts at lease time, and no time has elapsed yet.
+    /// Prices the conservative token floor through the same
+    /// [`Rater`] that prices every usage line, and no run fee: the runner does
+    /// not know its real token counts at lease time, and no time has elapsed
+    /// yet. A self-managed run costs nothing at issue, so it reads no
+    /// catalogue.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. A model the catalogue does
-    /// not carry is [`Estimate::Unpriceable`], not an error — the two get
-    /// different treatment and collapsing them would make a missing rate
+    /// not price at `now` is [`Estimate::Unpriceable`], not an error — the two
+    /// get different treatment and collapsing them would make a missing rate
     /// indistinguishable from a dead datastore.
     pub async fn estimate(
         &self,
         posture: Posture,
         provider: &str,
         model: &str,
+        now: Timestamp,
     ) -> Result<Estimate> {
-        let rates = match posture.rates_without_catalogue() {
-            Some(rates) => Some(rates),
-            None => self.catalogue_rates(provider, model).await?,
-        };
-        Ok(rates.map_or(Estimate::Unpriceable, |rates| {
-            Estimate::Priced(slice_charge(
-                rates,
-                ELAPSED_AT_ISSUE_MS,
-                ESTIMATE_FLOOR_INPUT_TOKENS,
-                CACHED_TOKENS_AT_ISSUE,
-                ESTIMATE_FLOOR_OUTPUT_TOKENS,
-            ))
-        }))
-    }
-
-    /// The catalogue's rates for one `(provider, model)` pair.
-    ///
-    /// One statement, which returns the rate AND the generation it was read at
-    /// in a single snapshot — so there is no window for the counter to advance
-    /// between reading it and reading the rate, and no cache to hold a rate
-    /// under a generation it does not belong to. See [`super::store`] for why
-    /// no rate cache sits in front of it.
-    ///
-    /// `Ok(None)` is the join's null half: the revision row answered and the
-    /// catalogue carried no matching model. The `LEFT JOIN` is driven from the
-    /// singleton precisely so those two facts arrive together.
-    /// `pub(super)` rather than private: [`super::meter`] resolves the same
-    /// rates for a metered slice, and a second copy of this statement's
-    /// handling — the presence witness, the null-tier default — is a second
-    /// place for the catalogue's shape to be read wrong.
-    pub(super) async fn catalogue_rates(
-        &self,
-        provider: &str,
-        model: &str,
-    ) -> Result<Option<SliceRates>> {
-        let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::LOAD_RATE_WITH_REVISION)
-            .bind(provider)
-            .bind(model)
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RATE))?;
-
-        // Column 1 is the context cap, and it is the join's presence witness:
-        // NULL there means no catalogue row matched, whatever the rate columns
-        // hold. Testing a rate column instead would read a genuinely zero-rated
-        // model as absent.
-        let present: Option<i32> = row.try_get(1).map_err(query(CONTEXT_RATE))?;
-        if present.is_none() {
-            return Ok(None);
+        if posture == Posture::SelfManaged {
+            return Ok(Estimate::Priced(Nanos::ZERO));
         }
-        let tier = |index: usize| -> Result<i64> {
-            row.try_get::<Option<i64>, _>(index)
-                .map(|value| value.unwrap_or(0))
-                .map_err(query(CONTEXT_RATE))
-        };
-        Ok(Some(SliceRates {
-            run_nanos_per_sec: RUN_NANOS_PER_SEC,
-            input_nanos_per_mtok: tier(2)?,
-            cached_input_nanos_per_mtok: tier(3)?,
-            output_nanos_per_mtok: tier(4)?,
-        }))
+        let mut connection = self.pool().acquire().await?;
+        let book = PriceBook::load(&mut *connection, provider, model).await?;
+        floor(&book, now)
     }
+}
+
+/// The issue-time floor priced against `book` at `now`.
+fn floor(book: &PriceBook, now: Timestamp) -> Result<Estimate> {
+    let line = UsageLine {
+        seq: 0,
+        at: now,
+        input_tokens: ESTIMATE_FLOOR_INPUT_TOKENS,
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: ESTIMATE_FLOOR_OUTPUT_TOKENS,
+        runtime_ms: 0,
+    };
+    let window = Window {
+        from: now,
+        until: now,
+    };
+    let rated = Rater::new(book, Posture::Platform, window).rate(&line)?;
+    Ok(match rated.price {
+        Some(_tier) => Estimate::Priced(rated.charged),
+        None => Estimate::Unpriceable,
+    })
 }
 
 #[cfg(test)]
@@ -227,32 +159,16 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Estimate, Posture};
-    use crate::{Nanos, RUN_NANOS_PER_SEC, slice_charge};
+    use crate::Nanos;
 
     #[test]
-    fn only_the_platform_posture_needs_the_catalogue() {
-        // The property that keeps the self-managed branch database-free. If
-        // `Platform` ever answered rates here it would be pricing from a
-        // constant, which is how stage billing once charged nothing at all.
-        assert!(Posture::Platform.rates_without_catalogue().is_none());
-        assert!(Posture::SelfManaged.rates_without_catalogue().is_some());
-    }
-
-    #[test]
-    fn a_self_managed_estimate_at_issue_is_zero() {
-        // No elapsed time and no token charge: the run fee has not started
-        // accruing and the tenant's own provider bills the tokens. So the
-        // credit gate admits any balance for a self-managed fleet at issue,
-        // which is correct — there is nothing yet to charge them for.
-        let rates = Posture::SelfManaged
-            .rates_without_catalogue()
-            .expect("self-managed prices without a catalogue");
-        assert_eq!(slice_charge(rates, 0, 100, 0, 100), Nanos::ZERO);
-        // And the run fee is what it will charge once time passes.
-        assert_eq!(
-            slice_charge(rates, 10_000, 0, 0, 0),
-            Nanos::from_i64(10 * RUN_NANOS_PER_SEC)
-        );
+    fn an_empty_book_leaves_the_floor_unpriceable() {
+        // A model the catalogue does not carry admits against a floor of zero,
+        // and says so rather than reading as a free run.
+        let now = jiff::Timestamp::UNIX_EPOCH;
+        let estimate = super::floor(&crate::price::PriceBook::default(), now)
+            .expect("an empty book prices without overflow");
+        assert_eq!(estimate, Estimate::Unpriceable);
     }
 
     #[test]

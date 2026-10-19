@@ -8,11 +8,11 @@
 use crate::integration_held_sandbox::report::processed;
 use crate::queue;
 use crate::report_seed;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_fleet::lease::Plane;
 use afd_wire::report::{RenewRequest, ReportRequest};
+use jiff::Timestamp;
 
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
@@ -40,7 +40,7 @@ async fn remove_wallet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
         .bind(&held.tenant)
         .execute(&mut *connection)
         .await
@@ -48,9 +48,7 @@ async fn remove_wallet(held: &Held) {
 }
 
 async fn exhaust_fleet_budget(held: &Held) {
-    held.fixtures
-        .seed_wallet(&held.tenant, DEEP_POOL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(held, ONE_NANO_DAILY_BUDGET).await;
     let mut connection = held
         .fixtures
@@ -58,11 +56,25 @@ async fn exhaust_fleet_budget(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE billing.usage_ledger SET credit_deducted_nanos = 2 WHERE event_id = $1")
-        .bind(&held.event_id)
-        .execute(&mut *connection)
-        .await
-        .expect("the scoped event spends past the ceiling");
+    sqlx::query(
+        "INSERT INTO billing.usage_lines \
+           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, \
+            event_id, provider, model, posture, requested_at, input_token_count, \
+            cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
+            cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
+            charged_nanos, created_at, updated_at) \
+         SELECT $1::uuid, $2, $1::uuid, 0, f.tenant_id, f.workspace_id, f.id, f.name, $3, \
+                'anthropic', 'claude-fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, 2, \
+                now(), now() \
+           FROM fleet.fleets f WHERE f.id = $4::uuid",
+    )
+    .bind(afd_db::test_util::mint_uuid7().as_str())
+    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(&held.event_id)
+    .bind(&held.fleet)
+    .execute(&mut *connection)
+    .await
+    .expect("the fleet spends past the ceiling");
 }
 
 async fn make_budget_unreadable(held: &Held) {
@@ -76,7 +88,7 @@ async fn kill_fleet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET status = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid")
         .bind(&held.fleet)
         .bind(FLEET_KILLED)
         .execute(&mut *connection)
@@ -159,9 +171,7 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
     let plane = held.fixtures.plane();
     let lease_id = held.issued.lease_id.as_str();
 
-    held.fixtures
-        .seed_wallet(&held.tenant, DEEP_POOL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     kill_fleet(&held).await;
     plane
@@ -174,36 +184,44 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
     held.fixtures.cleanup().await;
 }
 
-/// Tokens a renewal could not price are charged by the next renewal that can.
+/// A request a renewal could not price is logged unpriced, and the next
+/// request prices on its own line.
 ///
-/// Three renewals at one instant, so no runtime accrues and every nano charged
-/// is a token's. The first prices 10k input tokens; the second reports 25k
-/// while the catalogue is offline; the third prices 40k and must charge the
-/// 30k since the first, three times the first slice. Charging the second
-/// slice's real counts at run-fee rates would move the token cursor to 25k,
-/// and the third would charge only 15k.
+/// Every request is its own line, so nothing is held for a later slice: the
+/// request priced during the fault carries its tokens as unpriced, visible on
+/// the charges page, and the next one is charged as if the fault never
+/// happened. Renewals at one instant, so every nano a token charge counts is a
+/// token's.
 ///
 /// A private database, because taking the catalogue offline breaks the rate
 /// read for every test sharing it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
+async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     let plane = held.fixtures.plane();
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
-    held.fixtures
-        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
-        .await;
-    let first = token_charge(&held, &plane, 10_000).await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
+    let first = token_charge(&held, &plane, 0, 10_000).await;
     assert!(first > 0, "the fixture rate prices ten thousand tokens");
 
-    renew_through_a_catalogue_fault(&held, &plane, reported(25_000)).await;
+    renew_through_a_catalogue_fault(&held, &plane, reported(&held, 1, 25_000)).await;
+    assert_eq!(
+        held.fixtures
+            .text(
+                crate::rows::Row::Line(&held.event_id, "1"),
+                "unpriced_token_count"
+            )
+            .await,
+        Some("25000".to_owned()),
+        "the request priced during the fault carries its tokens as unpriced"
+    );
 
-    let later = token_charge(&held, &plane, 40_000).await;
+    let later = token_charge(&held, &plane, 2, 40_000).await;
     assert_eq!(
         later,
-        3 * first,
-        "the tokens the fault held are charged with the next priced slice"
+        4 * first,
+        "a later request prices its own tokens and nothing held from the fault"
     );
 
     drop(plane);
@@ -211,23 +229,19 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
     held.fixtures.cleanup().await;
 }
 
-/// A report the catalogue fault reaches says which tokens go uncharged.
+/// A report the catalogue fault reaches logs its tokens as unpriced.
 ///
-/// The final slice settles at the run fee alone, so this line is the only
-/// record of what went unbilled: it carries the run's totals and its lease.
+/// The report's request line carries every token it reported, counted as
+/// unpriced: visible rather than lost.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     // A priced model, so the refusal below is the fault and not a missing rate.
-    held.fixtures
-        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
-        .await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
-        input_tokens: 12_000,
-        cached_input_tokens: 3_000,
-        output_tokens: 500,
+        requests: afd_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
         ..processed(&held, None)
     };
 
@@ -238,10 +252,17 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
         .report(&held.runner, &report, held.now)
         .await
         .expect("a catalogue fault does not stop the report");
-    let warned = log.only("report_rates_unverified_run_fee_only");
-    assert_eq!(warned.field("input_tokens"), Some("12000"));
-    assert_eq!(warned.field("cached_input_tokens"), Some("3000"));
-    assert_eq!(warned.field("output_tokens"), Some("500"));
+    let warned = log.only("lease_tokens_unpriced");
+    assert_eq!(
+        held.fixtures
+            .text(
+                crate::rows::Row::Line(&held.event_id, "0"),
+                "unpriced_token_count"
+            )
+            .await,
+        Some("15500".to_owned()),
+        "every token of the final slice is counted unpriced, none charged"
+    );
     assert!(
         warned
             .field("error_code")
@@ -258,37 +279,50 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     held.fixtures.cleanup().await;
 }
 
-/// The run fee every renewal charges, priced or not.
-const RUN_FEE_ONLY: afd_billing::SliceRates = afd_billing::SliceRates {
-    run_nanos_per_sec: afd_billing::RUN_NANOS_PER_SEC,
-    input_nanos_per_mtok: 0,
-    cached_input_nanos_per_mtok: 0,
-    output_nanos_per_mtok: 0,
-};
-
-/// A renewal reporting `input_tokens` in total.
-fn reported(input_tokens: u32) -> RenewRequest {
-    RenewRequest {
+/// One provider request numbered `seq`, made at `held`'s instant.
+fn request(
+    held: &Held,
+    seq: u32,
+    input_tokens: u32,
+    cached_input_tokens: u32,
+    output_tokens: u32,
+) -> afd_wire::usage::RequestUsage {
+    afd_wire::usage::RequestUsage {
+        seq,
+        at: held.now,
         input_tokens,
-        ..RenewRequest::default()
+        cached_input_tokens,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens,
+    }
+}
+
+/// A renewal carrying one request of `input_tokens`, numbered `seq`.
+fn reported(held: &Held, seq: u32, input_tokens: u32) -> RenewRequest {
+    RenewRequest {
+        requests: afd_wire::usage::RequestLines(vec![request(held, seq, input_tokens, 0, 0)]),
     }
 }
 
 /// The run fee for the runtime between two meter stamps. Renewal stamps the
 /// database clock it read, so these are the instants it metered between.
-fn run_fee(from: UnixMillis, to: UnixMillis) -> afd_billing::Nanos {
-    afd_billing::slice_charge(RUN_FEE_ONLY, to.saturating_millis_since(from), 0, 0, 0)
+fn run_fee(from: Timestamp, to: Timestamp) -> afd_billing::Nanos {
+    let wall_ms = afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to));
+    afd_billing::Nanos::from_i64(report_seed::run_fee(wall_ms))
 }
 
-/// Renews `held`'s lease for `input_tokens` and answers what it charged for
-/// tokens alone: the charge less the run fee for the runtime it measured.
-async fn token_charge(held: &Held, plane: &Plane, input_tokens: u32) -> i64 {
+/// Renews `held`'s lease with request `seq` of `input_tokens` and answers what
+/// it charged for tokens alone: the charge less the run fee for the runtime it
+/// measured.
+async fn token_charge(held: &Held, plane: &Plane, seq: u32, input_tokens: u32) -> i64 {
     let from = held.fixtures.metered_since(&held.fleet).await;
     let (_, charged) = plane
         .renew(
             &held.runner,
             held.issued.lease_id.as_str(),
-            reported(input_tokens),
+            reported(held, seq, input_tokens),
             held.now,
         )
         .await
@@ -299,10 +333,9 @@ async fn token_charge(held: &Held, plane: &Plane, input_tokens: u32) -> i64 {
 
 /// Renews `held`'s lease for `request` with the catalogue offline, and checks
 /// the renewal charged the runtime it measured and no token, and said itself
-/// that it held those tokens — not only the pricing helper it calls.
+/// that it logged those tokens unpriced, not only the pricing helper it calls.
 async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: RenewRequest) {
     let lease_id = held.issued.lease_id.as_str();
-    let held_tokens = request.input_tokens.to_string();
     held.fixtures.set_catalogue_readable(false).await;
     let log = Capture::install();
     let metered_from = held.fixtures.metered_since(&held.fleet).await;
@@ -313,8 +346,7 @@ async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: Re
     // The renewal meters runtime up to the database clock it read, and stamps
     // that instant as the meter's next start.
     let metered_to = held.fixtures.metered_since(&held.fleet).await;
-    let warned = log.only("renew_tokens_held_for_pricing");
-    assert_eq!(warned.field("input_tokens"), Some(held_tokens.as_str()));
+    let warned = log.only("lease_tokens_unpriced");
     assert_eq!(warned.field("lease_id"), Some(lease_id));
     drop(log);
     assert_eq!(

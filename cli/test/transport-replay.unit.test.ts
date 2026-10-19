@@ -103,7 +103,7 @@ const credentialsLayer: Layer.Layer<Credentials> = Layer.succeed(Credentials, {
 const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
   load: Effect.succeed({
     current_workspace_id: WS_ID,
-    items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
+    items: [{ workspace_id: WS_ID, name: "test-ws", created_at: new Date().toISOString() }],
   }),
   save: () => Effect.void,
 });

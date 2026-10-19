@@ -26,18 +26,18 @@ export type ApprovalGate = {
   action_id: string;
   tool_name: string;
   action_name: string;
-  gate_kind: string;
+  gate_type: string;
   proposed_action: string;
   evidence: Record<string, unknown>;
   blast_radius: string;
   status: ApprovalStatusValue;
   detail: string;
-  /** epoch ms */
-  created_at: number;
-  /** epoch ms — sweeper auto-denies after this */
-  timeout_at: number;
-  /** epoch ms; null when still pending */
-  updated_at: number | null;
+  /** RFC 3339 instant */
+  created_at: string;
+  /** RFC 3339 instant — sweeper auto-denies after this */
+  expires_at: string;
+  /** RFC 3339 instant; null when still pending */
+  resolved_at: string | null;
   resolved_by: string;
   /**
    * The decider's name, joined from this deployment's own user rows. Empty
@@ -56,7 +56,7 @@ export type ResolveResponse = {
   gate_id: string;
   action_id: string;
   outcome: ApprovalStatus;
-  resolved_at: number;
+  resolved_at: string;
   resolved_by: string;
 };
 
@@ -73,7 +73,7 @@ export type ResolveOutcome =
 export type ListApprovalsOpts = {
   status?: string;
   fleetId?: string;
-  gateKind?: string;
+  gateType?: string;
   cursor?: string;
   limit?: number;
 };
@@ -86,7 +86,7 @@ export async function listApprovals(
   const params = new URLSearchParams();
   if (opts.status) params.set("status", opts.status);
   if (opts.fleetId) params.set("fleet_id", opts.fleetId);
-  if (opts.gateKind) params.set("gate_kind", opts.gateKind);
+  if (opts.gateType) params.set("gate_type", opts.gateType);
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();

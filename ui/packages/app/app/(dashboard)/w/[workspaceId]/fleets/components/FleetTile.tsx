@@ -212,7 +212,8 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, activity, 
       <span className="flex items-center gap-sm text-label text-muted-foreground" data-fleet-status>{children}{statusLabel(fleet.status)}</span>
     </div>
     <div className="min-w-0 space-y-sm">
-      <CardTitle className="truncate" data-fleet-name>{fleet.name}</CardTitle>
+      <CardTitle className="truncate" data-agent-name={agentDisplayName(fleet.id)}>{agentDisplayName(fleet.id)}</CardTitle>
+      {fleet.description !== null ? <p className="truncate text-body-sm text-muted-foreground" data-fleet-purpose title={fleet.description}>{fleet.description}</p> : null}
       <p className="truncate text-body-sm text-muted-foreground" data-tile-activity>{activity}</p>
       <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
     </div>
@@ -249,7 +250,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
       <Link
         href={workspacePath(workspaceId, `fleets/${fleet.id}`)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — ${agentDisplayName(fleet.id)} — ${fleet.status}`}
+        aria-label={`${MANAGE_FLEET_LABEL}: ${agentDisplayName(fleet.id)}${fleet.description !== null ? ` — ${fleet.description}` : ""} — ${fleet.status}`}
         data-state={fleetRowState(fleet.status)}
       />
       <div className="pointer-events-none flex h-full flex-col gap-lg">
@@ -264,10 +265,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
           {children}
         </TileIdentity>
         <TileMetrics fleet={fleet} counters={counters} />
-        <div className="mt-auto flex items-center justify-between gap-md">
-          <span className="min-w-0 truncate text-label text-muted-foreground" data-agent-name={identity.callsign}>
-            {agentDisplayName(fleet.id)}
-          </span>
+        <div className="mt-auto flex items-center justify-end gap-md">
           <span className="shrink-0 font-sans text-label font-medium text-pulse" data-card-open>
             Open →
           </span>

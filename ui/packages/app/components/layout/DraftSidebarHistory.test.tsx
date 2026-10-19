@@ -1,16 +1,18 @@
 import { Profiler, useSyncExternalStore } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
-import { DraftSidebarHistory, DraftSidebarProvider, useDraftSidebarBridge, useFreshFleetChat } from "./DraftSidebarHistory";
+import { DraftSidebarHistory } from "./DraftSidebarHistory";
+import { useDraftSidebarBridge } from "./use-draft-sidebar-bridge";
+import { DraftSidebarProvider, useFreshFleetChat, removeSidebarDraft, type DraftSidebarState } from "./draft-sidebar-state";
 import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
 import { Button } from "@agentsfleet/design-system";
 
-const { identity } = vi.hoisted(() => ({ identity: { userId: "reader" } }));
+const { identity, replace } = vi.hoisted(() => ({ identity: { userId: "reader" }, replace: vi.fn() }));
 vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => identity }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({replace}) }));
 const client = new DraftClient({ account: "account", workspace: WORKSPACE, subject: "reader" });
 const fresh = vi.spyOn(client, "fresh").mockImplementation(() => {});
 const initial: DraftView = { ...client.getSnapshot(), draft: DRAFT, listStatus: "ready" };
@@ -19,7 +21,7 @@ const NEXT_DRAFT_ID = "0199a801-1000-7000-8000-00000000000a";
 
 it("keeps loaded chats visible while a page is pending and after it fails", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
   const next = Promise.withResolvers<Response>();
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -39,8 +41,8 @@ it("keeps loaded chats visible while a page is pending and after it fails", asyn
   } finally {current.dispose(); fetcher.mockRestore();}
 });
 
-function Bridge({ view, running = false }: { view: DraftView; running?: boolean }) {
-  useDraftSidebarBridge(client, view, WORKSPACE, "reader", running);
+function Bridge({ view, running = false, current = client, workspace = WORKSPACE, subject = "reader" }: { view: DraftView; running?: boolean; current?: DraftClient; workspace?: string; subject?: string }) {
+  useDraftSidebarBridge(current, view, workspace, subject, running);
   return null;
 }
 function NewChat() {
@@ -65,13 +67,10 @@ it("does not commit sidebar changes for reply chunks or unchanged history snapsh
   expect(screen.getByRole("link", { name: DRAFT.title }).getAttribute("href")).toContain(`draft=${DRAFT.id}`);
 });
 
-it("searches loaded setup-chat titles without network reads and exposes unavailable history after access loss", () => {
+it("exposes unavailable history after access loss without starting a search", () => {
   const fetcher = vi.spyOn(globalThis, "fetch");
   const view = render(tree(initial));
-  fireEvent.change(screen.getByRole("textbox", { name: "Search loaded chats" }), { target: { value: "FAILURES" } });
   expect(screen.getByRole("link", { name: DRAFT.title })).toBeTruthy();
-  fireEvent.change(screen.getByRole("textbox", { name: "Search loaded chats" }), { target: { value: "unknown" } });
-  expect(screen.getByText("No matching chats")).toBeTruthy();
   view.rerender(tree({ ...initial, inaccessible: true, listStatus: "unavailable" }));
   expect(screen.queryByRole("link", { name: DRAFT.title })).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
@@ -111,7 +110,11 @@ it("does not expose another subject's history", () => {
 });
 
 it("keeps a loaded history distinct from a failed or pending chat operation", () => {
-  render(tree({...initial, draft: null, error: "Save failed", busy: true}));
+  const view = render(tree(initial));
+  view.rerender(tree({...initial, draft: null, cards: [], listStatus: "loading"}));
+  expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+  expect(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`})).toHaveProperty("disabled", true);
+  view.rerender(tree({...initial, draft: null, error: "Save failed", busy: true}));
   expect(screen.getByText("Your fleet setup conversations will appear here.")).toBeTruthy();
   expect(screen.queryByText("Chat history is unavailable.")).toBeNull();
   expect(screen.queryByText("Loading setup chats…")).toBeNull();
@@ -131,7 +134,7 @@ it("removes unfinished history when leaving chat and retains completed cards wit
 });
 
 it("deduplicates the current draft and preserves the other loaded titles", () => {
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
   render(tree({...initial, cards: [card, {...card, id: "another-chat", title: "Another setup"}]}));
   expect(screen.getAllByRole("link")).toHaveLength(2);
   expect(screen.getAllByRole("link", {name: DRAFT.title})).toHaveLength(1);
@@ -144,9 +147,9 @@ function LiveBridge({current}: {current: DraftClient}) {
   return null;
 }
 
-it("loads the next chat page on demand and makes its title searchable", async () => {
+it("loads the next chat page on demand and keeps both titles visible", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: 0, expires_at: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.includes("/models?")) return response({items: [], next_cursor: null});
@@ -160,8 +163,83 @@ it("loads the next chat page on demand and makes its title searchable", async ()
     fireEvent.click(screen.getByRole("button", {name: "Load more chats"}));
     expect(await screen.findByRole("link", {name: "Next setup"})).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole("button", {name: "Load more chats"})).toBeNull());
-    fireEvent.change(screen.getByRole("textbox", {name: "Search loaded chats"}), {target: {value: "Next"}});
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getAllByRole("link")).toHaveLength(2);
     expect(fetcher).toHaveBeenCalledTimes(3);
   } finally { cleanup(); current.dispose(); fetcher.mockRestore(); }
+});
+
+it("keeps the selected second chat in place and exposes its setup version", () => {
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  render(tree({...initial, cards: [{...card, id: NEXT_DRAFT_ID, title: "First setup"}, card]}));
+  expect(screen.getAllByRole("link").map((link) => link.getAttribute("aria-label"))).toEqual(["First setup", DRAFT.title]);
+  expect(screen.getByRole("link", {name: DRAFT.title}).getAttribute("aria-describedby")).toBe(`${DRAFT.id}-state`);
+  expect(screen.getByText("Setup ready · Proposed v1")).toBeTruthy();
+});
+
+it("requires confirmation and keeps a chat available after a refused deletion", async () => {
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(response({user_message: "Finish the current request first"}, 409));
+  try {
+    render(tree(initial));
+    fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
+    const dialog = await screen.findByRole("alertdialog", {name: "Delete setup chat?"});
+    expect(dialog.textContent).toContain("Saved fleets and published library versions stay available");
+    fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
+    expect(fetcher).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
+    await screen.findByText("Finish the current request first");
+    expect(screen.getByRole("link", {hidden: true}).textContent).toContain(DRAFT.title);
+    fetcher.mockResolvedValueOnce(response(null, 204));
+    fireEvent.click(screen.getByRole("button", {name: "Delete chat"}));
+    await waitFor(() => expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull());
+    expect(replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/new`);
+  } finally {fetcher.mockRestore();}
+});
+
+it("deletes another chat without navigating away from the selected conversation", async () => {
+  const other = {...DRAFT, id: NEXT_DRAFT_ID, title: "Other setup", linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, 204));
+  try {
+    render(tree({...initial, cards: [other]}));
+    fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${other.title}`}));
+    const dialog = await screen.findByRole("alertdialog", {name: "Delete setup chat?"});
+    fireEvent.click(within(dialog).getByRole("button", {name: "Delete chat"}));
+    await waitFor(() => expect(screen.queryByRole("link", {name: other.title})).toBeNull());
+    expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+    expect(replace).not.toHaveBeenCalled();
+  } finally {fetcher.mockRestore();}
+});
+
+it.each(["workspace", "subject"] as const)("does not carry loaded private cards into a pending %s", (scope) => {
+  const view = render(tree(initial));
+  const changed = {[scope]: "other"};
+  view.rerender(<DraftSidebarProvider><Bridge view={{...initial, draft: null, listStatus: "loading"}} {...changed} />{sidebar}</DraftSidebarProvider>);
+  expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull();
+});
+
+it("retains the newer chat owner's history when an older bridge unmounts", () => {
+  const next = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
+  const older = <Bridge key="older" view={initial} />;
+  const newer = <Bridge key="newer" current={next} view={{...initial, draft: {...DRAFT, title: "New owner"}}} />;
+  const view = render(<DraftSidebarProvider>{older}{sidebar}</DraftSidebarProvider>);
+  view.rerender(<DraftSidebarProvider>{older}{newer}{sidebar}</DraftSidebarProvider>);
+  expect(screen.getByRole("link", {name: "New owner"})).toBeTruthy();
+  view.rerender(<DraftSidebarProvider>{newer}{sidebar}</DraftSidebarProvider>);
+  expect(screen.getByRole("link", {name: "New owner"})).toBeTruthy();
+  view.rerender(<DraftSidebarProvider><Bridge key="newer" current={next} view={{...initial, listStatus: "unavailable"}} />{sidebar}</DraftSidebarProvider>);
+  view.rerender(<DraftSidebarProvider>{sidebar}</DraftSidebarProvider>);
+  expect(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`})).toHaveProperty("disabled", true);
+  next.dispose();
+});
+
+it("removes a private card only from its owning scope and clears only the selected chat", () => {
+  const scope = {workspace: WORKSPACE, subject: "reader"};
+  const value: DraftSidebarState = {...scope, cards: [{id: DRAFT.id, title: DRAFT.title, detail: "Setup ready"}, {id: "other", title: "Other chat", detail: "In progress"}],
+    fresh: null, remove: null, owner: null, locked: false, current: DRAFT.id, more: null, status: "ready", searchVersion: null};
+  expect(removeSidebarDraft(null, scope, DRAFT.id)).toBeNull();
+  expect(removeSidebarDraft(value, {...scope, workspace: "other"}, DRAFT.id)).toBe(value);
+  expect(removeSidebarDraft(value, {...scope, subject: "other"}, DRAFT.id)).toBe(value);
+  expect(removeSidebarDraft(value, scope, "absent")).toBe(value);
+  expect(removeSidebarDraft(value, scope, "other")).toMatchObject({current: DRAFT.id, cards: [value.cards[0]]});
+  expect(removeSidebarDraft(value, scope, DRAFT.id)).toMatchObject({current: null, cards: [value.cards[1]]});
 });

@@ -21,14 +21,17 @@ changelog entries read this dispatch first, then `write_changelog.md`.
 1. Read `.orly/docs/DOCUMENTATION_RULES.md` and identify the page scope.
 2. Read the repository glossary and content boundaries.
 3. Verify claims against runtime code, OpenAPI, and command help.
-4. Write the smallest complete page.
-5. Run the repository-owned pre-commit checker.
+4. Draft the smallest complete page, then apply the DOC-43 distillation pass.
+5. Run `orly gate verify` and the repository's documentation checks.
 
 ## Enforcement
 
-🟣 **Delegated.** Each repository owns its checker: rules resolve from this
-repository's own `docs/`, materialised here by `orly init`. Dotfiles owns the
-rule and the read trigger. Repository hooks own mechanical enforcement.
+`orly gate verify` and `orly gate pr` reject mechanical language findings in
+changed Markdown and Markdown JSX (MDX) prose. DOC-33 names the checked rules
+and exclusions. Repository checks enforce their own page metadata and examples.
+
+Review judges whether the draft answers the reader's question, keeps required
+facts, and passes DOC-43. Record that judgment outside the published page.
 
 Before committing, cite the applied Documentation (DOC) rule identifiers:
 

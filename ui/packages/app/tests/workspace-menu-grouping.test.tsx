@@ -27,9 +27,9 @@ const MINE = { tenant_id: "tenant_bob", owner_name: "Bob" };
 const JOHNS = { tenant_id: "tenant_john", owner_name: "John" };
 // A second account whose owner is also called John.
 const OTHER_JOHNS = { tenant_id: "tenant_john_2", owner_name: JOHNS.owner_name };
-const BOB_HOME: TenantWorkspace = { id: "ws_bob", name: "bob-home", created_at: 1, account: MINE, role: ACCOUNT_ROLE.owner };
-const MARY_001: TenantWorkspace = { id: "ws_john", name: "mary-001", created_at: 2, account: JOHNS, role: ACCOUNT_ROLE.member };
-const OPS_001: TenantWorkspace = { id: "ws_john_2", name: "ops-001", created_at: 3, account: OTHER_JOHNS, role: ACCOUNT_ROLE.member };
+const BOB_HOME: TenantWorkspace = { id: "ws_bob", name: "bob-home", created_at: "1970-01-01T00:00:00.001Z", account: MINE, role: ACCOUNT_ROLE.owner };
+const MARY_001: TenantWorkspace = { id: "ws_john", name: "mary-001", created_at: "1970-01-01T00:00:00.002Z", account: JOHNS, role: ACCOUNT_ROLE.member };
+const OPS_001: TenantWorkspace = { id: "ws_john_2", name: "ops-001", created_at: "1970-01-01T00:00:00.003Z", account: OTHER_JOHNS, role: ACCOUNT_ROLE.member };
 const DUPLICATE_KEY = /same key/;
 
 beforeEach(() => { pathname.mockReturnValue(`/w/${BOB_HOME.id}/fleets`); });

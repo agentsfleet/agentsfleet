@@ -10,8 +10,8 @@ import { EMAIL_STATUS } from "./invites-types";
 const TOKEN = "tok_owner";
 // The invitee's side lives under the signed-in user's own routes.
 const WAITING_INVITES_PATH = "/v1/users/me/invites";
-const EXPIRES_AT = Date.UTC(2026, 9, 7);
-const CREATED_AT = Date.UTC(2026, 8, 30);
+const EXPIRES_AT = "2026-10-07T00:00:00Z";
+const CREATED_AT = "2026-09-30T00:00:00Z";
 const INVITE = {
   id: "0195b4ba-8d3a-7f13-8abc-0000000000a1",
   email: "bob@example.com",
@@ -103,8 +103,13 @@ describe("owner invites", () => {
     await expect(listInvites(TOKEN)).rejects.toThrow("list response omitted items");
   });
 
-  it("should reject an invite whose expiry is not an integer timestamp", async () => {
+  it("should reject an invite whose expiry is a date with no time", async () => {
     answer(200, { items: [{ ...INVITE, expires_at: "2026-10-07" }], total: 1, next_cursor: null });
+    await expect(listInvites(TOKEN)).rejects.toThrow("invite is invalid");
+  });
+
+  it("should reject an invite whose expiry is an epoch-millisecond number", async () => {
+    answer(200, { items: [{ ...INVITE, expires_at: Date.parse(EXPIRES_AT) }], total: 1, next_cursor: null });
     await expect(listInvites(TOKEN)).rejects.toThrow("invite is invalid");
   });
 

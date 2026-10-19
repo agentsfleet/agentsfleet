@@ -13,15 +13,58 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use afd_db::test_util::SetupRevision;
 use afd_fleet_runtime::Definition;
 use afd_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use serde_json::{Value, json};
 
-/// The setup revision a fleet's first selection carries.
-const FIRST_REVISION: i64 = 1;
+/// Appends the next revision and makes it the fleet's head, in one statement,
+/// the way an Apply changes a saved fleet's setup.
+const APPEND_HEAD_REVISION: &str = "\
+WITH next AS (
+    SELECT coalesce(max(revision), 0) + 1 AS revision
+    FROM fleet.revisions WHERE fleet_id = $1::uuid
+), appended AS (
+    INSERT INTO fleet.revisions
+      (id, fleet_id, revision, definition, canonical_digest, policy_semantics,
+       runtime_model_ref, created_at)
+    SELECT $2::uuid, $1::uuid, next.revision, $3::jsonb, $4, $5, $6, now() FROM next
+    RETURNING id
+)
+UPDATE fleet.fleets SET head_revision_id = (SELECT id FROM appended),
+    resource_version = resource_version + 1, updated_at = now()
+WHERE id = $1::uuid";
 
 /// What a seeded fleet's setup says about itself.
 const FIXTURE_DESCRIPTION: &str = "End-to-end fixture.";
+
+/// A parsed definition as the columns that store it.
+pub(crate) struct Stored {
+    /// The definition, as stored JSON.
+    pub(crate) definition: String,
+    /// Its canonical digest.
+    pub(crate) digest: String,
+}
+
+impl Stored {
+    /// `definition`, serialized and digested by the setup authority's own code.
+    pub(crate) fn of(definition: &Definition) -> Self {
+        Self {
+            definition: serde_json::to_string(definition).expect("Definition JSON"),
+            digest: canonical_digest(definition).expect("canonical digest"),
+        }
+    }
+
+    /// The revision a fleet seed selects, on the platform default model.
+    pub(crate) fn revision(&self) -> SetupRevision<'_> {
+        SetupRevision {
+            definition: &self.definition,
+            digest: &self.digest,
+            semantics: POLICY_SEMANTICS,
+            model_ref: Some(afd_credential::provider::PLATFORM_MODEL_REF),
+        }
+    }
+}
 
 /// A complete definition for `config`, whose own `name` names the fleet.
 pub(crate) fn definition(config: &str, instructions: &str) -> Definition {
@@ -38,77 +81,22 @@ pub(crate) fn definition(config: &str, instructions: &str) -> Definition {
     .expect("a valid native setup")
 }
 
-/// Appends `definition` as `fleet`'s first revision on the platform default
-/// model, and selects it.
-pub(crate) async fn select(
-    connection: &mut sqlx::PgConnection,
-    fleet: &str,
-    definition: &Definition,
-    at: i64,
-) {
-    select_revision(connection, fleet, definition, FIRST_REVISION, at).await;
-}
-
 /// Appends `definition` as `fleet`'s next revision and selects it, the way an
 /// Apply changes a saved fleet's setup.
 pub(crate) async fn reselect(
     connection: &mut sqlx::PgConnection,
     fleet: &str,
     definition: &Definition,
-    at: i64,
 ) {
-    let next: i64 = sqlx::query_scalar(
-        "SELECT coalesce(setup_version, 0) + 1 FROM core.fleets WHERE id = $1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the fleet's setup version reads");
-    select_revision(connection, fleet, definition, next, at).await;
-}
-
-/// Appends `definition` as `fleet`'s revision `number` and selects it.
-async fn select_revision(
-    connection: &mut sqlx::PgConnection,
-    fleet: &str,
-    definition: &Definition,
-    number: i64,
-    at: i64,
-) {
-    // Idempotent like the row seed it follows: a fleet seeded twice keeps the
-    // selection it has rather than failing on the revision number.
-    let inserted: Option<String> = sqlx::query_scalar(
-        "INSERT INTO core.fleet_definition_revisions
-           (id, fleet_id, revision, definition, canonical_digest, policy_semantics, created_at,
-            runtime_model_ref)
-         VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5, $6, $7, $8)
-         ON CONFLICT (fleet_id, revision) DO NOTHING
-         RETURNING id::text",
-    )
-    .bind(afd_db::test_util::mint_id())
-    .bind(fleet)
-    .bind(number)
-    .bind(serde_json::to_string(definition).expect("Definition JSON"))
-    .bind(canonical_digest(definition).expect("canonical digest"))
-    .bind(POLICY_SEMANTICS)
-    .bind(at)
-    .bind(afd_credential::provider::PLATFORM_MODEL_REF)
-    .fetch_optional(&mut *connection)
-    .await
-    .expect("append the immutable setup");
-    let Some(revision) = inserted else {
-        return;
-    };
-    sqlx::query(
-        "UPDATE core.fleets SET current_definition_revision_id = $2::uuid,
-           setup_version = $3, resource_version = $3, config_json = $4::jsonb
-         WHERE id = $1::uuid",
-    )
-    .bind(fleet)
-    .bind(&revision)
-    .bind(number)
-    .bind(definition.config().value().to_string())
-    .execute(connection)
-    .await
-    .expect("select the setup");
+    let stored = Stored::of(definition);
+    sqlx::query(APPEND_HEAD_REVISION)
+        .bind(fleet)
+        .bind(afd_db::test_util::mint_id())
+        .bind(&stored.definition)
+        .bind(&stored.digest)
+        .bind(POLICY_SEMANTICS)
+        .bind(afd_credential::provider::PLATFORM_MODEL_REF)
+        .execute(connection)
+        .await
+        .expect("append and select the setup");
 }

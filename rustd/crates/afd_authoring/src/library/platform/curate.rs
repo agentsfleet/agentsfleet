@@ -7,20 +7,10 @@ use crate::{
         ErrorKind,
         raise::{query, stored},
     },
-    library::{CONTEXT, read},
+    library::{CONTEXT, read, sql},
     types::{PlatformLibrary, PlatformPatch},
 };
-use afd_core::clock::UnixMillis;
 use sqlx::Connection as _;
-
-const UPDATE: &str = "\
-UPDATE core.fleet_libraries SET name=coalesce($2,name),description=coalesce($3,description),
-credential_reasons=coalesce($4::jsonb,credential_reasons),visibility=coalesce($5,visibility),
-resource_version=resource_version+1,updated_at=$6
-WHERE id=$1::uuid AND (
-name IS DISTINCT FROM coalesce($2,name) OR description IS DISTINCT FROM coalesce($3,description)
-OR credential_reasons IS DISTINCT FROM coalesce($4::jsonb,credential_reasons)
-OR visibility IS DISTINCT FROM coalesce($5,visibility))";
 
 impl Setup {
     /// Curates, explicitly publishes or withdraws a platform entry.
@@ -32,7 +22,6 @@ impl Setup {
         slug: &str,
         expected: Option<&str>,
         request: PlatformPatch,
-        now: UnixMillis,
     ) -> Result<PlatformLibrary> {
         let request = garde::Unvalidated::new(request).validate()?;
         if request.name.is_none()
@@ -57,7 +46,7 @@ impl Setup {
             .map(serde_json::to_string)
             .transpose()
             .map_err(stored)?;
-        sqlx::query(UPDATE)
+        sqlx::query(sql::CURATE)
             .bind(entry.id.as_str())
             .bind(&request.name)
             .bind(&request.description)
@@ -67,7 +56,6 @@ impl Setup {
                     .published
                     .map(|published| if published { PLATFORM } else { PLATFORM_DRAFT }),
             )
-            .bind(now.as_millis())
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

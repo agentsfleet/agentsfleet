@@ -27,7 +27,7 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   await expect(page.getByRole("main")).toContainText(INSTRUCTIONS);
   await page.getByRole("button", {name: "Start chat from this revision"}).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?.*revision=${published.revision_id}`));
-  // Review setup appears only once the chat holds a candidate, so the first message is what binds the pin.
+  // inline setup appears only once the chat holds a candidate, so the first message is what binds the pin.
   const created = page.waitForResponse((response) => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith("/drafts"));
   await page.getByLabel(CHAT_PLACEHOLDER).fill(FIRST_MESSAGE);

@@ -17,11 +17,16 @@ use super::Error;
 const ZERO_CEILING: &str = "name\tkind\tnumber\tunit\ttemporality\tlabels\tbounds\tpolicy\tlive_read\tcategory\twatch_for\n\
                             a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:0\tno\ttraffic\tnothing\n";
 
+/// Why the exporter in the transport test would not build.
+const NO_HTTP_CLIENT: &str = "no http client";
+
 /// An exporter that would not build stays the transport's: no knob, the
 /// transport's own code, and its cause kept.
 #[test]
 fn a_transport_failure_keeps_its_code_and_names_no_knob() {
-    let transport = afd_otlp::Error::from(opentelemetry_otlp::ExporterBuildError::NoHttpClient);
+    let transport = afd_otlp::Error::from(opentelemetry_otlp::ExporterBuildError::InternalFailure(
+        NO_HTTP_CLIENT.to_owned(),
+    ));
 
     let lifted = Error::from(transport);
 

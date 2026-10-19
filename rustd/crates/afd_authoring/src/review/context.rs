@@ -41,10 +41,10 @@ impl From<&Locked> for Context {
             },
             workspace_id: draft.workspace_id.clone(),
             tenant_id: draft.tenant_id.clone(),
-            creator_id: Some(draft.creator_id.clone()),
+            creator_id: Some(draft.user_id.clone()),
             instance_name: draft.instance_name.clone(),
             source_pin: draft.source_pin.clone(),
-            linked_fleet_id: draft.linked_fleet_id.clone(),
+            linked_fleet_id: draft.fleet_id.clone(),
         }
     }
 }
@@ -78,6 +78,50 @@ impl Context {
         match &self.source_pin {
             Some(SourcePin::Fleet { fleet_id, .. }) => Some(fleet_id),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(clippy::expect_used, reason = "fixture identifiers are well formed")]
+
+    use super::{Context, Subject};
+    use afd_core::id::Uuid7;
+
+    fn id(last: u8) -> Uuid7 {
+        Uuid7::parse(&format!("01900000-0000-7000-8000-0000000000{last:02x}")).expect("fixture id")
+    }
+
+    #[test]
+    fn a_review_points_its_reviewer_at_the_page_that_owns_its_subject() {
+        let (workspace, draft, revision, fleet) = (id(1), id(2), id(3), id(4));
+        let mut system = Context::system(workspace.clone(), id(5), "resident");
+        assert_eq!(system.review_href(), format!("/w/{workspace}/fleets"));
+        system.linked_fleet_id = Some(fleet.clone());
+        assert_eq!(
+            system.review_href(),
+            format!("/w/{workspace}/fleets/{fleet}"),
+            "a saved system fleet is reviewed on its own page"
+        );
+        for (subject, href) in [
+            (
+                Subject::Draft { id: draft.clone() },
+                format!("/w/{workspace}/drafts/{draft}"),
+            ),
+            (
+                Subject::Library {
+                    library_id: "checkout-watch".to_owned(),
+                    revision_id: revision,
+                },
+                format!("/w/{workspace}/library/checkout-watch"),
+            ),
+        ] {
+            let context = Context {
+                subject,
+                ..system.clone()
+            };
+            assert_eq!(context.review_href(), href);
         }
     }
 }

@@ -1,49 +1,27 @@
 // Authenticated platform-admin client for the model library + platform default.
 // Distinct from model_library.ts (the tenant-facing catalogue reader): these
-// routes are platform-admin-gated and mutate core.model_library / core.platform_provider_defaults.
+// routes are platform-admin-gated and manage model.platform_models and its prices.
 // Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
-import type { INFERENCE_API } from "./admin-model-library-types";
+import { z } from "zod";
 import { request } from "./client";
+import { adminModelSchema, adminModelListSchema, modelSettingsSchema, boundedText, CATALOGUE_LIMITS } from "./catalogue-types";
 
 const ADMIN_MODELS_PATH = "/v1/admin/models";
 const ADMIN_PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
+const createModelSchema = modelSettingsSchema.extend({
+  provider: boundedText(CATALOGUE_LIMITS.provider).pipe(z.string().min(1)),
+  model_id: boundedText(CATALOGUE_LIMITS.modelId).pipe(z.string().min(1)),
+});
 
-export interface ModelInference {
-  api: (typeof INFERENCE_API)[keyof typeof INFERENCE_API];
-  base_url: string;
-  dialect?: string;
-  max_output_tokens: number;
-}
+const updateModelResultSchema = z.object({ id: z.string(), updated: z.boolean() });
 
-export interface AdminModel {
-  id: string;
-  provider: string;
-  model_id: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok: number;
-  cached_input_nanos_per_mtok: number;
-  output_nanos_per_mtok: number;
-  inference?: ModelInference;
-}
-
-export interface AdminModelList {
-  models: AdminModel[];
-}
-
-export interface LibraryModelInput {
-  provider: string;
-  model_id: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok: number;
-  cached_input_nanos_per_mtok: number;
-  output_nanos_per_mtok: number;
-  inference?: ModelInference;
-}
-
-/** Provider and model identity remain immutable when settings change. */
-export type ModelRatesInput = Omit<LibraryModelInput, "provider" | "model_id">;
+export type AdminModel = z.infer<typeof adminModelSchema>;
+export type AdminModelList = z.infer<typeof adminModelListSchema>;
+export type ModelRatesInput = z.infer<typeof modelSettingsSchema>;
+export type LibraryModelInput = z.infer<typeof createModelSchema>;
+export type { ModelInference } from "./catalogue-types";
 
 export interface PlatformDefaultInput {
   provider: string;
@@ -52,7 +30,7 @@ export interface PlatformDefaultInput {
   base_url?: string;
 }
 
-// A row of core.platform_provider_defaults as the admin GET returns it. Never
+// A platform provider default as the admin GET returns it. Never
 // carries key material. `model` is the priced (provider, model_id) the default
 // resolves to — non-null on the active row, NULL once a provider is stood down.
 export interface PlatformKey {
@@ -60,7 +38,7 @@ export interface PlatformKey {
   source_workspace_id: string;
   model: string | null;
   active: boolean;
-  updated_at: number;
+  updated_at: string;
 }
 
 export interface PlatformKeyList {
@@ -68,11 +46,12 @@ export interface PlatformKeyList {
 }
 
 export async function listAdminModels(token: string): Promise<AdminModelList> {
-  return request<AdminModelList>(ADMIN_MODELS_PATH, { method: "GET" }, token);
+  return adminModelListSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "GET" }, token));
 }
 
 export async function createAdminModel(token: string, body: LibraryModelInput): Promise<AdminModel> {
-  return request<AdminModel>(ADMIN_MODELS_PATH, { method: "POST", body: JSON.stringify(body) }, token);
+  const parsed = createModelSchema.parse(body);
+  return adminModelSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "POST", body: JSON.stringify(parsed) }, token));
 }
 
 export async function updateAdminModel(
@@ -80,7 +59,8 @@ export async function updateAdminModel(
   id: string,
   body: ModelRatesInput,
 ): Promise<{ id: string; updated: boolean }> {
-  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, token);
+  return updateModelResultSchema.parse(await request<unknown>(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(modelSettingsSchema.parse(body)) }, token));
 }
 
 export async function deleteAdminModel(token: string, id: string): Promise<void> {

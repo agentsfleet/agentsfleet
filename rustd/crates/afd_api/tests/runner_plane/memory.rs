@@ -40,12 +40,28 @@ async fn a_fleet_id_that_is_not_a_uuid_is_refused(router: &axum::Router) {
         assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
         assert_eq!(code_of(malformed).await, "UZ-REQ-001");
     }
+    let recall = send(
+        router,
+        Method::POST,
+        "/v1/runners/me/memory/not-a-uuid/recall",
+        Some(RUNNER_TOKEN),
+        "{}",
+    )
+    .await;
+    assert_eq!(recall.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(recall).await, "UZ-REQ-001");
 }
 
 /// A recall with no room for a result is refused; a bounded one answers both
 /// the fleet's own memory and what is shared with it.
 async fn recall_is_bounded_and_renders_both_shelves(router: &axum::Router, memory_path: &str) {
     let recall_path = format!("{memory_path}/recall");
+    // A body that is not the recall's shape is refused before any store.
+    for body in ["not json", r#"{"query":"x","limit":5,"lease_id":1}"#] {
+        let unreadable = send(router, Method::POST, &recall_path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(unreadable.status(), StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(code_of(unreadable).await, "UZ-REQ-001", "{body}");
+    }
     let unbounded = send(
         router,
         Method::POST,

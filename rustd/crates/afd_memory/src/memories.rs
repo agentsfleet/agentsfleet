@@ -1,38 +1,36 @@
-//! The handle `agentsfleetd` holds once: every memory verb, the grants each
-//! enforces, and the route to each workspace's store.
+//! The handle `agentsfleetd` holds once: every memory verb, and the grants
+//! each enforces.
 //!
 //! ```text
-//!   lease plane ─┐                          ┌─► Postgres (today)
-//!   runner route ├─► Memories ─► grants ─► route ┤
-//!   tenant route ┘   (core.fleets)          └─► the store a flip moved it to
+//!   lease plane ─┐
+//!   runner route ├─► Memories ─► grants ─► PgStore
+//!   tenant route ┘   (fleet.fleets)
 //! ```
 
 use std::sync::Arc;
 
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers::memory;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 
 use crate::access::{Access, Directory};
 use crate::admit::admit;
-use crate::error::{Result, entry_not_found, fleet_not_found, moving};
+use crate::error::{Result, entry_not_found, fleet_not_found};
 use crate::page::{After, View};
 use crate::postgres::PgStore;
-use crate::record::{Housekept, Owner, Record};
-use crate::route::Routes;
-use crate::store::MemoryStore;
+use crate::record::{Owner, Record};
 
 /// An admin changed a fleet's shared-memory grants.
 const EVENT_ACCESS_CHANGED: &str = "memory_access_changed";
 
-/// Every memory verb `agentsfleetd` serves, over one route table.
+/// Every memory verb `agentsfleetd` serves.
 ///
 /// Cheap to clone: one `Arc` (`M-SERVICES-CLONE`), so the lease plane and both
-/// route families share one route table and one view of every flip.
+/// route families share one store and one grant directory.
 #[derive(Debug, Clone)]
 pub struct Memories {
     inner: Arc<Inner>,
@@ -41,7 +39,7 @@ pub struct Memories {
 #[derive(Debug)]
 struct Inner {
     directory: Directory,
-    routes: Routes,
+    store: PgStore,
 }
 
 /// What one capture wrote, and what it declined to.
@@ -76,24 +74,16 @@ impl Memories {
     /// Every workspace's memory in Postgres, through `database`.
     #[must_use]
     pub fn new(database: Db, entropy: Entropy) -> Self {
-        let store = Arc::new(PgStore::new(database.clone(), entropy));
-        Self::over(database, store)
-    }
-
-    /// Every workspace's memory in `store`, with the grants read through
-    /// `database`.
-    #[must_use]
-    pub fn over(database: Db, store: Arc<dyn MemoryStore>) -> Self {
         Self {
             inner: Arc::new(Inner {
+                store: PgStore::new(database.clone(), entropy),
                 directory: Directory::new(database),
-                routes: Routes::new(store),
             }),
         }
     }
 
-    pub(crate) fn routes(&self) -> &Routes {
-        &self.inner.routes
+    pub(crate) fn store(&self) -> &PgStore {
+        &self.inner.store
     }
 
     pub(crate) fn directory(&self) -> &Directory {
@@ -126,7 +116,7 @@ impl Memories {
         &self,
         fleet: &Uuid7,
         deltas: &[MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Captured> {
         let captured = self.capture_counted(fleet, deltas, now).await;
         match captured {
@@ -140,7 +130,7 @@ impl Memories {
         &self,
         fleet: &Uuid7,
         deltas: &[MemoryDelta<'_>],
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Captured> {
         let Access { workspace, grants } = self.access(fleet).await?;
         let admitted = admit(deltas, grants.publish);
@@ -149,7 +139,7 @@ impl Memories {
             fleet,
         };
         let entries = admitted.entries.as_slice();
-        let housekept = self.upsert_through(owner, entries, now).await?;
+        let housekept = self.store().upsert(owner, entries, now).await?;
         Ok(Captured {
             stored: entries.len(),
             skipped: admitted.skipped + admitted.unpublished,
@@ -176,9 +166,7 @@ impl Memories {
     ) -> Result<Vec<Record>> {
         let access = self.access_in(workspace, fleet).await?;
         let owner = Owner { workspace, fleet };
-        self.routes()
-            .of(workspace)
-            .store
+        self.store()
             .page(owner, access.grants.read, view, after, limit)
             .await
     }
@@ -187,21 +175,16 @@ impl Memories {
     /// same key is never touched.
     ///
     /// # Errors
-    /// Refuses a fleet `workspace` does not hold, a key the fleet is not
-    /// holding, and a forget that would race a flip's copy — a copy could put
-    /// the entry back, so the caller is told to try again.
+    /// Refuses a fleet `workspace` does not hold and a key the fleet is not
+    /// holding, and reports a store that would not answer.
     pub async fn forget(&self, workspace: &Uuid7, fleet: &Uuid7, key: &str) -> Result<()> {
         self.access_in(workspace, fleet).await?;
-        let route = self.routes().of(workspace);
-        if let Some(mirror) = &route.mirror {
-            return Err(moving(mirror.name()));
-        }
         let owner = Owner { workspace, fleet };
-        let forgotten = route.store.forget(owner, key).await?;
-        if !Arc::ptr_eq(&route, &self.routes().of(workspace)) {
-            return Err(moving(route.store.name()));
-        }
-        forgotten.then_some(()).ok_or_else(entry_not_found)
+        self.store()
+            .forget(owner, key)
+            .await?
+            .then_some(())
+            .ok_or_else(entry_not_found)
     }
 
     /// Sets `fleet`'s shared-memory grants, answering both as they now stand.
@@ -234,48 +217,5 @@ impl Memories {
             "a fleet's shared-memory grants changed"
         );
         Ok(access)
-    }
-
-    /// Upserts `entries` into every store `owner`'s workspace route writes to
-    /// (the route's own store, then a flip's mirror) and again into any store
-    /// a flip adds before the route holds still, answering what the route's
-    /// own store housekept.
-    ///
-    /// The store being left is written first, so a row a write puts in the
-    /// store being filled is already in the one being left. A write that then
-    /// fails on a store it still had to reach marks the route it went
-    /// through, so the flip filling that store does not switch to it, and the
-    /// caller is told the write failed.
-    ///
-    /// No lock: a write that saw the route before a flip began finds the new
-    /// route when it looks again, and writes the store it missed. Each write
-    /// is an upsert at one instant, so writing a store twice changes nothing.
-    pub(crate) async fn upsert_through(
-        &self,
-        owner: Owner<'_>,
-        entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
-    ) -> Result<Housekept> {
-        let mut route = self.routes().of(owner.workspace);
-        let mut written: Vec<Arc<dyn MemoryStore>> = Vec::with_capacity(2);
-        let answer = route.store.upsert(owner, entries, now).await?;
-        written.push(Arc::clone(&route.store));
-        loop {
-            for store in route.writers() {
-                if written.iter().any(|done| Arc::ptr_eq(done, store)) {
-                    continue;
-                }
-                store
-                    .upsert(owner, entries, now)
-                    .await
-                    .inspect_err(|_| route.miss())?;
-                written.push(Arc::clone(store));
-            }
-            let current = self.routes().of(owner.workspace);
-            if Arc::ptr_eq(&current, &route) {
-                return Ok(answer);
-            }
-            route = current;
-        }
     }
 }

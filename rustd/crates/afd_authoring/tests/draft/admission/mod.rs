@@ -5,10 +5,13 @@ mod context;
 mod failure;
 mod fixture;
 mod funnel;
+mod holds;
 mod identity;
 mod obligations;
+mod offered;
 mod platform;
 mod replacement;
+mod revalidation;
 mod stop;
 
 use super::{

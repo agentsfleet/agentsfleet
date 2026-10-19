@@ -8,6 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
+use crate::auth::PersonIdentity;
 use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
@@ -22,8 +23,13 @@ const EVENT: &str = "runner_leases_failed";
     description = concat!(
         "Platform-admin read of a single runner's lease history, newest ",
         "first. Each lease is joined to its Fleet event, so outcome and ",
-        "failure cause arrive in one round trip. Stripe-style keyset ",
-        "pagination — `starting_after` is a lease id from a previous page's ",
+        "failure cause arrive in one round trip. A settled lease outlives a ",
+        "fleet purge and its event's retention. Its fleet and event fields are ",
+        "then null. `destination` is `available` when the fleet exists in the ",
+        "caller's own account. It is `fleet_deleted` after a purge, and ",
+        "`not_permitted` for a fleet in another account. ",
+        "Stripe-style keyset ",
+        "pagination —`starting_after` is a lease id from a previous page's ",
         "`next_cursor`. Settled leases are retained for 30 days. The window ",
         "is measured from settlement, not from acquisition. A lease acquired ",
         "long ago and settled yesterday keeps its full window. A background ",
@@ -60,6 +66,7 @@ const EVENT: &str = "runner_leases_failed";
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
+    identity: PersonIdentity,
     Path(raw): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
@@ -74,6 +81,7 @@ pub(crate) async fn list<D: Services>(
     match services
         .runner_lease_history()
         .list(
+            identity.person().tenant(),
             &runner,
             query.workspace.as_ref(),
             query.fleet.as_deref(),

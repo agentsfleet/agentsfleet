@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 use serde_json::Value;
 use sqlx::{Acquire as _, PgConnection};
 
@@ -35,11 +35,11 @@ impl Leases {
         runner_id: &Uuid7,
         presented: u64,
         candidates: BTreeMap<u64, Admissible<'_>>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Kept> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_KEEP))?;
-        let Some(target) = locked_target(&mut transaction, lease_id, runner_id, now).await? else {
+        let Some(target) = locked_target(&mut transaction, lease_id, runner_id).await? else {
             return Ok(Kept::NoLease);
         };
         if !target.holds(presented) {
@@ -76,7 +76,7 @@ impl Leases {
         connection: &mut PgConnection,
         target: &LiveLease,
         kept: Vec<Admissible<'_>>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let mut columns = Columns::default();
         for Admissible { record, bytes, .. } in kept {
@@ -102,7 +102,6 @@ impl Leases {
             .bind(&target.fleet_id)
             .bind(&target.event_id)
             .bind(target.fence)
-            .bind(now.as_millis())
             .bind(columns.ids)
             .bind(columns.numbers)
             .bind(columns.arguments)
@@ -143,20 +142,14 @@ async fn locked_target(
     connection: &mut PgConnection,
     lease_id: &str,
     runner_id: &Uuid7,
-    now: UnixMillis,
 ) -> Result<Option<LiveLease>> {
-    let found = sqlx::query(statement::SELECT_LIVE_LEASE)
+    sqlx::query_as(statement::SELECT_LIVE_LEASE)
         .bind(lease_id)
         .bind(runner_id.as_str())
         .bind(sql::LEASE_STATUS_ACTIVE)
-        .bind(now.as_millis())
         .fetch_optional(&mut *connection)
         .await
-        .map_err(query(CONTEXT_KEEP))?;
-    let Some(row) = found else {
-        return Ok(None);
-    };
-    LiveLease::read(&row, CONTEXT_KEEP).map(Some)
+        .map_err(query(CONTEXT_KEEP))
 }
 
 /// What the lease already keeps, and what each posted call's record spends.

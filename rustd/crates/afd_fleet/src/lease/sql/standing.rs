@@ -1,7 +1,7 @@
 //! The statements a lease-addressed runner verb proves its lease with, and
 //! the per-run message count.
 //!
-//! Each names `fleet.runner_leases` (`schema/610`, `schema/929`).
+//! Each names `runner.leases` (`schema/1810`).
 
 /// The lease a runner verb names, if this runner holds it live.
 ///
@@ -10,38 +10,49 @@
 /// holder a reclaim has superseded and see whether a schedule woke the run. `LEFT JOIN`, as the memory fence reads it: a lease whose fleet
 /// has no slot row is fenced by its own token.
 ///
-/// A macro expanding to a literal, because the tool-call verb runs the same
-/// read under a row lock and `concat!` takes literals only — one statement
-/// text, two uses, no second spelling to drift.
+/// One file, three uses: the tool-call verb and the schedule writes run the
+/// same read under a row lock, so each locking variant puts its clause between
+/// [`LEASE_READ`] and [`LEASE_JUDGED`] rather than spelling a second copy that
+/// could drift.
 ///
-/// `$1` lease, `$2` runner, `$3` the active status, `$4` now.
-macro_rules! live_lease {
-    () => {
-        "\
-SELECT l.fleet_id::text, l.workspace_id::text, l.event_id, l.fencing_token,
-       COALESCE(a.fencing_seq, l.fencing_token) AS live_seq, l.actor
-FROM fleet.runner_leases l
-LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
-  AND l.status = $3 AND l.lease_expires_at > $4"
-    };
-}
-pub(crate) use live_lease;
+/// `$1` lease, `$2` runner, `$3` the active status.
+///
+/// # Why the deadline is judged outside the read
+///
+/// Postgres evaluates a locking statement's `WHERE` and select list before it
+/// waits on a row lock, and re-checks them after the wait only when the lock's
+/// holder WROTE the row. A holder that only locked it — a schedule write's
+/// `FOR SHARE`, a record post's `FOR NO KEY UPDATE` — triggers no re-check, so a
+/// deadline compared inside the locking read accepts a lease that lapsed while
+/// the read waited. The read is therefore a `MATERIALIZED` step that takes the
+/// lock and answers `lease_expires_at`; [`LEASE_JUDGED`] reads
+/// `clock_timestamp()` on the row it answered, once the lock is held.
+pub(super) const LEASE_READ: &str = const_format::concatcp!(
+    "WITH lease AS MATERIALIZED (\n",
+    include_str!("live_lease.sql")
+);
 
-/// [`live_lease`], unlocked.
+/// Closes [`LEASE_READ`] and keeps its row only while the lease is live.
+pub(super) const LEASE_JUDGED: &str = "\n)\n\
+SELECT fleet_id, workspace_id, event_id, fence, live_seq, actor\n\
+  FROM lease\n\
+ WHERE lease_expires_at > clock_timestamp()\n";
+
+/// [`LEASE_READ`] and [`LEASE_JUDGED`], unlocked.
 ///
 /// The schedules verbs act on other tables, and the messages verb writes only
-/// `messages_posted`, through [`COUNT_MESSAGE`], which re-checks the fence
+/// `posted_message_count`, through [`COUNT_MESSAGE`], which re-checks the fence
 /// itself, so neither holds a lock across the read.
-pub const SELECT_STANDING: &str = live_lease!();
+pub const SELECT_STANDING: &str = const_format::concatcp!(LEASE_READ, LEASE_JUDGED);
 
-/// [`live_lease`], holding the lease row shared until the caller's transaction
-/// ends.
+/// [`SELECT_STANDING`], holding the lease row shared until the caller's
+/// transaction ends.
 ///
 /// What a schedule write proves its lease with: a reclaim, a renew and a
 /// settle each update this row, so none of them can land between the check
 /// and the write it guards (`crate::lease::write_fence`).
-pub const SELECT_STANDING_SHARED: &str = concat!(live_lease!(), "\nFOR SHARE OF l");
+pub const SELECT_STANDING_SHARED: &str =
+    const_format::concatcp!(LEASE_READ, "FOR SHARE OF l", LEASE_JUDGED);
 
 /// Counts one interim message against a lease that still holds its fleet.
 ///
@@ -53,13 +64,9 @@ pub const SELECT_STANDING_SHARED: &str = concat!(live_lease!(), "\nFOR SHARE OF 
 /// it, so a holder superseded between the two cannot take a slot, and one
 /// guarded statement means two concurrent posts cannot both take the last.
 ///
-/// `$1` lease, `$2` the cap, `$3` the presented token, `$4` the active status,
-/// `$5` now.
-pub const COUNT_MESSAGE: &str = "\
-UPDATE fleet.runner_leases l SET messages_posted = l.messages_posted + 1
-WHERE l.id = $1::uuid AND l.messages_posted < $2
-  AND l.fencing_token = $3 AND l.status = $4 AND l.lease_expires_at > $5
-  AND l.fencing_token >= COALESCE(
-        (SELECT a.fencing_seq FROM fleet.runner_affinity a WHERE a.fleet_id = l.fleet_id),
-        l.fencing_token)
-RETURNING l.messages_posted";
+/// `$1` lease, `$2` the cap, `$3` the presented token, `$4` the active status.
+/// The row is locked in a `MATERIALIZED` step and the deadline read on
+/// `clock_timestamp()` in the next, for the reason [`LEASE_READ`] gives: an
+/// `UPDATE` whose own `WHERE` read the clock would judge the lease before
+/// waiting on a holder that only locked the row.
+pub const COUNT_MESSAGE: &str = include_str!("count_message.sql");

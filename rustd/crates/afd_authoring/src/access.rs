@@ -6,7 +6,7 @@ use crate::{
     sql,
 };
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
 
 const CONTEXT: &str = "check current authoring membership";
 
@@ -24,21 +24,26 @@ pub(crate) struct Person {
     pub(crate) owner: Uuid7,
 }
 
+/// [`sql::access::PERSON`]'s row, by column name.
+#[derive(sqlx::FromRow)]
+struct PersonRow {
+    user_id: String,
+    owner_id: String,
+    personal_owner: bool,
+}
+
 pub(crate) async fn current(connection: &mut PgConnection, access: Access<'_>) -> Result<Person> {
-    let row = sqlx::query(sql::access::PERSON)
+    let row: PersonRow = sqlx::query_as(sql::access::PERSON)
         .bind(access.workspace.as_str())
         .bind(access.subject)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
         .ok_or(ErrorKind::Hidden)?;
-    let user: String = row.try_get(0).map_err(query(CONTEXT))?;
-    let owner: String = row.try_get(1).map_err(query(CONTEXT))?;
-    let personal: bool = row.try_get(2).map_err(query(CONTEXT))?;
-    if !personal {
-        let membership = sqlx::query(sql::access::MEMBER)
-            .bind(&owner)
-            .bind(&user)
+    if !row.personal_owner {
+        let membership: Option<String> = sqlx::query_scalar(sql::access::MEMBER)
+            .bind(&row.owner_id)
+            .bind(&row.user_id)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -47,7 +52,7 @@ pub(crate) async fn current(connection: &mut PgConnection, access: Access<'_>) -
         }
     }
     Ok(Person {
-        id: Uuid7::parse(&user)?,
-        owner: Uuid7::parse(&owner)?,
+        id: Uuid7::parse(&row.user_id)?,
+        owner: Uuid7::parse(&row.owner_id)?,
     })
 }

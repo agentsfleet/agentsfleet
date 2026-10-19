@@ -133,7 +133,10 @@ fn test_an_unrung_mark_is_reported_with_its_partition() {
     const COMMAND: &str = "SPUBLISH";
     let capture = Capture::install();
 
-    report_unrung(partition(9), &crate::error::timed_out(COMMAND, 5));
+    report_unrung(
+        partition(9),
+        &crate::error::timed_out(COMMAND, std::time::Duration::from_millis(5)),
+    );
 
     let line = capture.only(EVENT_WAKE_RING_FAILED);
     assert_eq!(line.field("partition"), Some("9"));
@@ -265,7 +268,6 @@ mod listening {
     /// its own.
     #[tokio::test]
     async fn test_a_ring_nobody_answers_is_reported_never_raised() {
-        use afd_core::clock::UnixMillis;
         use afd_core::test_util::trace::Capture;
         use afd_crypto::entropy::Entropy;
 
@@ -284,7 +286,7 @@ mod listening {
             NOWHERE.to_owned(),
         ))
         .unwrap_or_else(|_| unreachable!("a lazy handle opens no socket"));
-        let token = ReadyToken::mint(&Entropy::new(), UnixMillis::from_millis(1_759_000_000_000))
+        let token = ReadyToken::mint(&Entropy::new(), jiff::Timestamp::constant(1_759_000_000, 0))
             .unwrap_or_else(|_| unreachable!("the host has entropy"));
 
         ReadyIndex::new(queue).ring(partition(4), &token).await;

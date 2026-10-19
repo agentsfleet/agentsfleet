@@ -1,7 +1,7 @@
 //! The lane's two datastores, and the rows every event hangs from.
 //!
-//! `core.fleet_events` has foreign keys into `core.fleets` and
-//! `core.workspaces`, so no history test can seed a single row without first
+//! `fleet.events` has foreign keys into `fleet.fleets` and
+//! `identity.workspaces`, so no history test can seed a single row without first
 //! seeding a tenant, a workspace and a fleet. That chain is here rather than in
 //! each suite, because getting it wrong fails with a constraint violation that
 //! names a table the test never mentions.
@@ -30,10 +30,11 @@ use std::time::Duration;
 use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 /// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
 const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -97,15 +98,16 @@ impl EventsLane {
             .expect("the lane database must hand over a connection")
     }
 
-    /// Writes one `core.fleet_events` row, as a runner's report leaves it.
+    /// Writes one `fleet.events` row, as a runner's report leaves it.
     ///
     /// `created_at` is a parameter rather than a clock read: every claim these
     /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
     /// a fixture that stamped rows with "now" could only ever seed one instant.
-    pub(crate) async fn seed_event(&self, event_id: &str, created_at: i64) {
+    /// The row id is the column's own `uuidv7()`.
+    pub(crate) async fn seed_event(&self, event_id: &str, created_at: Timestamp) {
         let mut connection = self.connection().await;
         sqlx::query(
-            "INSERT INTO core.fleet_events
+            "INSERT INTO fleet.events
                (fleet_id, workspace_id, event_id, actor, event_type, status,
                 request_json, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', 'completed',
@@ -115,7 +117,7 @@ impl EventsLane {
         .bind(self.fleet.as_str())
         .bind(self.workspace.as_str())
         .bind(event_id)
-        .bind(created_at)
+        .bind(created_at.to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("seeding a fleet event");
@@ -124,17 +126,15 @@ impl EventsLane {
     /// Whether the lane holds a row under `event_id`.
     pub(crate) async fn has_event(&self, event_id: &str) -> bool {
         let mut connection = self.connection().await;
-        let count: i64 = sqlx::query(
-            "SELECT count(*) FROM core.fleet_events
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM fleet.events
              WHERE fleet_id = $1::uuid AND event_id = $2",
         )
         .bind(self.fleet.as_str())
         .bind(event_id)
         .fetch_one(&mut *connection)
         .await
-        .expect("the count must run")
-        .try_get(0)
-        .expect("count answers a bigint");
+        .expect("the count must run");
         count > 0
     }
 
@@ -149,36 +149,19 @@ impl EventsLane {
     /// Seeds the tenant, workspace and fleet every event hangs from.
     async fn seed_fleet(&self) {
         let mut connection = self.connection().await;
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at)
-             VALUES ($1::uuid, 'events-fixture', $2, $2)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.tenant.as_str())
-        .bind(SEED_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a tenant");
-
-        sqlx::query(
-            // The NAME carries the id rather than a fixed word:
-            // `uq_workspaces_tenant_id_name` is unique per tenant, and a
-            // constant name would collide where the `ON CONFLICT (id)` arm
-            // cannot see it.
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-             VALUES ($1::uuid, $2::uuid, $1::text, 'events-fixture', $3)
-             ON CONFLICT (id) DO NOTHING",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(SEED_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
-
+        TenantSeed::new(&self.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
             .name("events-fixture-fleet")
-            .at(SEED_MS)
+            .at(SEEDED_AT)
             .native_setup()
             .insert(&mut *connection)
             .await
@@ -189,9 +172,9 @@ impl EventsLane {
 /// The instant the fixture rows are stamped with.
 ///
 /// Fixed rather than "now": these rows are the SCAFFOLD, never the subject, and
-/// a fixed stamp keeps a `since` window's arithmetic readable against the row
-/// timestamps a test chooses for itself.
-const SEED_MS: i64 = 1_700_000_000_000;
+/// a fixed stamp keeps a `since` window readable against the row timestamps a
+/// test chooses for itself.
+const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";

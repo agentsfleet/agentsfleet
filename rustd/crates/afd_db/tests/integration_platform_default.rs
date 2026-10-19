@@ -16,16 +16,15 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{DefaultSeed, PlatformDefault, TestDatabase, mint_id};
+use afd_db::test_util::{
+    DefaultSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
+};
 
 /// The model every case prices, under its own provider.
 const MODEL: &str = "guard-model";
 
 /// The context ceiling every case's default carries.
 const CAP: i32 = 1_000;
-
-/// The instant every row here is stamped at.
-const AT: i64 = 1_760_000_000_000;
 
 /// A provider, workspace and priced model of one case's own.
 struct Scene {
@@ -52,31 +51,25 @@ impl Scene {
             model_row: mint_id(),
         };
         let mut connection = scene.database.acquire().await.expect("a connection");
+        TenantSeed::new(&scene.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seed");
+        WorkspaceSeed::new(&scene.workspace, &scene.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seed");
         sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Guard fixture', $3, $3) \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($2::uuid, $1::uuid, 'guard-fixture', 'fixture:guard', $3)",
-        )
-        .bind(&scene.tenant)
-        .bind(&scene.workspace)
-        .bind(AT)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant and workspace seed");
-        sqlx::query(
-            "INSERT INTO core.model_library \
-               (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $4, 1, 1, 1, $5, $5)",
+            "INSERT INTO model.platform_models \
+               (id, model_name, provider, display_name, context_cap_tokens, context_source_url, \
+                context_verified_at, advanced, created_at, updated_at) \
+             VALUES ($1::uuid, $2, $3, $2, $4, $5, now(), false, now(), now())",
         )
         .bind(&scene.model_row)
         .bind(MODEL)
         .bind(&scene.provider)
         .bind(CAP)
-        .bind(AT)
+        .bind("https://example.test/models/guard")
         .execute(&mut *connection)
         .await
         .expect("the catalogue row seeds");
@@ -89,7 +82,7 @@ impl Scene {
             source_workspace_id: &self.workspace,
             model: MODEL,
             context_cap_tokens: CAP,
-            created_at: AT,
+            created_at: afd_core::clock::now(),
         }
     }
 
@@ -97,7 +90,7 @@ impl Scene {
     async fn default_names(&self) -> Option<String> {
         let mut connection = self.database.acquire().await.expect("a connection");
         sqlx::query_scalar(
-            "SELECT source_workspace_id::text FROM core.platform_provider_defaults \
+            "SELECT source_workspace_id::text FROM model.platform_defaults \
              WHERE provider = $1",
         )
         .bind(&self.provider)
@@ -110,16 +103,13 @@ impl Scene {
     async fn preexisting_default(&self) {
         let mut connection = self.database.acquire().await.expect("a connection");
         sqlx::query(
-            "INSERT INTO core.platform_provider_defaults \
-               (provider, source_workspace_id, active, model, context_cap_tokens, \
-                created_at, updated_at) \
-             VALUES ($1, $2::uuid, FALSE, $3, $4, $5, $5)",
+            "INSERT INTO model.platform_defaults \
+               (provider, source_workspace_id, active, platform_model_id, created_at, updated_at) \
+             VALUES ($1, $2::uuid, FALSE, $3::uuid, now(), now())",
         )
         .bind(&self.provider)
         .bind(&self.workspace)
-        .bind(MODEL)
-        .bind(CAP)
-        .bind(AT)
+        .bind(&self.model_row)
         .execute(&mut *connection)
         .await
         .expect("the pre-existing default seeds");
@@ -130,18 +120,21 @@ impl Scene {
         let mut connection = self.database.acquire().await.expect("a connection");
         for (statement, id) in [
             (
-                "DELETE FROM core.platform_provider_defaults WHERE provider = $1",
+                "DELETE FROM model.platform_defaults WHERE provider = $1",
                 &self.provider,
             ),
             (
-                "DELETE FROM core.model_library WHERE id = $1::uuid",
+                "DELETE FROM model.platform_models WHERE id = $1::uuid",
                 &self.model_row,
             ),
             (
-                "DELETE FROM core.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
                 &self.workspace,
             ),
-            ("DELETE FROM core.tenants WHERE id = $1::uuid", &self.tenant),
+            (
+                "DELETE FROM identity.tenants WHERE id = $1::uuid",
+                &self.tenant,
+            ),
         ] {
             sqlx::query(statement)
                 .bind(id)
@@ -172,7 +165,7 @@ async fn a_default_a_failing_holder_created_is_removed_as_it_unwinds() {
                 source_workspace_id: &workspace,
                 model: MODEL,
                 context_cap_tokens: CAP,
-                created_at: AT,
+                created_at: afd_core::clock::now(),
             },
         )
         .await;
@@ -218,7 +211,7 @@ async fn a_default_that_already_existed_survives_a_passing_and_a_failing_hold() 
                 source_workspace_id: &workspace,
                 model: MODEL,
                 context_cap_tokens: CAP,
-                created_at: AT,
+                created_at: afd_core::clock::now(),
             },
         )
         .await;

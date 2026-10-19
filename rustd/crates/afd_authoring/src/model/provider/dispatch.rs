@@ -13,6 +13,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU16, Ordering},
 };
+use std::time::Duration;
 
 pub(in crate::model) struct Outbound {
     pub(in crate::model) key: SecretString,
@@ -20,7 +21,7 @@ pub(in crate::model) struct Outbound {
     pub(in crate::model) inference: ModelInference,
     pub(in crate::model) model: Box<str>,
     pub(in crate::model) context_tokens: u32,
-    pub(in crate::model) timeout_ms: u64,
+    pub(in crate::model) timeout: Duration,
 }
 
 pub(in crate::model) async fn complete(
@@ -31,7 +32,7 @@ pub(in crate::model) async fn complete(
     let status = Arc::new(AtomicU16::new(0));
     let transport = Once {
         physical,
-        timeout_ms: outbound.timeout_ms,
+        timeout: outbound.timeout,
         status: Arc::clone(&status),
     };
     let model = configured.with_transport(&outbound.model, outbound.key.expose(), transport);
@@ -42,7 +43,7 @@ pub(in crate::model) async fn complete(
 #[derive(Clone)]
 struct Once {
     physical: Arc<dyn Transport>,
-    timeout_ms: u64,
+    timeout: Duration,
     status: Arc<AtomicU16>,
 }
 
@@ -53,14 +54,11 @@ where
     fn send(&self, payload: Encoded, _exchange: Exchange) -> Opening<WireFrame> {
         let physical = Arc::clone(&self.physical);
         let status = Arc::clone(&self.status);
-        let timeout_ms = self.timeout_ms;
+        let timeout = self.timeout;
         Opening::new(async move {
             let request = afd_inference::json_request(payload.request)?;
             let path = request.uri().path().to_owned();
-            let request = ProviderRequest {
-                request,
-                timeout_ms,
-            };
+            let request = ProviderRequest { request, timeout };
             let reply = physical.send(request).await.map_err(|source| {
                 rig_core::ProviderError::from_transport_error(
                     rig_core::http_client::Error::instance(source),

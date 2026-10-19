@@ -16,7 +16,7 @@ const fetchMock = vi.fn<typeof fetch>();
 const BODY = {workspace_id: WORKSPACE, draft_candidate_id: "0199a801-1000-7000-8000-000000000003", label: "Reviewed"};
 const OPERATION = "0199a801-1000-7000-8000-000000000005";
 const TAG = PUBLICATION.etag;
-const ITEM = {card: LIBRARY_CARD, published: true, updated_at: 0};
+const ITEM = {card: LIBRARY_CARD, published: true, updated_at: "1970-01-01T00:00:00Z"};
 
 beforeEach(() => {
   vi.clearAllMocks(); scope.mockResolvedValue(true); credential.mockResolvedValue("session");

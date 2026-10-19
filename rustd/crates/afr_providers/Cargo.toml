@@ -57,6 +57,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 afd_identity.workspace = true
+# Rig's scripted stream exercises unmodeled items and retained terminal failures.
+rig-core = { workspace = true, features = ["test-utils"] }
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # The log capture the retry and key suites read their lines through.

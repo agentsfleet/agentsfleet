@@ -25,7 +25,7 @@ async fn joined_creator_reviews_owner_model_and_loses_access_after_revocation() 
         .await
         .expect_err("owner cannot read member's private draft");
     assert_eq!(foreign.code(), AUTHORING_NOT_FOUND);
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(f.member.as_str())
         .execute(&mut *f.connection().await)
@@ -78,19 +78,57 @@ async fn requirements_stay_declared_while_missing_credential_readiness_is_visibl
 }
 
 async fn store_credential(f: &Fixture) {
+    store_named(f, "deploy_key", r#"{"api_key":"fixture-authoring-key"}"#).await;
+}
+
+/// The connector a stored token ships as it stands, which no broker exchanges.
+const STATIC_CONNECTOR: &str = "static";
+
+/// A stored token for an inline connector other than Slack is ready on its
+/// credential alone: review observes no connection and no standing grant for
+/// it, because the runner ships the stored token as it stands.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_inline_connector_other_than_slack_is_ready_on_its_credential_alone() {
+    let f = Fixture::create().await;
+    store_named(
+        &f,
+        STATIC_CONNECTOR,
+        r#"{"integration":"static","token":"fixture-static-token"}"#,
+    )
+    .await;
+    let draft = draft(&f, false).await;
+    let patch: DraftPatch = serde_json::from_value(json!({"config_ops":[{"op":"replace","path":"/config/x-agentsfleet/credentials","value":[STATIC_CONNECTOR]}]})).expect("credential requirements");
+    f.drafts
+        .patch(f.access(), &draft.id, Some(&draft.etag), patch, now())
+        .await
+        .expect("valid declaration");
+    let reviewed = review(&f, &draft, false).await;
+    let observed: Vec<_> = reviewed
+        .readiness
+        .iter()
+        .filter(|check| check.subject == STATIC_CONNECTOR)
+        .map(|check| (check.kind, check.state))
+        .collect();
+    assert_eq!(
+        observed,
+        [(CheckKind::Credential, CheckState::Ready)],
+        "only the credential is observed for an inline connector"
+    );
+    f.cleanup().await;
+}
+
+async fn store_named(f: &Fixture, name: &str, object: &str) {
     use afd_crypto::entropy::Entropy;
     use afd_vault::{SecretBody, SecretName, Vault};
     let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
         .expect("fixture key");
-    let raw = serde_json::value::RawValue::from_string(
-        r#"{"api_key":"fixture-authoring-key"}"#.to_owned(),
-    )
-    .expect("secret object");
+    let raw = serde_json::value::RawValue::from_string(object.to_owned()).expect("secret object");
     let body = SecretBody::parse(&raw).expect("secret body");
     Vault::new(f.db.clone(), Arc::new(key), Entropy::new())
         .create(
             &f.workspace,
-            &SecretName::parse("deploy_key").expect("name"),
+            &SecretName::parse(name).expect("name"),
             &body,
             now(),
         )

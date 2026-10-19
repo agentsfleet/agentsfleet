@@ -266,8 +266,8 @@ pub struct WorkflowRunDigest<'a> {
     #[serde(borrow)]
     pub workflow_name: Cow<'a, str>,
     /// When this daemon accepted the delivery.
-    #[serde(borrow)]
-    pub received_at: Cow<'a, str>,
+    #[serde(with = "afd_wire::instant")]
+    pub received_at: jiff::Timestamp,
 }
 
 /// The flat object a `pull_request` becomes on the stream.
@@ -308,8 +308,8 @@ pub struct PullRequestDigest<'a> {
     #[serde(borrow)]
     pub head_sha: Cow<'a, str>,
     /// When this daemon accepted the delivery.
-    #[serde(borrow)]
-    pub received_at: Cow<'a, str>,
+    #[serde(with = "afd_wire::instant")]
+    pub received_at: jiff::Timestamp,
 }
 
 /// What a signup event is answered with.

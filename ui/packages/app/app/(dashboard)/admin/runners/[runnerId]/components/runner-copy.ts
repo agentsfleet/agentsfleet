@@ -68,7 +68,7 @@ export const OPEN_RUNNER_LABEL = "Open";
 // operator terms — this runner stopped renewing, the work went elsewhere.
 export const EXPIRED_ROW_SENTENCE = "Lease not renewed";
 export const EXPIRED_ROW_DETAIL = "This runner stopped renewing; the work was re-leased to another runner.";
-export const UNKNOWN_OUTCOME_SENTENCE = "Outcome not recorded";
+export const UNKNOWN_OUTCOME_SENTENCE = "Status not recorded";
 
 export const OUTCOME_LABELS: Record<LeaseOutcome, string> = {
   [LEASE_OUTCOME.running]: "Running",
@@ -107,4 +107,6 @@ export const REVIEW_MODEL_LABEL = "Model";
 export const REVIEW_POSTURE_LABEL = "Billing";
 export const REVIEW_TOKENS_LABEL = "Tokens metered";
 export const REVIEW_EVENT_LABEL = "Fleet event";
-export const OPEN_FLEET_LABEL = "Open Fleet";
+export const OPEN_FLEET_LABEL = "Open fleet";
+export const VIEW_LEASE_LABEL = "View lease";
+export const LEASE_EVENT_UNAVAILABLE = "Event history unavailable";

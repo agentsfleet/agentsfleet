@@ -12,8 +12,8 @@ use axum::body::Body;
 use http::{Response, StatusCode};
 use serde_json::{Value, json};
 
-use crate::harness::{self, json_body};
-use crate::identity_signup_route::{code, refusal_code, signed};
+use crate::harness::{self, json_body, refusal_code};
+use crate::identity_signup_route::signed;
 
 /// The subject and address of the person most cases sign up.
 const ADA: &str = "user_2fJk8Lq0";
@@ -90,7 +90,7 @@ async fn a_verified_body_that_is_not_an_identity_event_is_refused() {
     let answer = signed(r#"{"not":"an event"}"#).await;
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::INVALID_REQUEST),
+        error_code::INVALID_REQUEST.as_str(),
         "a verified body this route cannot read is the sender's fault"
     );
 }
@@ -139,7 +139,7 @@ async fn an_event_naming_no_primary_address_is_refused_before_the_store() {
     .await;
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::INVALID_REQUEST)
+        error_code::INVALID_REQUEST.as_str()
     );
 }
 
@@ -156,7 +156,7 @@ async fn an_address_the_provider_did_not_mark_primary_is_not_substituted() {
     .await;
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::INVALID_REQUEST),
+        error_code::INVALID_REQUEST.as_str(),
         "a primary id naming no address must refuse, never fall back to the list"
     );
 }
@@ -192,7 +192,7 @@ async fn a_verified_secondary_does_not_stand_in_for_an_unverified_primary() {
     .await;
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::INVALID_REQUEST),
+        error_code::INVALID_REQUEST.as_str(),
         "the primary decides; a verified secondary is not substituted"
     );
 }
@@ -221,6 +221,6 @@ async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
     let answer = signed(&created(ADA, "@example.test", json!({}))).await;
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::INVALID_REQUEST)
+        error_code::INVALID_REQUEST.as_str()
     );
 }

@@ -20,7 +20,7 @@ pub use review::{
     Action, ActionKind, Check, CheckKind, CheckState, Effective, Requirements, Review,
 };
 pub use revision::{AppliedRevision, ApplyRevision};
-pub(crate) use source::SourcePin;
+pub(crate) use source::{PinColumns, SourcePin};
 
 pub use input::{CreateDraft, DraftPatch, ListQuery, MessageQuery, SendMessage, Source};
 pub use library::{
@@ -40,6 +40,8 @@ pub const MAX_MODEL_REF_BYTES: usize = 256;
 pub const MAX_TITLE_CHARS: usize = 100;
 pub(crate) const MAX_CURSOR_BYTES: usize = 4096;
 pub(crate) const MAX_PAGE_SIZE: u32 = 100;
+/// Longest chat search a list accepts, in characters.
+pub(crate) const MAX_QUERY_CHARS: usize = 200;
 pub(crate) const DEFAULT_PAGE_SIZE: u32 = 50;
 
 pub(crate) fn present<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(

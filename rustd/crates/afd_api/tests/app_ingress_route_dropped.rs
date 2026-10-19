@@ -14,7 +14,7 @@
 )]
 
 use crate::app_ingress_route::{
-    APP_RUN_FAILURE, APP_SECRET, EVENT_WORKFLOW_RUN, SHIPPED, code, deliver, deployment, subscriber,
+    APP_RUN_FAILURE, APP_SECRET, EVENT_WORKFLOW_RUN, SHIPPED, deliver, deployment, subscriber,
 };
 use crate::harness;
 
@@ -32,8 +32,9 @@ const APP_RUN_SUCCESS: &str =
 
 /// A terminal production deployment, as an App sends it.
 ///
-/// Minimal on purpose: `octocrab` types `deployment` and `deployment_status` as
-/// free-form JSON, so what this fixture has to get right is the ENVELOPE — the
+/// Minimal on purpose: the reader declares no `deployment_status` body and
+/// reads such a delivery no further than its envelope, so what this fixture has
+/// to get right is the ENVELOPE — the
 /// installation this deployment's scripted lookup answers for, and a repository
 /// a subscriber could match. The payload is here to be classified, and the
 /// point of the test is that classification has nowhere to send it.
@@ -77,7 +78,7 @@ async fn a_delivery_for_an_installation_no_workspace_claims_is_dropped_not_refus
 
     assert_eq!(
         dropped_for(answered).await,
-        code(error_code::WEBHOOK_INSTALL_NOT_MAPPED)
+        error_code::WEBHOOK_INSTALL_NOT_MAPPED.as_str()
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -100,7 +101,7 @@ async fn a_delivery_no_fleet_subscribes_to_is_dropped() {
 
     assert_eq!(
         dropped_for(answered).await,
-        code(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND)
+        error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str()
     );
     assert!(
         ingress.deliveries().is_empty(),

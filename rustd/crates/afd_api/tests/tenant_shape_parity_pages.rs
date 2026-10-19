@@ -19,17 +19,23 @@ use serde_json::Value;
 
 use crate::tenant_shape_parity::{TEXT, WHEN, assert_shape, keys_of};
 
-/// Runtime charges retain their fleet identity. Optional metadata and absent
-/// setup-attempt identity still serialize as explicit nulls.
+/// A charge always names its workspace as a string, and every field a setup
+/// chat or an unsettled run may lack still spells absence as null.
+///
+/// `assert_shape` pins the key SET, which cannot see this: re-widening
+/// `workspace_id` to `Option` emits the very same keys. What changes is the
+/// VALUE, so the type is pinned where the difference shows. Both sources carry
+/// the workspace `NOT NULL`; the fleet, event, attempt, token and wall fields
+/// are the control, seeded absent, and MUST still emit null.
 #[test]
-fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
+fn a_charge_names_its_workspace_and_spells_every_optional_field_null() {
     let emitted = serde_json::to_value(ChargeSummary {
         id: Cow::Borrowed(TEXT),
         tenant_id: Cow::Borrowed(TEXT),
-        workspace_id: None,
-        fleet_id: Some(Cow::Borrowed(TEXT)),
+        workspace_id: Cow::Borrowed(TEXT),
+        fleet_id: None,
         fleet_name: None,
-        event_id: Some(Cow::Borrowed(TEXT)),
+        event_id: None,
         authoring_attempt_id: None,
         charge_type: Cow::Borrowed(TEXT),
         posture: Cow::Borrowed(TEXT),
@@ -43,11 +49,19 @@ fn a_charge_names_its_fleet_and_spells_only_the_others_null() {
     .expect("a wire shape serialises");
 
     assert_eq!(
-        emitted.get("fleet_id"),
+        emitted.get("workspace_id"),
         Some(&Value::String(TEXT.to_owned())),
-        "a charge always names the fleet that paid for it"
+        "a charge always names its workspace"
     );
-    for absent in ["workspace_id", "fleet_name", "authoring_attempt_id"] {
+    for absent in [
+        "fleet_id",
+        "fleet_name",
+        "event_id",
+        "authoring_attempt_id",
+        "token_count_input",
+        "token_count_output",
+        "wall_ms",
+    ] {
         assert_eq!(
             emitted.get(absent),
             Some(&Value::Null),
@@ -62,11 +76,11 @@ fn a_charge_row_carries_its_whole_provenance() {
         &ChargeSummary {
             id: Cow::Borrowed(TEXT),
             tenant_id: Cow::Borrowed(TEXT),
-            workspace_id: Some(Cow::Borrowed(TEXT)),
+            workspace_id: Cow::Borrowed(TEXT),
             fleet_id: Some(Cow::Borrowed(TEXT)),
             fleet_name: Some(Cow::Borrowed(TEXT)),
             event_id: Some(Cow::Borrowed(TEXT)),
-            authoring_attempt_id: None,
+            authoring_attempt_id: Some(Cow::Borrowed(TEXT)),
             charge_type: Cow::Borrowed(TEXT),
             posture: Cow::Borrowed(TEXT),
             model: Cow::Borrowed(TEXT),
@@ -144,6 +158,11 @@ fn a_catalogue_model_carries_all_three_rates() {
             input_nanos_per_mtok: 0,
             cached_input_nanos_per_mtok: 0,
             output_nanos_per_mtok: 0,
+            display_name: Cow::Borrowed(TEXT),
+            advanced: false,
+            context_source_url: Cow::Borrowed(TEXT),
+            context_verified_at: WHEN,
+            prices: Vec::new(),
         },
         "CatalogueModel",
         &[
@@ -153,6 +172,11 @@ fn a_catalogue_model_carries_all_three_rates() {
             "input_nanos_per_mtok",
             "cached_input_nanos_per_mtok",
             "output_nanos_per_mtok",
+            "display_name",
+            "advanced",
+            "context_source_url",
+            "context_verified_at",
+            "prices",
         ],
     );
 }

@@ -86,3 +86,46 @@ async fn test_the_connect_completion_path_is_bearer_guarded_for_every_method() {
         assert_eq!(unproven.status(), StatusCode::UNAUTHORIZED, "{method}");
     }
 }
+
+/// The ownership layer over a router assembled by hand: a route whose path
+/// carries no workspace, and one whose guard was never mounted. Both are
+/// this daemon's wiring mistake, so both fail closed as internal faults
+/// rather than as a caller's missing or foreign workspace.
+#[tokio::test]
+async fn an_ownership_layer_mounted_by_hand_fails_closed() {
+    use afd_http::auth::{Owner, own};
+    use afd_http::route::{Guard, RouteClass, RouteMeta, Scopes};
+    use std::sync::Arc;
+
+    const TEMPLATE: &str = "/v1/workspaces/{workspace_id}/probe";
+    let owner = Owner::new(
+        Arc::new(Fleet::new()),
+        RouteMeta::new(
+            Guard::Bearer,
+            RouteClass::Api,
+            TEMPLATE,
+            Scopes::Always(&[]),
+        ),
+    );
+    let router = axum::Router::new()
+        .route("/probe", axum::routing::get(|| async { "served" }))
+        .route(TEMPLATE, axum::routing::get(|| async { "served" }))
+        .layer(axum::middleware::from_fn_with_state(owner, own::<Fleet>));
+
+    for path in [
+        "/probe",
+        "/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02/probe",
+    ] {
+        let response = harness::send(&router, Method::GET, path, None, "").await;
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{path}"
+        );
+        assert_eq!(
+            harness::code_of(response).await,
+            afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+            "{path}"
+        );
+    }
+}

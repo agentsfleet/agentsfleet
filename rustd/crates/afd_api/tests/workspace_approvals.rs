@@ -24,10 +24,6 @@
 //! `{gate_id}:approve` is not a pattern it will accept.
 //! `FleetRoute::ScheduleSync` takes the same shape for the same reason.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
@@ -44,9 +40,6 @@ const TENANT_KEY: &str = "agt_tfacefeeddecafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2approvals";
 
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
-
 /// A well-formed gate identifier the fixture addresses.
 const GATE: &str = "01924f4e-0000-7000-8000-00000000a11e";
 
@@ -60,20 +53,9 @@ const APPROVAL_RESOLVE: ScopeSet = ScopeSet::from_scopes(&[Scope::ApprovalResolv
 const EVERY_APPROVAL_SCOPE: ScopeSet =
     ScopeSet::from_scopes(&[Scope::ApprovalRead, Scope::ApprovalResolve]);
 
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
-
 /// The queue, under the workspace the fixture owns.
 fn collection() -> String {
     format!("/v1/workspaces/{OWNED_WORKSPACE}/approvals")
-}
-
-/// One gate, under the same workspace.
-fn item() -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/approvals/{GATE}")
 }
 
 /// One decision on that gate.
@@ -98,51 +80,6 @@ async fn send(
 /// One fully authorised request, for the tests isolating another axis.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
     send(EVERY_APPROVAL_SCOPE, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Every verb on this surface, with the scope its route row demands.
-fn every_verb() -> [(Method, String, ScopeSet); 3] {
-    [
-        (Method::GET, collection(), APPROVAL_READ),
-        (Method::GET, item(), APPROVAL_READ),
-        (Method::POST, decision("approve"), APPROVAL_RESOLVE),
-    ]
-}
-
-/// No verb here is reachable without a credential.
-#[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None, "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} must refuse an anonymous caller"
-        );
-    }
-}
-
-/// Every verb is refused by the scope rung before anything else.
-#[tokio::test]
-async fn every_verb_is_refused_by_the_scope_rung_before_anything_else() {
-    for (method, path, _demanded) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} must be refused by the rung"
-        );
-    }
 }
 
 /// Seeing the queue does not confer the authority to answer it.
@@ -207,31 +144,6 @@ async fn answering_a_gate_carries_the_authority_to_browse() {
         StatusCode::FORBIDDEN,
         "an approver reaches the inbox through the hierarchy closure"
     );
-}
-
-/// A principal acting in somebody else's workspace runs no statement.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    let paths = [
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/approvals"),
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/approvals/{GATE}"),
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/approvals/{GATE}/approve"),
-    ];
-    let methods = [Method::GET, Method::GET, Method::POST];
-
-    for (path, method) in paths.iter().zip(methods) {
-        let response = send(EVERY_APPROVAL_SCOPE, method, path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused before the handler"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_NOT_YOURS,
-            "{path}: the refusal is the ownership layer's"
-        );
-    }
 }
 
 /// A decision verb this surface does not spell never reaches the store.
@@ -310,22 +222,4 @@ async fn a_decision_accepts_borrowed_and_decoded_notes() {
             "a valid note must not be rejected as malformed: {body}"
         );
     }
-}
-
-/// The templates carry only the methods they document.
-#[tokio::test]
-async fn the_templates_carry_only_the_methods_they_document() {
-    // The queue is read, never written: a gate is raised by a fleet, not by a
-    // person POSTing one.
-    let posted = authorised(Method::POST, &collection(), "{}").await;
-    assert_eq!(posted.status(), StatusCode::METHOD_NOT_ALLOWED);
-
-    // A gate is never deleted: the row is the audit trail of a decision.
-    let deleted = authorised(Method::DELETE, &item(), "").await;
-    assert_eq!(deleted.status(), StatusCode::METHOD_NOT_ALLOWED);
-
-    // And a decision is a POST, not a GET — reading a URL must not answer a
-    // gate, which is what a GET-shaped decision would allow a link to do.
-    let fetched = authorised(Method::GET, &decision("approve"), "").await;
-    assert_eq!(fetched.status(), StatusCode::METHOD_NOT_ALLOWED);
 }

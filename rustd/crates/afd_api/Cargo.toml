@@ -77,6 +77,8 @@ tracing.workspace = true
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
 async-trait.workspace = true
+# The harness's frozen instant and every stamp a fixture writes.
+jiff.workspace = true
 hex.workspace = true
 afd_authoring.workspace = true
 # The harness stubs the runner plane, whose request and report types are the
@@ -118,12 +120,12 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }
 # The interim message poster the harness builds its services with.
 afd_outbound.workspace = true
-# The memory store the harness builds the plane with, and the in-memory store.
-afd_memory = { workspace = true, features = ["test-util"] }
+# The memory store the harness builds the plane with.
+afd_memory.workspace = true
 afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
 # The document parser, so a fleet row a suite seeds stores exactly what an
-# install would, rather than a hand-written `config_json` that could drift.
-afd_fleet_runtime.workspace = true
+# install would, rather than a hand-written configuration that could drift.
+afd_fleet_runtime = { workspace = true, features = ["test-util"] }
 afd_fleet_ops.workspace = true
 afd_runner.workspace = true
 afd_sse.workspace = true
@@ -144,9 +146,6 @@ tower = { workspace = true, features = ["util"] }
 # `hyper::` is the wire suite that serves a real socket.
 hyper-util.workspace = true
 hyper.workspace = true
-# The span suite collects spans through a `Layer`, which is the only way to see
-# a field as a VALUE rather than as formatted output.
-tracing-subscriber = { workspace = true, features = ["registry"] }
 # A dev-dependency, not a library one: nothing in this crate opens a pool. The
 # runner-plane suite needs `Db::unreachable` to drive a real handler into the
 # transport-class refusal without a datastore, and the live suites seed their

@@ -9,23 +9,16 @@ use afd_core::id::ENTROPY_LEN;
 use super::*;
 
 /// The claim's instant, and a hold that is live at it.
-const NOW: i64 = 1_767_225_600_000;
-const LIVE: Option<i64> = Some(NOW + 1);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// A runner, distinct per `seed`.
 fn runner(seed: u8) -> Uuid7 {
-    Uuid7::encode(UnixMillis::from_millis(NOW), [seed; ENTROPY_LEN])
-        .expect("a fixed instant encodes")
+    Uuid7::encode(NOW, [seed; ENTROPY_LEN]).expect("a fixed instant encodes")
 }
 
 /// Who `claimer` won a slot from, the slot last run by `holder`.
-fn won(held_until: Option<i64>, holder: &Uuid7, claimer: &Uuid7) -> Option<HeldClaim> {
-    held_claim(
-        held_until,
-        Some(holder.as_str()),
-        claimer,
-        UnixMillis::from_millis(NOW),
-    )
+fn won(held: bool, holder: &Uuid7, claimer: &Uuid7) -> Option<HeldClaim> {
+    held_claim(held, Some(holder.as_str()), claimer)
 }
 
 /// A live hold is the holder's to resume, and another runner's win over it
@@ -34,8 +27,8 @@ fn won(held_until: Option<i64>, holder: &Uuid7, claimer: &Uuid7) -> Option<HeldC
 fn test_a_claim_on_a_live_hold_counts_by_who_won() {
     let (holder, other) = (runner(1), runner(2));
 
-    assert_eq!(won(LIVE, &holder, &holder), Some(HeldClaim::Holder));
-    assert_eq!(won(LIVE, &holder, &other), Some(HeldClaim::OtherAfterLapse));
+    assert_eq!(won(true, &holder, &holder), Some(HeldClaim::Holder));
+    assert_eq!(won(true, &holder, &other), Some(HeldClaim::OtherAfterLapse));
 }
 
 /// A hold at or past its deadline binds nobody at the claim's predicate,
@@ -44,10 +37,8 @@ fn test_a_claim_on_a_live_hold_counts_by_who_won() {
 fn test_a_lapsed_or_absent_hold_is_no_hold() {
     let (holder, other) = (runner(1), runner(2));
 
-    for lapsed in [Some(NOW), Some(NOW - 1), None] {
-        assert_eq!(won(lapsed, &holder, &holder), None, "{lapsed:?}");
-        assert_eq!(won(lapsed, &holder, &other), None, "{lapsed:?}");
-    }
+    assert_eq!(won(false, &holder, &holder), None);
+    assert_eq!(won(false, &holder, &other), None);
 }
 
 /// A fence only ever moves through the column's own type.
@@ -81,7 +72,7 @@ async fn an_unreleased_claim_reason_carries_no_code_prefix() {
 
     let log = afd_core::test_util::trace::Capture::install();
     test_dead::leases()
-        .let_go(&test_dead::id(1), Fence::from_i64(3), test_dead::AT)
+        .let_go(&test_dead::id(1), Fence::from_i64(3))
         .await;
 
     let line = log.only(EVENT_CLAIM_RELEASE_FAILED);

@@ -1,7 +1,11 @@
 //! What the sampled figure promises, and the race it is shaped around.
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the restriction set is for the daemon"
+)]
 
 use super::{Ceiling, REFUSING_INTERVAL, SAMPLE_EVERY, SAMPLE_INTERVAL};
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 
 /// A budget deep enough that only the tests that mean to cross it do.
 const BUDGET: u64 = 100_000;
@@ -10,8 +14,9 @@ const BUDGET: u64 = 100_000;
 /// subtracting an interval from it stays positive.
 const READ_AT: i64 = 1_700_000_000_000;
 
-fn at(offset_millis: i64) -> UnixMillis {
-    UnixMillis::from_millis(READ_AT.saturating_add(offset_millis))
+fn at(offset_millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(READ_AT.saturating_add(offset_millis))
+        .expect("an instant near the fixture's is in range")
 }
 
 /// A figure stamped at [`READ_AT`], so the interval tests have somewhere to
@@ -35,7 +40,7 @@ fn an_unsampled_ceiling_is_due_however_recently_the_process_started() {
         "the first admission of a process has to take the first sample"
     );
     assert!(
-        ceiling.due(at(i64::MIN), 0, BUDGET),
+        ceiling.due(Timestamp::MIN, 0, BUDGET),
         "no clock reading makes an unread figure look fresh"
     );
 }

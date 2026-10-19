@@ -43,6 +43,9 @@ pub(crate) struct FakeEngine {
     /// Panics on the first prepare only, the way a bug in the supervisor
     /// would take its worker down.
     pub(crate) panic_once: bool,
+    /// Cancelled just before that panic, as a shutdown arriving while the
+    /// doomed lease runs; set once the token to cancel exists.
+    pub(crate) halt_before_panic: Arc<std::sync::OnceLock<tokio_util::sync::CancellationToken>>,
     pub(crate) fail_teardown: bool,
     /// How long each teardown takes before it is counted.
     pub(crate) teardown_takes: Duration,
@@ -80,6 +83,12 @@ impl Engine for FakeEngine {
             return Err(std::io::Error::other("no landlock").into());
         }
         let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
+        if self.panic_once
+            && prepared == 0
+            && let Some(halt) = self.halt_before_panic.get()
+        {
+            halt.cancel();
+        }
         assert!(
             !(self.panic_once && prepared == 0),
             "the fake engine panics on its first prepare"

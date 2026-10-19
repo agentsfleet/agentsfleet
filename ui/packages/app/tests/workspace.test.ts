@@ -37,7 +37,7 @@ describe("lib/workspace module surface (Dimension 4.2)", () => {
 describe("listTenantWorkspacesCached", () => {
   it("forwards the token to listTenantWorkspaces and returns its result", async () => {
     listTenantWorkspaces.mockResolvedValue({
-      items: [{ id: "ws_1", name: "Alpha", created_at: 0 }],
+      items: [{ id: "ws_1", name: "Alpha", created_at: "1970-01-01T00:00:00Z" }],
       total: 1,
     });
     const { listTenantWorkspacesCached } = await import("../lib/workspace");

@@ -3,7 +3,7 @@
 //!
 //! # Why this is not a module inside `afd_fleet`
 //!
-//! `core.fleet_events` had no owner. Its statements lived in `afd_fleet::sql`,
+//! `fleet.events` had no owner. Its statements lived in `afd_fleet::sql`,
 //! beside leases, money, policy, bundles and four sweepers — so a crate wanting
 //! ten lines of SQL had to depend on 25,500 lines of runner plane to get them.
 //! `afd_approval` proved the cost: rather than pay it, it carried a
@@ -26,7 +26,7 @@
 //!
 //! # The column vocabulary is lower still
 //!
-//! `status` and `failure_label` spellings live in [`afd_wire::event`], not
+//! `status` and `failure_reason` spellings live in [`afd_wire::event`], not
 //! here, because they cross the wire — an events listing renders both. This
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.
@@ -47,8 +47,8 @@ pub use self::counters::{
 pub use self::error::{Error, Result};
 pub use self::history::{
     CallAddress, Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,
-    THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, glob_to_like, next_cursor, parse_since,
-    prefix_to_like,
+    Since, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, WIDEST_WINDOW, glob_to_like,
+    next_cursor, parse_since, prefix_to_like,
 };
 pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
 

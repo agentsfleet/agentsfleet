@@ -16,17 +16,16 @@
 //!
 //! # An unreadable config withholds, it does not widen
 //!
-//! A `config_json` this daemon cannot parse yields `None` for the binding, and
+//! A revision `config` this daemon cannot parse yields `None` for the binding, and
 //! a repository-scoped mint refuses on `None` rather than minting the
 //! installation's full scope. That is the only safe direction: the binding is
 //! what NARROWS the request, so its absence must never be the permissive
 //! branch.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::{FleetConfig, RepositoryBinding};
-use sqlx::Row as _;
+use afd_fleet_runtime::Definition;
+use afd_fleet_runtime::config::RepositoryBinding;
 
 use crate::error::{Result, query};
 use crate::lease::sql;
@@ -69,38 +68,27 @@ impl Leases {
     /// Reports a datastore that would not answer, and a stored identifier that
     /// is not one. A fleet whose config will not parse is NOT an error — it is
     /// a scope with no binding, which refuses a write mint one step later.
-    pub async fn mint_scope(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &str,
-        now: UnixMillis,
-    ) -> Result<Option<MintScope>> {
+    pub async fn mint_scope(&self, runner_id: &Uuid7, lease_id: &str) -> Result<Option<MintScope>> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::lease::SELECT_LEASE_SCOPE_FOR_MINT)
+        let found: Option<ScopeRow> = sqlx::query_as(sql::lease::SELECT_LEASE_SCOPE_FOR_MINT)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SCOPE))?;
-        let Some(row) = row else {
+        let Some(found) = found else {
             return Ok(None);
         };
-
-        let workspace_id: String = row.try_get(0).map_err(query(CONTEXT_SCOPE))?;
-        let fleet_id: String = row.try_get(1).map_err(query(CONTEXT_SCOPE))?;
-        let config_json: String = row.try_get(2).map_err(query(CONTEXT_SCOPE))?;
-        let event_id: String = row.try_get(3).map_err(query(CONTEXT_SCOPE))?;
 
         // A stored identifier that is not one is a datastore this daemon cannot
         // reason about, not a lease that failed to authorise — so it propagates
         // rather than becoming a `None` a caller would read as "no such lease".
         Ok(Some(MintScope {
-            workspace_id: Uuid7::parse(&workspace_id)?,
-            fleet_id: Uuid7::parse(&fleet_id)?,
-            event_id: event_id.into(),
-            binding: binding_of(&config_json),
+            workspace_id: Uuid7::parse(&found.workspace_id)?,
+            fleet_id: Uuid7::parse(&found.fleet_id)?,
+            event_id: found.event_id.into(),
+            binding: binding_of(&found.definition),
         }))
     }
 
@@ -136,9 +124,9 @@ impl Leases {
 /// fleet declared no reach this mint may honour — but only one of them is worth
 /// a diagnostic, because a config that will not parse is an operator's problem
 /// and a fleet that simply declared no repositories is not.
-fn binding_of(config_json: &str) -> Option<RepositoryBinding> {
-    match FleetConfig::stored(config_json) {
-        Ok(config) => config.repository_binding().cloned(),
+fn binding_of(definition: &str) -> Option<RepositoryBinding> {
+    match Definition::parse(definition) {
+        Ok(definition) => definition.runtime().repository_binding().cloned(),
         Err(unreadable) => {
             let Logged { error_code, reason } = unreadable.logged();
             tracing::warn!(
@@ -150,6 +138,15 @@ fn binding_of(config_json: &str) -> Option<RepositoryBinding> {
             None
         }
     }
+}
+
+/// [`sql::lease::SELECT_LEASE_SCOPE_FOR_MINT`]'s row, ids still as stored text.
+#[derive(sqlx::FromRow)]
+struct ScopeRow {
+    workspace_id: String,
+    fleet_id: String,
+    definition: String,
+    event_id: String,
 }
 
 #[cfg(test)]

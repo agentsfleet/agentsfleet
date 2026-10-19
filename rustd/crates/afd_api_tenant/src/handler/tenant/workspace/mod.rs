@@ -20,7 +20,7 @@ use afd_observability::Telemetry;
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::request_id::RequestId;
-use crate::services::{Services, TenantWorkspaces as _, WorkspaceOwnership as _};
+use crate::services::{Services, TenantWorkspaces as _};
 
 mod input;
 mod render;
@@ -160,18 +160,14 @@ pub(crate) async fn create<D: Services>(
         Some(raw) => Chosen::parse(raw).map_err(Refusal::at(EVENT_CREATE))?,
     };
 
-    // Not the shared `tenant_of`: this verb's no-tenant refusal is a 401 with
-    // its own sentence, because the remedy is re-authenticating.
-    let principal = afd_auth::principal::Principal::Person(person.clone());
-    let tenant = match services.workspaces().tenant_of(&principal).await {
-        Ok(Some(tenant)) => tenant,
-        Ok(None) => return Err(Refusal::unauthorized(DETAIL_CREATE_NO_TENANT)),
-        Err(error) => return Err(Refusal::at(EVENT_TENANT)(error)),
-    };
+    // A person always resolves to a tenant — its user row's, else its claim's
+    // — so the shared resolver's no-tenant refusal is never this verb's answer
+    // in practice; it carries this verb's sentence all the same.
+    let tenant = super::tenant_of(&services, person, DETAIL_CREATE_NO_TENANT, EVENT_TENANT).await?;
 
     let created = services
         .workspace_directory()
-        .create(&tenant, chosen, person.subject().as_str(), services.now())
+        .create(&tenant, chosen, services.now())
         .await
         .map_err(Refusal::conflict_or_at(
             EVENT_CREATE,

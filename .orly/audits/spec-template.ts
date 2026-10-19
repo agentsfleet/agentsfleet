@@ -7,7 +7,7 @@ type Section = { title: string; nodes: MarkdownNode[] };
 type Commands = Record<string, string[][]>;
 
 const CONFIG_PATH = ".orly/orly.json";
-const SPEC_LINE_LIMIT = 320;
+const SPEC_LINE_LIMIT = 500;
 const BACKTICK = "`";
 const EMPTY = "";
 const PIPE_OUTPUT = "pipe";

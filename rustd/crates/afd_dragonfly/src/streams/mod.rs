@@ -45,6 +45,8 @@ pub(crate) use self::tail::CMD_PUBLISH;
 
 #[cfg(feature = "test-util")]
 pub use self::render::rendered_field_samples;
+use std::time::Duration;
+
 use self::render::stringify;
 pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, TRIM_SLACK, Trimmed};
 
@@ -81,7 +83,7 @@ pub const FLEET_CONSUMER_GROUP: &str = "fleet_lease";
 /// Comfortably past the lease window, which is what stops the sweep racing live
 /// work: a consumer still working an entry has not been idle this long, and one
 /// that has belongs to a daemon process that is gone.
-const AUTOCLAIM_MIN_IDLE_MS: usize = 300_000;
+const AUTOCLAIM_MIN_IDLE: Duration = Duration::from_secs(300);
 
 /// Where a claim's scan starts.
 ///
@@ -158,7 +160,7 @@ impl EventId {
     ///
     /// The report path needs this: the entry was acknowledged long after the
     /// poll that read it, by a different request, and what survives in between
-    /// is the `fleet.runner_leases.receipt` text. Deliberately not a `From`
+    /// is the `runner.leases.receipt` text. Deliberately not a `From`
     /// impl — a receipt is a thing Dragonfly produced, and a blanket conversion
     /// from `&str` would let any string in the program become one silently.
     #[must_use]

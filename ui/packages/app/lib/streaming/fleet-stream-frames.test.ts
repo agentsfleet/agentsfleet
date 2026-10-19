@@ -29,16 +29,16 @@ describe("mergeBackfill", () => {
   it("dedupes by id and sorts the union oldest-first", () => {
     const prev = [evt({ id: "e2", createdAt: new Date(2000) })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", created_at: MS_PER_SECOND, response_text: "a" }),
-      row({ event_id: "e2", created_at: 2000 }),
+      row({ event_id: "e1", created_at: new Date(MS_PER_SECOND).toISOString(), response_text: "a" }),
+      row({ event_id: "e2", created_at: "1970-01-01T00:00:02Z" }),
     ]);
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
   it("test_backfill_keeps_unchanged_identity", () => {
-    const failed = row({ event_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: 2 * MS_PER_SECOND, failure_label: "timeout" });
+    const failed = row({ event_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: new Date(2 * MS_PER_SECOND).toISOString(), failure_label: "timeout" });
     const page = [
-      row({ event_id: "e1", status: "processed", created_at: MS_PER_SECOND, request_json: JSON.stringify({ message: "hi" }) }),
+      row({ event_id: "e1", status: "processed", created_at: new Date(MS_PER_SECOND).toISOString(), request_json: JSON.stringify({ message: "hi" }) }),
       failed,
     ];
     const once = mergeBackfill([], page);
@@ -59,7 +59,7 @@ describe("mergeBackfill", () => {
         evt({ id: "settled", status: "processed", createdAt: new Date(2 * MS_PER_SECOND) }),
         evt({ id: "pending-2", status: "optimistic", clientTimestamp: true, createdAt: new Date(0) }),
       ],
-      [row({ event_id: "server", status: "processed", created_at: 3 * MS_PER_SECOND })],
+      [row({ event_id: "server", status: "processed", created_at: new Date(3 * MS_PER_SECOND).toISOString() })],
     );
 
     expect(merged.map((event) => event.id)).toEqual([
@@ -216,11 +216,11 @@ describe("maxServerCreatedAt", () => {
   it("folds the newest created_at into the watermark and ignores non-numeric values", () => {
     expect(maxServerCreatedAt(null, [])).toBeNull();
     expect(
-      maxServerCreatedAt(null, [row({ created_at: 5_000 }), row({ created_at: 3_000 })]),
+      maxServerCreatedAt(null, [row({ created_at: "1970-01-01T00:00:05Z" }), row({ created_at: "1970-01-01T00:00:03Z" })]),
     ).toBe(5_000);
-    expect(maxServerCreatedAt(7_000, [row({ created_at: 5_000 })])).toBe(7_000);
+    expect(maxServerCreatedAt(7_000, [row({ created_at: "1970-01-01T00:00:05Z" })])).toBe(7_000);
     expect(
-      maxServerCreatedAt(null, [row({ created_at: "bogus" as unknown as number })]),
+      maxServerCreatedAt(null, [row({ created_at: "bogus" })]),
     ).toBeNull();
   });
 });

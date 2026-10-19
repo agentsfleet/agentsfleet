@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import {
   Badge,
-  Button,
   DescriptionList,
   Dialog,
   DialogContent,
@@ -15,26 +13,26 @@ import {
 import { type RunnerLease } from "@/lib/api/runners";
 import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { failureSentenceFor } from "@/lib/events/event-summary";
-import { workspacePath } from "@/lib/workspace-routes";
 import {
   EXPIRED_ROW_DETAIL,
   EXPIRED_ROW_SENTENCE,
-  OPEN_FLEET_LABEL,
   OUTCOME_LABELS,
   REVIEW_EXPIRES_LABEL,
   REVIEW_LEASE_TITLE,
   REVIEW_MODEL_LABEL,
   REVIEW_OUTCOME_LABEL,
   REVIEW_PROVIDER_LABEL,
+  LEASE_EVENT_UNAVAILABLE,
   UNKNOWN_OUTCOME_SENTENCE,
 } from "./runner-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
+import { LeaseFleetDestination } from "./LeaseFleetDestination";
 import { LeaseDiagnostics, LeaseFact } from "./LeaseDiagnostics";
 import { modelLabel } from "@/lib/models/display";
 import { providerLabel } from "@/lib/api/model-library-types";
 
-// Per-lease panel: every field is a column on fleet.runner_leases or its
+// Per-lease panel: every field is a column on runner.leases or its
 // joined Fleet event. The request payload is deliberately absent — under any
 // outcome — and nothing here is a secret; credentials resolve per lease and
 // are never stored on the row.
@@ -53,7 +51,7 @@ export function ReviewLease({
             <DialogHeader>
               <DialogTitle>{REVIEW_LEASE_TITLE}</DialogTitle>
               <DialogDescription className="break-words font-sans">
-                {lease.fleet_name ?? agentDisplayName(lease.fleet_id)} · {lease.event_type}
+                {agentDisplayName(lease.fleet_id)} · {lease.event_type ?? LEASE_EVENT_UNAVAILABLE}
               </DialogDescription>
             </DialogHeader>
             <DescriptionList className="font-sans text-body-sm tabular-nums">
@@ -62,9 +60,7 @@ export function ReviewLease({
               <LeaseFact label={REVIEW_MODEL_LABEL}><span title={lease.model}>{modelLabel(lease.model)}</span></LeaseFact>
               <LeaseFact label={REVIEW_EXPIRES_LABEL}><Time value={new Date(lease.lease_expires_at)} format="relative" /></LeaseFact>
             </DescriptionList>
-            {lease.fleet_name !== null ? <Button asChild variant="outline" className="w-full sm:w-auto">
-              <Link href={workspacePath(lease.workspace_id, `fleets/${lease.fleet_id}`)}>{OPEN_FLEET_LABEL} →</Link>
-            </Button> : null}
+            <LeaseFleetDestination workspaceId={lease.workspace_id} fleetId={lease.fleet_id} destination={lease.destination} />
             <LeaseDiagnostics lease={lease} />
           </>
         ) : null}

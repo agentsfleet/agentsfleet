@@ -61,6 +61,10 @@ pub struct ModelEntryRow<'a> {
     pub has_key: bool,
     // A blank cell, which is different from a zero window and must not render
     // as one.
+    /// The catalogue's label for the model. Absent for a model the catalogue
+    /// does not carry, which a picker shows by its `model_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<&'a str>,
     /// The context window this model is priced at, in tokens.
     ///
     /// Absent when the catalogue carries no rate for this model. An absent
@@ -69,17 +73,24 @@ pub struct ModelEntryRow<'a> {
     pub context_cap_tokens: Option<u32>,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
     /// Whether this entry is the tenant's current selection.
     pub active: bool,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at: i64,
+    /// When it was first stored.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// The deployment's platform default, as the page's Default row shows it.
@@ -90,16 +101,26 @@ pub struct PlatformDefaultRow<'a> {
     pub provider: &'a str,
     /// The model it selects.
     pub model: &'a str,
+    /// The catalogue's label for the model. Absent when the catalogue
+    /// carries no price for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<&'a str>,
     /// The context window the catalogue prices it at.
     pub context_cap_tokens: u32,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "afd_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
 }
 
@@ -140,8 +161,9 @@ pub struct StoredModelEntry<'a> {
     pub model_id: &'a str,
     /// The vault key name backing it.
     pub secret_ref: &'a str,
-    /// When it was first stored, in epoch milliseconds.
-    pub created_at: i64,
+    /// When it was first stored.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// Registers a model against a stored credential.
@@ -153,7 +175,10 @@ pub struct StoredModelEntry<'a> {
 #[serde(deny_unknown_fields)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub model_id: String,
     /// The credential to back it with. Immutable once the entry exists.
     // Bounded below only: the ceiling belongs to the vault's key name, which
@@ -173,7 +198,10 @@ pub struct CreateModelEntryRequest {
 #[serde(deny_unknown_fields)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub model_id: String,
 }
 
@@ -184,7 +212,40 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow};
+    use garde::Validate as _;
+
+    use super::{
+        CreateModelEntryRequest, ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow,
+        UpdateModelEntryRequest,
+    };
+
+    /// Postgres refuses NUL inside `text`; a model id carrying one must be the
+    /// caller's 400, not the store's 500.
+    #[test]
+    fn a_model_id_with_a_nul_is_refused_at_the_boundary() {
+        let update = UpdateModelEntryRequest {
+            model_id: "gpt\0-6".to_owned(),
+        };
+        let report = update.validate().expect_err("a NUL must be refused");
+        assert!(
+            report.to_string().contains(afd_validate::rules::HAS_NUL),
+            "{report}"
+        );
+        UpdateModelEntryRequest {
+            model_id: "gpt-6".to_owned(),
+        }
+        .validate()
+        .expect("a clean id passes");
+        let create: CreateModelEntryRequest =
+            serde_json::from_str(r#"{"model_id":"a\u0000b","secret_ref":"k"}"#).expect("decodes");
+        assert!(
+            create
+                .validate()
+                .expect_err("refused")
+                .to_string()
+                .contains(afd_validate::rules::HAS_NUL)
+        );
+    }
 
     /// A row with nothing the catalogue or the vault could tell us about.
     fn bare() -> ModelEntryRow<'static> {
@@ -196,12 +257,13 @@ mod tests {
             kind: "custom_secret",
             base_url: None,
             has_key: false,
+            display_name: None,
             context_cap_tokens: None,
             input_nanos_per_mtok: None,
             cached_input_nanos_per_mtok: None,
             output_nanos_per_mtok: None,
             active: false,
-            created_at: 1_777_507_200_000,
+            created_at: jiff::Timestamp::constant(1_777_507_200, 0),
         }
     }
 
@@ -214,7 +276,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":1777507200000}"#
+            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00Z"}"#
         );
     }
 
@@ -248,6 +310,7 @@ mod tests {
             platform_default: Some(PlatformDefaultRow {
                 provider: "anthropic",
                 model: "claude-sonnet-5",
+                display_name: Some("Sonnet 5"),
                 context_cap_tokens: 200_000,
                 input_nanos_per_mtok: Some(3_000_000),
                 cached_input_nanos_per_mtok: None,
@@ -258,7 +321,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","context_cap_tokens":200000,"input_nanos_per_mtok":3000000}}"#
+            r#"{"models":[],"total":null,"next_cursor":"token","platform_default_available":true,"platform_default":{"provider":"anthropic","model":"claude-sonnet-5","display_name":"Sonnet 5","context_cap_tokens":200000,"input_nanos_per_mtok":"3000000"}}"#
         );
     }
 

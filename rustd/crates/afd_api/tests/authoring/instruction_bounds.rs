@@ -63,7 +63,7 @@ fn version(accepted: &Value) -> (String, String) {
 }
 
 fn edit(base: &str, revision: &str, end: usize, text: &str, activity: u32) -> String {
-    json!({"fence":"1","deletion_generation":"0","sequence":"1",
+    json!({"fence":"1","sequence":"1",
         "activity_sequence":activity.to_string(),
         "event":{"kind":"proposal","proposal":{"kind":"edit",
             "base_candidate_id":base,"base_candidate_revision":revision,"config_ops":[],
@@ -73,7 +73,7 @@ fn edit(base: &str, revision: &str, end: usize, text: &str, activity: u32) -> St
 
 async fn instructions(r: &Running, candidate: &str) -> String {
     sqlx::query_scalar(
-        "SELECT definition->>'instructions_md' FROM core.authoring_candidates WHERE id=$1::uuid",
+        "SELECT definition->>'instructions_md' FROM authoring.candidates WHERE id=$1::uuid",
     )
     .bind(candidate)
     .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
@@ -82,7 +82,7 @@ async fn instructions(r: &Running, candidate: &str) -> String {
 }
 
 async fn candidates(r: &Running) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM core.authoring_candidates WHERE draft_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1::uuid")
         .bind(&r.draft)
         .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
         .await

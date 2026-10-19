@@ -14,7 +14,7 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { isNumber, isString } from "../lib/guards.ts";
 import { wsFleetEventsPath } from "../lib/api-paths.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
-import { ui, type UiTheme, EMPTY_CELL } from "../output/index.ts";
+import { ui, type UiTheme, EMPTY_CELL, instantCell } from "../output/index.ts";
 import {
   ValidationError,
   type CliError,
@@ -26,7 +26,7 @@ const PREVIEW_MAX = 80;
 
 
 interface EventRow {
-  readonly created_at?: number | string | null;
+  readonly created_at?: string | null;
   readonly response_text?: string | null;
   readonly status?: string | null;
   readonly actor?: string | null;
@@ -74,10 +74,7 @@ const previewText = (text: string | null | undefined): string => {
 };
 
 const formatRow = (ev: EventRow): string => {
-  const ts =
-    isNumber(ev.created_at) && Number.isFinite(ev.created_at)
-      ? new Date(ev.created_at).toISOString()
-      : EMPTY_CELL;
+  const ts = instantCell(ev.created_at);
   const status = renderStatus(ev.status, ui);
   const actor = ev.actor || "—";
   const preview = previewText(ev.response_text);

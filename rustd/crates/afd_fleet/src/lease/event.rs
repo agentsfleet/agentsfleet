@@ -22,12 +22,11 @@
 //! refused event with nothing to record its refusal on. So it stays a verb of
 //! its own, and the gate pass calls it first.
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 
 use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
-use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
@@ -70,6 +69,15 @@ pub enum Delivery {
     Terminal,
 }
 
+/// What [`afd_events::sql::INSERT_LEASED_FLEET_EVENT`] answers: whether this
+/// call wrote the row, and the instant the row carries.
+#[derive(sqlx::FromRow)]
+struct Landed {
+    inserted: bool,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+}
+
 /// What opening the narrative log answered: whether this was the first
 /// delivery, and where the fleet's counters stand if it was.
 ///
@@ -89,7 +97,7 @@ pub struct Received {
     /// The row's stored `created_at`: a steer's admission instant, otherwise
     /// the `now` this delivery passed. The received frame carries it, so the
     /// tail announces the instant the history read lists the row under.
-    pub opened_at: UnixMillis,
+    pub opened_at: Timestamp,
 }
 
 impl Leases {
@@ -103,12 +111,12 @@ impl Leases {
     ///
     /// # Errors
     /// Reports a datastore that would not answer. The workspace is already a
-    /// [`Uuid7`](afd_core::id::Uuid7) by the time it arrives — the envelope
+    /// [`Uuid7`] by the time it arrives — the envelope
     /// parsed it — so there is nothing left here to validate.
-    pub async fn record_received(&self, acquired: &Acquired, now: UnixMillis) -> Result<Received> {
+    pub async fn record_received(&self, acquired: &Acquired) -> Result<Received> {
         let mut connection = self.pool().acquire().await?;
-        let admitted = afd_admission::logical_parts(&acquired.event_id);
-        let landed = sqlx::query(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
+        let admission = Uuid7::parse(&acquired.event_id).ok();
+        let landed: Landed = sqlx::query_as(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
             .bind(acquired.fleet_id.as_str())
             .bind(&acquired.event_id)
             .bind(acquired.workspace_id.as_str())
@@ -116,29 +124,23 @@ impl Leases {
             .bind(&acquired.event_type)
             .bind(&acquired.request_json)
             .bind(Option::<&str>::None)
-            .bind(now.as_millis())
             .bind(afd_core::event::status::RECEIVED)
-            .bind(admitted.map(|(created_at, _)| created_at))
-            .bind(admitted.map(|(_, seq)| seq))
+            .bind(admission.as_ref().map(Uuid7::as_str))
             .bind(afd_admission::Producer::Steer.as_str())
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
-        let inserted: bool = landed.try_get(0).map_err(query(CONTEXT_RECEIVED))?;
-        let opened_at: i64 = landed.try_get(1).map_err(query(CONTEXT_RECEIVED))?;
-        let opened_at = UnixMillis::from_millis(opened_at);
+        let Landed {
+            inserted,
+            created_at: opened_at,
+        } = landed;
 
         // Stamped on BOTH arms, before the arms diverge. A first delivery that
         // wrote the narrative row and then failed to stamp has committed the
         // row already — these are separate statements on an autocommit
         // connection — and its redelivery takes the conflict arm. Stamping only
-        // on the first arm would leave that row unstamped forever: the entry
-        // protects it while it is pending, but once it is acknowledged and
-        // trimmed out of history the reconcile pass reads it as accepted work
-        // whose entry is gone and re-appends an event that already RAN, with
-        // real provider spend. The statement's own `delivered_at IS NULL` guard
-        // is what makes running it twice free.
-        stamp_admission_delivered(&mut connection, admitted, acquired, now).await?;
+        // on the first arm would leave that row unstamped forever.
+        stamp_admission_delivered(&mut connection, admission.as_ref(), acquired).await?;
 
         // A false flag is the conflict arm: the row was already there, so
         // somebody has already paid for this event. `rows_affected` cannot say
@@ -197,8 +199,8 @@ impl Leases {
 /// Stamp this event's admission row as delivered, on the connection that just
 /// opened the narrative log.
 ///
-/// The second half of the same fact. `core.fleet_events` records that a runner
-/// was handed this event; `core.fleet_admissions.delivered_at` records it where
+/// The second half of the same fact. `fleet.events` records that a runner
+/// was handed this event; `fleet.admissions.delivered_at` records it where
 /// the recovery pass can find it under one partial index, instead of behind a
 /// join no index can bound. Attempted on every delivery, first or repeat: see
 /// the call site for the unstamped row that costs.
@@ -219,18 +221,15 @@ impl Leases {
 /// every delivery rather than only the first.
 async fn stamp_admission_delivered(
     connection: &mut sqlx::PgConnection,
-    admitted: Option<(i64, i64)>,
+    admission: Option<&Uuid7>,
     acquired: &Acquired,
-    now: UnixMillis,
 ) -> Result<()> {
-    let Some((created_at, seq)) = admitted else {
+    let Some(admission) = admission else {
         return Ok(());
     };
     sqlx::query(afd_admission::sql::MARK_DELIVERED)
         .bind(acquired.fleet_id.as_str())
-        .bind(created_at)
-        .bind(seq)
-        .bind(now.as_millis())
+        .bind(admission.as_str())
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_DELIVERED))?;
@@ -269,20 +268,13 @@ impl Leases {
     /// Reports a datastore that would not answer, and a closing this daemon
     /// cannot read. A row that has already ended is [`Ended::Already`], not
     /// an error — see that type.
-    pub async fn block(
-        &self,
-        fleet_id: &Uuid7,
-        event_id: &str,
-        refusal: Refusal,
-        now: UnixMillis,
-    ) -> Result<Ended> {
+    pub async fn block(&self, fleet_id: &Uuid7, event_id: &str, refusal: Refusal) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(afd_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)
-            .bind(now.as_millis())
             .bind(afd_core::event::status::RECEIVED)
             // Empty stores as SQL NULL through the statement's `NULLIF`, which
             // is what keeps the row shape identical for the refusals that

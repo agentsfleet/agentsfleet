@@ -4,7 +4,7 @@ use afd_billing::Posture;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_vault::StoredEnvelope;
-use sqlx::{Connection as _, FromRow as _, Row as _};
+use sqlx::Connection as _;
 
 use super::super::registered::{CONTEXT, read};
 use super::project;
@@ -25,19 +25,15 @@ impl Providers {
         let registration = read(&mut tx, owner, reference)
             .await?
             .ok_or_else(provider_secret_missing)?;
+        let (workspace, name) = (registration.workspace_id, registration.key_name);
         let model = project(registration.model).ok_or_else(provider_secret_missing)?;
-        let row = registration.row;
-        let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
-        let name: String = row.try_get(7).map_err(query(CONTEXT))?;
-        let row = sqlx::query(sql::SELECT_SECRET)
+        let body = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT))?
-            .ok_or_else(provider_secret_missing)?;
-        let body = StoredEnvelope::from_row(&row)
-            .map_err(query(CONTEXT))?
+            .ok_or_else(provider_secret_missing)?
             .into_envelope()
             .map_err(vault_open)?
             .open(self.vault_key(), &Aad::new(&workspace, &name))

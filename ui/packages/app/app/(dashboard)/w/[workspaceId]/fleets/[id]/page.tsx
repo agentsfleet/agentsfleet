@@ -25,7 +25,6 @@ import {
   cursorTrailFrom,
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
-import TriggerPanel from "./components/TriggerPanel";
 import { SetupPanel } from "./components/SetupPanel";
 import MemoryPanel from "./components/MemoryPanel";
 import { ChatView } from "./components/ChatView";
@@ -33,7 +32,6 @@ import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
-import { resolveLastDeliveries } from "./components/last-delivery";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { namedMembers } from "@/lib/events/sender-names";
 import {
@@ -122,7 +120,7 @@ export default async function FleetDetailPage({
         claimsViewport && "h-full min-h-0 overflow-clip",
       )}
     >
-      <RecentFleetVisit workspace={workspaceId} id={fleet.id} name={fleet.name} />
+      <RecentFleetVisit workspace={workspaceId} id={fleet.id} description={fleet.definition.description} />
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <FleetHeader
         workspaceId={workspaceId}
@@ -181,8 +179,6 @@ async function loadFleetView(
       return loadMemoryView(context, data);
     case FLEET_VIEW.setup:
       return <SetupPanel workspaceId={context.workspaceId} fleet={context.fleet} />;
-    case FLEET_VIEW.trigger:
-      return loadTriggerView(context);
     default:
       return loadChatView(context, data);
   }
@@ -250,18 +246,3 @@ async function loadMemoryView(
   );
 }
 
-async function loadTriggerView(context: PageContext) {
-  const { workspaceId, fleet, token } = context;
-  const triggers = fleet.triggers;
-  const lastDeliveryByKey = await resolveLastDeliveries(
-    workspaceId,
-    fleet.id,
-    token,
-    triggers,
-  );
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-lg">
-      <TriggerPanel triggers={triggers} lastDeliveryByKey={lastDeliveryByKey} />
-    </div>
-  );
-}

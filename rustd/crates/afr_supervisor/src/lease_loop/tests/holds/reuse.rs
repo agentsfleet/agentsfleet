@@ -7,21 +7,23 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use afd_core::clock::after;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afd_wire::lease::{LeasePayload, SandboxLimits};
 use bytes::Bytes;
 use futures_util::FutureExt as _;
+use jiff::Timestamp;
 
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::holds::Release;
-use crate::renew::RENEWAL_TICK;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, Rig, daemon, lease, position, reported,
 };
+use afd_core::timing::RENEWAL_TICK;
 
 /// The fleet's second lease, after the one that left its sandbox held.
 pub(super) const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
@@ -31,10 +33,8 @@ const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
 const BUSY_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 /// The event every release is logged under.
 const RELEASED: &str = "sandbox_hold_released";
-/// Where the report says the hold lapses: the rig's clock stands at zero.
-const HELD_UNTIL: i64 = SANDBOX_HOLD_IDLE_MS;
-/// The report field that carries it.
-const HELD_UNTIL_MS: &str = "held_until_ms";
+/// The report field that says when the hold lapses.
+const HELD_UNTIL: &str = "held_until";
 /// The daemon's answer to a memory push it stored.
 const STORED: &[u8] = br#"{"stored":1,"skipped":0}"#;
 
@@ -134,7 +134,11 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
     let calls = rig.calls();
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
-    assert_eq!(report[HELD_UNTIL_MS], HELD_UNTIL);
+    // The rig's clock stands at zero, so the hold lapses one idle window in.
+    assert_eq!(
+        report[HELD_UNTIL],
+        after(Timestamp::UNIX_EPOCH, SANDBOX_HOLD_IDLE).to_string()
+    );
     assert_eq!(
         counted.read(),
         (1, 1, 0, 0),
@@ -299,5 +303,5 @@ async fn test_a_lease_on_the_last_free_worker_releases_other_holds() {
 
 /// The report asks the daemon to hold nothing for its fleet.
 pub(super) fn holds_nothing(report: &serde_json::Value) {
-    assert!(report.get(HELD_UNTIL_MS).is_none(), "{report}");
+    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
 }

@@ -9,7 +9,7 @@ use afd_core::id::Uuid7;
 use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
 use afd_dragonfly::Dragonfly;
 use afd_fleet_lifecycle::FleetStatus;
 
@@ -79,25 +79,25 @@ impl Fixture {
     /// differ only in which of them the row holds.
     pub(crate) async fn seed(&self, fleet: FleetStatus, desired: DesiredStatus) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'QStash fire live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'qstash-fire-live', $3, 1) \
-             ) \
-             INSERT INTO core.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'qstash-fire@example.test', 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("QStash fire live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("qstash-fire-live")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "qstash-fire@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, workspace and person seed");
+        .expect("its person seeds");
         FleetSeed::new(
             self.fleet.as_str(),
             self.workspace.as_str(),
@@ -105,16 +105,18 @@ impl Fixture {
             fleet.as_str(),
         )
         .name("qstash-fire-fleet")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
         sqlx::query(
-            "INSERT INTO core.fleet_schedules \
-               (id, fleet_id, source, source_key, cron_expression, timezone, message, \
-                desired_status, sync_status, generation, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $1::text, $4, 'UTC', $5, $6, 'synced', 1, 1, 1)",
+            "INSERT INTO fleet.schedules \
+               (id, fleet_id, source, provider_schedule_id, cron_expression, timezone, \
+                message, once, desired_status, sync_status, resource_version, created_at, \
+                updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, $1::text, $4, 'UTC', $5, false, $6, 'synced', 1, \
+                     now(), now())",
         )
         .bind(self.schedule.as_str())
         .bind(self.fleet.as_str())
@@ -133,7 +135,7 @@ impl Fixture {
     /// moment.
     pub(crate) async fn mark_once(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE core.fleet_schedules SET once = true WHERE id = $1::uuid")
+        sqlx::query("UPDATE fleet.schedules SET once = true WHERE id = $1::uuid")
             .bind(self.schedule.as_str())
             .execute(&mut *connection)
             .await
@@ -143,7 +145,7 @@ impl Fixture {
     /// The seeded schedule's desired status, or `None` once its row is gone.
     pub(crate) async fn desired_status(&self) -> Option<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT desired_status FROM core.fleet_schedules WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT desired_status FROM fleet.schedules WHERE id = $1::uuid")
             .bind(self.schedule.as_str())
             .fetch_optional(&mut *connection)
             .await
@@ -153,7 +155,7 @@ impl Fixture {
     /// Removes this run's rows — the schedule cascades with its fleet.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

@@ -27,14 +27,14 @@ const SUBPROCESS_TEST_TIMEOUT_MS = 15_000;
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ENVELOPE = {
   items: [
-    { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: 1765500300000 },
+    { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: "2025-12-12T00:45:00Z" },
   ],
   total: 1,
   request_id: "req_mem_e2e",
 };
 
 interface Envelope {
-  items: Array<{ key: string; content: string; category: string; updated_at: number }>;
+  items: Array<{ key: string; content: string; category: string; updated_at: string }>;
   total: number;
   request_id: string;
 }
@@ -107,7 +107,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout) as Envelope;
       assert.equal(parsed.items[0]?.key, "acme_contact");
-      assert.equal(parsed.items[0]?.updated_at, 1765500300000);
+      assert.equal(parsed.items[0]?.updated_at, "2025-12-12T00:45:00Z");
       assert.equal(parsed.request_id, "req_mem_e2e");
       assert.equal(calls[0]?.method, "GET");
       assert.ok(!(calls[0]?.search ?? "").includes("limit="), "no operator limit → none forwarded");

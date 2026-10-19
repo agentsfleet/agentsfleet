@@ -20,16 +20,12 @@
 //! the activation ladder, not this quad.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -51,9 +47,6 @@ const ENTRIES_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
 /// What it demands of the writes.
 const ENTRIES_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretWrite]);
 
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// A body that names both fields the create requires.
 const WELL_FORMED_CREATE: &str = r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#;
 
@@ -74,33 +67,6 @@ async fn send(
     harness::send(&router, method, path, credential, body).await
 }
 
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-#[tokio::test]
-async fn test_every_verb_sits_behind_the_bearer_guard() {
-    for (method, path) in [
-        (Method::GET, ENTRIES),
-        (Method::POST, ENTRIES),
-        (Method::PATCH, ENTRY),
-        (Method::DELETE, ENTRY),
-    ] {
-        let anonymous = send(ENTRIES_READ, method.clone(), path, None, "").await;
-        assert_eq!(
-            anonymous.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} with no credential is the guard's refusal, not a 404"
-        );
-    }
-}
-
 #[tokio::test]
 async fn test_the_scope_rung_separates_the_list_from_the_writes() {
     // A read-scoped credential may list and may not write; an unscoped one may
@@ -119,7 +85,7 @@ async fn test_the_scope_rung_separates_the_list_from_the_writes() {
         );
     }
 
-    let unscoped = send(NO_SCOPES, Method::GET, ENTRIES, Some(TENANT_KEY), "").await;
+    let unscoped = send(ScopeSet::EMPTY, Method::GET, ENTRIES, Some(TENANT_KEY), "").await;
     assert_eq!(
         unscoped.status(),
         StatusCode::FORBIDDEN,

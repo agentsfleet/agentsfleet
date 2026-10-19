@@ -9,21 +9,22 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::Removal;
+use jiff::Timestamp;
 use sqlx::PgConnection;
 
 use crate::access_lane::{Fixture, id};
 
 /// Now, for every call a case makes.
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
-/// Long enough ago that an invite issued then has expired by [`NOW`].
-const LONG_AGO: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
+/// How far past its deadline a backdated invite sits: the database clock
+/// decides expiry, so a case backdates the row rather than the call.
+const LAPSED: std::time::Duration = std::time::Duration::from_millis(1);
 
 /// Dimension 3.1: an owner issues, lists and revokes; revoking twice is quiet.
 #[tokio::test]
@@ -39,7 +40,7 @@ async fn test_owner_manages_invites() {
         .expect("John invites Carol");
     let listed = fixture
         .team
-        .invitations(&tenant, NOW)
+        .invitations(&tenant)
         .await
         .expect("the list reads");
     assert_eq!(listed.len(), 1);
@@ -52,18 +53,18 @@ async fn test_owner_manages_invites() {
 
     fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect("the revoke lands");
     fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect("a second revoke is quiet");
     assert_eq!(
         fixture
             .team
-            .invitations(&tenant, NOW)
+            .invitations(&tenant)
             .await
             .expect("the list reads"),
         [] as [afd_tenant::team::Invitation; 0]
@@ -136,7 +137,7 @@ async fn test_accept_refusals() {
 
     fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect("the revoke lands");
     let revoked = fixture
@@ -147,9 +148,10 @@ async fn test_accept_refusals() {
     assert_eq!(revoked.code(), error_code::INVITE_NOT_FOUND);
 
     let stale = fixture
-        .invite(&fixture.carol.email, LONG_AGO)
+        .invite(&fixture.carol.email, NOW)
         .await
-        .expect("an old invite issues");
+        .expect("an invite issues");
+    fixture.backdate_expiry(&stale, LAPSED).await;
     let expired = fixture
         .team
         .accept(&stale, &fixture.carol.invitee(), NOW)
@@ -191,10 +193,11 @@ async fn test_invite_and_member_conflicts() {
     assert_eq!(member.invite_conflict(), Some(InviteConflict::Member));
 
     let stranger = format!("dave+{}@example.test", mint_id());
-    fixture
-        .invite(&stranger, LONG_AGO)
+    let lapsed = fixture
+        .invite(&stranger, NOW)
         .await
-        .expect("an old invite issues");
+        .expect("an invite issues");
+    fixture.backdate_expiry(&lapsed, LAPSED).await;
     fixture
         .invite(&stranger, NOW)
         .await
@@ -254,7 +257,7 @@ async fn an_accept_whose_second_write_fails_leaves_no_membership() {
              END $$ LANGUAGE plpgsql"
         ),
         format!(
-            "CREATE TRIGGER {name} BEFORE UPDATE ON core.invites FOR EACH ROW \
+            "CREATE TRIGGER {name} BEFORE UPDATE ON identity.invites FOR EACH ROW \
              WHEN (OLD.id = '{}'::uuid) EXECUTE FUNCTION {name}()",
             invite.as_str()
         ),
@@ -268,7 +271,7 @@ async fn an_accept_whose_second_write_fails_leaves_no_membership() {
         .map_err(|failure| failure.code());
 
     let lift = [
-        format!("DROP TRIGGER IF EXISTS {name} ON core.invites"),
+        format!("DROP TRIGGER IF EXISTS {name} ON identity.invites"),
         format!("DROP FUNCTION IF EXISTS {name}()"),
     ];
     run_ddl(&mut connection, lift, "the refusal lifts").await;

@@ -15,10 +15,10 @@
 //! is total for the same reason it is safe: a stored secret is never readable,
 //! so a partial write is one the caller cannot reason about.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
+use jiff::Timestamp;
 
 use sqlx::{Acquire as _, Transaction};
 
@@ -46,7 +46,7 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let mut connection = self.directory.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
@@ -74,7 +74,7 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let envelope = self.seal(workspace, name, body)?;
         let id = self.entropy.uuid7(now)?;
@@ -91,7 +91,6 @@ impl Vault {
             .bind(envelope.payload_ciphertext())
             .bind(envelope.payload_tag().as_slice())
             .bind(envelope.kek_version())
-            .bind(now.as_millis())
             .bind(projection.kind.as_str())
             .bind(projection.provider.as_deref())
             .bind(projection.base_url.as_deref())
@@ -133,11 +132,10 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
     ) -> Result<()> {
         let mut connection = self.directory.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REPLACE))?;
-        self.replace_in(&mut transaction, workspace, name, body, now)
+        self.replace_in(&mut transaction, workspace, name, body)
             .await?;
         transaction.commit().await.map_err(query(CONTEXT_REPLACE))?;
         Ok(())
@@ -158,7 +156,6 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
     ) -> Result<()> {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
@@ -173,7 +170,6 @@ impl Vault {
             .bind(envelope.payload_ciphertext())
             .bind(envelope.payload_tag().as_slice())
             .bind(envelope.kek_version())
-            .bind(now.as_millis())
             .bind(projection.kind.as_str())
             .bind(projection.provider.as_deref())
             .bind(projection.base_url.as_deref())

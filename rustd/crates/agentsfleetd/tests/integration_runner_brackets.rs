@@ -64,7 +64,9 @@ async fn test_bracket_frames_open_and_close_a_run() {
     assert!(field(&opened, "actor").is_string());
     assert!(field(&opened, "event_type").is_string());
     assert!(
-        field(&opened, "created_at").is_i64(),
+        field(&opened, "created_at")
+            .as_str()
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
         "the row's own instant, so a client never stamps it with its clock"
     );
 
@@ -95,7 +97,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
         "so does its token count"
     );
     assert!(
-        field(&closed, "cost_nanos").is_i64(),
+        field(&closed, "cost_nanos").is_string(),
         "the settle's ledger rows are summed into the frame, as the events list sums them"
     );
     assert_eq!(

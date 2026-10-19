@@ -1,3 +1,4 @@
+import { ADMIN_MODEL, METADATA, PRICE } from "./helpers/catalogue-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCOPE } from "@/lib/auth/scopes";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
@@ -62,15 +63,7 @@ import {
 const JOINED_WORKSPACE = { id: "ws-joined", role: ACCOUNT_ROLE.member };
 const OWNED_WORKSPACE_ID = "ws-own";
 
-const MODEL = {
-  id: "u1",
-  provider: "fireworks",
-  model_id: "glm-5.2",
-  context_cap_tokens: 128000,
-  input_nanos_per_mtok: 550_000_000,
-  cached_input_nanos_per_mtok: 140_000_000,
-  output_nanos_per_mtok: 2_190_000_000,
-};
+const MODEL = ADMIN_MODEL;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -129,26 +122,14 @@ describe("admin/models server actions — scoped happy paths forward through wit
 
   it("createAdminModelAction forwards the cap body through withToken", async () => {
     createAdminModelMock.mockResolvedValueOnce(MODEL);
-    const body = {
-      provider: "fireworks",
-      model_id: "glm-5.2",
-      context_cap_tokens: 128000,
-      input_nanos_per_mtok: 550_000_000,
-      cached_input_nanos_per_mtok: 140_000_000,
-      output_nanos_per_mtok: 2_190_000_000,
-    };
+    const body = { provider: MODEL.provider, model_id: MODEL.model_id, metadata: MODEL.metadata, prices: MODEL.prices };
     expect(await createAdminModelAction(body)).toEqual({ ok: true, data: MODEL });
     expect(createAdminModelMock).toHaveBeenCalledWith("tok", body);
   });
 
   it("updateAdminModelAction forwards the id + rates body through withToken", async () => {
     updateAdminModelMock.mockResolvedValueOnce({ id: "u1", updated: true });
-    const rates = {
-      context_cap_tokens: 256000,
-      input_nanos_per_mtok: 600_000_000,
-      cached_input_nanos_per_mtok: 150_000_000,
-      output_nanos_per_mtok: 2_300_000_000,
-    };
+    const rates = { metadata: { ...METADATA, context_cap_tokens: 256000 }, prices: [PRICE] };
     expect(await updateAdminModelAction("u1", rates)).toEqual({ ok: true, data: { id: "u1", updated: true } });
     expect(updateAdminModelMock).toHaveBeenCalledWith("tok", "u1", rates);
   });

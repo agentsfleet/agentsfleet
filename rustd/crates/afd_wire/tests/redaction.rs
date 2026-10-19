@@ -110,14 +110,17 @@ fn should_not_leak_the_runner_token_through_debug() {
 fn should_not_leak_a_minted_credential_through_debug() {
     let response = MintCredentialResponse {
         token: Cow::Borrowed(SECRET),
-        expires_at_ms: 42,
+        expires_at: jiff::Timestamp::constant(1_760_000_000, 0),
     };
     let rendered = format!("{response:?}");
     assert!(
         !rendered.contains(SECRET),
         "minted token leaked: {rendered}"
     );
-    assert!(rendered.contains("42"), "the expiry must stay readable");
+    assert!(
+        rendered.contains("2025-10-09T08:53:20Z"),
+        "the expiry must stay readable: {rendered}"
+    );
     assert!(serde_json::to_string(&response).unwrap().contains(SECRET));
 }
 
@@ -192,7 +195,6 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
         attempt_id: "01924f4e-0000-7000-8000-00000000fee7".into(),
         dispatch_id: "01924f4e-0000-7000-8000-00000000fee8".into(),
         fence: "7".into(),
-        deletion_generation: "9".into(),
         call_index: 2,
         request: ModelRequest {
             messages: vec![ModelMessage::User {

@@ -74,6 +74,50 @@ the first step whose required evidence is missing.
 Production cannot start until step 06 is green. Setup is complete only when step
 09 and its listed operational gates pass.
 
+## Prime a clean database
+
+Use this order after migrations finish, separately for each environment.
+Set `VAULT_DEV` and `VAULT_PROD` from the deployment environment.
+For single-vault sync scripts, also set `VAULT` to the selected environment's vault.
+All credential values resolve from `op://` references at runtime.
+
+| Order | Step | Database result | Required verification |
+|---|---|---|---|
+| 1 | [Deploy the API](./founding/04_deploy_dev/001_playbook.md), with runner rollout disabled | Schema and `audit._sqlx_migrations`; application tables begin empty | Migration succeeds and `/healthz` and `/readyz` return success |
+| 2 | [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md), through its credential step | Tenant, user, workspace, membership, wallet, and API key; Clerk receives owner metadata | Signed `user.created` succeeds; actual workspace ID is recorded; refreshed session opens platform pages |
+| 3 | [Seed and configure models](./operations/model_catalogue/001_playbook.md), then select the platform default | `model.platform_models`, dated `model.platform_model_prices`, `model.platform_defaults`, and its encrypted provider credential | Unchanged seed reports no diff; chosen model has inference settings and a credentialed active default |
+| 4 | Sync `approval-signing` using the guarded command below | Admin workspace's `vault.secrets` bag with `webhook_secret` | Sync succeeds; later acceptance proves a signed approval reply |
+| 5 | Register [GitHub](./operations/github_app_registration/001_playbook.md), [Slack](./operations/slack_app_registration/001_playbook.md), [Linear](./operations/linear_app_registration/001_playbook.md), [Jira](./operations/jira_app_registration/001_playbook.md), and [Zoho](./operations/zoho_app_registration/001_playbook.md) | Provider application bags in admin `vault.secrets`; connecting a workspace later creates its credentials and `connector.installs` | Each guarded bag sync succeeds; each required workspace connect and refresh passes |
+| 6 | [Register QStash](./operations/qstash_registration/001_playbook.md) | Admin `qstash` secret bag; authored schedules later create `fleet.schedules` rows | Registration is synced; one signed scheduled delivery is accepted and replay is deduplicated |
+| 7 | [Register SMTP](./operations/smtp_relay_registration/001_playbook.md) | Admin `smtp-relay` secret bag; test invite creates an `identity.invites` row | Test invite reports sent, arrives, and accepts |
+| 8 | Restart the control plane through the matching deployment workflow | No new priming rows; startup reads the completed provider bags | Readiness succeeds; required provider connections work |
+| 9 | [Enroll and deploy runners](./operations/runner_onboarding/001_playbook.md) | `runner.runners` identity and assigned policy | Token is saved once; pipeline host gate passes; runner reports online |
+| 10 | [Configure observability](./operations/observability/001_playbook.md) | No application rows; environment dashboard and alert rules live in Grafana | Read-only provider drift check succeeds and runtime series arrive |
+| 11 | Run [development acceptance](./founding/06_verify_dev/001_playbook.md) or [production acceptance](./founding/09_verify_prod/001_playbook.md) | Disposable test fleets and their execution history | Named acceptance lanes and Human visual checks pass |
+
+The Human creates `approval-signing-secret/credential` in the selected 1Password vault.
+After approval, sync it without putting its value in arguments or output:
+
+```bash
+ENV=dev VAULT="${VAULT_DEV:?Set the development vault name}" \
+ALLOW_VAULT_READS=1 ALLOW_PLATFORM_SECRET_WRITES=1 \
+  ./playbooks/lib/platform_secret_sync.sh approval-signing
+```
+
+Expected output is `✓ approval-signing created in dev admin workspace`, or `replaced` when the bag already exists.
+For production, select `ENV=prod` and `VAULT_PROD` after separate approval.
+
+Complete every required provider registration before acceptance; a green health check does not prove credentials or inference work.
+After a database wipe, existing Clerk users need signed signup-event replay; signing in alone creates no database rows.
+
+### Recovery and maintenance routes
+
+Resolve a [failed migration](./operations/failed_migration/001_playbook.md) before priming.
+A [region move](./operations/database_region_move/001_playbook.md) copies an existing database with matching schema history; it does not rebuild old rows into this schema.
+[Database teardown](./operations/teardown/database/001_playbook.md) permanently removes application data and requires separate approval before this sequence.
+[Dragonfly teardown](./operations/teardown/dragonfly/001_playbook.md) removes queued work and deduplication state; stop all writers and verify every cluster member.
+[User teardown](./operations/teardown/user/001_playbook.md) documents the unsupported purge path; deleting a Clerk identity does not erase database rows.
+
 ## Routine deployments
 
 These routes deploy an installation that already passed the rebuild sequence.

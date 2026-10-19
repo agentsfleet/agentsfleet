@@ -71,10 +71,10 @@ async fn a_tool_continuation_replays_native_reasoning_without_exposing_it_to_the
     assert_eq!(second.text, "Ready");
     assert_native_replay(&provider);
     f.drafts
-        .delete(f.access(), &attempt.draft.id, super::super::fixture::now())
+        .delete(f.access(), &attempt.draft.id)
         .await
         .expect("private deletion");
-    let retained: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid AND native_reply IS NOT NULL")
+    let retained: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1::uuid AND native_reply IS NOT NULL")
         .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("purge evidence");
     assert_eq!(retained, 0);
     f.cleanup().await;

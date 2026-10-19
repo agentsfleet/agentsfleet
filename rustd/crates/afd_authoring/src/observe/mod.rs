@@ -2,7 +2,10 @@
 
 mod rows;
 
-use crate::{Access, Drafts, Result, access, draft::read, error::raise::query, types::DraftState};
+use crate::{
+    Access, Drafts, Result, access, draft::read, error::raise::query,
+    lease::guard::DELETION_GENERATION, types::DraftState,
+};
 use afd_core::{error_code, id::Uuid7};
 use sqlx::Connection as _;
 
@@ -53,20 +56,20 @@ impl Drafts {
             }
             Err(error) => return Err(error),
         };
-        if generation.is_some_and(|generation| generation != locked.deletion_generation) {
+        if generation.is_some_and(|generation| generation != DELETION_GENERATION) {
             return Ok(Observation::Deleted);
         }
         let mut notices = rows::messages(&mut tx, id).await?;
-        if let Some(candidate) = &locked.current_candidate_id {
+        if let Some(candidate) = &locked.head_candidate_id {
             notices.push(Notice::candidate(id, candidate, locked.candidate_revision));
         }
-        let closed = locked.state == DraftState::Closed;
+        let closed = locked.status == DraftState::Closed;
         if closed {
             notices.push(Notice::closed(id));
         }
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Observation::Current(View {
-            generation: locked.deletion_generation,
+            generation: DELETION_GENERATION,
             notices,
             closed,
         }))

@@ -11,9 +11,9 @@
 //!
 //! So nothing on the page path is gated. The scope, the cursor and the actor
 //! filter pick the text: fleet or workspace, first page or resumed, filtered
-//! or not. `since` is bound on every listing, as `i64::MIN` when absent, which
-//! is every `created_at` there is rather than a value a row could hold. The
-//! actor gets its own texts rather than a guard because a guard's row estimate
+//! or not. `since` is bound on every listing as its two slots — an instant or
+//! a span, NULL when absent — and the statement resolves them on its own clock
+//! (`statement::` explains the expression). The actor gets its own texts rather than a guard because a guard's row estimate
 //! is tiny whatever it binds, and a plan expecting one row sorts instead of
 //! walking the index to its `LIMIT`. The column list, ordering and limit still
 //! come from one vocabulary, so the variants cannot drift in what they select.
@@ -34,10 +34,10 @@ mod row;
 pub(crate) mod statement;
 mod tool_call;
 
-use afd_core::clock::UnixMillis;
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_db::Db;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::error::{self, Result};
 
@@ -48,8 +48,9 @@ use self::statement::{
 
 pub use self::cursor::Cursor;
 pub use self::detail::EventDetailRow;
-pub use self::filter::{Filter, glob_to_like, parse_since, prefix_to_like};
+pub use self::filter::{Filter, Since, WIDEST_WINDOW, glob_to_like, parse_since, prefix_to_like};
 pub use self::row::EventRow;
+pub(crate) use self::row::Stored;
 pub use self::tool_call::{CallAddress, ToolCallRow};
 
 /// What each read was doing, for the operator's log line.
@@ -71,18 +72,13 @@ pub const THREAD_DEFAULT_LIMIT: i64 = 20;
 /// an agent's full answer, where a listing row carries neither.
 pub const THREAD_MAX_LIMIT: i64 = 25;
 
-/// The `since` a listing binds when the caller named none: the least value a
-/// `created_at` can hold, so the bound admits every row and still reaches the
-/// index as a condition.
-const NO_LOWER_BOUND: i64 = i64::MIN;
-
 /// The largest page this surface will build.
 ///
 /// `LIMIT_MAX`, mirrored. The ceiling is the correlated cost subselect's bound
 /// as much as the payload's: it executes once per returned row.
 pub const MAX_LIMIT: i64 = 200;
 
-/// The operator's read side of `core.fleet_events`.
+/// The operator's read side of `fleet.events`.
 #[derive(Debug, Clone)]
 pub struct History {
     database: Db,
@@ -200,7 +196,7 @@ impl History {
             Some(at) => sqlx::query(SELECT_THREAD_PAGE_AFTER)
                 .bind(workspace.as_str())
                 .bind(fleet.as_str())
-                .bind(at.created_at)
+                .bind(at.created_at.to_sqlx())
                 .bind(at.event_id.as_str()),
         };
         let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
@@ -237,7 +233,7 @@ impl History {
         sqlx::query(SELECT_THREAD_FINISHED_BEFORE)
             .bind(workspace.as_str())
             .bind(fleet.as_str())
-            .bind(at.created_at)
+            .bind(at.created_at.to_sqlx())
             .bind(at.event_id.as_str())
             .bind(status::PROCESSED)
             .bind(status::FLEET_ERROR)
@@ -269,7 +265,9 @@ impl History {
             None => query,
         };
         let query = match cursor {
-            Some(at) => query.bind(at.created_at).bind(at.event_id.as_str()),
+            Some(at) => query
+                .bind(at.created_at.to_sqlx())
+                .bind(at.event_id.as_str()),
             None => query,
         };
         let query = match actor {
@@ -278,7 +276,8 @@ impl History {
         };
         let mut connection = self.database.acquire().await?;
         let rows = query
-            .bind(filter.since.map_or(NO_LOWER_BOUND, UnixMillis::as_millis))
+            .bind(Since::instant(filter.since).map(jiff_sqlx::ToSqlx::to_sqlx))
+            .bind(Since::span(filter.since))
             .bind(limit.clamp(1, MAX_LIMIT))
             .fetch_all(&mut *connection)
             .await
@@ -307,7 +306,8 @@ pub fn next_cursor(page: &[EventRow], limit: i64) -> Option<Cursor> {
 mod tests {
     use super::*;
 
-    fn row_at(created_at: i64, event_id: &str) -> EventRow {
+    fn row_at(second: i64, event_id: &str) -> EventRow {
+        let created_at = jiff::Timestamp::constant(second, 0);
         EventRow {
             fleet_id: String::new(),
             event_id: event_id.to_owned(),
@@ -340,6 +340,9 @@ mod tests {
     #[test]
     fn a_full_page_resumes_from_its_last_row() {
         let page = vec![row_at(10, "a"), row_at(9, "b")];
-        assert_eq!(next_cursor(&page, 2), Some(Cursor::after(9, "b")));
+        assert_eq!(
+            next_cursor(&page, 2),
+            Some(Cursor::after(jiff::Timestamp::constant(9, 0), "b"))
+        );
     }
 }

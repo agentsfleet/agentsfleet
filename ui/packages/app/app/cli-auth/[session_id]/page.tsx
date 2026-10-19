@@ -37,7 +37,8 @@ interface ActiveSession {
   status: SessionStatus;
   cli_public_key: string;
   token_name: string;
-  expires_at_ms: number;
+  /** RFC 3339 instant the session window closes. */
+  expires_at: string;
 }
 
 const LOAD = {
@@ -97,7 +98,7 @@ export default function CliAuthPage({
             (body.status === SESSION_STATUS.pending || body.status === SESSION_STATUS.verification_pending) &&
             typeof body.cli_public_key === "string" &&
             typeof body.token_name === "string" &&
-            typeof body.expires_at_ms === "number"
+            typeof body.expires_at === "string"
           ) {
             setLoad({
               kind: LOAD.active,
@@ -105,7 +106,7 @@ export default function CliAuthPage({
                 status: body.status,
                 cli_public_key: body.cli_public_key,
                 token_name: body.token_name,
-                expires_at_ms: body.expires_at_ms,
+                expires_at: body.expires_at,
               },
             });
             if (body.status === SESSION_STATUS.verification_pending) {

@@ -102,7 +102,7 @@ pub(crate) async fn verified_svix<D: Services>(
         signature: header(headers, svix::SIGNATURE_HEADER).unwrap_or_default(),
     };
 
-    match svix::verify_at(&secret, presented, &body, services.now().as_seconds()) {
+    match svix::verify_at(&secret, presented, &body, services.now().as_second()) {
         Verdict::Verified => Ok(SvixVerified {
             proven: Verified { binding, body },
             delivery_id: presented.id.to_owned(),

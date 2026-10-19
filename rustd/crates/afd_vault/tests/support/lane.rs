@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
@@ -30,13 +29,15 @@ use afd_crypto::envelope::Envelope;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};
 use afd_vault::{Directory, SecretBody, SecretName, Vault};
+use jiff::Timestamp;
 use serde_json::value::RawValue;
 use sqlx::Row as _;
 
-/// The instant every fixture row is stamped with.
-pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
+/// The instant this suite mints identifiers at. Rows are stamped by the
+/// database's `now()`, not by this.
+pub(crate) const MINTED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The process key this suite seals under.
 ///
@@ -67,8 +68,8 @@ impl Lane {
         let pool = database.open(DbRole::Api, &[]).await;
         let kek = Arc::new(Kek::from_hex(KEK_HEX).expect("the fixture key is well formed"));
         let lane = Self {
-            tenant: mint(),
-            workspace: mint(),
+            tenant: mint_uuid7(),
+            workspace: mint_uuid7(),
             vault: Vault::new(pool.clone(), Arc::clone(&kek), Entropy::new()),
             database,
             pool,
@@ -90,24 +91,18 @@ impl Lane {
 
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
-        let workspace = mint();
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'second', 'fixture', $3)",
-        )
-        .bind(workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a second workspace");
+        let workspace = mint_uuid7();
+        WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a second workspace");
         workspace
     }
 
     /// Stores one secret through the production write path.
     pub(crate) async fn store(&self, name: &str, data: &str) {
         self.vault
-            .create(&self.workspace, &named(name), &body(data), Self::now())
+            .create(&self.workspace, &named(name), &body(data), MINTED_AT)
             .await
             .expect("the fixture secret must store");
     }
@@ -141,7 +136,7 @@ impl Lane {
     /// the bytes actually sealed beside it.
     pub(crate) async fn opened(&self, name: &str) -> String {
         let row = sqlx::query(
-            "SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version \
+            "SELECT dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, kek_version \
                FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
         )
         .bind(self.workspace.as_str())
@@ -181,7 +176,7 @@ impl Lane {
     pub(crate) async fn corrupt_ciphertext(&self, name: &str) {
         sqlx::query(
             "UPDATE vault.secrets \
-                SET ciphertext = set_byte(ciphertext, 0, get_byte(ciphertext, 0) # 255) \
+                SET secret_ciphertext = set_byte(secret_ciphertext, 0, get_byte(secret_ciphertext, 0) # 255) \
               WHERE workspace_id = $1::uuid AND key_name = $2",
         )
         .bind(self.workspace.as_str())
@@ -209,19 +204,18 @@ impl Lane {
         sqlx::query(
             "INSERT INTO vault.secrets \
                (id, workspace_id, key_name, \
-                encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version, \
-                created_at, updated_at, \
+                dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
+                kek_version, created_at, updated_at, \
                 meta_kind, meta_provider, meta_base_url, meta_has_key) \
              SELECT $3::uuid, workspace_id, $4, \
-                    encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version, \
-                    $5, $5, $6, $7, $8, $9 \
+                    dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
+                    kek_version, now(), now(), $5, $6, $7, $8 \
                FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
         )
         .bind(self.workspace.as_str())
         .bind(borrow_envelope_from)
-        .bind(mint().as_str())
+        .bind(mint_uuid7().as_str())
         .bind(name)
-        .bind(NOW_MS)
         .bind(kind)
         .bind(provider)
         .bind(base_url)
@@ -234,15 +228,14 @@ impl Lane {
     /// Adds one model registry entry naming `secret_ref`.
     pub(crate) async fn seed_model_entry(&self, model_id: &str, secret_ref: &str) {
         sqlx::query(
-            "INSERT INTO core.tenant_model_entries \
-               (id, tenant_id, model_id, secret_ref, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5)",
+            "INSERT INTO model.tenant_models \
+               (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())",
         )
-        .bind(mint().as_str())
+        .bind(mint_uuid7().as_str())
         .bind(self.tenant.as_str())
         .bind(model_id)
         .bind(secret_ref)
-        .bind(NOW_MS)
         .execute(&mut *self.connection().await)
         .await
         .expect("seeding a model registry entry");
@@ -251,7 +244,7 @@ impl Lane {
     /// Removes every registry entry naming `secret_ref`.
     pub(crate) async fn clear_model_entries(&self, secret_ref: &str) {
         sqlx::query(
-            "DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid AND secret_ref = $2",
+            "DELETE FROM model.tenant_models WHERE tenant_id = $1::uuid AND secret_ref = $2",
         )
         .bind(self.tenant.as_str())
         .bind(secret_ref)
@@ -271,11 +264,6 @@ impl Lane {
             .expect("a count is a bigint")
     }
 
-    /// The instant this suite stamps writes with.
-    pub(crate) const fn now() -> UnixMillis {
-        UnixMillis::from_millis(NOW_MS)
-    }
-
     /// Releases the lane handle. A no-op on the shared database, and called
     /// anyway: it is how a test says it is finished.
     pub(crate) async fn cleanup(self) {
@@ -293,26 +281,14 @@ impl Lane {
     /// Seeds the tenant and the workspace every fixture secret lands in.
     async fn seed_tenant_and_workspace(&self) {
         let mut connection = self.connection().await;
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'fixture', $2, $2)",
-        )
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a tenant");
-
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'fixture', 'fixture', $3)",
-        )
-        .bind(self.workspace.as_str())
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *connection)
-        .await
-        .expect("seeding a workspace");
+        TenantSeed::new(self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
     }
 }
 
@@ -334,13 +310,4 @@ pub(crate) fn named(name: &str) -> SecretName {
 pub(crate) fn body(json: &str) -> SecretBody {
     let raw = RawValue::from_string(json.to_owned()).expect("the fixture body is valid JSON");
     SecretBody::parse(&raw).expect("the fixture body is a non-empty object within bounds")
-}
-
-/// A fresh identifier, so no two fixtures can name each other's rows.
-pub(crate) fn mint() -> Uuid7 {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host draws entropy");
-    Uuid7::encode(Lane::now(), bytes).expect("a well-formed identifier")
 }

@@ -17,7 +17,7 @@
 //! Four decisions happen before the route touches a store: the body cap, a
 //! deployment holding no keys, a token that does not verify, and a verified
 //! callback naming no schedule. Everything past them reads
-//! `core.fleet_schedules` and belongs to the integration lane. Splitting there
+//! `fleet.schedules` and belongs to the integration lane. Splitting there
 //! is the same line every webhook suite in this tree splits on — the last point
 //! at which the handler has acquired nothing.
 
@@ -29,8 +29,8 @@
 
 use crate::harness;
 
-use self::harness::{Fleet, SCHEDULE_DESTINATION, json_body, send_with_headers};
-use afd_core::error_code::{self, ErrorCode};
+use self::harness::{Fleet, SCHEDULE_DESTINATION, json_body, refusal_code, send_with_headers};
+use afd_core::error_code;
 use base64::Engine as _;
 use http::{HeaderName, Method, StatusCode};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
@@ -159,26 +159,6 @@ pub(crate) async fn fire(
     send_with_headers(router, Method::POST, PATH, None, body, &named).await
 }
 
-/// The registry code a response carries, asserting it refused at all.
-async fn refusal(response: axum::response::Response) -> String {
-    let status = response.status();
-    let document = json_body(response).await;
-    assert!(
-        status.is_client_error(),
-        "expected a refusal, got {status}: {document}"
-    );
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned()
-}
-
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
-}
-
 #[tokio::test]
 async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
     // The cap is checked first on purpose: a deployment must not be made to run
@@ -194,72 +174,54 @@ async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
     .await;
 
     assert_eq!(
-        refusal(refused).await,
-        code(error_code::WEBHOOK_PAYLOAD_TOO_LARGE),
+        refusal_code(refused).await,
+        error_code::WEBHOOK_PAYLOAD_TOO_LARGE.as_str(),
     );
 }
 
+/// Every fire that does not prove itself earns one answer.
+///
+/// A deployment holding no keys answers a token it could have believed exactly
+/// as it answers a forgery: a deployment that cannot verify must not act, and
+/// telling a prober which of the two it hit would say whether this daemon is
+/// misconfigured. The `body` claim is what binds a token to its delivery;
+/// without that check a captured token would authorise any substituted payload.
 #[tokio::test]
-async fn a_deployment_holding_no_keys_refuses_a_token_it_could_have_believed() {
-    // Fail-closed, and answered identically to a forgery. A deployment that
-    // cannot verify must not act, and telling a prober which of the two it hit
-    // would say whether this daemon is misconfigured.
-    let token = mint(&FireClaims::good(BODY), CURRENT_KEY);
-
-    let refused = fire(
-        &Fleet::new().router(),
-        BODY,
-        &[(HEADER_SIGNATURE, token.as_str())],
-    )
-    .await;
-
-    assert_eq!(
-        refusal(refused).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-    );
-}
-
-#[tokio::test]
-async fn a_token_signed_by_nobody_this_deployment_knows_is_refused() {
+async fn a_fire_that_does_not_prove_itself_is_refused() {
+    let good = mint(&FireClaims::good(BODY), CURRENT_KEY);
     let forged = mint(&FireClaims::good(BODY), FOREIGN_KEY);
-
-    let refused = fire(&configured(), BODY, &[(HEADER_SIGNATURE, forged.as_str())]).await;
-
-    assert_eq!(
-        refusal(refused).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-    );
-}
-
-#[tokio::test]
-async fn a_genuine_token_over_a_different_body_is_refused() {
-    // The claim that makes the token bind to its delivery. Without the `body`
-    // digest check, a captured token would authorise any payload a forger
-    // wanted to substitute for the one it was minted over.
-    let token = mint(&FireClaims::good(BODY), CURRENT_KEY);
     let substituted = r#"{"schedule_id":"01J0000000000000000000000B"}"#;
+    let cases = [
+        (
+            "a deployment holding no keys",
+            Fleet::new().router(),
+            BODY,
+            Some(good.as_str()),
+        ),
+        (
+            "a token signed by an unknown key",
+            configured(),
+            BODY,
+            Some(forged.as_str()),
+        ),
+        (
+            "a genuine token over a different body",
+            configured(),
+            substituted,
+            Some(good.as_str()),
+        ),
+        ("no signature at all", configured(), BODY, None),
+    ];
 
-    let refused = fire(
-        &configured(),
-        substituted,
-        &[(HEADER_SIGNATURE, token.as_str())],
-    )
-    .await;
-
-    assert_eq!(
-        refusal(refused).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-    );
-}
-
-#[tokio::test]
-async fn a_fire_carrying_no_signature_at_all_is_refused() {
-    let refused = fire(&configured(), BODY, &[]).await;
-
-    assert_eq!(
-        refusal(refused).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-    );
+    for (case, router, body, token) in cases {
+        let headers: Vec<(&str, &str)> = token.map(|t| (HEADER_SIGNATURE, t)).into_iter().collect();
+        let refused = fire(&router, body, &headers).await;
+        assert_eq!(
+            refusal_code(refused).await,
+            error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),
+            "{case}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -52,7 +52,8 @@ pub struct WorkspaceSummary<'a> {
     /// the tenant module's null rule.
     pub name: Option<Cow<'a, str>>,
     /// When it was created; the walk's sort key.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// The account it belongs to, which is how a dashboard groups the list.
     pub account: WorkspaceAccount<'a>,
     /// The caller's role in that account: `owner` or `member`.

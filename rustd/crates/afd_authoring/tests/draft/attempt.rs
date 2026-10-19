@@ -9,19 +9,22 @@ use afd_authoring::{
     types::{Draft, Source},
 };
 use afd_core::id::Uuid7;
+use afd_db::test_util::{RunnerPolicy, RunnerSeed};
 use afd_wire::authoring::{ActivityEvent, ActivityRequest, Proposal};
 
-const RUNNER: &str = "\
-INSERT INTO fleet.runners(id,host_id,token_hash,sandbox_tier,admin_state,labels,
-network_policy,registry_allowlist,worker_count,degraded,last_seen_at,created_at,updated_at)
-VALUES($1::uuid,$1,$1,'dev_none','active','[]','deny_all_egress','[]',1,false,$2,$2,$2)";
 const ATTEMPT: &str = "\
-INSERT INTO fleet.authoring_attempts(id,lease_id,runner_id,workspace_id,tenant_id,creator_id,
-draft_id,message_sequence,fence,deletion_generation,capability_hash,model_snapshot,status,
-lease_expires_at,deadline,reserved_nanos,settled_nanos,usage_unknown,calls,input_tokens,
-output_tokens,activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,0,$1,$8::jsonb,
-'active',$9,$9,0,0,false,0,0,0,0,$10,$10)";
+INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
+lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+reported_runtime_ms,last_activity_sequence,created_at,updated_at)
+VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,$1,$8::jsonb,
+'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
+
+/// The host's isolation: no sandbox and no egress.
+const POLICY: RunnerPolicy<'static> = RunnerPolicy {
+    sandbox_tier: "dev_none",
+    network_policy: "deny_all_egress",
+};
 
 pub(super) struct Attempt {
     pub(super) id: Uuid7,
@@ -46,10 +49,8 @@ impl Attempt {
             sequence: created.accepted.expect("first message accepted").sequence,
         };
         let mut connection = f.connection().await;
-        sqlx::query(RUNNER)
-            .bind(f.runner.as_str())
-            .bind(now().as_millis())
-            .execute(&mut *connection)
+        RunnerSeed::new(f.runner.as_str(), "active", POLICY)
+            .insert(&mut *connection)
             .await
             .expect("isolated authoring runner");
         let model = afd_credential::provider::registered_model(
@@ -74,12 +75,10 @@ impl Attempt {
             .bind(creator.as_str())
             .bind(attempt.draft.id.as_str())
             .bind(serde_json::to_string(&model).expect("pinned nonsecret metadata"))
-            .bind(now().as_millis() + 60_000)
-            .bind(now().as_millis())
             .execute(&mut *connection)
             .await
             .expect("admitted attempt row");
-        sqlx::query("UPDATE core.authoring_messages SET state='running' WHERE draft_id=$1::uuid")
+        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid")
             .bind(attempt.draft.id.as_str())
             .execute(&mut *connection)
             .await
@@ -90,7 +89,6 @@ impl Attempt {
     pub(super) fn initialize(&self, activity: u32) -> ActivityInput {
         ActivityRequest {
             fence: "1".into(),
-            deletion_generation: "0".into(),
             sequence: self.sequence.clone(),
             activity_sequence: activity.to_string(),
             event: ActivityEvent::Proposal {
@@ -103,7 +101,7 @@ impl Attempt {
 
     pub(super) async fn activity_count(&self, f: &Fixture) -> i64 {
         sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.authoring_activity_receipts WHERE attempt_id=$1::uuid",
+            "SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1::uuid",
         )
         .bind(self.id.as_str())
         .fetch_one(&mut *f.connection().await)

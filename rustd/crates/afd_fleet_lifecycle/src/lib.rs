@@ -4,7 +4,7 @@
 //!
 //! It is the lifecycle AROUND a fleet, where `afd_fleet` is the runner plane
 //! that acts on one — leases, gates, budgets, memory. The two never call each
-//! other; they meet at `core.fleets`, one writing the row and the other reading
+//! other; they meet at `fleet.fleets`, one writing the row and the other reading
 //! it, which is a table and not a dependency.
 //!
 //! Setup is not here. Every fleet is written by the native setup authority,
@@ -41,20 +41,16 @@ use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 /// The purge's statements, for the lane that runs them against a live role.
 ///
 /// Gated on `test-util` because nothing in production reaches SQL text through
-/// this crate's surface — the purge runs its own constants. The integration lane
-/// needs them by name rather than by copy: a test that retypes the statements
-/// proves the copy in the test file, and the pair drifts silently the moment one
-/// side is edited, which is the RULE STS failure in miniature.
-/// Bindings rather than `pub use`, because the statements stay `pub(crate)`.
-/// Re-exporting them would make each one a `pub` item in a private module —
-/// `unreachable_pub` without the feature, and a wider surface with it. A `const`
-/// initialised from the crate's own is the same text with no second definition.
+/// this crate's surface. The lane needs them by name rather than by copy: a
+/// test that retypes a statement proves the copy, and the pair drifts the
+/// moment one side is edited. Bindings rather than `pub use`, because the
+/// statements stay `pub(crate)`.
 #[cfg(feature = "test-util")]
 pub mod purge_statements {
-    /// See `crate::sql::purge::ALLOW_GATE_PURGE`.
-    pub const ALLOW_GATE_PURGE: &str = crate::sql::purge::ALLOW_GATE_PURGE;
-    /// See `crate::sql::purge::PURGE_CHILDREN`.
-    pub const PURGE_CHILDREN: &[&str] = crate::sql::purge::PURGE_CHILDREN;
+    /// See `crate::sql::LOCK_FLEET`.
+    pub const LOCK_FLEET: &str = crate::sql::LOCK_FLEET;
+    /// See `crate::sql::DELETE_FLEET_IN_STATUS`.
+    pub const DELETE_FLEET_IN_STATUS: &str = crate::sql::DELETE_FLEET_IN_STATUS;
 }
 
 pub use self::error::{Error, Result};

@@ -3,7 +3,7 @@ import { executionInstructions } from "./fixtures/definition";
  * fleet-execution.spec.ts — one fleet, from a reviewed chat setup to a finished job,
  * against the Rust daemon serving this environment.
  *
- * Wire: save a fleet from the private chat's Review setup, with instructions
+ * Wire: save a fleet from the private chat's inline setup, with instructions
  * that carry a real request → open the workspace wall in a
  * second tab and leave it watching → message the fleet from its own composer →
  * an online runner leases the delivery → the lease reaches the provider and
@@ -170,8 +170,8 @@ test.describe("fleet execution", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
     // ── 1.1 A reviewed save reaches active ──
-    // saveFleetViaUI is the operator's own walk: Review setup, Edit setup,
-    // Update draft and review, Save fleet, Open fleet.
+    // saveFleetViaUI is the operator's own walk: inline setup, Edit instructions,
+    // Update instructions, Save fleet, Open fleet.
     await signInAs(page, FIXTURE_KEY.regular);
     const fleetId = await saveFleetViaUI(page, EXECUTING_TEMPLATE, {
       handle: FIXTURE_KEY.regular,

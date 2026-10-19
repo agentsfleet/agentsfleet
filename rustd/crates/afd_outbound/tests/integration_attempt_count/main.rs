@@ -42,12 +42,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::EventId;
 use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, AbandonReason, Delivery};
-use afd_outbound::producer::MAX_DELIVERY_CYCLES;
+use afd_outbound::producer::{LOST_AFTER, MAX_DELIVERY_CYCLES};
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Attempt, Deliver, Lanes, Posters, Verdict};
 use tokio_util::sync::CancellationToken;
@@ -79,8 +78,7 @@ mod support;
 
 use self::hanging_queue::HangingQueue;
 use self::seed::{
-    DESTINATION, FLEET, SEEDED_AT, WORKSPACE, abandonment, clear_obligations, obligation_id,
-    seed_parents,
+    DESTINATION, FLEET, WORKSPACE, abandonment, age, clear_obligations, obligation_id, seed_parents,
 };
 use self::support::{OUTBOUND_LANE, OutboundHarness};
 
@@ -118,17 +116,6 @@ const FIELD_EVENT: &str = "event";
 /// nothing happened TO ITS OWN TURN — a sibling's delivery is not this one's.
 const FIELD_EVENT_ID: &str = "agentsfleet_event_id";
 
-/// How long after the fixture instant the graded delivery cycle starts.
-///
-/// Any gap does: the scan takes its cutoff as a parameter, so these tests move
-/// the cutoff rather than the clock. What the two numbers have to be is
-/// ORDERED — a cutoff before the cycle start, and the start itself — because
-/// the claim is about which side of the start a cutoff falls on.
-const CYCLE_STARTS_AFTER: i64 = 1_000;
-
-/// A cutoff earlier than that start.
-const BEFORE_THE_CYCLE: i64 = 500;
-
 // ── The ledger half ─────────────────────────────────────────────────────────
 
 /// A cycle that ends in failure counts, and so does the next one.
@@ -146,22 +133,13 @@ async fn failed_cycles_increase_the_attempt_count() {
     let event = "1700000001-0";
     owe_and_queue(&harness, 1, event).await;
 
-    let first = obligation::count_attempt(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 10),
-    )
-    .await
-    .expect("counting the first cycle");
-    let second = obligation::count_attempt(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 20),
-    )
-    .await
-    .expect("counting the second cycle");
+    let (_, _, aged) = row(&harness, event).await;
+    let first = obligation::count_attempt(&harness.database, FLEET, event)
+        .await
+        .expect("counting the first cycle");
+    let second = obligation::count_attempt(&harness.database, FLEET, event)
+        .await
+        .expect("counting the second cycle");
 
     assert_eq!(first, Some(1), "the first cycle start is the first attempt");
     assert_eq!(
@@ -172,9 +150,8 @@ async fn failed_cycles_increase_the_attempt_count() {
     let (attempts, delivered_at, updated_at) = row(&harness, event).await;
     assert_eq!(attempts, 2);
     assert_eq!(delivered_at, None, "counting never stamps");
-    assert_eq!(
-        updated_at,
-        SEEDED_AT + 20,
+    assert!(
+        updated_at > aged,
         "a cycle start moves updated_at, which is the recovery scan's clock"
     );
 }
@@ -193,52 +170,30 @@ async fn duplicate_delivery_preserves_the_first_stamp() {
     let event = "1700000001-1";
     owe_and_queue(&harness, 2, event).await;
 
-    let counted = obligation::count_attempt(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 10),
-    )
-    .await
-    .expect("counting the cycle that delivers");
+    let counted = obligation::count_attempt(&harness.database, FLEET, event)
+        .await
+        .expect("counting the cycle that delivers");
     assert_eq!(counted, Some(1));
-    let accepted_at = SEEDED_AT + 15;
-    obligation::stamp_delivered(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(accepted_at),
-    )
-    .await
-    .expect("stamping the delivery");
+    obligation::stamp_delivered(&harness.database, FLEET, event)
+        .await
+        .expect("stamping the delivery");
+    let (_, accepted_at, _) = row(&harness, event).await;
 
-    let again = obligation::count_attempt(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 30),
-    )
-    .await
-    .expect("a duplicate cycle asks and is refused");
-    obligation::stamp_delivered(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 35),
-    )
-    .await
-    .expect("a duplicate stamp asks and is refused");
+    let again = obligation::count_attempt(&harness.database, FLEET, event)
+        .await
+        .expect("a duplicate cycle asks and is refused");
+    obligation::stamp_delivered(&harness.database, FLEET, event)
+        .await
+        .expect("a duplicate stamp asks and is refused");
 
     assert_eq!(again, None, "an already-delivered row counts no cycle");
     let (attempts, delivered_at, updated_at) = row(&harness, event).await;
     assert_eq!(attempts, 1, "the counter did not move for the duplicate");
+    assert!(accepted_at.is_some(), "the delivery was stamped");
+    assert_eq!(delivered_at, accepted_at, "the first acceptance stands");
     assert_eq!(
-        delivered_at,
-        Some(accepted_at),
-        "the first acceptance stands"
-    );
-    assert_eq!(
-        updated_at, accepted_at,
+        Some(updated_at),
+        accepted_at,
         "nothing after the stamp touched the row"
     );
 }
@@ -246,10 +201,11 @@ async fn duplicate_delivery_preserves_the_first_stamp() {
 /// A cycle start takes the row out of the recovery scan's window.
 ///
 /// The pacing decision, proven in both directions. `SELECT_UNDELIVERED` asks
-/// for rows untouched since its cutoff. A row a worker just accepted is being
-/// worked on, so a cutoff BEFORE the start does not re-offer it; a cutoff after
-/// the start does — which is the case of a worker that died mid-cycle and the
-/// scan exists for.
+/// for rows untouched for [`LOST_AFTER`] on the database clock. A row a worker
+/// just accepted is being worked on, so the scan does not re-offer it; once
+/// that long passes with nobody touching it — which `seed::age` stands in for —
+/// it does, which is the case of a worker that died mid-cycle and the scan
+/// exists for.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn recovery_pacing_follows_the_cycle_start() {
@@ -257,28 +213,23 @@ async fn recovery_pacing_follows_the_cycle_start() {
     let harness = ready().await;
     let event = "1700000001-2";
     owe_and_queue(&harness, 3, event).await;
-    let started_at = SEEDED_AT + CYCLE_STARTS_AFTER;
 
     assert_eq!(
-        reoffered_before(&harness, SEEDED_AT + BEFORE_THE_CYCLE).await,
+        reoffered(&harness).await,
         vec![event.to_owned()],
         "before any cycle starts, the queued row is the scan's business"
     );
-    obligation::count_attempt(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(started_at),
-    )
-    .await
-    .expect("counting the cycle");
+    obligation::count_attempt(&harness.database, FLEET, event)
+        .await
+        .expect("counting the cycle");
 
     assert!(
-        reoffered_before(&harness, started_at - 1).await.is_empty(),
+        reoffered(&harness).await.is_empty(),
         "a row whose cycle just started is somebody's work, not the scan's"
     );
+    age(&harness.database, event).await;
     assert_eq!(
-        reoffered_before(&harness, started_at + 1).await,
+        reoffered(&harness).await,
         vec![event.to_owned()],
         "once the window passes the start, a cycle that never finished is re-offered"
     );

@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use afd_ingress::Surface;
 use afd_webhook::Scheme;
 use http::{Method, StatusCode};
@@ -63,11 +63,6 @@ const UNPARSEABLE_FLEET: &str = "not-a-uuid";
 /// Where one fleet's deliveries arrive.
 fn path(fleet: &str) -> String {
     format!("/v1/webhooks/{fleet}/{}", signed::SOURCE_LINEAR)
-}
-
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
 }
 
 /// A fleet resolving to `status`, holding the fixture signing secret.
@@ -162,40 +157,25 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {
     // Acknowledged rather than refused: the sender configured this URL against
     // a fleet somebody has since paused, and a 4xx would retry-loop a delivery
-    // that will be just as paused next time.
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::FLEET, signed::SECRET, PAYLOAD).await;
+    // that will be just as paused next time. The fleet's state is read before
+    // the body is parsed, so a body that is not a document is dropped alike.
+    for (case, body) in [("a document", PAYLOAD), ("not a document", NOT_JSON)] {
+        let ingress = fleet_in("paused");
+        let answered = deliver(&ingress, signed::FLEET, signed::SECRET, body).await;
 
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "a paused fleet must not accumulate work to run when it resumes"
-    );
-}
-
-#[tokio::test]
-async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
-    let ingress = fleet_in("paused");
-    let answered = deliver(&ingress, signed::FLEET, signed::SECRET, NOT_JSON).await;
-
-    let status = answered.status();
-    let document = json_body(answered).await;
-    assert_eq!(status, StatusCode::OK, "{document}");
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some(REASON_PAUSED)
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "{:?}",
-        ingress.deliveries()
-    );
+        let status = answered.status();
+        let document = json_body(answered).await;
+        assert_eq!(status, StatusCode::OK, "{case}: {document}");
+        assert_eq!(
+            document.get("ignored").and_then(Value::as_str),
+            Some(REASON_PAUSED),
+            "{case}"
+        );
+        assert!(
+            ingress.deliveries().is_empty(),
+            "{case}: a paused fleet must not accumulate work to run when it resumes"
+        );
+    }
 }
 
 #[tokio::test]
@@ -210,11 +190,8 @@ async fn a_verified_body_that_is_not_a_document_is_refused() {
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_MALFORMED))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_MALFORMED.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -232,11 +209,8 @@ async fn a_signature_under_the_wrong_key_wakes_nothing() {
     let document = json_body(refused).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),

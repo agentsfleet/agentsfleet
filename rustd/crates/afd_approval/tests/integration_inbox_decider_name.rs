@@ -1,4 +1,4 @@
-//! Who decided, by name, and the four ways that answer is legitimately empty.
+//! Who decided, by name, and the four ways that answer is legitimately absent.
 //!
 //! # Why these are proven against a live datastore and not a stub
 //!
@@ -12,7 +12,7 @@
 //! # Why the name is captured and not resolved
 //!
 //! `resolved_by` is an OIDC subject: right to store, wrong to show. Joining
-//! `core.users` on the READ closes that gap and costs 157 shared buffers
+//! `identity.users` on the READ closes that gap and costs 157 shared buffers
 //! against 7, because the subject index is searched once per row on every page
 //! load. Capturing at the decision pays once, and it is the truer record — a
 //! join reports who the account is now, so a rename rewrites history and a
@@ -27,11 +27,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
-
 use afd_approval::{Decision, Filter, Resolution};
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS};
+use crate::lane::{Lane, Window};
 
 /// A subject this deployment has a user row for.
 const KNOWN_SUBJECT: &str = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
@@ -64,16 +62,13 @@ const NOTE: &str = "looks right";
 /// A page big enough that nothing under test is lost to the limit.
 const WHOLE_PAGE: i64 = 50;
 
-/// What the join produces when it matches nothing.
-const NO_NAME: &str = "";
-
 /// The name reaches the row the operator reads.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_decider_with_a_user_row_reads_as_their_name() {
     let lane = Lane::isolated().await;
     seed_person(&lane, lane.tenant.as_str(), KNOWN_SUBJECT, KNOWN_NAME).await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, KNOWN_SUBJECT).await;
 
     let page = lane
@@ -82,9 +77,14 @@ async fn a_decider_with_a_user_row_reads_as_their_name() {
         .await
         .expect("the queue read must not fault");
     let row = page.first().expect("the resolved gate");
-    assert_eq!(row.resolved_by, KNOWN_SUBJECT, "the subject is unchanged");
     assert_eq!(
-        row.resolved_by_name, KNOWN_NAME,
+        row.resolved_by.as_deref(),
+        Some(KNOWN_SUBJECT),
+        "the subject is unchanged"
+    );
+    assert_eq!(
+        row.resolved_by_name.as_deref(),
+        Some(KNOWN_NAME),
         "the name joins from this deployment's own user row"
     );
 }
@@ -98,7 +98,7 @@ async fn a_decider_with_a_user_row_reads_as_their_name() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, STRANGER_SUBJECT).await;
 
     let page = lane
@@ -108,10 +108,11 @@ async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
         .expect("the queue read must not fault");
     let row = page.first().expect("the resolved gate");
     assert_eq!(
-        row.resolved_by, STRANGER_SUBJECT,
+        row.resolved_by.as_deref(),
+        Some(STRANGER_SUBJECT),
         "an unknown decider is still a decider"
     );
-    assert_eq!(row.resolved_by_name, NO_NAME, "and has no name to show");
+    assert_eq!(row.resolved_by_name, None, "and has no name to show");
 }
 
 /// The tenant predicate bites: another tenant's user never names this gate.
@@ -127,7 +128,7 @@ async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
     let lane = Lane::isolated().await;
     let other_tenant = seed_other_tenant(&lane).await;
     seed_person(&lane, &other_tenant, FOREIGN_SUBJECT, KNOWN_NAME).await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, FOREIGN_SUBJECT).await;
 
     let page = lane
@@ -137,7 +138,7 @@ async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
         .expect("the queue read must not fault");
     assert_eq!(
         page.first().expect("the resolved gate").resolved_by_name,
-        NO_NAME,
+        None,
         "a name may only come from the tenant that owns the gate"
     );
 }
@@ -151,7 +152,7 @@ async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
     let lane = Lane::isolated().await;
-    lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    lane.seed_gate(Window::Open).await;
 
     let page = lane
         .inbox
@@ -159,8 +160,8 @@ async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
         .await
         .expect("the queue read must not fault");
     let row = page.first().expect("the pending gate stays on the page");
-    assert_eq!(row.resolved_by, NO_NAME, "nobody has decided");
-    assert_eq!(row.resolved_by_name, NO_NAME, "so nobody is named");
+    assert_eq!(row.resolved_by, None, "nobody has decided");
+    assert_eq!(row.resolved_by_name, None, "so nobody is named");
 }
 
 /// The single-gate read returns the same captured name the page does.
@@ -173,7 +174,7 @@ async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
 async fn the_single_gate_read_names_the_decider_too() {
     let lane = Lane::isolated().await;
     seed_person(&lane, lane.tenant.as_str(), KNOWN_SUBJECT, KNOWN_NAME).await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, KNOWN_SUBJECT).await;
 
     let listed = lane
@@ -190,12 +191,12 @@ async fn the_single_gate_read_names_the_decider_too() {
         .await
         .expect("the single-gate read must not fault")
         .expect("the gate this test just resolved");
-    assert_eq!(one.resolved_by_name, KNOWN_NAME);
+    assert_eq!(one.resolved_by_name.as_deref(), Some(KNOWN_NAME));
 }
 
 /// Someone with no name still reads as a person, not as an identifier.
 ///
-/// `core.users.display_name` is written once at signup from the provider's
+/// `identity.users.display_name` is written once at signup from the provider's
 /// first and last name alone, so an account created without one has NULL there
 /// permanently. The browser lookup this replaced fell back to the address, and
 /// dropping that would show a shortened subject where a human string used to be.
@@ -204,7 +205,7 @@ async fn the_single_gate_read_names_the_decider_too() {
 async fn a_decider_with_no_display_name_reads_as_their_address() {
     let lane = Lane::isolated().await;
     seed_nameless_person(&lane, NAMELESS_SUBJECT, NAMELESS_EMAIL).await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, NAMELESS_SUBJECT).await;
 
     let page = lane
@@ -213,8 +214,11 @@ async fn a_decider_with_no_display_name_reads_as_their_address() {
         .await
         .expect("the queue read must not fault");
     assert_eq!(
-        page.first().expect("the resolved gate").resolved_by_name,
-        NAMELESS_EMAIL,
+        page.first()
+            .expect("the resolved gate")
+            .resolved_by_name
+            .as_deref(),
+        Some(NAMELESS_EMAIL),
         "a nameless account falls back to its address, as the deleted lookup did"
     );
 }
@@ -222,9 +226,9 @@ async fn a_decider_with_no_display_name_reads_as_their_address() {
 /// One user row carrying an address and no name at all.
 async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
     sqlx::query(
-        "INSERT INTO core.users
+        "INSERT INTO identity.users
            (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, NULL, $5, $5)
+         VALUES ($1::uuid, $2::uuid, $3, $4, NULL, now(), now())
          ON CONFLICT (oidc_subject) DO UPDATE
            SET tenant_id = EXCLUDED.tenant_id, display_name = NULL",
     )
@@ -232,7 +236,6 @@ async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
     .bind(lane.tenant.as_str())
     .bind(subject)
     .bind(email)
-    .bind(NOW_MS)
     .execute(&mut *connection(lane).await)
     .await
     .expect("seeding a nameless person");
@@ -242,14 +245,7 @@ async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
 async fn resolve_as(lane: &Lane, action: &str, subject: &str) {
     let resolved = lane
         .inbox
-        .resolve(
-            action,
-            Decision::Approved,
-            subject,
-            NOTE,
-            None,
-            UnixMillis::from_millis(NOW_MS),
-        )
+        .resolve(action, Decision::Approved, subject, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(
@@ -264,9 +260,9 @@ async fn resolve_as(lane: &Lane, action: &str, subject: &str) {
 /// what the join reads and what a re-run collides on.
 async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
     sqlx::query(
-        "INSERT INTO core.users
+        "INSERT INTO identity.users
            (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), now())
          ON CONFLICT (oidc_subject) DO UPDATE
            SET tenant_id = EXCLUDED.tenant_id, display_name = EXCLUDED.display_name",
     )
@@ -275,7 +271,6 @@ async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
     .bind(subject)
     .bind(format!("{subject}@fixture.invalid"))
     .bind(name)
-    .bind(NOW_MS)
     .execute(&mut *connection(lane).await)
     .await
     .expect("seeding a person");
@@ -284,16 +279,10 @@ async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
 /// A second tenant, so a cross-tenant user row can exist to be excluded.
 async fn seed_other_tenant(lane: &Lane) -> String {
     let tenant = afd_db::test_util::mint_id();
-    sqlx::query(
-        "INSERT INTO core.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, $1::text, $2, $2)
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(&tenant)
-    .bind(NOW_MS)
-    .execute(&mut *connection(lane).await)
-    .await
-    .expect("seeding the other tenant");
+    afd_db::test_util::TenantSeed::new(&tenant)
+        .insert(&mut *connection(lane).await)
+        .await
+        .expect("seeding the other tenant");
     tenant
 }
 

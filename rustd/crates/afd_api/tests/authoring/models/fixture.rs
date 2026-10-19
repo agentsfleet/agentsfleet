@@ -3,7 +3,6 @@
 use super::super::{attempt::Running, mint};
 use afd_auth::Scope;
 use afd_authoring::{ProviderRequest, ProviderResponse, Transport};
-use afd_core::clock;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::sync::{
@@ -73,13 +72,13 @@ impl Model {
             .acquire()
             .await
             .expect("owned setup connection");
-        sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'authoring-http-fixture',$2,$2)")
-            .bind(running.f.tenant.as_str()).bind(clock::now().as_millis()).bind(crate::authoring::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
-        let attempt: String = sqlx::query_scalar("UPDATE fleet.authoring_attempts SET capability_hash=$2,reserved_nanos=30000000 WHERE draft_id=$1::uuid RETURNING id::text")
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
+            .bind(running.f.tenant.as_str()).bind(crate::authoring::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
+        let attempt: String = sqlx::query_scalar("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE draft_id=$1::uuid RETURNING id::text")
             .bind(&running.draft).bind(hex_hash()).fetch_one(&mut *connection).await.expect("bound admitted capability");
         drop(connection);
         let path = format!("{}/model-calls", running.path.trim_end_matches("/activity"));
-        let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1","deletion_generation":"0",
+        let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1",
             "dispatch_id":mint(),"call_index":1,"request":{"messages":[{"role":"user","text":"Investigate checkout"}],"max_output_tokens":128}});
         Self {
             running,
@@ -90,7 +89,7 @@ impl Model {
     }
 
     pub(super) async fn receipts(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.authoring_dispatches d JOIN fleet.authoring_attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches d JOIN authoring.attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1::uuid")
             .bind(&self.running.draft).fetch_one(&mut *self.running.f.db.acquire().await.expect("receipt read")).await.expect("durable receipt count")
     }
 }

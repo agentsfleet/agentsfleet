@@ -16,8 +16,8 @@
 //! those. What bounds a write fleet now is that grant, the fleet's
 //! `budget.daily_nanos`, and `agentsfleet grant delete`.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
+use jiff::Timestamp;
 use serde_json::Value;
 
 use crate::gate::claim::Claim;
@@ -45,7 +45,7 @@ impl Gates {
         &self,
         request: &Check<'_>,
         state: RefState,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Verdict {
         let Some(policy) = request.config.gates() else {
             return Verdict::Pass;
@@ -63,7 +63,7 @@ impl Gates {
             .await
             == Anomaly::AutoKill
         {
-            return self.stop(request, Trigger::Anomaly, now).await;
+            return self.stop(request, Trigger::Anomaly).await;
         }
 
         let context = parse_context(request.request_json);
@@ -71,7 +71,7 @@ impl Gates {
 
         match route(state, Some(Decision::of(matched))) {
             Route::Pass => Verdict::Pass,
-            Route::Kill => self.stop(request, Trigger::Policy, now).await,
+            Route::Kill => self.stop(request, Trigger::Policy).await,
             // An unreadable lookup must not become a SECOND card for this
             // event: wait a poll rather than re-notify a human who may already
             // hold one.
@@ -80,7 +80,7 @@ impl Gates {
                 // The matched rule carries the workspace copy the decision
                 // discards, and it is the SAME match — so the card cannot
                 // describe a different rule from the one that fired.
-                let timeout = timeout_of(policy.timeout_ms());
+                let timeout = policy.timeout();
                 let stated = Stated::of(
                     request.event_type,
                     request.actor,
@@ -114,7 +114,7 @@ impl Gates {
         request: &Check<'_>,
         stated: Stated<'_>,
         context: Option<&Value>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Verdict {
         let claim = Claim::of(context);
         let parked = self
@@ -142,15 +142,17 @@ impl Gates {
     /// should stop, and reporting that it did not while also admitting the
     /// event would be the worst of both. The event stays leasable either way,
     /// so a fleet that could not be paused re-decides on the next poll.
-    async fn stop(&self, request: &Check<'_>, trigger: Trigger, now: UnixMillis) -> Verdict {
-        if let Err(fault) = self.pause(request.fleet_id, trigger, now).await {
+    async fn stop(&self, request: &Check<'_>, trigger: Trigger) -> Verdict {
+        if let Err(fault) = self.pause(request.fleet_id, trigger).await {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let fleet = request.fleet_id.as_str();
+            let trigger_word = trigger.as_str();
             let Logged { error_code, reason } = fault.logged();
             tracing::error!(
                 error_code,
                 event = EVENT_PAUSE_FAILED,
                 fleet_id = fleet,
-                trigger = trigger.as_str(),
+                trigger = trigger_word,
                 reason,
                 "the gate stopped this fleet and the row would not flip; it stays active"
             );
@@ -168,20 +170,9 @@ fn parse_context(request_json: &str) -> Option<Value> {
     serde_json::from_str(request_json).ok()
 }
 
-/// A policy timeout as the signed milliseconds a deadline is computed in.
-///
-/// Saturating rather than `as`: the config clamps to a day, so the cast is
-/// provably safe today — and a silent wrap if that clamp ever moves would
-/// produce a deadline in the past, which reads as an instantly-expired gate
-/// rather than as the bug it is.
-fn timeout_of(millis: u64) -> i64 {
-    i64::try_from(millis).unwrap_or(i64::MAX)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{parse_context, timeout_of};
-    use afd_fleet_runtime::config::DEFAULT_TIMEOUT_MS;
+    use super::parse_context;
     use serde_json::json;
 
     #[test]
@@ -202,15 +193,80 @@ mod tests {
         assert_eq!(parse_context("null"), Some(json!(null)));
     }
 
-    #[test]
-    fn a_timeout_never_becomes_a_deadline_in_the_past() {
-        // The cast is provably safe under today's clamp, so what this pins is
-        // the direction it fails if that clamp ever moves: saturating, never
-        // wrapping. A wrapped timeout is a gate that expires the instant it is
-        // raised, which reads as a lapsed approval rather than as the bug it is.
-        assert_eq!(timeout_of(DEFAULT_TIMEOUT_MS), 3_600_000);
-        assert_eq!(timeout_of(0), 0);
-        assert_eq!(timeout_of(u64::MAX), i64::MAX);
-        assert!(timeout_of(u64::MAX) > 0);
+    #[cfg(feature = "test-util")]
+    #[expect(
+        clippy::expect_used,
+        reason = "test target: an unmet precondition should fail the test loudly"
+    )]
+    mod ordering {
+        //! The arm the first-encounter pass reaches only if its caller's ordering
+        //! broke: a recorded gate handed to the pass that asks policy.
+        //!
+        //! `check` answers a recorded gate before this pass runs, so no production
+        //! path arrives here; what is pinned is the direction it fails in when one
+        //! does — the event waits, and the line says the ordering was violated —
+        //! because a pass that let policy speak over a recorded question would
+        //! withdraw it from the human holding the card.
+
+        use afd_core::id::Uuid7;
+        use afd_core::test_util::trace::Capture;
+        use afd_crypto::entropy::Entropy;
+        use afd_dragonfly::Dragonfly;
+        use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+        use afd_fleet_runtime::FleetConfig;
+
+        use crate::gate::pass::{Check, Verdict, Waiting};
+        use crate::gate::route::RefState;
+        use crate::gate::store::Gates;
+
+        /// A queue address nothing listens on.
+        const NOWHERE: &str = "redis://127.0.0.1:1";
+
+        /// A fleet whose only rule names another tool, so policy passes a chat outright.
+        const APPROVE_EVERY_CHAT: &str = r#"{"name":"gate-unit","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"rules":[{"tool":"shell","action":"user:other","behavior":"approve"}]}}}"#;
+
+        const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
+
+        #[tokio::test]
+        async fn a_recorded_gate_reaching_the_policy_pass_waits_and_says_so() {
+            let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+                DragonflyRole::Default,
+                NOWHERE.to_owned(),
+            ))
+            .expect("a lazy handle opens no socket and cannot fail");
+            let gates = Gates::new(afd_db::test_util::unreachable_db(), queue, Entropy::new());
+            let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+            let config =
+                FleetConfig::stored(APPROVE_EVERY_CHAT).expect("the fixture policy resolves");
+            let capture = Capture::install();
+
+            let verdict = gates
+                .judge_first_encounter(
+                    &Check {
+                        fleet_id: &fleet,
+                        workspace_id: &fleet,
+                        event_id: "event-ordering-broke",
+                        event_type: "chat",
+                        actor: "user:fixture",
+                        request_json: "{}",
+                        config: &config,
+                    },
+                    RefState::Found,
+                    jiff::Timestamp::UNIX_EPOCH,
+                )
+                .await;
+
+            assert_eq!(
+                verdict,
+                Verdict::Await(Waiting::Unreadable),
+                "policy says pass, and still the recorded question is not withdrawn"
+            );
+            let logged = capture.only("gate_route_unreachable");
+            assert_eq!(logged.field("fleet_id"), Some(FLEET));
+            assert_eq!(
+                logged.field("agentsfleet_event_id"),
+                Some("event-ordering-broke")
+            );
+        }
     }
 }

@@ -103,10 +103,10 @@ impl<'a> Verdict<'a> {
 
 /// What the terminal row records about a finished run.
 ///
-/// A struct rather than four more parameters on [`Leases::mark_terminal`],
+/// A struct rather than four more parameters on `Leases::mark_terminal`,
 /// which would take eight. Two of them are same-typed `i64` measurements a
 /// transposition would compile straight through and store as each other — the
-/// same hazard [`crate::sql::lease::LeaseRow`] groups its binds against.
+/// same hazard [`crate::lease::sql::lease::LeaseRow`] groups its binds against.
 #[derive(Debug, Clone, Copy)]
 pub struct Terminal<'a> {
     /// Whether the run finished, and why it did not.

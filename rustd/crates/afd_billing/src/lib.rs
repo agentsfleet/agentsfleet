@@ -8,11 +8,11 @@
 //! and is there enough.
 //!
 //! Collected here, the dependency runs one way and is visible at a glance:
-//! [`nanos`] is pure arithmetic over a unit, [`window`] is pure arithmetic over
-//! time, and everything with a connection sits on top of both. Nothing in the
-//! two pure modules can reach a datastore, which is what makes the money
-//! arithmetic testable without one — a property the module boundary enforces
-//! rather than a comment asserting it.
+//! [`nanos`] is pure arithmetic over a unit, and everything with a connection
+//! sits on top of it. Nothing in that pure module can reach a datastore, which
+//! is what makes the money arithmetic testable without one — a property the
+//! module boundary enforces rather than a comment asserting it. Time is the
+//! database's: the spend windows open from its `now()`.
 //!
 //! # The separation this module is built around
 //!
@@ -31,10 +31,12 @@
 
 pub mod error;
 
+pub mod biller;
 pub mod budget;
-pub mod charge;
-pub mod meter;
+pub mod ledger;
+pub mod limits;
 pub mod nanos;
+pub mod price;
 pub mod rates;
 pub mod sql;
 // The TENANT's read side of the same schema: a wallet snapshot and the paged
@@ -43,19 +45,14 @@ pub mod sql;
 // would have had to link the api-key and login plane to serve a balance.
 pub mod store;
 pub mod tenant;
-mod tenant_sql;
 pub mod wallet;
-pub mod window;
 
 pub use self::budget::{Spend, Verdict};
-pub use self::charge::Charged;
 pub use self::error::{Error, Result};
-pub use self::meter::{Cumulative, Meter};
 pub use self::nanos::{
-    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos, RECEIVE_NANOS,
-    RUN_NANOS_PER_SEC, SliceRates, slice_charge,
+    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
+    RUN_NANOS_PER_SEC,
 };
 pub use self::rates::Posture;
 pub use self::store::Accounts;
 pub use self::wallet::Wallet;
-pub use self::window::Windows;

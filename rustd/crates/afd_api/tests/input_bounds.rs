@@ -61,7 +61,7 @@ const PLATFORM_LIBRARY_ID_MAX_BYTES: usize = 128;
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
 
 /// The longest gate-kind filter.
-const MAX_GATE_KIND_BYTES: usize = 64;
+const MAX_GATE_TYPE_BYTES: usize = 64;
 
 /// The catalogue's provider column, which the filter shares.
 const CATALOGUE_PROVIDER_BYTES: usize = 64;
@@ -163,15 +163,15 @@ async fn test_unbounded_filters_now_refuse_oversize() {
     }
 
     let approvals = format!("/v1/workspaces/{OWNED_WORKSPACE}/approvals");
-    let kind = "g".repeat(MAX_GATE_KIND_BYTES + 1);
+    let kind = "g".repeat(MAX_GATE_TYPE_BYTES + 1);
     assert_refused(
         Method::GET,
-        &format!("{approvals}?gate_kind={kind}"),
+        &format!("{approvals}?gate_type={kind}"),
         INVALID_REQUEST,
     )
     .await;
-    let at_bound = "g".repeat(MAX_GATE_KIND_BYTES);
-    assert_accepted(Method::GET, &format!("{approvals}?gate_kind={at_bound}")).await;
+    let at_bound = "g".repeat(MAX_GATE_TYPE_BYTES);
+    assert_accepted(Method::GET, &format!("{approvals}?gate_type={at_bound}")).await;
 }
 
 #[tokio::test]

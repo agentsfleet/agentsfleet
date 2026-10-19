@@ -19,7 +19,7 @@ use afd_cron::{Change, DesiredStatus, NewSchedule, Refused, Source};
 use afd_db::Precondition;
 use sqlx::PgConnection;
 
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
 /// A guard that answers its verdict every time it is asked.
 struct Verdict(bool);
@@ -38,7 +38,7 @@ fn fleet_made(fleet: &afd_core::id::Uuid7) -> NewSchedule<'_> {
     NewSchedule {
         fleet,
         source: Source::Fleet,
-        source_key: None,
+        provider_schedule_id: None,
         cron: "0 9 * * 1",
         timezone: "UTC",
         message: "weekly check",
@@ -59,7 +59,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
             &lane.workspace_id(),
             fleet_made(&fleet),
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
             &Verdict(false),
         )
         .await
@@ -73,7 +73,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
             &lane.workspace_id(),
             fleet_made(&fleet),
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
             &Verdict(true),
         )
         .await
@@ -99,7 +99,6 @@ async fn a_change_under_a_guard_that_no_longer_holds_writes_nothing() {
             &settled.schedule_id,
             pause,
             &CronLane::token(),
-            CronLane::now(),
             &Verdict(false),
         )
         .await
@@ -119,7 +118,6 @@ async fn a_change_under_a_guard_that_no_longer_holds_writes_nothing() {
             &settled.schedule_id,
             pause,
             &CronLane::token(),
-            CronLane::now(),
             &Verdict(true),
         )
         .await

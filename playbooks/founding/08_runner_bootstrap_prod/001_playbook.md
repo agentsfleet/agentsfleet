@@ -23,7 +23,6 @@ the deploy user, and join Tailscale:
 
 ```bash
 sudo tailscale up \
-  --auth-key "<one-time-key>" \
   --advertise-tags=tag:worker \
   --hostname "<tailscale-hostname>" \
   --ssh
@@ -72,15 +71,9 @@ start a service.
 The Agent follows `playbooks/operations/admin_bootstrap/001_playbook.md` with
 `ENV=prod`.
 
-Register and sync the production applications in the same order used for
-development:
-
-1. `playbooks/operations/github_app_registration/001_playbook.md`
-2. `playbooks/operations/slack_app_registration/001_playbook.md`
-3. `playbooks/operations/zoho_app_registration/001_playbook.md`
-4. `playbooks/operations/jira_app_registration/001_playbook.md`
-5. `playbooks/operations/linear_app_registration/001_playbook.md`
-6. `playbooks/operations/qstash_registration/001_playbook.md`
+Follow the [clean-database priming index](../../README.md#prime-a-clean-database).
+It includes catalogue prices and inference settings, the platform model default, approval signing, all five provider applications, QStash, and SMTP.
+Set vault names from the target deployment environment before running its commands.
 
 Complete each registration and sync section. Leave runner-dependent live
 acceptance open for step 09. Restart `agentsfleetd` by rerunning the original
@@ -96,10 +89,9 @@ gh run watch "$PROD_RELEASE_RUN_ID" \
 
 ## 3. Human: create the real runner tokens
 
-Open `https://app.agentsfleet.net`, add one runner per inventory entry, and
+Open `https://app.agentsfleet.net` at **Avatar → Platform → Runners**, add one runner per inventory entry, and
 store each once-revealed `agt_r` token in the matching production vault item.
-The host identifier must equal `tailscale-hostname`; the sandbox tier is
-`landlock_full`.
+The host identifier must equal `tailscale-hostname`; select **Landlock** under **Isolation**.
 
 No placeholder token is stored. If a one-time value is lost, revoke that runner
 and create it again.

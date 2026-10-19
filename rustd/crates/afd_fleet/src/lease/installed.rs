@@ -1,5 +1,5 @@
 //! The claim read: what a fleet IS, at the moment a runner takes its slot.
-//! Beside it, the renewal's ceiling read ([`Leases::stored_config`]), which
+//! Beside it, the renewal's ceiling read (`Leases::stored_config`), which
 //! reads the same stored config whatever the fleet's status.
 //!
 //! The claim read is one statement, run once per claim. [`super::assign`] has
@@ -18,7 +18,6 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
-use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
@@ -31,7 +30,7 @@ const CONTEXT_INSTALLED: &str = "fleet claim read";
 const CONTEXT_STORED_CONFIG: &str = "fleet ceiling read";
 
 /// The table a malformed value is reported against.
-const TABLE_FLEETS: &str = "core.fleets";
+const TABLE_FLEETS: &str = "fleet.fleets";
 
 /// The session context a fleet with no checkpoint starts from.
 ///
@@ -84,7 +83,7 @@ impl Leases {
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a `workspace_id` that will
-    /// not parse as a UUID, and a `config_json` this daemon cannot read. The
+    /// not parse as a UUID, and a revision `config` this daemon cannot read. The
     /// last is deliberately fatal to THIS FLEET's lease rather than skipped: a
     /// fleet whose stored config is unreadable must not run under a config this
     /// daemon guessed at. It is fatal to nothing else — the pull path answers
@@ -93,26 +92,26 @@ impl Leases {
     /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
     pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::fleet::SELECT_FLEET_WITH_SESSION)
+        let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
             .bind(fleet_id.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_INSTALLED))?;
-        let Some(row) = row else {
+        let Some(FleetWithSession {
+            workspace_id: workspace,
+            definition: document,
+            status,
+            runtime_model_ref,
+            name,
+            context_json,
+            policy_semantics: policy,
+        }) = found
+        else {
             return Ok(None);
         };
-
-        let status: String = row.try_get(2).map_err(query(CONTEXT_INSTALLED))?;
         if status != sql::FLEET_STATUS_ACTIVE {
             return Ok(None);
         }
-
-        let workspace: String = row.try_get(0).map_err(query(CONTEXT_INSTALLED))?;
-        let document: Option<String> = row.try_get(1).map_err(query(CONTEXT_INSTALLED))?;
-        let runtime_model_ref: Option<String> = row.try_get(3).map_err(query(CONTEXT_INSTALLED))?;
-        let name: String = row.try_get(4).map_err(query(CONTEXT_INSTALLED))?;
-        let context_json: Option<String> = row.try_get(5).map_err(query(CONTEXT_INSTALLED))?;
-        let policy: Option<String> = row.try_get(6).map_err(query(CONTEXT_INSTALLED))?;
         if policy.as_deref() != Some(POLICY_SEMANTICS) {
             return Err(crate::error::ErrorKind::SetupUnavailable.into());
         }
@@ -142,7 +141,7 @@ impl Leases {
     /// a killed fleet's cannot. `None` only when the row is gone.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer and a `config_json` this
+    /// Reports a datastore that would not answer and a revision `config` this
     /// daemon cannot read, as [`Self::installed`] does.
     pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
         let mut connection = self.pool().acquire().await?;
@@ -159,4 +158,17 @@ impl Leases {
             })
             .transpose()
     }
+}
+
+/// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row: the fleet, its head
+/// revision and its session, each revision column absent until one is installed.
+#[derive(sqlx::FromRow)]
+struct FleetWithSession {
+    workspace_id: String,
+    definition: Option<String>,
+    status: String,
+    runtime_model_ref: Option<String>,
+    name: String,
+    context_json: Option<String>,
+    policy_semantics: Option<String>,
 }

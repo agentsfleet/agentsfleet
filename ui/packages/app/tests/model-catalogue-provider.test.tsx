@@ -1,3 +1,4 @@
+import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -20,28 +21,34 @@ import {
   useModelCatalogue,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider";
 
-const model = (id: string, provider: string) => ({
+const model = (id: string, provider: string, advanced = false) => ({
   id,
   provider,
+  display_name: id,
+  advanced,
   context_cap_tokens: 1,
-  input_nanos_per_mtok: 1,
-  cached_input_nanos_per_mtok: 1,
-  output_nanos_per_mtok: 1,
+  input_nanos_per_mtok: "1",
+  cached_input_nanos_per_mtok: "1",
+  output_nanos_per_mtok: "1",
+  context_source_url: SOURCE_URL, context_verified_at: VERIFIED_AT, prices: [],
 });
 
 const okLibrary = (models: ReturnType<typeof model>[]) => ({
   ok: true as const,
-  data: { version: "1", models },
+  data: { version: "1", models, total: null, next_cursor: null },
 });
 
 function Probe() {
-  const { models, status, preload } = useModelCatalogue();
+  const { models, status, preload, preloadAdvanced, loadMore, retry } = useModelCatalogue();
   return React.createElement(
     "div",
     null,
     React.createElement("span", { "data-testid": "status" }, status),
     React.createElement("span", { "data-testid": "models" }, models.map((m) => m.id).join(",")),
     React.createElement("button", { "data-testid": "preload", onClick: preload }, "preload"),
+    React.createElement("button", { "data-testid": "advanced", onClick: preloadAdvanced }, "advanced"),
+    React.createElement("button", { "data-testid": "more", onClick: () => loadMore(true) }, "more"),
+    React.createElement("button", { "data-testid": "retry", onClick: retry }, "retry"),
   );
 }
 
@@ -70,6 +77,35 @@ afterEach(() => {
 });
 
 describe("ModelCatalogueProvider — intent loading", () => {
+  it("loads advanced entries after the default catalogue and caches the result", async () => {
+    getModelLibraryActionMock.mockResolvedValueOnce(okLibrary([model("base", "openai")]))
+      .mockResolvedValueOnce(okLibrary([model("advanced", "openai", true)]));
+    renderProvider();
+    await fireIntent();
+    await act(async () => { screen.getByTestId("advanced").click(); });
+    await waitFor(() => expect(screen.getByTestId("models").textContent).toBe("base,advanced"));
+    expect(getModelLibraryActionMock.mock.calls.map((args) => args[0])).toEqual([false, true]);
+    await act(async () => { screen.getByTestId("advanced").click(); });
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes a requested advanced read behind an unfinished default read", async () => {
+    let resolveBase!: (value: ReturnType<typeof okLibrary>) => void;
+    let resolveAdvanced!: (value: ReturnType<typeof okLibrary>) => void;
+    getModelLibraryActionMock.mockReturnValueOnce(new Promise((resolve) => { resolveBase = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveAdvanced = resolve; }));
+    renderProvider();
+    await fireIntent();
+    await act(async () => { screen.getByTestId("advanced").click(); screen.getByTestId("advanced").click(); });
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveBase(okLibrary([model("base", "openai")])); });
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(2);
+    await act(async () => { screen.getByTestId("advanced").click(); });
+    await act(async () => { resolveAdvanced(okLibrary([model("advanced", "openai", true)])); });
+    expect(screen.getByTestId("models").textContent).toBe("base,advanced");
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not fetch the catalogue on mount", async () => {
     renderProvider();
     // The whole point of the change: an ordinary visit to the Models page
@@ -229,12 +265,14 @@ describe("maySpeculateOnHover — on the server", () => {
 });
 
 describe("useModelCatalogue outside a provider", () => {
-  it("returns the safe degraded fallback state", () => {
+  it("returns the safe degraded fallback state", async () => {
     render(React.createElement(Probe));
     // No provider mounted → the context default fires: error status, empty
     // models — pickers fall back to free-text entry, and preload is a no-op.
     expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error);
     expect(screen.getByTestId("models").textContent).toBe("");
+    await act(async () => { screen.getByTestId("preload").click(); screen.getByTestId("advanced").click();
+      screen.getByTestId("more").click(); screen.getByTestId("retry").click(); });
     expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });
 });

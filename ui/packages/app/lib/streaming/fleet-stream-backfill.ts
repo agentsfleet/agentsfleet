@@ -74,7 +74,7 @@ async function fetchBackfillPage(
 // Rows arrive newest-first (`created_at DESC`), so the last one is the oldest.
 function oldestCreatedAt(rows: EventRow[]): number | null {
   const last = rows[rows.length - 1];
-  return last === undefined ? null : last.created_at;
+  return last === undefined ? null : Date.parse(last.created_at);
 }
 
 // Recover the frames published while the EventSource was down. Page 1 is keyed

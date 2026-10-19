@@ -17,7 +17,7 @@ Three markup classes appear below the divider. The gate tells them apart mechani
 | `tpl:` guidance comment | How to fill the section — written for the authoring agent only | **Deleted after filling.** The gate BLOCKs any survivor. |
 | SPEC AUTHORING RULES banner comment | Standing constraints on the instance | The one comment that survives, verbatim. |
 
-Everything else — headings, table skeletons, the standard rubric rows — is kept and filled. The result: the executing agent reads **100% instance content, zero template noise**, and the 320-line budget buys signal, not boilerplate.
+Everything else — headings, table skeletons, the standard rubric rows — is kept and filled. The result: the executing agent reads **100% instance content, zero template noise**, and the 500-line budget buys signal, not boilerplate.
 
 ## What a spec pins
 
@@ -89,7 +89,7 @@ A milestone is not complete until evidence is captured: commands, logs, screensh
 
 ## Guardrails
 
-- **Length — hard upper bound 320 lines for the filled spec** (after `tpl:` comment deletion). Typical specs 150–300. Past the bound before the Acceptance Rubric → scope is two specs sharing one file; split.
+- **Length — hard upper bound 500 lines for the filled spec** (after `tpl:` comment deletion). Typical specs 150–350. Past the bound before the Acceptance Rubric → scope is two specs sharing one file; split.
 - **Sections** — 3–9. **Workstreams** — ≤4 (5th cross-cutting only).
 - **File naming** — `docs/v{N}/{pending|active|done}/M{N}_{NNN}_P{Priority}_{CATEGORIES}_{NAME}.md` (e.g. `M40_001_P0_API_WORKER_SUBSTRATE.md`). Categories alphabetised.
 

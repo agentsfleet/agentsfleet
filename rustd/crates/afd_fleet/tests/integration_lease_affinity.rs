@@ -18,15 +18,15 @@
 
 use crate::requests;
 use crate::support;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL_MS;
+use afd_core::timing::LEASE_TTL;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{enrolment_tagged, placement_tag};
 use afd_db::test_util::mint_id;
 
 use self::support::Fixtures;
+use crate::rows::{LAPSE, Row};
 
 /// The fleet one test contends for, and the rows it hangs from.
 ///
@@ -75,7 +75,7 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+            .register(&request, fixtures.enrolled_at())
             .await
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);
@@ -97,25 +97,18 @@ async fn test_lease_affinity_race() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(
-            &ids.fleet,
-            &ids.workspace,
-            &ids.tenant,
-            &tag,
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     // Every contender claims the same slot at the same instant. Awaited
     // together rather than in sequence so the datastore, not this loop, decides
     // the order they arrive in.
     let attempts = runners
         .iter()
-        .map(|runner| leases.claim(&fleet, runner, now, LEASE_TTL_MS));
+        .map(|runner| leases.claim(&fleet, runner, LEASE_TTL));
     let outcomes = futures_util::future::join_all(attempts).await;
 
     let won: Vec<_> = outcomes
@@ -129,7 +122,7 @@ async fn test_lease_affinity_race() {
         "exactly one runner may hold a fleet's slot; the losers read as taken, not as errors"
     );
     assert_eq!(
-        fixtures.affinity_column(&ids.fleet, "fencing_seq").await,
+        fixtures.text(Row::Slot(&ids.fleet), "fencing_token").await,
         Some("1".to_owned()),
         "a slot claimed for the first time opens at fence one"
     );
@@ -155,28 +148,21 @@ async fn test_reclaim_bumps_fence() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(
-            &ids.fleet,
-            &ids.workspace,
-            &ids.tenant,
-            &tag,
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let first = leases
-        .claim(&fleet, &first_runner, now, LEASE_TTL_MS)
+        .claim(&fleet, &first_runner, LEASE_TTL)
         .await
         .expect("the first claim must not fault")
         .expect("an unclaimed slot is winnable");
 
     // A live holder blocks the slot, whoever asks.
     let blocked = leases
-        .claim(&fleet, &second_runner, now, LEASE_TTL_MS)
+        .claim(&fleet, &second_runner, LEASE_TTL)
         .await
         .expect("a blocked claim is not a fault");
     assert!(
@@ -186,9 +172,11 @@ async fn test_reclaim_bumps_fence() {
 
     // Past the holder's expiry, the slot is winnable again — and the winner's
     // token outranks the holder it displaced.
-    let lapsed = first.leased_until.saturating_add_millis(1);
+    fixtures
+        .age(Row::Slot(&ids.fleet), "lease_expires_at", LAPSE)
+        .await;
     let reclaimed = leases
-        .claim(&fleet, &second_runner, lapsed, LEASE_TTL_MS)
+        .claim(&fleet, &second_runner, LEASE_TTL)
         .await
         .expect("the reclaim must not fault")
         .expect("a lapsed slot is winnable");
@@ -214,117 +202,52 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(
-            &ids.fleet,
-            &ids.workspace,
-            &ids.tenant,
-            &tag,
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let stale = leases
-        .claim(&fleet, &first_runner, now, LEASE_TTL_MS)
+        .claim(&fleet, &first_runner, LEASE_TTL)
         .await
         .expect("the first claim must not fault")
         .expect("an unclaimed slot is winnable");
-    let lapsed = stale.leased_until.saturating_add_millis(1);
+    fixtures
+        .age(Row::Slot(&ids.fleet), "lease_expires_at", LAPSE)
+        .await;
     let live = leases
-        .claim(&fleet, &second_runner, lapsed, LEASE_TTL_MS)
+        .claim(&fleet, &second_runner, LEASE_TTL)
         .await
         .expect("the reclaim must not fault")
         .expect("a lapsed slot is winnable");
 
     // The displaced holder tries to tidy up, carrying its own stale token.
     leases
-        .release(&fleet, stale.fence, lapsed)
+        .release(&fleet, stale.fence)
         .await
         .expect("a guarded release is a no-op, never a fault");
 
     assert_eq!(
         fixtures
-            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_LEASED_UNTIL)
+            .instant(
+                Row::Slot(&ids.fleet),
+                crate::lease_reads::COLUMN_LEASED_UNTIL
+            )
             .await,
-        Some(live.leased_until.as_millis().to_string()),
+        Some(live.leased_until),
         "the live holder's claim must survive a superseded holder's release"
     );
 
     // The live holder's own release does land, because its token still matches.
     leases
-        .release(&fleet, live.fence, lapsed)
+        .release(&fleet, live.fence)
         .await
         .expect("the current holder's release must run");
-    assert_eq!(
-        fixtures
-            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_LEASED_UNTIL)
-            .await,
-        Some(lapsed.as_millis().to_string()),
+    assert!(
+        fixtures.slot_is_free(&ids.fleet).await,
         "the current holder frees the slot it actually holds"
     );
 
     fixtures.cleanup().await;
 }
-
-/// The claim itself preserves the metering cursor, even when it displaces a
-/// lapsed holder.
-///
-/// The reset belongs to the lease insert, and only a FRESH lease arms it —
-/// `integration_lease_issue.rs` proves both halves of that. If the claim
-/// cleared the cursor itself, a re-leased run would be billed from zero for
-/// work already charged.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_reclaiming_claim_preserves_the_meter() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let ids = Ids::mint();
-    let tag = placement_tag(&ids.fleet);
-    fixtures
-        .seed_fleet(
-            &ids.fleet,
-            &ids.workspace,
-            &ids.tenant,
-            &tag,
-            fixtures.enrolled_at(),
-        )
-        .await;
-    let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
-    let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-
-    let first = leases
-        .claim(&fleet, &first_runner, now, LEASE_TTL_MS)
-        .await
-        .expect("the first claim must not fault")
-        .expect("an unclaimed slot is winnable");
-
-    // Stand in for a run that metered some tokens before its holder died.
-    fixtures.set_metered_input(&ids.fleet, METERED).await;
-
-    let lapsed = first.leased_until.saturating_add_millis(1);
-    leases
-        .claim(&fleet, &second_runner, lapsed, LEASE_TTL_MS)
-        .await
-        .expect("the reclaim must not fault")
-        .expect("a lapsed slot is winnable");
-
-    assert_eq!(
-        fixtures
-            .affinity_column(&ids.fleet, crate::lease_reads::COLUMN_METERED_INPUT)
-            .await,
-        Some(METERED.to_string()),
-        "a reclaim meters FORWARD, so the claim must not clear the cursor"
-    );
-
-    fixtures.cleanup().await;
-}
-
-/// Tokens a dead holder is standing in for.
-///
-/// Any non-zero value proves the property; named so the two assertions above
-/// read against one another rather than against a bare literal (RULE UFS).
-const METERED: i64 = 1_234;

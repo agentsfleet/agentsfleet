@@ -44,26 +44,14 @@ For the environment being moved:
    lock. The login roles the strings name are branch credentials created in
    the console. The migrator's creates every schema, so it needs what the
    live one has; the API's must be a member of `api_runtime`
-   (`schema/110_roles_and_privileges.sql`) — and of nothing else:
+   (`schema/1010_roles_and_privileges.sql`) — and of nothing else:
 
        pscale role create <db> <branch> <name> --inherited-roles api_runtime
 
-   Measured on both branches rather than assumed. The API login on the live
-   `us-east` branch holds exactly `api_runtime` (INHERIT TRUE, SET TRUE), and
-   that is sufficient: `SET ROLE memory_runtime` resolves transitively through
-   it, because `schema/110` grants `memory_runtime` to `api_runtime` SET TRUE
-   and every hop on the chain carries the same option.
-
-   **Do not add `pg_read_all_data` or `pg_write_all_data`.** The Ohio login
-   carried both, which is why nothing ever reported that `fleet delete` was
-   issuing three statements `api_runtime` had no grant for — the two built-in
-   roles cover every table in every schema, including the `memory` schema
-   `schema/110` fences on purpose. A branch created without them refuses the
-   purge on its first attempt, which is how the gap was finally found. The
-   grants are now correct in `schema/900`, and
-   `integration_purge_privileges.rs` asserts both directions against a database
-   migrated from `schema/`. Re-adding the blanket roles would put the fence
-   back to decorative and re-hide the next one.
+   Verify the target login's role memberships before copying.
+   `schema/1010_roles_and_privileges.sql` defines the role hierarchy; each table's slot owns its grants.
+   Do not add `pg_read_all_data` or `pg_write_all_data` to bypass a missing grant.
+   Those roles would bypass the intended `memory` schema boundary.
 5. IP restrictions are per database, not per branch, so the Fly egress
    allowlist carries over. Nothing to redo.
 
@@ -95,7 +83,7 @@ fly scale count 0 --app agentsfleetd-dev --yes
 
 # 4. Migrate the new branch with the image that is serving. The string is
 #    forwarded by environment name so it never appears in argv.
-DATABASE_URL_MIGRATOR="$(op read 'op://ZMB_CD_DEV/planetscale-dev/next-migrator-connection-string')" \
+DATABASE_URL_MIGRATOR="$(op read "op://${VAULT_DEV:?Set the development vault name}/planetscale-dev/next-migrator-connection-string")" \
   docker run --rm -e DATABASE_URL_MIGRATOR \
   ghcr.io/agentsfleet/agentsfleetd:dev-latest /usr/local/bin/agentsfleetd migrate
 
@@ -129,18 +117,21 @@ does not start.
 
 ## What the copy does
 
-`02_copy.sh` refuses to run until the target's migration ledger stands at the
-source's version — that is the proof step 4 happened. It then runs
-`pg_dump --data-only` on the live branch and `pg_restore --exit-on-error` on
-the new one inside `postgres:18-alpine`, excluding the two ledger tables the
-migration already wrote. Data only, because a managed database will not let a
-dump restore ownership or privileges, and the migrator has already created
-every role and grant exactly as a deploy would.
+`02_copy.sh` first compares both databases' `audit._sqlx_migrations` versions.
+A missing, older, or newer target ledger refuses the copy.
+This operation requires identical schema history; use the clean-database priming route after an incompatible rebuild.
 
-If `pg_restore` aborts on a duplicate key, a migration seeded that table on
-the target; confirm the seeded rows match the source's and rerun with the
-table added to `LEDGER_TABLES` in `02_copy.sh`. The verify step then proves
-the counts agree.
+The script dumps data as plain SQL inside `postgres:18-alpine`.
+It excludes `audit._sqlx_migrations` from both the dump and the target truncate.
+The migrated target keeps its own checksums and ledger rows.
+
+The load discovers application tables, truncates their existing rows, and suppresses triggers with `session_replication_role = 'replica'`.
+Seeded rows therefore cannot collide, and activity counters retain the source values.
+The target role must be allowed to change that session setting.
+
+Truncate and restore run in one `psql --single-transaction` invocation.
+A failure restores the target's preceding contents; fix the blocker before retrying.
+Do not exclude additional application tables to work around duplicate rows.
 
 `03_verify.sh` counts every user table on both branches from the catalog —
 never from a hand-kept list — and diffs the two censuses with the ledger

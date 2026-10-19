@@ -24,11 +24,12 @@ afd_auth.workspace = true
 afd_core.workspace = true
 # The pool. A directory holds one and runs three statements against it.
 afd_db.workspace = true
-sqlx.workspace = true
+# `derive` for the typed credential rows.
+sqlx = { workspace = true, features = ["derive"] }
 tracing.workspace = true
 
 [dev-dependencies]
-# The admin-state vocabulary the sibling test pins these binds against. A
+# The runner-status vocabulary the sibling test pins these binds against. A
 # dev-dependency and not a dependency: this crate WRITES the words and the enum
 # READS them, and the test is what keeps the two from drifting apart.
 afd_api_wire.workspace = true

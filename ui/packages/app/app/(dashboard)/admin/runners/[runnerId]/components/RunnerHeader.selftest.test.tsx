@@ -59,11 +59,11 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: RUNNER_ID,
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "busy",
     labels: [],
-    last_seen_at: Date.now(),
-    created_at: Date.now(),
+    last_seen_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
@@ -88,7 +88,7 @@ describe("RunnerHeader self-test control", () => {
   it("test_selftest_control_requests_and_reflects_pending", async () => {
     requestRunnerSelftestActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { id: RUNNER_ID, admin_state: "active", selftest_requested_at: Date.now() },
+      data: { id: RUNNER_ID, status: "active", selftest_requested_at: Date.now() },
     });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
@@ -122,7 +122,7 @@ describe("RunnerHeader self-test control", () => {
       .mockResolvedValueOnce({ ok: false, errorCode: "UZ-RUN-018", error: "Runner is offline" })
       .mockResolvedValueOnce({
         ok: true,
-        data: { id: RUNNER_ID, admin_state: "active", selftest_requested_at: Date.now() },
+        data: { id: RUNNER_ID, status: "active", selftest_requested_at: Date.now() },
       });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: SELFTEST_LABEL }));
@@ -141,7 +141,7 @@ describe("RunnerHeader self-test control", () => {
   // Dimension 1.1 (pending face) — an unanswered ask has to read as outstanding
   // and refuse a second click, or an operator re-asks into a queue of one.
   it("test_selftest_control_requests_and_reflects_pending (pending face)", () => {
-    render(<RunnerHeader runner={detail({ selftest_requested_at: Date.now() })} grafanaHref={null} canWrite />);
+    render(<RunnerHeader runner={detail({ selftest_requested_at: new Date().toISOString() })} grafanaHref={null} canWrite />);
     const button = screen.getByRole("button", { name: SELFTEST_PENDING_LABEL });
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: SELFTEST_LABEL })).toBeNull();
@@ -152,7 +152,7 @@ describe("RunnerHeader self-test control", () => {
   it("offers no self-test on a revoked runner — it will never heartbeat again to answer", () => {
     render(
       <RunnerHeader
-        runner={detail({ admin_state: "revoked", liveness: "offline" })}
+        runner={detail({ status: "revoked", liveness: "offline" })}
         grafanaHref={null}
         canWrite
       />,

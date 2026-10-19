@@ -46,7 +46,6 @@ async fn test_thread_read_dedupes_leased_steer() {
     let mut connection = lane.connection().await;
     sqlx::query(MARK_DELIVERED)
         .bind(lane.fleet.as_str())
-        .bind(clock::now().as_millis())
         .execute(&mut *connection)
         .await
         .expect("the lease's delivery stamp lands");

@@ -39,7 +39,7 @@ describe("runCli({ env }) reaches the store when it diverges from the process en
       });
       await saveWorkspaces(injected, {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: null, created_at: 1 }],
+        items: [{ workspace_id: WS_ID, name: null, created_at: "1970-01-01T00:00:00.001Z" }],
       });
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -69,7 +69,7 @@ describe("runCli({ env }) reaches the store when it diverges from the process en
     try {
       const seeded = {
         current_workspace_id: null,
-        items: [{ workspace_id: WS_ID, name: null, created_at: 1 }],
+        items: [{ workspace_id: WS_ID, name: null, created_at: "1970-01-01T00:00:00.001Z" }],
       };
       await saveWorkspaces(injected, seeded);
       const before = await loadWorkspaces(process.env);

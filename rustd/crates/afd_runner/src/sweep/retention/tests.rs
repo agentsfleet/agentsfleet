@@ -13,11 +13,11 @@
 use std::sync::atomic::Ordering;
 
 use afd_core::env::MapEnv;
-use afd_core::timing::MAX_RUNTIME_MS;
+use afd_core::timing::MAX_RUNTIME;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 
-use super::{IDLE_INTERVAL, RETENTION_WINDOW_MS, Retention, SATURATED_INTERVAL};
+use super::{IDLE_INTERVAL, RETENTION_WINDOW, Retention, SATURATED_INTERVAL};
 use crate::sweep::Sweep as _;
 
 /// A sweeper over a pool nothing here ever asks anything of.
@@ -59,4 +59,21 @@ async fn a_drained_cycle_waits_an_hour_and_a_saturated_one_comes_straight_back()
 /// grows past the window. A runtime assertion over two constants is a check
 /// that can only pass, and clippy is right to refuse it — this comment is what
 /// the test was for.
-const _: () = assert!(MAX_RUNTIME_MS < RETENTION_WINDOW_MS);
+const _: () = assert!(MAX_RUNTIME.as_secs() < RETENTION_WINDOW.as_secs());
+
+/// A pass the datastore will not serve is reported as that, and leaves the
+/// pacing where the last finished pass put it: a failure says nothing about
+/// whether a backlog is waiting.
+#[tokio::test]
+async fn a_pass_the_datastore_refuses_is_reported_and_keeps_its_pacing() {
+    let retention = sweeper();
+    retention.saturated.store(true, Ordering::Relaxed);
+
+    let failed = retention
+        .sweep()
+        .await
+        .expect_err("an unreachable datastore finishes no pass");
+
+    assert!(failed.is_datastore_unavailable(), "{failed}");
+    assert_eq!(retention.interval(), SATURATED_INTERVAL);
+}

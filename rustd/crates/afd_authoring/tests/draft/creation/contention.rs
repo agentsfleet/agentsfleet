@@ -30,24 +30,18 @@ async fn one_hundred_concurrent_saves_converge_on_one_retained_fleet() {
         tasks.push(tokio::spawn(async move {
             entered.fetch_add(1, Ordering::SeqCst);
             barrier.wait().await;
+            // Every caller waits its turn on the key and resumes the same fleet.
             c.creations
-                .save(c.base.access(), &key, request, now())
+                .save(c.base.access(), &key, request.clone(), now())
                 .await
+                .expect("a concurrent caller resumes")
         }));
     }
     let mut identities = Vec::new();
-    let mut failures = Vec::new();
     for task in tasks {
-        match task.await.expect("request task") {
-            Ok(saved) => identities.push(saved.id),
-            Err(error) => failures.push(error),
-        }
+        identities.push(task.await.expect("request task").id);
     }
     assert_eq!(entered.load(Ordering::SeqCst), CALLERS);
-    assert!(
-        failures.is_empty(),
-        "identical callers must resume: {failures:?}"
-    );
     assert_eq!(identities.len(), CALLERS);
     assert!(identities.iter().all(|id| id == &identities[0]));
     assert_eq!(c.fleet_count().await, 1);

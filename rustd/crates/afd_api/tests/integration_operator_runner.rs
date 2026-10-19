@@ -13,14 +13,14 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::paging::DEFAULT_LIMIT;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, RunnerPolicy, RunnerSeed, TenantSeed, TestDatabase, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
 pub(crate) const SUBJECT: &str = "user_live_runner_operator";
-const NOW: i64 = 1_760_000_000_000;
+const NOW: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[]}}"#;
 
 #[tokio::test]
@@ -113,6 +113,25 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     let detail = send(router, Method::GET, runner_path, Some(&fixture.token), "").await;
     assert_eq!(detail.status(), StatusCode::OK);
     assert_eq!(text(&json_body(detail).await, "id"), fixture.runner);
+
+    // A runner that has held no lease answers an empty page of its history,
+    // not a refusal: the read is scoped by the path, so the page is this
+    // runner's alone.
+    let leases = send(
+        router,
+        Method::GET,
+        &format!("{runner_path}/leases"),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(leases.status(), StatusCode::OK);
+    let leases = json_body(leases).await;
+    assert_eq!(
+        leases.get("items").and_then(Value::as_array).map(Vec::len),
+        Some(0),
+        "{leases}"
+    );
 }
 
 async fn assert_runner_policy_and_actions(router: &axum::Router, token: &str, path: &str) {
@@ -133,7 +152,8 @@ async fn assert_runner_policy_and_actions(router: &axum::Router, token: &str, pa
         json_body(selftest)
             .await
             .get("selftest_requested_at")
-            .is_some_and(Value::is_number)
+            .and_then(Value::as_str)
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok())
     );
 
     let rotated = patch(router, token, path, r#"{"action":"rotate"}"#).await;
@@ -277,41 +297,41 @@ impl Fixture {
     pub(crate) async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Runner operator', $5, $5) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, $5, $5) \
-             ) \
-             INSERT INTO fleet.runners \
-               (id, host_id, token_hash, sandbox_tier, admin_state, labels, \
-                network_policy, registry_allowlist, last_seen_at, created_at, updated_at) \
-             VALUES ($6::uuid, $6, $6, 'dev_none', 'active', '[\"linux\"]', \
-                'deny_all_egress', '[]', $5, $5, $5)",
+        TenantSeed::new(&self.tenant)
+            .name("Runner operator")
+            .at(NOW)
+            .insert(&mut *connection)
+            .await
+            .expect("the operator's tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .at(NOW)
+            .insert(&mut *connection)
+            .await
+            .expect("the operator's key seeds");
+        RunnerSeed::new(
+            &self.runner,
+            afd_state::sql::RUNNER_STATUS_ACTIVE,
+            RunnerPolicy {
+                sandbox_tier: "dev_none",
+                network_policy: "deny_all_egress",
+            },
         )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(NOW)
-        .bind(&self.runner)
-        .execute(&mut *connection)
+        .labels(r#"["linux"]"#)
+        .seen(NOW)
+        .at(NOW)
+        .insert(&mut *connection)
         .await
         .expect("the operator and runner seed");
     }
 
     pub(crate) async fn cleanup(self, enrolled_runner: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM fleet.runners WHERE id = ANY($1::uuid[])")
+        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1::uuid[])")
             .bind(vec![self.runner.as_str(), enrolled_runner])
             .execute(&mut *connection)
             .await
             .expect("the scoped runners clean up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

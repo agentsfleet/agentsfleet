@@ -2,7 +2,7 @@
 //!
 //! The same shape as [`afd_runner::Runners`], for the same reason. A set of
 //! free functions taking `&Db` would read fine and give away the property this
-//! crate is built on: [`Leases::pool`] is `pub(crate)`, so nothing outside can
+//! crate is built on: `Leases::pool` is `pub(crate)`, so nothing outside can
 //! run a statement that is not in [`crate::lease::sql`], and that module stays
 //! the one place a reviewer reads every statement the plane runs.
 //!

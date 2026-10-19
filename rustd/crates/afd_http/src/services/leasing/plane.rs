@@ -3,8 +3,8 @@
 use super::{
     ActivityFrame, Captured, Interim, Leasing, MemoryHydrateResponse, MemoryPushRequest,
     MemoryRecallRequest, MemoryRecallResponse, MessageRequest, MintCredentialRequest, Minted,
-    Reconciled, RenewRequest, ReportRequest, Standing, ToolCallRecordsRequest,
-    ToolCallRecordsStored, UnixMillis, Uuid7,
+    Reconciled, RenewRequest, ReportRequest, Standing, Timestamp, ToolCallRecordsRequest,
+    ToolCallRecordsStored, Uuid7,
 };
 use afd_fleet::lease::Plane;
 
@@ -21,7 +21,7 @@ impl Leasing for Plane {
         held: &[Uuid7],
         accepted: afd_wire::lease::AcceptedKinds,
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
         Self::claim(self, drafts, runner_id, held, accepted, degraded, now)
     }
@@ -30,7 +30,7 @@ impl Leasing for Plane {
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
         Self::report(self, runner_id, request, now)
     }
@@ -53,9 +53,8 @@ impl Leasing for Plane {
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send {
-        Self::hydrate(self, runner_id, fleet_id, now)
+        Self::hydrate(self, runner_id, fleet_id)
     }
 
     fn recall(
@@ -63,16 +62,15 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryRecallRequest<'_>,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<MemoryRecallResponse<'static>>> + Send {
-        Self::recall(self, runner_id, fleet_id, request, now)
+        Self::recall(self, runner_id, fleet_id, request)
     }
 
     fn mint(
         &self,
         runner_id: &Uuid7,
         request: &MintCredentialRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Minted>> + Send {
         Self::mint(self, runner_id, request, now)
     }
@@ -82,7 +80,7 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryPushRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send {
         Self::capture(self, runner_id, fleet_id, request, now)
     }
@@ -92,7 +90,7 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         lease_id: &str,
         request: &ToolCallRecordsRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send {
         Self::record_tool_calls(self, runner_id, lease_id, request, now)
     }
@@ -102,9 +100,8 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         fencing_token: u64,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Standing>> + Send {
-        Self::standing(self, runner_id, lease_id, fencing_token, now)
+        Self::standing(self, runner_id, lease_id, fencing_token)
     }
 
     fn message(
@@ -112,9 +109,8 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         request: &MessageRequest<'_>,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send {
-        Self::message(self, runner_id, lease_id, request, now)
+        Self::message(self, runner_id, lease_id, request)
     }
 
     fn masked(
@@ -130,8 +126,8 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         lease_id: &str,
         request: RenewRequest,
-        now: UnixMillis,
-    ) -> afd_fleet::Result<UnixMillis> {
+        now: Timestamp,
+    ) -> afd_fleet::Result<Timestamp> {
         Self::renew(self, runner_id, lease_id, request, now)
             .await
             .map(|(expires_at, _charged)| expires_at)

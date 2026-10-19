@@ -16,20 +16,36 @@ fn query_and_row_failures_keep_causes_behind_safe_details() -> Result<(), &'stat
     let malformed_id = afd_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed identifier fixture unexpectedly parsed")?;
-    let malformed = row("core.models", "id")(malformed_id);
+    let malformed = row("model.platform_models", "id")(malformed_id);
     assert_error(&malformed, error_code::INTERNAL_DB_QUERY, "Database error");
 
     Ok(())
 }
 
 #[test]
-fn mint_failures_are_internal_and_retain_the_domain_cause() -> Result<(), &'static str> {
-    let malformed_id = afd_core::id::Uuid7::parse("still-not-an-id")
+fn an_unreachable_datastore_is_the_one_unavailable_failure() {
+    let unreachable = Error::from(afd_db::error::invalid_bool_knob("FIXTURE_KNOB"));
+    assert_eq!(unreachable.code(), error_code::INTERNAL_DB_UNAVAILABLE);
+    assert_eq!(
+        unreachable.detail(),
+        afd_core::error::DETAIL_DATABASE_UNAVAILABLE
+    );
+    assert!(unreachable.is_datastore_unavailable());
+    assert!(unreachable.source().is_some());
+}
+
+#[cfg(feature = "test-util")]
+#[test]
+fn an_identifier_that_cannot_be_minted_is_internal_and_keeps_its_cause() -> Result<(), &'static str>
+{
+    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let refused = entropy
+        .uuid7(jiff::Timestamp::UNIX_EPOCH)
         .err()
-        .ok_or("the malformed identifier fixture unexpectedly parsed")?;
-    let mint = Error::from(malformed_id);
+        .ok_or("a failed draw must refuse the mint")?;
     assert_error(
-        &mint,
+        &Error::from(refused),
         error_code::INTERNAL_OPERATION_FAILED,
         "Internal operation failed",
     );

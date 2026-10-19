@@ -15,6 +15,7 @@
 //!
 use std::time::Duration;
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::client::Dragonfly;
@@ -145,6 +146,8 @@ impl SessionStatus {
 /// script reads them by name off a key it does not otherwise parse. The
 /// hex-encoded fields are hex because Lua has neither bit operations nor crypto
 /// across the Dragonfly versions this has to run on, so it compares them as text.
+/// Instants keep their `*_at_ms` keys and are stored as epoch milliseconds,
+/// which the scripts compare as numbers; `stamp` converts them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionState {
     /// The session's own identifier.
@@ -172,16 +175,20 @@ pub struct SessionState {
     /// How many wrong codes have been presented.
     #[serde(default)]
     pub verification_attempts: u8,
-    /// When it was created, in milliseconds since the epoch.
-    pub created_at_ms: i64,
-    /// When it expires, in milliseconds since the epoch.
-    pub expires_at_ms: i64,
+    /// When it was created.
+    #[serde(rename = "created_at_ms", with = "stamp::required")]
+    pub created_at: Timestamp,
+    /// When it expires.
+    #[serde(rename = "expires_at_ms", with = "stamp::required")]
+    pub expires_at: Timestamp,
     /// When it was approved, if it was.
+    #[serde(rename = "approved_at_ms", with = "stamp::optional")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approved_at_ms: Option<i64>,
+    pub approved_at: Option<Timestamp>,
     /// When it was consumed, if it was.
+    #[serde(rename = "consumed_at_ms", with = "stamp::optional")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub consumed_at_ms: Option<i64>,
+    pub consumed_at: Option<Timestamp>,
     /// Why it aborted, if it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aborted_reason: Option<String>,
@@ -193,8 +200,9 @@ pub struct SessionState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consumed_client_fingerprint_hex: Option<String>,
     /// When the consumed payload stops being replayable.
+    #[serde(rename = "consume_payload_expires_at_ms", with = "stamp::optional")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub consume_payload_expires_at_ms: Option<i64>,
+    pub consume_payload_expires_at: Option<Timestamp>,
 }
 
 /// What a verify-and-consume attempt did.
@@ -248,6 +256,7 @@ pub struct SessionStore {
 }
 
 mod operations;
+mod stamp;
 #[cfg(feature = "test-util")]
 pub use self::operations::outcome_from_reply;
 

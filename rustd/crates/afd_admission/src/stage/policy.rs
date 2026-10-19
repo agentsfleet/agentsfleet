@@ -3,22 +3,18 @@
 use crate::{
     Admission, Result,
     error::{ErrorKind, query},
+    sql,
 };
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "check installed admission policy";
-const REPEATED: &str = "SELECT EXISTS(SELECT 1 FROM core.fleet_admissions
-WHERE fleet_id=$1::uuid AND workspace_id=$2::uuid AND producer=$3 AND producer_key=$4)";
-const POLICY:&str="SELECT r.policy_semantics FROM core.fleets f
-LEFT JOIN core.fleet_definition_revisions r ON r.id=f.current_definition_revision_id AND r.fleet_id=f.id
-WHERE f.id=$1::uuid AND f.workspace_id=$2::uuid FOR SHARE OF f";
 
 pub(super) async fn check(
     connection: &mut PgConnection,
     admission: &Admission<'_>,
     key: &str,
 ) -> Result<()> {
-    let repeated: bool = sqlx::query_scalar(REPEATED)
+    let repeated: bool = sqlx::query_scalar(sql::SELECT_REPEATED_ON_FLEET)
         .bind(admission.fleet)
         .bind(admission.workspace)
         .bind(admission.producer.as_str())
@@ -29,7 +25,7 @@ pub(super) async fn check(
     if repeated {
         return Ok(());
     }
-    let policy: Option<Option<String>> = sqlx::query_scalar(POLICY)
+    let policy: Option<Option<String>> = sqlx::query_scalar(sql::SELECT_INSTALLED_POLICY)
         .bind(admission.fleet)
         .bind(admission.workspace)
         .fetch_optional(connection)

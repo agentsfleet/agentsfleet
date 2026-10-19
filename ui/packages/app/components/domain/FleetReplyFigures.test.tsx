@@ -35,7 +35,7 @@ const figures = () => screen.queryByTestId(REPLY_FIGURES_TEST_ID)?.textContent ?
 
 describe("FleetThread — reply figures", () => {
   it("test_settled_reply_shows_figures", () => {
-    renderTurn({ tokens: TOKENS, wallMs: WALL_MS, costNanos: COST_NANOS });
+    renderTurn({ tokens: TOKENS, wallMs: WALL_MS, costNanos: String(COST_NANOS) });
     // Pin test: the literal is the line Codex ends a turn with, plus the spend.
     expect(figures()).toBe(`${WORKED_FOR} 41s · 12.4K tokens · $0.03`);
   });
@@ -54,7 +54,7 @@ describe("FleetThread — reply figures", () => {
   });
 
   it("should draw no figures line while the final reply is still being read", () => {
-    renderTurn({ reply: "", replyRecovering: true, tokens: TOKENS, wallMs: WALL_MS, costNanos: COST_NANOS });
+    renderTurn({ reply: "", replyRecovering: true, tokens: TOKENS, wallMs: WALL_MS, costNanos: String(COST_NANOS) });
     expect(screen.getByText(/Loading final reply/)).toBeTruthy();
     expect(figures()).toBeNull();
   });

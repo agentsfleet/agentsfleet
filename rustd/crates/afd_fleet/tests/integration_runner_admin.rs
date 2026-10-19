@@ -11,7 +11,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_api_wire::admin::{AdminState, RunnerAdminAction};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_runner::RunnerEdit;
 use afd_wire::runner::{
@@ -21,6 +20,7 @@ use tokio::sync::Barrier;
 
 use self::requests::enrolment;
 use self::support::Fixtures;
+use crate::rows::Row;
 
 const ACTOR: &str = "fixture:platform-operator";
 
@@ -30,7 +30,7 @@ async fn enrol(fixtures: &Fixtures) -> Uuid7 {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols")
@@ -51,7 +51,12 @@ async fn transition(
             runner,
             action,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
+            afd_core::clock::after(
+                fixtures.enrolled_at(),
+                std::time::Duration::from_millis(
+                    u64::try_from(offset).expect("a fixture span is not negative"),
+                ),
+            ),
         )
         .await
 }
@@ -78,7 +83,7 @@ async fn test_runner_admin_transitions() {
         .expect_err("revocation is terminal");
     assert!(refused.is_rejected());
     assert_eq!(
-        fixtures.runner_column(&runner, "admin_state").await,
+        fixtures.text(Row::Runner(&runner), "status").await,
         Some("revoked".to_owned())
     );
     assert_eq!(
@@ -104,7 +109,8 @@ async fn concurrent_identical_transitions_append_one_event() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
     let gate = Arc::new(Barrier::new(3));
-    let cordoned_at = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
+    let cordoned_at =
+        afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
     let mut tasks = Vec::new();
     for actor in ["fixture:operator-a", "fixture:operator-b"] {
         let runners = fixtures.runners().clone();
@@ -166,7 +172,7 @@ async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
     );
     assert_eq!(
         fixtures
-            .runner_column(runner, "worker_count")
+            .text(Row::Runner(runner), "worker_count")
             .await
             .as_deref(),
         Some("64")
@@ -210,7 +216,12 @@ async fn assign(
         .edit(
             runner,
             edit,
-            UnixMillis::from_millis(fixtures.enrolled_at() + offset),
+            afd_core::clock::after(
+                fixtures.enrolled_at(),
+                std::time::Duration::from_millis(
+                    u64::try_from(offset).expect("a fixture span is not negative"),
+                ),
+            ),
         )
         .await
         .map(|stored| stored.assigned_policy.map(|policy| policy.worker_count))
@@ -219,12 +230,15 @@ async fn assign(
 /// Asserts the runner row's degraded flag and the reason it records.
 async fn assert_degraded(fixtures: &Fixtures, runner: &str, degraded: &str, reason: Option<&str>) {
     assert_eq!(
-        fixtures.runner_column(runner, "degraded").await.as_deref(),
+        fixtures
+            .text(Row::Runner(runner), "(degraded_reason IS NOT NULL)")
+            .await
+            .as_deref(),
         Some(degraded)
     );
     assert_eq!(
         fixtures
-            .runner_column(runner, "degraded_reason")
+            .text(Row::Runner(runner), "degraded_reason")
             .await
             .as_deref(),
         reason
@@ -252,7 +266,7 @@ async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE fleet.runners SET capability_report = $2::jsonb WHERE id = $1::uuid")
+    sqlx::query("UPDATE runner.runners SET capability_report = $2::jsonb WHERE id = $1::uuid")
         .bind(runner)
         .bind(capability)
         .execute(&mut *connection)

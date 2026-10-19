@@ -1,7 +1,8 @@
 //! One poll selects between independently authorized placement domains.
 
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_wire::lease::{AcceptedKinds, LeaseKind, LeaseResponse, TaggedLease};
+use jiff::Timestamp;
 
 use super::{Plane, answer::no_work, pull::Polled};
 use crate::{
@@ -24,7 +25,7 @@ impl Plane {
         held: &[Uuid7],
         accepted: AcceptedKinds,
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<String> {
         if degraded {
             return no_work(runner, "the runner's verdict is degraded or unreadable");

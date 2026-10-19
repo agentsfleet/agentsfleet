@@ -1,7 +1,7 @@
 //! Live daemon coverage for an operator label edit reaching placement.
 //!
 //! The runner binary never reads its own labels: the daemon's lease poll reads
-//! `fleet.runners.labels` afresh on every request and offers a fleet only when
+//! `runner.runners.labels` afresh on every request and offers a fleet only when
 //! its `required_tags` are a subset of them. So an edit takes effect on the
 //! runner's next polls, with no restart, no re-enrolment and nothing for the
 //! host to pick up, and this is the test that holds the daemon to that.
@@ -19,7 +19,7 @@ const ENROLLED_LABEL: &str = "fixture";
 /// Pins the scenario's fleet to `tag`, the tag no runner in the lane carries.
 async fn require_tag(run: &Scenario, tag: &str) {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE core.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1::uuid")
         .bind(&run.fleet)
         .bind(tag)
         .execute(&mut *connection)

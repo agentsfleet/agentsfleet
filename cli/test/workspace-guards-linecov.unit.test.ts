@@ -54,7 +54,7 @@ describe("requireWorkspaceId", () => {
   test("ConfigError message surfaces the detail and suggestion", async () => {
     const program = provideWorkspaces({
       current_workspace_id: null,
-      items: [{ workspace_id: WS_ID, name: "main", created_at: 1 }],
+      items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const exit = await Effect.runPromiseExit(program);
     const failure = await runFailure(exit);
@@ -78,7 +78,7 @@ describe("requireWorkspaceId", () => {
   test("returns the current workspace id when one is selected", async () => {
     const program = provideWorkspaces({
       current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "main", created_at: 1 }],
+      items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const result = await Effect.runPromise(program);
     expect(result).toBe(WS_ID);

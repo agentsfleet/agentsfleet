@@ -1,6 +1,6 @@
 //! Everything a memory URL can be, and what each of them earns.
 //!
-//! The whole refusal surface in front of `memory.memory_entries` is decided by
+//! The whole refusal surface in front of `memory.entries` is decided by
 //! [`super::Read::parse`] and [`super::memory_key`], both of them total and
 //! datastore-free — so it is proven here rather than by driving HTTP, and the
 //! HTTP suite is left proving the guard, the rungs and the ownership layer.
@@ -120,11 +120,14 @@ fn should_refuse_a_limit_that_is_not_a_positive_integer() {
 #[test]
 fn should_resume_only_from_a_cursor_this_daemon_issued() {
     let read = Read::parse(&format!(
-        "starting_after=1700000000000:{WRITER}:goal:current"
+        "starting_after=2023-11-14T22:13:20Z:{WRITER}:goal:current"
     ))
     .expect("a timestamp cursor is this walk's own");
     let after = read.after.expect("the boundary was parsed");
-    assert_eq!(after.created_at_ms, 1_700_000_000_000);
+    assert_eq!(
+        after.created_at,
+        jiff::Timestamp::constant(1_700_000_000, 0)
+    );
     assert_eq!(after.fleet.as_str(), WRITER);
     // The key keeps its colons: the writer ends at the FIRST one, so a memory
     // key containing the separator round-trips.
@@ -138,7 +141,7 @@ fn should_resume_only_from_a_cursor_this_daemon_issued() {
 fn should_read_back_the_writer_and_key_a_cursor_was_issued_for() {
     let writer = Uuid7::parse(WRITER).unwrap();
     let issued = Cursor::Timestamp {
-        at_ms: 1_700_000_000_000,
+        at: jiff::Timestamp::constant(1_700_000_000, 0),
         id: row_id(&writer, "deploy:target"),
     };
     let read = Read::parse(&format!("starting_after={issued}")).unwrap();
@@ -150,15 +153,14 @@ fn should_read_back_the_writer_and_key_a_cursor_was_issued_for() {
 /// A foreign or malformed continuation is refused, never read as page one.
 #[test]
 fn should_refuse_a_continuation_this_walk_did_not_issue() {
-    let no_key = format!("1700000000000:{WRITER}:");
+    let no_key = format!("2023-11-14T22:13:20Z:{WRITER}:");
     for token in [
         "not-a-cursor",
         "abc:key",
-        "1700000000000:",
-        // The row half names no writer: the form this walk issued before the
-        // writer joined its keyset, which no longer names one row.
-        "1700000000000:goal:current",
-        "1700000000000:goal",
+        "2023-11-14T22:13:20Z:",
+        // The row half names no writer, so it names no one row.
+        "2023-11-14T22:13:20Z:goal:current",
+        "2023-11-14T22:13:20Z:goal",
         no_key.as_str(),
         // A text-boundary cursor names a sort this walk does not have.
         "s:cHJvZA:019abc",

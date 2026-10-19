@@ -2,19 +2,18 @@
 
 use crate::{
     Result,
-    draft::value,
+    draft::{read::optional, word},
     error::raise::query,
+    lease::meter::Metered,
+    model::dispatch_status,
+    sql,
     types::{Failure, MessageState},
 };
 use afd_core::id::Uuid7;
 use afd_wire::authoring::{FailureReason, Usage};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::PgConnection;
 
-const MESSAGES: &str = "\
-SELECT json_build_object('sequence',sequence,'state',state,'candidate_id',candidate_id,
-'usage',usage,'failure_reason',failure_reason)::text FROM core.authoring_messages
-WHERE draft_id=$1::uuid ORDER BY sequence DESC LIMIT $2";
 const LIMIT: i64 = 25;
 
 /// One safe change hint. Its event name is carried by the stream framing.
@@ -72,27 +71,32 @@ impl Notice {
     }
 }
 
-#[derive(Deserialize)]
+/// [`sql::message::NOTICES`]'s row, by column name.
+#[derive(sqlx::FromRow)]
 struct Stored {
     sequence: i64,
-    state: MessageState,
-    candidate_id: Option<Uuid7>,
-    usage: Option<Usage>,
-    failure_reason: Option<FailureReason>,
+    status: String,
+    candidate_id: Option<String>,
+    failure_reason: Option<String>,
+    #[sqlx(flatten)]
+    metered: Metered,
 }
 
 pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Result<Vec<Notice>> {
-    let rows: Vec<String> = sqlx::query_scalar(MESSAGES)
+    let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
         .bind(draft.as_str())
         .bind(LIMIT)
+        .bind(dispatch_status::KNOWN)
+        .bind(dispatch_status::PENDING)
+        .bind(dispatch_status::UNKNOWN)
         .fetch_all(connection)
         .await
         .map_err(query(super::CONTEXT))?;
     rows.into_iter()
         .rev()
-        .map(|raw| {
-            let stored: Stored = value(&raw)?;
-            let event = match stored.state {
+        .map(|stored| {
+            let state: MessageState = word(&stored.status)?;
+            let event = match state {
                 MessageState::Queued => "message.accepted",
                 MessageState::Running => "message.running",
                 MessageState::Completed => "message.completed",
@@ -104,11 +108,16 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
                 event,
                 draft_id: draft.clone(),
                 sequence: Some(stored.sequence.to_string()),
-                candidate_id: stored.candidate_id,
+                candidate_id: optional(stored.candidate_id.as_deref())?,
                 revision: None,
-                state: Some(stored.state),
-                usage: stored.usage,
-                failure: stored.failure_reason.map(Into::into),
+                state: Some(state),
+                usage: stored.metered.usage()?,
+                failure: stored
+                    .failure_reason
+                    .as_deref()
+                    .map(word::<FailureReason>)
+                    .transpose()?
+                    .map(Into::into),
             })
         })
         .collect()

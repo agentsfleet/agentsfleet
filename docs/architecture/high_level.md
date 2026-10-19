@@ -211,7 +211,7 @@ Structural changes from MVP to bastion:
 2. **Status-page rendering surface** — a hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
 3. **Broadcast channels** — the fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
 4. **Approval gating per audience** — the setup's `gates` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
-5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.fleet_events` retention becomes per-actor configurable.
+5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `fleet.events` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is an instructions authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
 

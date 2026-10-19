@@ -83,7 +83,7 @@ pub(crate) async fn delete<D: Services>(
 ) -> Result<Response, Refusal> {
     services
         .authoring()
-        .delete(access(&owned, &person), &id(&path)?, services.now())
+        .delete(access(&owned, &person), &id(&path)?)
         .await
         .map_err(authoring_refusal)?;
     Ok(StatusCode::NO_CONTENT.into_response())

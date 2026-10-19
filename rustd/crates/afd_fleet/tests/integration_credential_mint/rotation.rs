@@ -66,7 +66,7 @@ impl Exchanger for Rotating {
             if matches!(self.during, During::Tamper) {
                 let mut connection = self.database.acquire().await.expect("a pooled connection");
                 sqlx::query(
-                    "UPDATE vault.secrets SET tag = decode(repeat('00', 16), 'hex')
+                    "UPDATE vault.secrets SET secret_tag = decode(repeat('00', 16), 'hex')
                      WHERE workspace_id = $1::uuid AND key_name = $2",
                 )
                 .bind(&self.workspace)
@@ -77,7 +77,7 @@ impl Exchanger for Rotating {
             }
             Outcome::Ok(Minted {
                 token: Zeroizing::new(ACCESS.to_owned()),
-                expires_at_ms: NOW_MS + LEASE_WINDOW_MS,
+                expires_at: afd_core::clock::after(afd_core::clock::now(), LEASE_WINDOW),
                 rotated_refresh_token: Some(Zeroizing::new(REPLACEMENT.to_owned())),
             })
         })
@@ -104,7 +104,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
         .mint(
             &owner.runner,
             &requests::mint(&owner.lease, CONNECTOR_ZOHO),
-            UnixMillis::from_millis(NOW_MS),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("a rotating exchange mints whatever the write-back does");

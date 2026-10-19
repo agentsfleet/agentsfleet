@@ -21,6 +21,7 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { BrainIcon } from "lucide-react";
+import { byInstant } from "@/lib/api/decode";
 import type { MemoryAccess, MemoryEntry } from "@/lib/types";
 import { forgetMemoryAction, setMemoryAccessAction } from "../../actions";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -68,7 +69,7 @@ type Props = {
 };
 
 export default function MemoryPanel({ workspaceId, fleetId, entries: initial, access = null, canGrant = false }: Props) {
-  const hiddenVersions = useRef(new Map<string, number>());
+  const hiddenVersions = useRef(new Map<string, string>());
   const [entries, setEntries] = useState<MemoryEntry[]>(initial ?? []);
   const [pendingEntry, setPendingEntry] = useState<MemoryEntry | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -77,7 +78,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
     if (initial === null) return;
     for (const [key, hiddenAt] of hiddenVersions.current) {
       const current = initial.find((entry) => entry.key === key && writtenBy(entry, fleetId));
-      if (!current || current.updated_at > hiddenAt) hiddenVersions.current.delete(key);
+      if (!current || byInstant(current.updated_at, hiddenAt) > 0) hiddenVersions.current.delete(key);
     }
     setEntries(initial.filter((entry) => !(writtenBy(entry, fleetId) && hiddenVersions.current.has(entry.key))));
   }, [initial, fleetId]);

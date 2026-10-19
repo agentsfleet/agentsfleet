@@ -24,8 +24,7 @@ use crate::requests;
 use crate::support;
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
-use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_core::timing::RUNNER_OFFLINE_AFTER;
 use afd_crypto::entropy::Entropy;
 use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
 use afd_runner::{NO_REPORT, Runners, Verdict};
@@ -33,8 +32,24 @@ use afd_wire::runner::{
     CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
 
-use self::requests::{ONE_BEAT_MS, capable, enrolment};
+use self::requests::{ONE_BEAT, capable, enrolment};
 use self::support::Fixtures;
+use crate::rows::Row;
+
+/// Asserts `runner`'s last beat landed on the database clock since this
+/// fixture opened: the row's liveness moved, and moved to `now()`.
+pub(super) async fn assert_seen_now(fixtures: &Fixtures, runner: &str) {
+    let seen = fixtures
+        .instant(Row::Runner(runner), "last_seen_at")
+        .await
+        .expect("an enrolled runner has a liveness column");
+    let now = fixtures.database_now().await;
+    assert!(
+        (fixtures.enrolled_at()..=now).contains(&seen),
+        "the beat stamped liveness with the database clock: {seen} outside {}..={now}",
+        fixtures.enrolled_at()
+    );
+}
 
 /// The first beat bumps liveness, stores the report, clears the verdict, and
 /// emits exactly one transition event.
@@ -45,7 +60,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -58,12 +73,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     };
     let first = fixtures
         .runners()
-        .heartbeat(
-            &enrolled.runner_id,
-            &beat,
-            None,
-            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
-        )
+        .heartbeat(&enrolled.runner_id, &beat, None, fixtures.after(ONE_BEAT))
         .await
         .expect("a beat against a reachable datastore");
 
@@ -74,16 +84,13 @@ async fn test_the_first_beat_reports_and_comes_online() {
     );
     assert!(!first.selftest_requested);
     assert_eq!(
-        fixtures.runner_column(&runner, "degraded").await,
-        Some("false".to_owned())
+        fixtures.text(Row::Runner(&runner), "degraded_reason").await,
+        None
     );
-    assert_eq!(
-        fixtures.runner_column(&runner, "last_seen_at").await,
-        Some((fixtures.enrolled_at() + ONE_BEAT_MS).to_string())
-    );
+    assert_seen_now(&fixtures, &runner).await;
     assert!(
         fixtures
-            .runner_column(&runner, "capability_report")
+            .text(Row::Runner(&runner), "capability_report")
             .await
             .is_some_and(|report| report.contains("landlock")),
         "the report the verdict was reconciled against is what gets stored"
@@ -109,20 +116,20 @@ async fn test_a_steady_beat_writes_no_second_event() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
 
     // The first beat transitions; the second is a heartbeat inside the window.
-    for beat in 1..=2_i64 {
+    for beat in 1..=2_u32 {
         fixtures
             .runners()
             .heartbeat(
                 &enrolled.runner_id,
                 &NO_REPORT,
                 None,
-                UnixMillis::from_millis(fixtures.enrolled_at() + beat * ONE_BEAT_MS),
+                fixtures.after(ONE_BEAT * beat),
             )
             .await
             .expect("a beat must not fail");
@@ -135,14 +142,17 @@ async fn test_a_steady_beat_writes_no_second_event() {
     );
 
     // A beat after the lapse threshold IS a transition, and gets its event.
-    let lapsed = fixtures.enrolled_at() + 2 * ONE_BEAT_MS + RUNNER_OFFLINE_AFTER_MS + 1;
+    let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
+    fixtures
+        .age(Row::Runner(&runner), "last_seen_at", silence)
+        .await;
     fixtures
         .runners()
         .heartbeat(
             &enrolled.runner_id,
             &NO_REPORT,
             None,
-            UnixMillis::from_millis(lapsed),
+            fixtures.after(ONE_BEAT * 3),
         )
         .await
         .expect("a beat after a lapse must not fail");
@@ -169,7 +179,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -189,12 +199,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
 
     let answered = fixtures
         .runners()
-        .heartbeat(
-            &enrolled.runner_id,
-            &beat,
-            None,
-            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
-        )
+        .heartbeat(&enrolled.runner_id, &beat, None, fixtures.after(ONE_BEAT))
         .await
         .expect("a malformed report must not fail the beat");
 
@@ -206,15 +211,13 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         "the report was dropped, so the row still has no proven capability"
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "capability_report").await,
+        fixtures
+            .text(Row::Runner(&runner), "capability_report")
+            .await,
         None,
         "nothing out of bounds reaches the column"
     );
-    assert_eq!(
-        fixtures.runner_column(&runner, "last_seen_at").await,
-        Some((fixtures.enrolled_at() + ONE_BEAT_MS).to_string()),
-        "liveness landed anyway — that is the whole point of the leniency"
-    );
+    assert_seen_now(&fixtures, &runner).await;
 
     fixtures.cleanup().await;
 }
@@ -232,7 +235,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
@@ -254,15 +257,10 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
     };
-    let beat_at = fixtures.enrolled_at() + ONE_BEAT_MS;
+    let beat_at = fixtures.after(ONE_BEAT);
 
     let answered = runners
-        .heartbeat(
-            &enrolled.runner_id,
-            &inconsistent,
-            None,
-            UnixMillis::from_millis(beat_at),
-        )
+        .heartbeat(&enrolled.runner_id, &inconsistent, None, beat_at)
         .await
         .expect("optional write failures must not fail liveness");
 
@@ -271,15 +269,12 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         "a refused unsolicited verdict does not fabricate an operator request"
     );
     assert_eq!(
-        fixtures.runner_column(&runner, "selftest_checks").await,
+        fixtures.text(Row::Runner(&runner), "selftest_checks").await,
         None,
         "a contradictory verdict is not persisted"
     );
-    assert_eq!(
-        fixtures.runner_column(&runner, "last_seen_at").await,
-        Some(beat_at.to_string()),
-        "entropy failure falls back to the liveness-only statement"
-    );
+    // Entropy failure falls back to the liveness-only statement.
+    assert_seen_now(&fixtures, &runner).await;
     assert_eq!(
         fixtures.events(&runner).await,
         vec!["runner_registered".to_owned()],

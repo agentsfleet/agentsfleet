@@ -15,9 +15,9 @@
 //! "the list performs zero decrypts" survives a future edit to the store — a
 //! decrypt added to the list path would not compile, rather than passing review.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_vault::{Deleted, Result as VaultResult, SecretBody, SecretName, SecretSummary};
+use jiff::Timestamp;
 
 /// Everything the workspace secret routes act through.
 ///
@@ -36,7 +36,7 @@ pub trait WorkspaceSecrets: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = VaultResult<()>> + Send;
 
     /// Every secret this workspace holds, as its non-secret descriptors.
@@ -61,7 +61,6 @@ pub trait WorkspaceSecrets: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
     ) -> impl Future<Output = VaultResult<()>> + Send;
 
     /// Removes one secret, under the model-registry reference lock.
@@ -84,7 +83,7 @@ impl WorkspaceSecrets for afd_vault::Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = VaultResult<()>> + Send {
         Self::create(self, workspace, name, body, now)
     }
@@ -105,9 +104,8 @@ impl WorkspaceSecrets for afd_vault::Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-        now: UnixMillis,
     ) -> impl Future<Output = VaultResult<()>> + Send {
-        Self::replace(self, workspace, name, body, now)
+        Self::replace(self, workspace, name, body)
     }
 
     fn remove(

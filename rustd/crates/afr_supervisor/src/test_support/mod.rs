@@ -41,9 +41,9 @@ pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, N
 pub(crate) use afr_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
-/// When every fake lease is granted until, in Unix milliseconds: thirty
-/// seconds after the fixed clock's zero.
-pub(crate) const GRANTED_UNTIL: i64 = 30_000;
+/// When every fake lease is granted until: thirty seconds after the fixed
+/// clock's zero.
+pub(crate) const GRANTED_UNTIL: jiff::Timestamp = jiff::Timestamp::constant(30, 0);
 
 /// The cadence and retry delay the fake daemon answers with, in milliseconds.
 pub(crate) const INTERVAL_MS: u32 = 1000;
@@ -59,9 +59,7 @@ pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 /// The wall clock every lease test reads: fixed at zero, so a lease's deadline
 /// is measured in the paused tokio time the tests advance.
 pub(crate) fn clock() -> std::sync::Arc<dyn afd_core::clock::Clock> {
-    std::sync::Arc::new(afd_core::clock::FixedClock::at(
-        afd_core::clock::UnixMillis::from_millis(0),
-    ))
+    std::sync::Arc::new(afd_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
 }
 
 /// What the fake daemon does with one call.
@@ -198,7 +196,9 @@ async fn exercise(executor: &dyn Executor) {
 pub(crate) const SPENT: Usage = Usage {
     input: 3,
     cached_input: 1,
-    cache_written: 0,
+    cache_write: 0,
+    cache_write_5m: 0,
+    cache_write_1h: 0,
     output: 4,
 };
 
@@ -210,8 +210,6 @@ pub(crate) fn answer() -> RunOutput {
             content: "done".into(),
             token_count: 8,
             wall_seconds: 1,
-            memory_peak_bytes: 0,
-            cpu_throttled_ms: 0,
             input_tokens: 3,
             cached_input_tokens: 1,
             output_tokens: 4,

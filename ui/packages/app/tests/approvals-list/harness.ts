@@ -59,7 +59,7 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     action_id: over.action_id ?? "act_001",
     tool_name: over.tool_name ?? "write_repo",
     action_name: over.action_name ?? "create_pr",
-    gate_kind: over.gate_kind ?? "destructive_action",
+    gate_type: over.gate_type ?? "destructive_action",
     proposed_action: over.proposed_action ?? "Open PR titled X",
     evidence: over.evidence ?? {},
     blast_radius: over.blast_radius ?? "single repo branch",
@@ -67,9 +67,9 @@ export function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     // express one: a hardcoded `pending` made every row look unanswered.
     status: over.status ?? "pending",
     detail: over.detail ?? "",
-    created_at: over.created_at ?? Date.now() - 60_000,
-    timeout_at: over.timeout_at ?? Date.now() + 3_600_000,
-    updated_at: over.updated_at ?? null,
+    created_at: over.created_at ?? new Date(Date.now() - 60_000).toISOString(),
+    expires_at: over.expires_at ?? new Date(Date.now() + 3_600_000).toISOString(),
+    resolved_at: over.resolved_at ?? null,
     resolved_by: over.resolved_by ?? "",
     resolved_by_name: over.resolved_by_name ?? "",
   };

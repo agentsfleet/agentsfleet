@@ -145,13 +145,13 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     hasScopeMock.mockResolvedValueOnce(true);
     updateRunnerMock.mockResolvedValueOnce({
       id: "runner-1",
-      admin_state: "active",
+      status: "active",
       assigned_policy: POLICY_TO_ASSIGN,
     });
     const r = await updateRunnerAction("runner-1", {assigned_policy: POLICY_TO_ASSIGN, labels: ["gpu"]});
     expect(r).toEqual({
       ok: true,
-      data: { id: "runner-1", admin_state: "active", assigned_policy: POLICY_TO_ASSIGN },
+      data: { id: "runner-1", status: "active", assigned_policy: POLICY_TO_ASSIGN },
     });
     expect(updateRunnerMock).toHaveBeenCalledWith("tok", "runner-1", {assigned_policy: POLICY_TO_ASSIGN, labels: ["gpu"]});
   });
@@ -225,9 +225,9 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
 
   it("updateRunnerAdminStateAction forwards the runner state change through withToken when scoped", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    updateRunnerAdminStateMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "cordoned" });
+    updateRunnerAdminStateMock.mockResolvedValueOnce({ id: "runner-1", status: "cordoned" });
     const r = await updateRunnerAdminStateAction("runner-1", "cordon");
-    expect(r).toEqual({ ok: true, data: { id: "runner-1", admin_state: "cordoned" } });
+    expect(r).toEqual({ ok: true, data: { id: "runner-1", status: "cordoned" } });
     expect(updateRunnerAdminStateMock).toHaveBeenCalledWith("tok", "runner-1", "cordon");
   });
 
@@ -256,7 +256,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
 
   it("requestRunnerSelftestAction returns the recorded request, never a verdict, when the scope holds", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    const recorded = { id: "runner-1", admin_state: "active", selftest_requested_at: 1_760_000_000_000 };
+    const recorded = { id: "runner-1", status: "active", selftest_requested_at: "2025-10-09T08:53:20Z" };
     requestRunnerSelftestMock.mockResolvedValueOnce(recorded);
     const r = await requestRunnerSelftestAction("runner-1");
     expect(r).toEqual({ ok: true, data: recorded });

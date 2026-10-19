@@ -12,7 +12,7 @@ use tracing::Metadata;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::{Layer as _, Registry};
 
-use crate::budget::{LeaseSampler, Limits, Monotonic};
+use crate::budget::{LeaseSampler, Limits, Monotonic, Seconds};
 use crate::endpoint::Endpoint;
 use crate::error::Result;
 use crate::families::{self, Families};
@@ -69,7 +69,15 @@ impl Telemetry {
     /// A census the instrument layer refuses, or a transport that will not
     /// build from the accepted endpoint.
     pub fn install(endpoint: &Endpoint) -> Result<Self> {
-        let sampler = LeaseSampler::new(Limits::default(), Monotonic::start(), || {
+        Self::install_on(endpoint, Monotonic::start())
+    }
+
+    /// [`Self::install`], charging the span budget against `clock`'s seconds.
+    ///
+    /// The seam a suite moves time through: the budget's per-second window is
+    /// the behaviour under test, and a real clock makes that test wait it out.
+    pub(crate) fn install_on(endpoint: &Endpoint, clock: impl Seconds + 'static) -> Result<Self> {
+        let sampler = LeaseSampler::new(Limits::default(), clock, || {
             record::spans_suppressed(1);
         });
         let config = endpoint.config();
@@ -155,15 +163,28 @@ impl Telemetry {
     /// stops waiting and says so: a collector that never answers must not
     /// hold a runner's exit, and what was still queued is lost either way.
     pub fn close_within(self, budget: Duration) {
+        self.close_on(budget, |work| {
+            std::thread::Builder::new()
+                .name(CLOSING_THREAD.into())
+                .spawn(work)
+                .map(drop)
+        });
+    }
+
+    /// [`Telemetry::close_within`], starting the bounded shutdown through
+    /// `spawn`, so the path a thread that will not start takes is driven too.
+    fn close_on(
+        self,
+        budget: Duration,
+        spawn: impl FnOnce(Box<dyn FnOnce() + Send>) -> std::io::Result<()>,
+    ) {
         let (done, finished) = mpsc::channel();
         let exports = Arc::new(self.exports);
         let closing = Arc::clone(&exports);
-        let spawned = std::thread::Builder::new()
-            .name(CLOSING_THREAD.into())
-            .spawn(move || {
-                closing.shutdown();
-                let _waiting = done.send(());
-            });
+        let spawned = spawn(Box::new(move || {
+            closing.shutdown();
+            let _waiting = done.send(());
+        }));
         if spawned.is_err() {
             // No thread to bound it on: shut down here, unbounded, rather
             // than leave the span layer's provider clone holding what is

@@ -75,12 +75,12 @@ impl Db {
     /// be claimed from here.
     async fn acquire_once(&self) -> Result<PoolConnection<Postgres>> {
         self.pool.acquire().await.map_err(|source| {
-            let waited_ms = self.acquire_timeout.as_millis();
+            let waited = self.acquire_timeout;
             let held = self.pool.size();
             if matches!(source, sqlx::Error::PoolTimedOut) && held < self.max_connections {
-                return acquire_stalled(self.role.tag(), waited_ms, held, self.max_connections);
+                return acquire_stalled(self.role.tag(), waited, held, self.max_connections);
             }
-            classify_acquire(self.role.tag(), waited_ms, source)
+            classify_acquire(self.role.tag(), waited, source)
         })
     }
 }

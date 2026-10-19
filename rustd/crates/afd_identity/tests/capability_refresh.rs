@@ -3,9 +3,10 @@
 use afd_auth::capability::CapabilitySource;
 use afd_auth::error::Unavailable;
 use afd_auth::scope::{ScopeSet, parse_claim};
-use afd_identity::capability::{DEFAULT_STALE_CEILING_MS, DEFAULT_TTL_MS};
+use afd_identity::capability::{DEFAULT_STALE_CEILING, DEFAULT_TTL};
 use afd_identity::error::ClaimUnavailable;
 
+use crate::support::ONE_MS;
 use crate::support::capability::{CLAIM, resolver, subject, warm, wave};
 
 #[tokio::test]
@@ -29,7 +30,7 @@ async fn concurrent_refreshes_all_receive_the_narrowed_claim() {
     let (resolver, clock) = resolver();
     warm(&resolver).await;
     resolver.source().answer(Ok("fleet:read".to_owned()));
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     for answer in wave(&resolver, false, 2).await {
         assert_eq!(answer, Ok(parse_claim("fleet:read")));
     }
@@ -40,7 +41,7 @@ async fn concurrent_failed_refreshes_all_retain_the_stale_claim() {
     let (resolver, clock) = resolver();
     warm(&resolver).await;
     resolver.source().answer(Err(ClaimUnavailable::Unreachable));
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     for answer in wave(&resolver, false, 2).await {
         assert_eq!(answer, Ok(parse_claim(CLAIM)));
     }
@@ -54,13 +55,13 @@ async fn failed_refreshes_never_extend_the_stale_ceiling() {
     let (resolver, clock) = resolver();
     warm(&resolver).await;
     resolver.source().answer(Err(ClaimUnavailable::Unreachable));
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     resolver.source().release.add_permits(2);
     assert_eq!(
         resolver.capabilities(&subject()).await,
         Ok(parse_claim(CLAIM))
     );
-    clock.advance_millis(DEFAULT_STALE_CEILING_MS);
+    clock.advance(DEFAULT_STALE_CEILING);
     assert_eq!(resolver.capabilities(&subject()).await, Err(Unavailable));
 }
 
@@ -68,7 +69,7 @@ async fn failed_refreshes_never_extend_the_stale_ceiling() {
 async fn a_deleted_subject_cannot_recover_old_scopes_during_an_outage() {
     let (resolver, clock) = resolver();
     warm(&resolver).await;
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     resolver.source().release.add_permits(2);
     resolver
         .source()
@@ -82,7 +83,7 @@ async fn a_deleted_subject_cannot_recover_old_scopes_during_an_outage() {
 async fn a_cancelled_refresh_preserves_the_stale_claim() {
     let (resolver, clock) = resolver();
     warm(&resolver).await;
-    clock.advance_millis(DEFAULT_TTL_MS + 1);
+    clock.advance(DEFAULT_TTL + ONE_MS);
     let who = subject();
     let mut request = Box::pin(resolver.capabilities(&who));
     std::future::poll_fn(|context| {

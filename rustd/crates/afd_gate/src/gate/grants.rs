@@ -1,14 +1,13 @@
 //! Which integrations a fleet may mint against.
 //!
 //! Separate from [`super::store`] because it reads a DIFFERENT table for a
-//! different kind of standing decision: `core.fleet_approval_gates` records a
-//! human answering about ONE event, and `core.integration_grants` records a
+//! different kind of standing decision: `fleet.approval_gates` records a
+//! human answering about ONE event, and `connector.integration_grants` records a
 //! human answering about a fleet's relationship with a third party, once, for
 //! every event after it. They travel together on the lease path and are not
 //! the same question.
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
 
 use super::grant_sql;
 use crate::error::{Result, query};
@@ -38,16 +37,13 @@ impl Gates {
     /// [`Grants::none`], not an error.
     pub async fn approved_integrations(&self, fleet_id: &Uuid7) -> Result<Grants> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(grant_sql::SELECT_APPROVED_SERVICES)
+        let services = sqlx::query_scalar::<_, String>(grant_sql::SELECT_APPROVED_SERVICES)
             .bind(fleet_id.as_str())
             .bind(grant_sql::STATUS_APPROVED)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_GRANTS))?;
 
-        rows.iter()
-            .map(|row| row.try_get::<String, _>(0).map_err(query(CONTEXT_GRANTS)))
-            .collect::<Result<Vec<_>>>()
-            .map(|services| services.into_iter().collect())
+        Ok(services.into_iter().collect())
     }
 }

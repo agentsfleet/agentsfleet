@@ -18,7 +18,13 @@
 //! not share with a suite that installs another. `producers_drive.rs` installs
 //! a plain provider and asserts no value; this one installs the capture and
 //! asserts values, so the two cannot be the same binary.
+//!
+//! The billing families' read-back rides here too, in `billing_capture`, for
+//! the same reason: it reads values, so it needs the capturing install.
 #![cfg(feature = "test-util")]
+
+#[path = "billing_capture.rs"]
+mod billing_capture;
 
 use afd_observability::producers::fleet::runner;
 use afd_observability::test_util::Capture;

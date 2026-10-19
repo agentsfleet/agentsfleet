@@ -6,7 +6,7 @@
 //! table's writer before either verb existed, because `sql::RESOLVE_GATE` moves
 //! a grant in the same statement that answers its gate. The request is the
 //! third direction of that one authority, and putting it on the lease path
-//! instead would give `core.integration_grants` a second writer whose writes
+//! instead would give `connector.integration_grants` a second writer whose writes
 //! the resolve would have to trust.
 //!
 //! # What was actually broken
@@ -14,7 +14,7 @@
 //! The approve half shipped complete. `RESOLVE_GATE`'s `granted` arm moves a
 //! grant when a person answers a gate of kind [`KIND_INTEGRATION_GRANT`], and
 //! it has been correct and unreachable — every `INSERT INTO
-//! core.integration_grants` in the repository was in a test file, so no row
+//! connector.integration_grants` in the repository was in a test file, so no row
 //! ever existed for it to move. A fleet declaring a mintable credential parked
 //! its delivery on a grant that could not be created, redelivering every second
 //! against a dashboard that reported it healthy.
@@ -28,9 +28,12 @@
 //! written, and it is spelled from the same constant the statement is bound
 //! with.
 
+use std::time::Duration;
+
 use afd_api_wire::grant::status;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::timing::DAY;
+use jiff::Timestamp;
 use sqlx::Acquire as _;
 
 use crate::grant::IntegrationGrants;
@@ -65,13 +68,19 @@ const EVENT_STATUS_UNKNOWN: &str = "grant_status_unrecognised";
 /// How long a grant card stands before the sweeper may take it.
 ///
 /// Thirty days, and deliberately not the hour an event gate gets
-/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT_MS`). That hour bounds a
+/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT`). That hour bounds a
 /// question about ONE delivery, where a run is waiting and a stale answer is
 /// worse than none. This card asks for a STANDING authorisation, raised at
 /// install for a person who may not be at their desk, and an hour would expire
 /// it before they read it — leaving the fleet exactly as unable to run as it
 /// was, which is the failure this module exists to end.
-const GRANT_DECISION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
+///
+/// A span the statement adds to the database clock, so the card's deadline is
+/// stamped by the same clock the sweeper later reads it against.
+const GRANT_DECISION_WINDOW: Duration = DAY.saturating_mul(GRANT_DECISION_DAYS);
+
+/// The days in [`GRANT_DECISION_WINDOW`].
+const GRANT_DECISION_DAYS: u32 = 30;
 
 /// The card's headline, before the service it names.
 const PROPOSED_ACTION_PREFIX: &str = "mint short-lived credentials for ";
@@ -182,7 +191,8 @@ impl IntegrationGrants {
     ///
     /// The grant and card land in one transaction. The unique active grant
     /// reference allows one actionable card and any number of answered cards.
-    /// Repeated requests do not update either row.
+    /// Repeated requests do not update either row. `now` mints the rows'
+    /// identifiers and nothing else; every stamp is the database's.
     ///
     /// # Preconditions
     /// `fleet` MUST belong to `workspace`. Unlike this crate's two
@@ -201,7 +211,7 @@ impl IntegrationGrants {
         workspace: &Uuid7,
         fleet: &Uuid7,
         wanted: Wanted<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Requested> {
         let mut connection = self.database().acquire().await?;
         let mut transaction = connection
@@ -226,7 +236,7 @@ impl IntegrationGrants {
     /// about — all through the workspace's one entropy surface, for the reason
     /// [`afd_gate`]'s park mints its pair there: a second source is a second
     /// failure mode on a path that already has one.
-    fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
+    fn mint(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
 }

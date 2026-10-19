@@ -94,7 +94,7 @@ test.describe("signup → install → lifecycle", () => {
     await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
-    // Save through the private chat's Review setup. The fresh tenant has exactly
+    // Save through the private chat's inline setup. The fresh tenant has exactly
     // one auto-provisioned workspace (signup.workspaceId) — the one active in
     // the browser — so its chat opens here. The seeded draft reuses the signup
     // session's own JWT (no persistent fixture), so it is this person's chat.

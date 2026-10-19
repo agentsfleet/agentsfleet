@@ -28,7 +28,7 @@ describe("native Library reads", () => {
     await expect(inspectLibrary(WORKSPACE, LIBRARY_CARD, signal())).rejects.toMatchObject({status: 409});
   });
   it("reads content-free revision history and follows its cursor", async () => {
-    const page = {items: [{id: REVISION_ID, revision: "1", canonical_digest: "digest", created_at: 0}], next_cursor: null};
+    const page = {items: [{id: REVISION_ID, revision: "1", canonical_digest: "digest", created_at: "1970-01-01T00:00:00Z"}], next_cursor: null};
     const fetch = vi.fn().mockResolvedValue(response(page)); vi.stubGlobal("fetch", fetch);
     expect(await libraryHistory(WORKSPACE, LIBRARY_CARD.id, "older+cursor", signal())).toEqual(page);
     expect(String(fetch.mock.calls[0]?.[0])).toContain("/revisions?limit=25&starting_after=older%2Bcursor");

@@ -33,10 +33,10 @@
 use std::borrow::Cow;
 
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_events::{Closed, is_steer_actor};
 use afd_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
+use jiff::Timestamp;
 
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
@@ -91,14 +91,14 @@ impl Leases {
     pub async fn publish_received(
         &self,
         acquired: &Acquired,
-        opened_at: UnixMillis,
+        opened_at: Timestamp,
         counters: Option<FleetCounters>,
     ) {
         let frame = TailFrame::EventReceived {
             event_id: Cow::Borrowed(&acquired.event_id),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
-            created_at: opened_at.as_millis(),
+            created_at: opened_at,
             message: steer_message(acquired),
             counters,
         };

@@ -68,3 +68,32 @@ async fn refused_creation_leaves_no_receipt_candidate_or_message() {
     assert_eq!(f.counts().await, (1, 1, 1));
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_replayed_create_whose_draft_row_is_unreadable_surfaces_the_stored_fault() {
+    // Its own database: no other proof's sweep may meet the unreadable row.
+    let f = Fixture::isolated().await;
+    let operation = mint();
+    let created = f
+        .drafts
+        .create(f.access(), f.request(operation.clone(), None), now())
+        .await
+        .expect("the first create");
+    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1::uuid")
+        .bind(created.draft.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("another writer's state word");
+    let refused = f
+        .drafts
+        .create(f.access(), f.request(operation, None), now())
+        .await
+        .expect_err("a replay cannot project an unreadable draft");
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_DB_QUERY,
+        "a stored fault, not gone"
+    );
+    f.cleanup().await;
+}

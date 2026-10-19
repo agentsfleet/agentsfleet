@@ -1,13 +1,15 @@
 //! Which issued leases log a queue wait, and that it is never negative.
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
+use jiff::Timestamp;
 
 use super::of;
 use crate::lease::envelope::{Acquired, Kind};
 use crate::lease::test_dead::{self, AT};
 
 /// How long after admission the lease is written in these cases.
-const WAITED_MS: i64 = 350;
+const WAITED: Duration = Duration::from_millis(350);
 
 /// A fresh event `redelivered` or not, admitted at [`AT`].
 fn acquired(kind: Kind, redelivered: bool) -> Acquired {
@@ -18,14 +20,17 @@ fn acquired(kind: Kind, redelivered: bool) -> Acquired {
     }
 }
 
-/// The lease's write, `WAITED_MS` after the admission.
-fn issued() -> UnixMillis {
-    AT.saturating_add_millis(WAITED_MS)
+/// The lease's write, [`WAITED`] after the admission.
+fn issued() -> Timestamp {
+    afd_core::clock::after(AT, WAITED)
 }
 
 #[test]
 fn test_a_new_read_logs_its_wait() {
-    assert_eq!(of(&acquired(Kind::Fresh, false), issued()), Some(WAITED_MS));
+    assert_eq!(
+        of(&acquired(Kind::Fresh, false), issued()),
+        Some(afd_core::clock::saturating_millis(WAITED))
+    );
 }
 
 /// A reclaimed lease's stamp predates the run it replaces.
@@ -45,7 +50,7 @@ fn test_a_redelivered_entry_logs_no_wait() {
 /// wait, so it reads as none rather than less than none.
 #[test]
 fn test_clock_skew_never_logs_a_negative_wait() {
-    let before_admission = AT.saturating_add_millis(-10);
+    let before_admission = afd_core::clock::before(AT, Duration::from_millis(10));
 
     assert_eq!(of(&acquired(Kind::Fresh, false), before_admission), Some(0));
 }

@@ -24,13 +24,13 @@ mod seed;
 
 use std::sync::Arc;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::credential::{Ask, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::Connector;
 use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot_with_exchanger};
 use agentsfleetd::supervisor::Supervisor;
+use jiff::Timestamp;
 use serde_json::Value;
 
 use self::fleet::{enrol, install};
@@ -50,7 +50,7 @@ use crate::support::install_subscriber;
 pub(crate) const MINTED_TOKEN: &str = "ghs_fixture_minted_installation_token";
 
 /// How long a minted token lives: an hour, as GitHub's installation tokens do.
-const TOKEN_LIFETIME_MS: i64 = 60 * 60 * 1000;
+const TOKEN_LIFETIME: std::time::Duration = std::time::Duration::from_hours(1);
 
 /// GitHub's token endpoint, as the lane stands it in.
 #[derive(Debug)]
@@ -62,12 +62,10 @@ impl Exchanger for MintedToken {
         _connector: &'a dyn Connector,
         _ask: Ask<'a>,
     ) -> std::pin::Pin<Box<dyn Future<Output = Outcome> + Send + 'a>> {
-        let expires_at_ms = afd_core::clock::now()
-            .as_millis()
-            .saturating_add(TOKEN_LIFETIME_MS);
+        let expires_at = afd_core::clock::after(afd_core::clock::now(), TOKEN_LIFETIME);
         Box::pin(std::future::ready(Outcome::Ok(Minted {
             token: MINTED_TOKEN.to_owned().into(),
-            expires_at_ms,
+            expires_at,
             rotated_refresh_token: None,
         })))
     }
@@ -145,7 +143,7 @@ async fn seal_credentials(
     workspace: &str,
     workspace_id: &Uuid7,
     secrets: &[Secret],
-    now: UnixMillis,
+    now: Timestamp,
 ) {
     let installation = fresh_installation();
     seal(

@@ -14,9 +14,9 @@ use redis::{ConnectionAddr, IntoConnectionInfo as _};
 use crate::error::{Error, ErrorKind, Result};
 
 const REQUEST_TIMEOUT_KNOB: &str = "DRAGONFLY_REQUEST_TIMEOUT_MS";
-const REQUEST_TIMEOUT_MS_DEFAULT: u64 = 5_000;
+const REQUEST_TIMEOUT_DEFAULT: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT_KNOB: &str = "DRAGONFLY_CONNECT_TIMEOUT_MS";
-const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 5_000;
+const CONNECT_TIMEOUT_DEFAULT: Duration = Duration::from_secs(5);
 
 /// The one URL every role dials.
 pub const URL_KNOB: &str = "DRAGONFLY_URL";
@@ -109,16 +109,8 @@ impl DragonflyConfig {
             url,
             ca_cert_file: optional(env, CA_CERT_FILE_KNOB)
                 .map(|path| PathBuf::from(String::from(path))),
-            connect_timeout: timeout_from_env(
-                env,
-                CONNECT_TIMEOUT_KNOB,
-                CONNECT_TIMEOUT_MS_DEFAULT,
-            ),
-            request_timeout: timeout_from_env(
-                env,
-                REQUEST_TIMEOUT_KNOB,
-                REQUEST_TIMEOUT_MS_DEFAULT,
-            ),
+            connect_timeout: timeout_from_env(env, CONNECT_TIMEOUT_KNOB, CONNECT_TIMEOUT_DEFAULT),
+            request_timeout: timeout_from_env(env, REQUEST_TIMEOUT_KNOB, REQUEST_TIMEOUT_DEFAULT),
         })
     }
 
@@ -133,8 +125,8 @@ impl DragonflyConfig {
             namespace: crate::namespace::Namespace::default(),
             url,
             ca_cert_file: None,
-            connect_timeout: Duration::from_millis(CONNECT_TIMEOUT_MS_DEFAULT),
-            request_timeout: Duration::from_millis(REQUEST_TIMEOUT_MS_DEFAULT),
+            connect_timeout: CONNECT_TIMEOUT_DEFAULT,
+            request_timeout: REQUEST_TIMEOUT_DEFAULT,
         }
     }
 
@@ -214,11 +206,12 @@ impl DragonflyConfig {
     }
 }
 
-fn timeout_from_env<E: EnvSource + ?Sized>(env: &E, knob: &str, fallback_ms: u64) -> Duration {
-    Duration::from_millis(
-        env.get(knob)
-            .and_then(|raw| raw.trim().parse::<u64>().ok())
-            .filter(|millis| *millis > 0)
-            .unwrap_or(fallback_ms),
-    )
+/// A `*_TIMEOUT_MS` knob read as a span, or `fallback` when it is unset,
+/// unparsable or zero: the knob spells whole milliseconds, and this is where
+/// they become a `Duration`.
+fn timeout_from_env<E: EnvSource + ?Sized>(env: &E, knob: &str, fallback: Duration) -> Duration {
+    env.get(knob)
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .map_or(fallback, Duration::from_millis)
 }

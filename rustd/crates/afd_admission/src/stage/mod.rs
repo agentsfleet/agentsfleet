@@ -4,10 +4,7 @@ mod insert;
 mod policy;
 
 use crate::{Admission, Admissions, Admitted, Key, Result};
-use afd_core::{
-    clock::{self, UnixMillis},
-    id::Uuid7,
-};
+use afd_core::{clock, id::Uuid7};
 use sqlx::PgConnection;
 
 /// An immutable admission whose external budget reads completed before taking locks.
@@ -15,7 +12,6 @@ use sqlx::PgConnection;
 pub struct PreparedAdmission<'a> {
     admission: Admission<'a>,
     row_id: Uuid7,
-    now: UnixMillis,
     estimate: u64,
 }
 
@@ -31,7 +27,6 @@ impl Admissions {
             admission,
             row_id: self.entropy.uuid7(now)?,
             estimate: self.deployment_estimate(now).await?,
-            now,
         })
     }
 
@@ -59,7 +54,6 @@ impl Admissions {
                 &prepared.admission,
                 key,
                 &prepared.admission.payload_digest(),
-                prepared.now,
                 prepared.estimate,
             )
             .await?;

@@ -17,7 +17,7 @@ const WS = "ws_greeting";
 const FLEET_A = "z_a";
 const FLEET_B = "z_b";
 const RECONNECT_DELAY_MS = 2_000;
-const COUNTERS = { [FLEET_A]: { events_processed: 5, budget_used_nanos: 1_000 } };
+const COUNTERS = { [FLEET_A]: { events_processed: 5, budget_used_nanos: "1000" } };
 
 // The shared fake dispatches by frame name exactly as a browser does; a
 // greeting is a named `hello` frame like any other.

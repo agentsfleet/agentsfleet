@@ -85,10 +85,7 @@ fn an_unattempted_beat_step_reason_carries_no_code_prefix() {
     report(EVENT_LIVENESS_WRITE, &runner, &runner_vanished());
 
     let logged = capture.only(EVENT_LIVENESS_WRITE);
-    let reason = logged.field("reason").expect("a failure line says why");
-    assert!(!reason.is_empty(), "the failure line says nothing");
-    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
-    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
+    logged.assert_uncoded_reason();
     assert_eq!(
         logged.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())

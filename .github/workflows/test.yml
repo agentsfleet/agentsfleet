@@ -200,8 +200,8 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist --bin agentsfleetd
-              cargo build --profile dist --bin agentsfleet-runner
+              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
+              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
 

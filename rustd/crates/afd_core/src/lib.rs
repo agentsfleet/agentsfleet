@@ -30,6 +30,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod build;
+pub mod catalogue;
 pub mod clock;
 pub mod credential;
 pub mod env;

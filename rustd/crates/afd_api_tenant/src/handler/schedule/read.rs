@@ -27,6 +27,18 @@ use crate::services::{FleetSchedules as _, Services};
 use super::EVENT_READ;
 use super::support::SchedulePath;
 
+/// Every schedule as the tenant surface renders it, read at one instant so a
+/// page never mixes two readings of the clock.
+pub(crate) fn views(
+    schedules: &[afd_cron::Schedule],
+    now: jiff::Timestamp,
+) -> Vec<afd_api_wire::schedule::View<'_>> {
+    schedules
+        .iter()
+        .map(|schedule| schedule.view(now))
+        .collect()
+}
+
 /// `GET …/schedules`.
 ///
 /// # Errors
@@ -68,7 +80,7 @@ pub(crate) async fn list<D: Services>(
         .map_err(Refusal::at(EVENT_READ))?;
 
     Ok(Json(Page {
-        schedules: schedules.iter().map(afd_cron::Schedule::view).collect(),
+        schedules: views(&schedules, services.now()),
     })
     .into_response())
 }
@@ -130,7 +142,7 @@ pub(crate) async fn one<D: Services>(
         |schedule| {
             Ok((
                 [(http::header::ETAG, schedule.etag())],
-                Json(schedule.view()),
+                Json(schedule.view(services.now())),
             )
                 .into_response())
         },

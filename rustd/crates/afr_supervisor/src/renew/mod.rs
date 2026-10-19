@@ -4,50 +4,49 @@
 use std::time::Duration;
 
 use afd_core::clock::Clock;
-use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED};
+use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
 use afd_core::id::Uuid7;
-use afd_core::timing::{MAX_RUNTIME_MS, RENEWAL_TICK_MS};
+use afd_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
 use afd_wire::report::{FailureClass, RenewRequest};
+use afd_wire::usage::LINES_MAX;
 use afr_agent::Meter;
+use jiff::Timestamp;
 use tokio::time::{Instant, MissedTickBehavior};
 
-use crate::client::ControlPlane;
+use crate::client::{ControlPlane, retrying};
 use crate::error::Error;
-use crate::report::narrow;
 
-/// How often a held lease is renewed: inside the renewal window, so one missed
-/// tick still lands before the lease lapses (`afd_core::timing`).
-pub(crate) const RENEWAL_TICK: Duration = Duration::from_millis(RENEWAL_TICK_MS.unsigned_abs());
 /// How long before the daemon's deadline the runner gives the lease up. The
 /// daemon may hand an expired lease to another runner, so a run must end
 /// before then, not at it; this is one slow call's worth of slack.
 pub(crate) const EXPIRY_MARGIN: Duration = Duration::from_secs(2);
 /// The longest a lease can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
-const LONGEST_GRANT: Duration = Duration::from_millis(MAX_RUNTIME_MS.unsigned_abs());
+const LONGEST_GRANT: Duration = MAX_RUNTIME;
 const EVENT_RENEWED: &str = "lease_renewed";
 const EVENT_RETRY: &str = "renew_failed_retry";
 const EVENT_TERMINATED: &str = "lease_terminated_by_renewal";
 const EVENT_EXPIRED: &str = "lease_timed_out";
+const EVENT_UNFLUSHED: &str = "usage_lines_unflushed";
 
 /// Renews one lease.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Renewal<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
-    expires_at: i64,
+    expires_at: Timestamp,
     clock: &'a dyn Clock,
     meter: &'a Meter,
 }
 
 impl<'a> Renewal<'a> {
-    /// Renews `lease_id`, granted until `expires_at` (Unix milliseconds), with
+    /// Renews `lease_id`, granted until `expires_at`, with
     /// `clock` reading the wall time the daemon's deadlines are written in and
     /// `meter` the tokens each renewal reports.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
         lease_id: &'a Uuid7,
-        expires_at: i64,
+        expires_at: Timestamp,
         clock: &'a dyn Clock,
         meter: &'a Meter,
     ) -> Self {
@@ -81,8 +80,11 @@ impl<'a> Renewal<'a> {
                 } => renewed,
             };
             match renewed {
-                Ok(expires_at) => {
-                    deadline = self.deadline(expires_at);
+                Ok(renewed) => {
+                    deadline = self.deadline(renewed.lease_expires_at);
+                    if let Some(seq) = renewed.recorded_through {
+                        self.meter.recorded_through(seq);
+                    }
                     let lease_id = self.lease_id.as_str();
                     let event = EVENT_RENEWED;
                     tracing::debug!(lease_id, event);
@@ -96,18 +98,14 @@ impl<'a> Renewal<'a> {
     /// The run's tokens so far, as the renewal reports them: cumulative, so
     /// the daemon meters the difference since the last one.
     fn spent(&self) -> RenewRequest {
-        let usage = self.meter.read();
         RenewRequest {
-            input_tokens: narrow(usage.input),
-            cached_input_tokens: narrow(usage.cached_input),
-            output_tokens: narrow(usage.output),
+            requests: self.meter.unrecorded(),
         }
     }
 
     /// When to give the lease up, for a grant until `expires_at`.
-    fn deadline(&self, expires_at: i64) -> Instant {
-        let left = expires_at.saturating_sub(self.clock.now().as_millis());
-        let left = Duration::from_millis(u64::try_from(left).unwrap_or(0)).min(LONGEST_GRANT);
+    fn deadline(&self, expires_at: Timestamp) -> Instant {
+        let left = crate::deadline::left(self.clock.now(), expires_at).min(LONGEST_GRANT);
         Instant::now() + left.saturating_sub(EXPIRY_MARGIN)
     }
 
@@ -151,6 +149,56 @@ impl<'a> Renewal<'a> {
             "the lease ran out before a renewal landed"
         );
         FailureClass::RenewalTerminate
+    }
+}
+
+/// Renews until the meter's unrecorded lines fit one report body.
+///
+/// The daemon refuses a report past [`LINES_MAX`] lines, so a run that ends
+/// with more sends its oldest through renewals first. Each answer's
+/// `recorded_through` forgets what that renewal recorded.
+///
+/// A renewal that fails after its retries, or records nothing, stops the
+/// flush. The report then carries the oldest lines left, and the lines past
+/// them are logged unbilled. A line sent twice is still billed once, since the
+/// daemon keys lines on `(work, seq)`.
+pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter) {
+    loop {
+        let backlog = meter.backlog();
+        if backlog <= LINES_MAX {
+            return;
+        }
+        let spent = RenewRequest {
+            requests: meter.unrecorded(),
+        };
+        let renewed = retrying(|| plane.renew(lease_id, &spent)).await;
+        if let Some(seq) = renewed
+            .as_ref()
+            .ok()
+            .and_then(|renewed| renewed.recorded_through)
+        {
+            meter.recorded_through(seq);
+        }
+        if meter.backlog() < backlog {
+            continue;
+        }
+        // A renewal that answered yet recorded nothing read a body it could
+        // not use, which the daemon logs under the same code.
+        let code = renewed
+            .err()
+            .map_or(RUN_RENEW_BODY_MALFORMED, |failure| failure.code());
+        let error_code = code.as_str();
+        let lease_id = lease_id.as_str();
+        let unbilled = meter.backlog().saturating_sub(LINES_MAX);
+        let event = EVENT_UNFLUSHED;
+        tracing::error!(
+            error_code,
+            lease_id,
+            unbilled,
+            event,
+            "a renewal did not take the run's usage lines; the report carries the oldest"
+        );
+        return;
     }
 }
 

@@ -203,7 +203,7 @@ export async function withAuthedStateDir<T>(
     });
     await saveWorkspaces(process.env, {
       current_workspace_id: workspaceId,
-      items: [{ workspace_id: workspaceId, name: workspaceName, created_at: Date.now() }],
+      items: [{ workspace_id: workspaceId, name: workspaceName, created_at: new Date().toISOString() }],
     });
     return await fn(dir);
   });

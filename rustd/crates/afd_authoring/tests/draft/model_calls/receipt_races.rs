@@ -63,9 +63,9 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
             .await
             .expect("physical request reached provider");
         let statement = if removed {
-            "DELETE FROM fleet.authoring_attempts WHERE id=$1::uuid"
+            "DELETE FROM authoring.attempts WHERE id=$1::uuid"
         } else {
-            "UPDATE fleet.authoring_dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1::uuid"
+            "UPDATE authoring.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1::uuid"
         };
         sqlx::query(statement)
             .bind(a.id.as_str())
@@ -85,7 +85,7 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
                 error_code::AUTHORING_STATE
             }
         );
-        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid")
+        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM authoring.dispatches WHERE attempt_id=$1::uuid")
             .bind(a.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("durable result state");
         assert_eq!(saved, (i64::from(!removed), 0));
         assert_eq!(provider.count(), 1);

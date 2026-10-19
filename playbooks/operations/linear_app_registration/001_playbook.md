@@ -58,9 +58,9 @@ founding deployment after all provider bags are synced.
 ## 4. Indy and Orly: prove the live path
 
 1. Indy connects a test Linear workspace from the dashboard.
-2. Orly confirms the expected tenant receives a `fleet:linear` handle with a
-   refresh token.
-3. Orly proves one token refresh succeeds and the prior handle is replaced
+2. Orly confirms the selected workspace receives a `linear` credential with a
+   refresh token and the expected `connector.installs` row.
+3. Orly proves one token refresh succeeds and the prior credential is replaced
    safely.
 4. Orly confirms a comment can be created without a broader write grant.
 

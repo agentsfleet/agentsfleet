@@ -116,15 +116,15 @@ describe("ApprovalsPage (workspace inbox)", () => {
           action_id: "act_001",
           tool_name: "write_repo",
           action_name: "create_pr",
-          gate_kind: "destructive_action",
+          gate_type: "destructive_action",
           proposed_action: "Open PR titled X",
           evidence: {},
           blast_radius: "single repo branch",
           status: "pending",
           detail: "",
-          created_at: 1,
-          timeout_at: 2,
-          updated_at: null,
+          created_at: "1970-01-01T00:00:00.001Z",
+          expires_at: "1970-01-01T00:00:00.002Z",
+          resolved_at: null,
           resolved_by: "",
         },
       ],
@@ -174,15 +174,15 @@ describe("ApprovalDetailPage", () => {
       action_id: "act_001",
       tool_name: "write_repo",
       action_name: "create_pr",
-      gate_kind: "destructive_action",
+      gate_type: "destructive_action",
       proposed_action: "Open PR titled wire approval inbox",
       evidence: { files: ["a", "b"] },
       blast_radius: "single repo branch",
       status: "pending",
       detail: "",
-      created_at: 1_700_000_000_000,
-      timeout_at: 1_700_086_400_000,
-      updated_at: null,
+      created_at: "2023-11-14T22:13:20Z",
+      expires_at: "2023-11-15T22:13:20Z",
+      resolved_at: null,
       resolved_by: "",
       ...over,
     };
@@ -231,7 +231,7 @@ describe("ApprovalDetailPage", () => {
       gateFixture({
         status: "approved",
         resolved_by: "user:user_x",
-        updated_at: 1_700_000_001_000,
+        resolved_at: "2023-11-14T22:13:21Z",
       }),
     );
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
@@ -242,9 +242,9 @@ describe("ApprovalDetailPage", () => {
     expect(markup).not.toContain("resolve-stub"); // ResolveButtons NOT rendered
   });
 
-  it("renders Resolution panel for denied / timed_out without crashing on null updated_at", async () => {
+  it("renders Resolution panel for denied / timed_out without crashing on null resolved_at", async () => {
     getApprovalMock.mockResolvedValueOnce(
-      gateFixture({ status: "denied", resolved_by: "user:user_x", updated_at: null }),
+      gateFixture({ status: "denied", resolved_by: "user:user_x", resolved_at: null }),
     );
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
     const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
@@ -272,7 +272,7 @@ describe("ApprovalDetailPage", () => {
 
   it("hides Kind and Blast radius rows when those fields are empty", async () => {
     getApprovalMock.mockResolvedValueOnce(
-      gateFixture({ gate_kind: "", blast_radius: "" }),
+      gateFixture({ gate_type: "", blast_radius: "" }),
     );
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
     const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
@@ -285,7 +285,7 @@ describe("ApprovalDetailPage", () => {
       gateFixture({
         status: "approved",
         resolved_by: "",
-        updated_at: 1_700_000_001_000,
+        resolved_at: "2023-11-14T22:13:21Z",
         detail: "approved with caveat",
       }),
     );

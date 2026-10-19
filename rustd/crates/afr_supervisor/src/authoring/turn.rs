@@ -32,7 +32,6 @@ impl Turn<'_> {
                 capability_token: self.lease.model_access.token.clone(),
                 attempt_id: self.lease.attempt_id.clone(),
                 fence: self.lease.fence.clone(),
-                deletion_generation: self.lease.deletion_generation.clone(),
                 dispatch_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
                 call_index,
                 request: ModelRequest {

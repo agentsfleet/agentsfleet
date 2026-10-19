@@ -1,12 +1,11 @@
 //! Kill and setup grant requests share the fleet row's lifecycle lock.
 
 use super::{CONTEXT_REQUEST, Requested, Wanted, report, settle};
-use crate::{Result, error, grant::IntegrationGrants};
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use crate::{Result, error, grant::IntegrationGrants, grant_sql};
+use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
+use jiff::Timestamp;
 use sqlx::Acquire as _;
-
-const LOCK_SETUP: &str =
-    "SELECT status FROM core.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid FOR UPDATE";
 
 impl IntegrationGrants {
     /// Requests declared access only while the retained fleet is installing.
@@ -22,20 +21,20 @@ impl IntegrationGrants {
         workspace: &Uuid7,
         fleet: &Uuid7,
         wanted: Wanted<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Option<Requested>> {
         let mut connection = self.database().acquire().await?;
         let mut tx = connection
             .begin()
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        let status: Option<String> = sqlx::query_scalar(LOCK_SETUP)
+        let status: Option<String> = sqlx::query_scalar(grant_sql::LOCK_FLEET_FOR_SETUP)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
             .fetch_optional(&mut *tx)
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        if status.as_deref() != Some("installing") {
+        if status.as_deref() != Some(FleetStatus::Installing.as_str()) {
             return Ok(None);
         }
         let (raised, found) = self

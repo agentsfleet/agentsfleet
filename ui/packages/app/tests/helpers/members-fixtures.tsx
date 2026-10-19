@@ -13,17 +13,17 @@ import { MembersView } from "@/app/(dashboard)/settings/members/components/Membe
 
 export const JOHN_NAME = "John";
 export const BOB_NAME = "Bob";
-export const JOHN: MemberSummary = { user_id: "user_john", display_name: JOHN_NAME, email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: Date.UTC(2026, 7, 1) };
-export const BOB: MemberSummary = { user_id: "user_bob", display_name: BOB_NAME, email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: Date.UTC(2026, 8, 20) };
+export const JOHN: MemberSummary = { user_id: "user_john", display_name: JOHN_NAME, email: "john@example.com", role: ACCOUNT_ROLE.owner, joined_at: new Date(Date.UTC(2026, 7, 1)).toISOString() };
+export const BOB: MemberSummary = { user_id: "user_bob", display_name: BOB_NAME, email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: new Date(Date.UTC(2026, 8, 20)).toISOString() };
 export const INVITE: InviteSummary = {
   id: "inv_1",
   email: "carol@example.com",
   role: ACCOUNT_ROLE.member,
-  expires_at: Date.UTC(2026, 9, 7),
-  created_at: Date.UTC(2026, 8, 30),
+  expires_at: new Date(Date.UTC(2026, 9, 7)).toISOString(),
+  created_at: new Date(Date.UTC(2026, 8, 30)).toISOString(),
   link: "https://app.agentsfleet.net/invites/inv_1",
   email_status: EMAIL_STATUS.sent,
-  email_sent_at: Date.UTC(2026, 8, 30),
+  email_sent_at: new Date(Date.UTC(2026, 8, 30)).toISOString(),
 };
 export const UNSENT: InviteSummary = {
   ...INVITE,

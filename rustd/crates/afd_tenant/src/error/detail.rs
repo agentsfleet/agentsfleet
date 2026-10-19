@@ -97,7 +97,7 @@ pub const DETAIL_CLI_CREDENTIAL_MACHINE_NAME: &str =
 /// would confirm another person's credential to whoever guessed its identifier.
 pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not found";
 
-/// The refusal any verb answers a proven subject with no `core.users` row with.
+/// The refusal any verb answers a proven subject with no `identity.users` row with.
 ///
 /// Family-neutral on purpose: the credential mint, the credential revoke and the
 /// caller-identity read all reach it, because "this credential is good and names

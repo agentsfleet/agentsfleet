@@ -22,16 +22,11 @@
 //! pins that the collection answers 404-or-405; the router serves no POST on
 //! that template, so here it is a 405 and the last test says so.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -40,9 +35,6 @@ const TENANT_KEY: &str = "agt_tdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefd
 
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2memories";
-
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
 
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
@@ -55,12 +47,6 @@ const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
 /// Changing it.
 const FLEET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetWrite]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The collection, under the workspace the fixture owns.
 fn collection() -> String {
@@ -83,50 +69,6 @@ async fn send(
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, "").await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Every verb on this surface, with the scope its route row demands.
-fn every_verb() -> [(Method, String, ScopeSet); 2] {
-    [
-        (Method::GET, collection(), FLEET_READ),
-        (Method::DELETE, item(KEY), FLEET_WRITE),
-    ]
-}
-
-/// No verb here is reachable without a credential.
-#[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} must refuse an anonymous caller"
-        );
-    }
-}
-
-/// Every verb is refused by the scope rung before anything else.
-#[tokio::test]
-async fn every_verb_is_refused_by_the_scope_rung_before_anything_else() {
-    for (method, path, _demanded) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} must be refused by the rung"
-        );
-    }
 }
 
 /// Reading what a fleet knows does not confer the authority to change it.
@@ -164,57 +106,4 @@ async fn forgetting_an_entry_carries_the_authority_to_read_the_list() {
         StatusCode::FORBIDDEN,
         "a writer reaches the list through the hierarchy closure"
     );
-}
-
-/// A principal acting in somebody else's workspace runs no statement.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    let paths = [
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/fleets/{FLEET}/memories"),
-        format!("/v1/workspaces/{FOREIGN_WORKSPACE}/fleets/{FLEET}/memories/{KEY}"),
-    ];
-    let methods = [Method::GET, Method::DELETE];
-    let scopes = [FLEET_READ, FLEET_WRITE];
-
-    for ((path, method), scope) in paths.iter().zip(methods).zip(scopes) {
-        let response = send(scope, method, path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must be refused before the handler"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_NOT_YOURS,
-            "{path}: the refusal is the ownership layer's"
-        );
-    }
-}
-
-/// The templates carry only the methods they document.
-#[tokio::test]
-async fn the_templates_carry_only_the_methods_they_document() {
-    // The tenant store verb is retired: a fleet remembers what it LEARNED, and
-    // a POST here would be a caller asserting a memory into it.
-    let stored = send(FLEET_WRITE, Method::POST, &collection(), Some(TENANT_KEY)).await;
-    assert_eq!(stored.status(), StatusCode::METHOD_NOT_ALLOWED);
-
-    // The collection is never deleted wholesale — forgetting is per entry, so
-    // an operator cannot erase a fleet's whole memory with one request.
-    let purged = send(FLEET_WRITE, Method::DELETE, &collection(), Some(TENANT_KEY)).await;
-    assert_eq!(purged.status(), StatusCode::METHOD_NOT_ALLOWED);
-
-    // And an entry is not read on its own: the collection is the read, and a
-    // per-key GET would be a second way to ask one question.
-    //
-    // `FLEET_WRITE` on a GET is not a typo. The scope layer is mounted from the
-    // route's TEMPLATE, so `Scopes::Always(FLEET_WRITE)` on the item guards
-    // every method on it — including the ones it does not serve — and it runs
-    // BEFORE method dispatch. A `fleet:read` credential here is refused 403 at
-    // the scope rung and never reaches the 405, which would make this assertion
-    // about the scope axis rather than the method one. Answering 403 first is
-    // also the better order: a caller lacking the capability learns nothing
-    // about which methods the template serves.
-    let fetched = send(FLEET_WRITE, Method::GET, &item(KEY), Some(TENANT_KEY)).await;
-    assert_eq!(fetched.status(), StatusCode::METHOD_NOT_ALLOWED);
 }

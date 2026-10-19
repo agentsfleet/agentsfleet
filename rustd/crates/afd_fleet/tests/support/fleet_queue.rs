@@ -8,7 +8,7 @@
 //! rather than from tearing anything down.
 //!
 //! That difference is why a leaked readiness mark is harmless: the candidate
-//! query joins `core.fleets` in the test's OWN database, so another test's
+//! query joins `fleet.fleets` in the test's OWN database, so another test's
 //! fleet id cannot survive the filter even when its mark is still in the index.
 #![allow(
     dead_code,
@@ -19,8 +19,6 @@
     clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-
-use std::sync::atomic::{AtomicI64, Ordering};
 
 use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, FleetStreams, ReadyIndex};
@@ -88,7 +86,7 @@ pub(crate) async fn enqueue(
     actor: &str,
     event_type: &str,
     request_json: &str,
-    created_at: i64,
+    created_at: jiff::Timestamp,
 ) -> String {
     let streams = FleetStreams::new(queue.clone());
     streams
@@ -96,7 +94,7 @@ pub(crate) async fn enqueue(
         .await
         .expect("the consumer group must exist before a read");
     let created = created_at.to_string();
-    let logical = mint_logical_id(created_at);
+    let logical = afd_db::test_util::mint_id();
     // `Entry::queued_pairs` and NOT a hand-written field list. The list this
     // fixture used to carry went stale the moment the ledger added `event_id`:
     // every
@@ -119,37 +117,6 @@ pub(crate) async fn enqueue(
     mark_ready(queue, fleet).await;
     logical
 }
-
-/// A logical event id in the ledger's shape, unique across runs.
-///
-/// `<millis>-<seq>` is what `afd_admission::logical_id` spells and what
-/// `logical_parts` reads back, and the lease path now carries it as the event's
-/// identity. The sequence is a process counter rather than the append's entry
-/// id, because the two are deliberately different things now that the ledger
-/// owns identity: the entry id
-/// is a RECEIPT, and a fixture handing one back as an identity would re-teach
-/// the confusion the ledger exists to end.
-///
-/// The counter starts at the process's first wall-clock millisecond times a
-/// thousand, not at one. Every fixture stamps the same `created_at`, and the
-/// lane database outlives a process whenever `KEEP_TEST_STATE` skips the
-/// reset: a counter restarting at one re-minted the last run's ids, and a
-/// ledger count keyed by event id then read the last run's rows as this one's.
-fn mint_logical_id(created_at: i64) -> String {
-    static LOGICAL_SEQUENCE: std::sync::LazyLock<AtomicI64> = std::sync::LazyLock::new(|| {
-        AtomicI64::new(
-            afd_core::clock::now()
-                .as_millis()
-                .saturating_mul(RUN_STRIDE),
-        )
-    });
-    let seq = LOGICAL_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    afd_admission::logical_id(created_at, seq)
-}
-
-/// Ids one run may mint per millisecond of its start before the next run's
-/// range begins.
-const RUN_STRIDE: i64 = 1_000;
 
 /// Appends an entry in the shape the Rust producers wrote before the wire fix.
 ///

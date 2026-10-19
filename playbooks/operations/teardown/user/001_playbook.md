@@ -1,34 +1,28 @@
-# Teardown — DEV user
+# Development user teardown
 
-**Tier:** operations (destructive) · **Env:** DEV only · **Owner:** Human (Clerk delete)
+Deleting a Clerk user currently leaves that user's database account intact.
+The signed identity endpoint handles `user.created`; it answers `user.deleted` with `status: ignored`.
+Resending the deletion event does not change that result.
 
-Remove a dev signup. Deleting the user in the **dev** Clerk instance fires the
-`user.deleted` webhook, which hard-purges the tenant and every dependent row in
-PlanetScale-dev (`account_teardown`). No manual SQL needed.
+## Inspect before deleting an identity
 
-## Steps
+Record the non-secret Clerk user identifier from the selected development application's user page.
+Use that value for `<CLERK_USER_ID>` in the development database console:
 
-1. **Clerk Dashboard → dev instance → Users →** find the email **→ Delete user.**
-   Confirm the dev webhook has the **`user.deleted`** event enabled
-   (→ `https://api-dev.agentsfleet.net/v1/auth/identity-events/clerk`).
+```sql
+SELECT id, tenant_id FROM identity.users WHERE oidc_subject = '<CLERK_USER_ID>';
+```
 
-2. **Verify** in PlanetScale-dev (empty = purged). Resolve `<clerk_user_id>` from the
-   email first (dev Clerk instance; mirrors `admin_bootstrap/001_playbook.md` §3):
+Expected output is the matching account row, or zero rows if no signup was saved.
+A successful Clerk deletion is not evidence of a database purge.
 
-   ```bash
-   EMAIL="<the deleted signup email>"
-   CLERK_SECRET_KEY=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')
-   CLERK_USER_ID=$(curl -s -H "Authorization: Bearer $CLERK_SECRET_KEY" \
-     "https://api.clerk.com/v1/users?email_address=$EMAIL" | jq -r '.[0].id')
-   ```
+## Current removal options
 
-   ```sql
-   SELECT tenant_id FROM core.users WHERE oidc_subject = '<clerk_user_id>';  -- value of $CLERK_USER_ID
-   ```
+For an approved complete development rebuild, use [database teardown](../database/001_playbook.md), then the [clean-database priming route](../../../README.md#prime-a-clean-database).
+That action removes every account in the selected database and needs separate approval.
 
-3. **If rows remain** (webhook didn't fire): Clerk → Webhooks → the `user.deleted`
-   message → **Resend**.
+There is no documented per-user purge API on this branch.
+Stop before claiming erasure; do not improvise deletion SQL across identity, private content, and retained billing records.
+The Human owns identity deletion and any decision to erase application data.
 
-The purge is keyed by `oidc_subject` and removes the tenant plus its users,
-workspaces, memberships, agents, sessions, secrets, billing, and keys in one
-transaction.
+Source: `rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs`, section `Why user.deleted is answered and not acted on`.

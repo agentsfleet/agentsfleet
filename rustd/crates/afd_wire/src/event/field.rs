@@ -21,7 +21,7 @@ pub const WORKSPACE_ID: &str = "workspace_id";
 /// The trigger payload, carried verbatim. See [`EVENT_TYPE`] on the
 /// name/value split.
 pub const REQUEST_JSON: &str = "request";
-/// The producer's instant, in milliseconds since the epoch.
+/// The producer's instant, in jiff's standard RFC 3339 form (`2026-09-04T19:27:14.853Z`).
 ///
 /// Written by the producer rather than derived from the entry id, because
 /// the lease path bills against it: a value the ingress stamped is the one
@@ -32,7 +32,7 @@ pub const CREATED_AT: &str = "created_at";
 ///
 /// The entry id Dragonfly mints is a RECEIPT, not an identity: after a
 /// replay one logical event can have had two entries, and it is this
-/// field — not the entry id — that `core.fleet_events`, the usage ledger
+/// field — not the entry id — that `fleet.events`, `billing.usage_lines`
 /// and every read address. Written by the ledger's append alone; a
 /// producer never spells it.
 pub const EVENT_ID: &str = "event_id";

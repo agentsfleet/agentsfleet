@@ -23,11 +23,12 @@ use afd_dragonfly::Dragonfly;
 use afd_fleet::lease::Leases;
 use afd_gate::gate::Gates;
 use afd_runner::Runners;
-use sqlx::{AssertSqlSafe, Row as _};
+use jiff::Timestamp;
+use sqlx::AssertSqlSafe;
 
 /// The model catalogue's table, and the name it hides under while offline.
-const CATALOGUE_TABLE: &str = "model_library";
-const CATALOGUE_OFFLINE: &str = "model_library_offline";
+const CATALOGUE_TABLE: &str = "platform_models";
+const CATALOGUE_OFFLINE: &str = "platform_models_offline";
 
 /// A handle on the lane's database, and the runner store over it.
 pub(crate) struct Fixtures {
@@ -35,7 +36,7 @@ pub(crate) struct Fixtures {
     pub(crate) database: Db,
     queue: Option<Dragonfly>,
     runners: Runners,
-    enrolled: i64,
+    enrolled: Timestamp,
 }
 
 impl Fixtures {
@@ -69,7 +70,7 @@ impl Fixtures {
             database,
             queue: None,
             lane,
-            enrolled: afd_core::clock::now().as_millis(),
+            enrolled: afd_core::clock::now(),
         }
     }
 
@@ -84,11 +85,17 @@ impl Fixtures {
     /// between the two clocks. A suite that needs a lease to lapse ages its row,
     /// not its clock.
     ///
-    /// Per fixture, never per binary: a lease lives `LEASE_TTL_MS` (30 s) past
+    /// Per fixture, never per binary: a lease lives `LEASE_TTL` (30 s) past
     /// this instant, so one shared instant expired every lease a test took
     /// after the suite's first 30 s.
-    pub(crate) const fn enrolled_at(&self) -> i64 {
+    pub(crate) const fn enrolled_at(&self) -> Timestamp {
         self.enrolled
+    }
+
+    /// [`Fixtures::enrolled_at`] moved forward by `by`: a later instant a test
+    /// hands the code under test, such as a report sent after the run.
+    pub(crate) fn after(&self, by: std::time::Duration) -> Timestamp {
+        afd_core::clock::after(self.enrolled, by)
     }
 
     /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.
@@ -116,60 +123,41 @@ impl Fixtures {
         fixtures
     }
 
+    /// A further pool for `role` on this fixture's database — the shared lane's
+    /// or this test's private one — as a second daemon replica would hold.
+    pub(crate) async fn open(&self, role: DbRole) -> Db {
+        self.lane.open(role, &[]).await
+    }
+
     /// The store under test.
     pub(crate) const fn runners(&self) -> &Runners {
         &self.runners
     }
 
-    /// One text column of the runner's row.
-    ///
-    /// Read through `::text` so a caller asserts on the STORED spelling rather
-    /// than on whatever this suite would have decoded it into — which is the
-    /// point of a row-shape assertion.
-    pub(crate) async fn runner_column(&self, runner: &str, column: &str) -> Option<String> {
-        let statement = AssertSqlSafe(format!(
-            "SELECT {column}::text FROM fleet.runners WHERE id = $1::uuid"
-        ));
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(statement)
-            .bind(runner)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the runner row must exist")
-            .try_get::<Option<String>, _>(0)
-            .expect("the column must be readable as text")
-    }
-
     /// The event types written for a runner, oldest first.
     pub(crate) async fn events(&self, runner: &str) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(
-            "SELECT event_type FROM fleet.runner_events \
+        sqlx::query_scalar(
+            "SELECT event_type FROM runner.events \
              WHERE runner_id = $1::uuid ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)
         .await
         .expect("the event read must run")
-        .iter()
-        .map(|row| row.try_get(0).expect("event_type is text"))
-        .collect()
     }
 
     /// Operator subjects recorded on administrative events, oldest first.
     pub(crate) async fn admin_event_actors(&self, runner: &str) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(
-            "SELECT metadata ->> 'actor_id' FROM fleet.runner_events \
+        sqlx::query_scalar(
+            "SELECT metadata ->> 'actor_id' FROM runner.events \
              WHERE runner_id = $1::uuid AND metadata ? 'actor_id' ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)
         .await
         .expect("the actor metadata read must run")
-        .iter()
-        .map(|row| row.try_get(0).expect("actor_id is text"))
-        .collect()
     }
 
     /// How many rows carry `digest` as their token hash.
@@ -179,13 +167,11 @@ impl Fixtures {
     /// by finding exactly one row under it.
     pub(crate) async fn rows_with_token_hash(&self, digest: &str) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("SELECT count(*) FROM fleet.runners WHERE token_hash = $1")
+        sqlx::query_scalar("SELECT count(*) FROM runner.runners WHERE token_hash = $1")
             .bind(digest)
             .fetch_one(&mut *connection)
             .await
             .expect("the count must run")
-            .try_get(0)
-            .expect("count answers a bigint")
     }
 
     /// The lease store over this fixture's database.
@@ -245,7 +231,7 @@ impl Fixtures {
         let migrator = self.lane.open(DbRole::Migrator, &[]).await;
         let mut connection = migrator.acquire().await.expect("a migrator connection");
         sqlx::query(AssertSqlSafe(format!(
-            "ALTER TABLE core.{from} RENAME TO {to}"
+            "ALTER TABLE model.{from} RENAME TO {to}"
         )))
         .execute(&mut *connection)
         .await

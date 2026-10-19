@@ -23,13 +23,13 @@ mod view;
 pub use self::view::{KeyRow, Listing};
 
 use afd_auth::credential::CredentialKind;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_unique;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::sql::apikey as sql;
 use crate::{Result, error};
@@ -38,22 +38,11 @@ use afd_auth::minted::Minted;
 pub use self::name::{Deactivation, Description, KeyName};
 pub use self::sort::ApiKeySort;
 
-/// The column both lifecycle statements report their verdict in.
-///
-/// Named once rather than spelled at each `try_get`: the two statements answer
-/// the same question — did THIS call change the row — and a typo in one of the
-/// two spellings would read as a datastore fault rather than as a mistake
-/// (RULE UFS).
-const COLUMN_CHANGED: &str = "changed";
-
-/// The column carrying the instant a revoke recorded.
-const COLUMN_REVOKED_AT: &str = "revoked_at";
-
 /// The index that holds a tenant to one key per name.
 ///
-/// Must equal the name in `schema/240_api_keys.sql`: a key-hash or primary-key
-/// collision is unique too, and is not a name the caller can change.
-const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_key_name";
+/// Must equal the name in `schema/1150_identity_api_keys.sql`: a key-hash or
+/// primary-key collision is unique too, and is not a name the caller can change.
+const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_name";
 
 /// A tenant's api-keys.
 #[derive(Debug, Clone)]
@@ -74,25 +63,22 @@ impl ApiKeys {
     /// # Errors
     /// Refuses a name this tenant already uses; reports a host that cannot draw
     /// entropy and a datastore that would not answer.
-    pub async fn mint(&self, request: &MintRequest<'_>, now: UnixMillis) -> Result<Revealed> {
+    pub async fn mint(&self, request: &MintRequest<'_>, now: Timestamp) -> Result<Revealed> {
         let credential = Minted::draw(CredentialKind::TenantApiKey, &self.entropy)?;
         let id = self.entropy.uuid7(now)?;
 
         let mut connection = self.database.acquire().await?;
-        let written = sqlx::query(sql::INSERT_TENANT_KEY)
+        let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(sql::INSERT_TENANT_KEY)
             .bind(id.as_str())
             .bind(request.tenant.as_str())
             .bind(request.name.as_str())
             .bind(request.description.as_str())
             .bind(credential.digest().as_str())
             .bind(request.created_by)
-            .bind(now.as_millis())
-            .execute(connection.as_mut())
-            .await;
-
-        if let Err(source) = written {
-            return Err(classify_insert(source));
-        }
+            .fetch_one(connection.as_mut())
+            .await
+            .map_err(classify_insert)?
+            .to_jiff();
 
         // Hoisted: the `log` bridge duplicates every field expression and
         // llvm-cov scores the dead copy. The key itself is NOT among them —
@@ -107,7 +93,7 @@ impl ApiKeys {
             id,
             name: request.name.as_str().to_owned(),
             credential,
-            created_at_ms: now.as_millis(),
+            created_at,
         })
     }
 
@@ -126,29 +112,22 @@ impl ApiKeys {
         tenant: &Uuid7,
         key: &Uuid7,
         _intent: Deactivation,
-        now: UnixMillis,
     ) -> Result<Revoked> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::REVOKE_TENANT_KEY)
+        let row: RevokedRow = sqlx::query_as(sql::REVOKE_TENANT_KEY)
             .bind(key.as_str())
             .bind(tenant.as_str())
-            .bind(now.as_millis())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("revoke api-key"))?
             .ok_or_else(error::apikey_not_found)?;
 
-        let changed: bool = row.try_get(COLUMN_CHANGED).map_err(row_unreadable)?;
-        if !changed {
+        if !row.changed {
             return Err(error::apikey_already_revoked());
         }
-        let revoked_at_ms: Option<i64> = row.try_get(COLUMN_REVOKED_AT).map_err(row_unreadable)?;
         Ok(Revoked {
             id: key.clone(),
-            // The statement stamps the instant it wrote, which is the one that
-            // matters; `now` is what it was TOLD to write and could differ if a
-            // retry ever landed on a different frame.
-            revoked_at_ms: revoked_at_ms.unwrap_or_else(|| now.as_millis()),
+            revoked_at: row.revoked_at,
         })
     }
 
@@ -159,7 +138,7 @@ impl ApiKeys {
     /// active. Reports a datastore that would not answer.
     pub async fn delete(&self, tenant: &Uuid7, key: &Uuid7) -> Result<()> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::DELETE_TENANT_KEY)
+        let changed: bool = sqlx::query_scalar(sql::DELETE_TENANT_KEY)
             .bind(key.as_str())
             .bind(tenant.as_str())
             .fetch_optional(connection.as_mut())
@@ -167,7 +146,6 @@ impl ApiKeys {
             .map_err(error::query("delete api-key"))?
             .ok_or_else(error::apikey_not_found)?;
 
-        let changed: bool = row.try_get(COLUMN_CHANGED).map_err(row_unreadable)?;
         if changed {
             Ok(())
         } else {
@@ -190,7 +168,7 @@ impl ApiKeys {
         let mut query = sqlx::query(statement).bind(tenant.as_str());
         query = match page.cursor.as_ref() {
             None => query,
-            Some(Cursor::Timestamp { at_ms, id }) => query.bind(*at_ms).bind(id.as_str()),
+            Some(Cursor::Timestamp { at, id }) => query.bind(at.to_sqlx()).bind(id.as_str()),
             Some(Cursor::Text { value, id }) => query.bind(value.as_str()).bind(id.as_str()),
         };
 
@@ -235,10 +213,10 @@ pub struct MintRequest<'a> {
     pub description: Description<'a>,
     /// The identity provider's subject for whoever minted it.
     ///
-    /// A `&str` rather than a parsed subject, because the column is `TEXT NOT
-    /// NULL` holding the claim directly — `schema/240_api_keys.sql` says so
-    /// above the column, and it is why the credential lookup does not join
-    /// `core.users` for this class.
+    /// A `&str` rather than a parsed subject, because `created_by_subject` is
+    /// `TEXT NOT NULL` holding the claim directly — a key outlives the admin who
+    /// made it, as `schema/1150_identity_api_keys.sql` says, and it is why the
+    /// credential lookup does not join `identity.users` for this class.
     pub created_by: &'a str,
 }
 
@@ -255,7 +233,7 @@ pub struct Revealed {
     /// The plaintext, which zeroes when this is dropped.
     pub credential: Minted,
     /// When it was minted.
-    pub created_at_ms: i64,
+    pub created_at: Timestamp,
 }
 
 /// A key that this call revoked.
@@ -264,7 +242,7 @@ pub struct Revoked {
     /// The key's identifier.
     pub id: Uuid7,
     /// When the row records it stopped working.
-    pub revoked_at_ms: i64,
+    pub revoked_at: Timestamp,
 }
 
 /// Turns an insert failure into the refusal it means.
@@ -287,6 +265,17 @@ fn classify_insert(source: sqlx::Error) -> crate::Error {
 }
 
 /// Reports a row whose columns are not the shape this daemon reads.
+/// What a revoke answers: whether THIS call changed the row, and the instant
+/// the row records. Both arms of the statement answer a stamped row — the one
+/// this call's `UPDATE` wrote, or the earlier revoke's — so it is never NULL.
+#[derive(Debug, sqlx::FromRow)]
+struct RevokedRow {
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    revoked_at: Timestamp,
+    changed: bool,
+}
+
+/// A page row that would not decode, with the listing's context.
 fn row_unreadable(source: sqlx::Error) -> crate::Error {
     error::query("read api-key row")(source)
 }

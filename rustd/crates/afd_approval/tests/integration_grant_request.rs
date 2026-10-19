@@ -27,9 +27,9 @@ use afd_approval::{
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ReadyIndex;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
-use crate::lane::{Lane, NOW_MS};
+use crate::lane::{Lane, NOW};
 
 /// The service every request in this suite asks about.
 const SERVICE: &str = "github";
@@ -43,7 +43,7 @@ const CREDENTIAL: &str = "gh";
 
 /// How many consecutive polls stand in for a parked delivery redelivering.
 ///
-/// Ten, which at `NO_WORK_RETRY_AFTER_MS` is ten seconds of a parked event.
+/// Ten, which at `NO_WORK_RETRY_AFTER` is ten seconds of a parked event.
 const POLLS: usize = 10;
 
 /// Who the fixture records as answering a card.
@@ -66,54 +66,36 @@ const fn wanted() -> Wanted<'static> {
 /// Requests one grant on `lane`'s fleet.
 async fn request(lane: &Lane) -> Requested {
     grants(lane)
-        .request(&lane.workspace, &lane.fleet, wanted(), Lane::now())
+        .request(&lane.workspace, &lane.fleet, wanted(), NOW)
         .await
         .expect("the request must run")
 }
 
 /// Every grant row the lane's fleet holds, as `(service, status, reason)`.
 async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
-    sqlx::query(
+    sqlx::query_as(
         "SELECT service, status, requested_reason
-           FROM core.integration_grants WHERE fleet_id = $1::uuid",
+           FROM connector.integration_grants WHERE fleet_id = $1::uuid",
     )
     .bind(lane.fleet.as_str())
     .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
     .expect("the grant rows are readable")
-    .iter()
-    .map(|row| {
-        (
-            row.try_get(0).expect("service"),
-            row.try_get(1).expect("status"),
-            row.try_get(2).expect("reason"),
-        )
-    })
-    .collect()
 }
 
 /// Every gate this suite's kind raised on the lane's fleet, as
 /// `(action_id, evidence service, event_id)`.
 async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
-    sqlx::query(
+    sqlx::query_as(
         "SELECT action_id, evidence->>'service', event_id
-           FROM core.fleet_approval_gates
-          WHERE fleet_id = $1::uuid AND gate_kind = $2",
+           FROM fleet.approval_gates
+          WHERE fleet_id = $1::uuid AND gate_type = $2",
     )
     .bind(lane.fleet.as_str())
     .bind(KIND_INTEGRATION_GRANT)
     .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
     .expect("the gate rows are readable")
-    .iter()
-    .map(|row| {
-        (
-            row.try_get(0).expect("action_id"),
-            row.try_get(1).expect("evidence service"),
-            row.try_get(2).expect("event_id"),
-        )
-    })
-    .collect()
 }
 
 /// Whether the resolve woke the fleet for a parked delivery to poll again.
@@ -231,7 +213,6 @@ async fn approving_the_card_grants_the_integration() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("the resolve must run");
@@ -242,7 +223,12 @@ async fn approving_the_card_grants_the_integration() {
         .first()
         .expect("the fleet holds its requested grant");
     assert_eq!(moved.1, status::APPROVED);
-    assert_eq!(approved_at(&lane).await, Some(NOW_MS));
+    // One statement answered the card and moved the grant, so both carry the
+    // same `now()`: the grant was approved at the instant the card resolved.
+    let approved = approved_at(&lane)
+        .await
+        .expect("an approval stamps the grant");
+    assert_eq!(Some(approved), card_resolved_at(&lane, &action).await);
     assert!(
         fleet_is_ready(&lane).await,
         "approving an install grant wakes the parked delivery"
@@ -268,7 +254,6 @@ async fn denying_the_card_revokes_the_grant() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("the resolve must run");
@@ -300,7 +285,6 @@ async fn an_approved_grant_raises_no_second_card() {
             REVIEWER,
             "",
             Some(lane.fleet.as_str()),
-            Lane::now(),
         )
         .await
         .expect("the resolve must run");
@@ -311,14 +295,27 @@ async fn an_approved_grant_raises_no_second_card() {
 }
 
 /// When the grant was approved, as the resolve stamped it.
-async fn approved_at(lane: &Lane) -> Option<i64> {
-    sqlx::query("SELECT approved_at FROM core.integration_grants WHERE fleet_id = $1::uuid")
-        .bind(lane.fleet.as_str())
-        .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-        .await
-        .expect("the grant row is readable")
-        .try_get(0)
-        .expect("approved_at is readable")
+async fn approved_at(lane: &Lane) -> Option<Timestamp> {
+    sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
+        "SELECT approved_at FROM connector.integration_grants WHERE fleet_id = $1::uuid",
+    )
+    .bind(lane.fleet.as_str())
+    .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
+    .await
+    .expect("approved_at is readable")
+    .map(jiff_sqlx::Timestamp::to_jiff)
+}
+
+/// When the card for `action` was resolved.
+async fn card_resolved_at(lane: &Lane, action: &str) -> Option<Timestamp> {
+    sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
+        "SELECT resolved_at FROM fleet.approval_gates WHERE action_id = $1",
+    )
+    .bind(action)
+    .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
+    .await
+    .expect("resolved_at is readable")
+    .map(jiff_sqlx::Timestamp::to_jiff)
 }
 
 /// One fleet's request is not another's.

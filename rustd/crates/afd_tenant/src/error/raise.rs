@@ -148,7 +148,7 @@ pub(crate) fn cli_credential_machine_collision() -> Error {
     Error::new(ErrorKind::CliCredentialMachineCollision)
 }
 
-/// Reports a proven subject with no `core.users` row behind it.
+/// Reports a proven subject with no `identity.users` row behind it.
 pub(crate) fn unknown_subject() -> Error {
     Error::new(ErrorKind::UnknownSubject)
 }

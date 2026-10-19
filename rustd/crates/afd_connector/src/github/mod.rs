@@ -27,6 +27,7 @@
 
 use afd_core::json::non_empty_str;
 use garde::Validate;
+use jiff::Timestamp;
 use serde_json::{Map, Value};
 
 use crate::grant::parse::HANDLE_INTEGRATION;
@@ -177,14 +178,17 @@ pub(crate) fn parse_listing(body: &Value) -> Option<Found> {
 /// account choosing again, where a GitHub installation claimed twice is two
 /// workspaces claiming one organisation's pull requests.
 #[must_use]
-pub fn grant(installation: &Installation, connected_at_ms: i64) -> Grant {
+pub fn grant(installation: &Installation, connected_at: Timestamp) -> Grant {
     let mut handle = Map::new();
     handle.insert(HANDLE_INTEGRATION.into(), Provider::GitHub.id().into());
     handle.insert(
         HANDLE_INSTALLATION_ID.into(),
         installation.id.clone().into(),
     );
-    handle.insert(HANDLE_CONNECTED_AT.into(), connected_at_ms.into());
+    handle.insert(
+        HANDLE_CONNECTED_AT.into(),
+        connected_at.as_millisecond().into(),
+    );
     if let Some(account) = installation.account.as_ref() {
         handle.insert(HANDLE_LABEL.into(), account.clone().into());
     }
@@ -192,7 +196,6 @@ pub fn grant(installation: &Installation, connected_at_ms: i64) -> Grant {
         handle,
         install: Some(Install {
             external_account_id: installation.id.clone(),
-            installed_by: String::new(),
             scopes: Vec::new(),
             claim: InstallClaim::Exclusive,
         }),

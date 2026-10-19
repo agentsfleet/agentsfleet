@@ -12,7 +12,16 @@ const PLATFORM_KEY: &str = "agt_t0123456789abcdef0123456789abcdef0123456789abcde
 const OPERATOR: &str = "user_platform_admin";
 const MODEL_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const WORKSPACE_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02";
-const CREATE: &str = r#"{"provider":"anthropic","model_id":"claude-opus-5","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}"#;
+/// A complete create body: evidence and one open-ended base tier.
+const CREATE: &str = r#"{"provider":"anthropic","model_id":"claude-opus-5","metadata":{"display_name":"Opus 5","context_cap_tokens":200000,"context_source_url":"https://example.test/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://example.test/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+/// The same model as a complete patch.
+const PATCH: &str = r#"{"metadata":{"display_name":"Opus 5","context_cap_tokens":200000,"context_source_url":"https://example.test/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://example.test/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+/// A create whose provider is empty.
+const EMPTY_PROVIDER: &str = r#"{"provider":"","model_id":"claude-opus-5","metadata":{"display_name":"Opus 5","context_cap_tokens":200000,"context_source_url":"https://example.test/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://example.test/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+/// A create whose context cap is zero.
+const ZERO_CAP: &str = r#"{"provider":"x","model_id":"claude-opus-5","metadata":{"display_name":"Opus 5","context_cap_tokens":0,"context_source_url":"https://example.test/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://example.test/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+/// A patch whose base rate is negative.
+const NEGATIVE_RATE: &str = r#"{"metadata":{"display_name":"Opus 5","context_cap_tokens":200000,"context_source_url":"https://example.test/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"-1","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://example.test/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
 
 fn fleet(scope: Scope) -> axum::Router {
     Fleet::new()
@@ -59,12 +68,7 @@ async fn admin_reads_are_mounted_behind_their_exact_scopes() {
 #[tokio::test]
 async fn model_mutations_validate_before_datastore_io() {
     let admin = fleet(Scope::ModelAdmin);
-    for body in [
-        "",
-        "[]",
-        r#"{"provider":"","model_id":"x","context_cap_tokens":1,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
-        r#"{"provider":"x","model_id":"x","context_cap_tokens":0,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
-    ] {
+    for body in ["", "[]", EMPTY_PROVIDER, ZERO_CAP] {
         let refused = send(
             &admin,
             Method::POST,
@@ -94,7 +98,7 @@ async fn model_mutations_validate_before_datastore_io() {
         Method::PATCH,
         &format!("/v1/admin/models/{MODEL_ID}"),
         Some(PLATFORM_KEY),
-        r#"{"context_cap_tokens":1,"input_nanos_per_mtok":-1,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
+        NEGATIVE_RATE,
     )
     .await;
     assert_eq!(bad_rates.status(), StatusCode::BAD_REQUEST);
@@ -135,6 +139,19 @@ async fn platform_key_mutations_validate_pairing_before_io() {
     )
     .await;
     assert_eq!(bad_provider.status(), StatusCode::BAD_REQUEST);
+
+    // A well-formed provider reaches the store, whose outage is the 503 the
+    // delete reports rather than an "already inactive" it cannot know.
+    let unreachable = send(
+        &admin,
+        Method::DELETE,
+        "/v1/admin/platform-keys/anthropic",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(unreachable.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(code(unreachable).await, Some("UZ-INTERNAL-001"));
 }
 
 /// Both model verbs that name an id parse it before anything else, and the
@@ -145,7 +162,7 @@ async fn a_model_id_that_is_not_a_uuid_is_refused(admin: &axum::Router) {
         Method::PATCH,
         "/v1/admin/models/not-a-uuid",
         Some(PLATFORM_KEY),
-        r#"{"context_cap_tokens":1,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
+        PATCH,
     )
     .await;
     assert_eq!(bad_id.status(), StatusCode::BAD_REQUEST);
@@ -193,7 +210,7 @@ async fn model_edits_and_deletion_report_datastore_unavailability() {
             method,
             &format!("/v1/admin/models/{MODEL_ID}"),
             Some(PLATFORM_KEY),
-            r#"{"context_cap_tokens":1,"input_nanos_per_mtok":0,"cached_input_nanos_per_mtok":0,"output_nanos_per_mtok":0}"#,
+            PATCH,
         )
         .await;
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);

@@ -11,15 +11,16 @@ use crate::view_heartbeat;
 use std::borrow::Cow;
 
 use afd_api_wire::admin::{RunnerAdminAction, RunnerEventType};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
+use jiff::Timestamp;
 
 use self::requests::enrolment;
 use self::support::Fixtures;
 use self::view_heartbeat::view_heartbeat;
+use crate::rows::Row;
 
 const ACTOR: &str = "fixture:platform-operator";
 
@@ -30,13 +31,15 @@ async fn test_runner_views_parity() {
     let seeded = seed_runner_views(&fixtures).await;
     assert_runner_pages(&fixtures, &seeded).await;
     assert_runner_detail(&fixtures, &seeded.live_runner).await;
-    assert_event_pages(&fixtures, &seeded.live_runner).await;
+    assert_event_pages(&fixtures, &seeded.live_runner, seeded.window).await;
     fixtures.cleanup().await;
 }
 
 struct SeededViews {
     live_runner: Uuid7,
     ordered_ids: Vec<String>,
+    /// The database clock before the live runner's beat and after its cordon.
+    window: (Timestamp, Timestamp),
 }
 
 async fn seed_runner_views(fixtures: &Fixtures) -> SeededViews {
@@ -45,15 +48,24 @@ async fn seed_runner_views(fixtures: &Fixtures) -> SeededViews {
         .first()
         .expect("the fixture enrolled three runners")
         .clone();
-    exercise_view_runner(fixtures, &live_runner).await;
-    let mut ordered_ids = runners
-        .into_iter()
-        .map(|runner| runner.as_str().to_owned())
-        .collect::<Vec<_>>();
-    ordered_ids.sort_by(|left, right| right.cmp(left));
+    let window = exercise_view_runner(fixtures, &live_runner).await;
+    // The list's order: newest first, an identifier breaking a tie. Each
+    // enrolment is stamped by the database's `now()`, so the stamps are read
+    // back rather than assumed equal.
+    let mut keyed = Vec::with_capacity(runners.len());
+    for runner in runners {
+        let created = fixtures
+            .instant(Row::Runner(runner.as_str()), "created_at")
+            .await
+            .expect("an enrolled runner has a creation stamp");
+        keyed.push((created, runner.as_str().to_owned()));
+    }
+    keyed.sort_by(|left, right| right.cmp(left));
+    let ordered_ids = keyed.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
     SeededViews {
         live_runner,
         ordered_ids,
+        window,
     }
 }
 
@@ -68,7 +80,7 @@ async fn enroll_view_runners(fixtures: &Fixtures) -> Vec<Uuid7> {
         request.host_id = Cow::Borrowed(host);
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+            .register(&request, fixtures.enrolled_at())
             .await
             .expect("the runner enrols");
         runners.push(enrolled.runner_id);
@@ -76,15 +88,18 @@ async fn enroll_view_runners(fixtures: &Fixtures) -> Vec<Uuid7> {
     runners
 }
 
-async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
+/// Beats, cordons and rotates the live runner, answering the database clock
+/// read before the beat and after the cordon.
+async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Timestamp, Timestamp) {
     let heartbeat = view_heartbeat();
+    let before_beat = fixtures.database_now().await;
     fixtures
         .runners()
         .heartbeat(
             live_runner,
             &heartbeat,
             None,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 1),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("the heartbeat lands");
@@ -94,19 +109,21 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
             live_runner,
             RunnerAdminAction::Cordon,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 2),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("the runner is cordoned");
+    let after_cordon = fixtures.database_now().await;
     let _rotated = fixtures
         .runners()
         .rotate_token(
             live_runner,
             ACTOR,
-            UnixMillis::from_millis(fixtures.enrolled_at() + 3),
+            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(3)),
         )
         .await
         .expect("the token rotates");
+    (before_beat, after_cordon)
 }
 
 /// Each page has its own database snapshot while sibling tests enrol runners.
@@ -114,7 +131,6 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
 /// across pages, and would make this test depend on its neighbours' scheduling.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     let limit = 2;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at() + 4);
 
     let mut cursor: Option<KeysetCursor> = None;
     let mut walked = Vec::new();
@@ -122,7 +138,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     loop {
         let page = fixtures
             .runners()
-            .list_runners(cursor.as_ref(), limit, now)
+            .list_runners(cursor.as_ref(), limit)
             .await
             .expect("the page loads");
         totals.push(page.total());
@@ -184,11 +200,11 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     let detail = fixtures
         .runners()
-        .runner_detail(runner, UnixMillis::from_millis(fixtures.enrolled_at() + 4))
+        .runner_detail(runner)
         .await
         .expect("the detail loads");
     assert_eq!(
-        detail.item().admin_state(),
+        detail.item().status(),
         afd_api_wire::admin::AdminState::Cordoned
     );
     assert_eq!(detail.item().liveness(), RunnerLiveness::Online);
@@ -209,7 +225,7 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     assert_eq!(selftest.sandbox_tier, "dev_none");
 }
 
-async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
+async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7, window: (Timestamp, Timestamp)) {
     let limit = 2;
     let unfiltered = RunnerEventFilter::default();
     let first = fixtures
@@ -251,8 +267,8 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
             RunnerEventType::RunnerOnline,
             RunnerEventType::RunnerCordoned,
         ],
-        Some(fixtures.enrolled_at() + 1),
-        Some(fixtures.enrolled_at() + 2),
+        Some(window.0),
+        Some(window.1),
     )
     .expect("the inclusive window is ordered");
     let page = fixtures

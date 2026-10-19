@@ -15,7 +15,7 @@ async fn blank(f: &Fixture) -> Draft {
 }
 
 async fn complete(f: &Fixture, draft: &Draft, answer: &str) {
-    sqlx::query("UPDATE core.authoring_messages SET state='completed',answer_text=$2 WHERE draft_id=$1::uuid AND sequence=1")
+    sqlx::query("UPDATE authoring.messages SET status='completed',answer_text=$2 WHERE draft_id=$1::uuid AND sequence=1")
         .bind(draft.id.as_str()).bind(answer).execute(&mut *f.connection().await)
         .await.expect("saved prior assistant answer");
 }
@@ -84,17 +84,15 @@ async fn saved_history_over_the_row_or_envelope_bound_is_a_durable_token_failure
             for _ in 2..65 {
                 send(&f, &draft).await;
             }
-            sqlx::query(
-                "UPDATE core.authoring_messages SET state='completed' WHERE draft_id=$1::uuid",
-            )
-            .bind(draft.id.as_str())
-            .execute(&mut *f.connection().await)
-            .await
-            .expect("completed owned history");
+            sqlx::query("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1::uuid")
+                .bind(draft.id.as_str())
+                .execute(&mut *f.connection().await)
+                .await
+                .expect("completed owned history");
         }
         send(&f, &draft).await;
         assert!(claim(&f, &draft).await.is_none());
-        let saved: (String, String) = sqlx::query_as("SELECT state,failure_reason FROM core.authoring_messages WHERE draft_id=$1::uuid ORDER BY sequence DESC LIMIT 1")
+        let saved: (String, String) = sqlx::query_as("SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1::uuid ORDER BY sequence DESC LIMIT 1")
             .bind(draft.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("latest failed message");
         assert_eq!(saved, ("failed".into(), "context_too_large".into()));
         assert_eq!(fixture::attempts(&f).await, 0);

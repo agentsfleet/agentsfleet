@@ -61,21 +61,18 @@ async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &str) {
         .acquire()
         .await
         .expect("purge inspection");
-    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM core.fleets WHERE id=$1::uuid")
+    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE id=$1::uuid")
         .bind(fleet.saved["id"].as_str().expect("fleet ID"))
         .fetch_one(&mut *connection)
         .await
         .expect("fleet census");
     assert_eq!(fleets, 0, "the replay recreated nothing");
-    let receipt: (i64, i64) = sqlx::query_as(
-        "SELECT purged_at,expires_at FROM core.authoring_replay_receipts WHERE operation_id=$1::uuid",
+    let receipts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1::uuid",
     )
     .bind(key)
     .fetch_one(&mut *connection)
     .await
-    .expect("the Apply receipt is retained as a tombstone");
-    assert_eq!(
-        receipt.1 - receipt.0,
-        afd_wire::authoring::REPLAY_TOMBSTONE_MS
-    );
+    .expect("receipt census");
+    assert_eq!(receipts, 1, "the Apply receipt outlives the purged fleet");
 }

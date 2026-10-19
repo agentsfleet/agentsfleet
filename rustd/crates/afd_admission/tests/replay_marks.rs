@@ -31,16 +31,17 @@ mod fake_redis;
 use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, DbRole};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_wire::event::EventType;
+use jiff::Timestamp;
 
 use self::fake_redis::{FakeRedis, Reply, install_subscriber};
 
 /// The instant the seeded rows carry.
-const SEED_MS: i64 = 1_760_000_000_000;
+const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status that keeps every lease path off the fixture fleet.
 const FLEET_STOPPED: &str = "stopped";
@@ -80,20 +81,22 @@ impl Seeded {
             workspace: mint_id(),
             fleet: mint_id(),
         };
-        for (statement, binds) in [
-            (
-                "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-                 VALUES ($1::uuid, $1::text, $3, $3)",
-                [&seeded.tenant, &seeded.tenant],
-            ),
-            (
-                "INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-                 VALUES ($1::uuid, $2::uuid, $1::text, 'replay-fixture', $3)",
-                [&seeded.workspace, &seeded.tenant],
-            ),
-        ] {
-            seeded.execute(statement, binds).await;
-        }
+        let mut connection = seeded
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection");
+        TenantSeed::new(&seeded.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(&seeded.workspace, &seeded.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
+        drop(connection);
         FleetSeed::new(
             &seeded.fleet,
             &seeded.workspace,
@@ -101,7 +104,7 @@ impl Seeded {
             FLEET_STOPPED,
         )
         .name("replay-fixture-fleet")
-        .at(SEED_MS)
+        .at(SEEDED_AT)
         .native_setup()
         .insert(
             &mut *seeded
@@ -113,16 +116,6 @@ impl Seeded {
         .await
         .expect("seeding a fleet");
         seeded
-    }
-
-    async fn execute(&self, statement: &'static str, [first, second]: [&String; 2]) {
-        sqlx::query(statement)
-            .bind(first)
-            .bind(second)
-            .bind(SEED_MS)
-            .execute(&mut *self.database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("a seed row must insert");
     }
 
     /// Admits the one steer this suite resends, under `key`.
@@ -144,12 +137,15 @@ impl Seeded {
 
     async fn cleanup(self) {
         for (statement, id) in [
-            ("DELETE FROM core.fleets WHERE id = $1::uuid", &self.fleet),
+            ("DELETE FROM fleet.fleets WHERE id = $1::uuid", &self.fleet),
             (
-                "DELETE FROM core.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
                 &self.workspace,
             ),
-            ("DELETE FROM core.tenants WHERE id = $1::uuid", &self.tenant),
+            (
+                "DELETE FROM identity.tenants WHERE id = $1::uuid",
+                &self.tenant,
+            ),
         ] {
             let _removed = sqlx::query(statement)
                 .bind(id)

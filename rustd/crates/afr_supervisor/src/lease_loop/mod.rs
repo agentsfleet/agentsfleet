@@ -18,6 +18,7 @@
 //! is the record.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::error_code;
@@ -89,7 +90,8 @@ pub(super) struct LeaseRun<'a> {
     egress: &'a Egress,
     ids: Ids,
     interrupt: CancellationToken,
-    /// What the run has spent so far, read into every renewal.
+    /// What the run has spent so far, read into every renewal, its lines
+    /// stamped by the lessee's clock.
     meter: Meter,
     /// When the lease began, for its wall time.
     started: Instant,
@@ -136,7 +138,7 @@ impl Lessee {
                 fleet: Uuid7::parse(&lease.event.fleet_id)?,
             },
             interrupt: CancellationToken::new(),
-            meter: Meter::default(),
+            meter: Meter::new(Arc::clone(&self.clock)),
             started: Instant::now(),
             timeline: Timeline::default(),
         };

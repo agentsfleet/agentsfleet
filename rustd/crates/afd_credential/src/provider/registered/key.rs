@@ -4,7 +4,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::{aad::Aad, secret::SecretString};
 use afd_vault::StoredEnvelope;
 use serde::Deserialize;
-use sqlx::{FromRow as _, Postgres, Row as _, Transaction};
+use sqlx::PgConnection;
 
 use super::{CONTEXT, RegisteredModel, read};
 use crate::{
@@ -31,7 +31,7 @@ impl Providers {
     /// Preserves store/decryption failures; stale metadata answers `None`.
     pub async fn registered_key(
         &self,
-        connection: &mut Transaction<'_, Postgres>,
+        connection: &mut PgConnection,
         owner: &Uuid7,
         pinned: &RegisteredModel,
     ) -> Result<Option<SecretString>> {
@@ -41,18 +41,16 @@ impl Providers {
         if registration.model != *pinned {
             return Ok(None);
         }
-        let row = registration.row;
-        let workspace: String = row.try_get(6).map_err(query(CONTEXT))?;
-        let name: String = row.try_get(7).map_err(query(CONTEXT))?;
-        let row = sqlx::query(sql::SELECT_SECRET)
+        let (workspace, name) = (registration.workspace_id, registration.key_name);
+        // `read` took this secret `FOR SHARE` in the caller's transaction, so
+        // the row it named is still there to open.
+        let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)
-            // The metadata read holds this credential FOR SHARE until dispatch commits.
-            .fetch_one(&mut **connection)
+            .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
-        let body = StoredEnvelope::from_row(&row)
-            .map_err(query(CONTEXT))?
+        let body = stored
             .into_envelope()
             .map_err(vault_open)?
             .open(self.vault_key(), &Aad::new(&workspace, &name))

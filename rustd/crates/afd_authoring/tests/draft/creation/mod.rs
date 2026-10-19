@@ -6,12 +6,19 @@
 )]
 
 mod activation;
+mod admission_faults;
 mod cancellation;
 mod contention;
+mod deletion_matrix;
 mod fixture;
 mod funnel;
 mod grants;
 mod identity;
+mod improvement;
+mod interleaving;
 mod race;
+mod refusals;
 mod retries;
+mod rollback;
 mod stages;
+mod stored;

@@ -14,13 +14,25 @@ pub enum InferenceApi {
     Responses,
     /// Anthropic Messages.
     Messages,
+    /// Google's native `GenerateContent` API.
+    Gemini,
+    /// Ollama's native chat API.
+    Ollama,
 }
 
 impl InferenceApi {
-    /// Messages and Responses accept images in tool results.
+    /// Whether a tool's images reach the model. Messages, Responses and
+    /// Gemini 3 read them inside the tool result; Ollama, and Gemini before
+    /// 3, refuse them there (rig-core 0.44 `providers/ollama/chat.rs:298`,
+    /// `gemini/completion.rs:333`), and rig's history adapter moves them into
+    /// the user message that follows (`completion/history.rs:1205`), which
+    /// both read. Chat completions take text alone.
     #[must_use]
     pub const fn carries_images(self) -> bool {
-        matches!(self, Self::Messages | Self::Responses)
+        matches!(
+            self,
+            Self::Messages | Self::Responses | Self::Gemini | Self::Ollama
+        )
     }
 }
 
@@ -35,7 +47,8 @@ pub struct ModelInference {
     /// HTTPS provider base. Host safety is proven by the credential service.
     #[garde(length(bytes, min = 1, max = 2048))]
     pub base_url: String,
-    /// Registered rig dialect, or absent for a plain compatible gateway.
+    /// Registered rig dialect, or absent for a plain compatible gateway. The
+    /// native Gemini and Ollama APIs take none.
     #[garde(inner(length(bytes, min = 1, max = 64)))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialect: Option<String>,

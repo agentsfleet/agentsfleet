@@ -12,9 +12,9 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 
 | Fact | Where it's enforced |
 |---|---|
-| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql`, `schema/926_memory_entries_workspace_scope.sql` |
-| Every read and write goes through one trait, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `MemoryStore`, the Postgres store, the grants, and the flip |
-| The grants are read and set as the api role on `core.fleets`, never by the store | `schema/927_fleet_memory_access.sql`, `rustd/crates/afd_memory/src/access.rs` |
+| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/2100_memory_entries.sql` |
+| Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `rustd/crates/afd_memory/` — `Memories`, the Postgres store (`PgStore`), and the grants |
+| The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/1500_fleet_fleets.sql`, `rustd/crates/afd_memory/src/access.rs` |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` hands the path's fleet to `Plane::hydrate` / `Plane::capture` (`rustd/crates/afd_fleet/src/lease/memory.rs`), which refuse a runner holding no live lease on that fleet |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
@@ -23,13 +23,13 @@ Every memory row belongs to **one fleet**, its writer, and to that fleet's **wor
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` takes the role with `SET LOCAL ROLE memory_runtime` inside each memory transaction, so Postgres drops it at commit or rollback and no pooled connection is left running as `memory_runtime` (`rustd/crates/afd_memory/src/sql.rs`). `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants outside the `memory` schema** (RULE CTX; `schema/1010_roles_and_privileges.sql`). `api_runtime` takes the role with `SET LOCAL ROLE memory_runtime` inside each memory transaction, so Postgres drops it at commit or rollback and no pooled connection is left running as `memory_runtime` (`rustd/crates/afd_memory/src/sql/mod.rs`). `fleet_id` **REFERENCES `fleet.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `fleet.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read or forget its memory (API reference › Fleet memories).
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 
 Two layers, deliberately split:
 
-- **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres), the default backend. This is what persists. A workspace can later be flipped to another store, which migrates its memory ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
+- **Durable** — the `fleet_id`-keyed rows in `memory.entries` (Postgres), the default backend. This is what persists, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 - **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report; it is gone when the run ends ([Runner execution](./runner_execution.md#crates)).
 
 Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
@@ -42,13 +42,13 @@ Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.*
 
 ## 5. Categories, selection, tools — see the topic docs
 
-The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`), the categories (`core` pinned, `daily` 72h auto-prune, `conversation` windowed), the byte-budget category-pinned hydration window, and cap eviction all live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. No vector search, no scoring — recall is a case-insensitive substring match on `key` and content, key matches first (`rustd/crates/afr_memory/src/hydrated.rs`, `rustd/crates/afd_memory/src/sql.rs`).
+The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`), the categories (`core` pinned, `daily` 72h auto-prune, `conversation` windowed), the byte-budget category-pinned hydration window, and cap eviction all live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. No vector search, no scoring — recall is a case-insensitive substring match on `key` and content, key matches first (`rustd/crates/afr_memory/src/hydrated.rs`, `rustd/crates/afd_memory/src/sql/mod.rs`).
 
 ## Code pointers
 
 | Concern | Path |
 |---|---|
-| Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |
+| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `schema/2100_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_memory/src/postgres/`, its statements in `src/sql.rs` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` |
 | Tenant read and forget (ownership-gated) | `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` |

@@ -5,7 +5,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{fleet, http, library};
+use crate::metrics::declared::{billing, fleet, http, library};
+use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
@@ -19,6 +20,22 @@ use crate::metrics::registry::{Policy, Registry};
 /// itself.
 fn label_products() -> Vec<(&'static str, usize)> {
     vec![
+        (
+            billing::BILLING_RESERVE_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len() * billing_labels::ReserveOutcome::ALL.len(),
+        ),
+        (
+            billing::BILLING_SETTLE_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
+        ),
+        (
+            billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len(),
+        ),
+        (
+            billing::BILLING_UNSETTLED_NANOS.wire_name(),
+            billing_labels::WorkType::ALL.len(),
+        ),
         (
             http::OTLP_ENTRIES_DISCARDED_TOTAL.wire_name(),
             http_labels::Signal::ALL.len() * http_labels::DiscardReason::ALL.len(),

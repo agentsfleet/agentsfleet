@@ -17,8 +17,8 @@ const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/memories`;
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ITEMS = [
-  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: 1765500300000 },
-  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: 1765500200000 },
+  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: "2025-12-12T00:45:00Z" },
+  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: "2025-12-12T00:43:20Z" },
 ];
 
 const ENVELOPE = { items: ITEMS, total: ITEMS.length, request_id: "req_mem_int" };
@@ -148,7 +148,7 @@ describe("memory — machine-stable JSON", () => {
     // 16 KiB-class multibyte content — the preview cap must not touch JSON.
     const bigContent = `naïve café 🦉 ${"統合テスト".repeat(800)}`;
     const envelope = {
-      items: [{ key: "big_note", content: bigContent, category: "core", updated_at: 1765500300000 }],
+      items: [{ key: "big_note", content: bigContent, category: "core", updated_at: "2025-12-12T00:45:00Z" }],
       total: 1,
       request_id: "req_mem_json",
     };
@@ -164,7 +164,7 @@ describe("memory — machine-stable JSON", () => {
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof envelope;
         expect(parsed.items[0]?.content).toBe(bigContent);
-        expect(parsed.items[0]?.updated_at).toBe(1765500300000); // raw passthrough
+        expect(parsed.items[0]?.updated_at).toBe("2025-12-12T00:45:00Z"); // raw passthrough
         expect(parsed.request_id).toBe("req_mem_json");
         expect(parsed.total).toBe(1);
       });

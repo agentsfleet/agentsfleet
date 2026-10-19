@@ -41,7 +41,7 @@ impl SseLane {
     /// Connects, with a deadline short enough that a hung server fails one test
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
-        install_subscriber();
+        afd_core::test_util::trace::install_subscriber();
         let redis = afd_dragonfly::test_util::connect_live(&Self::config())
             .await
             .expect("the lane's Dragonfly must be reachable");
@@ -74,23 +74,4 @@ impl SseLane {
     pub(crate) fn fleet(&self, suffix: &str) -> String {
         format!("{}_{suffix}", self.prefix)
     }
-}
-
-/// Installs a subscriber so the event macros in the code under test actually
-/// run.
-///
-/// `tracing::debug!` asks whether its callsite is enabled BEFORE evaluating the
-/// fields inside it. With no subscriber, every field expression in every
-/// diagnostic is skipped — so a test that closes a tail proves the close path
-/// runs but never proves the line reporting it does. Output goes to a sink: the
-/// point is that the fields are evaluated, not that anybody reads them.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    });
 }

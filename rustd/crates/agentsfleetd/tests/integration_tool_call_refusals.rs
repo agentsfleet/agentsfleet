@@ -100,8 +100,10 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
     execute(
         &run,
         &format!(
-            "UPDATE fleet.runner_leases SET lease_expires_at = 0 \
-             WHERE id = '{lease_id}'::uuid AND fleet_id = $1::uuid AND event_id = $2"
+            "UPDATE runner.leases SET lease_expires_at = to_timestamp(0) \
+             WHERE id = '{lease_id}'::uuid AND fleet_id = $1::uuid \
+               AND fleet_event_id = (SELECT id FROM fleet.events \
+                                      WHERE fleet_id = $1::uuid AND event_id = $2)"
         ),
     )
     .await;
@@ -190,10 +192,10 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     execute(
         &run,
         &format!(
-            "WITH t AS (INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ('{tenant}'::uuid, 'other', 0, 0) RETURNING id) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT '{workspace}'::uuid, t.id, 'other', 'e2e', 0 FROM t \
+            "WITH t AS (INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ('{tenant}'::uuid, 'other', now(), now()) RETURNING id) \
+             INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+             SELECT '{workspace}'::uuid, t.id, 'other', now() FROM t \
              WHERE $1 <> '' AND $2 <> ''"
         ),
     )

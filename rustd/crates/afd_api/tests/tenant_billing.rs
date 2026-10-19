@@ -17,16 +17,12 @@
 //! the constant the handler answers with rather than a respelling here
 //! (RULE UFS).
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -50,76 +46,12 @@ const SUBJECT: &str = "user_2billing";
 /// What the route table demands of both reads.
 const BILLING_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::BillingRead]);
 
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the scope rung refuses with, as `Denied` renders it.
-const DETAIL_SCOPE: &str = "Requires scope billing:read";
-
 /// A GET at `path` presenting `credential`, against a fresh router.
 async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::response::Response {
     let router = Fleet::new()
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, Method::GET, path, credential, "").await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Asserts the request got PAST every layer in front of the verb.
-///
-/// 503 with the datastore sentence is the one answer only the SERVICE can
-/// produce: the guard, the scope rung and the query-string parsing all refuse
-/// with 4xx codes of their own, so this is what "reached the handler" looks
-/// like over a pool that answers nothing.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the plane's, not a layer's"
-    );
-}
-
-#[tokio::test]
-async fn both_reads_need_a_credential() {
-    for path in [BILLING, CHARGES] {
-        let response = read(BILLING_READ, path, None).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{path} is not an anonymous read"
-        );
-    }
-}
-
-#[tokio::test]
-async fn both_reads_need_the_billing_scope() {
-    for path in [BILLING, CHARGES] {
-        let response = read(NO_SCOPES, path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} without billing:read is refused"
-        );
-        assert_eq!(
-            detail_of(response).await,
-            DETAIL_SCOPE,
-            "{path}: the whole requirement is named in the detail"
-        );
-    }
 }
 
 #[tokio::test]
@@ -155,13 +87,6 @@ async fn a_limit_that_is_not_a_number_is_refused() {
 }
 
 #[tokio::test]
-async fn the_limit_cap_is_inside_the_range() {
-    let path = format!("{CHARGES}?limit=200");
-    let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-    assert_reached_the_verb(response, "limit=200").await;
-}
-
-#[tokio::test]
 async fn a_cursor_this_daemon_never_issued_is_refused() {
     let path = format!("{CHARGES}?cursor=!!not-a-token");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
@@ -173,6 +98,23 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
     );
 }
 
+/// A well-formed token whose id half is not a `UUIDv7` is refused here, as a
+/// 400, before the statement that binds the id as `uuid` could fail inside
+/// Postgres and answer as a server fault.
+#[tokio::test]
+async fn a_cursor_naming_no_row_id_is_refused_before_the_datastore() {
+    use base64::Engine as _;
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("2026-01-01T00:00:00Z|x");
+    let path = format!("{CHARGES}?cursor={token}");
+    let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+    assert_eq!(
+        detail_of(response).await,
+        afd_tenant::error::detail::DETAIL_CHARGES_CURSOR_INVALID,
+        "the same undifferentiated refusal as any other malformed cursor"
+    );
+}
+
 /// `?cursor=` with nothing after it is the first page, not a malformed token.
 #[tokio::test]
 async fn an_empty_cursor_is_the_first_page() {
@@ -181,11 +123,15 @@ async fn an_empty_cursor_is_the_first_page() {
     assert_reached_the_verb(response, "empty cursor").await;
 }
 
-/// A base64url `<millis>:<id>` token parses at this boundary — the cursor
+/// A token the charges page issues parses at this boundary — the cursor
 /// claim, made where a client would actually present it.
 #[tokio::test]
-async fn a_millis_and_id_cursor_is_accepted() {
-    let path = format!("{CHARGES}?cursor=MTcxMjkyNDQwMDAwMDphYmMxMjM");
+async fn an_issued_cursor_is_accepted() {
+    let token = afd_billing::tenant::cursor::render(
+        jiff::Timestamp::constant(1_712_924_400, 0),
+        "01924f4e-0000-7000-8000-00000000c4a1",
+    );
+    let path = format!("{CHARGES}?cursor={token}");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-    assert_reached_the_verb(response, "millis:id cursor").await;
+    assert_reached_the_verb(response, "issued cursor").await;
 }

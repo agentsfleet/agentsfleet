@@ -1,7 +1,6 @@
 //! What a beat changed about a runner's verdict: the write, and the line an
 //! operator reads when it moved.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::runner::CapabilityReport;
@@ -10,6 +9,7 @@ use sqlx::PgConnection;
 use super::best_effort;
 use crate::policy::StoredVerdict;
 use crate::reconcile::Verdict;
+use crate::spelling::render_object;
 use crate::sql;
 
 /// The scoped event a verdict write that did not land is logged under.
@@ -27,29 +27,18 @@ pub(super) async fn persist(
     incoming: Option<&CapabilityReport<'_>>,
     stored: &StoredVerdict,
     verdict: Verdict,
-    now: UnixMillis,
 ) {
-    let millis = now.as_millis();
     if let Some(report) = incoming {
-        let report_json = serde_json::to_string(report).unwrap_or_else(|_unreachable| {
-            // Unreachable for this shape — booleans and a string list — and an
-            // empty object is the honest degradation: it stores "reported
-            // nothing" rather than a half-written report.
-            "{}".to_owned()
-        });
+        let report_json = render_object(report);
         let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
             .bind(runner.as_str())
             .bind(report_json)
-            .bind(millis)
-            .bind(verdict.is_degraded())
             .bind(verdict.reason());
         best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
     } else if stored.differs_from(verdict) {
         let write = sqlx::query(sql::runner::UPDATE_RUNNER_VERDICT)
             .bind(runner.as_str())
-            .bind(verdict.is_degraded())
-            .bind(verdict.reason())
-            .bind(millis);
+            .bind(verdict.reason());
         best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
     }
     announce(runner, stored, verdict);
@@ -63,7 +52,7 @@ pub(super) async fn persist(
 /// into the log and hide the moment it happened.
 fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
     let id = runner.as_str();
-    match (stored.degraded, verdict.reason()) {
+    match (stored.is_degraded(), verdict.reason()) {
         (false, Some(reason)) => {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(

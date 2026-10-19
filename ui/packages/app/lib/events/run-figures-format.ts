@@ -18,7 +18,7 @@ const MINUTES_PER_HOUR = 60;
 
 /** A figure's text, or null when the run did not report it: left out, never
  * drawn as zero. */
-export function runFigure(value: number | null | undefined, format: (value: number) => string): string | null {
+export function runFigure<T>(value: T | null | undefined, format: (value: T) => string): string | null {
   return value === null || value === undefined ? null : format(value);
 }
 

@@ -9,6 +9,9 @@ import {
 } from "@agentsfleet/design-system";
 import { credential, requireCredential } from "@/lib/auth/credential";
 import { listWorkspaceEvents } from "@/lib/api/events";
+import { ApiError } from "@/lib/api/errors";
+import { ZodError } from "zod";
+import { WorkspaceActivityUnavailable } from "./WorkspaceActivityUnavailable";
 // The section aria-label below must equal WORKSPACE_EVENTS_LABEL (the events
 // table caption) — the parity is pinned by the events page test.
 import { EventsList } from "@/components/domain/EventsList";
@@ -89,10 +92,16 @@ export async function EventsData({
   // The cursor comes from the URL, so this page is fetched on the server for
   // every page turn — no rows travel through a Server Action into a client
   // cache, and a reload lands on the same page.
-  const page = await listWorkspaceEvents(workspaceId, token, {
-    limit: pageSize,
-    ...(cursor ? { cursor } : {}),
-  });
+  let page;
+  try {
+    page = await listWorkspaceEvents(workspaceId, token, {
+      limit: pageSize,
+      ...(cursor ? { cursor } : {}),
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError) && !(error instanceof ZodError)) throw error;
+    return <WorkspaceActivityUnavailable error={error} workspaceId={workspaceId} hasCursor={Boolean(cursor)} />;
+  }
 
   return (
     <Section aria-label="Workspace activity" className="flex min-h-0 flex-1 flex-col gap-xl">

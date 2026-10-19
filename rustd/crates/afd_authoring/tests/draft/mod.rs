@@ -7,6 +7,7 @@
 
 mod admission;
 mod attempt;
+mod biller;
 mod cleanup;
 mod contention;
 mod creation;
@@ -15,20 +16,25 @@ mod fixture;
 mod funnel;
 mod library;
 mod listing;
+mod locks;
 mod maintenance;
 mod messages;
 mod model_calls;
 mod model_keys;
 mod model_metadata;
 mod model_tools;
+mod observe;
 mod privacy;
 mod proposals;
+mod races;
 #[path = "../support/refusal.rs"]
 mod refusal;
 mod replay;
 mod review;
 mod seed;
+mod sending;
 mod switching;
+mod window;
 
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;

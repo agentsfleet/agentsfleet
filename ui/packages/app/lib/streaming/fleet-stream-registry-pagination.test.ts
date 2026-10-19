@@ -17,7 +17,7 @@ describe("fleet-stream-registry — pagination", () => {
     fetchSpy.mockResolvedValueOnce(
       pageWith(descRows(["evt_oldest"], MISSED_AT_MS), null),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -37,7 +37,7 @@ describe("fleet-stream-registry — pagination", () => {
     fetchSpy.mockResolvedValueOnce(
       pageWith(descRows(["evt_c"], MISSED_AT_MS), null),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     const first = queryOf(0);
@@ -73,7 +73,7 @@ describe("fleet-stream-registry — pagination", () => {
         pageWith(descRows([`evt_${i}`], OUTAGE_UNREACHABLE_MS), `cursor_${i}`),
       );
     }
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(MAX_PAGES);
@@ -92,7 +92,7 @@ describe("fleet-stream-registry — pagination", () => {
     );
     fetchSpy.mockResolvedValueOnce({ ok: false, status: 503 });
     fetchSpy.mockResolvedValueOnce(pageWith([], null));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es1 = reconnect();
     await flushBackfill();
     // Page 1's rows are merged (id-dedupe makes the retry idempotent), but the
@@ -107,7 +107,7 @@ describe("fleet-stream-registry — pagination", () => {
 
   it("test_registry_backfill_empty_timeline_requests_recent — a reconnect with no last-seen event fetches the most-recent bounded page", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_first_ever", created_at: SEED_AT_MS })]),
+      pageWith([row({ event_id: "evt_first_ever", created_at: new Date(SEED_AT_MS).toISOString() })]),
     );
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     reconnect();

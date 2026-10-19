@@ -3,8 +3,13 @@
 //! A `once` schedule's expression has no year. A create that cannot reach the
 //! scheduler leaves the row `failed`, and a later sync pushes it again; past
 //! the minute, the next match of that expression is a year away. The row keeps
-//! the instant it was set for (slot 931), and the reconciler removes a one-off
-//! whose instant has passed instead of registering it.
+//! the instant it was set for, counted from its own database stamp, and the
+//! reconciler removes a one-off whose instant has passed instead of
+//! registering it.
+//!
+//! Every instant here is the database's. A case that needs a passed minute
+//! moves `fire_at` behind the row's `updated_at` (`CronLane::backdate_fire_at`)
+//! rather than waiting for a wall clock.
 
 #![expect(
     clippy::expect_used,
@@ -18,26 +23,27 @@ mod support;
 #[path = "support/live_qstash.rs"]
 mod live_qstash;
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
+use afd_core::clock;
+use afd_core::id::Uuid7;
 use afd_cron::{Change, DesiredStatus, NewSchedule, Reconciled, Schedule, Source};
+use jiff::tz::TimeZone;
 
 use self::live_qstash::{against_live, live};
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
-/// 2026-03-15T09:04:30Z: when the one-off was asked for.
-const ASKED_AT: i64 = 1_773_565_470_000;
-
-/// 2026-03-15T09:05:00Z: the minute it was set for.
-const SET_FOR: i64 = 1_773_565_500_000;
-
-/// One minute, in milliseconds: how late the sync below runs.
-const MINUTE_MS: i64 = 60_000;
-
-/// The expression for [`SET_FOR`], in UTC.
+/// 09:05 UTC on 15 March: the one-off's minute, whichever year is next.
 const SET_FOR_CRON: &str = "5 9 15 3 *";
 
-/// A one-off created at [`ASKED_AT`], claimed by its creator.
-async fn one_off(lane: &CronLane, token: &afd_core::id::Uuid7) -> Schedule {
+/// The same day at 09:10, five minutes later.
+const MOVED_CRON: &str = "10 9 15 3 *";
+
+/// How far [`MOVED_CRON`] moves the minute.
+const MOVED_BY: Duration = Duration::from_mins(5);
+
+/// A one-off for [`SET_FOR_CRON`], claimed by its creator.
+async fn one_off(lane: &CronLane, token: &Uuid7) -> Schedule {
     let fleet = lane.fleet_id();
     lane.store
         .create(
@@ -45,18 +51,60 @@ async fn one_off(lane: &CronLane, token: &afd_core::id::Uuid7) -> Schedule {
             NewSchedule {
                 fleet: &fleet,
                 source: Source::Fleet,
-                source_key: None,
+                provider_schedule_id: None,
                 cron: SET_FOR_CRON,
                 timezone: "UTC",
                 message: "check the deploy",
                 once: true,
             },
             token,
-            UnixMillis::from_millis(ASKED_AT),
+            SEED_AT,
         )
         .await
         .expect("the lane's Postgres must answer")
         .expect("the fixture's own create must be admitted")
+}
+
+/// `schedule` as the table holds it now.
+async fn reread(lane: &CronLane, schedule: &Schedule) -> Schedule {
+    lane.store
+        .one(&lane.fleet_id(), &schedule.schedule_id)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the schedule is still there")
+}
+
+/// Releases the creator's fence, recording `registered` as the upstream id.
+async fn settle(lane: &CronLane, created: &Schedule, claim: &Uuid7, registered: Option<&str>) {
+    lane.store
+        .finalize_synced(created, claim, registered)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the creator's own finalize must land");
+}
+
+/// The fire instant is counted from the row's own `created_at`: after it, and
+/// on the minute the expression names.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres"]
+async fn a_once_fire_at_follows_the_rows_own_stamp() {
+    let lane = CronLane::open().await;
+    let created = one_off(&lane, &CronLane::token()).await;
+
+    let fire_at = created
+        .fire_at
+        .expect("a readable one-off is set for a moment");
+    assert!(
+        fire_at > created.created_at,
+        "{fire_at} after {}",
+        created.created_at
+    );
+    let wall = fire_at.to_zoned(TimeZone::UTC).datetime();
+    assert_eq!(
+        (wall.month(), wall.day(), wall.hour(), wall.minute()),
+        (3, 15, 9, 5),
+        "the minute {SET_FOR_CRON} names"
+    );
 }
 
 #[tokio::test]
@@ -68,18 +116,11 @@ async fn a_one_off_synced_after_its_moment_is_retired() {
     let lane = CronLane::open().await;
     let claim = CronLane::token();
     let created = one_off(&lane, &claim).await;
-    assert_eq!(
-        created.fire_at,
-        Some(SET_FOR),
-        "the create keeps its moment"
-    );
+    lane.backdate_fire_at(&created.schedule_id).await;
+    let held = reread(&lane, &created).await;
 
     let reconciled = against_live(&lane, url, token)
-        .reconcile(
-            &created,
-            &claim,
-            UnixMillis::from_millis(SET_FOR + MINUTE_MS),
-        )
+        .reconcile(&held, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
 
@@ -106,7 +147,7 @@ async fn a_one_off_synced_before_its_moment_is_registered() {
     let created = one_off(&lane, &claim).await;
 
     let reconciled = against_live(&lane, url, token)
-        .reconcile(&created, &claim, UnixMillis::from_millis(ASKED_AT))
+        .reconcile(&created, &claim)
         .await
         .expect("a reachable scheduler is not a datastore failure");
 
@@ -127,23 +168,22 @@ async fn a_registered_one_off_synced_after_its_moment_is_kept() {
     let lane = CronLane::open().await;
     let claim = CronLane::token();
     let created = one_off(&lane, &claim).await;
-    let asked = UnixMillis::from_millis(ASKED_AT);
-    lane.store
-        .finalize_synced(&created, &claim, Some("qstash-issued-key"), asked)
-        .await
-        .expect("the lane's Postgres must answer")
-        .expect("the creator's own finalize must land");
-    let past_moment = UnixMillis::from_millis(SET_FOR + MINUTE_MS);
+    settle(&lane, &created, &claim, Some("qstash-issued-key")).await;
+    lane.backdate_fire_at(&created.schedule_id).await;
     let resync = CronLane::token();
     let held = lane
         .store
-        .claim_current(&lane.fleet_id(), &created.schedule_id, &resync, past_moment)
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &resync)
         .await
         .expect("the lane's Postgres must answer")
         .expect("a settled schedule is claimable");
+    assert!(
+        held.fire_at.is_some_and(|at| at <= held.updated_at),
+        "past its moment"
+    );
 
     let reconciled = against_live(&lane, url, token)
-        .reconcile(&held, &resync, past_moment)
+        .reconcile(&held, &resync)
         .await
         .expect("a reachable scheduler is not a datastore failure");
 
@@ -153,38 +193,36 @@ async fn a_registered_one_off_synced_after_its_moment_is_kept() {
     );
 }
 
-/// An edit that moves a one-off sets it for the new moment.
+/// An edit that moves a one-off sets it for the new moment, counted from the
+/// edit's own stamp.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres"]
 async fn a_one_off_moved_by_an_edit_is_set_for_its_new_moment() {
     let lane = CronLane::open().await;
     let claim = CronLane::token();
     let created = one_off(&lane, &claim).await;
-    let asked = UnixMillis::from_millis(ASKED_AT);
-    lane.store
-        .finalize_synced(&created, &claim, None, asked)
-        .await
-        .expect("the lane's Postgres must answer")
-        .expect("the creator's own finalize must land");
+    settle(&lane, &created, &claim, None).await;
 
-    // Five minutes later the same day: 09:10 rather than 09:05.
     let moved = lane
         .store
         .claim_change(
             &lane.fleet_id(),
             &created.schedule_id,
             Change {
-                cron: Some("10 9 15 3 *"),
+                cron: Some(MOVED_CRON),
                 ..Change::default()
             },
             &CronLane::token(),
-            asked,
         )
         .await
         .expect("the lane's Postgres must answer")
         .expect("a settled schedule is claimable");
 
-    assert_eq!(moved.fire_at, Some(SET_FOR + 5 * MINUTE_MS));
+    assert_eq!(
+        moved.fire_at,
+        created.fire_at.map(|at| clock::after(at, MOVED_BY))
+    );
+    assert!(moved.fire_at.is_some_and(|at| at > moved.updated_at));
 }
 
 /// Greptile on #731: a one-off paused before its moment and resumed after it
@@ -199,31 +237,26 @@ async fn a_one_off_resumed_after_its_moment_is_retired() {
     let scheduler = against_live(&lane, url, token);
     let claim = CronLane::token();
     let created = one_off(&lane, &claim).await;
-    let asked = UnixMillis::from_millis(ASKED_AT);
-    lane.store
-        .finalize_synced(&created, &claim, Some("qstash-issued-key"), asked)
-        .await
-        .expect("the lane's Postgres must answer")
-        .expect("the creator's own finalize must land");
+    settle(&lane, &created, &claim, Some("qstash-issued-key")).await;
 
-    let paused = edit(&lane, &created, DesiredStatus::Paused, asked).await;
+    let paused = edit(&lane, &created, DesiredStatus::Paused).await;
     let Reconciled::Synced(paused) = scheduler
-        .reconcile(&paused.0, &paused.1, asked)
+        .reconcile(&paused.0, &paused.1)
         .await
         .expect("a reachable scheduler is not a datastore failure")
     else {
         panic!("a pause the scheduler agreed to is synced");
     };
     assert_eq!(
-        paused.source_key,
+        paused.provider_schedule_id,
         created.schedule_id.as_str(),
-        "a paused one-off holds no upstream key"
+        "a paused one-off holds no upstream id"
     );
 
-    let past_moment = UnixMillis::from_millis(SET_FOR + MINUTE_MS);
-    let resumed = edit(&lane, &paused, DesiredStatus::Active, past_moment).await;
+    lane.backdate_fire_at(&paused.schedule_id).await;
+    let resumed = edit(&lane, &paused, DesiredStatus::Active).await;
     let reconciled = scheduler
-        .reconcile(&resumed.0, &resumed.1, past_moment)
+        .reconcile(&resumed.0, &resumed.1)
         .await
         .expect("a reachable scheduler is not a datastore failure");
     assert!(
@@ -232,13 +265,8 @@ async fn a_one_off_resumed_after_its_moment_is_retired() {
     );
 }
 
-/// `schedule` set to `status` at `now`, claimed, with the claim's token.
-async fn edit(
-    lane: &CronLane,
-    schedule: &Schedule,
-    status: DesiredStatus,
-    now: UnixMillis,
-) -> (Schedule, afd_core::id::Uuid7) {
+/// `schedule` set to `status`, claimed, with the claim's token.
+async fn edit(lane: &CronLane, schedule: &Schedule, status: DesiredStatus) -> (Schedule, Uuid7) {
     let claim = CronLane::token();
     let held = lane
         .store
@@ -250,7 +278,6 @@ async fn edit(
                 ..Change::default()
             },
             &claim,
-            now,
         )
         .await
         .expect("the lane's Postgres must answer")

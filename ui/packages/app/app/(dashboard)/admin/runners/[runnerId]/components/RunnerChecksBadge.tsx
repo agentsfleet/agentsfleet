@@ -56,13 +56,12 @@ export function RunnerChecksBadge({ runner }: { runner: RunnerDetail }) {
   );
 }
 
-function VerdictTooltip({ label, completedAt }: { label: string; completedAt: number | null }) {
-  const completed = completedAt === null ? null : new Date(completedAt);
+function VerdictTooltip({ label, completedAt }: { label: string; completedAt: string | null }) {
   return <div className="flex flex-col gap-xs">
     <p className="font-medium">{label}</p>
-    {completed ? <>
-      <p>Last checked <Time value={completed} format="relative" tooltip={false} /></p>
-      <Time value={completed} format="absolute" tooltip={false} />
+    {completedAt ? <>
+      <p>Last checked <Time value={completedAt} format="relative" tooltip={false} /></p>
+      <Time value={completedAt} format="absolute" tooltip={false} />
     </> : null}
   </div>;
 }

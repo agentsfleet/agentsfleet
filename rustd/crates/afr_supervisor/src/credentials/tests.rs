@@ -11,10 +11,13 @@ use crate::client::Verb;
 use crate::error;
 use crate::test_support::{Answer, LEASE_ID, drain, json, plane};
 
+/// When every test mint stops working, as the daemon spells it.
+const EXPIRES_AT: &str = "2026-10-18T06:00:00.099Z";
+
 #[tokio::test]
 async fn a_mint_names_the_lease_and_never_prints_its_token() {
     let (plane, mut calls) =
-        plane(|_call| json(&serde_json::json!({"token": "ghs_secret", "expires_at_ms": 99})));
+        plane(|_call| json(&serde_json::json!({"token": "ghs_secret", "expires_at": EXPIRES_AT})));
 
     let minted = mint(
         &plane,
@@ -26,7 +29,7 @@ async fn a_mint_names_the_lease_and_never_prints_its_token() {
     .unwrap();
 
     assert_eq!(minted.expose(), "ghs_secret");
-    assert_eq!(minted.expires_at().as_millis(), 99);
+    assert_eq!(minted.expires_at().to_string(), EXPIRES_AT);
     assert!(!format!("{minted:?}").contains("ghs_secret"));
     let sent: serde_json::Value =
         serde_json::from_slice(&drain(&mut calls).remove(0).body.unwrap()).unwrap();
@@ -71,7 +74,7 @@ async fn a_lease_mint_hands_the_model_the_daemons_code_first() {
 async fn a_lease_mint_answers_the_minted_token() {
     let lease_id = Uuid7::parse(LEASE_ID).unwrap();
     let (plane, _calls) =
-        plane(|_call| json(&serde_json::json!({"token": "ghs_secret", "expires_at_ms": 99})));
+        plane(|_call| json(&serde_json::json!({"token": "ghs_secret", "expires_at": EXPIRES_AT})));
 
     let minted = LeaseMint::new(&plane, &lease_id)
         .mint("github")
@@ -79,8 +82,8 @@ async fn a_lease_mint_answers_the_minted_token() {
         .unwrap();
 
     assert_eq!(
-        (minted.expose(), minted.expires_at().as_millis()),
-        ("ghs_secret", 99)
+        (minted.expose(), minted.expires_at().to_string()),
+        ("ghs_secret", EXPIRES_AT.to_owned())
     );
 }
 

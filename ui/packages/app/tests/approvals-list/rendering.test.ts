@@ -104,13 +104,13 @@ describe("ApprovalsList — gate card fallbacks", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        initialItems: [gate({ proposed_action: "", gate_kind: "", blast_radius: "" })],
+        initialItems: [gate({ proposed_action: "", gate_type: "", blast_radius: "" })],
         initialCursor: null,
       }),
     );
     // proposed_action "" → `${tool_name}:${action_name}` fallback in the title link.
     expect(screen.getByText("write_repo:create_pr")).toBeTruthy();
-    // gate_kind "" → no kind badge; blast_radius "" → no blast-radius content.
+    // gate_type "" → no kind badge; blast_radius "" → no blast-radius content.
     expect(screen.queryByText("destructive_action")).toBeNull();
     expect(screen.queryByText("single repo branch")).toBeNull();
   });
@@ -141,7 +141,7 @@ describe("ApprovalsTable — states this build has no arm for", () => {
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
         initialItems: [
-          gate({ status: "timed_out", updated_at: null, resolved_by: "" }),
+          gate({ status: "timed_out", resolved_at: null, resolved_by: "" }),
         ],
         initialCursor: null,
       }),
@@ -162,7 +162,7 @@ describe("ApprovalsTable — states this build has no arm for", () => {
         initialItems: [
           gate({
             status: "approved",
-            updated_at: SETTLED_AT_MS,
+            resolved_at: new Date(SETTLED_AT_MS).toISOString(),
             resolved_by: DECIDER_SUBJECT,
             resolved_by_name: DECIDER_NAME,
           }),
@@ -185,7 +185,7 @@ describe("ApprovalsTable — states this build has no arm for", () => {
         initialItems: [
           gate({
             status: "approved",
-            updated_at: SETTLED_AT_MS,
+            resolved_at: new Date(SETTLED_AT_MS).toISOString(),
             resolved_by: DECIDER_SUBJECT,
             resolved_by_name: "",
           }),

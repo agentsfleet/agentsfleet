@@ -4,10 +4,10 @@ use afd_crypto::entropy::Entropy;
 use std::sync::Arc;
 
 use afd_billing::Posture;
-use afd_credential::provider::Providers;
+use afd_credential::provider::{Added, Providers};
 use afd_credential::secrets::Registry;
 
-use super::Fixture;
+use super::{Fixture, NOW};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -15,46 +15,41 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
     let fixture = Fixture::create().await;
     let secret = "self-managed-provider";
     fixture
-        .seed(
+        .seed_with_shape(
             secret,
             br#"{"provider":"openai","api_key":"sk-self-managed"}"#,
+            Some("openai"),
+            Some(true),
         )
         .await;
-    let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "INSERT INTO core.tenant_model_selection \
-           (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, \
-            created_at, updated_at) \
-         VALUES ($1::uuid, $3, 'selection-provider-is-provenance', \
-                 'gpt-fixture', -1, $2, 1, 1)",
-    )
-    .bind(fixture.tenant.as_str())
-    .bind(secret)
-    // Bound from the constant the resolver parses against, never re-spelled.
-    // This row said 'byok', which this codebase has never written: the parse
-    // refuses an unknown posture rather than guessing `platform`, so the
-    // fixture failed the moment it was first run.
-    .bind(afd_billing::sql::posture::SELF_MANAGED)
-    .execute(&mut *connection)
-    .await
-    .expect("the self-managed selection seeds");
-    drop(connection);
-
-    let resolved = Providers::new(
+    // The ceiling is read from the catalogue rather than the stored entry.
+    let model = format!("gpt-fixture-{}", afd_db::test_util::mint_id());
+    fixture.seed_catalogue("openai", &model, 64_000).await;
+    let store = Providers::new(
         fixture.database.clone(),
         Arc::clone(&fixture.kek),
         Entropy::new(),
-    )
-    .resolve(&fixture.tenant)
-    .await
-    .expect("the selection resolves through the tenant workspace");
+    );
+    let Added::Stored(entry) = store
+        .add_entry(&fixture.tenant, &model, secret, NOW)
+        .await
+        .expect("an entry over a stored credential is an outcome")
+    else {
+        panic!("the credential is stored, so the entry stores");
+    };
+    fixture.point_selection_at(&fixture.tenant, &entry.id).await;
+
+    let resolved = store
+        .resolve(&fixture.tenant)
+        .await
+        .expect("the selection resolves through the tenant workspace");
 
     assert_eq!(resolved.posture, Posture::SelfManaged);
     assert_eq!(&*resolved.provider, "openai");
-    assert_eq!(&*resolved.model, "gpt-fixture");
+    assert_eq!(&*resolved.model, model.as_str());
     assert_eq!(
-        resolved.context_cap_tokens, 0,
-        "a negative stored cap clamps"
+        resolved.context_cap_tokens, 64_000,
+        "resolution reads the exact stored catalogue cap"
     );
     assert_eq!(resolved.api_key().expose(), "sk-self-managed");
     fixture.cleanup().await;

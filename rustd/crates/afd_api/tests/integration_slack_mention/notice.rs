@@ -24,7 +24,7 @@ pub(super) async fn owed(fixture: &Fixture, event_id: &str) -> Vec<Owed> {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_as::<_, (String, String, Option<String>, String)>(
         "SELECT f.name, o.provider, o.destination, o.answer \
-         FROM core.fleet_obligations o JOIN core.fleets f ON f.id = o.fleet_id \
+         FROM fleet.obligations o JOIN fleet.fleets f ON f.id = o.fleet_id \
          WHERE o.event_id = $1",
     )
     .bind(event_id)

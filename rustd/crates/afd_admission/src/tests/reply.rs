@@ -5,6 +5,8 @@
 //! other digested field, so the property each proves is that the rows stored
 //! before it still hash as they did.
 
+use afd_core::id::Uuid7;
+
 use super::*;
 
 /// The digest [`sample`] had before admissions carried a destination.
@@ -18,6 +20,9 @@ const DIGEST_BEFORE_DESTINATIONS: &str =
 
 /// A connector id as a producer owning a reply surface would state it.
 const CONNECTOR: &str = "slack";
+
+/// An event id as the ledger mints it: the admission row's `UUIDv7`.
+const RESUMED: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0177";
 
 /// Two thread addresses that differ only in the thread.
 const THREAD_A: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -74,7 +79,7 @@ fn every_destination_digests_apart() {
     );
 }
 
-/// A reply reaches the statement as at most one of its two parameter pairs.
+/// A reply reaches the statement as a stated pair or an inherited row, never both.
 ///
 /// The statement `COALESCE`s a stated half with an inherited one, which is safe
 /// only because this never sets both; and an id the ledger did not mint names
@@ -83,13 +88,8 @@ fn every_destination_digests_apart() {
 fn a_reply_binds_at_most_one_pair() {
     let none = ReplyBinds::from(Reply::None);
     assert_eq!(
-        (
-            none.connector,
-            none.address,
-            none.inherit_created_at,
-            none.inherit_seq
-        ),
-        (None, None, None, None)
+        (none.connector, none.address, none.inherited),
+        (None, None, None)
     );
 
     let stated = ReplyBinds::from(Reply::To {
@@ -97,37 +97,32 @@ fn a_reply_binds_at_most_one_pair() {
         address: THREAD_A,
     });
     assert_eq!(
-        (
-            stated.connector,
-            stated.address,
-            stated.inherit_created_at,
-            stated.inherit_seq
-        ),
-        (Some(CONNECTOR), Some(THREAD_A), None, None)
+        (stated.connector, stated.address, stated.inherited),
+        (Some(CONNECTOR), Some(THREAD_A), None)
     );
 
-    let resumed = logical_id(1_700_000_000_000, 7);
-    let inherited = ReplyBinds::from(Reply::Inherit { event_id: &resumed });
+    let inherited = ReplyBinds::from(Reply::Inherit { event_id: RESUMED });
     assert_eq!(
         (
             inherited.connector,
             inherited.address,
-            inherited.inherit_created_at,
-            inherited.inherit_seq
+            inherited.inherited.as_ref().map(Uuid7::as_str)
         ),
-        (None, None, Some(1_700_000_000_000), Some(7))
+        (None, None, Some(RESUMED))
     );
+}
 
-    let foreign = ReplyBinds::from(Reply::Inherit {
-        event_id: "not-a-ledger-id",
-    });
-    assert_eq!(
-        (
-            foreign.connector,
-            foreign.address,
-            foreign.inherit_created_at,
-            foreign.inherit_seq
-        ),
-        (None, None, None, None)
-    );
+/// An event id that is not a row id copies no destination, and never reaches
+/// the statement's `::uuid` cast to be refused there — the retired
+/// `<millis>-<n>` spelling included.
+#[test]
+fn an_id_that_names_no_row_inherits_nothing() {
+    for foreign in ["not-a-ledger-id", "1700000000000-7", ""] {
+        let binds = ReplyBinds::from(Reply::Inherit { event_id: foreign });
+        assert_eq!(
+            (binds.connector, binds.address, binds.inherited),
+            (None, None, None),
+            "{foreign:?} bound a destination"
+        );
+    }
 }

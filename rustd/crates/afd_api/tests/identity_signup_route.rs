@@ -27,7 +27,7 @@
 
 use crate::harness;
 
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use axum::Router;
@@ -38,7 +38,7 @@ use http::{HeaderName, Method, Response};
 
 use afd_webhook::vendor::svix;
 
-use self::harness::{Fleet, json_body, send_with_headers};
+use self::harness::{Fleet, refusal_code, send_with_headers};
 use crate::identity_signup_events::{ADA_ADDRESS, ada};
 
 /// Where a signup event arrives.
@@ -86,11 +86,6 @@ fn headers<'d>(id: &'d str, timestamp: &'d str, signature: &'d str) -> [(HeaderN
     ]
 }
 
-/// The registry code, as it is spelled on the wire.
-pub(crate) fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
-}
-
 /// One correctly-signed delivery of `body` to `router`.
 pub(crate) async fn deliver(router: &Router, body: &str) -> Response<Body> {
     let signature = sign(DELIVERY, now(), body);
@@ -109,13 +104,6 @@ pub(crate) async fn deliver(router: &Router, body: &str) -> Response<Body> {
 /// whose pool answers nothing.
 pub(crate) async fn signed(body: &str) -> Response<Body> {
     deliver(&Fleet::new().with_identity_secret(SECRET).router(), body).await
-}
-
-/// The registry code a refusal carries.
-pub(crate) async fn refusal_code(answer: Response<Body>) -> String {
-    harness::error_code(&json_body(answer).await)
-        .expect("every refusal carries its registry code")
-        .to_owned()
 }
 
 #[tokio::test]
@@ -138,7 +126,7 @@ async fn a_deployment_with_no_configured_secret_refuses_every_delivery() {
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED),
+        error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
         "an absent secret is unconfigured, never a failed verification — the \
          two are told apart by the code, which is what an operator reads"
     );
@@ -160,7 +148,7 @@ async fn a_signature_under_the_wrong_key_is_refused_before_the_body_is_read() {
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID)
+        error_code::WEBHOOK_SIGNATURE_INVALID.as_str()
     );
 }
 
@@ -185,7 +173,7 @@ async fn a_tampered_body_no_longer_verifies() {
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
+        error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),
         "an address swapped after signing must not open an account"
     );
 }
@@ -214,7 +202,7 @@ async fn a_delivery_resent_under_a_fresh_id_no_longer_verifies() {
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID)
+        error_code::WEBHOOK_SIGNATURE_INVALID.as_str()
     );
 }
 
@@ -238,7 +226,7 @@ async fn a_delivery_outside_its_window_is_stale_rather_than_forged() {
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_TIMESTAMP_STALE)
+        error_code::WEBHOOK_TIMESTAMP_STALE.as_str()
     );
 }
 
@@ -272,7 +260,7 @@ async fn a_secret_this_deployment_cannot_parse_is_unconfigured_rather_than_refus
 
     assert_eq!(
         refusal_code(answer).await,
-        code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED),
+        error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
         "a secret that will not parse is this deployment's own configuration \
          failing, not the sender's signature"
     );

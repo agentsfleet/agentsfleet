@@ -35,7 +35,7 @@ exception; an unchecked item cannot silently become a pass.
 - [ ] **List envelope** is exactly `{items, total: int|null, next_cursor: string|null}` — no synonyms (§3)
 - [ ] **Bulk endpoints** use `207` with the canonical per-item shape (§3)
 - [ ] **Null vs omit** — absent optionals omitted, `null` reserved for "explicitly cleared" (§3)
-- [ ] **Datetime fields** are int64 epoch ms with `_at` suffix (NOT ISO 8601) (§4)
+- [ ] **Datetime fields** are RFC 3339 strings in UTC (`Z`) with `_at` suffix; no epoch integers (§4)
 - [ ] **Duration fields** are integers with `_ms` or `_seconds` suffix; no bare `timeout`/`ttl`/`duration` (§4)
 - [ ] **Status codes** — 409 includes `current_state`; 412 includes `etag`; 429 includes `Retry-After` + `X-RateLimit-*` (§4)
 - [ ] **ETag/`If-Match`** wired for any resource with realistic concurrent edits (§4)
@@ -120,7 +120,7 @@ If the parent ID is in the path, never repeat it in the body.
 
 - **Plural for collections, singular for items**
 - **`_id` suffix** for identifiers (`product_id`, `agent_id`) — never bare `id` except as the resource's own primary key field
-- **`_at` suffix** for datetimes; values are int64 epoch milliseconds (§4)
+- **`_at` suffix** for datetimes; values are RFC 3339 strings in UTC (§4)
 - **Unit suffix** for durations: `_ms` or `_seconds` (§4) — never bare `timeout`/`ttl`/`interval`/`duration`/`expiration`
 - **Adjectives before nouns** (`completed_items`, not `items_completed`)
 - **No `is_` prefix** on booleans (`enabled`, not `is_enabled`)
@@ -173,7 +173,7 @@ Endpoints that can't complete inside the request window MUST follow this convent
 1. The kicking POST returns `202 Accepted` with `Location: /v1/operations/{operation_id}` and a body containing `operation_id` and `status: "pending"`.
 2. `GET /v1/operations/{operation_id}` returns:
    ```json
-   { "operation_id": "...", "done": false, "status": "running", "started_at": 1735689600000 }
+   { "operation_id": "...", "done": false, "status": "running", "started_at": "2026-10-17T18:06:49.123Z" }
    ```
    When `done: true`, the body carries either `result` (the final resource, inline) or `error` (an RFC 7807 envelope per §5).
 3. Terminal states are `succeeded`, `failed`, `cancelled`. No others.
@@ -213,7 +213,7 @@ The resource itself, no envelope:
 {
   "id": "01HZQ...",
   "name": "platform-ops",
-  "created_at": 1735689600000
+  "created_at": "2026-10-17T18:06:49.123Z"
 }
 ```
 
@@ -227,7 +227,7 @@ GET /products?status=active&sort=-created_at&starting_after=01HZQ...&limit=50
 
 - **Filtering grammar — exactly one form per case:**
   - **Equality:** `?status=active` (single value), `?status=active,paused` (multi-value, comma-separated, single key).
-  - **Time ranges:** `?created_after=<ts_ms>&created_before=<ts_ms>`. Bracket grammar (`?created_at[gte]=...`) is forbidden.
+  - **Time ranges:** `?created_after=<RFC 3339>&created_before=<RFC 3339>`, both exclusive; an endpoint that differs states its boundaries in the parameter description. Bracket grammar (`?created_at[gte]=...`) is forbidden.
   - **No boolean explosions.** Don't add `?include_x=true&include_y=true` — use `?include=x,y` with a documented enum of legal values, OR don't expose a knob.
 - **Sorting:** `sort=field` ascending; `sort=-field` descending. Single sort key per request — no multi-key.
 - **Pagination — keyset.** Request: `?starting_after=<resource_id>&limit=<int>`;
@@ -314,13 +314,20 @@ If you find yourself wanting another status code, check RFC 7231/7807 — don't 
 
 ### Datetime fields
 
-**Integer milliseconds since Unix epoch (UTC), serialized as JSON number, OpenAPI `type: integer, format: int64`.** Field name uses the `_at` suffix.
+**RFC 3339 strings, serialized as JSON strings, OpenAPI `type: string, format: date-time`.** Field name uses the `_at` suffix.
 
 ```json
-"created_at": 1735689600000
+"created_at": "2026-10-17T18:06:49.123Z"
 ```
 
-NOT ISO 8601 strings, NOT seconds, NOT floats, NOT a string-encoded integer. This matches the codebase (`EXTRACT(EPOCH FROM created_at) * 1000` in handlers; `i64` in response structs; `format: int64` in `components/schemas.yaml`). Anyone proposing ISO 8601 string datetimes for a new endpoint is wrong — match the existing convention or amend this rule first.
+1. Responses MUST emit UTC with the `Z` designator.
+2. Requests MAY carry any valid numeric UTC offset. The server MUST normalize an accepted instant to UTC.
+3. Epoch integers MUST NOT represent an instant.
+4. An invalid or out-of-range instant MUST return `400` with a field-specific `detail` (§5).
+5. Timestamp filters MUST document whether each boundary is inclusive or exclusive. An opaque pagination cursor MUST carry the complete ordering key at the database's precision.
+6. Shared validation MUST enforce the documented input range and precision.
+
+For `agentsfleet`, wire types hold `jiff::Timestamp` and use its standard serialization; no handler converts an instant by hand. Postgres stores instants as `TIMESTAMPTZ(3)`, so the API, the cursor and the database agree on millisecond precision.
 
 When the field has not yet been set (e.g. an unrevoked key's `revoked_at`), serialize as JSON `null` and declare `nullable: true` in the schema.
 

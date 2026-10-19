@@ -27,7 +27,7 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 
 
 const NOTICE = 'data-testid="invite-notice"';
-const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 1 }];
+const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.001Z" }];
 
 function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> = {}): string {
   return renderToStaticMarkup(<ShellFrame {...props}><div /></ShellFrame>);
@@ -36,6 +36,17 @@ function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> 
 afterEach(() => vi.clearAllMocks());
 
 describe("shell for teams", () => {
+  it("shows the served credit balance in the header and links to billing", () => {
+    usePathname.mockReturnValue("/w/ws_1/fleets");
+    const markup = shell({ billing: {
+      balance_nanos: "3680000000", updated_at: "2026-10-19T00:00:00Z",
+      is_exhausted: false, exhausted_at: null,
+    } });
+    expect(markup).toContain('aria-label="Credit balance"');
+    expect(markup).toContain('href="/settings/billing"');
+    expect(markup).toContain("$3.68");
+  });
+
   it("should show the invite notice above the page only while an invite waits", () => {
     usePathname.mockReturnValue("/w/ws_1/fleets");
     expect(shell({ waitingInvites: WAITING })).toContain(NOTICE);

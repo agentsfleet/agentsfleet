@@ -38,35 +38,27 @@ export const RUNNER_ADMIN_STATE = {
 
 export type RunnerAdminState = (typeof RUNNER_ADMIN_STATE)[keyof typeof RUNNER_ADMIN_STATE];
 
-export const RUNNER_EVENT_TYPES = [
-  "runner_registered",
-  "runner_online",
-  "runner_offline",
-  "lease_acquired",
-  "lease_released",
-  "runner_cordoned",
-  "runner_draining",
-  "runner_drained",
-  "runner_revoked",
-  "runner_policy_assigned",
-] as const;
-
+export const RUNNER_EVENT_TYPE = {
+  registered: "runner_registered",
+  online: "runner_online",
+  offline: "runner_offline",
+  leaseAcquired: "lease_acquired",
+  leaseReleased: "lease_released",
+  cordoned: "runner_cordoned",
+  draining: "runner_draining",
+  drained: "runner_drained",
+  revoked: "runner_revoked",
+  tokenRotated: "runner_token_rotated",
+  policyAssigned: "runner_policy_assigned",
+} as const;
+export const RUNNER_EVENT_TYPES = Object.values(RUNNER_EVENT_TYPE);
 export type RunnerEventType = (typeof RUNNER_EVENT_TYPES)[number];
 
-// The lifecycle subset Activity renders: every tag EXCEPT the two per-work
-// records, which the Leases table already states once each with an outcome.
-// One exported constant, consumed verbatim by the Activity caller (Invariant:
-// lifecycle and work events never mix in that feed).
-export const RUNNER_LIFECYCLE_EVENT_TYPES = [
-  "runner_registered",
-  "runner_online",
-  "runner_offline",
-  "runner_cordoned",
-  "runner_draining",
-  "runner_drained",
-  "runner_revoked",
-  "runner_policy_assigned",
-] as const satisfies readonly RunnerEventType[];
+// Work records belong to Leases; the remaining recorded changes belong to Activity.
+export const RUNNER_LIFECYCLE_EVENT_TYPES = RUNNER_EVENT_TYPES.filter(
+  (type) => type !== RUNNER_EVENT_TYPE.leaseAcquired && type !== RUNNER_EVENT_TYPE.leaseReleased,
+);
+export type RunnerLifecycleEventType = (typeof RUNNER_LIFECYCLE_EVENT_TYPES)[number];
 
 /// The "never contacted" sentinel for `last_seen_at`, mirroring
 /// `protocol.RUNNER_LAST_SEEN_NEVER` — same name across both runtimes so the
@@ -100,6 +92,10 @@ export const LEASE_KIND = {
 } as const;
 
 export type LeaseKind = (typeof LEASE_KIND)[keyof typeof LEASE_KIND];
+
+/** LeaseDestination in afd_api_wire: the server checks existence and the acting account. */
+export const LEASE_DESTINATION = {available: "available", fleetDeleted: "fleet_deleted", notPermitted: "not_permitted"} as const;
+export type LeaseDestination = (typeof LEASE_DESTINATION)[keyof typeof LEASE_DESTINATION];
 
 /**
  * Split the free-form labels field (comma-separated) into a deduped, validated
@@ -229,7 +225,7 @@ export const RUNNER_ADMIN_ACTION = {
 
 export type RunnerAdminAction = (typeof RUNNER_ADMIN_ACTION)[keyof typeof RUNNER_ADMIN_ACTION];
 
-// The subset that moves `admin_state`. `self_test` records a request and moves
+// The subset that moves `status`. `self_test` records a request and moves
 // nothing, so the transition map and `actionsFor` key on THIS narrower type —
 // same reasoning that keeps Delete out of ACTION_CONFIG. Widening the map to
 // every wire verb would make a transition table answer for a non-transition.
@@ -267,3 +263,7 @@ export function isSelftestStale(runner: SelftestPolicyView): boolean {
   const assigned = runner.assigned_policy;
   return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
 }
+
+/** Whether the runner has ever beaten. The daemon writes the Unix epoch for a
+ * runner that never connected (`NEVER_SEEN` in `afd_runner`), never null. */
+export const hasBeenSeen = (lastSeenAt: string): boolean => Date.parse(lastSeenAt) > RUNNER_LAST_SEEN_NEVER;

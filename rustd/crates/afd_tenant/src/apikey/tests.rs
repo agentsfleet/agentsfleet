@@ -7,14 +7,16 @@ use afd_core::paging::{Boundary as _, Cursor, SortOrder as _};
 
 use super::{ApiKeySort, KeyRow};
 
+/// When the boundary row was minted.
+const MINTED: jiff::Timestamp = jiff::Timestamp::constant(1_724_800_000, 0);
+
 /// A row at the end of a page, with a name and an instant that differ.
 fn boundary_row() -> KeyRow {
     KeyRow {
         id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0f7031".to_owned(),
         name: "zeta-deploy".to_owned(),
-        active: true,
-        created_at_ms: 1_724_800_000_000,
-        revoked_at_ms: None,
+        created_at: MINTED,
+        revoked_at: None,
     }
 }
 
@@ -66,7 +68,7 @@ fn a_name_cursor_round_trips_through_the_wire() {
 
 /// A row whose columns are not this daemon's shape stays a query fault.
 ///
-/// The reader `try_get`s by name, so a renamed or retyped column surfaces
+/// The reader decodes by name, so a renamed or retyped column surfaces
 /// here rather than as a wrong value further in — which is the whole point
 /// of routing it through `error::query` with a context instead of letting a
 /// bare `sqlx::Error` reach a caller that cannot say which read produced it.
@@ -79,4 +81,18 @@ fn an_unreadable_api_key_row_keeps_its_context_and_cause() {
     assert!(failure.source().is_some(), "the sqlx cause survives");
     assert_ne!(failure.to_string(), "");
     assert_ne!(failure.code().as_str(), "");
+}
+
+/// A key authenticates until it is revoked, and the revocation stamp is the
+/// only fact that says so.
+#[test]
+fn a_key_is_active_until_its_revocation_is_stamped() {
+    let live = boundary_row();
+    let revoked = KeyRow {
+        revoked_at: Some(MINTED),
+        ..boundary_row()
+    };
+
+    assert!(live.active());
+    assert!(!revoked.active());
 }

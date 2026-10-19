@@ -16,6 +16,8 @@
               None along; the restriction set is for the daemon"
 )]
 
+use jiff::Timestamp;
+
 use super::{FIRST_FLEET, Progress, Repair, RowKey};
 
 /// One pass's fleet budget, where a test drains repairs rather than files them.
@@ -26,8 +28,8 @@ pub(super) const CAPACITY: usize = 4;
 
 /// A row key that is not the first, for the resume assertions.
 pub(super) const SOMEWHERE: RowKey = RowKey {
-    created_at: 1_750_000_000_000,
-    seq: 42,
+    created_at: Timestamp::constant(1_750_000_000, 0),
+    sequence: 42,
 };
 
 /// A fresh reconciler starts at the bottom of the fleet ordering.
@@ -191,23 +193,35 @@ fn resuming_takes_at_most_one_pass_worth() {
 
 /// Every admission sorts above the first row key.
 ///
-/// Decided at compile time rather than in a test, for the reason
-/// `sweep/reconcile/mod.rs` gives for its own bounds: a runtime check over two
-/// constants reports a bad edit as a red suite instead of as a build that does
-/// not produce a binary. Pinned at all because the statement binds this value
-/// as a real lower bound rather than as a stand-in for absence — `created_at`
-/// is a Unix millisecond and `seq` an identity column from one, so a key at or
-/// below zero is not a row this daemon wrote.
-const _: () = {
+/// Pinned because the statement binds this value as a real lower bound rather
+/// than as a stand-in for absence: `created_at` is stamped by the database's
+/// `now()` and `sequence` is an identity column from one, so a key at the epoch
+/// and zero is not a row this daemon wrote.
+#[test]
+fn the_first_row_key_sorts_below_every_admission() {
+    assert_eq!(RowKey::FIRST.created_at, Timestamp::UNIX_EPOCH);
+    assert_eq!(RowKey::FIRST.sequence, 0);
     assert!(
-        RowKey::FIRST.created_at == 0 && RowKey::FIRST.seq == 0,
-        "the resume floor is the bottom of both columns"
+        SOMEWHERE > RowKey::FIRST,
+        "a real row sorts above the floor"
     );
-    assert!(
-        SOMEWHERE.created_at > RowKey::FIRST.created_at,
-        "a real row sorts above the floor a first walk binds"
-    );
-};
+}
+
+/// Inside one millisecond the sequence decides, so two admissions stamped by
+/// the same `now()` still resume in the order they were inserted.
+#[test]
+fn row_keys_inside_one_millisecond_order_by_their_sequence() {
+    let first = RowKey {
+        created_at: SOMEWHERE.created_at,
+        sequence: 1,
+    };
+    let second = RowKey {
+        sequence: 2,
+        ..first
+    };
+    assert!(first < second);
+    assert_eq!(first.min(second), first, "a resume takes the lower row");
+}
 
 /// A repair put back after a failed walk keeps its place in the queue.
 ///

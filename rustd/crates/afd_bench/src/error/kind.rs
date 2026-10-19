@@ -5,6 +5,7 @@
 //! enum with the path under measurement: they are refusals of the same run.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::profile::Profile;
 
@@ -94,13 +95,16 @@ pub(crate) enum ErrorKind {
         floor: u64,
     },
 
+    /// Spans as `Duration`; the sentence renders them as milliseconds.
     #[error(
-        "a window of {requested_ms} ms is under the {profile} warmup floor of {floor_ms} ms: a rate measured across a cold cache is not a rate"
+        "a window of {} ms is under the {profile} warmup floor of {} ms: a rate measured across a cold cache is not a rate",
+        .requested.as_millis(),
+        .floor.as_millis()
     )]
     WindowTooShort {
         profile: Profile,
-        requested_ms: u128,
-        floor_ms: u128,
+        requested: Duration,
+        floor: Duration,
     },
 
     /// Refused rather than measured: above the pool size every poll's latency
@@ -116,6 +120,12 @@ pub(crate) enum ErrorKind {
 
     #[error("the bench fixture would not seed")]
     FixtureUnseedable { source: sqlx::Error },
+
+    /// A shared seed's refusal, kept apart from [`Self::DatabaseUnavailable`]:
+    /// both carry `afd_db`'s error, and a refused row is a fixture fault, not
+    /// a database that would not open.
+    #[error("the bench fixture would not seed")]
+    FixtureRefused { source: afd_db::Error },
 
     /// Carries the observability crate's own error rather than its message:
     /// the census names the row it rejected, and stringifying here would drop
@@ -202,6 +212,17 @@ pub(crate) enum ErrorKind {
 
     #[error("the drain's platform credential would not seal")]
     CredentialUnsealable { source: afd_crypto::error::Error },
+
+    #[error("the vault would not store the drain's platform credential")]
+    CredentialUnstorable { source: afd_vault::Error },
+
+    #[error("the drain's platform credential is not a JSON object")]
+    CredentialMalformed { source: serde_json::Error },
+
+    /// A fixture identifier the id type refused. The seed spells every one
+    /// schema-legal by construction, so this is a seed defect, not an input.
+    #[error("a bench fixture identifier is not a canonical UUIDv7")]
+    IdentifierRefused { source: afd_core::error::Error },
 
     /// The ceiling is sized for the widest rung and every rung joins its
     /// streams before the next opens, so a refusal means a stream outlived its

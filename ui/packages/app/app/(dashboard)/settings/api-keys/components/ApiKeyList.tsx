@@ -5,6 +5,7 @@ import { type Ref, useDeferredValue, useImperativeHandle, useMemo, useState, use
 import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
+import { byInstant } from "@/lib/api/decode";
 import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";
 import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
@@ -31,7 +32,7 @@ function sortApiKeys(items: readonly ApiKeyRow[], sort: ApiKeySort): ApiKeyRow[]
   // one order however often the header is clicked.
   return [...items].sort(
     (a, b) =>
-      direction * (byName ? a.key_name.localeCompare(b.key_name) : a.created_at - b.created_at) ||
+      direction * (byName ? a.key_name.localeCompare(b.key_name) : byInstant(a.created_at, b.created_at)) ||
       a.id.localeCompare(b.id),
   );
 }

@@ -5,7 +5,7 @@
 //! That header's rule is that a store which INVENTS a refusal keeps agreeing
 //! with the suite after the real store stops producing it. This does not invent
 //! one. `platform_default` answers `Ok(None)` — the same `Ok(None)` the real
-//! store answers over a Postgres whose `core.platform_provider_defaults` holds
+//! store answers over a Postgres whose `model.platform_defaults` holds
 //! no active row — and every other verb is the production store, unchanged.
 //!
 //! # Why the state cannot be reached any other way
@@ -17,7 +17,7 @@
 //! seeding its own default — and over the dead pool the same read is a 503, not
 //! a `None`, so the router suite cannot reach it either.
 //!
-//! A live test would need a globally-empty `core.platform_provider_defaults`,
+//! A live test would need a globally-empty `model.platform_defaults`,
 //! which races every other integration test's seeding on the shared pool.
 //!
 //! [`TenantProviders`] is a TRAIT, so substituting one method reaches the real
@@ -25,13 +25,13 @@
 //! file.
 
 use afd_api::services::{TenantModelEntries, TenantProviders};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{
     Activation, Added, Boundary, PlatformDefault, Providers, RegistryPage, Removed, Retargeted,
     Selection,
 };
+use jiff::Timestamp;
 
 /// Which provider store a suite is driving.
 ///
@@ -77,13 +77,8 @@ impl TenantProviders for HarnessProviders {
         }
     }
 
-    async fn upsert(
-        &self,
-        tenant: &Uuid7,
-        selection: &Selection,
-        now: UnixMillis,
-    ) -> CredentialResult<()> {
-        self.store().upsert(tenant, selection, now).await
+    async fn reset(&self, tenant: &Uuid7) -> CredentialResult<()> {
+        self.store().reset(tenant).await
     }
 
     async fn activate(
@@ -91,7 +86,7 @@ impl TenantProviders for HarnessProviders {
         tenant: &Uuid7,
         secret_ref: &str,
         model: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CredentialResult<Activation> {
         self.store().activate(tenant, secret_ref, model, now).await
     }
@@ -112,7 +107,7 @@ impl TenantModelEntries for HarnessProviders {
         tenant: &Uuid7,
         model_id: &str,
         secret_ref: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CredentialResult<Added> {
         self.store()
             .add_entry(tenant, model_id, secret_ref, now)
@@ -124,10 +119,9 @@ impl TenantModelEntries for HarnessProviders {
         tenant: &Uuid7,
         entry_id: &Uuid7,
         model_id: &str,
-        now: UnixMillis,
     ) -> CredentialResult<Retargeted> {
         self.store()
-            .set_entry_model(tenant, entry_id, model_id, now)
+            .set_entry_model(tenant, entry_id, model_id)
             .await
     }
 

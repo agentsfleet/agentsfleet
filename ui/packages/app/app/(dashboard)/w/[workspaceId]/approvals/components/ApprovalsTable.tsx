@@ -90,7 +90,7 @@ function FleetCell({ gate, workspaceId }: { gate: ApprovalGate; workspaceId: str
       <Link href={workspacePath(workspaceId, `fleets/${gate.fleet_id}`)} className="hover:underline">
         <AgentLabel fleetId={gate.fleet_id} className="text-muted-foreground" />
       </Link>
-      {gate.gate_kind ? <Badge variant="default">{gate.gate_kind}</Badge> : null}
+      {gate.gate_type ? <Badge variant="default">{gate.gate_type}</Badge> : null}
     </div>
   );
 }
@@ -116,14 +116,14 @@ function DecidedCell({ gate }: { gate: ApprovalGate }) {
     return (
       <div className="flex flex-col">
         <span className="text-xs text-muted-foreground">{AWAITING_DECISION}</span>
-        <Time value={new Date(gate.timeout_at)} format="relative" className={TIME_CELL_CLASS} />
+        <Time value={new Date(gate.expires_at)} format="relative" className={TIME_CELL_CLASS} />
       </div>
     );
   }
   return (
     <div className="flex flex-col">
-      {gate.updated_at === null ? null : (
-        <Time value={new Date(gate.updated_at)} format="relative" className={TIME_CELL_CLASS} />
+      {gate.resolved_at === null ? null : (
+        <Time value={new Date(gate.resolved_at)} format="relative" className={TIME_CELL_CLASS} />
       )}
       {gate.resolved_by ? (
         <PersonLabel
@@ -205,7 +205,7 @@ function buildColumns({
       key: "decided",
       header: DECIDED_COLUMN_HEADER,
       hideOnMobile: true,
-      sortValue: (g) => g.updated_at ?? g.timeout_at,
+      sortValue: (g) => g.resolved_at ?? g.expires_at,
       cell: (g) => <DecidedCell gate={g} />,
     },
     {

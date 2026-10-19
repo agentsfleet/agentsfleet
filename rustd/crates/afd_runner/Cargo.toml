@@ -38,6 +38,11 @@ afd_crypto.workspace = true
 afd_auth.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# Every instant a runner row, a lease or a history row carries.
+jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: row fields decode through it and
+# a sentinel or cursor binds through it.
+jiff-sqlx.workspace = true
 # The stored vocabulary two planes share — admin states, lease statuses, the
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
@@ -66,7 +71,7 @@ test-util = [
 ]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 # The reconcile sweeper's resume state is handed in and out of a mutex around
 # every pass, and that hand-off is the one part of it decidable without a
 # datastore. Reaching it needs a `Reconcile`, which needs an `Admissions`, which
@@ -78,9 +83,6 @@ afd_dragonfly.workspace = true
 # The raw `XCLAIM`/`XPENDING` `integration_reclaim_faults.rs` ages and reads an
 # entry through.
 redis.workspace = true
-# The thread-scoped recorder `tests/support.rs` reads a sweep's log line back
-# through.
-tracing-subscriber.workspace = true
 
 [[test]]
 name = "runner_suite"

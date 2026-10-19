@@ -56,6 +56,7 @@ use afd_connector::Provider;
 use afd_connector::registry::{EventIngress, EventProducer, Handshake};
 use afd_core::error_code;
 use afd_core::json::non_empty_str;
+use afd_webhook::Scheme;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -183,8 +184,13 @@ pub(crate) async fn receive<D: Services>(
     // Before the hash and before the vault, so a path naming a connector with
     // no inbound surface costs a match rather than a decrypt — and a prober
     // cannot measure which connectors this deployment has configured by timing
-    // the difference.
-    let Some(ingress) = provider.event_ingress() else {
+    // the difference. A connector whose deliveries this daemon ships no
+    // signature scheme for has no inbound surface either: nothing it sent
+    // could be verified.
+    let Some((ingress, scheme)) = provider
+        .event_ingress()
+        .zip(Scheme::for_source(provider.id()))
+    else {
         return Err(Refusal::coded(
             error_code::CONNECTOR_UNKNOWN,
             DETAIL_NO_EVENT_INGRESS,
@@ -194,7 +200,8 @@ pub(crate) async fn receive<D: Services>(
     webhook::within_cap(&body)?;
 
     // Nothing above this line has read the body as anything but bytes.
-    let proven = webhook::verified_connector_events(&services, provider, &headers, body).await?;
+    let proven =
+        webhook::verified_connector_events(&services, provider, scheme, &headers, body).await?;
 
     match ingress.producer {
         EventProducer::Mention => mentioned(&*services, provider, &ingress, &proven.body).await,

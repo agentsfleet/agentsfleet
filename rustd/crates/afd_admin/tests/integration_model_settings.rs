@@ -6,8 +6,9 @@
     reason = "integration fixtures fail loudly"
 )]
 
-use afd_admin::{CreateModel, DeleteModel, Model, ModelInput, ModelRates, Models};
-use afd_core::{clock::UnixMillis, error_code, id::Uuid7};
+use afd_admin::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
+use afd_core::catalogue::{Metadata, Price};
+use afd_core::{error_code, id::Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::{
     Db,
@@ -15,8 +16,10 @@ use afd_db::{
     test_util::{TestDatabase, mint_id},
 };
 use afd_wire::inference::{InferenceApi, ModelInference};
+use jiff::Timestamp;
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_725_000_000_000);
+/// The instant every model here is minted at.
+const NOW: Timestamp = Timestamp::constant(1_725_000_000, 0);
 
 fn settings(api: InferenceApi, limit: u32) -> ModelInference {
     ModelInference {
@@ -26,8 +29,33 @@ fn settings(api: InferenceApi, limit: u32) -> ModelInference {
         max_output_tokens: limit,
     }
 }
-fn rates(context: i32, rate: i64) -> ModelRates {
-    ModelRates::new(context, rate, 0, rate)
+/// A replacement holding `context`, one open-ended tier at `rate`, and
+/// `inference` (absent keeps what is saved).
+fn rates(context: i32, rate: i64, inference: Option<&ModelInference>) -> ModelUpdate {
+    ModelUpdate {
+        metadata: Metadata {
+            display_name: "Settings fixture".into(),
+            context_cap_tokens: context,
+            context_source_url: "https://example.test/models/settings".into(),
+            context_verified_at: NOW,
+            advanced: false,
+        },
+        prices: vec![Price {
+            effective_from: NOW,
+            effective_until: None,
+            prompt_tokens_above: 0,
+            input_nanos_per_mtok: rate,
+            cached_input_nanos_per_mtok: 0,
+            cache_write_nanos_per_mtok: None,
+            cache_write_5m_nanos_per_mtok: None,
+            cache_write_1h_nanos_per_mtok: None,
+            output_nanos_per_mtok: rate,
+            source_url: "https://example.test/pricing".into(),
+            verified_at: NOW,
+            conditions: "Synthetic settings fixture; no provider request.".into(),
+        }],
+        inference: inference.cloned(),
+    }
 }
 async fn read(models: &Models, id: &Uuid7) -> Model {
     models
@@ -35,12 +63,12 @@ async fn read(models: &Models, id: &Uuid7) -> Model {
         .await
         .expect("read settings")
         .into_iter()
-        .find(|model| model.id() == id)
+        .find(|model| model.id == *id)
         .expect("owned model exists")
 }
-async fn stamp(db: &Db, id: &Uuid7) -> (i64, i64) {
+async fn stamp(db: &Db, id: &Uuid7) -> (i64, String) {
     sqlx::query_as(
-        "SELECT context_cap_tokens::bigint, updated_at FROM core.model_library WHERE id=$1::uuid",
+        "SELECT context_cap_tokens::bigint, updated_at::text FROM model.platform_models WHERE id=$1::uuid",
     )
     .bind(id.as_str())
     .fetch_one(&mut *db.acquire().await.expect("owned connection"))
@@ -57,29 +85,29 @@ async fn saved_inference_round_trips_preserves_on_rates_only_updates_and_refuses
     let models = Models::new(db.clone(), Entropy::new());
     let model = create(&models, InferenceApi::Responses, 32768).await;
     assert_eq!(
-        model.inference(),
+        model.details.inference.as_ref(),
         Some(&settings(InferenceApi::Responses, 32768))
     );
-    assert_eq!(read(&models, model.id()).await, model);
+    assert_eq!(read(&models, &model.id).await, model);
     assert!(
         models
-            .update(model.id(), rates(128_000, 2), None, NOW)
+            .update(&model.id, rates(128_000, 2, None), NOW)
             .await
             .expect("rates only")
     );
     assert_eq!(
-        read(&models, model.id()).await.inference(),
-        model.inference()
+        read(&models, &model.id).await.details.inference.as_ref(),
+        model.details.inference.as_ref()
     );
-    assert_invalid_updates(&models, &db, model.id()).await;
-    replace_inference(&models, model.id()).await;
+    assert_invalid_updates(&models, &db, &model.id).await;
+    replace_inference(&models, &model.id).await;
     assert_eq!(
-        models.delete(model.id(), NOW).await.expect("owned cleanup"),
+        models.delete(&model.id).await.expect("owned cleanup"),
         DeleteModel::Deleted
     );
     assert!(
         !models
-            .update(model.id(), rates(128_000, 3), None, NOW)
+            .update(&model.id, rates(128_000, 3, None), NOW)
             .await
             .expect("missing row")
     );
@@ -89,20 +117,19 @@ async fn saved_inference_round_trips_preserves_on_rates_only_updates_and_refuses
 }
 
 async fn create(models: &Models, api: InferenceApi, output: u32) -> Model {
-    let input = ModelInput::new(
-        format!("settings-{}", mint_id()),
-        "owner/model-next".into(),
-        rates(128_000, 1),
-    )
-    .with_inference(Some(settings(api, output)));
+    let input = ModelInput {
+        provider: format!("settings-{}", mint_id()),
+        model_name: "owner/model-next".into(),
+        details: rates(128_000, 1, Some(&settings(api, output))),
+    };
     let CreateModel::Created(model) = models
-        .create(&input, NOW)
+        .create(input, NOW)
         .await
         .expect("configured model creates")
     else {
         panic!("new identity")
     };
-    model
+    *model
 }
 
 async fn assert_invalid_updates(models: &Models, db: &Db, id: &Uuid7) {
@@ -116,12 +143,7 @@ async fn assert_invalid_updates(models: &Models, db: &Db, id: &Uuid7) {
         },
     ] {
         let error = models
-            .update(
-                id,
-                rates(128_000, 999),
-                Some(&invalid),
-                UnixMillis::from_millis(NOW.as_millis() + 1),
-            )
+            .update(id, rates(128_000, 999, Some(&invalid)), NOW)
             .await
             .expect_err("invalid settings refuse");
         assert_eq!(error.code(), error_code::INVALID_REQUEST);
@@ -139,19 +161,18 @@ async fn replace_inference(models: &Models, id: &Uuid7) {
         models
             .update(
                 id,
-                rates(128_000, 3),
-                Some(&settings(InferenceApi::Messages, 65536)),
-                NOW
+                rates(128_000, 3, Some(&settings(InferenceApi::Messages, 65536))),
+                NOW,
             )
             .await
             .expect("API and limit change")
     );
     assert_eq!(
-        read(models, id).await.inference(),
+        read(models, id).await.details.inference.as_ref(),
         Some(&settings(InferenceApi::Messages, 65536))
     );
     assert!(
-        models.update(id, rates(1, 3), None, NOW).await.is_err(),
+        models.update(id, rates(1, 3, None), NOW).await.is_err(),
         "a context-only edit must validate saved output limits"
     );
 }
@@ -165,20 +186,27 @@ async fn concurrent_rate_and_inference_updates_keep_a_valid_saved_pair() {
     let model = create(&models, InferenceApi::Chat, 65536).await;
     let replacement = settings(InferenceApi::Responses, 32768);
     let (rate_update, setting_update) = tokio::join!(
-        models.update(model.id(), rates(64_000, 2), None, NOW),
-        models.update(model.id(), rates(128_000, 3), Some(&replacement), NOW),
+        models.update(&model.id, rates(64_000, 2, None), NOW),
+        models.update(&model.id, rates(128_000, 3, Some(&replacement)), NOW),
     );
     assert!(setting_update.expect("explicit configuration update"));
-    let final_model = read(&models, model.id()).await;
-    assert_eq!(final_model.inference(), Some(&replacement));
+    let final_model = read(&models, &model.id).await;
+    assert_eq!(final_model.details.inference.as_ref(), Some(&replacement));
     let expected_rate = if rate_update.is_ok() { 2 } else { 3 };
-    assert_eq!(final_model.rates().input_nanos_per_mtok(), expected_rate);
+    assert_eq!(
+        final_model
+            .details
+            .prices
+            .first()
+            .map(|price| price.input_nanos_per_mtok),
+        Some(expected_rate)
+    );
     assert!(
-        final_model.rates().context_cap_tokens()
+        final_model.details.metadata.context_cap_tokens
             >= i32::try_from(replacement.max_output_tokens).expect("fixture limit")
     );
     assert_eq!(
-        models.delete(model.id(), NOW).await.expect("owned cleanup"),
+        models.delete(&model.id).await.expect("owned cleanup"),
         DeleteModel::Deleted
     );
     drop(models);

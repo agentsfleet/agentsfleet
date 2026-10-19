@@ -15,11 +15,10 @@
 //! build the first one.
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;
@@ -103,25 +102,25 @@ impl Fixture {
     /// The tenant, its platform admin workspace, and the person who owns it.
     async fn seed_rows(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector events live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'platform-admin', $3, 1) \
-             ) \
-             INSERT INTO core.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($4::uuid, $1::uuid, $3, 'events-live@example.test', 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("Connector events live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+            .name("platform-admin")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "events-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.admin.as_str())
-        .bind(&self.subject)
-        .bind(&self.user)
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant and its admin workspace seed");
+        .expect("its person seeds");
     }
 
     /// Seals `document` into the admin workspace under `key`.
@@ -137,7 +136,7 @@ impl Fixture {
                 &self.admin,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture bag is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         assert!(sealed.is_ok(), "the fixture bag {key} seals: {sealed:?}");
@@ -151,8 +150,8 @@ impl Fixture {
     pub(super) async fn fleet_events(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM core.fleet_events e \
-             JOIN core.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
+            "SELECT COUNT(*) FROM fleet.events e \
+             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
         )
         .bind(&self.tenant)
         .fetch_one(&mut *connection)
@@ -170,7 +169,7 @@ impl Fixture {
             .execute(&mut *transaction)
             .await
             .expect("the sealed app bag cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

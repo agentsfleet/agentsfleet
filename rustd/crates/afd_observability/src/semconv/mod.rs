@@ -243,6 +243,10 @@ pub const LABEL_FAULT: &str = "fault";
 /// causes of the same event — a run started fresh or by reclaim.
 pub const LABEL_KIND: &str = "kind";
 
+/// Which product's work a billing count is about: a fleet lease or a setup
+/// chat attempt.
+pub const LABEL_WORK_TYPE: &str = "work_type";
+
 /// Every label key the census's own columns name.
 ///
 /// The vocabulary's completeness claim, and what
@@ -262,4 +266,6 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_STATUS,
     LABEL_KIND,
     LABEL_FAULT,
+    LABEL_WORK_TYPE,
+    ATTR_PROVIDER_NAME,
 ];

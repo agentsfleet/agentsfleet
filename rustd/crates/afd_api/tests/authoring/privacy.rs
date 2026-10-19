@@ -5,27 +5,18 @@ use afd_auth::{
     Scope, credential::Presented, directory::Digest, principal::Subject, scope::ScopeSet,
 };
 use afd_core::{
-    clock,
     error_code::{AUTHORING_CURSOR, AUTHORING_NOT_FOUND},
     id::Uuid7,
 };
+use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed};
 use axum::Router;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-/// A joined member of the owner's account, in an account of their own.
-const MEMBER: &str = "\
-WITH tenant AS (
- INSERT INTO core.tenants(id,name,created_at,updated_at) VALUES ($1::uuid,'authoring-member',$5,$5)
-), person AS (
- INSERT INTO core.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
- VALUES ($2::uuid,$1::uuid,$2,$2,$5,$5)
-), joined AS (
- INSERT INTO core.memberships(id,tenant_id,user_id,role,created_at)
- SELECT $6::uuid,$7::uuid,$2::uuid,'member',$5
-)
-INSERT INTO core.api_keys(id,tenant_id,key_name,description,key_hash,created_by,active,created_at,updated_at)
-VALUES ($3::uuid,$1::uuid,'member','',$4,$2,true,$5,$5)";
+/// The owner's account admitting a person of another account as a member.
+const MEMBERSHIP: &str = "\
+INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
+VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
 
 struct Member {
     id: Uuid7,
@@ -37,17 +28,33 @@ async fn member(f: &mut Fixture) -> Member {
     f.own_tenant(&tenant);
     let token = format!("agt_t{}{}", mint(), mint()).replace('-', "");
     let digest = Digest::of(&Presented::new(&token).expect("member token"));
-    sqlx::query(MEMBER)
-        .bind(tenant.as_str())
-        .bind(id.as_str())
-        .bind(mint().as_str())
-        .bind(digest.as_str())
-        .bind(clock::now().as_millis())
+    let mut connection = f.db.acquire().await.expect("seed connection");
+    TenantSeed::new(tenant.as_str())
+        .name("authoring-member")
+        .insert(&mut *connection)
+        .await
+        .expect("the member's own account seeds");
+    UserSeed::new(id.as_str(), tenant.as_str(), id.as_str(), id.as_str())
+        .insert(&mut *connection)
+        .await
+        .expect("the member seeds");
+    sqlx::query(MEMBERSHIP)
         .bind(mint().as_str())
         .bind(f.tenant.as_str())
-        .execute(&mut *f.db.acquire().await.expect("seed connection"))
+        .bind(id.as_str())
+        .execute(&mut *connection)
         .await
-        .expect("seed joined member with a real key");
+        .expect("the member joins the owner's account");
+    ApiKeySeed::new(
+        mint().as_str(),
+        tenant.as_str(),
+        digest.as_str(),
+        id.as_str(),
+    )
+    .name("member")
+    .insert(&mut *connection)
+    .await
+    .expect("the member's real key seeds");
     Member { id, token }
 }
 
@@ -177,7 +184,7 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
     let (item, tag) = create(&router, &f, &member.token).await;
     let before = send(&router, Method::GET, &item, Some(&member.token), "").await;
     assert_eq!(before.status(), StatusCode::OK);
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(member.id.as_str())
         .execute(&mut *f.db.acquire().await.expect("revocation connection"))
@@ -210,13 +217,12 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
         StatusCode::NOT_FOUND,
         "no new private state either"
     );
-    let kept: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM core.authoring_drafts WHERE workspace_id=$1::uuid",
-    )
-    .bind(f.workspace.as_str())
-    .fetch_one(&mut *f.db.acquire().await.expect("count connection"))
-    .await
-    .expect("owned drafts");
+    let kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid")
+            .bind(f.workspace.as_str())
+            .fetch_one(&mut *f.db.acquire().await.expect("count connection"))
+            .await
+            .expect("owned drafts");
     assert_eq!(
         kept, 1,
         "revocation hides the draft; it neither deletes nor adds one"

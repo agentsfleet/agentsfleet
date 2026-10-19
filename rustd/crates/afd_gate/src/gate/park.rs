@@ -28,13 +28,12 @@
 use std::borrow::Cow;
 
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::streams::FleetStreams;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use super::sql;
-use crate::error::{Error, Result, query};
+use crate::error::{DETAIL_GATE_BINDING_UNWRITABLE, Error, Result, encoded, query};
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::pending::GateRef;
@@ -106,9 +105,11 @@ impl Gates {
     /// closed — and there is no decision left for a caller to make. Handing
     /// back an `Err` would offer a choice whose only safe answer is already
     /// known here, and the three call sites would each have to remember it.
-    pub async fn park(&self, request: Park<'_>, now: UnixMillis) -> Parked {
-        let deadline = now.saturating_add_millis(request.stated.timeout_ms);
-        let Ok(reference) = self.mint(now).map(|action| GateRef::new(action, deadline)) else {
+    ///
+    /// `now` mints the two identifiers and nothing else: the row's stamps and
+    /// its deadline are the database's.
+    pub async fn park(&self, request: Park<'_>, now: Timestamp) -> Parked {
+        let Ok(reference) = self.mint(now).map(GateRef::new) else {
             // An entropy or clock failure is the one fault with no store to
             // blame, and it is absorbed the same way for the same reason.
             return Self::unavailable(&request, WRITE_ROW, None);
@@ -124,7 +125,12 @@ impl Gates {
         // `SELECT_GATE_STATUS` reads the NEWEST row for an action rather than
         // assuming one. A second card is the cost; a released run is not.
         if let Err(fault) = self
-            .record(request.fleet_id, request.event_id, &reference)
+            .record(
+                request.fleet_id,
+                request.event_id,
+                &reference,
+                request.stated.timeout,
+            )
             .await
         {
             return Self::unavailable(&request, WRITE_REFERENCE, Some(&fault));
@@ -171,7 +177,7 @@ impl Gates {
         &self,
         request: &Park<'_>,
         reference: &GateRef,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Recorded> {
         let gate_id = self.mint(now)?;
         // Recorded so the write mint can compare the approved reach against the
@@ -179,30 +185,24 @@ impl Gates {
         let binding = request
             .stated
             .binding
-            .map(|declared| serde_json::to_string(&declared.recorded()))
-            .transpose()
-            .map_err(|_shape| {
-                crate::error::rejected(crate::error::DETAIL_GATE_BINDING_UNWRITABLE)
-            })?;
+            .map(|declared| encoded(&declared.recorded(), DETAIL_GATE_BINDING_UNWRITABLE))
+            .transpose()?;
 
         let mut connection = self.database().acquire().await?;
-        let row = sql::PendingRow {
+        let pending_approvals = sql::PendingRow {
             gate_id: &gate_id,
             fleet_id: request.fleet_id,
             workspace_id: request.workspace_id,
             action_id: reference.action_id(),
             stated: request.stated,
             claim: request.claim,
-            deadline: reference.deadline(),
             event_id: request.event_id,
             stated_binding: binding.as_deref(),
-            now,
         }
         .bind()
         .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT_PARK))?;
-        let pending_approvals = row.try_get(0).map_err(query(CONTEXT_PARK))?;
         let counters =
             afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id.as_str())
                 .await;
@@ -218,7 +218,7 @@ impl Gates {
     /// Both the action a human answers about and the row that records it are
     /// minted here, through the workspace's one entropy surface rather than a
     /// second source with its own failure mode.
-    fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
+    fn mint(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
 

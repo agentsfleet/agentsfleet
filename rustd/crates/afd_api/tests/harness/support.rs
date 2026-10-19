@@ -175,6 +175,75 @@ pub(crate) async fn exchange(
     (status, answered)
 }
 
+/// One string field of a refusal's problem document.
+///
+/// Every caller names a key the problem envelope always carries, so an absent
+/// one is an unmet precondition rather than a case to handle.
+pub(crate) async fn field_of(response: Response, key: &str) -> String {
+    let document = json_body(response).await;
+    let value = document.get(key).and_then(Value::as_str).map(str::to_owned);
+    assert!(value.is_some(), "the refusal carries `{key}`: {document}");
+    value.unwrap_or_default()
+}
+
+/// A refusal's `detail`: the sentence a caller is handed.
+pub(crate) async fn detail_of(response: Response) -> String {
+    field_of(response, "detail").await
+}
+
+/// A refusal's registry code.
+pub(crate) async fn code_of(response: Response) -> String {
+    field_of(response, ERROR_CODE).await
+}
+
+/// A refusal read whole: its status, registry code and `detail`.
+///
+/// For a case that pins all three, or two fields of one body, which the
+/// one-field readers above cannot do because each consumes the response.
+/// Both fields are ones the problem envelope always carries.
+pub(crate) async fn problem(response: Response) -> (StatusCode, String, String) {
+    let status = response.status();
+    let document = json_body(response).await;
+    let read = |key: &str| {
+        let value = text(&document, key).map(str::to_owned);
+        assert!(value.is_some(), "the refusal carries `{key}`: {document}");
+        value.unwrap_or_default()
+    };
+    (status, read(ERROR_CODE), read("detail"))
+}
+
+/// The registry code of a refusal the sender must fix.
+///
+/// Asserts a 4xx first: a route that let a forgery through to its unreachable
+/// store would answer a 5xx, and reading only the code could not see that.
+pub(crate) async fn refusal_code(response: Response) -> String {
+    let (status, code, detail) = problem(response).await;
+    assert!(
+        status.is_client_error(),
+        "a refusal is the sender's to fix, so it is a 4xx: {status} {code} {detail}"
+    );
+    code
+}
+
+/// Asserts the request got PAST every layer in front of the verb.
+///
+/// The harness stores sit over a pool that answers nothing, so a 503 carrying
+/// the datastore's code and sentence is the one answer only the store can
+/// produce: the guard, the scope rung, ownership and every request parser
+/// refuse with 4xx codes of their own.
+pub(crate) async fn assert_reached_the_verb(response: Response, case: &str) {
+    let (status, code, detail) = problem(response).await;
+    assert_eq!(
+        (status, code.as_str(), detail.as_str()),
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
+            afd_core::error::DETAIL_DATABASE_UNAVAILABLE,
+        ),
+        "{case}: only the verb answers with the datastore's refusal"
+    );
+}
+
 /// The registry code a refusal carries, read through [`ERROR_CODE`].
 pub(crate) fn error_code(problem: &Value) -> Option<&str> {
     problem.get(ERROR_CODE).and_then(Value::as_str)

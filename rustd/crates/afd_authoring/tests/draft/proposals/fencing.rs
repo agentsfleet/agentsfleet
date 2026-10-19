@@ -1,6 +1,6 @@
 //! Revocation and fences precede every mutation and receipt replay.
 
-use super::{Attempt, Fixture, Source, mint, now};
+use super::{Attempt, Fixture, Source, mint};
 use afd_core::error_code::{AUTHORING_FENCE, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
@@ -10,7 +10,7 @@ async fn foreign_forged_and_expired_attempts_cannot_publish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     refuse_foreign_and_forged(&f, &a, &request).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -39,7 +39,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         .await
         .expect("initial proposal");
     f.drafts
-        .cancel(f.access(), &a.draft.id, 1, now())
+        .cancel(f.access(), &a.draft.id, 1)
         .await
         .expect("Stop wins");
     assert_eq!(
@@ -51,7 +51,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         AUTHORING_FENCE
     );
     f.drafts
-        .delete(f.access(), &a.draft.id, now())
+        .delete(f.access(), &a.draft.id)
         .await
         .expect("private deletion");
     assert_eq!(
@@ -75,19 +75,16 @@ async fn refuse_foreign_and_forged(f: &Fixture, a: &Attempt, request: &super::Ac
             .code(),
         AUTHORING_NOT_FOUND
     );
-    for (fence, generation) in [("2", "0"), ("1", "1")] {
-        let mut forged = request.clone();
-        forged.fence = fence.into();
-        forged.deletion_generation = generation.into();
-        assert_eq!(
-            f.drafts
-                .activity(&f.runner, &a.lease, forged)
-                .await
-                .expect_err("forged fence")
-                .code(),
-            AUTHORING_FENCE
-        );
-    }
+    let mut forged = request.clone();
+    forged.fence = "2".into();
+    assert_eq!(
+        f.drafts
+            .activity(&f.runner, &a.lease, forged)
+            .await
+            .expect_err("forged fence")
+            .code(),
+        AUTHORING_FENCE
+    );
 }
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -99,7 +96,7 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
         .activity(&f.runner, &a.lease, request.clone())
         .await
         .expect("member proposal");
-    sqlx::query("DELETE FROM core.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
         .bind(f.tenant.as_str())
         .bind(f.member.as_str())
         .execute(&mut *f.connection().await)
@@ -114,5 +111,71 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
         AUTHORING_NOT_FOUND
     );
     assert_eq!(a.activity_count(&f).await, 1);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_one() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let mut hint = a.initialize(1);
+    hint.event = afd_wire::authoring::ActivityEvent::Progress {
+        text: "Reading the checkout logs\r\n".into(),
+    };
+    let accepted = f
+        .drafts
+        .activity(&f.runner, &a.lease, hint.clone())
+        .await
+        .expect("a progress hint is acknowledged");
+    assert!(accepted.accepted && !accepted.replayed);
+    assert_eq!(accepted.candidate, None, "a hint changes no candidate");
+    let replayed = f
+        .drafts
+        .activity(&f.runner, &a.lease, hint.clone())
+        .await
+        .expect("the same hint replays");
+    assert!(replayed.replayed);
+    sqlx::query("UPDATE authoring.attempts SET usage_unknown=true WHERE id=$1::uuid")
+        .bind(a.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("a dispatch left usage unknown");
+    hint.activity_sequence = "2".into();
+    assert_eq!(
+        f.drafts
+            .activity(&f.runner, &a.lease, hint)
+            .await
+            .expect_err("unknown usage fences further activity")
+            .code(),
+        AUTHORING_FENCE
+    );
+    assert_eq!(a.activity_count(&f).await, 1);
+    assert_eq!(f.counts().await, (1, 0, 1), "no candidate was written");
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_model_the_catalogue_changed_fences_the_attempt_that_pinned_it() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    sqlx::query(
+        "UPDATE model.platform_models SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1::uuid",
+    )
+    .bind(f.catalogue[0].as_str())
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("the catalogue re-verifies the model's context window");
+    assert_eq!(
+        f.drafts
+            .activity(&f.runner, &a.lease, a.initialize(1))
+            .await
+            .expect_err("the pinned snapshot no longer matches the live model")
+            .code(),
+        afd_core::error_code::AUTHORING_MODEL
+    );
+    assert_eq!(a.activity_count(&f).await, 0);
+    assert_eq!(f.counts().await, (1, 0, 1));
     f.cleanup().await;
 }

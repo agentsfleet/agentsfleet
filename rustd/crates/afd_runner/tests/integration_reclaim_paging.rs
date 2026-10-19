@@ -16,55 +16,57 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::ReadyIndex;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::{BATCH_LIMIT, Reclaim};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::integration_reclaim_faults::RECLAIM_LANE;
 use crate::support::connect_redis;
 
 /// The instant every seeded lease expired at.
-const LONG_AGO: i64 = 1;
+const LONG_AGO: Timestamp = Timestamp::constant(0, 1_000_000);
 
 /// One tenant's fleets, each holding an `active` lease that expired long ago
 /// on a runner of its own; answers the fleet ids.
 ///
-/// The runners are registered to the tenant, so deleting the tenant cascades
-/// to them: 101 stale runners left behind would sit in every later liveness
-/// batch in the lane (ISO-1).
+/// Each runner takes its fleet's id, so the cleanup that removes the fleets
+/// can name the runners too: runners belong to no tenant, and 101 runners left
+/// behind would sit in every later liveness batch in the lane (ISO-1). They
+/// beat at `now()`, so no liveness pass that runs meanwhile counts them stale.
 const SEED_STRANDED: &str = "
 WITH tenant AS (
-    INSERT INTO core.tenants (id, name, created_at, updated_at)
-    VALUES ($1::uuid, 'Reclaim paging', 1, 1) RETURNING id
+    INSERT INTO identity.tenants (id, name, created_at, updated_at)
+    VALUES ($1::uuid, 'Reclaim paging', $3, $3) RETURNING id
 ), workspace AS (
-    INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-    SELECT $2::uuid, id, $2, 'test', 1 FROM tenant RETURNING id, tenant_id
+    INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
+    SELECT $2::uuid, id, $2, $3 FROM tenant RETURNING id, tenant_id
 ), fleets AS (
-    INSERT INTO core.fleets (id, workspace_id, tenant_id, name,
-      config_json, status, created_at, updated_at)
-    SELECT uuidv7(), w.id, w.tenant_id, 'paging-' || n, '{}'::jsonb,
-      'active', 1, 1
+    INSERT INTO fleet.fleets (id, workspace_id, tenant_id, name, status, required_tags,
+      memory_reads_workspace, memory_publishes_workspace, resource_version,
+      created_at, updated_at)
+    SELECT uuidv7(), w.id, w.tenant_id, 'paging-' || n, 'active', '{}', false, false, 1, $3, $3
       FROM workspace w, generate_series(1, $4) n
     RETURNING id, workspace_id
 ), runners AS (
-    INSERT INTO fleet.runners (id, host_id, token_hash, sandbox_tier, admin_state,
-      labels, network_policy, registry_allowlist, last_seen_at, created_at, updated_at)
+    INSERT INTO runner.runners (id, host_id, token_hash, sandbox_tier, status, labels,
+      network_policy, registry_allowlist, worker_count, last_seen_at, lease_version,
+      created_at, updated_at)
     SELECT f.id, f.id::text, f.id::text, 'dev_none', 'active', '[]', 'deny_all_egress', '[]',
-      $3, $3, $3
+      1, now(), 0, now(), now()
       FROM fleets f
     RETURNING id
 ), events AS (
-    INSERT INTO core.fleet_events (fleet_id, workspace_id, event_id, actor,
-      event_type, status, request_json, created_at, updated_at)
+    INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type,
+      status, request_json, created_at, updated_at)
     SELECT f.id, f.workspace_id, 'evt_' || f.id, 'test', 'chat', 'received', '{}', $3, $3
       FROM fleets f
-    RETURNING fleet_id, workspace_id, event_id
+    RETURNING id, fleet_id, workspace_id
 )
-INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-  event_id, actor, event_type, event_created_at, posture, provider, model,
-  metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-  last_metered_at, fencing_token, lease_expires_at, status, created_at,
-  updated_at, receipt)
-SELECT uuidv7(), r.id, e.fleet_id, e.workspace_id, $1::uuid, e.event_id, 'test',
-  'chat', $3, 'platform', 'test', 'test', 0, 0, 0, $3, 1, $3, 'active', $3, $3,
-  e.event_id
+INSERT INTO runner.leases (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id,
+  event_created_at, receipt, posture, provider, model, last_metered_at, fencing_token,
+  lease_expires_at,
+  status, posted_message_count, created_at, updated_at)
+SELECT uuidv7(), r.id, e.fleet_id, e.workspace_id, $1::uuid, e.id, $3, e.id::text,
+  'platform', 'test', 'test', $3, 1, $3, 'active', 0, $3, $3
   FROM events e JOIN runners r ON r.id = e.fleet_id
 RETURNING fleet_id::text";
 
@@ -101,8 +103,11 @@ async fn a_second_pass_resumes_after_the_last_stranded_fleet_the_first_reached()
     lane.cleanup().await;
 }
 
-/// Removes the tenant's fleets, leases, events and runners by cascade.
-const DELETE_TENANT: &str = "DELETE FROM core.tenants WHERE id = $1::uuid";
+/// Removes the tenant's fleets, leases and events by cascade.
+const DELETE_TENANT: &str = "DELETE FROM identity.tenants WHERE id = $1::uuid";
+
+/// Removes the runners, which carry their fleets' ids.
+const DELETE_RUNNERS: &str = "DELETE FROM runner.runners WHERE id = ANY($1::uuid[])";
 
 /// One page and one more of stranded fleets under a tenant of this run's own,
 /// removed with their readiness marks when this drops, whether or not the
@@ -121,7 +126,7 @@ impl Seeded {
         let fleets = sqlx::query_scalar(SEED_STRANDED)
             .bind(&tenant)
             .bind(mint_id())
-            .bind(LONG_AGO)
+            .bind(LONG_AGO.to_sqlx())
             .bind(i32::try_from(BATCH_LIMIT + 1).expect("one page and one more fits"))
             .fetch_all(&mut *connection)
             .await
@@ -149,6 +154,10 @@ impl Drop for Seeded {
                 if let Ok(mut connection) = self.database.acquire().await {
                     let _removed = sqlx::query(DELETE_TENANT)
                         .bind(&self.tenant)
+                        .execute(&mut *connection)
+                        .await;
+                    let _retired = sqlx::query(DELETE_RUNNERS)
+                        .bind(&self.fleets)
                         .execute(&mut *connection)
                         .await;
                 }

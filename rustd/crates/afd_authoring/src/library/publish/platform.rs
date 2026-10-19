@@ -4,14 +4,13 @@ use super::persist;
 use crate::{
     Access, Result, Setup, access,
     error::{ErrorKind, raise::query},
-    library::{CONTEXT, PLATFORM_DRAFT, platform, source},
+    library::{CONTEXT, PLATFORM_DRAFT, platform, source, sql},
     replay,
     types::{PublishLibrary, Published},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
-
-const INSERT: &str = "INSERT INTO core.fleet_libraries(id,tenant_id,visibility,name,description,head_revision_id,resource_version,created_at,updated_at,platform_slug) VALUES($1::uuid,NULL,$2,$3,$4,$5::uuid,1,$6,$6,$7) ON CONFLICT(platform_slug) WHERE platform_slug IS NOT NULL DO NOTHING RETURNING id::text";
 
 impl Setup {
     /// Stages one current private candidate for explicit platform publication.
@@ -24,7 +23,7 @@ impl Setup {
         access: Access<'_>,
         operation: &Uuid7,
         request: PublishLibrary,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Published> {
         let request = garde::Unvalidated::new(request).validate()?;
         let mut connection = self.drafts.database.acquire().await?;
@@ -32,7 +31,15 @@ impl Setup {
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:platform-library:create:{}", access.workspace, person.id);
         let digest = replay::digest(&*request)?;
-        let existing = replay::find(&mut tx, &scope, operation, &person.id, &digest).await?;
+        let existing = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::LibraryRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?;
         let result = if let Some(revision) = existing {
             platform::read::receipt(&mut tx, &revision).await?
         } else {
@@ -48,38 +55,33 @@ impl Setup {
                 operation,
                 digest: &digest,
                 resource: &revision,
-                now,
             };
             if replay::reserve(&mut tx, reservation).await? {
                 let library = self.drafts.mint(now)?;
-                let slug = candidate.definition.runtime().name().as_str();
-                insert(
-                    &mut tx,
-                    &library,
-                    &revision,
-                    &request.label,
-                    &candidate,
-                    now,
-                )
-                .await?;
+                insert(&mut tx, &library, &revision, &request.label, &candidate).await?;
                 persist::append(
                     &mut tx,
                     persist::NewRevision {
                         library: &library,
-                        public_id: slug,
                         id: &revision,
                         number: 1,
                     },
                     &draft.id,
                     &candidate,
-                    now,
                 )
                 .await?;
                 platform::read::receipt(&mut tx, &revision).await?
             } else {
-                let revision = replay::find(&mut tx, &scope, operation, &person.id, &digest)
-                    .await?
-                    .ok_or(ErrorKind::Gone)?;
+                let revision = replay::find(
+                    &mut tx,
+                    &scope,
+                    replay::Resource::LibraryRevision,
+                    operation,
+                    &person.id,
+                    &digest,
+                )
+                .await?
+                .ok_or(ErrorKind::Gone)?;
                 platform::read::receipt(&mut tx, &revision).await?
             }
         };
@@ -94,15 +96,14 @@ async fn insert(
     revision: &Uuid7,
     label: &str,
     candidate: &crate::types::Candidate,
-    now: UnixMillis,
 ) -> Result<()> {
-    let id: Option<String> = sqlx::query_scalar(INSERT)
+    let id: Option<String> = sqlx::query_scalar(sql::INSERT_PLATFORM)
         .bind(library.as_str())
         .bind(PLATFORM_DRAFT)
         .bind(label)
         .bind(candidate.definition.description())
         .bind(revision.as_str())
-        .bind(now.as_millis())
+        .bind(1_i64)
         .bind(candidate.definition.runtime().name().as_str())
         .fetch_optional(connection)
         .await

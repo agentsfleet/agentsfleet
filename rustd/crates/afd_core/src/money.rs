@@ -1,7 +1,7 @@
 //! The unit every credit column is denominated in.
 //!
 //! One US dollar is [`NANOS_PER_USD`] nanos, and that is a property of the wire
-//! format rather than a price: `billing.usage_ledger.credit_deducted_nanos` and
+//! format rather than a price: `billing.usage_lines.charged_nanos` and
 //! `balance_nanos` are `BIGINT` columns of nanos, so nothing can read one
 //! without this factor. Rates are a different thing and live with the code that
 //! charges them — [`afd_billing`] for what runtime costs, `afd_tenant::signup`

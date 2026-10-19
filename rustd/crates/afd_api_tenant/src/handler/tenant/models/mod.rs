@@ -14,6 +14,7 @@ use std::time::Instant;
 
 use afd_api_wire::models::{CatalogueModel, CatalogueResponse};
 use afd_core::paging::QUERY_LIMIT;
+use afd_http::services::price_wire;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 use afd_tenant::models::cursor::{self, Cursor};
@@ -81,7 +82,7 @@ const VARY_VALUE: &str = "Authorization";
         "identical for every authorized caller. ",
     ),
     params(
-        afd_http::openapi::query::ModelEntryFilter,
+        afd_http::openapi::query::CatalogueFilter,
     ),
     responses(
         (status = 200, description = "One page of the catalogue, under the entity tag its bytes hash to", body = CatalogueResponse),
@@ -107,6 +108,9 @@ pub(crate) async fn catalogue<D: Services>(
     read
 }
 
+/// The query parameter that asks for advanced models.
+const QUERY_ADVANCED: &str = "advanced";
+
 /// The surface this handler serves, in the census's own spelling.
 const SURFACE: Surface = Surface::GlobalModels;
 
@@ -128,9 +132,11 @@ async fn read_catalogue<D: Services>(
     let query = query.unwrap_or_default();
     let limit = catalogue_limit(input::decoded(&query, QUERY_LIMIT)?.as_deref())?;
     let provider = input::normalize_provider(input::decoded(&query, "provider")?)?;
+    let advanced = input::parse_advanced(input::decoded(&query, QUERY_ADVANCED)?.as_deref())?;
     let after = input::parse_cursor(
         input::decoded(&query, "starting_after")?,
         provider.as_deref(),
+        advanced,
         limit,
     )?;
 
@@ -139,14 +145,14 @@ async fn read_catalogue<D: Services>(
         Stage::Sql,
         services
             .catalogue()
-            .page(provider.as_deref(), after.as_ref(), limit),
+            .page(provider.as_deref(), advanced, after.as_ref(), limit),
     )
     .await
     .map_err(Refusal::at(EVENT_CATALOGUE))?;
 
     let rows = u64::try_from(page.models.len()).unwrap_or(u64::MAX);
     let serializing = Instant::now();
-    let body = serialize(&page, provider.as_deref(), limit);
+    let body = serialize(&page, provider.as_deref(), advanced, limit);
     library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
     library::read_served(SURFACE, rows);
     library::payload_served(SURFACE, u64::try_from(body.len()).unwrap_or(u64::MAX));
@@ -155,7 +161,7 @@ async fn read_catalogue<D: Services>(
 }
 
 /// The page, serialized once into the bytes both the tag and the body use.
-fn serialize(page: &LibraryPage, provider: Option<&str>, limit: u32) -> Vec<u8> {
+fn serialize(page: &LibraryPage, provider: Option<&str>, advanced: bool, limit: u32) -> Vec<u8> {
     let next_cursor = page
         .has_more
         .then_some(page.boundary.as_ref())
@@ -167,11 +173,12 @@ fn serialize(page: &LibraryPage, provider: Option<&str>, limit: u32) -> Vec<u8> 
                 vendor_key: boundary.vendor_key.clone(),
                 id: boundary.id.clone(),
                 provider: provider.map(str::to_owned),
+                advanced,
                 limit,
             }))
         });
     let response = CatalogueResponse {
-        version: Cow::Owned(version_stamp(page.max_updated_ms)),
+        version: Cow::Owned(version_stamp(page.max_updated)),
         models: page.models.iter().map(model).collect(),
         // Never counted — the key stays, as the guidelines require.
         total: None,
@@ -191,6 +198,11 @@ fn model(row: &LibraryRow) -> CatalogueModel<'_> {
         input_nanos_per_mtok: row.input_nanos_per_mtok,
         cached_input_nanos_per_mtok: row.cached_input_nanos_per_mtok,
         output_nanos_per_mtok: row.output_nanos_per_mtok,
+        display_name: Cow::Borrowed(&row.metadata.display_name),
+        advanced: row.metadata.advanced,
+        context_source_url: Cow::Borrowed(&row.metadata.context_source_url),
+        context_verified_at: row.metadata.context_verified_at,
+        prices: row.prices.iter().map(price_wire).collect(),
     }
 }
 
@@ -231,67 +243,52 @@ fn respond(headers: &HeaderMap, body: Vec<u8>) -> Response {
 }
 
 /// The catalogue's version stamp: the newest row's change date, `YYYY-MM-DD`
-/// UTC. An empty catalogue yields 0 → `1970-01-01`, a valid not-yet-
-/// provisioned state rather than an error. Values outside Jiff's supported
-/// calendar range retain their numeric timestamp as the version stamp.
-fn version_stamp(max_updated_ms: i64) -> String {
-    jiff::Timestamp::from_millisecond(max_updated_ms.max(0)).map_or_else(
-        |_outside_calendar| max_updated_ms.to_string(),
-        |timestamp| {
-            timestamp
-                .to_zoned(jiff::tz::TimeZone::UTC)
-                .date()
-                .to_string()
-        },
-    )
+/// UTC. An empty catalogue reads as the epoch, `1970-01-01`, a valid
+/// not-yet-provisioned state rather than an error.
+fn version_stamp(max_updated: Option<jiff::Timestamp>) -> String {
+    let newest = max_updated.map_or(jiff::Timestamp::UNIX_EPOCH, |at| {
+        at.max(jiff::Timestamp::UNIX_EPOCH)
+    });
+    newest.to_zoned(jiff::tz::TimeZone::UTC).date().to_string()
 }
 
 mod input;
 
 #[cfg(test)]
 mod tests {
+    use jiff::Timestamp;
+
     use super::version_stamp;
 
-    // Jiff 0.2.35's millisecond constructor caps at MAX seconds * 1000,
-    // excluding the final 999 milliseconds that Timestamp::MAX represents.
-    const LAST_CONSTRUCTIBLE_MS: i64 = 253_402_207_200_000;
-
     #[test]
-    fn the_version_stamp_renders_epoch_ms_as_a_utc_date() {
-        // Midnight UTC on 2025-04-29, in epoch milliseconds.
-        assert_eq!(version_stamp(1_745_884_800_000), "2025-04-29");
+    fn the_version_stamp_renders_the_newest_change_as_a_utc_date() {
+        // Midnight UTC on 2025-04-29.
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(1_745_884_800, 0))),
+            "2025-04-29"
+        );
     }
 
     #[test]
     fn an_empty_or_pre_epoch_catalogue_clamps_to_the_epoch_date() {
-        assert_eq!(version_stamp(0), "1970-01-01");
-        assert_eq!(version_stamp(-1), "1970-01-01");
+        assert_eq!(version_stamp(None), "1970-01-01");
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(-1, 0))),
+            "1970-01-01"
+        );
     }
 
     #[test]
     fn a_leap_day_survives_the_civil_arithmetic() {
         // 2024-02-29 00:00 UTC — the branchy corner of any date algorithm.
-        assert_eq!(version_stamp(1_709_164_800_000), "2024-02-29");
+        assert_eq!(
+            version_stamp(Some(Timestamp::constant(1_709_164_800, 0))),
+            "2024-02-29"
+        );
     }
 
     #[test]
-    fn the_last_supported_millisecond_still_renders_a_utc_date() {
-        assert_eq!(version_stamp(LAST_CONSTRUCTIBLE_MS), "9999-12-30");
-    }
-
-    #[test]
-    fn timestamps_beyond_the_calendar_range_keep_their_numeric_value() {
-        for millis in [
-            LAST_CONSTRUCTIBLE_MS + 1,
-            jiff::Timestamp::MAX.as_millisecond(),
-            i64::MAX,
-        ] {
-            assert_eq!(version_stamp(millis), millis.to_string());
-        }
-    }
-
-    #[test]
-    fn the_most_negative_timestamp_clamps_before_calendar_conversion() {
-        assert_eq!(version_stamp(i64::MIN), "1970-01-01");
+    fn the_last_instant_jiff_holds_still_renders_a_utc_date() {
+        assert_eq!(version_stamp(Some(Timestamp::MAX)), "9999-12-30");
     }
 }

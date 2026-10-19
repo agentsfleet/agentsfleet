@@ -33,11 +33,10 @@ use crate::harness;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -214,6 +213,42 @@ async fn a_tenant_with_no_selection_reads_a_view_rather_than_a_refusal() {
     fixture.cleanup().await;
 }
 
+/// A tenant holding no workspace has nowhere a credential could live, and a
+/// registration is refused naming that, rather than as a missing credential.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_tenant_with_no_workspace_is_refused_a_registration_naming_it() {
+    let fixture = Fixture::create().await;
+    fixture.seed_credential_only().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .router();
+
+    let refused = send(
+        &router,
+        Method::POST,
+        ENTRIES,
+        Some(&fixture.token),
+        &format!(
+            r#"{{"model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
+            fixture.first_model
+        ),
+    )
+    .await;
+
+    let status = refused.status();
+    let body = json_body(refused).await;
+    assert_eq!(
+        body["error_code"].as_str(),
+        Some(afd_core::error_code::TENANT_NO_PRIMARY_WORKSPACE.as_str()),
+        "{status}: {body}"
+    );
+    fixture.cleanup().await;
+}
+
 struct Fixture {
     lane: TestDatabase,
     database: Db,
@@ -234,7 +269,7 @@ impl Fixture {
         let workspace = Uuid7::parse(&mint_id()).expect("a minted id is a Uuid7");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            // Unique per run: `core.model_library` has no tenant column and
+            // Unique per run: `model.platform_models` has no tenant column and
             // this lane shares one database, so a fixed provider would be a row
             // shared with every sibling suite.
             provider: format!("live{}", tenant.replace('-', "")),
@@ -248,46 +283,45 @@ impl Fixture {
         }
     }
 
+    /// The tenant and its key, and no workspace: the bootstrap invariant every
+    /// other case upholds, deliberately broken.
+    async fn seed_credential_only(&self) {
+        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        TenantSeed::new(&self.tenant)
+            .name("Live model registry, no workspace")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
+    }
+
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Live model registry', 1, 1) \
-               RETURNING id \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, 1, 1) \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $5::uuid, id, $5, 'test', 1 FROM tenant",
-        )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(self.workspace.as_str())
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated tenant and its primary workspace seed");
+        TenantSeed::new(&self.tenant)
+            .name("Live model registry")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("its primary workspace seeds");
 
         for model in [&self.first_model, &self.second_model] {
-            sqlx::query(
-                "INSERT INTO core.model_library \
-                   (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                    cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, $4, 5, 1, 25, 1, 1)",
-            )
-            .bind(mint_id())
-            .bind(model)
-            .bind(&self.provider)
-            .bind(CAP)
-            .execute(&mut *connection)
-            .await
-            .expect("the priced model seeds");
+            ModelSeed::new(&mint_id(), &self.provider, model, CAP)
+                .rates(5, 1, 25)
+                .insert(&mut *connection)
+                .await
+                .expect("the priced model seeds");
         }
         drop(connection);
 
@@ -309,7 +343,7 @@ impl Fixture {
                 &self.workspace,
                 &SecretName::parse(CREDENTIAL).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await
             .expect("the provider credential seals");
@@ -317,13 +351,13 @@ impl Fixture {
 
     /// Deletes the rows this fixture wrote to tables without a tenant column.
     ///
-    /// The catalogue is the shared surface: `core.model_library` is keyed by
-    /// `(provider, model_id)` alone, so rows left behind accumulate across
+    /// The catalogue is the shared surface: `model.platform_models` is keyed by
+    /// `(provider, model_name)` alone, so rows left behind accumulate across
     /// `KEEP_TEST_STATE=1` inner-loop runs even though their unique names never
     /// collide. Tenant-keyed rows are left to the lane's schema reset.
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.model_library WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_models WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await

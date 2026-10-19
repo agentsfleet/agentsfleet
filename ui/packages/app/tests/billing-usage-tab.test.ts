@@ -42,7 +42,7 @@ import {
 
 // $0.001 — a representative sub-cent stage charge; the "−$0.001" row assertions
 // below depend on this exact value.
-const SAMPLE_CHARGE_NANOS = 1_000_000;
+const SAMPLE_CHARGE_NANOS = "1000000";
 
 function charge(over: Partial<ChargeRow> = {}): ChargeRow {
   return {
@@ -50,7 +50,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
-    fleet_name: null,
+    fleet_name: "z_1",
     event_id: "evt_1",
     authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
@@ -60,7 +60,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: 1_700_000_000_000,
+    recorded_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
@@ -77,7 +77,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       initialCharges: [charge({ fleet_id: null, event_id: null, authoring_attempt_id: "attempt-1", charge_type: CHARGE_TYPE.authoring })],
       initialCursor: null, pageSize: 25,
     }));
-    expect(screen.getByText("Fleet setup")).toBeTruthy();
+    expect(screen.getByText("Setup chat")).toBeTruthy();
     expect(screen.getByText("Setup chat · 1,860 tokens · 820 in · 1,040 out")).toBeTruthy();
     expect(screen.getByText("−$0.001")).toBeTruthy();
     expect(screen.queryByText("DELETED AGENT")).toBeNull();
@@ -131,7 +131,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders a zero debit without a negative sign", () => {
     render(
       React.createElement(BillingUsageTab, {
-        initialCharges: [charge({ credit_deducted_nanos: 0 })],
+        initialCharges: [charge({ credit_deducted_nanos: "0" })],
         initialCursor: null,
         pageSize: 25,
       }),
@@ -162,8 +162,8 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
           charge(),
           charge({
             id: "tel_2",
-            recorded_at: 1_800_000_000_000,
-            credit_deducted_nanos: 5_000_000,
+            recorded_at: "2027-01-15T08:00:00Z",
+            credit_deducted_nanos: "5000000",
           }),
         ],
         initialCursor: null,

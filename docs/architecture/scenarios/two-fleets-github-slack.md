@@ -13,16 +13,16 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 | Word | What it is |
 |---|---|
 | **Workspace** | Your team's space; every fleet, secret and connection lives in one. |
-| **Fleet** | One saved agent: its reviewed setup, meaning its instructions and the triggers, tools, secrets, network and budget it may use. A `core.fleets` row that selects one immutable `core.fleet_definition_revisions` row. |
+| **Fleet** | One saved agent: its reviewed setup, meaning its instructions and the triggers, tools, secrets, network and budget it may use. A `fleet.fleets` row that selects one immutable `fleet.revisions` row. |
 | **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault and the HTTP API; never runs the model. |
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
-| **Admission** | "We accepted this job", a `core.fleet_admissions` row committed **before** the sender hears yes. |
+| **Admission** | "We accepted this job", a `fleet.admissions` row committed **before** the sender hears yes. |
 | **Stream** | A fleet's inbox, `fleet:{id}:events`; its jobs wait there oldest first. |
 | **Ready mark** | A note on one of sixteen shelves, `fleet:ready:{p}`, saying "this fleet has work". |
 | **Doorbell** | A ring on a shelf's channel, `fleet:ready:{p}:wake`, so the next poll also peeks that shelf instead of waiting for the rotation to reach it. Each replica keeps what it heard as one bit per shelf (`afd_dragonfly::Doorbell`). |
 | **Lease** | A time-limited permission to run one job for one fleet, carrying a **fencing token** that only goes up, so a stale worker cannot overwrite a newer one. |
 | **Report** | The worker handing the answer back; settles money, history and the bookmark in one transaction. |
-| **Obligation** | "We still owe someone this answer", a `core.fleet_obligations` row, written only when the job came from somewhere a reply can go. |
+| **Obligation** | "We still owe someone this answer", a `fleet.obligations` row, written only when the job came from somewhere a reply can go. |
 | **Activity channel** | The live tail, `fleet:{id}:activity`, a sharded pub/sub channel (`SPUBLISH` / `SSUBSCRIBE`); frames for screens, never the record. |
 
 ```
@@ -43,8 +43,8 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
   │         memory_store, memory_recall                                   │
   │                                                                       │
   │  Connections (once per workspace):                                    │
-  │    GitHub App install  ──► core.connector_installs (github, inst id)  │
-  │    Slack OAuth         ──► core.connector_installs (slack, team_id)   │
+  │    GitHub App install  ──► connector.installs (github, inst id)       │
+  │    Slack OAuth         ──► connector.installs (slack, team_id)        │
   │                            + vault handle "slack" (bot token)         │
   └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -64,12 +64,12 @@ Saving with start `none` runs nothing. It writes the fleet and its setup down, a
   ┌──────────────────────────── agentsfleetd ────────────────────────────┐
   │                                                                      │
   │  1. refuse a stale review: the digest must match the setup now       │
-  │  2. Postgres  INSERT core.fleets  status=installing                  │
+  │  2. Postgres  INSERT fleet.fleets status=installing                  │
   │               + setup revision 1 (description, instructions, config) │
   │               (tenant comes from the workspace row, never the caller)│
   │  3. readiness: model, wallet, credentials by NAME only, connections, │
   │     grants; a missing grant is requested:                            │
-  │     Postgres  INSERT core.integration_grants (fleet, "github")       │
+  │     Postgres  INSERT connector.integration_grants (fleet, "github")  │
   │               pending  ← a person approves it on the setup check     │
   │  4. Dragonfly XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease   │
   │               ← the inbox and its "lease" reader group, once every   │
@@ -84,14 +84,13 @@ Saving with start `none` runs nothing. It writes the fleet and its setup down, a
 ```
   Postgres                                   Dragonfly
   ────────                                   ─────────
-  core.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
-  core.fleet_definition_                     fleet:{B}:events  (empty) + group ✔
-    revisions (revision 1) ✔
-  core.integration_grants  ✔ approved before the fleet went active
-  core.fleet_admissions    ✗  (no work yet)
-  core.fleet_events        ✗                 fleet:{id}:activity  ✗ (exists from
-  fleet.runner_leases      ✗                                       its first PUBLISH)
-  core.fleet_sessions      ✗  (the first report writes it)
+  fleet.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
+  fleet.revisions (revision 1) ✔              fleet:{B}:events  (empty) + group ✔
+  connector.integration_grants  ✔ approved before the fleet went active
+  fleet.admissions    ✗  (no work yet)
+  fleet.events        ✗                 fleet:{id}:activity  ✗ (exists from
+  runner.leases      ✗                                       its first PUBLISH)
+  fleet.sessions      ✗  (the first report writes it)
 ```
 
 ## 2. Trigger one: a Pull Request wakes fleet A
@@ -107,7 +106,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"Ingress: how a PR on `agent
   │     the vault's "github-app".webhook_secret BEFORE reading the body.     │
   │     Bad → UZ-WH-010.  No Bearer fallback, ever.                          │
   │                                                                          │
-  │  b. installation.id ──► core.connector_installs ──► workspace "indy-ws"  │
+  │  b. installation.id ──► connector.installs ──► workspace "indy-ws"       │
   │                                                                          │
   │  c. shrink GitHub's payload into a 12-field digest:                      │
   │     action, repo, number, title, url, state, draft, author,              │
@@ -121,7 +120,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"Ingress: how a PR on `agent
   │     (no `repositories` list = listens to NOTHING; fail-closed)           │
   │                                                                          │
   │  e. per matching fleet, ADMIT:                                           │
-  │       INSERT core.fleet_admissions                                       │
+  │       INSERT fleet.admissions                                            │
   │         producer = webhook_app                                           │
   │         key      = "{fleetA}:{sha256(body)}"   ← one body, one job       │
   │         reply    = NONE   ← nowhere to answer back to (part 9)           │
@@ -147,7 +146,7 @@ Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agent
   ┌──────────────────────────────────▼───────────────────────────────────────┐
   │ 1. FILTER   app_mention only; drop bots, edits, and the bot's own posts  │
   │                                                                          │
-  │ 2. ROUTE    team_id ──► core.connector_installs ──► workspace "indy-ws"  │
+  │ 2. ROUTE    team_id ──► connector.installs ──► workspace "indy-ws"       │
   │             who subscribes to THIS channel?                              │
   │                                                                          │
   │       ┌─────────────┬──────────────────┬─────────────────────────┐       │
@@ -165,7 +164,7 @@ Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agent
   │    A failed read → the mention alone, and the message says so.           │
   │                                                                          │
   │ 4. ADMIT                                                                 │
-  │      INSERT core.fleet_admissions                                        │
+  │      INSERT fleet.admissions                                             │
   │        producer = slack_mention                                          │
   │        key      = "{team_id}:{slack event_id}"  ← a Slack retry is the   │
   │                                                   same job               │
@@ -189,7 +188,7 @@ A steer is you typing to a fleet. It enters through the same door as every other
    │  POST /v1/workspaces/{ws}/fleets/{A}/messages
    ▼
   ┌──────────────────────────── agentsfleetd ────────────────────────────┐
-  │  INSERT core.fleet_admissions      producer=steer                    │
+  │  INSERT fleet.admissions      producer=steer                         │
   │  XADD fleet:{A}:events *           actor=steer:kishore  type=chat    │
   │  receipt, ready mark + doorbell ring                                 │
   │  SPUBLISH fleet:{A}:activity       {kind:"event_admitted", message}  │
@@ -209,8 +208,8 @@ Six producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_
   │ type          chat | webhook | cron | continuation                     │
   │ workspace_id  <uuid>                                                   │
   │ request       <the message or the digest JSON>                         │
-  │ created_at    <epoch ms>                                               │
-  │ event_id      <created_at>-<seq>   ← minted by the ADMISSION ROW       │
+  │ created_at    <RFC 3339>                                               │
+  │ event_id      <admission id>       ← minted by the ADMISSION ROW       │
   └────────────────────────────────────────────────────────────────────────┘
        The agent never branches on actor; it is metadata for the instructions and history.
 ```
@@ -272,17 +271,17 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → c
   │     runner names goes first, any shelf; neither runner holds one here  │
   │  b. SELECT_READY_CANDIDATES ≤64: active, slot free, runner has the     │
   │     labels; rotation's shelf first, then the last runner, then random  │
-  │  c. CLAIM fleet.runner_affinity    ← ONE active lease per fleet        │
-  │       fencing_seq + 1 (the fencing token), leased_until = now + 30 s   │
+  │  c. CLAIM runner.fleet_slots    ← ONE active lease per fleet           │
+  │       fencing_token + 1, lease_expires_at = now + 30 s                 │
   │  d. the fleet's oldest job: pending first (XAUTOCLAIM), else new       │
   │     (XREADGROUP >). A gets "PR opened"; the steer waits behind it      │
-  │  1. INSERT core.fleet_events  status=received  + stamp delivered_at    │
+  │  1. INSERT fleet.events  status=received  + stamp delivered_at         │
   │  2. SPUBLISH fleet:{id}:activity {event_received}                      │
-  │  3. GATES: payer → balance → budget → receive debit → approval         │
+  │  3. GATES: payer → balance → budget → approval (nothing is charged)    │
   │     refused → status=gate_blocked, terminal, never reopened            │
   │  4. vault: secrets_map; the provider key apart (never in secrets_map); │
   │     ExecutionPolicy: tools, network.allow, per-host rules              │
-  │  5. INSERT fleet.runner_leases  status=active, fencing_token, expiry   │
+  │  5. INSERT runner.leases  status=active, fencing_token, expiry         │
   │                                                                        │
   │ settle the rung shelf: rung again or left clear, by the rule in        │
   │ runner_fleet.md, its Datastore topology table                          │
@@ -345,14 +344,14 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"Steer flow end-to-end" (write
   ┌─────────────────────────────── agentsfleetd ───────────────────────────────┐
   │                                                                            │
   │  ╔═════════════════ ONE Postgres transaction ═════════════════╗            │
-  │  ║  claim_and_settle: lease active AND token ≥ fencing_seq ?  ║            │
+  │  ║  claim_and_settle: lease active AND token ≥ fencing_token? ║            │
   │  ║     no  → UZ-RUN-005 (a stale runner), nothing changes     ║            │
   │  ║     yes → lease status = reported                          ║            │
-  │  ║  7.  fleet_events  status=processed, response_text         ║ ← history  │
-  │  ║  9.  billing.usage_ledger  reconcile actual tokens         ║ ← money    │
-  │  ║  10. fleet_sessions  UPSERT context_json                   ║ ← bookmark │
+  │  ║  7.  fleet.events  status=processed, response_text         ║ ← history  │
+  │  ║  9.  billing.usage_lines  the final slice, priced          ║ ← money    │
+  │  ║  10. fleet.sessions  UPSERT context_json                   ║ ← bookmark │
   │  ║  12. release the affinity slot (token-guarded)             ║ ← next job │
-  │  ║  13. fleet_obligations INSERT (receipt and delivered_at    ║ ← ONLY when│
+  │  ║  13. fleet.obligations INSERT (receipt and delivered_at    ║ ← ONLY when│
   │  ║      NULL)  "we owe this answer"                           ║   a reply  │
   │  ╚════════════════════════════════════════════════════════════╝   was      │
   │                                                                 remembered │
@@ -373,13 +372,13 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
 ```
   FLEET B (Slack)                                 FLEET A (GitHub)
   ───────────────                                 ────────────────
-  core.fleet_obligations row                      no obligation row
+  fleet.obligations row                      no obligation row
     receipt NULL, delivered_at NULL                 (admitted with Reply::None)
         │                                                │
         │ XADD connector:outbound                        │
         ▼                                                ▼
   ┌─────────────── outbound worker ───────────────┐  the answer lives in:
-  │ its own Dragonfly socket, XREADGROUP BLOCK    │   core.fleet_events.response_text,
+  │ its own Dragonfly socket, XREADGROUP BLOCK    │   fleet.events.response_text,
   │ SlackPoster:                                  │   the live tail, the dashboard
   │   the bot token from vault "slack"            │   and `agentsfleet events`
   │   escape & < >  (literal text only)           │
@@ -420,9 +419,9 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
            fleet_response_chunk … → tool_call_completed → event_complete
            (+ gate_opened / gate_resolved when a person is asked)
 
-   a dropped tab:   on reconnect, read fleet_events since (last − 2 s), merge by id
+   a dropped tab:   on reconnect, read fleet.events since (last − 2 s), merge by id
    a lost channel:  catching_up {dropped:0}, then the same backfill
-   the live tail is for watching; core.fleet_events is the record
+   the live tail is for watching; fleet.events is the record
 ```
 
 A browser's `EventSource` cannot send an `Authorization` header, so the dashboard reads through its own `/live/*` routes, which turn your Clerk sign-in session into the Bearer token `agentsfleetd` accepts (`ui/packages/app/app/live/v1/`). The CLI holds its own token and calls `agentsfleetd` directly.
@@ -446,4 +445,4 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
  You  ◄─── the live tail shows every frame; A#2's answer arrives on the CLI's stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and billing one `billing.usage_ledger` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").

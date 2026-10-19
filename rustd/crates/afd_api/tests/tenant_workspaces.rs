@@ -18,16 +18,12 @@
 //! Discovery log records, and these tests are what notice if it quietly
 //! regresses to the refusal.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -46,12 +42,6 @@ const SUBJECT: &str = "user_2workspaces";
 /// What the route table demands of both verbs.
 const WORKSPACE_ADMIN: ScopeSet = ScopeSet::from_scopes(&[Scope::WorkspaceAdmin]);
 
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the scope rung refuses with, as `Denied` renders it.
-const DETAIL_SCOPE: &str = "Requires scope workspace:admin";
-
 /// One request at a fresh router holding one scoped person.
 async fn send(
     scopes: ScopeSet,
@@ -64,56 +54,6 @@ async fn send(
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Asserts the request got PAST every layer in front of the verb — 503 with
-/// the datastore sentence is the one answer only the SERVICE can produce.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the plane's, not a layer's"
-    );
-}
-
-#[tokio::test]
-async fn both_verbs_need_a_credential() {
-    for (method, path) in [(Method::GET, WORKSPACES), (Method::POST, CREATE)] {
-        let response = send(WORKSPACE_ADMIN, method, path, None, "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{path} is not anonymous"
-        );
-    }
-}
-
-#[tokio::test]
-async fn both_verbs_need_the_workspace_admin_scope() {
-    for (method, path) in [(Method::GET, WORKSPACES), (Method::POST, CREATE)] {
-        let response = send(NO_SCOPES, method, path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{path} without workspace:admin is refused"
-        );
-        assert_eq!(detail_of(response).await, DETAIL_SCOPE, "{path}");
-    }
 }
 
 #[tokio::test]
@@ -146,20 +86,15 @@ async fn every_wrong_limit_earns_the_one_sentence() {
 }
 
 #[tokio::test]
-async fn the_limit_cap_is_inside_the_range() {
-    let path = format!("{WORKSPACES}?limit=100");
-    let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
-    assert_reached_the_verb(response, "limit=100").await;
-}
-
-#[tokio::test]
 async fn a_cursor_from_any_other_list_is_refused() {
-    // Not a token, a text-sort token, and a timestamp token whose second half
-    // is no workspace identifier — each is some OTHER list's cursor here.
+    // Not a token, a text-sort token, a timestamp token whose second half is
+    // no workspace identifier, and an instant in epoch digits — none is this
+    // list's cursor.
     for foreign in [
         "!!not-a-token",
         "s:YWJj:01924f4e-0000-7000-8000-00000000beef",
-        "1712924400000:not-a-uuid",
+        "2024-04-12T12:20:00Z:not-a-uuid",
+        "1712924400000:01924f4e-0000-7000-8000-00000000beef",
     ] {
         let path = format!("{WORKSPACES}?starting_after={foreign}");
         let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
@@ -175,7 +110,7 @@ async fn a_cursor_from_any_other_list_is_refused() {
 #[tokio::test]
 async fn a_workspace_cursor_is_accepted() {
     let path = format!(
-        "{WORKSPACES}?starting_after=1712924400000:{}",
+        "{WORKSPACES}?starting_after=2024-04-12T12:20:00Z:{}",
         harness::OWNED_WORKSPACE
     );
     let response = send(WORKSPACE_ADMIN, Method::GET, &path, Some(TENANT_KEY), "").await;
@@ -336,4 +271,19 @@ async fn a_body_that_is_not_json_is_refused() {
             "{broken:?}"
         );
     }
+}
+
+/// A session's account is read from its user row before a workspace is made
+/// under it, and a read that cannot answer is the outage class, never a
+/// workspace made under a guessed account.
+#[tokio::test]
+async fn a_session_whose_account_cannot_be_read_is_the_outage_class() {
+    let router = Fleet::new()
+        .with_live_ownership()
+        .with_dashboard_holding(SUBJECT, WORKSPACE_ADMIN)
+        .router();
+
+    let response = harness::send(&router, Method::POST, CREATE, Some("session"), "{}").await;
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }

@@ -35,6 +35,7 @@ mod activity;
 mod authoring;
 mod client;
 mod credentials;
+mod deadline;
 mod drainer;
 mod egress;
 mod halt;

@@ -22,13 +22,19 @@
 //! decoder disagreeing, and it is reported rather than skipped — after every
 //! row that did decode is woken and announced, since the statement already
 //! expired them all.
+//!
+//! # The deadline is the database's
+//!
+//! A gate lapses when `expires_at <= now()` on the database clock, the same
+//! clock that stamped `expires_at` when the gate was raised. The sweep reads no
+//! clock of its own, so a daemon whose host clock drifts cannot expire a gate
+//! early or hold one past its window.
 
 use std::collections::BTreeMap;
 
 use afd_api_wire::approval::status;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::clock::UnixMillis;
-use sqlx::Row as _;
+use sqlx::FromRow as _;
 
 use super::Inbox;
 use super::announce::Answer;
@@ -49,6 +55,7 @@ const CONTEXT_EXPIRE: &str = "gate.inbox.expire";
 /// each on its own fleet's tail without a read per row — the count the frame
 /// carries rode the same statement. The event is optional because the column
 /// is: a gate raised on a standing grant rather than on a run parks no event.
+#[derive(Debug, sqlx::FromRow)]
 struct Swept {
     gate: String,
     fleet: String,
@@ -71,14 +78,12 @@ impl Inbox {
     /// # Errors
     /// Reports a datastore that would not answer, and a row the decoder does
     /// not match — which only a statement and decoder out of step can cause.
-    pub async fn expire(&self, now: UnixMillis) -> Result<u64> {
+    pub async fn expire(&self) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::EXPIRE_GATES)
             .bind(status::TIMED_OUT)
-            .bind(status::PENDING)
             .bind(SWEEPER)
             .bind(SWEPT_DETAIL)
-            .bind(now.as_millis())
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_EXPIRE))?;
@@ -154,14 +159,9 @@ impl Inbox {
         self.serve(rows).await
     }
 
-    /// One swept row as the tail hears of it.
+    /// One swept row as the tail hears of it, decoded on its own so a row
+    /// that will not read leaves its siblings served.
     fn swept(row: &sqlx::postgres::PgRow) -> Result<Swept> {
-        let unreadable = error::query(CONTEXT_EXPIRE);
-        Ok(Swept {
-            gate: row.try_get(0).map_err(&unreadable)?,
-            fleet: row.try_get(1).map_err(&unreadable)?,
-            event: row.try_get(2).map_err(&unreadable)?,
-            pending: row.try_get(3).map_err(&unreadable)?,
-        })
+        Swept::from_row(row).map_err(error::query(CONTEXT_EXPIRE))
     }
 }

@@ -270,7 +270,6 @@ impl<S: Deliver + 'static> Inner<S> {
             &self.database,
             job.fleet_id.as_str(),
             job.event_id.as_str(),
-            afd_core::clock::now(),
         )
         .await
         {
@@ -298,7 +297,6 @@ impl<S: Deliver + 'static> Inner<S> {
             &self.database,
             job.fleet_id.as_str(),
             job.event_id.as_str(),
-            afd_core::clock::now(),
         )
         .await
         {

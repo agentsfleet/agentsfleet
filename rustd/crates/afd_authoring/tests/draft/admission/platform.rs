@@ -22,14 +22,8 @@ async fn configured() -> Fixture {
         )
         .await
         .expect("sealed platform credential");
-    let model: String =
-        sqlx::query_scalar("SELECT model_id FROM core.model_library WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue model").as_str())
-            .fetch_one(&mut *f.connection().await)
-            .await
-            .expect("owned model");
-    sqlx::query("INSERT INTO core.platform_provider_defaults(provider,source_workspace_id,active,model,context_cap_tokens,created_at,updated_at) VALUES('openai',$1::uuid,true,$2,128000,$3,$3)")
-        .bind(f.workspace.as_str()).bind(model).bind(now().as_millis())
+    sqlx::query("INSERT INTO model.platform_defaults(provider,source_workspace_id,active,platform_model_id,created_at,updated_at) VALUES('openai',$1::uuid,true,$2::uuid,now(),now())")
+        .bind(f.workspace.as_str()).bind(f.catalogue.first().expect("owned catalogue model").as_str())
         .execute(&mut *f.connection().await).await.expect("isolated platform default");
     f
 }
@@ -85,12 +79,55 @@ async fn platform_admission_reserves_priced_input_output_and_runtime() {
     assert_eq!(lease.model.reference, "platform-default");
     assert_eq!(lease.limits.output_per_turn, 8192);
     let (reserved, managed): (i64, bool) = sqlx::query_as(
-        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM fleet.authoring_attempts WHERE id=$1::uuid",
+        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1::uuid",
     ).bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
     // Eight 32,768-token inputs at $1/million, 8,192 output at $2/million,
     // seven rounding units, plus the separately priced five-minute runtime.
     assert_eq!(reserved, 30_000_000 + 8 * 32_768_000 + 16_384_000 + 7);
     assert!(managed);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
+    use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
+    let f = configured().await;
+    let draft = queued(&f).await;
+    let lease = claim(&f, &draft)
+        .await
+        .expect("configured platform model admitted");
+    let report = Report::Accounting {
+        accounting: Accounting {
+            fence: lease.fence.clone(),
+            report_id: mint().to_string(),
+            outcome: Outcome::Completed,
+            failure_reason: None,
+            usage: Meter {
+                knowledge: Knowledge::Known,
+                calls: 0,
+                input_tokens: Some(0),
+                output_tokens: Some(0),
+                runtime_ms: 1,
+                provider_cost_nanos: None,
+            },
+        },
+    };
+    let lease_id = afd_core::id::Uuid7::parse(&lease.lease_id).expect("lease identity");
+    let ack = f
+        .drafts
+        .report(&f.runner, &lease_id, report)
+        .await
+        .expect("the platform attempt settles");
+    assert!(ack.settled);
+    let postures: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT posture FROM billing.usage_lines WHERE work_id=$1::uuid",
+    )
+    .bind(&lease.attempt_id)
+    .fetch_all(&mut *f.connection().await)
+    .await
+    .expect("the attempt's lines");
+    assert_eq!(postures, [afd_billing::Posture::Platform.as_str()]);
     f.cleanup().await;
 }
 
@@ -101,25 +138,34 @@ async fn platform_admission_reserves_priced_input_output_and_runtime() {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn invalid_platform_prices_fail_without_creating_an_attempt() {
-    for (price, expected) in [
-        (-1_i64, afd_core::error_code::AUTHORING_MODEL),
-        (i64::MAX, afd_core::error_code::AUTHORING_BALANCE),
-    ] {
-        let f = configured().await;
-        let draft = queued(&f).await;
-        sqlx::query("UPDATE core.model_library SET input_nanos_per_mtok=$2 WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue model").as_str())
-            .bind(price)
-            .execute(&mut *f.connection().await)
-            .await
-            .expect("owned invalid price");
-        assert!(claim(&f, &draft).await.is_none());
-        let failed = fixture::failure(&f, &draft).await;
-        assert_eq!(
-            failed.failure.expect("bounded billing refusal").error_code,
-            expected
-        );
-        assert_eq!(fixture::attempts(&f).await, 0);
-        f.cleanup().await;
-    }
+    let f = configured().await;
+    let draft = queued(&f).await;
+    let model = f.catalogue.first().expect("owned catalogue model").as_str();
+    let negative = sqlx::query(SET_INPUT_PRICE)
+        .bind(model)
+        .bind(-1_i64)
+        .execute(&mut *f.connection().await)
+        .await;
+    assert!(
+        negative.is_err(),
+        "the price table refuses a negative rate, so no claim can read one"
+    );
+    sqlx::query(SET_INPUT_PRICE)
+        .bind(model)
+        .bind(i64::MAX)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("owned unaffordable price");
+    assert!(claim(&f, &draft).await.is_none());
+    let failed = fixture::failure(&f, &draft).await;
+    assert_eq!(
+        failed.failure.expect("bounded billing refusal").error_code,
+        afd_core::error_code::AUTHORING_BALANCE
+    );
+    assert_eq!(fixture::attempts(&f).await, 0);
+    f.cleanup().await;
 }
+
+/// Rewrites every price tier of one catalogue model's input rate.
+const SET_INPUT_PRICE: &str = "UPDATE model.platform_model_prices SET input_nanos_per_mtok = $2 \
+     WHERE platform_model_id = $1::uuid";

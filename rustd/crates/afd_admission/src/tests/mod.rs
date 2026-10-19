@@ -1,11 +1,6 @@
 //! The parts of the ledger that decide something without a datastore: the
-//! producer vocabulary, the logical id's shape, and the digest a retry is
-//! checked against.
-
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the restriction set is for the daemon"
-)]
+//! producer vocabulary, the reply binds, and the digest a retry is checked
+//! against.
 
 use std::collections::BTreeSet;
 
@@ -13,7 +8,7 @@ use afd_wire::event::EventType;
 
 use super::admit::ReplyBinds;
 use super::budget::{FLEET_BACKLOG_BUDGET, REPLAY_BACKLOG_BUDGET};
-use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, Reply, logical_id};
+use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, Reply};
 
 /// Every producer, so a test cannot silently cover five of six.
 ///
@@ -64,28 +59,6 @@ fn every_producer_spells_itself_and_no_two_spell_alike() {
             "{producer:?} spells itself as nothing"
         );
     }
-}
-
-/// The logical id keeps the `<millis>-<n>` shape a stream entry id has.
-///
-/// Load-bearing rather than cosmetic: the console sorts on it, the cursor
-/// pages on it, and `afd_events`' keyset compares it as text. A shape change
-/// here is a silent reordering of every history page.
-#[test]
-fn a_logical_id_has_the_shape_every_reader_was_written_against() {
-    let id = logical_id(1_788_550_034_853, 7);
-    assert_eq!(id, "1788550034853-7");
-    let (millis, seq) = id.split_once('-').expect("the id carries one separator");
-    assert!(millis.parse::<i64>().is_ok(), "the left half is an instant");
-    assert!(seq.parse::<i64>().is_ok(), "the right half is a sequence");
-}
-
-/// Two ids minted in the same millisecond order by their sequence.
-#[test]
-fn ids_from_one_millisecond_are_ordered_by_their_sequence() {
-    let first = logical_id(1_788_550_034_853, 1);
-    let second = logical_id(1_788_550_034_853, 2);
-    assert_ne!(first, second, "one millisecond must not collapse two rows");
 }
 
 /// The same payload digests the same, whatever instant it is admitted at.

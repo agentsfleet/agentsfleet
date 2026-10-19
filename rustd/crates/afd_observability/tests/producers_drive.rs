@@ -137,7 +137,7 @@ fn test_every_runner_producer_runs_its_body() {
     install();
 
     producers::fleet::runner::processed(RUNNER);
-    producers::fleet::runner::seen(RUNNER, 1_767_225_600_000);
+    producers::fleet::runner::seen(RUNNER, jiff::Timestamp::constant(1_767_225_600, 0));
     producers::fleet::runner::lease_taken(RUNNER);
     producers::fleet::runner::lease_released(RUNNER);
 
@@ -286,11 +286,10 @@ fn test_every_cost_producer_runs_its_body() {
         });
     }
 
-    for class in [
-        ChargeClass::Receive,
-        ChargeClass::Renewal,
+    producers::cost::credits_consumed(
+        "claude-opus-5",
+        "sandboxed",
         ChargeClass::Settle,
-    ] {
-        producers::cost::credits_consumed("claude-opus-5", "sandboxed", class, NANOCREDITS);
-    }
+        NANOCREDITS,
+    );
 }

@@ -8,7 +8,7 @@
 # version that passed a lane once. Same evidence as the dev image: 986 tests,
 # 128 suites, 0 failures against this tag, 37 of them on the RESP3 and cluster
 # migration changes 2.0.0 made.
-FROM docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+FROM docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
 
 # The same four-process cluster the integration lane runs, from the same
 # script. Copied rather than mounted: compose can bind-mount from the

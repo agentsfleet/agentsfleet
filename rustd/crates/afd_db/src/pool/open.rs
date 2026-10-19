@@ -15,6 +15,9 @@ use crate::error::{Result, classify_acquire, unreachable_datastore};
 
 use super::{IDLE_TIMEOUT, MAX_LIFETIME};
 
+/// Drops every advisory lock a returned connection still holds.
+const UNLOCK_ALL: &str = include_str!("sql/unlock_all.sql");
+
 /// Opens and closes ONE connection, so a refused port, a wrong password and a
 /// TLS fault each report as themselves rather than as a pool timeout.
 ///
@@ -28,8 +31,8 @@ pub(super) async fn probe(config: &PoolConfig) -> Result<()> {
         sqlx::PgConnection::connect_with(&config.connect_options()),
     )
     .await
-    .map_err(|_elapsed| unreachable_datastore(role.tag(), config.connect_timeout().as_millis()))?
-    .map_err(|source| classify_acquire(role.tag(), config.acquire_timeout().as_millis(), source))?;
+    .map_err(|_elapsed| unreachable_datastore(role.tag(), config.connect_timeout()))?
+    .map_err(|source| classify_acquire(role.tag(), config.acquire_timeout(), source))?;
     // A failed close on a connection that already answered proves nothing
     // and is not the caller's problem; the socket goes with the value.
     let _ = probe.close().await;
@@ -62,9 +65,7 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
     // checkin on a pool that sees a handful of them per process lifetime.
     builder.after_release(|connection, _meta| {
         Box::pin(async move {
-            sqlx::query("SELECT pg_advisory_unlock_all()")
-                .execute(connection)
-                .await?;
+            sqlx::query(UNLOCK_ALL).execute(connection).await?;
             Ok(true)
         })
     })

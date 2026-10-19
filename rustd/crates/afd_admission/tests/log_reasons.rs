@@ -34,20 +34,8 @@ fn told_reason(capture: &Capture, event: &str) -> String {
             .is_some_and(|code| !code.is_empty()),
         "{event} names no error_code"
     );
-    let reason = logged
-        .field("reason")
-        .expect("a failure line says why")
-        .to_owned();
-    assert!(!reason.is_empty(), "{event} says nothing");
-    assert!(
-        !reason.contains("[UZ-"),
-        "{event} repeats its code: {reason}"
-    );
-    assert!(
-        !reason.contains('\n'),
-        "{event} carries a backtrace: {reason}"
-    );
-    reason
+    logged.assert_uncoded_reason();
+    logged.field("reason").unwrap_or_default().to_owned()
 }
 
 #[tokio::test]

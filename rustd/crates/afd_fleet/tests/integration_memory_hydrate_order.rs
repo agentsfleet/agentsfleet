@@ -23,20 +23,19 @@ use afd_db::test_util::mint_id;
 use self::report_seed::held;
 
 /// How far before its predecessor the successor is stamped: any skew serves.
-const CLOCK_SKEW_MS: i64 = 1_000;
+const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Copies the held lease as its successor — the fleet's next token, stamped
-/// [`CLOCK_SKEW_MS`] before the held lease — and moves the live sequence to it.
+/// [`CLOCK_SKEW`] before the held lease — and moves the live sequence to it.
 const INSERT_EARLIER_SUCCESSOR: &str = "\
-INSERT INTO fleet.runner_leases \
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt, actor, event_type, \
-   event_created_at, posture, provider, model, metered_input_tokens, \
-   metered_cached_tokens, metered_output_tokens, last_metered_at, fencing_token, \
-   lease_expires_at, status, created_at, updated_at) \
-SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt, actor, \
-   event_type, event_created_at, posture, provider, model, 0, 0, 0, last_metered_at, \
-   fencing_token + 1, lease_expires_at, status, created_at - $3, updated_at \
-FROM fleet.runner_leases WHERE id = $1::uuid \
+INSERT INTO runner.leases \
+  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, \
+   receipt, posture, provider, model, last_metered_at, fencing_token, \
+   lease_expires_at, status, posted_message_count, created_at, updated_at) \
+SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
+   event_created_at, receipt, posture, provider, model, last_metered_at, \
+   fencing_token + 1, lease_expires_at, status, 0, created_at - $3::interval, updated_at \
+FROM runner.leases WHERE id = $1::uuid \
 RETURNING fencing_token";
 
 #[tokio::test]
@@ -48,13 +47,13 @@ async fn test_hydrate_trusts_the_higher_token_over_the_clock() {
 
     // Positive control: the lone held lease hydrates.
     plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect("the held lease is the live one");
 
     issue_earlier_successor(&run).await;
     plane
-        .hydrate(&run.runner, &fleet_id, run.now)
+        .hydrate(&run.runner, &fleet_id)
         .await
         .expect("the successor's token is the live sequence, whatever its clock says");
 
@@ -74,7 +73,7 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
     let token: i64 = sqlx::query_scalar(INSERT_EARLIER_SUCCESSOR)
         .bind(run.issued.lease_id.as_str())
         .bind(mint_id())
-        .bind(CLOCK_SKEW_MS)
+        .bind(CLOCK_SKEW)
         .fetch_one(&mut *connection)
         .await
         .expect("the successor lease inserts");
@@ -82,7 +81,7 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
         token > run.fence.as_i64(),
         "the successor must outrank the held lease, or this test proves nothing"
     );
-    sqlx::query("UPDATE fleet.runner_affinity SET fencing_seq = $2 WHERE fleet_id = $1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET fencing_token = $2 WHERE fleet_id = $1::uuid")
         .bind(&run.fleet)
         .bind(token)
         .execute(&mut *connection)

@@ -40,7 +40,7 @@ impl RunPrefix {
     /// which is the outcome the sweep is for.
     #[must_use]
     pub fn mint() -> Self {
-        let millis = afd_core::clock::now().as_millis();
+        let millis = afd_core::clock::now().as_millisecond();
         Self {
             value: format!("{PREFIX_TOKEN}-{millis}-{}", std::process::id()),
         }

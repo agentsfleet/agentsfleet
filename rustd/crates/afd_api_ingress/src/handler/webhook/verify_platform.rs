@@ -114,7 +114,7 @@ fn checked<D: Services>(
         presented,
         timestamp,
         &body,
-        services.now().as_seconds(),
+        services.now().as_second(),
     ) {
         Verdict::Verified => Ok(ProvenApp { body }),
         Verdict::Refused(refusal) => Err(wall(refusal)),
@@ -123,11 +123,11 @@ fn checked<D: Services>(
 
 /// Proves a connector's inbound delivery against this deployment's app secret.
 ///
-/// Provider-general: the scheme comes from
-/// [`Scheme::for_source`] over the provider's own id — the same resolution
-/// [`verified_app`] uses — and the secret from the connector seam by provider.
-/// Nothing here is per-vendor, so a connector that starts delivering events is
-/// a [`afd_webhook::Scheme`] arm and a registry arm, not a second copy of this.
+/// Provider-general: the route resolves `scheme` with [`Scheme::for_source`]
+/// over the provider's own id, alongside the registry's ingress entry, and the
+/// secret comes from the connector seam by provider. Nothing here is
+/// per-vendor, so a connector that starts delivering events is a
+/// [`afd_webhook::Scheme`] arm and a registry arm, not a second copy of this.
 ///
 /// # Why the secret comes from the connector seam and not the ingress one
 ///
@@ -145,22 +145,15 @@ fn checked<D: Services>(
 ///
 /// # Errors
 /// `UZ-WH-020` for a deployment with no admin workspace, no app for this
-/// connector, an app carrying no signing secret, or a provider this daemon
-/// ships no signature scheme for; `UZ-WH-010` for a signature that did not
-/// match and `UZ-WH-011` for one outside its window.
+/// connector, or an app carrying no signing secret; `UZ-WH-010` for a
+/// signature that did not match and `UZ-WH-011` for one outside its window.
 pub(crate) async fn verified_connector_events<D: Services>(
     services: &Arc<D>,
     provider: Provider,
+    scheme: Scheme,
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<ProvenApp, Refusal> {
-    // Before the vault, as in [`verified_app`]: reading a secret for a provider
-    // whose deliveries cannot be verified either way spends a decrypt on a
-    // doomed request, and lets a probe measure the difference.
-    let Some(scheme) = Scheme::for_source(provider.id()) else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
-
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(wall(WallRefusal::Unconfigured));
     };
@@ -185,23 +178,18 @@ pub(crate) async fn verified_connector_events<D: Services>(
     )
 }
 
-/// Proves an App delivery against the deployment's own App secret.
+/// Proves an App delivery under `scheme` against the deployment's own App
+/// secret.
 ///
 /// # Errors
-/// As [`proven`], plus `UZ-WH-020` for a provider this daemon ships no scheme
-/// for — refused before the vault is asked, so a probe cannot measure the
-/// decrypt a doomed delivery would have cost.
+/// As [`proven`].
 pub(crate) async fn verified_app<D: Services>(
     services: &Arc<D>,
-    source: &str,
+    scheme: Scheme,
     secret_key: &str,
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<ProvenApp, Refusal> {
-    let Some(scheme) = Scheme::for_source(source) else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
-
     proven(
         services,
         scheme,

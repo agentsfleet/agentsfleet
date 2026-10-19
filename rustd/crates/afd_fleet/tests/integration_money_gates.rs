@@ -22,11 +22,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::sync::Arc;
+
+use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_fleet::lease::Delivery;
 use afd_fleet::lease::admit::{Admission, Request, money_gates};
 use afd_fleet_runtime::config::FleetConfig;
 
@@ -59,14 +60,14 @@ const SPENT_NANOS: i64 = 10_000_000;
 /// Named because it is the counterpart of [`TINY_DAILY_NANOS`]: the pair is
 /// one fact — a spend that is over one ceiling and under the other — and a
 /// literal on each side could drift on one and still read as a pass.
-const AMPLE_DAILY_NANOS: &str = "1000000000000";
+pub(crate) const AMPLE_DAILY_NANOS: &str = "1000000000000";
 
 /// The ceiling a workspace with no tenant row declares; its size is irrelevant,
 /// since the missing payer ends the delivery before any ceiling is read.
 const ORPHAN_DAILY_NANOS: &str = "10000000000";
 
 /// A config carrying `daily` as its whole budget.
-fn budgeted(daily_nanos: &str) -> FleetConfig {
+pub(crate) fn budgeted(daily_nanos: &str) -> FleetConfig {
     // The runtime block is where every knob lives — a `budget` at the top
     // level is refused by name, which is the parser telling an author to
     // indent rather than dropping the ceiling in silence.
@@ -79,29 +80,34 @@ fn budgeted(daily_nanos: &str) -> FleetConfig {
 
 /// The request the pass is given, for `fleet` in `workspace`, its event created
 /// at `created_at`.
-fn request<'a>(
+pub(crate) fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
     event: &'a str,
     config: &FleetConfig,
-    delivery: Delivery,
-    created_at: UnixMillis,
 ) -> Request<'a> {
     Request {
         workspace_id: workspace,
         fleet_id: fleet,
         event_id: event,
-        event_created_at: created_at,
         budget: config.budget(),
         posture: Posture::Platform,
         provider: PROVIDER,
         model: MODEL,
-        delivery,
     }
 }
 
+/// The built-in biller over the fixture database.
+pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
+    LedgerBiller::new(
+        fixtures.database.clone(),
+        Entropy::new(),
+        Arc::new(afd_core::clock::SystemClock),
+    )
+}
+
 /// An identifier the seeds minted, as a `Uuid7`.
-fn id(raw: &str) -> Uuid7 {
+pub(crate) fn id(raw: &str) -> Uuid7 {
     Uuid7::parse(raw).expect("the seeded identifiers are canonical")
 }
 
@@ -115,23 +121,18 @@ fn id(raw: &str) -> Uuid7 {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_workspace_naming_no_tenant_ends_the_event() {
     let fixtures = Fixtures::create().await;
-    let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
+    let accounts = Accounts::new(fixtures.database.clone());
+    let biller = biller(&fixtures);
     let (fleet, workspace, _tenant) = unique_ids();
     // Deliberately NOT seeded: this is the missing row under test.
     let config = budgeted(ORPHAN_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
+        &biller,
         accounts.payer(&id(&workspace)).await,
-        request(
-            &id(&workspace),
-            &id(&fleet),
-            "event-unowned",
-            &config,
-            Delivery::First,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        ),
-        UnixMillis::from_millis(fixtures.enrolled_at()),
+        request(&id(&workspace), &id(&fleet), "event-unowned", &config),
+        fixtures.enrolled_at(),
     )
     .await
     .expect("a missing payer is a decision, not a fault the caller sees");
@@ -146,7 +147,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 
 /// A fleet past its daily ceiling is refused, and refused permanently.
 ///
-/// The ceiling is the fleet author's own, read live from `config_json`. What
+/// The ceiling is the fleet author's own, read live from its head revision's `config`. What
 /// this proves that `budget::covers` alone cannot is that the pass READS the
 /// spend for the right fleet and window and acts on it — a query filtered
 /// wrongly would answer zero and admit every run past every ceiling.
@@ -154,32 +155,21 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let fixtures = Fixtures::create().await;
-    let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
+    let accounts = Accounts::new(fixtures.database.clone());
+    let biller = biller(&fixtures);
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(
-            &fleet,
-            &workspace,
-            &tenant,
-            "money-gates",
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&fleet, &workspace, &tenant, "money-gates")
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(TINY_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
+        &biller,
         accounts.payer(&id(&workspace)).await,
-        request(
-            &id(&workspace),
-            &id(&fleet),
-            "event-over-budget",
-            &config,
-            Delivery::First,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        ),
-        UnixMillis::from_millis(fixtures.enrolled_at()),
+        request(&id(&workspace), &id(&fleet), "event-over-budget", &config),
+        fixtures.enrolled_at(),
     )
     .await
     .expect("a breached ceiling is a decision, not a fault");
@@ -201,97 +191,70 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     let fixtures = Fixtures::create().await;
-    let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
+    let accounts = Accounts::new(fixtures.database.clone());
+    let biller = biller(&fixtures);
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(
-            &fleet,
-            &workspace,
-            &tenant,
-            "money-gates",
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&fleet, &workspace, &tenant, "money-gates")
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(AMPLE_DAILY_NANOS);
 
     let decided = money_gates(
         &accounts,
+        &biller,
         accounts.payer(&id(&workspace)).await,
-        request(
-            &id(&workspace),
-            &id(&fleet),
-            "event-inside-budget",
-            &config,
-            Delivery::First,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        ),
-        UnixMillis::from_millis(fixtures.enrolled_at()),
+        request(&id(&workspace), &id(&fleet), "event-inside-budget", &config),
+        fixtures.enrolled_at(),
     )
     .await
     .expect("an admitted run is not a fault");
 
-    let Admission::Admit(billed) = decided else {
+    let Admission::Admit(admitted) = decided else {
         panic!("a fleet inside its ceiling must be admitted, got {decided:?}");
     };
     assert_eq!(
-        billed.tenant_id.as_str(),
+        admitted.tenant_id.as_str(),
         tenant,
         "the run is billed to the tenant the workspace resolves to"
     );
-    assert_eq!(&*billed.model, MODEL, "and against the model it will run");
+    assert_eq!(&*admitted.model, MODEL, "and against the model it will run");
 
     fixtures.cleanup().await;
 }
 
-/// A redelivery is admitted without being charged again.
-///
-/// The receive charge is guarded by the delivery kind and NOT by the ledger's
-/// own replay guard — the balance drain is not idempotent the way the row is —
-/// so a second delivery charged again would silently double-bill every retry
-/// the queue makes.
+/// Admission moves no money: the gates read, and the lease's hold and usage
+/// are the biller's once the lease is issued.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_redelivery_is_admitted_without_being_charged_again() {
+async fn an_admitted_run_is_charged_nothing_at_admission() {
     let fixtures = Fixtures::create().await;
-    let accounts = Accounts::new(fixtures.database.clone(), Entropy::new());
+    let accounts = Accounts::new(fixtures.database.clone());
+    let biller = biller(&fixtures);
     let (fleet, workspace, tenant) = unique_ids();
     fixtures
-        .seed_fleet(
-            &fleet,
-            &workspace,
-            &tenant,
-            "money-gates",
-            fixtures.enrolled_at(),
-        )
+        .seed_fleet(&fleet, &workspace, &tenant, "money-gates")
         .await;
     let config = budgeted(AMPLE_DAILY_NANOS);
-    let event = "event-redelivered";
 
     let decided = money_gates(
         &accounts,
+        &biller,
         accounts.payer(&id(&workspace)).await,
-        request(
-            &id(&workspace),
-            &id(&fleet),
-            event,
-            &config,
-            Delivery::Repeat,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        ),
-        UnixMillis::from_millis(fixtures.enrolled_at()),
+        request(&id(&workspace), &id(&fleet), "event-admitted", &config),
+        fixtures.enrolled_at(),
     )
     .await
-    .expect("a redelivery is not a fault");
+    .expect("an admitted run is not a fault");
 
     assert!(
         matches!(decided, Admission::Admit(_)),
-        "a redelivery still runs: {decided:?}"
+        "an inside-budget run is admitted: {decided:?}"
     );
     assert_eq!(
-        ledger_rows(&fixtures, &fleet).await,
+        usage_lines(&fixtures, &fleet).await,
         0,
-        "a repeat delivery writes no receive charge — an earlier delivery paid"
+        "admission writes no usage line; a run is charged for what it uses"
     );
 
     fixtures.cleanup().await;
@@ -305,49 +268,44 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO billing.usage_ledger \
-           (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture, model, \
-            credit_deducted_nanos, event_created_at, created_at, last_charged_at) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'receive', 'platform', $6, \
-                 $7, $8, $8, $8)",
+        "INSERT INTO billing.usage_lines \
+           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id, \
+            provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
+            cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
+            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, \
+            updated_at) \
+         VALUES ($1::uuid, $2, $1::uuid, 0, $3::uuid, $4::uuid, $5::uuid, $5, $6, $7, $8, \
+                 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now(), now())",
     )
     .bind(ledger_id(fleet))
+    .bind(afd_billing::sql::work::FLEET_LEASE)
     .bind(tenant)
     .bind(workspace)
     .bind(fleet)
-    // The arbiter is `(event_id, charge_type, fleet_id)` since slot 916, and
-    // the id below is minted per fleet, so this row is per-run either way.
     .bind(format!("event-already-spent-{fleet}"))
+    .bind(PROVIDER)
     .bind(MODEL)
     .bind(nanos)
-    .bind(fixtures.enrolled_at())
     .execute(&mut *connection)
     .await
     .expect("the spend seeds");
 }
 
-/// A ledger identifier unique to `fleet`'s run.
-///
-/// Derived from the fleet rather than from the amount: this lane shares one
-/// database and `unique_ids` is what makes a run's rows its own, so an id built
-/// from a constant collides with the same test's previous run and with every
-/// sibling seeding the same amount. The last group is replaced, which keeps the
-/// version nibble the table's own CHECK constraint reads.
 fn ledger_id(fleet: &str) -> String {
     let (head, _slot) = fleet.split_at(fleet.len() - 4);
     format!("{head}9999")
 }
 
 /// How many ledger rows this fleet holds.
-async fn ledger_rows(fixtures: &Fixtures, fleet: &str) -> i64 {
+async fn usage_lines(fixtures: &Fixtures, fleet: &str) -> i64 {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_ledger WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1::uuid")
         .bind(fleet)
         .fetch_one(&mut *connection)
         .await
-        .expect("the ledger answers a count")
+        .expect("the usage log answers a count")
 }

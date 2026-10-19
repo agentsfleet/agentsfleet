@@ -79,7 +79,7 @@ afd_core = { path = "crates/afd_core" }
 afd_credential = { path = "crates/afd_credential" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
-# `core.fleet_events` and its live tail. A crate of its own because the table
+# `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on leases,
 # money, policy and four sweepers to reuse ten lines of SQL.
@@ -100,7 +100,7 @@ afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
 # is the host's own plane and WRITES it — a lease-history join reaching for
-# `core.fleets` and `core.fleet_events` would put both on the heartbeat path.
+# `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/afd_fleet_ops" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
@@ -204,7 +204,9 @@ schemars = { version = "1.2.2", default-features = false, features = ["derive", 
 #
 # `macros` is the only feature taken: it carries `ToSchema`, `IntoParams` and
 # `OpenApi`, which is the whole of what the derives and the collectors need.
-utoipa = { version = "5.5.0", default-features = false, features = ["macros"] }
+# `jiff_0_2` publishes every `jiff::Timestamp` field as `type: string, format:
+# date-time`, so no `_at` field carries a hand-written schema attribute.
+utoipa = { version = "6.0.0", default-features = false, features = ["macros", "jiff_0_2"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.92", default-features = false }
 
@@ -322,7 +324,15 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 jiff = { version = "0.2.35", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
+  # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
+  # UTC (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4), with no hand adapter.
+  "serde",
 ] }
+# The sqlx bridge for `jiff::Timestamp` <-> `TIMESTAMPTZ`. The orphan rule keeps
+# every crate here from implementing sqlx's traits for jiff's type, so row
+# fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
+# through `ToSqlx`. Postgres only; its sqlite half stays off.
+jiff-sqlx = { version = "0.2.0", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -372,15 +382,17 @@ aws-lc-rs = { version = "1.18.0", default-features = false, features = [
 # the build through rustls; declared so the runner's sandbox crate names it.
 rustls-pki-types = { version = "1.15.1", default-features = false, features = ["std"] }
 
-# The subject to capability-claim cache. `future` rather than `sync`: the
-# request path is asynchronous, and `try_get_with` coalesces concurrent loads
-# for the same key, so no hand-rolled sequence counter has to stop an
-# out-of-order response resurrecting a pre-revocation claim. With one flight per subject there is no second response to be out of
-# order with.
-posthog-rs = { version = "0.25.3", default-features = false, features = ["async-client"] }
+# Product analytics: the async client only. It still compiles reqwest's
+# blocking client and chrono, which nothing here calls.
+posthog-rs = { version = "0.27.0", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
+# The subject to capability-claim cache. `future` rather than `sync`: the
+# request path is asynchronous, and `try_get_with` coalesces concurrent loads
+# for the same key, so no hand-rolled sequence counter has to stop an
+# out-of-order response resurrecting a pre-revocation claim. With one flight
+# per subject there is no second response to be out of order with.
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
 # The JWKS fetch and the provider capability call.
@@ -414,6 +426,10 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 # token never enters the sandbox. A native library, not a spawned `git`,
 # per the operating model's native-SDK rule; Codex reads repositories with it
 # too. Network and checkout features are chosen by the crate that uses them.
+#
+# Held at 0.88 for M229 (Indy decides later, 2026-10-18): 0.89's `worktree-mutation` also pulls
+# `status`, `dirwalk` and `gix-worktree/remove`, nine crates (dua-core,
+# crossbeam among them) the checkout never calls.
 gix = { version = "0.88.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
@@ -428,8 +444,9 @@ html2text = { version = "0.17.1", default-features = false }
 # split and reasoning carried across turns. IronClaw builds its provider layer
 # on the same library; the runner owns what rig does not: which providers a
 # lease may reach, the transport (one client, no redirect, `backon` retry), the
-# key's one header and the secret scrub. Pinned exactly because minor releases
-# change the provider and usage contracts. No default features: the transport is ours, so no HTTP stack, async
+# key's one header and the secret scrub. Pinned exactly: rig's minors break
+# their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
+# change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
 rig-core = { version = "=0.44.0", default-features = false }
 
@@ -437,12 +454,10 @@ rig-core = { version = "=0.44.0", default-features = false }
 # the lock through hyper, which parses the same header family with it.
 httpdate = { version = "1.0.3", default-features = false }
 
-# Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
-# both off, because this workspace runs its own migrator over its own ledger
-# (`audit.schema_migrations`, versions equal to the schema slot numbers, one
-# advisory key; see `afd_db`). sqlx's
-# built-in migrator keeps a different ledger under a different lock, so enabling
-# it would mean two migrators disagreeing about the same database.
+# Postgres. `migrate` is on: SQLx's `Migrator` applies the schema slots from the
+# explicit list in `afd_db`, under `afd_db`'s own bounded advisory lock (SQLx's
+# lock is switched off). `macros` stays off: queries are static `.sql` files
+# checked by one `PREPARE`-every-file integration test, not compile-time macros.
 #
 # `tls-rustls-aws-lc-rs` rather than native roots: sqlx still enables
 # `webpki-roots`, so the trust anchors ship in the binary. An explicit
@@ -455,6 +470,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
     # to prevent.
     "tls-rustls-aws-lc-rs",
     "postgres",
+    "migrate",
 ] }
 # The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
 # contention tests need real parallelism); the library asks only for what it
@@ -636,48 +652,18 @@ arc-swap = { version = "1.9.2", default-features = false }
 # Writing this by hand on top of `aws-lc-rs` would be possible and is exactly
 # the plumbing not to hand-roll.
 #
-# PINNED TO 10.x BY `octocrab`, AND IT MUST STAY THAT WAY (M177 §4). This is not
-# a preference for an older release: `octocrab` requires `jsonwebtoken ^10` and
-# its `Octocrab::builder().app()` takes an `EncodingKey` BY TYPE. A crate
-# building that key against 11.x would not merely duplicate RS256 — the two
-# `EncodingKey` types are unrelated and the call would not compile. An earlier
-# 11.0.0 pin here was unreachable for exactly that reason.
-#
-# `use_pem` reads the App's PEM private key; `aws_lc_rs` is the backend, which
-# is also what `octocrab`'s own `jwt-aws-lc-rs` feature selects — the two agree
-# deliberately, so the binary carries one implementation of RS256 rather than
-# two. Raising this to 11 means raising `octocrab` first.
-jsonwebtoken = { version = "10.4.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
-
-# The GitHub client behind the App-installation half of the mint broker.
-#
-# `default-features = false` is load-bearing twice over. Its defaults enable
-# `rustls-ring`, which would put a SECOND rustls provider beside the aws-lc-rs
-# this workspace resolves to, and `jwt-rust-crypto`, which would point
-# `jsonwebtoken` at a different backend than the line above pins. `jwt-aws-lc-rs`
-# swaps the second back; omitting `rustls-ring` settles the first.
-#
-# Taken for App JWT minting, the transport and the typed `InstallationToken`,
-# NOT for its `installation_and_token()`: that method posts a hardcoded `{}`
-# body and so always mints the installation's FULL scope. The repository and
-# permission narrowing this milestone's write gate rests on is sent through the
-# generic `post`, with a body of ours.
-octocrab = { version = "0.54.1", default-features = false, features = [
-    "rustls",
-    "rustls-aws-lc-rs",
-    "jwt-aws-lc-rs",
-    "default-client",
-    "timeout",
-    "retry",
-    "tracing",
-] }
+# `use_pem` reads the App's PEM private key. The GitHub App calls themselves —
+# the installation read and the scoped token mint — are two `reqwest` requests
+# in `afd_credential`, and the webhook payloads are read by `afd_api_ingress`'s
+# own `serde` types, so no GitHub SDK sits between this crate and its caller.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
 # OpenTelemetry, for the push-only export `afd_otlp` builds. The SDK alone:
 # it re-exports the API types the
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
-opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
 
 # The transport. A NEW dependency and not a feature flag on one already in the
 # lock: nothing here spoke OTLP before, and this is the encoder and the client
@@ -699,7 +685,7 @@ opentelemetry = { version = "0.32.0", default-features = false, features = ["tra
 #
 # The version resolves the SAME `reqwest` line this workspace already pins, so
 # the binary carries one HTTP client rather than two.
-opentelemetry-otlp = { version = "0.32.0", default-features = false, features = [
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = [
     "http-proto",
     # Both encodings, because the knob accepts both: a deployment that asked
     # for `http/json` and got protobuf would be told it was configured and be
@@ -723,13 +709,13 @@ opentelemetry-otlp = { version = "0.32.0", default-features = false, features = 
 # layer: the first would ingest the `log` crate's records, which nothing here
 # emits, and the second is a second metrics pipeline beside the census-built
 # one.
-tracing-opentelemetry = { version = "0.33.0", default-features = false }
+tracing-opentelemetry = { version = "0.34.0", default-features = false }
 
 # The same bridge for log RECORDS. Its own crate rather than a feature of the
 # one above, upstream's split: a span and an event become different signals and
 # only one of them is a trace.
-opentelemetry-appender-tracing = { version = "0.32.0", default-features = false }
-opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
+opentelemetry-appender-tracing = { version = "0.33.1", default-features = false }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
     "trace",
     "rt-tokio",
     "metrics",

@@ -1,3 +1,5 @@
+import type { LibraryModel } from "@/lib/api/model-library-types";
+import { CATALOGUE_MODEL } from "@/tests/helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -27,11 +29,9 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
 // <Select> — the OpenAI-compatible option is appended to it either way.
 const { catalogueState } = vi.hoisted(() => ({
   catalogueState: {
-    models: [
-      { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
-    ],
+    models: [] as LibraryModel[],
     status: "ready" as const,
-    preload: vi.fn(),
+    preload: vi.fn(), preloadAdvanced: vi.fn(), error: null, nextCursor: null, advancedNextCursor: null, loadMore: vi.fn(), retry: vi.fn(),
   },
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
@@ -79,8 +79,9 @@ async function pickCustomProvider(user: ReturnType<typeof userEvent.setup>, dial
 
 beforeEach(() => {
   vi.clearAllMocks();
+  catalogueState.models = [{ ...CATALOGUE_MODEL, id: "claude-sonnet-5", display_name: "Sonnet 5", provider: "anthropic" }];
   createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway", created_at: 1 } });
+  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway", created_at: "1970-01-01T00:00:00.001Z" } });
   setProviderSelfManagedActionMock.mockResolvedValue({
     ok: true,
     data: { mode: "self_managed", provider: "openai-compatible", model: "vllm-model", context_cap_tokens: 32000, secret_ref: "vllm-gateway", platform_default_available: true },
@@ -196,7 +197,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
   });
 
   it("errors without writing when the name is owned by a named provider's key (name-collision guard)", async () => {
-    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 };
+    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" };
     const { user } = await renderDialog([anthropicSecret]);
     const dialog = screen.getByRole("dialog");
 
@@ -219,7 +220,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
     const { user } = await renderDialog([endpointSecret]);
@@ -247,7 +248,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
     const { user } = await renderDialog([endpointSecret]);
@@ -269,7 +270,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       name: "vllm-gateway",
       provider: "openai-compatible",
       base_url: "https://old.vllm.corp/v1",
-      created_at: 1,
+      created_at: "1970-01-01T00:00:00.001Z",
     };
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });

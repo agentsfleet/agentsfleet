@@ -1,221 +1,73 @@
-//! The texts the read side runs, and the one column list they share.
+//! The texts the read side runs, one `.sql` file each.
 //!
 //! Split out of [`super`] because the statements are DATA — long, exact, and
-//! read as a unit — while the methods beside them are control flow. Keeping
-//! them here leaves each file a size a reviewer holds, and it puts the shared
-//! column list next to the assertion that both statements expand from it.
+//! read as a unit — while the methods beside them are control flow. Each file
+//! is schema-qualified (RULE NSQ) and checked against the rebuilt schema by
+//! `afd_db`'s `test_every_sql_file_prepares`.
 //!
-//! # Why the pieces are macros
+//! # One column list, written into every file and pinned by a test
 //!
-//! A `const` cannot be concatenated into another `const`, and the alternative —
-//! writing the column list out twice — is the drift this exists to prevent.
-//! Without it the same `EVENTS_SELECT` is repeated across eight concatenated
-//! variants, with a ninth copy carrying two columns more.
+//! Every read selects the same fourteen columns in the same order, and the
+//! detail and thread reads append the three bodies after them. A whole file
+//! cannot splice a shared fragment, so the list is written into each and
+//! [`tests`] asserts every text carries it verbatim: a column added to one
+//! file and not the others fails there, not on a deployment.
 //!
-//! # The bodies are appended, not spliced
+//! `cost_nanos` is a correlated subselect rather than a `LEFT JOIN`: billing
+//! writes up to two charge rows per event — unique on
+//! `(event_id, charge_type, fleet_id)` — so a join would duplicate the event
+//! row per leg and a page of 50 would render as 100.
 //!
-//! On the wire, `request_json` and `response_text` sit between `status` and
-//! `tokens` — that is the order the daemon already serves and a client already
-//! reads. Here they go LAST, because SQL column order and JSON field order are
-//! independent and only the second is a contract. Appending is what lets the
-//! detail read decode the fifteen shared columns with the listing's own
-//! decoder instead of a second copy of it.
+//! # One text per scope, cursor and actor filter
+//!
+//! A bound behind `IS NULL OR` cannot be decided by a generic plan, so nothing
+//! here is gated: the scope and cursor stay index conditions, and an absent
+//! actor filter is an absent predicate. Each text numbers its placeholders in
+//! the order `History` binds them: workspace, fleet when fleet-scoped, the
+//! cursor pair when resuming, the actor pattern when filtering, the `since`
+//! pair, and the limit.
+//!
+//! # `since` is resolved by the database
+//!
+//! Every listing bounds `created_at >= COALESCE($at, statement_timestamp() -
+//! $ago, '-infinity')`: an absolute instant, a span measured back from the
+//! statement's own clock, or neither. The expression is stable within the
+//! statement, so it stays an index condition under a generic plan.
 
-/// The columns every read selects, in the order [`super::EventRow`] decodes.
-///
-/// `cost_nanos` is a correlated subselect rather than a `LEFT JOIN`: billing
-/// writes up to two ledger rows per event — `receive` and `stage`, unique on
-/// `(event_id, charge_type, fleet_id)` — so a join would duplicate the event row per leg
-/// and a page of 50 would render as 100. The subselect keeps one row per event
-/// and yields SQL NULL where no telemetry exists.
-///
-/// Two spellings of one column list: the history reads name the columns bare
-/// over `core.fleet_events`, and a closing statement (`crate::sql`) names the
-/// same fifteen off the alias its CTE hands to the select. The list is
-/// written once so a column added to [`super::EventRow`] reaches every
-/// statement that decodes one, or none.
-macro_rules! shared_columns {
-    () => {
-        $crate::history::statement::shared_columns!(@ "", "core.fleet_events.")
-    };
-    ($alias:literal) => {
-        $crate::history::statement::shared_columns!(@ concat!($alias, "."), concat!($alias, "."))
-    };
-    (@ $col:expr, $row:expr) => {
-        concat!(
-            "SELECT ", $col, "fleet_id::text, ", $col, "event_id, ", $col, "workspace_id::text, ",
-            $col, "actor, ", $col, "event_type,\n       ",
-            $col, "status, ", $col, "tokens, ", $col, "wall_ms,\n       ",
-            $col, "failure_label, ", $col, "failure_detail, ",
-            $col, "resumes_event_id,\n       ",
-            $col, "created_at, ", $col, "updated_at,\n",
-            "       (SELECT SUM(te.credit_deducted_nanos)::bigint\n",
-            "          FROM billing.usage_ledger te\n",
-            "         WHERE te.event_id = ", $row, "event_id\n",
-            "           AND te.fleet_id = ", $row, "fleet_id) AS cost_nanos"
-        )
-    };
-}
-pub(crate) use shared_columns;
+/// A fleet's first page: `$3` since instant, `$4` since span, `$5` limit.
+pub(super) const SELECT_FLEET_PAGE: &str = include_str!("select_fleet_page.sql");
 
-/// The body columns, which only the detail read pays for: the trigger payload,
-/// the answer, and the run's tool trace.
-///
-/// `request_json` and `tool_calls` are JSONB in the table and are cast so sqlx
-/// hands back a `String`; the alias is what makes the OUTPUT column's name a fact of this
-/// text rather than of how PostgreSQL names a cast expression. `EventDetailRow`
-/// reads these by name — it is the only decoder in the workspace that does
-/// — so an unaliased cast would make the read depend on `FigureColname`
-/// recursing through the `TypeCast` node, and it would fail only against a live
-/// Postgres, which the unit lane never runs.
-macro_rules! body_columns {
-    () => {
-        ",
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls"
-    };
-}
+/// A fleet's first page by actor: `$3` actor LIKE, `$4` since instant, `$5`
+/// since span, `$6` limit.
+pub(super) const SELECT_FLEET_PAGE_BY_ACTOR: &str = include_str!("select_fleet_page_by_actor.sql");
 
-/// The table both statements read.
-macro_rules! from_events {
-    () => {
-        "
-FROM core.fleet_events
-"
-    };
-}
+/// A fleet's page after a cursor: `$3` cursor instant, `$4` cursor event id,
+/// `$5` since instant, `$6` since span, `$7` limit.
+pub(super) const SELECT_FLEET_PAGE_AFTER: &str = include_str!("select_fleet_page_after.sql");
 
-/// The order every page walks and every cursor encodes (RULE KYS), then the
-/// limit, bound at the placeholder numbered `$limit`.
-macro_rules! newest_first {
-    ($limit:literal) => {
-        concat!(
-            "
-ORDER BY created_at DESC, event_id DESC
-LIMIT $",
-            $limit
-        )
-    };
-}
+/// A fleet's page by actor after a cursor: `$3` cursor instant, `$4` cursor
+/// event id, `$5` actor LIKE, `$6` since instant, `$7` since span, `$8` limit.
+pub(super) const SELECT_FLEET_PAGE_AFTER_BY_ACTOR: &str =
+    include_str!("select_fleet_page_after_by_actor.sql");
 
-/// The scope of a fleet's reads: `$1` workspace, `$2` fleet.
-///
-/// Both equalities stay in the row predicate, so a row is served only to the
-/// workspace it belongs to. `schema/922` tells the planner the second implies
-/// the first; without it their estimates multiply and a generic plan sorts.
-macro_rules! fleet_scope {
-    () => {
-        "WHERE workspace_id = $1::uuid
-  AND fleet_id = $2::uuid"
-    };
-}
+/// A workspace's first page: `$2` since instant, `$3` since span, `$4` limit.
+pub(super) const SELECT_WORKSPACE_PAGE: &str = include_str!("select_workspace_page.sql");
 
-/// The scope of a workspace's reads: `$1` workspace.
-macro_rules! workspace_scope {
-    () => {
-        "WHERE workspace_id = $1::uuid"
-    };
-}
+/// A workspace's first page by actor: `$2` actor LIKE, `$3` since instant,
+/// `$4` since span, `$5` limit.
+pub(super) const SELECT_WORKSPACE_PAGE_BY_ACTOR: &str =
+    include_str!("select_workspace_page_by_actor.sql");
 
-// The listing texts, one per scope, cursor and actor filter. A bound behind
-// `IS NULL OR` cannot be decided by a generic plan, so nothing here is gated:
-// the scope, cursor and `since` stay index conditions, and an absent actor
-// filter is an absent predicate rather than a guard that drags the row
-// estimate down until the planner sorts. Each text numbers its placeholders in
-// the order `History` binds them: workspace, fleet when fleet-scoped, the
-// cursor pair when resuming, the actor pattern when filtering, `since`, and
-// the limit.
+/// A workspace's page after a cursor: `$2` cursor instant, `$3` cursor event
+/// id, `$4` since instant, `$5` since span, `$6` limit.
+pub(super) const SELECT_WORKSPACE_PAGE_AFTER: &str =
+    include_str!("select_workspace_page_after.sql");
 
-/// A fleet's first page: `$3` since, `$4` limit.
-pub(super) const SELECT_FLEET_PAGE: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND created_at >= $3",
-    newest_first!(4)
-);
-
-/// A fleet's first page by actor: `$3` actor LIKE, `$4` since, `$5` limit.
-pub(super) const SELECT_FLEET_PAGE_BY_ACTOR: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND actor LIKE $3
-  AND created_at >= $4",
-    newest_first!(5)
-);
-
-/// A fleet's page after a cursor: `$3` cursor timestamp, `$4` cursor event
-/// id, `$5` since, `$6` limit.
-pub(super) const SELECT_FLEET_PAGE_AFTER: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND (created_at, event_id) < ($3, $4)
-  AND created_at >= $5",
-    newest_first!(6)
-);
-
-/// A fleet's page by actor after a cursor: `$3` cursor timestamp, `$4` cursor
-/// event id, `$5` actor LIKE, `$6` since, `$7` limit.
-pub(super) const SELECT_FLEET_PAGE_AFTER_BY_ACTOR: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND (created_at, event_id) < ($3, $4)
-  AND actor LIKE $5
-  AND created_at >= $6",
-    newest_first!(7)
-);
-
-/// A workspace's first page: `$2` since, `$3` limit.
-pub(super) const SELECT_WORKSPACE_PAGE: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    workspace_scope!(),
-    "
-  AND created_at >= $2",
-    newest_first!(3)
-);
-
-/// A workspace's first page by actor: `$2` actor LIKE, `$3` since, `$4` limit.
-pub(super) const SELECT_WORKSPACE_PAGE_BY_ACTOR: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    workspace_scope!(),
-    "
-  AND actor LIKE $2
-  AND created_at >= $3",
-    newest_first!(4)
-);
-
-/// A workspace's page after a cursor: `$2` cursor timestamp, `$3` cursor
-/// event id, `$4` since, `$5` limit.
-pub(super) const SELECT_WORKSPACE_PAGE_AFTER: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    workspace_scope!(),
-    "
-  AND (created_at, event_id) < ($2, $3)
-  AND created_at >= $4",
-    newest_first!(5)
-);
-
-/// A workspace's page by actor after a cursor: `$2` cursor timestamp, `$3`
-/// cursor event id, `$4` actor LIKE, `$5` since, `$6` limit.
-pub(super) const SELECT_WORKSPACE_PAGE_AFTER_BY_ACTOR: &str = concat!(
-    shared_columns!(),
-    from_events!(),
-    workspace_scope!(),
-    "
-  AND (created_at, event_id) < ($2, $3)
-  AND actor LIKE $4
-  AND created_at >= $5",
-    newest_first!(6)
-);
+/// A workspace's page by actor after a cursor: `$2` cursor instant, `$3`
+/// cursor event id, `$4` actor LIKE, `$5` since instant, `$6` since span, `$7`
+/// limit.
+pub(super) const SELECT_WORKSPACE_PAGE_AFTER_BY_ACTOR: &str =
+    include_str!("select_workspace_page_after_by_actor.sql");
 
 /// The listing text for a read's scope, cursor and actor filter — the same
 /// three facts `History` decides its binds from, so the two cannot disagree
@@ -241,68 +93,33 @@ pub(super) const fn listing_text(
 ///
 /// The scoping is in the STATEMENT rather than checked after the read: a row
 /// belonging to another workspace must not come back and then be filtered, or
-/// the filter becomes the only thing standing between two tenants.
-///
-/// Bounded by construction — the predicate names the table's whole primary key
-/// beside the workspace, so this executes for exactly one event however much
-/// history the fleet has.
+/// the filter becomes the only thing standing between two tenants. Bounded by
+/// construction — the predicate names the table's unique pair beside the
+/// workspace.
 ///
 /// `$1` workspace, `$2` fleet, `$3` event.
-pub(super) const SELECT_DETAIL: &str = concat!(
-    shared_columns!(),
-    body_columns!(),
-    from_events!(),
-    "WHERE workspace_id = $1::uuid AND fleet_id = $2::uuid AND event_id = $3"
-);
+pub(super) const SELECT_DETAIL: &str = include_str!("select_detail.sql");
 
-// One fleet's chat thread, bodies included, keyset-paged newest-first: the
-// third reader built from the same vocabulary, and the reason the bodies are a
-// separate macro rather than spliced into one list. The thread pays for them
-// exactly as the expanded read does, and the listing beside it does not.
+/// A thread's first page, bodies included: `$1` workspace, `$2` fleet, `$3`
+/// limit.
+pub(super) const SELECT_THREAD_PAGE: &str = include_str!("select_thread_page.sql");
 
-/// A thread's first page: `$1` workspace, `$2` fleet, `$3` limit.
-pub(super) const SELECT_THREAD_PAGE: &str = concat!(
-    shared_columns!(),
-    body_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    newest_first!(3)
-);
-
-/// A thread's page after a cursor: `$1` workspace, `$2` fleet, `$3` cursor
-/// timestamp, `$4` cursor event id, `$5` limit.
-pub(super) const SELECT_THREAD_PAGE_AFTER: &str = concat!(
-    shared_columns!(),
-    body_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND (created_at, event_id) < ($3, $4)",
-    newest_first!(5)
-);
+/// A thread's page after a cursor: `$3` cursor instant, `$4` cursor event id,
+/// `$5` limit.
+pub(super) const SELECT_THREAD_PAGE_AFTER: &str = include_str!("select_thread_page_after.sql");
 
 /// A thread's finished rows before a cursor, the turns a chat lease carries:
-/// `$3` cursor timestamp, `$4` cursor event id, `$5` and `$6` the two
-/// finished statuses, `$7` limit. The statuses are a predicate so the limit
-/// counts finished rows: running or refused rows among the newest would
-/// otherwise shrink the window while older finished turns exist.
-pub(super) const SELECT_THREAD_FINISHED_BEFORE: &str = concat!(
-    shared_columns!(),
-    body_columns!(),
-    from_events!(),
-    fleet_scope!(),
-    "
-  AND (created_at, event_id) < ($3, $4)
-  AND status IN ($5, $6)",
-    newest_first!(7)
-);
+/// `$3` cursor instant, `$4` cursor event id, `$5` and `$6` the two finished
+/// statuses, `$7` limit. The statuses are a predicate so the limit counts
+/// finished rows: running or refused rows among the newest would otherwise
+/// shrink the window while older finished turns exist.
+pub(super) const SELECT_THREAD_FINISHED_BEFORE: &str =
+    include_str!("select_thread_finished_before.sql");
 
-// One actor's texts expand from the column list above, beside this file.
+// One actor's texts and the waiting read's live beside this file.
 mod actor;
 pub(super) use self::actor::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
 
-// The waiting read is the ledger's, not `core.fleet_events`', so its texts
-// share nothing above and live beside this file.
 mod queued;
 #[cfg(feature = "test-util")]
 pub use self::queued::QUEUED_READ_TEXTS;

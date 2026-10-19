@@ -76,7 +76,7 @@ const UNROUTABLE_ENV_URL = "http://127.0.0.1:1/stale-env";
 const AUTH_HEADER = "authorization" as const;
 const HOST_HEADER = "host" as const;
 const BEARER_PREFIX = "Bearer " as const;
-const EMPTY_LIST = { items: [] } as const;
+const EMPTY_LIST = { items: [], next_cursor: null } as const;
 
 // Single source of the wire path for a `list` against a workspace — used
 // both to register the mock route and to assert the inbound path, so the
@@ -239,7 +239,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
       // the only credential — the env slot carries it to the wire.
       await saveWorkspaces(process.env, {
         current_workspace_id: WS_PERSISTED,
-        items: [{ workspace_id: WS_PERSISTED, name: "ws", created_at: Date.now() }],
+        items: [{ workspace_id: WS_PERSISTED, name: "ws", created_at: new Date().toISOString() }],
       });
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();

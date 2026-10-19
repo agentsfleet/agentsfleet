@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::{self, UnixMillis};
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_dragonfly::FleetStreams;
@@ -24,6 +23,7 @@ use afd_fleet::lease::Delivery;
 
 use crate::integration_admission_recovery::{admission, ledger, producer_key};
 use crate::queue;
+use crate::rows::Row;
 use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -39,9 +39,9 @@ const WAITING: usize = 3;
 /// The first page keeps the newest two, so the oldest is cut.
 const PAGE: i64 = 2;
 
-/// How far past the wall clock the lease lands: far enough that a row stamped
-/// with it sorts above every admission this test made.
-const LEASE_LATER_MS: i64 = 60_000;
+/// How far before the lease the oldest steer's admission is aged: far enough
+/// that a row stamped with the lease instant sorts above every admission here.
+const ADMITTED_EARLIER: std::time::Duration = std::time::Duration::from_secs(60);
 
 fn uuid(text: &str) -> Uuid7 {
     Uuid7::parse(text).expect("the fixture mints canonical identifiers")
@@ -64,6 +64,11 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         admitted.push(steered);
     }
     let oldest = admitted.first().expect("three steers were admitted");
+    let admission = Row::Admission(&oldest.event_id);
+    fixtures
+        .age(admission, "created_at", ADMITTED_EARLIER)
+        .await;
+    let admitted_at = fixtures.instant(admission, "created_at").await;
     let history = History::new(fixtures.database.clone());
     let (workspace_id, fleet_id) = (uuid(&workspace), uuid(&fleet));
 
@@ -83,23 +88,21 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     let cursor = Cursor::after(last.row.created_at, &last.row.event_id);
 
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
-    let acquired = select_fleet_within_rotations(&leases, &runner, polled_at, &fleet)
+    let acquired = select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the fleet holding the steers is leasable");
     assert_eq!(
         acquired.event_id, oldest.event_id,
         "the queue hands out its oldest first"
     );
-    let leased_at = clock::now().saturating_add_millis(LEASE_LATER_MS);
     let received = leases
-        .record_received(&acquired, leased_at)
+        .record_received(&acquired)
         .await
         .expect("the narrative log opens");
     assert_eq!(received.delivery, Delivery::First);
     assert_eq!(
-        Some(received.opened_at.as_millis()),
-        oldest.admitted_at,
+        Some(received.opened_at),
+        admitted_at,
         "the row is stamped with the admission instant, not the lease"
     );
 
@@ -139,17 +142,19 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         .expect("a live queue admits the webhook");
 
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
-    let acquired = select_fleet_within_rotations(&leases, &runner, polled_at, &fleet)
+    let acquired = select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the fleet holding the webhook is leasable");
-    let leased_at = clock::now().saturating_add_millis(LEASE_LATER_MS);
-    let received = leases
-        .record_received(&acquired, leased_at)
-        .await
-        .expect("the narrative log opens");
+    let (received, lease_window) = fixtures
+        .clock_around(leases.record_received(&acquired))
+        .await;
+    let received = received.expect("the narrative log opens");
     assert_eq!(received.delivery, Delivery::First);
-    assert_eq!(received.opened_at, leased_at);
+    assert!(
+        lease_window.contains(&received.opened_at),
+        "the webhook's row carries the lease's own instant: {} outside {lease_window:?}",
+        received.opened_at
+    );
 
     FleetStreams::new(fixtures.queue().clone())
         .forget(&fleet)

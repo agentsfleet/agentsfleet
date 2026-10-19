@@ -5,9 +5,11 @@ mod context;
 mod credentials;
 mod model;
 mod readiness;
+mod sql;
 mod wallet;
 
 use afd_core::{clock, id::Uuid7};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use sqlx::{Connection as _, PgConnection};
 
@@ -20,8 +22,6 @@ use crate::{
 };
 
 const CONTEXT: &str = "review current native setup";
-const TARGET: &str =
-    "SELECT setup_version FROM core.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid";
 
 pub(crate) use context::{Context, Subject};
 pub(crate) use readiness::review_action;
@@ -29,7 +29,7 @@ pub(crate) use readiness::review_action;
 pub(super) struct Observed {
     checks: Vec<crate::types::Check>,
     versions: Vec<Value>,
-    now: i64,
+    now: Timestamp,
 }
 
 impl Setup {
@@ -42,7 +42,7 @@ impl Setup {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let locked = read::lock(&mut tx, access, &person, id).await?;
-        let review = match &locked.current_candidate_id {
+        let review = match &locked.head_candidate_id {
             Some(id) => {
                 let candidate = candidate::read(&mut tx, &locked.id, id).await?;
                 Some(
@@ -51,7 +51,7 @@ impl Setup {
                         &mut tx,
                         &Context::from(&locked),
                         &candidate,
-                        clock::now().as_millis(),
+                        clock::now(),
                     )
                     .await?,
                 )
@@ -70,7 +70,22 @@ pub(crate) async fn build(
     connection: &mut PgConnection,
     draft: &Context,
     candidate: &Candidate,
-    now: i64,
+    now: Timestamp,
+) -> Result<Review> {
+    let target = target(connection, draft).await?;
+    build_against(setup, connection, draft, candidate, now, target).await
+}
+
+/// [`build`] against `target`, the fleet revision a fleet source would replace,
+/// rather than the one the fleet holds now: a write that moves the fleet's head
+/// reviews the state it is about to commit before it writes immutable rows.
+pub(crate) async fn build_against(
+    setup: &Setup,
+    connection: &mut PgConnection,
+    draft: &Context,
+    candidate: &Candidate,
+    now: Timestamp,
+    target: Option<String>,
 ) -> Result<Review> {
     let mut observed = Observed {
         checks: Vec::new(),
@@ -80,7 +95,7 @@ pub(crate) async fn build(
     let requirements = Requirements::of(&candidate.definition);
     authority::observe(connection, draft, &mut observed).await?;
     let reference = model::observe(connection, draft, candidate, &mut observed).await?;
-    wallet::observe(connection, &draft.tenant_id, &mut observed).await?;
+    wallet::observe(connection, draft, &mut observed).await?;
     credentials::observe(
         setup,
         connection,
@@ -90,7 +105,6 @@ pub(crate) async fn build(
         &mut observed,
     )
     .await?;
-    let target = target(connection, draft).await?;
     observed.base(draft, candidate, target.as_deref());
     let effective = effective(draft, candidate, reference, target);
     let review_digest = replay::digest(&json!({"purpose":"setup_review", "version":1,
@@ -136,7 +150,7 @@ async fn target(connection: &mut PgConnection, draft: &Context) -> Result<Option
     let Some(fleet) = draft.target() else {
         return Ok(None);
     };
-    let revision: Option<Option<i64>> = sqlx::query_scalar(TARGET)
+    let revision: Option<Option<i64>> = sqlx::query_scalar(sql::TARGET)
         .bind(fleet.as_str())
         .bind(draft.workspace_id.as_str())
         .fetch_optional(connection)

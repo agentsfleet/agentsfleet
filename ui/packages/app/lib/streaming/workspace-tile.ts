@@ -3,6 +3,7 @@ import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { readNanos } from "@/lib/api/nanos";
 
 /**
  * The tile footer: where the fleet stands, as the last frame said.
@@ -12,7 +13,7 @@ import { FRAME_KIND } from "@/lib/api/events-types";
  * tile keeps rendering the server-rendered figures rather than a zero.
  */
 export type TileCounters = {
-  spentNanos: number;
+  spentNanos: string;
   eventsProcessed: number;
 };
 
@@ -92,8 +93,9 @@ function readCounters(carried: unknown): TileCounters | undefined {
   if (typeof carried !== "object" || carried === null) return undefined;
   const { events_processed: eventsProcessed, budget_used_nanos: spentNanos } =
     carried as FleetCountersSnapshot;
-  if (!isCounter(eventsProcessed) || !isCounter(spentNanos)) return undefined;
-  return { eventsProcessed, spentNanos };
+  const amount = readNanos(spentNanos);
+  if (!isCounter(eventsProcessed) || amount === null) return undefined;
+  return { eventsProcessed, spentNanos: amount };
 }
 
 /**
@@ -114,7 +116,7 @@ export function mergeCounters(
   if (counters === undefined) return standing;
   if (standing === undefined) return counters;
   const eventsProcessed = Math.max(standing.eventsProcessed, counters.eventsProcessed);
-  const spentNanos = Math.max(standing.spentNanos, counters.spentNanos);
+  const spentNanos = BigInt(standing.spentNanos) > BigInt(counters.spentNanos) ? standing.spentNanos : counters.spentNanos;
   if (eventsProcessed === standing.eventsProcessed && spentNanos === standing.spentNanos) {
     return standing;
   }

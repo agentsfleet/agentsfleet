@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicUsize;
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use afr_agent::AgentEngine;
 use afr_sandbox::Limits;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -73,10 +74,46 @@ impl Rig {
         Self::build(answer, engine, agent, Holds::start(clock()), resolver)
     }
 
+    /// [`Rig::new`], running each turn on `agent`, such as the scripted
+    /// engine; the run counters stay at zero.
+    pub(crate) fn running(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: impl AgentEngine + 'static,
+    ) -> Self {
+        let runs = Arc::default();
+        let peak = Arc::default();
+        Self::assemble(
+            answer,
+            engine,
+            (Box::new(agent), runs, peak),
+            Holds::start(clock()),
+            FakeResolver::default(),
+        )
+    }
+
     fn build(
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
         agent: FakeAgent,
+        holds: Holds,
+        resolver: FakeResolver,
+    ) -> Self {
+        let runs = Arc::clone(&agent.runs);
+        let peak = Arc::clone(&agent.peak);
+        Self::assemble(
+            answer,
+            engine,
+            (Box::new(agent), runs, peak),
+            holds,
+            resolver,
+        )
+    }
+
+    fn assemble(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        (agent, runs, peak): (Box<dyn AgentEngine>, Arc<AtomicUsize>, Arc<AtomicUsize>),
         holds: Holds,
         resolver: FakeResolver,
     ) -> Self {
@@ -85,8 +122,8 @@ impl Rig {
         let (plane, calls) = plane(answer);
         let shutdown = CancellationToken::new();
         let counters = (
-            Arc::clone(&agent.runs),
-            Arc::clone(&agent.peak),
+            runs,
+            peak,
             Arc::clone(&engine.prepared),
             Arc::clone(&engine.destroyed),
         );
@@ -94,7 +131,7 @@ impl Rig {
             plane,
             engine: Box::new(engine),
             resolver: Box::new(resolver),
-            agent: Box::new(agent),
+            agent,
             spool: ReportSpool::new(&home),
             authoring_spool: crate::report_spool::authoring::Spool::open(&home, clock()).unwrap(),
             mirrors: Mirrors::new(

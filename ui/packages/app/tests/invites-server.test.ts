@@ -20,7 +20,7 @@ import { acceptInviteAction } from "@/app/(dashboard)/invites/actions";
 import { loadWaitingInvites } from "@/app/(dashboard)/invites/load";
 import { SIGN_IN_PATH } from "@/lib/auth/sign-in-redirect";
 
-const WAITING = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 2 };
+const WAITING = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.002Z" };
 
 // A fresh Response per call: a body can be read once, and a page may read twice.
 function answer(status: number, body?: unknown) {

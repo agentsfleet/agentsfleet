@@ -23,6 +23,8 @@ afd_wire.workspace = true
 # A minted token is a `Secret`; the lease's static credentials are read through
 # `StaticSecrets`; a minted token joins the one masker, `Scrub`.
 afr_secrets.workspace = true
+# When a minted token stops being honoured.
+jiff.workspace = true
 # `Mint` and `Transport` are `dyn`: production holds the daemon's verb and
 # reqwest, tests hold fakes.
 async-trait.workspace = true

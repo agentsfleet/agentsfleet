@@ -1,6 +1,8 @@
 //! Replay checks follow current authorization and precede lifecycle mutation.
 
 mod sql;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     Result,
@@ -10,14 +12,24 @@ use crate::{
         raise::{query, stored},
     },
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
+use std::time::Duration;
 
 const CONTEXT: &str = "check authoring operation replay";
 const HASH_PREFIX: &str = "authoring:v1:sha256:";
+
+/// How long a receipt answers its key, measured from its `created_at`.
+///
+/// Inside it the same key and body replay the first result; at and past it the
+/// key is new and the receipt is swept.
+const REPLAY_WINDOW: Duration = afd_core::timing::DAY;
+
+/// The most receipts one maintenance pass deletes.
+const SWEEP_LIMIT: i64 = 64;
 
 pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
     let value = serde_json::to_value(value).map_err(stored)?;
@@ -45,39 +57,86 @@ fn sorted(value: Value) -> Value {
     }
 }
 
+/// The kind of resource an operation's receipt names: the table [`find`]
+/// checks it still exists in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Resource {
+    /// `fleet.fleets`: a Save.
+    Fleet,
+    /// `fleet.revisions`: an applied improvement.
+    FleetRevision,
+    /// `authoring.drafts`: a started setup chat.
+    Draft,
+    /// `authoring.messages`: an accepted message.
+    Message,
+    /// `authoring.library_revisions`: a Library publication.
+    LibraryRevision,
+}
+
+impl Resource {
+    /// The spelling [`sql::READ`]'s `CASE` matches.
+    const fn kind(self) -> &'static str {
+        match self {
+            Self::Fleet => "fleet",
+            Self::FleetRevision => "fleet_revision",
+            Self::Draft => "draft",
+            Self::Message => "message",
+            Self::LibraryRevision => "library_revision",
+        }
+    }
+}
+
+/// [`sql::READ`]'s row, by column name.
+#[derive(sqlx::FromRow)]
+struct Receipt {
+    user_id: String,
+    request_digest: String,
+    resource_id: String,
+    /// Whether the named resource still exists.
+    live: bool,
+}
+
+/// The resource this operation already created inside [`REPLAY_WINDOW`], when
+/// it created one.
+///
+/// A receipt outlives the resource it names, so a retry after deletion answers
+/// Gone here, in the same statement that reads the receipt. A receipt past the
+/// window reads as no receipt, so the key is new.
+///
+/// # Errors
+/// [`ErrorKind::Replay`] for another actor or a changed body, checked first;
+/// [`ErrorKind::Gone`] when the named resource was deleted.
 pub(crate) async fn find(
     connection: &mut PgConnection,
     scope: &str,
+    resource: Resource,
     operation: &Uuid7,
     actor: &Uuid7,
     digest: &str,
 ) -> Result<Option<Uuid7>> {
-    sqlx::query(sql::EXPIRE)
+    let receipt = sqlx::query_as::<_, Receipt>(sql::READ)
         .bind(scope)
         .bind(operation.as_str())
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    let Some(row) = sqlx::query(sql::READ)
-        .bind(scope)
-        .bind(operation.as_str())
+        .bind(REPLAY_WINDOW)
+        .bind(resource.kind())
         .fetch_optional(connection)
         .await
-        .map_err(query(CONTEXT))?
-    else {
+        .map_err(query(CONTEXT))?;
+    decide(receipt, actor, digest)
+}
+
+/// What a read receipt answers for `actor` sending `digest`.
+fn decide(receipt: Option<Receipt>, actor: &Uuid7, digest: &str) -> Result<Option<Uuid7>> {
+    let Some(receipt) = receipt else {
         return Ok(None);
     };
-    let accepted_actor: String = row.try_get(0).map_err(query(CONTEXT))?;
-    let accepted_digest: String = row.try_get(1).map_err(query(CONTEXT))?;
-    if accepted_actor != actor.as_str() || accepted_digest != digest {
+    if receipt.user_id != actor.as_str() || receipt.request_digest != digest {
         return Err(ErrorKind::Replay.into());
     }
-    let purged: Option<i64> = row.try_get(3).map_err(query(CONTEXT))?;
-    if purged.is_some() {
+    if !receipt.live {
         return Err(ErrorKind::Gone.into());
     }
-    let resource: String = row.try_get(2).map_err(query(CONTEXT))?;
-    Ok(Some(Uuid7::parse(&resource)?))
+    Ok(Some(Uuid7::parse(&receipt.resource_id)?))
 }
 
 pub(crate) struct Reservation<'a> {
@@ -88,13 +147,25 @@ pub(crate) struct Reservation<'a> {
     pub(crate) operation: &'a Uuid7,
     pub(crate) digest: &'a str,
     pub(crate) resource: &'a Uuid7,
-    pub(crate) now: UnixMillis,
 }
 
+/// Files the operation's receipt; `false` when another claim filed it first.
+///
+/// A receipt past [`REPLAY_WINDOW`] still holds the unique key, so it is
+/// deleted first, on the caller's transaction. A concurrent claim on the same
+/// expired key waits on that delete's row lock, finds the row gone, then loses
+/// the insert to the new receipt and replays it: one new receipt either way.
 pub(crate) async fn reserve(
     connection: &mut PgConnection,
     reservation: Reservation<'_>,
 ) -> Result<bool> {
+    sqlx::query(sql::EXPIRE)
+        .bind(reservation.scope)
+        .bind(reservation.operation.as_str())
+        .bind(REPLAY_WINDOW)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
     let inserted = sqlx::query(sql::INSERT)
         .bind(reservation.receipt_id.as_str())
         .bind(reservation.workspace.as_str())
@@ -103,19 +174,22 @@ pub(crate) async fn reserve(
         .bind(reservation.operation.as_str())
         .bind(reservation.digest)
         .bind(reservation.resource.as_str())
-        .bind(reservation.now.as_millis())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
     Ok(inserted.rows_affected() == 1)
 }
 
-pub(crate) async fn purge(connection: &mut PgConnection, resource: &Uuid7) -> Result<()> {
-    sqlx::query(sql::PURGE)
-        .bind(resource.as_str())
-        .bind(afd_wire::authoring::REPLAY_TOMBSTONE_MS)
+/// Deletes one bounded batch of receipts past [`REPLAY_WINDOW`], returning how
+/// many went.
+///
+/// Rows a claim holds are skipped; that claim deletes its own expired row.
+pub(crate) async fn sweep(connection: &mut PgConnection) -> Result<u64> {
+    let swept = sqlx::query(sql::SWEEP)
+        .bind(REPLAY_WINDOW)
+        .bind(SWEEP_LIMIT)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
-    Ok(())
+    Ok(swept.rows_affected())
 }

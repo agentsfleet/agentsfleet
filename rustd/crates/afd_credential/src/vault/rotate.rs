@@ -26,9 +26,9 @@
 //! cost of the worst one is bounded: one forced reconnect when the access token
 //! expires (RULE ECL).
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::{Envelope, Sealer};
+use afd_vault::StoredEnvelope;
 use serde_json::Value;
 use sqlx::Acquire as _;
 
@@ -66,8 +66,6 @@ struct EnvelopeRow<'a> {
     key: KeyRef<'a>,
     /// The freshly sealed envelope.
     sealed: &'a Envelope,
-    /// The instant the row is stamped with.
-    now: UnixMillis,
 }
 
 impl<'a> EnvelopeRow<'a> {
@@ -83,7 +81,6 @@ impl<'a> EnvelopeRow<'a> {
             .bind(self.sealed.payload_ciphertext())
             .bind(self.sealed.payload_tag().as_slice())
             .bind(self.sealed.kek_version())
-            .bind(self.now.as_millis())
     }
 }
 
@@ -100,12 +97,11 @@ impl Vault {
         key: KeyRef<'_>,
         posted: &str,
         replacement: &str,
-        now: UnixMillis,
     ) -> Result<Rotated> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ROTATE))?;
 
-        let row = sqlx::query(sql::LOCK_SECRET)
+        let row = sqlx::query_as::<_, StoredEnvelope>(sql::LOCK_SECRET)
             .bind(key.workspace_id.as_str())
             .bind(key.name)
             .fetch_optional(&mut *transaction)
@@ -118,7 +114,7 @@ impl Vault {
             return Ok(Rotated::SkippedStale);
         };
 
-        let stored = self.decrypt(&row, key)?;
+        let stored = self.decrypt(row, key)?;
         let mut handle = afd_crypto::secret::SecretObject::parse(stored.expose())
             .map_err(|_shape| vault_data_invalid())?;
         // Compares against what this exchange actually posted, which is the one
@@ -149,18 +145,17 @@ impl Vault {
             )
             .map_err(crate::error::vault_open)?;
 
-        let updated = EnvelopeRow {
+        // The `FOR UPDATE` above holds the row until commit, so the write
+        // always lands on it: a delete racing this exchange waits, or won
+        // before the lock and was answered as stale there.
+        EnvelopeRow {
             key,
             sealed: &sealed,
-            now,
         }
         .bind(sqlx::query(sql::UPDATE_SECRET_ENVELOPE))
         .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_ROTATE))?;
-        if updated.rows_affected() == 0 {
-            return Ok(Rotated::SkippedStale);
-        }
         transaction.commit().await.map_err(query(CONTEXT_ROTATE))?;
         Ok(Rotated::Persisted)
     }

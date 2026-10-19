@@ -120,7 +120,7 @@ impl Error {
             //
             // `WorkspaceUnknown` is here rather than under a 404 deliberately.
             // `vault.secrets.workspace_id` is a NOT NULL foreign key onto
-            // `core.workspaces`, so a missing owner is a broken invariant and
+            // `identity.workspaces`, so a missing owner is a broken invariant and
             // not a race. The alternative reasoning ("no tenant, so no
             // references") is exactly what lets a delete run blind over live
             // entries.
@@ -182,3 +182,6 @@ impl Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

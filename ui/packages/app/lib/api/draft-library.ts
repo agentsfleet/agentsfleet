@@ -1,17 +1,18 @@
 import { z } from "zod";
+import { Instant } from "./decode";
 import { DefinitionSchema, ReviewSchema } from "./draft-types";
 import { setupRequest, SetupUnavailable } from "./draft-request";
 
 export const LibraryCardSchema = z.object({
   id: z.string(), name: z.string(), description: z.string(), visibility: z.enum(["platform", "tenant"]),
   head_revision_id: z.uuidv7(), etag: z.string(), requirements: z.record(z.string(), z.unknown()),
-  created_at: z.number().int(), required_credentials_reasons: z.record(z.string(), z.string()),
+  created_at: Instant, required_credentials_reasons: z.record(z.string(), z.string()),
 });
 export const LibraryCardsSchema = z.object({items: z.array(LibraryCardSchema).max(100), next_cursor: z.string().nullable()});
 export const LibraryRevisionSchema = z.object({id: z.uuidv7(), library_id: z.string(), revision: z.string(),
   definition: DefinitionSchema, canonical_digest: z.string()});
 export const LibrarySchema = z.object({card: LibraryCardSchema, head: LibraryRevisionSchema, review: ReviewSchema, etag: z.string()});
-const RevisionsSchema = z.object({items: z.array(z.object({id: z.uuidv7(), revision: z.string(), canonical_digest: z.string(), created_at: z.number().int()})).max(25), next_cursor: z.string().nullable()});
+const RevisionsSchema = z.object({items: z.array(z.object({id: z.uuidv7(), revision: z.string(), canonical_digest: z.string(), created_at: Instant})).max(25), next_cursor: z.string().nullable()});
 export type LibraryCard = z.infer<typeof LibraryCardSchema>;
 export type Library = z.infer<typeof LibrarySchema>;
 

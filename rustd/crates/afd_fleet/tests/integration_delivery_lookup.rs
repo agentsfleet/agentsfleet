@@ -32,21 +32,20 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::{self, UnixMillis};
 use afd_dragonfly::FleetStreams;
-use sqlx::Row as _;
 
 use crate::integration_admission_recovery::{
     EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, deferring, ledger, producer_key,
 };
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
-/// The index slot 914 adds.
-const LOOKUP_INDEX: &str = "idx_fleet_admissions_delivery_lookup";
+/// The index the delivery stamp is served by.
+const LOOKUP_INDEX: &str = "idx_admissions_delivery_lookup";
 
 /// The columns the stamp keys on, in the order it keys on them.
-const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, seq)";
+const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, id)";
 
 /// The predicate the stamp's own `WHERE` implies, and the whole of it.
 const LOOKUP_PREDICATE: &str = "WHERE (delivered_at IS NULL)";
@@ -61,13 +60,11 @@ async fn definition(fixtures: &Fixtures, index: &str) -> String {
         .acquire()
         .await
         .expect("the ledger answers");
-    let row = sqlx::query("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
+    sqlx::query_scalar("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
         .bind(index)
         .fetch_one(&mut *connection)
         .await
-        .unwrap_or_else(|failure| panic!("{index} must exist after migration: {failure}"));
-    row.try_get::<String, _>(0)
-        .expect("an index definition is text")
+        .unwrap_or_else(|failure| panic!("{index} must exist after migration: {failure}"))
 }
 
 /// Slot 914's index is the one the delivery stamp's predicate implies.
@@ -85,7 +82,7 @@ async fn the_delivery_lookup_index_implies_the_stamps_predicate() {
     let lookup = definition(&fixtures, LOOKUP_INDEX).await;
     assert!(
         lookup.contains(LOOKUP_COLUMNS),
-        "the stamp keys on the fleet and the logical id's two integers: {lookup}"
+        "the stamp keys on the fleet and the admission: {lookup}"
     );
     assert!(
         lookup.contains(LOOKUP_PREDICATE),
@@ -98,7 +95,7 @@ async fn the_delivery_lookup_index_implies_the_stamps_predicate() {
 
     // The older index keeps its stricter predicate; the recovery reads imply it
     // and nothing in this slot was supposed to touch them.
-    let undelivered = definition(&fixtures, "idx_fleet_admissions_undelivered").await;
+    let undelivered = definition(&fixtures, "idx_admissions_undelivered").await;
     assert!(
         undelivered.contains(RECEIPT_CLAUSE),
         "the reconciliation index still carries the receipt test it reads on: {undelivered}"
@@ -131,7 +128,7 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         .expect("the row commits whatever the queue does");
     assert_eq!(
         fixtures
-            .admission_receipt(&fleet, &unreceipted.stored.id)
+            .text(Row::Admission(&unreceipted.stored.id), "receipt")
             .await,
         None,
         "an append that never happened records no receipt"
@@ -144,27 +141,25 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         .await
         .expect("a live queue admits and receipts");
     let first_receipt = fixtures
-        .admission_receipt(&fleet, &replayed.stored.id)
+        .text(Row::Admission(&replayed.stored.id), "receipt")
         .await
         .expect("a live append records its receipt");
     streams
         .forget(&fleet)
         .await
         .expect("destroying this fleet's stream data");
-    let at = clock::now();
     live.reconcile(
-        at,
         EVERY_FLEET,
         EVERY_ROW,
         &mut afd_admission::Progress::default(),
     )
     .await
     .expect("the reconcile pass runs");
-    live.replay(at, NO_GRACE, EVERY_ROW)
+    live.replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs");
     let second_receipt = fixtures
-        .admission_receipt(&fleet, &replayed.stored.id)
+        .text(Row::Admission(&replayed.stored.id), "receipt")
         .await
         .expect("replay re-appended the row and recorded a new receipt");
     assert_ne!(
@@ -181,7 +176,7 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
         );
         assert!(
             fixtures
-                .admission_delivered_at(&fleet, event_id)
+                .instant(Row::Admission(event_id), "delivered_at")
                 .await
                 .is_some(),
             "{event_id} carries the instant it was delivered"
@@ -201,9 +196,6 @@ async fn delivery_stamps_before_and_after_a_replayed_receipt() {
 /// Binds the shipped statement rather than a copy of it, so a predicate added
 /// to the real one fails here instead of passing against a stale duplicate.
 async fn stamp(fixtures: &Fixtures, fleet: &str, event_id: &str) -> u64 {
-    let (created_at, seq) = event_id
-        .split_once('-')
-        .expect("a logical event id is `<created_at>-<seq>`");
     let mut connection = fixtures
         .database
         .acquire()
@@ -211,9 +203,7 @@ async fn stamp(fixtures: &Fixtures, fleet: &str, event_id: &str) -> u64 {
         .expect("the ledger answers");
     sqlx::query(afd_admission::sql::MARK_DELIVERED)
         .bind(fleet)
-        .bind(created_at.parse::<i64>().expect("the instant is numeric"))
-        .bind(seq.parse::<i64>().expect("the sequence is numeric"))
-        .bind(UnixMillis::from_millis(clock::now().as_millis()).as_millis())
+        .bind(event_id)
         .execute(&mut *connection)
         .await
         .expect("the stamp runs")

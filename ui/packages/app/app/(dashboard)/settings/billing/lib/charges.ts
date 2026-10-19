@@ -1,58 +1,30 @@
-import { CHARGE_TYPE, NANOS_PER_USD, type TenantBillingChargesResponse } from "@/lib/types";
+import { CHARGE_TYPE, type TenantBillingChargesResponse } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { formatDollars, MIN_VISIBLE_NANOS, SUBVISIBLE_AMOUNT_LABEL } from "@/lib/money";
+export { formatDollars } from "@/lib/money";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
-// Two-to-four decimal places — cents granularity, with sub-cent precision
-// when traction rates ($0.001 stage, $0.0001 self-managed) need it.
-const USD_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-});
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const SETUP_CHAT_LABEL = "Setup chat";
-const FLEET_SETUP_LABEL = "Fleet setup";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
 const TOKENS_LABEL = "tokens";
 const TOKENS_IN = "in";
 const TOKENS_OUT = "out";
 const TOKEN_SPLIT_SEPARATOR = " · ";
-/**
- * Below this the formatter above returns "$0.00" — the one figure that reads
- * as nothing. Exported because the header's balance has the same floor for
- * the same reason, and two copies of it would drift.
- */
-export const MIN_VISIBLE_NANOS = 50_000;
-export const SUBVISIBLE_AMOUNT_LABEL = "<$0.0001";
-
-/** Format a nanos amount as a USD string. */
-export function formatDollars(nanos: number): string {
-  return USD_FORMATTER.format(nanos / NANOS_PER_USD);
-}
-
 /** Human-readable debit: never render a misleading negative zero. */
-export function formatChargeAmount(nanos: number): string {
-  if (nanos === 0) return formatDollars(0);
-  if (nanos < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
+export function formatChargeAmount(nanos: string): string {
+  const amount = BigInt(nanos);
+  if (amount === 0n) return formatDollars(nanos);
+  if (amount < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
   return `−${formatDollars(nanos)}`;
 }
 
-/**
- * Keep historical charges legible after their fleet has been deleted. The
- * same composition every other agent column renders, so a charge sorts and
- * reads under the name the operator knows the agent by.
- *
- * Both fields are passed, and that is what keeps the sort key and the rendered
- * cell the same string. They are produced by one function for exactly that
- * reason: a sort key composed from fewer fields than the cell would order the
- * table by something the operator cannot see.
- */
+/** Retained fleet identifiers keep billing labels stable after deletion. */
 export function chargeAgentLabel(row: ChargeRow): string {
-  if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return FLEET_SETUP_LABEL;
-  return agentDisplayName(row.fleet_id, row.fleet_name);
+  if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return SETUP_CHAT_LABEL;
+  return agentDisplayName(row.fleet_id);
 }
 
 /** Strip the provider namespace and separators without changing model casing. */
@@ -61,7 +33,7 @@ export function displayModelName(model: string): string {
   return modelId.replaceAll(/[-_]/g, " ");
 }
 
-// recorded_at is epoch **milliseconds** (`ChargeSummary::recorded_at` in
+// recorded_at is an RFC 3339 instant (`ChargeSummary::recorded_at` in
 // rustd/crates/afd_api_wire/src/tenant.rs, read from the ledger's `created_at`).
 // "Jun 15, 2026 · 17:33" mirrors the ledger date format in the approved mockup —
 // the en-US date format already yields "MMM DD, YYYY"; the mono separator joins
@@ -77,9 +49,9 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   hour12: false,
 });
 
-/** Format a charge's recorded_at (epoch ms) as "MMM DD, YYYY · HH:MM". */
-export function formatChargeTimestamp(recordedAtMs: number): string {
-  const at = new Date(recordedAtMs);
+/** Format a charge's recorded_at (an RFC 3339 instant) as "MMM DD, YYYY · HH:MM". */
+export function formatChargeTimestamp(recordedAt: string): string {
+  const at = new Date(recordedAt);
   return `${DATE_FORMATTER.format(at)} · ${TIME_FORMATTER.format(at)}`;
 }
 

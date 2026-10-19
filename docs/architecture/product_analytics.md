@@ -36,8 +36,7 @@ reading it beats reading a copy here that stops being true the next time someone
 adds a surface.
 
 Mutation events fire on success only — validation failures and aborted actions
-emit nothing. `draft_review_opened` records opening the review drawer; it does
-not imply that the review request succeeded or that a fleet was saved.
+emit nothing.
 
 ## Private chat to fleet funnel
 
@@ -45,15 +44,13 @@ not imply that the review request succeeded or that a fleet was saved.
 |---|---|---|
 | `draft_message_accepted` | Daemon | A new message is durably accepted, excluding idempotent replays. |
 | `draft_message_finished` | Daemon | An accepted message reaches its durable terminal state. |
-| `draft_review_opened` | Browser | The operator opens Review setup; only `workspace_id` and an optional `draft_id` are supplied. A source preview can open before a draft exists. |
 | `fleet_setup_finished` | Daemon | Setup reaches its durable successful outcome. |
 | `fleet_setup_cancelled` | Daemon | Setup cancellation is durable. |
 | `fleet_library_published` | Daemon | A new Library revision is committed, excluding idempotent replays. |
 
 Acceptance and completion counts must come from the daemon so terminal-client
 activity, closed browser tabs, and blocked analytics scripts cannot turn a
-browser click into conversion truth. Keep review openings as a separate intent
-step. Join only through opaque identifiers within the authorized workspace.
+browser click into conversion truth. Join only through opaque identifiers within the authorized workspace.
 The daemon reports each step from `afd_authoring` after the commit that made it
 true, attributed to the person's identity-provider subject. Every property is a
 UUID or a fixed word, and
@@ -65,7 +62,7 @@ Never attach message text, titles, Definitions, instructions, URLs, or secret
 values. The browser uses the existing event catalog's runtime property allowlist
 and automatic pathname context; it does not capture query strings or fragments.
 `tests/draft-analytics-privacy.test.ts` exercises that allowlist with a widened
-payload, and `tests/workspace-chat/review-analytics.test.tsx` checks the action.
+payload.
 
 ## Identity lifecycle
 

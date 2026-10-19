@@ -23,10 +23,12 @@
 //! [`crate::Error::is_config_permanent`] is what separates the two, so the
 //! distinction is the error's own rather than a `match` re-derived here.
 
-use afd_core::clock::UnixMillis;
+use afd_billing::biller::{Account, Hold, Reservation, WorkKey};
 use afd_core::error_code::{Coded as _, Logged};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
-use crate::error::{Result, budget_exhausted, renewal_no_credits};
+use crate::error::{Result, budget_exhausted, lease_lost, renewal_no_credits};
 use crate::lease::pull::Plane;
 use crate::lease::renew::Renewing;
 use afd_billing::budget::{self, Verdict};
@@ -54,34 +56,58 @@ impl Plane {
     pub(super) async fn gate_renewal(
         &self,
         lease: &Renewing,
+        lease_key: &Uuid7,
         lease_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
-        self.credits_cover(lease, lease_id).await?;
-        self.budget_covers(lease, lease_id, now).await
+        self.hold_covers(lease, lease_key, lease_id, now).await?;
+        self.budget_covers(lease, lease_id).await
     }
 
-    /// The tenant's credit pool against this run's floor cost.
+    /// The lease's hold, raised to cover one more slice.
     ///
-    /// The same estimate the lease path admits against, so issue and renewal
-    /// share one credit policy rather than each deciding what "enough" means.
+    /// The ceiling is what the lease's usage lines have cost so far plus the
+    /// same floor the issue gate admits against, so issue and renewal share one
+    /// credit policy, and the hold tracks what the run has used rather than how
+    /// often it renewed. The biller answers whether the payer's balance, less
+    /// every other open hold, covers it.
+    ///
     /// A tenant with no wallet row is admitted, for the reason the issue gate
-    /// admits one.
-    async fn credits_cover(&self, lease: &Renewing, lease_id: &str) -> Result<()> {
+    /// admits one. An outage the biller's outage policy admitted answers
+    /// [`Hold::Unconfirmed`] and renews.
+    async fn hold_covers(
+        &self,
+        lease: &Renewing,
+        lease_key: &Uuid7,
+        lease_id: &str,
+        now: Timestamp,
+    ) -> Result<()> {
         let posture = super::renew::posture_of(lease);
-        let covered = async {
+        let held: core::result::Result<Hold, afd_billing::Error> = async {
             let estimate = self
                 .accounts
-                .estimate(posture, &lease.provider, &lease.model)
+                .estimate(posture, &lease.provider, &lease.model, now)
                 .await?;
-            let wallet = self.accounts.wallet(&lease.tenant_id).await?;
-            Ok(wallet.is_none_or(|held| held.balance.covers(estimate.floor())))
+            let work = WorkKey::FleetLease(lease_key.clone());
+            let spent = {
+                let mut connection = self.leases.pool().acquire().await?;
+                afd_billing::ledger::charged_so_far(&mut *connection, &work).await?
+            };
+            let ask = Reservation {
+                work,
+                payer: Account {
+                    tenant: lease.tenant_id.clone(),
+                    workspace: lease.workspace_id.clone(),
+                },
+                ceiling: spent.saturating_add(estimate.floor()),
+            };
+            self.biller.reserve(&ask).await
         }
         .await;
 
-        match covered {
-            Ok(true) => Ok(()),
-            Ok(false) => {
+        match held {
+            Ok(Hold::Held { .. } | Hold::Unconfirmed) => Ok(()),
+            Ok(Hold::Short { .. }) => {
                 let fleet = lease.fleet_id.as_str();
                 tracing::warn!(
                     fleet_id = fleet,
@@ -91,10 +117,14 @@ impl Plane {
                 );
                 Err(renewal_no_credits())
             }
+            // The hold was released, which only a report or the sweeper does
+            // once the lease ended: there is no live run left to renew.
+            Ok(Hold::Closed) => Err(lease_lost()),
+            Err(fault) if fault.is_wallet_missing() => Ok(()),
             // Fail OPEN: the balance could not be read at all, which says
             // nothing about whether it covers the run.
             Err(fault) => {
-                admit_unreadable("balance", lease, lease_id, &fault);
+                admit_unreadable("balance", lease, lease_id, &crate::Error::from(fault));
                 Ok(())
             }
         }
@@ -102,10 +132,10 @@ impl Plane {
 
     /// The fleet's own ceiling against what it has already drained.
     ///
-    /// Read live from `core.fleets.config_json` through the same parser that
+    /// Read live from the head revision's definition through the same parser that
     /// accepted the document at ingest, so the ceiling that admits a run and
     /// the ceiling that stops one can never be read two ways.
-    async fn budget_covers(&self, lease: &Renewing, lease_id: &str, now: UnixMillis) -> Result<()> {
+    async fn budget_covers(&self, lease: &Renewing, lease_id: &str) -> Result<()> {
         let config = match self.leases.stored_config(&lease.fleet_id).await {
             Ok(Some(config)) => config,
             // The row is gone only when a purge raced the run. There is no
@@ -116,17 +146,7 @@ impl Plane {
             // not a ceiling it may ignore — and unlike the outage below, it
             // will read the same on every subsequent tick.
             Err(fault) if fault.is_config_permanent() => {
-                let fleet = lease.fleet_id.as_str();
-                let Logged { error_code, reason } = fault.logged();
-                tracing::warn!(
-                    error_code,
-                    fleet_id = fleet,
-                    lease_id,
-                    reason,
-                    event = EVENT_BUDGET_BREACH,
-                    "the fleet's stored budget cannot be read; not renewed"
-                );
-                return Err(budget_exhausted());
+                return Err(refuse_unreadable_budget(lease, lease_id, &fault));
             }
             Err(fault) => {
                 admit_unreadable("budget", lease, lease_id, &fault);
@@ -136,7 +156,7 @@ impl Plane {
 
         let spend = match self
             .accounts
-            .spend(&lease.workspace_id, &lease.fleet_id, now)
+            .spend(&lease.workspace_id, &lease.fleet_id)
             .await
         {
             Ok(spend) => spend,
@@ -165,6 +185,25 @@ impl Plane {
     }
 }
 
+/// Refuse a renewal whose stored budget will never parse, and say so.
+fn refuse_unreadable_budget(
+    lease: &Renewing,
+    lease_id: &str,
+    fault: &crate::Error,
+) -> crate::Error {
+    let fleet = lease.fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    tracing::warn!(
+        error_code,
+        fleet_id = fleet,
+        lease_id,
+        reason,
+        event = EVENT_BUDGET_BREACH,
+        "the fleet's stored budget cannot be read; not renewed"
+    );
+    budget_exhausted()
+}
+
 /// Admit a renewal whose gate could not be read, and say so.
 ///
 /// One place, so the fail-open posture is applied identically at all three call
@@ -188,8 +227,8 @@ fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault:
 
 #[cfg(test)]
 mod tests {
-    use afd_core::clock::UnixMillis;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use jiff::Timestamp;
 
     use super::admit_unreadable;
     use crate::lease::renew::Renewing;
@@ -199,7 +238,7 @@ mod tests {
     /// Distinct because the warning names the fleet and the lease separately,
     /// and a fixture that reused one id would let a swapped field pass.
     fn renewing() -> Result<Renewing, &'static str> {
-        let at = UnixMillis::from_millis(1_767_225_600_000);
+        let at = Timestamp::constant(1_767_225_600, 0);
         let mint = |seed: u8| {
             Uuid7::encode(at, [seed; ENTROPY_LEN])
                 .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")

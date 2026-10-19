@@ -16,10 +16,9 @@ const KIND_POLICY: &str = "policy";
 const SETUP_CANCELLED: &str = "cancelled";
 /// Setup finished: the fleet is active.
 const SETUP_READY: &str = "ready";
-/// Setup holding on at least one check that is not ready.
+/// Setup holding on at least one check that is not ready; until activation
+/// commits, its own check is one.
 const SETUP_WAITING: &str = "waiting";
-/// Setup whose checks all hold, before activation commits.
-const SETUP_CHECKING: &str = "checking";
 
 /// One bounded setup observation.
 #[derive(Debug, Serialize)]
@@ -38,7 +37,7 @@ pub struct SetupCheck {
 /// Progress belongs to the retained fleet resource.
 #[derive(Debug, Serialize)]
 pub struct SetupProgress {
-    /// `checking`, `waiting`, `ready` or `cancelled`.
+    /// `waiting`, `ready` or `cancelled`.
     pub state: &'static str,
     /// Actual current checks and recovery actions.
     pub checks: Vec<SetupCheck>,
@@ -46,12 +45,12 @@ pub struct SetupProgress {
 
 pub(super) fn current(row: &Stored, review: &Review) -> SetupProgress {
     let mut checks: Vec<_> = review.readiness.iter().map(observed).collect();
-    if review.review_digest != row.setup_context.review_digest {
+    if review.review_digest != row.accepted.review_digest {
         checks.push(SetupCheck {
             kind: KIND_POLICY,
             subject: "review_changed".to_owned(),
             state: CHECK_BLOCKED,
-            next_action: Some(crate::review::review_action(&row.setup_context.context)),
+            next_action: Some(crate::review::review_action(&row.accepted.context)),
         });
     }
     checks.push(SetupCheck {
@@ -75,7 +74,7 @@ pub(super) fn current(row: &Stored, review: &Review) -> SetupProgress {
         next_action: None,
     });
     SetupProgress {
-        state: state(row, &checks),
+        state: state(row),
         checks,
     }
 }
@@ -94,17 +93,15 @@ fn observed(check: &Check) -> SetupCheck {
     }
 }
 
-/// The whole setup's state: the fleet's lifecycle decides first, then whether
-/// any check still holds it.
-fn state(row: &Stored, checks: &[SetupCheck]) -> &'static str {
+/// The whole setup's state, which the fleet's lifecycle decides: a fleet that
+/// is neither killed nor active still holds its activation check pending.
+fn state(row: &Stored) -> &'static str {
     if row.status == KILLED {
         SETUP_CANCELLED
     } else if row.status == ACTIVE {
         SETUP_READY
-    } else if checks.iter().any(|check| check.state != CHECK_READY) {
-        SETUP_WAITING
     } else {
-        SETUP_CHECKING
+        SETUP_WAITING
     }
 }
 
@@ -121,7 +118,7 @@ fn kind(kind: CheckKind) -> &'static str {
 }
 
 pub(super) fn ready(row: &Stored, review: &Review) -> bool {
-    row.setup_context.review_digest == review.review_digest
+    row.accepted.review_digest == review.review_digest
         && review
             .readiness
             .iter()

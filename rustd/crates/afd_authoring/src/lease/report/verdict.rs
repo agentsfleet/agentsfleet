@@ -21,7 +21,7 @@ pub(super) fn derive(
     verified: &meter::Verified,
     private: Option<&guard::Guarded>,
     cancelled: bool,
-    now: i64,
+    now: jiff::Timestamp,
 ) -> Result<Verdict> {
     if verified.usage.knowledge == Knowledge::Unknown {
         return Ok(Verdict {
@@ -31,7 +31,7 @@ pub(super) fn derive(
         });
     }
     let input = prepared.request.accounting();
-    if let Some(reason) = attempt.daemon_failure {
+    if let Some(reason) = attempt.failure_reason {
         return Ok(Verdict {
             outcome: Outcome::Failed,
             reason: Some(reason),
@@ -64,10 +64,11 @@ fn validate_known(
     input: &afd_wire::authoring::Accounting,
     verified: &meter::Verified,
     cancelled: bool,
-    now: i64,
+    now: jiff::Timestamp,
 ) -> Result<()> {
     if input.outcome == Outcome::TimedOut
-        && (now < attempt.deadline || input.failure_reason != Some(FailureReason::AttemptTimedOut))
+        && (now < attempt.expires_at
+            || input.failure_reason != Some(FailureReason::AttemptTimedOut))
     {
         return Err(invalid("A timed_out report requires the attempt deadline"));
     }
@@ -115,5 +116,43 @@ pub(crate) fn reason(value: FailureReason) -> &'static str {
         FailureReason::ProviderUsageUnknown => "provider_usage_unknown",
         FailureReason::AttemptTimedOut => "attempt_timed_out",
         FailureReason::PolicyChanged => "policy_changed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{outcome, reason};
+    use afd_wire::authoring::{FailureReason, Outcome};
+
+    /// Attempts and messages store these words, and readers parse them back
+    /// through serde: every arm must spell its wire form.
+    #[test]
+    fn every_stored_verdict_word_is_its_wire_spelling() {
+        let wire = |value: serde_json::Value| value.as_str().map(str::to_owned);
+        for value in [
+            Outcome::Completed,
+            Outcome::Failed,
+            Outcome::TimedOut,
+            Outcome::Cancelled,
+        ] {
+            assert_eq!(
+                Some(outcome(value).to_owned()),
+                serde_json::to_value(value).ok().and_then(wire)
+            );
+        }
+        for value in [
+            FailureReason::InsufficientBalance,
+            FailureReason::ModelUnavailable,
+            FailureReason::ContextTooLarge,
+            FailureReason::ProviderFailed,
+            FailureReason::ProviderUsageUnknown,
+            FailureReason::AttemptTimedOut,
+            FailureReason::PolicyChanged,
+        ] {
+            assert_eq!(
+                Some(reason(value).to_owned()),
+                serde_json::to_value(value).ok().and_then(wire)
+            );
+        }
     }
 }

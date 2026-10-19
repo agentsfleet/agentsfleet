@@ -35,7 +35,7 @@ async fn draft(case: &Case, item: &str) -> Value {
 async fn finish_turn(case: &Case, lease: &str, token: &str) {
     let usage = json!({"knowledge":"known","calls":0,"input_tokens":0,"output_tokens":0,
         "runtime_ms":0,"provider_cost_nanos":"0"});
-    let report = json!({"kind":"terminal","fence":"1","deletion_generation":"0",
+    let report = json!({"kind":"terminal","fence":"1",
         "report_id":mint(),"outcome":"completed","usage":usage,"answer":"Scheduled."});
     let finished = send(
         &case.router,
@@ -118,7 +118,7 @@ async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let draft_id = before["id"].as_str().expect("draft id");
     attempt::seed(&case.base, &runner, &lease, draft_id, digest.as_str()).await;
 
-    let proposal = json!({"fence":"1","deletion_generation":"0","sequence":"1","activity_sequence":"1",
+    let proposal = json!({"fence":"1","sequence":"1","activity_sequence":"1",
         "event":{"kind":"proposal","proposal":{"kind":"edit",
             "base_candidate_id": before["candidate"]["id"],
             "base_candidate_revision": before["candidate"]["revision"],

@@ -14,7 +14,7 @@ const RUNTIME_DEBIT_NANOS: i64 = 100;
 /// `(active attempts, their reserved nanos)` for one draft.
 async fn obligations(f: &Fixture, draft: &Draft) -> (i64, i64) {
     sqlx::query_as(
-        "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM fleet.authoring_attempts \
+        "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM authoring.attempts \
          WHERE draft_id=$1::uuid AND status='active'",
     )
     .bind(draft.id.as_str())
@@ -24,7 +24,7 @@ async fn obligations(f: &Fixture, draft: &Draft) -> (i64, i64) {
 }
 
 async fn balance(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id=$1::uuid")
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .fetch_one(&mut *f.connection().await)
         .await
@@ -68,7 +68,6 @@ pub(super) fn finished(lease: &Claimed) -> Report {
     Report::Terminal {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,
@@ -100,7 +99,7 @@ async fn send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once()
     };
     let (sent, stopped, raced) = tokio::join!(
         f.drafts.send(f.access(), &draft.id, second, now()),
-        f.drafts.cancel(f.access(), &draft.id, 1, now()),
+        f.drafts.cancel(f.access(), &draft.id, 1),
         claim(&f, &draft),
     );
     assert_eq!(sent.expect("send commits around the Stop").sequence, "2");
@@ -144,10 +143,8 @@ async fn send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once()
 /// A queued request is either stopped before admission or admitted and then
 /// stopped; both leave at most one attempt holding its whole bound.
 async fn claim_racing_stop(f: &Fixture, draft: &Draft) {
-    let (claimed, stopped) = tokio::join!(
-        claim(f, draft),
-        f.drafts.cancel(f.access(), &draft.id, 2, now())
-    );
+    let (claimed, stopped) =
+        tokio::join!(claim(f, draft), f.drafts.cancel(f.access(), &draft.id, 2));
     assert_eq!(stopped.expect("Stop commits").cancelled_through, "2");
     let (live, reserved) = obligations(f, draft).await;
     assert_eq!(live, i64::from(claimed.is_some()));

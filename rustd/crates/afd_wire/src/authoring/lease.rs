@@ -41,7 +41,8 @@ pub struct ModelAccess {
     /// Random capability; never log or spool it.
     pub token: String,
     /// Current lease expiry, capped by the attempt deadline.
-    pub expires_at: i64,
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
     /// Relative daemon route; no provider destination or key is delivered.
     pub invocation_path: String,
 }
@@ -115,12 +116,12 @@ pub struct Lease<C> {
     pub sequence: String,
     /// Decimal attempt fencing token.
     pub fence: String,
-    /// Decimal private deletion generation.
-    pub deletion_generation: String,
-    /// Lease deadline in epoch milliseconds.
-    pub expires_at: i64,
+    /// The lease deadline.
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
     /// Original attempt deadline; renewal cannot extend it.
-    pub deadline: i64,
+    #[serde(with = "crate::instant")]
+    pub deadline: jiff::Timestamp,
     /// Non-secret selected model metadata.
     pub model: SelectedModel,
     /// Daemon invocation authority, bound to this exact attempt.
@@ -144,3 +145,7 @@ impl<C> fmt::Debug for Lease<C> {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+#[path = "lease_tests.rs"]
+mod tests;

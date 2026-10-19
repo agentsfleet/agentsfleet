@@ -203,7 +203,7 @@ describe("shell intent controls", () => {
     showLoaded(loader);
     view.rerender(
       <ShellControls
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
         operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
@@ -230,7 +230,7 @@ describe("shell intent controls", () => {
     expect(await loader.importModule()).toHaveProperty("default");
     const view = render(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     const trigger = screen.getByTestId("workspace-switcher");
@@ -248,7 +248,7 @@ describe("shell intent controls", () => {
     loader.snapshot = { error: null, module: null, status: "loading" };
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     expect(trigger.getAttribute("aria-busy")).toBe("true");
@@ -256,7 +256,7 @@ describe("shell intent controls", () => {
     state.pathname = "/w/ws_missing/fleets";
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     await waitFor(() =>
@@ -268,7 +268,7 @@ describe("shell intent controls", () => {
     showError(loader);
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     await userEvent.click(
@@ -279,7 +279,7 @@ describe("shell intent controls", () => {
     showLoaded(loader);
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     expect(state.renderedProps).toMatchObject({ open: true });
@@ -287,7 +287,7 @@ describe("shell intent controls", () => {
     state.pathname = "/w/ws_missing/events";
     view.rerender(
       <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1, ...OWN_ACCOUNT }]}
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
       />,
     );
     await waitFor(() =>

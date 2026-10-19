@@ -8,18 +8,17 @@
 //! that prose, spend the tokens to do it, and hand an attacker-influenced
 //! document straight to a model (RULE PRI).
 //!
-//! # Decisions here, field reading in `octocrab`
+//! # Decisions here, field reading in `serde`
 //!
 //! This file owns the DECISIONS: which events wake a fleet, which are
 //! deliberately ignored, and which fields the digest carries. Reading the
-//! fields is the job of `octocrab`'s webhook types, which answer each question
-//! from a type declaration rather than a hand-written walk over the payload.
+//! fields is the job of the `Deserialize` types below, each declaring only the
+//! fields a decision or a digest reads, so the answer to "what does this read"
+//! is a type declaration rather than a hand-written walk over the payload.
 //!
-//! `octocrab` was already a workspace dependency for App JWT minting, so the
-//! typed payloads cost one direct dependency and no transitive crate at all.
-//! Its `workflow_run` body is still `serde_json::Value` in 0.54.1 — upstream
-//! labels webhook support beta — so that one is read through a narrow
-//! `Deserialize` struct rather than by indexing.
+//! Declaring only those fields is also what keeps an unread one from refusing
+//! a delivery: a payload GitHub grows, or an actor missing a URL field nobody
+//! reads, still reads.
 //!
 //! # Two routes, two policies, and they really do differ
 //!
@@ -32,13 +31,18 @@
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
 /// reads these field names, so `afd_wire` owns them.
 use afd_api_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
-use afd_core::clock::UnixMillis;
-use afd_core::spelling::to_spelling;
-use octocrab::models::webhook_events::payload::{
-    PullRequestWebhookEventAction, WorkflowRunWebhookEventAction,
-};
-use octocrab::models::webhook_events::{WebhookEvent, WebhookEventPayload};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+pub(crate) use payload::Delivery;
+use payload::{Body, PullRequestEvent, RunAction, WorkflowRunEvent};
+
+mod payload;
+
+/// The four pull-request actions that mean there is new code to look at.
+///
+/// The MANUAL route's set alone: [`Policy::AppIngress`] accepts every action
+/// except a repair branch's.
+const ACTIONS_WITH_NEW_CODE: [&str; 4] = ["opened", "reopened", "synchronize", "ready_for_review"];
 
 /// The reason a delivery this daemon understands is deliberately not ingested.
 ///
@@ -97,79 +101,47 @@ pub(crate) enum Ingest {
     Unsupported,
 }
 
-/// The `workflow_run` fields the digest carries.
-///
-/// A narrow reader over octocrab's untyped `workflow_run` value. Every field is
-/// `#[serde(default)]`: a delivery missing one is still a delivery, and
-/// refusing it would make this daemon stricter than the sender it serves.
-#[derive(Debug, Default, Deserialize)]
-struct WorkflowRunBody {
-    #[serde(default)]
-    html_url: String,
-    #[serde(default)]
-    head_sha: String,
-    #[serde(default)]
-    conclusion: String,
-    #[serde(default)]
-    head_branch: String,
-    #[serde(default)]
-    name: String,
-    #[serde(default = "one")]
-    run_attempt: i64,
-    #[serde(default)]
-    id: i64,
-}
-
-/// A run with no stated attempt is its first — `orelse 1`, mirrored.
-const fn one() -> i64 {
-    1
+impl Delivery {
+    /// Classifies this delivery under `policy`.
+    pub(crate) fn classify(&self, policy: Policy, received_at: jiff::Timestamp) -> Ingest {
+        // Read once from the COMMON half, before any per-event match: both
+        // digests carry it and both policies refuse without it.
+        let Some(repository) = self.repository() else {
+            return Ingest::Ignore(REASON_MISSING_REPOSITORY);
+        };
+        match &self.body {
+            Body::WorkflowRun(run) => workflow_run(run, repository, received_at),
+            Body::PullRequest(pull) => pull_request(policy, pull, repository, received_at),
+            Body::Other => Ingest::Unsupported,
+        }
+    }
 }
 
 /// Classifies one delivery under `policy`.
 ///
-/// `event` is the `x-github-event` header's value — the delivery's kind is
-/// GitHub's word for it, never inferred from the body's shape.
+/// `event` is the `x-github-event` header's value.
 ///
 /// # Errors
-/// Returns the deserialization failure for a body that is not the event its
-/// header claims. A malformed body is the sender's fault and answers
-/// `UZ-WH-002`; it is never silently treated as an unsupported event.
+/// As [`Delivery::read`].
 pub(crate) fn classify(
     policy: Policy,
     event: &str,
     body: &[u8],
-    received_at: UnixMillis,
+    received_at: jiff::Timestamp,
 ) -> Result<Ingest, serde_json::Error> {
-    let delivery = WebhookEvent::try_from_header_and_body(event, body)?;
-    let stamp = receipt_stamp(received_at);
-    // Read once from the COMMON half, before any per-event match: both digests
-    // carry it and both policies refuse without it.
-    let Some(repository) = delivery
-        .repository
-        .as_ref()
-        .and_then(|repository| repository.full_name.clone())
-    else {
-        return Ok(Ingest::Ignore(REASON_MISSING_REPOSITORY));
-    };
-
-    Ok(match delivery.specific {
-        WebhookEventPayload::WorkflowRun(run) => workflow_run(&run, &repository, &stamp),
-        WebhookEventPayload::PullRequest(pull) => pull_request(policy, &pull, &repository, &stamp),
-        _ => Ingest::Unsupported,
-    })
+    Delivery::read(event, body).map(|delivery| delivery.classify(policy, received_at))
 }
 
 /// The `workflow_run` arm — identical under both policies.
 fn workflow_run(
-    payload: &octocrab::models::webhook_events::payload::WorkflowRunWebhookEventPayload,
+    event: &WorkflowRunEvent,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
-    if payload.action != WorkflowRunWebhookEventAction::Completed {
+    if event.action != RunAction::Completed {
         return Ingest::Ignore(REASON_NON_COMPLETED_ACTION);
     }
-    let run: WorkflowRunBody =
-        serde_json::from_value(payload.workflow_run.clone()).unwrap_or_default();
+    let run = &event.workflow_run;
 
     // The repair branch is checked BEFORE the conclusion, so a fleet's own
     // failed repair is reported as the loop it is rather than as an ordinary
@@ -190,7 +162,7 @@ fn workflow_run(
         run_id: run.id,
         head_branch: run.head_branch.as_str().into(),
         workflow_name: run.name.as_str().into(),
-        received_at: received_at.into(),
+        received_at,
     };
     encoded(&digest)
 }
@@ -198,77 +170,47 @@ fn workflow_run(
 /// The `pull_request` arm — where the two policies part company.
 fn pull_request(
     policy: Policy,
-    payload: &octocrab::models::webhook_events::payload::PullRequestWebhookEventPayload,
+    event: &PullRequestEvent,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
-    let pull = &payload.pull_request;
-    let head_ref = pull.head.ref_field.as_str();
-    if is_repair_branch(head_ref) {
+    if is_repair_branch(&event.pull_request.head.reference) {
         return Ingest::Ignore(REASON_REPAIR_BRANCH);
     }
-    if policy == Policy::Manual && !wakes_a_fleet(&payload.action) {
+    if policy == Policy::Manual && !ACTIONS_WITH_NEW_CODE.contains(&event.action.as_str()) {
         return Ingest::Ignore(REASON_UNINTERESTING_ACTION);
     }
-    pull_request_digest(payload, repository, received_at)
+    pull_request_digest(event, repository, received_at)
 }
 
 /// The digest an accepted `pull_request` delivery is admitted as.
+///
+/// `action` and `state` are GitHub's own words, carried as delivered.
 fn pull_request_digest(
-    payload: &octocrab::models::webhook_events::payload::PullRequestWebhookEventPayload,
+    event: &PullRequestEvent,
     repository: &str,
-    received_at: &str,
+    received_at: jiff::Timestamp,
 ) -> Ingest {
-    let pull = &payload.pull_request;
-    // Both words are taken from the same `serde` attribute that PARSED them,
-    // rather than from a match this file would have to keep current against an
-    // upstream `#[non_exhaustive]` enum. A digest cannot then spell an action
-    // differently from the delivery it describes.
-    let action = to_spelling(&payload.action).unwrap_or_default();
-    let state = pull
-        .state
-        .as_ref()
-        .and_then(to_spelling)
-        .unwrap_or_default();
-    let url = pull
-        .html_url
-        .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_default();
-
+    let pull = &event.pull_request;
     let digest = PullRequestDigest {
-        action: action.as_str().into(),
+        action: event.action.as_str().into(),
         repo: repository.into(),
-        number: payload.number,
+        number: event.number,
         title: pull.title.as_deref().unwrap_or_default().into(),
-        url: url.as_str().into(),
-        state: state.as_str().into(),
+        url: pull.html_url.as_deref().unwrap_or_default().into(),
+        state: pull.state.as_deref().unwrap_or_default().into(),
         draft: pull.draft.unwrap_or(false),
         author: pull
             .user
             .as_ref()
             .map_or("", |user| user.login.as_str())
             .into(),
-        head_ref: pull.head.ref_field.as_str().into(),
-        base_ref: pull.base.ref_field.as_str().into(),
+        head_ref: pull.head.reference.as_str().into(),
+        base_ref: pull.base.reference.as_str().into(),
         head_sha: pull.head.sha.as_str().into(),
-        received_at: received_at.into(),
+        received_at,
     };
     encoded(&digest)
-}
-
-/// The four pull-request actions that mean there is new code to look at.
-///
-/// The MANUAL route's set alone: [`Policy::AppIngress`] accepts every action
-/// except a repair branch's.
-const fn wakes_a_fleet(action: &PullRequestWebhookEventAction) -> bool {
-    matches!(
-        action,
-        PullRequestWebhookEventAction::Opened
-            | PullRequestWebhookEventAction::Reopened
-            | PullRequestWebhookEventAction::Synchronize
-            | PullRequestWebhookEventAction::ReadyForReview
-    )
 }
 
 /// Whether a branch is the repairer's own output.
@@ -283,17 +225,6 @@ fn is_repair_branch(reference: &str) -> bool {
 /// The digest, encoded, or the ignore a body that will not encode earns.
 fn encoded<T: Serialize>(digest: &T) -> Ingest {
     serde_json::to_string(digest).map_or(Ingest::Ignore(REASON_MISSING_REPOSITORY), Ingest::Accept)
-}
-
-/// The receipt stamp a digest carries, as RFC 3339 with a `Z` and no fraction.
-///
-/// Formatted by `jiff`. A timestamp this daemon cannot represent falls back to
-/// the epoch rather than failing a delivery over a clock.
-fn receipt_stamp(received_at: UnixMillis) -> String {
-    jiff::Timestamp::from_second(received_at.as_seconds())
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string()
 }
 
 #[cfg(test)]

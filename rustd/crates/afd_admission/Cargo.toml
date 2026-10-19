@@ -38,7 +38,12 @@ afd_wire.workspace = true
 # `afd_auth::directory` gives.
 hex.workspace = true
 sha2.workspace = true
-sqlx.workspace = true
+# Row instants, read through the `TIMESTAMPTZ(3)` bridge, and the one bound
+# instant: the resume key a reconciliation walk carries between passes.
+jiff.workspace = true
+jiff-sqlx.workspace = true
+# `derive` for the typed rows every statement decodes into.
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 

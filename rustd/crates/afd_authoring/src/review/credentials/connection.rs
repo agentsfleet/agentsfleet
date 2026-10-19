@@ -6,24 +6,17 @@ use super::{
 };
 use afd_connector::{Provider, registry::Archetype};
 
-const CONNECTION: &str = "\
-WITH held AS MATERIALIZED (
- SELECT id,external_account_id,scopes FROM core.connector_installs
- WHERE workspace_id=$1::uuid AND provider=$2 AND external_account_id=$3 FOR SHARE)
-SELECT encode(sha256(convert_to(jsonb_agg(jsonb_build_array(id,external_account_id,scopes) ORDER BY id)::text,'UTF8')),'hex'),
-coalesce(bool_and(scopes @> $4::text[]),false) FROM held";
-
+/// Observes the reverse-routing install behind `held`, whose integration is
+/// `service`.
 pub(super) async fn observe(
     connection: &mut PgConnection,
     draft: &super::super::Context,
+    service: &str,
     held: &CredentialInspection,
     observed: &mut Observed,
 ) -> Result<()> {
-    let Some(service) = held.integration.as_deref() else {
-        return Ok(());
-    };
     let (version, covered) = if let Some(id) = held.connection_id.as_deref() {
-        sqlx::query_as::<_, (Option<String>, bool)>(CONNECTION)
+        sqlx::query_as::<_, (Option<String>, bool)>(crate::review::sql::CONNECTION)
             .bind(draft.workspace_id.as_str())
             .bind(service)
             .bind(id)
@@ -53,12 +46,13 @@ pub(super) async fn observe(
     Ok(())
 }
 
+/// The scopes an install of `service` must have granted: Slack's consent
+/// scopes, and none for a service routed without a consent flow.
 fn required_scopes(service: &str) -> Vec<&'static str> {
-    match Provider::parse(service) {
-        Some(Provider::Slack) => match Provider::Slack.archetype() {
-            Archetype::Oauth2(flow) => flow.scopes.split(flow.scope_delimiter).collect(),
-            Archetype::AppInstall(_) => Vec::new(),
-        },
+    match (Provider::parse(service), Provider::Slack.archetype()) {
+        (Some(Provider::Slack), Archetype::Oauth2(flow)) => {
+            flow.scopes.split(flow.scope_delimiter).collect()
+        }
         _ => Vec::new(),
     }
 }

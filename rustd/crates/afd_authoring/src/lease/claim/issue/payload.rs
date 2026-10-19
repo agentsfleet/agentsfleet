@@ -3,7 +3,7 @@
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::{ENVELOPE_BYTES_MAX, Limits, ModelAccess, Pricing, SelectedModel};
 
-use super::{FENCE, Placement, WALL_SECONDS};
+use super::{FENCE, Placement};
 use crate::{
     Result,
     error::{ErrorKind, raise::stored},
@@ -34,7 +34,6 @@ pub(super) fn build(
         draft_id: hint.id.to_string(),
         sequence: selected.sequence.to_string(),
         fence: FENCE.to_string(),
-        deletion_generation: selected.draft.deletion_generation.to_string(),
         expires_at: placement.until,
         deadline: placement.deadline,
         model: selected_model(model),
@@ -50,8 +49,8 @@ pub(super) fn build(
             input_per_call: budget::INPUT_PER_CALL,
             output_per_turn: budget::output_limit(model),
             max_calls: budget::MAX_CALLS,
-            wall_seconds: WALL_SECONDS,
-            provider_timeout_seconds: budget::PROVIDER_TIMEOUT_MS / afd_billing::nanos::MS_PER_SEC,
+            wall_seconds: seconds(budget::WALL),
+            provider_timeout_seconds: seconds(budget::PROVIDER_TIMEOUT),
         },
     };
     let bytes = serde_json::to_vec(&payload).map_err(stored)?;
@@ -59,6 +58,11 @@ pub(super) fn build(
         .validate()
         .map_err(|_oversized| ErrorKind::Token)?;
     Ok(payload)
+}
+
+/// A limit the runner protocol spells in whole seconds.
+fn seconds(span: std::time::Duration) -> i64 {
+    i64::try_from(span.as_secs()).unwrap_or(i64::MAX)
 }
 
 fn selected_model(model: &RegisteredModel) -> SelectedModel {

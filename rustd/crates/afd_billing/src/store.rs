@@ -1,79 +1,46 @@
-//! The store every money read and write runs through.
+//! The reads every money gate runs through.
 //!
-//! Same shape as [`crate::runner::Runners`] and [`crate::lease::Leases`], for
-//! the same reason: the pool is OWNED here and [`Accounts::pool`] is
-//! `pub(crate)`, so nothing outside this crate can run a money statement that
-//! is not in [`crate::sql`], and a review of that module reads every statement
-//! the money path can run (Invariant 5).
+//! The pool is OWNED here and [`Accounts::pool`] is `pub(crate)`, so nothing
+//! outside this crate can run a billing statement that is not in
+//! [`crate::sql`] (Invariant 5). Money itself moves only through a
+//! [`Biller`](crate::biller::Biller); `Accounts` answers the questions a gate
+//! asks before any money moves: who pays, what a run's floor costs, and what a
+//! fleet has spent.
 //!
 //! # Why there is no rate cache
 //!
-//! A rate cache earns its keep when the catalogue generation is read in ONE
-//! statement and the rate looked up separately, so a cache hit saves the
-//! second round trip. It then needs a fixed-capacity table, a hash over the
-//! `(provider, model)` pair, and a generation stored beside every entry so a
-//! caller never accepts a rate older than the catalogue revision it observed.
-//! That machinery answers a real question — a stale rate prices a charge
-//! wrong, silently.
-//!
-//! [`crate::sql::LOAD_RATE_WITH_REVISION`] returns the rate and the generation
-//! it was read at in a single snapshot. Reading through that statement every
-//! time costs ONE round trip, and there is then no generation to compare, no
-//! entry to evict, and no window in which a resident rate can be older than
-//! the catalogue. A cache's entire purpose is to avoid a read that this shape
-//! does not perform.
-//!
-//! So the issue-time gate reads fresh. §3's renewal path prices a slice per
-//! renewal rather than once per lease, and may want a cache for LATENCY — but
-//! it would be an optimisation over a correct read, not a coherence mechanism,
-//! and it should be added with a measurement.
+//! [`crate::price::PriceBook::load`] is one indexed lookup on the model's
+//! `(provider, model_name)` and its price rows. Reading it every time costs ONE
+//! round trip, and there is then no version to compare, no entry to evict, and
+//! no window in which a resident rate can be older than the catalogue. A cache
+//! for latency would be an optimisation over a correct read, added with a
+//! measurement.
 
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
-/// Reads and writes against `billing.*`, plus the catalogue a charge is priced
-/// from.
+/// The billing reads a gate makes.
 ///
 /// Cheap to clone: `Db` is a handle over an `Arc`-backed pool, so every clone
-/// shares one connection set. The entropy source is the second field because a
-/// `billing.usage_ledger` row carries its own identifier and it is drawn
-/// through the workspace's one entropy surface rather than a second call to the
-/// operating system.
+/// shares one connection set.
 ///
 /// No queue. Every money decision is Postgres alone — which is worth stating,
 /// because it is what lets the whole gate pass be proven against a database
 /// with no Dragonfly in the picture.
-///
-/// # Not `Ledger`
-///
-/// The obvious name is taken, and by something that is not money:
-/// [`afd_db::migrate::Ledger`] is the SCHEMA-MIGRATION ledger — applied
-/// versions and failure rows over `audit.schema_migrations`. Two types called
-/// `Ledger` in one workspace, one about migrations and one about a tenant's
-/// credit, is an ambiguous import and a reader's coin flip. `Accounts` says
-/// what this one does in the vocabulary the domain already uses: it resolves
-/// who pays, reads what they have, and records what they were charged.
 #[derive(Debug, Clone)]
 pub struct Accounts {
     database: Db,
-    entropy: Entropy,
 }
 
 impl Accounts {
-    /// Accounts reading and writing through `database`.
+    /// Accounts reading through `database`.
     #[must_use]
-    pub const fn new(database: Db, entropy: Entropy) -> Self {
-        Self { database, entropy }
+    pub const fn new(database: Db) -> Self {
+        Self { database }
     }
 
     /// The pool these accounts read through, for the sibling modules that add
     /// verbs to [`Accounts`] in their own files.
     pub(crate) const fn pool(&self) -> &Db {
         &self.database
-    }
-
-    /// The entropy a `usage_ledger` row's identifier is minted from.
-    pub(crate) const fn entropy(&self) -> &Entropy {
-        &self.entropy
     }
 }

@@ -46,7 +46,7 @@ const XINFO_GROUPS: &str = "GROUPS";
 /// How many acknowledged entries a stream keeps above its floor.
 ///
 /// Nothing in the product reads acknowledged history off the stream — the
-/// event history is `core.fleet_events`, and the live tail is pub/sub — so the
+/// event history is `fleet.events`, and the live tail is pub/sub — so the
 /// bound is a diagnostic window, not a promise. It is also the ceiling on
 /// what a group restore can re-offer, so it stays small on purpose.
 pub const ACKNOWLEDGED_HISTORY: usize = 1_000;

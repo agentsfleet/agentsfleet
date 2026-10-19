@@ -7,20 +7,16 @@ mod lock_wait;
 mod suppressed_write;
 
 use super::super::{attempt::Attempt, fixture::Fixture};
-use afd_db::statement::NOW_MS;
 use afd_wire::authoring::{Knowledge, Meter, Renew};
+use jiff::Timestamp;
 
 /// Expires the attempt's lease at database time, the clock the guard reads.
-const EXPIRE_NOW: &str = const_format::concatcp!(
-    "UPDATE fleet.authoring_attempts SET lease_expires_at=",
-    NOW_MS,
-    " WHERE id=$1::uuid"
-);
+const EXPIRE_NOW: &str = "UPDATE authoring.attempts \
+SET lease_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1::uuid";
 
 fn request() -> Renew {
     Renew {
         fence: "1".into(),
-        deletion_generation: "0".into(),
         usage: Meter {
             knowledge: Knowledge::Known,
             calls: 0,
@@ -32,7 +28,8 @@ fn request() -> Renew {
     }
 }
 
-async fn snapshot(f: &Fixture, a: &Attempt) -> (i64, i64, String) {
-    sqlx::query_as("SELECT lease_expires_at,reported_runtime_ms,capability_hash FROM fleet.authoring_attempts WHERE id=$1::uuid")
-        .bind(a.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("renewal snapshot")
+async fn snapshot(f: &Fixture, a: &Attempt) -> (Timestamp, i64, String) {
+    let (expires, runtime, hash): (jiff_sqlx::Timestamp, i64, String) = sqlx::query_as("SELECT lease_expires_at,reported_runtime_ms,model_token_hash FROM authoring.attempts WHERE id=$1::uuid")
+        .bind(a.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("renewal snapshot");
+    (expires.to_jiff(), runtime, hash)
 }

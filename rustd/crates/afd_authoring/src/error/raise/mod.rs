@@ -19,5 +19,13 @@ pub(crate) fn stored(source: serde_json::Error) -> Error {
     .into()
 }
 
+/// A column every write of this crate fills read back empty: a stored fault,
+/// reported as unreadable stored data rather than a missing resource.
+pub(crate) fn absent(column: &'static str) -> Error {
+    stored(<serde_json::Error as serde::de::Error>::missing_field(
+        column,
+    ))
+}
+
 #[cfg(test)]
 mod tests;

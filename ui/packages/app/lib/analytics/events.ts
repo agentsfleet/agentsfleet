@@ -8,8 +8,6 @@
 
 export const EVENTS = {
   fleet_created: "fleet_created",
-  // Browser intent only; acceptance and completion belong to the daemon.
-  draft_review_opened: "draft_review_opened",
   workspace_switched: "workspace_switched",
   runner_token_minted: "runner_token_minted",
   api_key_minted: "api_key_minted",
@@ -28,7 +26,7 @@ export const EVENTS = {
   // mirroring fleet_viewed). Props carry the runner id and the coarse states
   // — never the host identifier, a token, or label values.
   runner_viewed: "runner_viewed",
-  // An operator saved a reviewed fleet setup from private chat. Props carry the
+  // An operator saved fleet setup from private chat. Props carry the
   // fleet id, which part of the setup changed, and the coarse outcome — never
   // the instructions or runtime config.
   fleet_source_saved: "fleet_source_saved",
@@ -48,7 +46,6 @@ export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 export type EventProps = {
   [EVENTS.fleet_created]: { fleet_id: string };
-  [EVENTS.draft_review_opened]: { workspace_id: string; draft_id?: string };
   [EVENTS.workspace_switched]: { workspace_id: string };
   [EVENTS.runner_token_minted]: { runner_id: string; sandbox_tier: string };
   [EVENTS.api_key_minted]: { api_key_id: string };
@@ -93,7 +90,7 @@ export type EventProps = {
   };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
-  // Saving a reviewed setup is the one edit that changes what the fleet does on
+  // Saving setup is the one edit that changes what the fleet does on
   // its next wake. `field` names which part moved (instructions|config);
   // `outcome` is the coarse success/failure. No setup text, no credential material.
   [EVENTS.fleet_source_saved]: { fleet_id: string; field: string; outcome: string };
@@ -120,7 +117,6 @@ export type EventProps = {
 // alone is erased at runtime).
 export const EVENT_PROP_KEYS = {
   [EVENTS.fleet_created]: ["fleet_id"],
-  [EVENTS.draft_review_opened]: ["workspace_id", "draft_id"],
   [EVENTS.workspace_switched]: ["workspace_id"],
   [EVENTS.runner_token_minted]: ["runner_id", "sandbox_tier"],
   [EVENTS.api_key_minted]: ["api_key_id"],

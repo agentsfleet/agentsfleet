@@ -21,8 +21,9 @@
 //! installs a bare `Registry` as the process-wide subscriber: every callsite
 //! stays on, so none registered after it is cached as disabled, and an event
 //! on a thread with no capture has its fields evaluated and is kept nowhere.
-//! That is what `afd_db::test_util::install_subscriber` sets up too, so a test
-//! binary that runs both gets the same process whichever installs first.
+//! [`install_subscriber`] sets a formatting subscriber over a sink instead, so
+//! a test binary that runs both gets a process with every callsite on
+//! whichever installs first.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
@@ -37,11 +38,39 @@ use tracing_subscriber::registry::{LookupSpan, Registry};
 /// The field every structured event names itself by (`docs/LOGGING_STANDARD.md` §3).
 const EVENT_FIELD: &str = "event";
 
+/// The field a failure line carries its sentence in.
+const REASON_FIELD: &str = "reason";
+
+/// How a registry code opens when an error's `Display` leads with it.
+const CODE_OPENER: &str = "[UZ-";
+
 /// Held by the one live [`Capture`].
 static SERIAL: Mutex<()> = Mutex::new(());
 
 /// Installs the process's global subscriber, once.
 static GLOBAL: Once = Once::new();
+
+/// Installs a process-wide subscriber so event macros actually run.
+///
+/// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates
+/// the fields inside it, so with no subscriber every field expression in every
+/// diagnostic is skipped: the failure path runs and the line reporting it does
+/// not, and llvm-cov scores those fields as never executed. The subscriber
+/// formats every level into a sink, so each field's `Display` or `Debug` runs
+/// too; the point is evaluation, not reading.
+///
+/// Idempotent. When a [`Capture`] or another suite set the global subscriber
+/// first, that one stays, and it keeps every callsite on as well.
+pub fn install_subscriber() {
+    static SINK: Once = Once::new();
+    SINK.call_once(|| {
+        let sink = tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_writer(std::io::sink)
+            .finish();
+        let _already_set = subscriber::set_global_default(sink);
+    });
+}
 
 /// One event a [`Capture`] saw.
 #[derive(Debug, Clone)]
@@ -58,6 +87,48 @@ impl CapturedEvent {
     pub fn field(&self, name: &str) -> Option<&str> {
         self.fields.get(name).map(String::as_str)
     }
+
+    /// Asserts the event's `reason` is a failure line's one-line sentence.
+    ///
+    /// See [`assert_uncoded`] for what that rules out.
+    ///
+    /// # Panics
+    ///
+    /// When the event carries no `reason`, or one [`assert_uncoded`] refuses;
+    /// the message names the event.
+    pub fn assert_uncoded_reason(&self) {
+        let reason = self.field(REASON_FIELD);
+        assert!(reason.is_some(), "a failure line says why: {self:?}");
+        assert_uncoded(
+            reason.unwrap_or_default(),
+            self.field(EVENT_FIELD).unwrap_or("event"),
+        );
+    }
+}
+
+/// Asserts `reason` is a failure line's sentence: present, one line, uncoded.
+///
+/// The registry code rides the line's own `error_code` field
+/// (`docs/LOGGING_STANDARD.md`), so a `[UZ-…]` prefix in the reason only
+/// repeats it, and a second line is a backtrace that rode along. `context`
+/// names the line in the failure message.
+///
+/// # Panics
+///
+/// When `reason` is empty, carries a registry code, or spans lines.
+pub fn assert_uncoded(reason: &str, context: &str) {
+    assert!(
+        !reason.is_empty(),
+        "{context}: the failure line says nothing"
+    );
+    assert!(
+        !reason.contains(CODE_OPENER),
+        "{context}: the reason repeats its code: {reason}"
+    );
+    assert!(
+        !reason.contains('\n'),
+        "{context}: a backtrace rode along: {reason}"
+    );
 }
 
 /// One span a [`Capture`] saw open, with every field recorded on it.

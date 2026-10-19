@@ -16,10 +16,10 @@ export interface ApiKeyRow {
   key_name: string;
   active: boolean;
   /** Epoch milliseconds. */
-  created_at: number;
+  created_at: string;
   /** Epoch milliseconds, or null when the key has never authenticated a call. */
   /** Epoch milliseconds, or null while the key is still active. */
-  revoked_at: number | null;
+  revoked_at: string | null;
 }
 
 export interface ApiKeyListResponse {
@@ -33,13 +33,13 @@ export interface CreatedApiKey {
   id: string;
   key_name: string;
   key: string;
-  created_at: number;
+  created_at: string;
 }
 
 export interface RevokedApiKey {
   id: string;
   active: boolean;
-  revoked_at: number;
+  revoked_at: string;
 }
 
 // A tenant's keys are human-created and number in the low tens, so the client

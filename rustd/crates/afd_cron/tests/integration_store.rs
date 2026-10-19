@@ -25,7 +25,7 @@ mod support;
 use afd_cron::model::MAX_SCHEDULES_PER_FLEET;
 use afd_cron::{DesiredStatus, Refused, Source, SyncStatus};
 
-use self::support::CronLane;
+use self::support::{CronLane, SEED_AT};
 
 /// An expression every fixture registers under.
 const NIGHTLY: &str = "0 3 * * *";
@@ -68,17 +68,17 @@ async fn a_new_schedule_wants_to_fire_and_admits_upstream_does_not_know_yet() {
     );
 }
 
-/// Generation ONE, never zero, and the column's own CHECK agrees.
+/// Version ONE, never zero, and the column's own CHECK agrees.
 ///
-/// Zero would make "never synced" and "synced at generation zero" the same
+/// Zero would make "never synced" and "synced at version zero" the same
 /// state to a finalize, which is the one comparison the fence turns on.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres"]
-async fn a_new_schedule_starts_at_generation_one() {
+async fn a_new_schedule_starts_at_version_one() {
     let lane = CronLane::open().await;
-    let created = lane.create("key-generation", NIGHTLY).await;
+    let created = lane.create("key-version", NIGHTLY).await;
 
-    assert_eq!(created.generation, 1);
+    assert_eq!(created.resource_version, 1);
 }
 
 /// A create is fenced from birth: it lands already claimed by its creator.
@@ -93,7 +93,7 @@ async fn a_new_schedule_is_already_held_by_the_caller_that_will_push_it() {
         "the creator holds it, or a syncer could push a schedule the creating \
          request has not finished writing"
     );
-    assert!(created.sync_lease_until.is_some());
+    assert!(created.sync_lease_expires_at.is_some());
 }
 
 // ── The three bounds ─────────────────────────────────────────────────────────
@@ -117,14 +117,14 @@ async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
             afd_cron::NewSchedule {
                 fleet: &foreign_fleet,
                 source: Source::Api,
-                source_key: Some("key-foreign"),
+                provider_schedule_id: Some("key-foreign"),
                 cron: NIGHTLY,
                 timezone: "UTC",
                 message: "run the nightly repair",
                 once: false,
             },
             &CronLane::token(),
-            CronLane::now(),
+            SEED_AT,
         )
         .await
         .expect("the lane answers");

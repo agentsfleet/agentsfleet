@@ -16,9 +16,9 @@ use crate::runtime::{ToolErrorCode, ToolOutput};
 
 /// How long a command runs when the model names no timeout: Codex's
 /// `DEFAULT_EXEC_COMMAND_TIMEOUT_MS`.
-pub(super) const TIMEOUT_MS_DEFAULT: u64 = 10_000;
+pub(super) const TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);
 /// The longest a command runs, whatever the model asks: ten minutes.
-pub(super) const TIMEOUT_MS_MAX: u64 = 600_000;
+pub(super) const TIMEOUT_MAX: Duration = Duration::from_mins(10);
 /// The event a command killed at its timeout logs under.
 pub(super) const EVENT_TIMED_OUT: &str = "process_timed_out";
 /// The event a command the kernel killed for memory logs under.
@@ -26,8 +26,14 @@ pub(super) const EVENT_OUT_OF_MEMORY: &str = "sandbox_out_of_memory";
 
 /// How long a command may run: what the model asked, or the default, never
 /// past the ceiling.
+///
+/// `asked` is the model's `timeout_ms` argument, a count of milliseconds
+/// because that is the name and unit the tool schema publishes; it becomes a
+/// `Duration` here, the one place the count is read.
 pub(super) fn timeout_of(asked: Option<u64>) -> Duration {
-    Duration::from_millis(asked.unwrap_or(TIMEOUT_MS_DEFAULT).min(TIMEOUT_MS_MAX))
+    asked
+        .map_or(TIMEOUT_DEFAULT, Duration::from_millis)
+        .min(TIMEOUT_MAX)
 }
 
 /// Runs `spawn` to its end under `timeout`, for lease `lease_id`, and answers

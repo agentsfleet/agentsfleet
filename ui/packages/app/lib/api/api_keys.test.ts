@@ -10,7 +10,7 @@ const keyRow = (id: string) => ({
   id,
   key_name: id,
   active: true,
-  created_at: 1700000000000,
+  created_at: "2023-11-14T22:13:20Z",
   revoked_at: null,
 });
 
@@ -56,7 +56,7 @@ describe("listApiKeys", () => {
 
 describe("createApiKey / revokeApiKey / deleteApiKey", () => {
   it("POSTs the create body verbatim", async () => {
-    requestMock.mockResolvedValue({ id: "k", key_name: "ci", key: "agt_tx", created_at: 1 });
+    requestMock.mockResolvedValue({ id: "k", key_name: "ci", key: "agt_tx", created_at: "1970-01-01T00:00:00.001Z" });
     await createApiKey("tok", { key_name: "ci", description: "runner" });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/api-keys",
@@ -66,7 +66,7 @@ describe("createApiKey / revokeApiKey / deleteApiKey", () => {
   });
 
   it("revoke PATCHes {active:false} and url-encodes the id", async () => {
-    requestMock.mockResolvedValue({ id: "a", active: false, revoked_at: 1 });
+    requestMock.mockResolvedValue({ id: "a", active: false, revoked_at: "1970-01-01T00:00:00.001Z" });
     await revokeApiKey("tok", "a b/c");
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/api-keys/a%20b%2Fc",

@@ -12,6 +12,9 @@ const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
+/** The instant `ms` names, as the daemon would write it on the wire. */
+const at = (ms: number): string => new Date(ms).toISOString();
+
 describe("ago renders every magnitude", () => {
   test.each([
     [45 * SECOND_MS, "45s"],
@@ -19,20 +22,20 @@ describe("ago renders every magnitude", () => {
     [36 * HOUR_MS, "1d"],
     [400 * DAY_MS, "1y"],
   ])("%s ms ago renders as %s", (elapsed, expected) => {
-    expect(ago(NOW - (elapsed as number), NOW)).toBe(expected as string);
+    expect(ago(at(NOW - (elapsed as number)), NOW)).toBe(expected as string);
   });
 
   test("each unit boundary reports the coarser unit, never the finer one", () => {
-    expect(ago(NOW - 59 * SECOND_MS, NOW)).toBe("59s");
-    expect(ago(NOW - MINUTE_MS, NOW)).toBe("1m");
-    expect(ago(NOW - 59 * MINUTE_MS, NOW)).toBe("59m");
-    expect(ago(NOW - HOUR_MS, NOW)).toBe("1h");
-    expect(ago(NOW - 23 * HOUR_MS, NOW)).toBe("23h");
-    expect(ago(NOW - 24 * HOUR_MS, NOW)).toBe("1d");
+    expect(ago(at(NOW - 59 * SECOND_MS), NOW)).toBe("59s");
+    expect(ago(at(NOW - MINUTE_MS), NOW)).toBe("1m");
+    expect(ago(at(NOW - 59 * MINUTE_MS), NOW)).toBe("59m");
+    expect(ago(at(NOW - HOUR_MS), NOW)).toBe("1h");
+    expect(ago(at(NOW - 23 * HOUR_MS), NOW)).toBe("23h");
+    expect(ago(at(NOW - 24 * HOUR_MS), NOW)).toBe("1d");
   });
 
   test("this instant reads as zero seconds, not as nothing", () => {
-    expect(ago(NOW, NOW)).toBe("0s");
+    expect(ago(at(NOW), NOW)).toBe("0s");
   });
 });
 
@@ -41,8 +44,9 @@ describe("ago refuses to invent an age", () => {
     ["undefined", undefined],
     ["null", null],
     ["NaN", Number.NaN],
-    ["a string", "1800000000000"],
-    ["a non-integer", 1_800_000_000_000.5],
+    ["a string that is not an instant", "1800000000000"],
+    ["a date with no time", "2027-01-15"],
+    ["an epoch-millisecond number", NOW],
     ["Infinity", Number.POSITIVE_INFINITY],
     ["an object", { created_at: NOW }],
   ])("%s renders the empty cell", (_label, value) => {
@@ -50,7 +54,7 @@ describe("ago refuses to invent an age", () => {
   });
 
   test("an instant in the future is clock disagreement, not a negative age", () => {
-    expect(ago(NOW + MINUTE_MS, NOW)).toBe(EMPTY_CELL);
-    expect(ago(NOW + MINUTE_MS, NOW)).not.toContain("-");
+    expect(ago(at(NOW + MINUTE_MS), NOW)).toBe(EMPTY_CELL);
+    expect(ago(at(NOW + MINUTE_MS), NOW)).not.toContain("-");
   });
 });

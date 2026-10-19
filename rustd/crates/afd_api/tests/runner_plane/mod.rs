@@ -21,18 +21,15 @@
 //! counter on a transport failure, so a datastore outage answered as a 401
 //! walks a healthy fleet's runners to shutdown one beat at a time.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::directory::Liveness;
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
 
-use self::harness::{Fleet, file_runner, json_body, runner_id, send};
+use self::harness::{Fleet, file_runner, runner_id, send};
 
 /// A well-formed runner credential: the marker and sixty-four hex characters.
 const RUNNER_TOKEN: &str = "agt_r0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -54,16 +51,6 @@ const FLEET_ID: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
 /// The identity-provider subject a fixture operator acts as.
 const OPERATOR: &str = "user_2abcOPERATOR";
-
-/// The registry code a refusal carries.
-async fn code_of(response: axum::response::Response) -> String {
-    json_body(response)
-        .await
-        .get("error_code")
-        .and_then(serde_json::Value::as_str)
-        .expect("every problem envelope carries an error code")
-        .to_owned()
-}
 
 /// Dimension 1.1 — every state a presented runner credential can be in.
 ///
@@ -276,3 +263,7 @@ mod authorization;
 mod memory;
 
 mod satellites;
+
+mod usage;
+
+mod schedule_guard;

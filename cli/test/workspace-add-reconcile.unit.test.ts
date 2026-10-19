@@ -58,7 +58,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
               {
                 id: WS_ID,
                 name: "recovered & ready",
-                created_at: 77,
+                created_at: "1970-01-01T00:00:00.077Z",
               },
             ],
             tenant_id: TENANT_ID,
@@ -87,7 +87,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
         {
           workspace_id: WS_ID,
           name: "recovered & ready",
-          created_at: 77,
+          created_at: "1970-01-01T00:00:00.077Z",
         },
       ],
     });
@@ -167,7 +167,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
             ? Effect.fail(original)
             : Effect.succeed({
                 tenant_id: TENANT_ID,
-                items: [{ id: WS_ID, name: "wanted", created_at: 81 }],
+                items: [{ id: WS_ID, name: "wanted", created_at: "1970-01-01T00:00:00.081Z" }],
                 total: null,
                 next_cursor: null,
               });
@@ -189,7 +189,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
     expect(workspacesState.value).toEqual({
       tenant_id: TENANT_ID,
       current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "wanted", created_at: 81 }],
+      items: [{ workspace_id: WS_ID, name: "wanted", created_at: "1970-01-01T00:00:00.081Z" }],
     });
     expect(rec.events.map(({ event }) => event)).toEqual([
       "workspace_add_completed",
@@ -214,7 +214,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
           {
             workspace_id: WS_ID_2,
             name: "old tenant",
-            created_at: 1,
+            created_at: "1970-01-01T00:00:00.001Z",
           },
         ],
       } as WorkspacesValue,
@@ -232,7 +232,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
             ? Effect.fail(original)
             : Effect.succeed({
                 tenant_id: TENANT_ID,
-                items: [{ id: WS_ID, name: "wanted", created_at: 81 }],
+                items: [{ id: WS_ID, name: "wanted", created_at: "1970-01-01T00:00:00.081Z" }],
                 total: null,
                 next_cursor: null,
               }),
@@ -247,7 +247,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
     expect(workspacesState.value).toEqual({
       tenant_id: TENANT_ID,
       current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "wanted", created_at: 81 }],
+      items: [{ workspace_id: WS_ID, name: "wanted", created_at: "1970-01-01T00:00:00.081Z" }],
     });
   });
 
@@ -260,7 +260,7 @@ describe("workspaceAddEffect — reconciles a conflict against the tenant list",
           {
             workspace_id: WS_ID_2,
             name: "unverified",
-            created_at: 1,
+            created_at: "1970-01-01T00:00:00.001Z",
           },
         ],
       } as WorkspacesValue,
