@@ -141,13 +141,13 @@ All 95 slots go (an earlier count of 97 was wrong; `git ls-files 'schema/*.sql'`
 Every query, row struct and fixture moves to the new tables and columns. Each item in the canonical doc's §Settled list is resolved from source: a cited reader keeps it, otherwise it is dropped, and the outcome is written into that section.
 
 - **Dimension 3.1** — the full integration lane passes on the rebuilt schema → Test `test_integration_lane_on_rebuilt_schema`
-- **Dimension 3.2** — every §Settled item carries a recorded outcome with a citation → Test `test_settled_columns_have_outcomes`
+- **Dimension 3.2** — every §Settled item carries a recorded outcome with a citation → Test `rubric R6` (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 3.3** — DONE — GitHub App JWT minting, the installation read, the scoped token mint and the `pull_request` and `workflow_run` webhook reads run on `reqwest` and `jsonwebtoken` 11; `octocrab` is absent from `Cargo.lock` → Test `test_github_app_without_octocrab`
 - **Dimension 3.4** — no converted crate holds a span or instant as integer milliseconds outside a protocol edge (Redis `PX`, Lua `ARGV`, a `BIGINT` span column, a wire span field), each edge converting in one place → Test `test_no_integer_millis_outside_edges`
 
 ### §4 — Behaviour that changes with the schema
 
-- **Dimension 4.1** — each deletion root in the matrix keeps attempts, settlements and charges and scrubs `dispatches.result` at once; an open draft and an installing fleet survive their sweeps → Test `test_deletion_matrix_keeps_money`
+- **Dimension 4.1** — the draft and fleet deletion roots keep attempts, settlements and charges and scrub `dispatches.result` at once; an open draft and an installing fleet survive their sweeps (user, workspace and tenant erasure is its own milestone) → Test `test_deletion_matrix_keeps_money`
 - **Dimension 4.2** — inside 24 hours from `created_at` the same key and body replay, a changed body or a different user is refused, and a deleted resource answers Gone; at the boundary and after it the key is new → Test `test_replay_receipt_window`
 - **Dimension 4.3** — deleting a Library card deletes its revisions; a fleet installed from it keeps its setup; drafts started from or published to it keep existing with the reference NULL; another tenant's card cannot be deleted → Test `test_library_delete_cascades_revisions`
 - **Dimension 4.4** — `tenant provider set` writes one `tenant_models` row and points the selection at it; reset stores NULL; a pointer to another tenant's model is refused → Test `test_tenant_selection_points_at_model`
@@ -175,7 +175,7 @@ Every query is rewritten here, so two fixes land with it rather than touching ea
 
 The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/agentsfleet/issues/771) and nothing superseded; every price is the provider's published rate for the request it bills. Machine identifiers are the providers' exact API model IDs, display names are labels, and existing provider keys stay (`gemini`, displayed "Google"). Provenance and the Oct 18 verification are in Discovery (Catalogue prices verified).
 
-- **Dimension 8.1** — the curated identity set is exactly #771's 17 entries; a picker row requires an exact context integer from its provider's own models API or, where that API needs a key or omits the limit, OpenRouter's public endpoints list for that provider's standard endpoint tag, with unreadable limits reported and unseeded → Test `test_curated_picker_lists_the_enabled_catalogue`
+- **Dimension 8.1** — the curated identity set is exactly #771's 17 entries plus `gpt-5.6-terra` as the advanced entry, 18 in all; a picker row requires an exact context integer from its provider's own models API or, where that API needs a key or omits the limit, OpenRouter's public endpoints list for that provider's standard endpoint tag, with unreadable limits reported and unseeded → Test `the complete curated document seeds every proved context on an empty database`
 - **Dimension 8.2** — `gpt-5.6-terra` is returned only when advanced models are requested; one boolean distinguishes it, with no availability vocabulary → Test `test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filter`
 - **Dimension 8.3** — MiniMax M3, superseded generations and serverless-deprecated DeepSeek V4 Pro 0813 have no catalogue rows; every database starts empty, so there are no saved selections to preserve → Test `pruned identities and price tiers are deleted with no orphan prices`
 - **Dimension 8.4** — a context tier prices the whole request: OpenAI at 272,000 input tokens is base and at 272,001 upper; Haiku 5.5 at 100,000 prompt tokens is base and at 100,001 upper, counting cache reads and writes → Test `test_context_tier_prices_the_whole_request`
@@ -316,10 +316,10 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 2.5 | integration | `test_migrate_refuses_edited_slot` | applied slot text changed → checksum refusal naming the version |
 | 2.6 | integration | `test_instant_columns_are_timestamptz_ms` | every `_at` column is `timestamp with time zone` at precision 3, and no other column is |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
-| 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
+| 3.2 | unit | rubric R6 | §Settled bullets in `postgres_schemas.md` → 0 without a kept, dropped or replaced outcome and a `schema/` citation |
 | 3.3 | unit | `test_github_app_without_octocrab` | with `test_github_pull_request_decodes_without_octocrab` and `test_github_workflow_run_decodes_without_octocrab`: `cargo tree -i octocrab` → not found (command evidence: no lint reads `Cargo.lock`, and `check_tests_call_code.py` forbids a test reading it); an App JWT minted with `jsonwebtoken` 11 → RS256 header, `iss` the App id, `exp` ≤ 10 minutes after `iat`; a `pull_request` and a `workflow_run` payload → decode into the fields the handlers read |
 | 3.4 | unit | `test_no_integer_millis_outside_edges` | per-crate scan of every converted crate → 0 integer-millisecond spans, instants or `*_MS` constants outside the listed edges (Redis `PX`, Lua `ARGV`, a `BIGINT` span column, a wire span field, the cursor token, the UUIDv7 layout, JWT NumericDate); a seeded `const X_MS: i64` fails the scan naming its file |
-| 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
+| 4.1 | integration | `test_deletion_matrix_keeps_money` | delete a draft, purge a fleet → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
 | 4.2 | integration | `test_replay_receipt_window` | same key at 23h59m → replay; changed body → refused; other user → refused; deleted resource → Gone; at 24h → new |
 | 4.3 | integration | `test_library_delete_cascades_revisions` | card A→draft→B, installed fleet → card and revisions gone; fleet intact; draft references NULL; foreign tenant → refused |
 | 4.4 | integration | `test_tenant_selection_points_at_model` | provider set → one row, selection points at it; reset → NULL row; another tenant's model id → refused |
@@ -335,7 +335,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
 | 7.5 | unit | `test_rows_decode_into_typed_structs` | scan of `rustd/crates/*/src` → 0 matches for `try_get`; a seeded `row.try_get(0)` fails the scan naming its file |
-| 8.1 | integration | `test_curated_picker_lists_the_enabled_catalogue` | all 17 identities with provider-API context proofs → exactly 17 default picker entries, `gemini` displayed "Google"; missing proof → reported and unseeded |
+| 8.1 | integration | `the complete curated document seeds every proved context on an empty database` | the allowlist's 18 identities, each with context evidence → a dry run lists all 18 as added and writes nothing; apply → exactly those 18 rows; a second run → no diff. A missing proof → `NOT SEEDED` and no row (`unverified exact contexts are reported without inventing a limit`) |
 | 8.2 | integration | `test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filter` | default → no Terra; explicit advanced read → Terra with `advanced=true`, all curated rows `false` |
 | 8.3 | integration | `pruned identities and price tiers are deleted with no orphan prices` | seed a non-curated identity and extra price tier in a test database; apply the curated set → both are deleted with no orphan price; repeat diff → no changes |
 | 8.4 | unit | `test_context_tier_prices_the_whole_request` | 272,000 / 272,001 OpenAI input; Haiku 99,000 input + 1,000 cache read vs + 1,001 → base vs upper on every token |
@@ -364,6 +364,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | R1 | Schema rebuilds from empty into the documented layout (§2–§4) | `make test-integration-rustd` | exit 0 | P0 | |
 | R2 | No code or live doc names a removed table (§3, §6) | the inventory check below | 0 | P0 | |
 | R3 | Conventions carry the rules (§1) | `grep -c "Counter and pointer names" .orly/docs/SCHEMA_CONVENTIONS.md` | 1 | P1 | |
+| R6 | Every §Settled item records its outcome and a slot citation (§3) | `python3 -c "import re;t=open('docs/architecture/postgres_schemas.md').read().split('## Settled while implementing',1)[1].split(chr(10)+'## ',1)[0];print(sum(1 for x in re.split(r'\n(?=- \*\*)',t)[1:] if not (re.search(r'— (kept\|dropped\|replaced)',x) and re.search(r'schema/\d+_',x))))"` | 0 | P1 | |
 | R5 | No whole-row JSON reads remain (§7) | `git grep -cE "to_jsonb\([a-z]+\)" -- 'rustd/**/src/**/*.rs' \| wc -l` | 0 | P1 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -478,7 +479,7 @@ git grep -nE "(^|[^A-Za-z0-9_.])(${pat})([^A-Za-z0-9_[]|$)" -- rustd ui cli scri
 - **Runner protocol stays unpublished** — Oct 19, 2026: Dimension 6.2 asked for a public runner-protocol page, but the docs repository's rules forbid one (`~/Projects/docs/AGENTS.md:54`: "Do not document internal agent pipeline internals (NullClaw config details, runner RPC protocol)"). A spec that contradicts a rule is amended, so 6.2 drops that page and keeps closed-draft retention, the retry window and Library deletion; the runner wire stays described in `docs/architecture/` and the generated `public/openapi.json`.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
-- **Deferrals** — none.
+- **Deferrals** — user, workspace and tenant erasure (Dimension 4.1): Indy (2026-10-19), via AskUserQuestion: "Narrow 4.1 (recommended)", whose option read "Draft and fleet purge only; user, workspace and tenant erasure becomes its own milestone."
 
 ## Review prompt (Codex — Aiwa CTO with Astra)
 

@@ -180,6 +180,19 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
                 code, output = lint_tree(files)
                 self.assertIn(f"rustd/crates/afd_fleet/src/lease.rs:1: rust-integer-millis: {named}", output)
 
+    def test_rows_decode_into_typed_structs(self) -> None:
+        for line in ("let id: i64 = row.try_get(0)?;\n", "let name = row.try_get::<String, _>(\"name\")?;\n"):
+            with self.subTest(line=line):
+                files = clean_tree()
+                files["rustd/crates/afd_fleet/src/lease.rs"] = line
+                code, output = lint_tree(files)
+                self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+                self.assertIn("rustd/crates/afd_fleet/src/lease.rs:1: rust-untyped-row: ", output)
+        files = clean_tree()
+        files["rustd/crates/afd_fleet/src/lease.rs"] = "// row.try_get(0) belongs in a FromRow struct\n#[cfg(test)]\nmod tests { fn f() { row.try_get(0); } }\n"
+        code, output = lint_tree(files)
+        self.assertNotIn("rust-untyped-row", output)
+
     def test_an_empty_scan_is_a_finding(self) -> None:
         files = {k: v for k, v in clean_tree().items() if not k.startswith("rustd/crates/afd")}
         code, output = lint_tree(files)
