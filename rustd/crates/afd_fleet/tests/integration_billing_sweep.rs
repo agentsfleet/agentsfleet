@@ -175,7 +175,7 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 /// Leaves `held`'s lease active but abandoned: its deadline and its cursor
 /// both pushed back past the sweeper's grace, with three seconds of run time
 /// between them that no renewal billed. Answers that tail in milliseconds.
-async fn abandon(held: &Held) -> i64 {
+pub(crate) async fn abandon(held: &Held) -> i64 {
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     let lease = held.issued.lease_id.as_str();
     let mut connection = held
@@ -223,7 +223,7 @@ async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
 /// The state a crash leaves: the lease's hold placed and one line logged, then
 /// the process died — no settle, no release — and the lease expired
 /// unreported, all longer ago than the sweeper's grace.
-async fn orphan(held: &Held, biller: &LedgerBiller) {
+pub(crate) async fn orphan(held: &Held, biller: &LedgerBiller) {
     let database = &held.fixtures.database;
     let settlement = settlement(held).await;
     let placed = biller

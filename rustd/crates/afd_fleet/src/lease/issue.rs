@@ -120,11 +120,12 @@ impl Leases {
         .await
         .map_err(query(CONTEXT_ISSUE))?;
         // The tally arm is the statement's own row count, and it writes
-        // exactly when the fenced lease did.
-        if written.rows_affected() == 0 {
-            return Ok(None);
-        }
-        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
+        // exactly when the fenced lease did. The choice record cannot miss
+        // here — the host row is locked since `capacity` read its version —
+        // and is checked beside the fence the way the authoring claim checks it.
+        if written.rows_affected() == 0
+            || !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await?
+        {
             return Ok(None);
         }
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;

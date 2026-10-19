@@ -40,6 +40,7 @@ mod bindings;
 mod cases;
 mod faults;
 mod history;
+mod money;
 mod seed;
 mod slack;
 mod stops;

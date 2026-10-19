@@ -145,13 +145,12 @@ impl Leases {
             transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
             return Ok(answer.verdict(capacity.now()));
         };
-        let settlement = match slice.into_slice() {
-            Some(slice) => pricing.settlement(lease_key, slice, lease.requests)?,
-            None => None,
-        };
-        if let Some(settled) = settlement.as_ref() {
-            afd_billing::ledger::log_lines(&mut *transaction, self.entropy(), now, settled).await?;
-        }
+        // Extended means the guard row matched, and the slice is read off that
+        // same row, so it is always present here.
+        let settlement = slice.into_slice().map_or(Ok(None), |slice| {
+            pricing.settlement(lease_key, slice, lease.requests)
+        })?;
+        usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
         transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
         Ok(Renewed::Extended {
             expires_at,

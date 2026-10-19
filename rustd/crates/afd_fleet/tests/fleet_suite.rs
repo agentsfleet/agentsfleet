@@ -23,6 +23,8 @@ mod setup;
     reason = "test support shared with `afd_dragonfly`, which uses the half this suite does not"
 )]
 mod fake_redis;
+#[path = "support/fleet_faulty_biller.rs"]
+mod faulty_biller;
 #[path = "support/fleet_lease_reads.rs"]
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
@@ -53,6 +55,8 @@ mod integration_activity_publish;
 mod integration_admission_recovery;
 #[path = "integration_billing_sweep.rs"]
 mod integration_billing_sweep;
+#[path = "integration_billing_sweep_faults.rs"]
+mod integration_billing_sweep_faults;
 mod integration_credential_mint;
 #[path = "integration_delivery_lookup.rs"]
 mod integration_delivery_lookup;
@@ -67,6 +71,8 @@ mod integration_lease_assign;
 mod integration_lease_billing_races;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
+#[path = "integration_lease_edges.rs"]
+mod integration_lease_edges;
 #[path = "integration_lease_expiry_lock.rs"]
 mod integration_lease_expiry_lock;
 #[path = "integration_lease_fairness.rs"]
@@ -76,6 +82,8 @@ mod integration_lease_gates;
 mod integration_lease_history;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_issue_refusals.rs"]
+mod integration_lease_issue_refusals;
 #[path = "integration_lease_plan.rs"]
 mod integration_lease_plan;
 #[path = "integration_lease_ready.rs"]
@@ -119,6 +127,8 @@ mod integration_recovery_row_locks;
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]
 mod integration_renew_coverage;
+#[path = "integration_renew_gate_edges.rs"]
+mod integration_renew_gate_edges;
 #[path = "integration_reply_destination.rs"]
 mod integration_reply_destination;
 #[path = "integration_report_commit.rs"]
