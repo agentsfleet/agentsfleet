@@ -29,9 +29,9 @@ pub struct Spend<'a> {
     pub model: &'a str,
     /// The sandbox posture, in the spelling the lease row stored.
     pub posture: &'a str,
-    /// Prompt tokens for the whole run, cached ones included.
+    /// Prompt tokens for the whole run, cache reads and writes included.
     pub input_tokens: u64,
-    /// The cached subset of the above. Never a third direction.
+    /// The cache-read subset of the above. Never a third direction.
     pub cached_input_tokens: u64,
     /// Completion tokens for the whole run.
     pub output_tokens: u64,

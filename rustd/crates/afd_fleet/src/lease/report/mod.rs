@@ -47,16 +47,8 @@ use crate::lease::verdict::{Terminal, Verdict};
 use afd_billing::Nanos;
 use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
-use afd_core::error_code::{Coded as _, Logged};
 
-use crate::lease::store::Leases;
-
-/// The run-token sum's statement.
-const SELECT_RUN_TOKENS: &str = include_str!("../sql/select_run_tokens.sql");
-
-/// Logged when a settled run's token sum could not be read; its metrics
-/// record zero tokens.
-const EVENT_RUN_TOKENS_UNREAD: &str = "report_run_tokens_unread";
+pub use tokens::RunTokens;
 
 /// What one settled report leaves its caller with.
 ///
@@ -112,17 +104,6 @@ pub struct Reconciled {
     /// The tokens the run's usage lines record, every renewal's and the
     /// report's: what its cost metrics and delivery span describe.
     pub tokens: RunTokens,
-}
-
-/// A run's tokens, summed from the usage lines billing logged for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, sqlx::FromRow)]
-pub struct RunTokens {
-    /// Uncached prompt tokens.
-    pub input_tokens: i64,
-    /// Prompt tokens read from the provider's cache.
-    pub cached_input_tokens: i64,
-    /// Completion tokens.
-    pub output_tokens: i64,
 }
 
 impl Plane {
@@ -284,37 +265,6 @@ fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String>
 /// Takes the lease BY VALUE: every string field moves into the answer rather
 /// than being cloned, which is why the two call sites read the lease's columns
 /// through this and not before it.
-impl Leases {
-    /// The tokens `lease`'s usage lines record.
-    ///
-    /// Read after the report committed, so every renewal's lines and the
-    /// report's are in. Metrics only: a read that fails is logged and answers
-    /// zero rather than failing a report that already settled.
-    async fn run_tokens(&self, lease: &Uuid7) -> RunTokens {
-        let read = async {
-            let mut connection = self.pool().acquire().await?;
-            sqlx::query_as::<_, RunTokens>(SELECT_RUN_TOKENS)
-                .bind(afd_billing::sql::work::FLEET_LEASE)
-                .bind(lease.as_str())
-                .fetch_one(&mut *connection)
-                .await
-                .map_err(crate::error::query(EVENT_RUN_TOKENS_UNREAD))
-        }
-        .await;
-        read.unwrap_or_else(|fault: crate::Error| {
-            let Logged { error_code, reason } = fault.logged();
-            tracing::warn!(
-                error_code,
-                lease_id = lease.as_str(),
-                reason,
-                event = EVENT_RUN_TOKENS_UNREAD,
-                "a settled run's tokens could not be read; its metrics record none"
-            );
-            RunTokens::default()
-        })
-    }
-}
-
 fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens) -> Reconciled {
     Reconciled {
         tokens,
@@ -353,6 +303,7 @@ fn posture_of(lease: &Reported) -> Posture {
 }
 
 mod steps;
+mod tokens;
 
 #[cfg(test)]
 mod tests;

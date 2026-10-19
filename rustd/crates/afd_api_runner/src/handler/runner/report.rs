@@ -183,19 +183,27 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
         },
     }
 
-    cost::invocation(&Spend {
-        model: &settled.model,
-        posture: &settled.posture,
-        input_tokens: count(settled.tokens.input_tokens),
-        cached_input_tokens: count(settled.tokens.cached_input_tokens),
-        output_tokens: count(settled.tokens.output_tokens),
-        wall: reported_wall(request),
-        error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
-    });
+    cost::invocation(&spend_of(settled, request));
 
     // Spend is recorded where the biller settles, once per settlement, so
     // renewals, this report and the sweeper's retries all count there and
     // nowhere else.
+}
+
+/// The finished run, as the cost families record it.
+///
+/// Input is the whole prompt for the reason [`delivery_of`] gives; the cache
+/// reads are recorded again as their own subset family.
+fn spend_of<'a>(settled: &'a Reconciled, request: &ReportRequest<'_>) -> Spend<'a> {
+    Spend {
+        model: &settled.model,
+        posture: &settled.posture,
+        input_tokens: count(settled.tokens.prompt()),
+        cached_input_tokens: count(settled.tokens.cached_input_tokens),
+        output_tokens: count(settled.tokens.output_tokens),
+        wall: reported_wall(request),
+        error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
+    }
 }
 
 /// The finished run, as the span that describes it.
@@ -203,9 +211,9 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
 /// Borrowed from what the settle produced: the lease row's identity, which
 /// only the plane could resolve, and the tokens its usage lines record.
 ///
-/// Input tokens are SUMMED with the cached ones because the standard's
-/// `gen_ai.usage.input_tokens` already includes the cached portion — cache
-/// detail is its own subset metric, never a third additive direction.
+/// Input is the whole prompt, cache reads and writes included, because the
+/// standard's `gen_ai.usage.input_tokens` counts every cached class: the lines
+/// store the three apart, so leaving any out would undercount the run.
 fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> Delivery<'a> {
     Delivery {
         tenant_id: settled.tenant_id.as_str(),
@@ -215,8 +223,7 @@ fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> D
         posture: &settled.posture,
         provider: &settled.provider,
         model: &settled.model,
-        input_tokens: count(settled.tokens.input_tokens)
-            + count(settled.tokens.cached_input_tokens),
+        input_tokens: count(settled.tokens.prompt()),
         output_tokens: count(settled.tokens.output_tokens),
         wall: reported_wall(request),
     }
@@ -236,4 +243,92 @@ fn count(sum: i64) -> u64 {
 /// absorbs but a total nothing recovers from until the window rolls.
 fn reported_wall(request: &ReportRequest<'_>) -> Duration {
     Duration::from_millis(request.telemetry.wall_ms).min(afd_observability::MAX_RUN)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use afd_core::id::Uuid7;
+    use afd_fleet::lease::report::{Reconciled, RunTokens};
+    use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+
+    use super::{delivery_of, spend_of};
+
+    /// One run's usage lines, summed: every prompt class non-zero and distinct,
+    /// so a total that dropped or doubled any one of them cannot match.
+    const TOKENS: RunTokens = RunTokens {
+        input_tokens: 1_000,
+        cached_input_tokens: 400,
+        cache_write_tokens: 250,
+        output_tokens: 90,
+    };
+
+    /// The whole prompt [`TOKENS`] carries.
+    const PROMPT: u64 = 1_650;
+
+    /// A first report of a settled run whose lines summed to `tokens`.
+    fn settled(tokens: RunTokens) -> Result<Reconciled, &'static str> {
+        let id = Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
+            .map_err(|_malformed| "a fixture identifier is well formed")?;
+        Ok(Reconciled {
+            charged: afd_billing::Nanos::ZERO,
+            fleet_id: id.clone(),
+            workspace_id: id.clone(),
+            tenant_id: id,
+            event_id: "event-fixture".to_owned(),
+            posture: "platform".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-opus-5".to_owned(),
+            repeated: false,
+            tokens,
+        })
+    }
+
+    /// A processed report; the totals under test come from the lines, not here.
+    fn request() -> ReportRequest<'static> {
+        ReportRequest {
+            lease_id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000fee7"),
+            event_id: Cow::Borrowed("event-fixture"),
+            fencing_token: 1,
+            outcome: Outcome::Processed,
+            failure_reason: None,
+            failure_detail: Cow::Borrowed(""),
+            response_text: Cow::Borrowed("done"),
+            tokens: 0,
+            requests: afd_wire::usage::RequestLines::default(),
+            telemetry: ReportTelemetry {
+                time_to_first_token_ms: 0,
+                wall_ms: 1_250,
+            },
+            checkpoint: ReportCheckpoint {
+                last_event_id: Cow::Borrowed("event-fixture"),
+                last_response: Cow::Borrowed("done"),
+            },
+            tool_calls: None,
+            held_until: None,
+        }
+    }
+
+    /// A run whose lines wrote the cache counts the writes as input on the
+    /// cost family and the delivery span alike; the reads stay their own
+    /// subset and output is untouched.
+    #[test]
+    fn test_cache_writes_count_as_input_tokens() -> Result<(), &'static str> {
+        let settled = settled(TOKENS)?;
+        let request = request();
+
+        let spend = spend_of(&settled, &request);
+        assert_eq!(spend.input_tokens, PROMPT, "reads and writes are input");
+        assert_eq!(spend.cached_input_tokens, 400, "the read subset alone");
+        assert_eq!(spend.output_tokens, 90);
+
+        let delivery = delivery_of(&settled, &request);
+        assert_eq!(
+            delivery.input_tokens, PROMPT,
+            "the span agrees with the meter"
+        );
+        assert_eq!(delivery.output_tokens, 90);
+        Ok(())
+    }
 }

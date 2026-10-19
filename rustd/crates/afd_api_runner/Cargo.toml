@@ -49,5 +49,9 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
+[dev-dependencies]
+# The settled run a report test builds names its charge in `Nanos`.
+afd_billing.workspace = true
+
 [lints]
 workspace = true
