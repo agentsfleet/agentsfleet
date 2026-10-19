@@ -49,10 +49,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # property of the transport and of the hub's one pumped connection — there is no
 # publisher in a unit test to observe it with.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
-# So the event macros in the code under test evaluate their fields. Without a
-# subscriber every field expression is skipped, and a test that closes a tail
-# would prove the close path runs without ever proving the line reporting it
-# does. Output goes to a sink.
-tracing-subscriber.workspace = true
-# The trace capture a closed tail's line is read back through.
+# The trace capture a closed tail's line is read back through, and the sink
+# subscriber that makes the event macros under test evaluate their fields.
 afd_core = { workspace = true, features = ["test-util"] }

@@ -90,7 +90,7 @@ impl KeySetSource for NeverAnswers {
 /// exist together to prevent.
 #[test]
 fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let source = YieldingKeySet {
             document: format!(
@@ -125,7 +125,7 @@ fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
 /// issuer" sends them to the network.
 #[test]
 fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let verifier =
             JwksVerifier::new(NeverAnswers, VerifierConfig::new(ISSUER, AUDIENCE), clock());
@@ -151,7 +151,7 @@ fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
 /// is why every test in this file installs one.
 #[test]
 fn test_declined_keys_are_reported_when_a_set_is_installed() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let document = format!(
             "{{\"keys\":[{{\"kty\":\"EC\",\"kid\":\"ec\"}},\

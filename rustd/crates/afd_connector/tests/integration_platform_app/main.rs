@@ -78,7 +78,7 @@ impl Deployment {
     /// Opens the shared lane and seeds the tenant and workspace rows the
     /// vault's foreign key requires.
     pub(crate) async fn create() -> Self {
-        afd_db::test_util::install_subscriber();
+        afd_core::test_util::trace::install_subscriber();
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();

@@ -89,8 +89,7 @@ redis.workspace = true
 # against a loopback Slack, and a stand-in for an HTTP round trip would prove
 # nothing about the request this actually builds.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util", "net", "io-util"] }
-# Installed by the integration harness so event macros evaluate their fields;
-# see `install_subscriber` for why that is a correctness concern.
+# The attempt-count suite's capture layer (`tests/integration_attempt_count`).
 tracing-subscriber.workspace = true
 
 [lints]

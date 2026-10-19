@@ -330,21 +330,9 @@ fn lane_url() -> String {
 
 /// Installs a subscriber so event macros actually run.
 ///
-/// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates the
-/// fields inside it, so with no subscriber every field expression in every
-/// diagnostic is skipped — the failure path runs and the line reporting it does
-/// not, and llvm-cov scores those fields as never executed. Output goes to a
-/// sink; the point is evaluation, not reading.
-pub fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _already_set = tracing::subscriber::set_global_default(subscriber);
-    });
-}
+/// Re-exported for the live suites that already reach it through this seed
+/// home; the one implementation is `afd_core`'s.
+pub use afd_core::test_util::trace::install_subscriber;
 
 #[cfg(test)]
 mod tests;

@@ -128,7 +128,7 @@ impl Round {
         reason = "the fake vendor listens on loopback; a test client needs neither a deadline nor a proxy rule"
     )]
     async fn over(lane: TestDatabase, vendor: &FakeAtlassian) -> Self {
-        afd_db::test_util::install_subscriber();
+        afd_core::test_util::trace::install_subscriber();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
         let admin = mint_id();

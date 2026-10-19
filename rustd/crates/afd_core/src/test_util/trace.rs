@@ -21,8 +21,9 @@
 //! installs a bare `Registry` as the process-wide subscriber: every callsite
 //! stays on, so none registered after it is cached as disabled, and an event
 //! on a thread with no capture has its fields evaluated and is kept nowhere.
-//! That is what `afd_db::test_util::install_subscriber` sets up too, so a test
-//! binary that runs both gets the same process whichever installs first.
+//! [`install_subscriber`] sets a formatting subscriber over a sink instead, so
+//! a test binary that runs both gets a process with every callsite on
+//! whichever installs first.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
@@ -42,6 +43,28 @@ static SERIAL: Mutex<()> = Mutex::new(());
 
 /// Installs the process's global subscriber, once.
 static GLOBAL: Once = Once::new();
+
+/// Installs a process-wide subscriber so event macros actually run.
+///
+/// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates
+/// the fields inside it, so with no subscriber every field expression in every
+/// diagnostic is skipped: the failure path runs and the line reporting it does
+/// not, and llvm-cov scores those fields as never executed. The subscriber
+/// formats every level into a sink, so each field's `Display` or `Debug` runs
+/// too; the point is evaluation, not reading.
+///
+/// Idempotent. When a [`Capture`] or another suite set the global subscriber
+/// first, that one stays, and it keeps every callsite on as well.
+pub fn install_subscriber() {
+    static SINK: Once = Once::new();
+    SINK.call_once(|| {
+        let sink = tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_writer(std::io::sink)
+            .finish();
+        let _already_set = subscriber::set_global_default(sink);
+    });
+}
 
 /// One event a [`Capture`] saw.
 #[derive(Debug, Clone)]
