@@ -234,4 +234,34 @@ mod tests {
             assert_eq!(read, Some(state), "{} reads back", state.as_str());
         }
     }
+
+    /// Spec Dimension 4.5: the runner wire lost its deletion generation, and
+    /// the draft message response kept the `operation_id` the message was
+    /// accepted under.
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "a fixture id that fails to parse should fail the test"
+    )]
+    fn the_message_response_carries_its_operation_id() {
+        let operation = "01890a5d-ac96-774b-bcce-b302099a8063";
+        let message = super::Message {
+            sequence: "1".to_owned(),
+            operation_id: super::Uuid7::parse(operation).expect("a UUIDv7 fixture"),
+            role: "user",
+            state: MessageState::Queued,
+            text: None,
+            candidate_id: None,
+            usage: None,
+            failure: None,
+            created_at: jiff::Timestamp::UNIX_EPOCH,
+            finished_at: None,
+        };
+        let written = serde_json::to_value(&message).expect("a message writes");
+        assert_eq!(
+            written.get("operation_id"),
+            Some(&serde_json::json!(operation))
+        );
+        assert_eq!(written.get("deletion_generation"), None);
+    }
 }
