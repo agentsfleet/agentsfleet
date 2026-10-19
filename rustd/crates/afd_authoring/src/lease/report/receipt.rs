@@ -67,24 +67,24 @@ pub(super) async fn insert(
     Ok(())
 }
 
+/// Files the receipt of the private answer whose digest is `digest`.
 pub(super) async fn answer(
     drafts: &Drafts,
     connection: &mut PgConnection,
     attempt: &Attempt,
     prepared: &Prepared,
+    digest: &str,
     now: Timestamp,
 ) -> Result<()> {
-    if let Some(digest) = prepared.answer_digest.as_ref() {
-        sqlx::query(sql::ANSWER_RECEIPT)
-            .bind(drafts.mint(now)?.as_str())
-            .bind(attempt.draft_id.as_str())
-            .bind(attempt.id.as_str())
-            .bind(prepared.report_id.as_str())
-            .bind(digest)
-            .bind(crate::model::budget::PRIVATE_TTL)
-            .execute(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-    }
+    sqlx::query(sql::ANSWER_RECEIPT)
+        .bind(drafts.mint(now)?.as_str())
+        .bind(attempt.draft_id.as_str())
+        .bind(attempt.id.as_str())
+        .bind(prepared.report_id.as_str())
+        .bind(digest)
+        .bind(crate::model::budget::PRIVATE_TTL)
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
     Ok(())
 }

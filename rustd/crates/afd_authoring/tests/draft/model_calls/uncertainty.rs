@@ -109,3 +109,64 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
     assert_eq!(provider.count(), 1);
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
+    use afd_wire::authoring::{Knowledge, Meter, Renew};
+    let f = Fixture::create().await;
+    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+    let mut stub = Provider::known();
+    stub.blocked = true;
+    let provider = Arc::new(stub);
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
+    let task = tokio::spawn({
+        let (runner, lease, request) = (
+            f.runner.clone(),
+            attempt.lease.clone(),
+            fixture::request(&attempt),
+        );
+        async move { calls.call(&runner, &lease, request).await }
+    });
+    tokio::time::timeout(Duration::from_secs(5), provider.arrived())
+        .await
+        .expect("the dispatch reached the provider");
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
+        .bind(f.model.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the owner removes the model mid-dispatch");
+    let renewal = Renew {
+        fence: "1".into(),
+        usage: Meter {
+            knowledge: Knowledge::Known,
+            calls: 0,
+            input_tokens: Some(0),
+            output_tokens: Some(0),
+            runtime_ms: 0,
+            provider_cost_nanos: None,
+        },
+    };
+    let refused = f
+        .drafts
+        .renew(&f.runner, &attempt.lease, renewal)
+        .await
+        .expect_err("the pinned model is gone");
+    assert_eq!(refused.code(), error_code::AUTHORING_MODEL);
+    let reason: Option<String> =
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.messages WHERE draft_id=$1::uuid")
+            .bind(attempt.draft.id.as_str())
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("the failed message");
+    assert_eq!(
+        reason.as_deref(),
+        Some("provider_usage_unknown"),
+        "the in-flight dispatch outranks the model refusal"
+    );
+    provider.resume();
+    task.await
+        .expect("late task")
+        .expect_err("the late reply cannot publish");
+    f.cleanup().await;
+}

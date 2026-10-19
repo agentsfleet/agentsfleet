@@ -168,8 +168,10 @@ async fn failure(
     reason: FailureReason,
     owed: &mut Owed,
 ) -> Result<()> {
+    // The claim holds the draft's lock, which every writer of a message takes,
+    // so the message it selected queued is still queued: this write finishes it.
     let failed = MessageState::Failed.as_str();
-    let changed = sqlx::query(crate::sql::message::FAIL)
+    sqlx::query(crate::sql::message::FAIL)
         .bind(gate.selected.draft.id.as_str())
         .bind(gate.selected.sequence)
         .bind(failed)
@@ -178,8 +180,6 @@ async fn failure(
         .execute(&mut *connection)
         .await
         .map_err(query(sql::CONTEXT))?;
-    if changed.rows_affected() == 1 {
-        owed.finished(connection, gate.hint.into(), failed).await?;
-    }
+    owed.finished(connection, gate.hint.into(), failed).await?;
     Ok(())
 }

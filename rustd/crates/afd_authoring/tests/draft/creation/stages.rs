@@ -10,11 +10,15 @@
 
 use super::super::{fixture::now, mint, refusal::Refusal};
 use super::fixture::{Case, NO_ADMISSIONS, NO_EVENTS, check};
+use afd_admission::{Admissions, Budgets};
+use afd_authoring::Creations;
 use afd_authoring::{
     SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
 };
+use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{FleetStreams, fleet_stream_key};
 
 /// The initial run each case asks for, so a repeated stage would show as a
@@ -243,3 +247,41 @@ const SIBLING_HOLDS: &str = "UPDATE fleet.admissions \
 /// The sibling finishing without a receipt: its claim is released.
 const SIBLING_RELEASES: &str =
     "UPDATE fleet.admissions SET replay_claim_expires_at = NULL WHERE fleet_id = $1::uuid";
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_initial_run_over_the_fleet_backlog_budget_activates_blocked() {
+    let c = Case::create().await;
+    c.fund().await;
+    let full =
+        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()).with_budgets(Budgets {
+            fleet_backlog: 0,
+            ..Budgets::default()
+        });
+    let creations = Creations::new(c.setup.clone(), c.queue.clone(), full);
+    let start = Start::RunNow {
+        message: "Run once setup finishes".to_owned(),
+    };
+    let (_, request) = c.request("backlog-full", start).await;
+    let saved = creations
+        .save(c.base.access(), &mint(), request, now())
+        .await
+        .expect("a full backlog holds the run, not the setup");
+    assert_eq!(saved.status, "active");
+    let blocked = matches!(
+        &saved.start,
+        StartOutcome::RunNow {
+            state: StartState::Blocked,
+            event_id: None,
+            error_code: Some(code),
+        } if code == error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+    );
+    assert!(
+        blocked,
+        "the run names the capacity refusal: {:?}",
+        saved.start
+    );
+    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.stream_events(&saved.id).await, NO_EVENTS);
+    c.cleanup().await;
+}
