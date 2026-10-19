@@ -29,6 +29,7 @@ mod registry_default;
 mod registry_page;
 mod registry_tenancy;
 mod registry_walk;
+mod resolution_locks;
 mod rotation;
 mod selection_pointer;
 
