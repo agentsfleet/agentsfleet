@@ -163,3 +163,6 @@ async fn release(connection: &mut PgConnection, ids: &[&str]) -> Result<()> {
         .map(drop)
         .map_err(query(CONTEXT_REPLAY))
 }
+
+#[cfg(test)]
+mod tests;

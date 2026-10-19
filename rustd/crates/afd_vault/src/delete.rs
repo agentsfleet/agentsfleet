@@ -111,24 +111,22 @@ impl Directory {
             return Err(still_referenced(entry_count(references)));
         }
 
+        // The row lock `secret_is_held` took holds the row until this
+        // transaction ends, so the delete below always finds it: a racing
+        // delete blocks at that lock and answers absence there instead.
         let unreadable = query(CONTEXT_DELETE);
         sqlx::query(sql::LOCK_SELECTION)
             .bind(&tenant)
             .fetch_all(&mut **transaction)
             .await
             .map_err(&unreadable)?;
-
-        let removed = sqlx::query(sql::DELETE_SECRET)
+        sqlx::query(sql::DELETE_SECRET)
             .bind(workspace.as_str())
             .bind(name.as_str())
             .execute(&mut **transaction)
             .await
             .map_err(&unreadable)?;
-        Ok(if removed.rows_affected() > 0 {
-            Deleted::Removed
-        } else {
-            Deleted::AlreadyAbsent
-        })
+        Ok(Deleted::Removed)
     }
 }
 
