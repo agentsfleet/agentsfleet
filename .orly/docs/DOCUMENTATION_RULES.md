@@ -51,10 +51,10 @@ executable: true | false
 - **DOC-F3 — Executable pages.** Set `executable: true` only when the page
   contains runnable commands that the repository checker can validate.
 
-## Required page skeletons
+## Page structure
 
-Use the headings in the listed order. The page may add a heading only when the
-task cannot be completed clearly without it.
+Use relevant headings below in the listed order. Omit sections that do not
+help the reader finish the task. Repository-specific requirements still apply.
 
 | Type | Required headings, in order |
 |---|---|
@@ -66,8 +66,9 @@ task cannot be completed clearly without it.
 
 - **DOC-P1 — One purpose.** Pick the page type that matches the reader's goal.
   Do not mix a tutorial and full reference on one page.
-- **DOC-P2 — Honest empty sections.** If a required section does not apply,
-  state that in one sentence. Do not invent behavior to fill a heading.
+- **DOC-P2 — No padding.** Omit empty sections and repeated summaries.
+  Keep prerequisites, verification, failure recovery, and destructive-action
+  warnings when the task needs them. Never invent content to fill a heading.
 
 ## Language
 
@@ -138,13 +139,14 @@ term exists.
 and it reaches every consumer through the rendered `.orly/AGENTS.md`. A word the
 product uses for itself is vocabulary, not slop.
 
-Em dashes are not a rhythm crutch: none in short copy, at most two per long
-page, and only where they beat a comma or a period. The rule corpus is exempt
-from that budget — `.orly/dispatch/`, `core/`, `.orly/audits/`, `skills/`, `.orly/AGENTS.md`,
-`AGENTS.orly.md`, `SOUL.md`, and any `RULES.md`. Those pages are dense
-reference text where the dash separates a claim from its consequence. Measured
-across the corpus the budget flagged 36 of 39 pages, which is a rule mis-fit,
-not 36 defects. They keep every other rule.
+Use periods or commas in short copy. Long pages may use at most two prose
+em dashes where they improve clarity. A list's bold lead label may use a
+separating em dash; that separator does not count toward the budget.
+
+The rule corpus is exempt
+from that budget: `.orly/dispatch/`, `core/`, `.orly/audits/`, `skills/`, `.orly/AGENTS.md`,
+`AGENTS.orly.md`, `SOUL.md`, and any `RULES.md`. These reference pages use dashes
+to separate a claim from its consequence. They keep every other rule.
 
 ## Content
 
@@ -195,17 +197,34 @@ not 36 defects. They keep every other rule.
 
 ## Enforcement
 
-33. **DOC-33 — Mechanical checks.** `orly gate verify` checks banned words,
-    long sentences, long paragraphs, the em-dash budget, and heading order.
+33. **DOC-33 — Mechanical checks.** `orly gate verify` and `orly gate pr`
+    reject mechanical language errors in changed Markdown and Markdown JSX (MDX) prose.
+    Checks cover banned words, sentence length, paragraph length, em dashes,
+    and heading order.
+
+    Checks compare the merge base with your working tree, including staged
+    edits and new, untracked pages. Without a merge base, they compare `HEAD`.
+
+    A new page is checked in full. An edited paragraph is checked in full.
+
+    Unchanged history, specification records, installed `.orly/` snapshots,
+    code, and tables are excluded. Specification records keep their own checks.
+
+    Mintlify page titles count as H1. Fragments do not need a page title.
+
     Front matter, section order, command blocks without output, options
     without defaults, and procedures in tables are rules a reader enforces;
     no check reads them yet. This list names what runs, not what is wished.
-34. **DOC-34 — Review checks.** Review checks one-idea sentences, pronoun
-    clarity, resource lifecycle, failure behavior, implementation leaks, and
-    meaning preserved by simplification.
+34. **DOC-34 — Review checks.** Review checks the distillation pass below,
+    one-idea sentences, pronoun clarity, resource lifecycle, failure behavior,
+    implementation leaks, and meaning preserved by simplification.
+    A clean language check does not prove that a page is useful or accurate.
 35. **DOC-35 — Exceptions.** A page may list at most three exceptions in front
     matter. Each uses `lint-ignore: DOC-NN — reason`. Review recurring exceptions
     as a rule defect instead of copying them forward.
+
+    For several exceptions, use a YAML list under `lint-ignore`.
+    Each item names one rule and gives a reason.
 
 ## Reading joy — contributor architecture sets
 
@@ -233,6 +252,26 @@ read, not just correct.
 42. **DOC-42 — Same zoom, named lens.** When one story is told at several
     zoom levels, the page names each lens and when to read it, and the lenses
     do not repeat each other.
+
+## Distill before review
+
+43. **DOC-43 — Required editing pass.** Apply this to every new or edited
+    documentation block after checking its claims against the source.
+
+    - Lead with the answer, changed behavior, or action the reader needs.
+    - Keep one reader goal per page and one new fact per paragraph or bullet.
+    - Cut announcements, process narration, internal identifiers, and claims
+      that say only that work, testing, or a refactor happened.
+    - State each fact once. Link to the page that owns the full reference.
+      Keep prerequisites, upgrade steps, defaults, limits, and failure recovery
+      beside the action that needs them.
+    - Delete filler, repeated conclusions, empty headings, and nested lists
+      that a sentence can replace. Keep precise facts instead of vague promises.
+    - Read the result without the implementation diff. A new reader must be
+      able to say what changed, why it matters, and what to do next.
+
+Review records the reader goal, wording removed, and any detail kept for safety
+or correctness. Keep that record in review notes, outside the published page.
 
 ## Closing standard
 

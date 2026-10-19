@@ -7,4 +7,6 @@ description: >
   input/output module boundary; not for browser end-to-end or pure logic.
 ---
 
+# Skill instructions
+
 Read and follow `.orly/skills/orly-write-integration-test/SKILL.md` from the repository root before acting.

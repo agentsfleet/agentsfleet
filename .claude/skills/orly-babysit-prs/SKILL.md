@@ -7,4 +7,6 @@ description: |
   after creating or pushing to a PR/MR, or on "babysit", "watch reviews".
 ---
 
+# Skill instructions
+
 Read and follow `.orly/skills/orly-babysit-prs/SKILL.md` from the repository root before acting.
