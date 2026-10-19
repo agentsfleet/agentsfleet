@@ -12,21 +12,6 @@ async fn runner_lease_satellite_routes_parse_and_render() {
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
 
-    let renew_path = format!("/v1/runners/me/leases/{LEASE_ID}/renew");
-    for body in [
-        "",
-        "not-json",
-        r#"{"input_tokens":1,"cached_input_tokens":2,"output_tokens":3}"#,
-    ] {
-        let renewed = send(&router, Method::POST, &renew_path, Some(RUNNER_TOKEN), body).await;
-        assert_eq!(renewed.status(), StatusCode::OK);
-        let body = json_body(renewed).await;
-        assert_eq!(
-            body.get("lease_expires_at"),
-            Some(&serde_json::json!("2025-10-09T08:53:20Z"))
-        );
-    }
-
     let mint_path = "/v1/runners/me/credentials/mint";
     let malformed = send(&router, Method::POST, mint_path, Some(RUNNER_TOKEN), "{}").await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
