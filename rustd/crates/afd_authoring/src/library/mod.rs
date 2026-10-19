@@ -58,6 +58,8 @@ impl EntryRow {
     /// Every entry is written with its head in one transaction, so a headless
     /// row is a stored fault.
     fn decode(self) -> Result<Entry> {
+        // A card without a head revision is not yet readable as a Library entry.
+        let head = self.head_revision_id.as_deref().ok_or(ErrorKind::Hidden)?;
         Ok(Entry {
             id: Uuid7::parse(&self.id)?,
             platform_slug: self.platform_slug,
@@ -70,9 +72,7 @@ impl EntryRow {
                 .transpose()?,
             updated_at: self.updated_at,
             visibility: self.visibility,
-            head_revision_id: Uuid7::parse(
-                self.head_revision_id.as_deref().ok_or(ErrorKind::Hidden)?,
-            )?,
+            head_revision_id: Uuid7::parse(head)?,
             resource_version: self.resource_version,
             created_at: self.created_at,
         })
