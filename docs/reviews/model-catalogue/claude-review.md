@@ -30,7 +30,7 @@ Base: 53e3d093ece9ff39fde0290924ff30b7ac70efca
 
 Read AGENTS.md and .orly/LOCAL.md first, then the section 8 Dimensions,
 test specification, failure modes and Discovery entries in
-docs/v2/active/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md.
+docs/v2/done/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md.
 Discovery's eight catalogue decisions win over conflicting section text.
 Read the full issue with gh issue view 771 --repo agentsfleet/agentsfleet.
 Read docs/reviews/model-catalogue/{catalogue,handover,test-ledger}.md
