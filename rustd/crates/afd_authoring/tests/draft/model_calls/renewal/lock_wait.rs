@@ -74,9 +74,13 @@ const ONE_SECOND_LEFT: &str = "UPDATE authoring.attempts \
 SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
 WHERE id=$1::uuid";
 
+// The expiry is read once, before the hold, and the wait compares it with the
+// database clock only: polling `authoring.attempts` while the hold stands would
+// queue behind any other test's DDL on that table, which itself waits on this
+// renewal — a cross-test wait Postgres cannot see as a deadlock.
+const EXPIRES: &str = "SELECT lease_expires_at::text FROM authoring.attempts WHERE id=$1::uuid";
 /// Whether the attempt's lease has run out on database time.
-const LAPSED: &str =
-    "SELECT lease_expires_at <= clock_timestamp() FROM authoring.attempts WHERE id=$1::uuid";
+const LAPSED: &str = "SELECT $1::timestamptz <= clock_timestamp()";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -90,6 +94,11 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
         .await
         .expect("a lease about to lapse");
     let before = snapshot(&f, &a).await;
+    let expires: String = sqlx::query_scalar(EXPIRES)
+        .bind(a.id.as_str())
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("read the lease expiry");
     let mut holder = f.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     // The model check reads the owner's model FOR SHARE, after the guard has
@@ -104,7 +113,7 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), async {
         f.waits_on(pid, 1).await;
         while !sqlx::query_scalar::<_, bool>(LAPSED)
-            .bind(a.id.as_str())
+            .bind(expires.as_str())
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("read the lease")
