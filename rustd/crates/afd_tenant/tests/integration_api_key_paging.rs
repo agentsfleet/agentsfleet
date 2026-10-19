@@ -204,6 +204,53 @@ async fn should_refuse_duplicate_name_when_index_rejects_insert() {
     lane.cleanup().await;
 }
 
+/// A tenant holding no keys answers an empty page with a total of zero: the
+/// lateral join's marker row carries the count and a null key, and the null
+/// is read as "no key here" rather than decoded into a malformed one.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_account_with_no_keys_lists_an_empty_page() {
+    let lane = ApiKeyLane::create().await;
+
+    for sort in [ApiKeySort::CreatedDescending, ApiKeySort::NameAscending] {
+        let empty = lane.page(sort, None).await;
+        assert!(empty.keys.is_empty(), "{sort:?} found keys: {empty:?}");
+        assert_eq!(empty.total, 0);
+    }
+
+    lane.cleanup().await;
+}
+
+/// A mint for an account with no row fails on the foreign key, which is the
+/// datastore's failure and not the name collision the unique index reports.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_mint_for_an_account_with_no_row_is_a_statement_failure() {
+    let lane = ApiKeyLane::create().await;
+    let absent = afd_core::id::Uuid7::encode(NOW, [7; afd_core::id::ENTROPY_LEN])
+        .expect("a well-formed identifier");
+    let request = MintRequest {
+        tenant: &absent,
+        name: KeyName::parse("alpha").expect("a well-formed name"),
+        description: Description::parse(None).expect("an absent description is legal"),
+        created_by: "fixture|apikey-orphan",
+    };
+
+    let failed = lane
+        .keys
+        .mint(&request, NOW)
+        .await
+        .expect_err("no account row to hang the key on");
+
+    assert_eq!(failed.code(), error_code::INTERNAL_DB_QUERY);
+    assert!(
+        std::error::Error::source(&failed).is_some(),
+        "the statement's own failure rides through as the cause"
+    );
+
+    lane.cleanup().await;
+}
+
 /// The names on a page, in the order the page answered them.
 fn names(keys: &[KeyRow]) -> Vec<String> {
     keys.iter().map(|key| key.name.clone()).collect()

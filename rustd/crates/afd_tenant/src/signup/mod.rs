@@ -62,13 +62,6 @@ const CONTEXT_OPEN: &str = "open a personal account";
 /// writable CTEs.
 pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 
-/// How many workspace names are tried before the attempt is abandoned.
-///
-/// A guard, not a budget. Uniqueness is per freshly-created tenant, which holds
-/// no workspaces at all, so the first draw collides with nothing and the retry
-/// exists only for two identical draws.
-const GENERATED_ATTEMPTS: u32 = 3;
-
 mod account;
 
 pub use self::account::{Bootstrapped, NewAccount, personal_tenant_name};
@@ -268,33 +261,29 @@ impl Signups {
         Ok(())
     }
 
-    /// Inserts the workspace under the first generated name that does not
-    /// collide.
+    /// Inserts the workspace under one generated name.
     ///
-    /// The same retry `workspace::directory` runs for a caller who supplied no
-    /// name, over a statement that yields instead of raising — see
-    /// [`sql::INSERT_WORKSPACE_IF_FREE`] on why a transaction needs that.
+    /// One draw, no retry: names are unique per tenant, and the tenant was
+    /// opened by this same transaction and holds no workspace yet, so the
+    /// first name collides with nothing. The insert is
+    /// [`crate::sql::workspace::INSERT_WORKSPACE`], which raises on a
+    /// collision rather than yielding, because there is no second draw that a
+    /// yielded row would feed.
     async fn name_a_workspace(
         &self,
         transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         tenant: &Uuid7,
         workspace: &Uuid7,
     ) -> Result<String> {
-        let raise = error::query(CONTEXT_OPEN);
-        for _attempt in 0..GENERATED_ATTEMPTS {
-            let candidate = name::generate(&self.entropy)?;
-            let landed = sqlx::query(sql::INSERT_WORKSPACE_IF_FREE)
-                .bind(workspace.as_str())
-                .bind(tenant.as_str())
-                .bind(&candidate)
-                .execute(&mut **transaction)
-                .await
-                .map_err(&raise)?;
-            if landed.rows_affected() > 0 {
-                return Ok(candidate);
-            }
-        }
-        Err(error::workspace_name_exists())
+        let name = name::generate(&self.entropy)?;
+        sqlx::query(crate::sql::workspace::INSERT_WORKSPACE)
+            .bind(workspace.as_str())
+            .bind(tenant.as_str())
+            .bind(&name)
+            .execute(&mut **transaction)
+            .await
+            .map_err(error::query(CONTEXT_OPEN))?;
+        Ok(name)
     }
 }
 

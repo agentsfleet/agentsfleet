@@ -11,6 +11,9 @@
 )]
 
 use afd_core::error_code;
+use afd_crypto::entropy::Entropy;
+use afd_dragonfly::SessionStore;
+use afd_dragonfly::session::SessionState;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};
 
@@ -147,4 +150,53 @@ async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
     );
     let survivor = sessions.poll(&theirs.session_id).await.expect("still live");
     assert_eq!(survivor.status, SessionStatus::VerificationPending);
+}
+
+/// A session the queue holds as `expired` is refused as expired by a poll and
+/// by a code presented against it, and an id the queue never held is missing
+/// to a code as it is to a poll.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_device_flow_expired_and_unknown_sessions_refuse_a_code() {
+    let harness = DragonflyHarness::connect().await;
+    let sessions = surface(&harness);
+    let expired = Entropy::new().uuid7(NOW).expect("an identifier");
+    SessionStore::new(harness.redis.clone())
+        .put(&SessionState {
+            session_id: expired.as_str().to_owned(),
+            status: SessionStatus::Expired,
+            cli_public_key: "cli-key".to_owned(),
+            token_name: "laptop".to_owned(),
+            dashboard_public_key: None,
+            ciphertext: None,
+            nonce: None,
+            verification_code_hmac_hex: None,
+            verification_attempts: 0,
+            created_at: NOW,
+            expires_at: NOW,
+            approved_at: None,
+            consumed_at: None,
+            aborted_reason: None,
+            clerk_user_id: None,
+            consumed_client_fingerprint_hex: None,
+            consume_payload_expires_at: None,
+        })
+        .await
+        .expect("seeding an expired session");
+    let code = Code::parse(CODE).expect("digits");
+
+    let polled = sessions.poll(expired.as_str()).await.expect_err("expired");
+    assert_eq!(polled.code(), error_code::SESSION_EXPIRED);
+    let presented = sessions
+        .verify(expired.as_str(), &code, &origin(expired.as_str()), NOW)
+        .await
+        .expect_err("expired");
+    assert_eq!(presented.code(), error_code::SESSION_EXPIRED);
+
+    let never = Entropy::new().uuid7(NOW).expect("an identifier");
+    let missing = sessions
+        .verify(never.as_str(), &code, &origin(never.as_str()), NOW)
+        .await
+        .expect_err("never opened");
+    assert_eq!(missing.code(), error_code::SESSION_NOT_FOUND);
 }
