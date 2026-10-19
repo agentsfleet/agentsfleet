@@ -110,3 +110,31 @@ async fn an_oversized_report_is_refused_before_any_private_or_accounting_write()
     );
     assert!(!fixture.directory.exists());
 }
+
+/// Spec Dimension 4.5: a spool entry carries no deletion generation, and one
+/// written in exactly that shape decodes and replays its original identity.
+#[tokio::test]
+async fn a_spool_entry_without_a_deletion_generation_decodes() {
+    let fixture = Fixture::new();
+    fixture.hold().await;
+    let path = fixture.directory.join(files::ACCOUNTING);
+    let held: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let entry = serde_json::json!({
+        "lease_id": LEASE,
+        "attempt_id": ATTEMPT,
+        "accounting": {
+            "fence": "1",
+            "report_id": super::REPORT,
+            "outcome": "completed",
+            "failure_reason": null,
+            "usage": {"knowledge": "known", "calls": 0, "input_tokens": 0,
+                "output_tokens": 0, "runtime_ms": 100, "provider_cost_nanos": "0"},
+        },
+    });
+    assert_eq!(held, entry, "a held entry is exactly this shape");
+    std::fs::write(&path, serde_json::to_vec(&entry).unwrap()).unwrap();
+    let loaded = fixture.read().await;
+    assert_eq!(loaded.accounting().report_id, super::REPORT);
+    assert_eq!(loaded.accounting().fence, "1");
+    assert_eq!(loaded.accounting().usage.runtime_ms, 100);
+}

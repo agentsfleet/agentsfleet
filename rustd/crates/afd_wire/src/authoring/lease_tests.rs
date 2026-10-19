@@ -17,6 +17,8 @@ const ATTEMPT_ENDS: &str = "1970-01-01T00:05:00Z";
 const EXPIRES: &str = "1970-01-01T00:00:30Z";
 /// The key both the lease and its model credential carry their expiry under.
 const EXPIRES_AT: &str = "expires_at";
+/// A spooled report's stable identity.
+const REPORT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8062";
 /// The key naming the model, on the lease and inside its model block.
 const MODEL: &str = "model";
 
@@ -101,4 +103,26 @@ fn test_runner_wire_drops_deletion_generation() {
         json!({"fence": "1", "deletion_generation": "0", "usage": usage}),
     )
     .expect_err("a renewal still carrying a generation is refused");
+
+    // The accounting-only report a runner replays from its spool after
+    // private-content expiry: decodes without a generation, refused with one.
+    let report = json!({"kind": "accounting", "fence": "1", "report_id": REPORT_ID,
+        "outcome": "completed", "failure_reason": null, "usage": usage});
+    let decoded = serde_json::from_value::<crate::authoring::Report>(report.clone())
+        .expect("a spooled accounting report without a generation decodes");
+    assert!(matches!(
+        decoded,
+        crate::authoring::Report::Accounting { .. }
+    ));
+    assert_eq!(decoded.accounting().report_id, REPORT_ID);
+    assert_eq!(decoded.accounting().fence, "1");
+    let written = serde_json::to_value(&decoded).expect("a report writes");
+    assert_eq!(written, report, "nothing added on the way back out");
+    let mut stale = report;
+    stale
+        .as_object_mut()
+        .expect("the fixture is an object")
+        .insert("deletion_generation".to_owned(), json!("0"));
+    serde_json::from_value::<crate::authoring::Report>(stale)
+        .expect_err("a report still carrying a generation is refused");
 }
