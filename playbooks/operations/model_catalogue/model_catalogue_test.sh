@@ -34,7 +34,7 @@ bad() {
 # Stubs that RECORD rather than act, so "did this step run?" is answerable.
 # `op` writing to a marker file is how the vault-read assertions are made:
 # an approval check that fired too late would leave the marker behind.
-# $2 (optional) is the row count the stubbed psql reports for the catalogue
+# $2 (optional) is the row count the stubbed client reports for the catalogue
 # count query; it defaults to a populated catalogue.
 make_sandbox() {
   local dir="$TMPROOT/$1"
@@ -49,14 +49,26 @@ case "\$1" in
 esac
 exit 0
 STUB
+  # The count runs as `bun -e`, and like Bun's client the stub takes the
+  # connection from DATABASE_URL alone: unset, it cannot connect.
   cat >"$dir/bin/bun" <<STUB
 #!/usr/bin/env bash
 echo "bun \$*" >>"$dir/bun.log"
+if [ "\$1" = "-e" ]; then
+  [ -n "\${DATABASE_URL:-}" ] || exit 1
+  printf '$rows\n'
+fi
 exit 0
 STUB
+  # libpq reads PGDATABASE as a database NAME, never a URL, so psql handed one
+  # dials the default socket and fails. The stub fails the same way, so a step
+  # that goes back to that form cannot pass here.
   cat >"$dir/bin/psql" <<STUB
 #!/usr/bin/env bash
 echo "psql \$*" >>"$dir/psql.log"
+case "\${PGDATABASE:-}" in
+  *://*) echo "psql: error: connection to server on socket failed" >&2; exit 2 ;;
+esac
 printf '$rows\n'
 exit 0
 STUB
@@ -238,9 +250,11 @@ test_verify_keeps_database_url_out_of_process_arguments() {
   local dir
   dir="$(make_sandbox "$name")"
   if ! run_step "$dir" 03_verify.sh ENV=dev ALLOW_VAULT_READS=1 >/dev/null 2>&1; then
-    bad "$name" "verification did not reach psql"
-  elif grep -q 'postgres://' "$dir/psql.log"; then
-    bad "$name" "the connection URL entered psql's process arguments"
+    bad "$name" "verification did not reach the database client"
+  elif [ ! -f "$dir/bun.log" ]; then
+    bad "$name" "verification counted through no client at all"
+  elif grep -q 'postgres://' "$dir/bun.log" "$dir/psql.log" 2>/dev/null; then
+    bad "$name" "the connection URL entered the client's process arguments"
   else
     ok "$name"
   fi
