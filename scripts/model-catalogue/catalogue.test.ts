@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
+import { z } from "zod";
 import { catalogueReport, MAX_CATALOGUE_BYTES, nanosPerMtok, parseCatalogue, priceForRequest, readCatalogue } from "./catalogue";
 import type { Catalogue, Model, Price } from "./catalogue";
 import { HAIKU_PROMPT_THRESHOLD } from "./test-fixtures";
@@ -125,6 +126,22 @@ describe("catalogue provenance", () => {
   test("prices need HTTPS evidence, positive amounts and bounded exact decimals", () => {
     for (const source_url of ["http://example.com/rates", "not a URL"])
       expect(() => parseCatalogue(document([model({ prices: [price({ source_url })] })]))).toThrow(MODEL);
+    for (const field of ["source_url", "verified_at"]) {
+      const rawPrice: Record<string, unknown> = { ...price() };
+      delete rawPrice[field];
+      const refused = (() => {
+        try {
+          parseCatalogue({ ...document(), models: [{ ...model(), prices: [rawPrice] }] });
+        } catch (error) {
+          return error;
+        }
+        return undefined;
+      })();
+      expect(refused).toBeInstanceOf(z.ZodError);
+      const issues = (refused as z.ZodError).issues;
+      expect(issues.map((issue) => issue.path)).toEqual([["models", 0, "prices", 0, field]]);
+      expect(issues[0]?.message.startsWith(`${MODEL}: `)).toBe(true);
+    }
     for (const amount of ["0", "-1", "NaN", "1.0000000001", "9223372037", "1".repeat(33)])
       expect(() => nanosPerMtok(amount)).toThrow();
   });
