@@ -85,3 +85,41 @@ fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<W
         next_cursor: if more { last } else { None },
     }
 }
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::boundary;
+    use afd_core::{error_code, paging::Cursor};
+
+    const BINDING: &str = "models:tenant";
+
+    fn text(value: &str, id: &str) -> String {
+        Cursor::Text {
+            value: value.to_owned(),
+            id: id.to_owned(),
+        }
+        .to_string()
+    }
+
+    #[test]
+    fn a_model_page_continues_only_from_its_own_walk_and_key_kind() {
+        let next = text(BINDING, "gpt-5");
+        assert_eq!(
+            boundary(Some(&next), BINDING).ok(),
+            Some(Some("gpt-5".to_owned()))
+        );
+        let instant = Cursor::Timestamp {
+            at: jiff::Timestamp::UNIX_EPOCH,
+            id: "gpt-5".to_owned(),
+        }
+        .to_string();
+        for raw in [text("models:other", "gpt-5"), instant] {
+            let refused = boundary(Some(&raw), BINDING).err();
+            assert_eq!(
+                refused.map(|error| error.code()),
+                Some(error_code::AUTHORING_CURSOR),
+                "{raw}"
+            );
+        }
+    }
+}

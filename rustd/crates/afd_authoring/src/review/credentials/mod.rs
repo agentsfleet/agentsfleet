@@ -60,15 +60,16 @@ async fn integration(
     let Some(service) = &held.integration else {
         return Ok(());
     };
-    if held.supply == Supply::Inline {
-        if service == afd_credential::secrets::connector::SLACK_INTEGRATION {
-            connection::observe(connection, draft, held, observed).await?;
+    match held.supply {
+        Supply::Inline => {
+            if service == afd_credential::secrets::connector::SLACK_INTEGRATION {
+                connection::observe(connection, draft, service, held, observed).await?;
+            }
         }
-        return Ok(());
-    }
-    connection::observe(connection, draft, held, observed).await?;
-    if held.supply == Supply::OnDemand {
-        grant(connection, draft, service, observed).await?;
+        Supply::OnDemand => {
+            connection::observe(connection, draft, service, held, observed).await?;
+            grant(connection, draft, service, observed).await?;
+        }
     }
     Ok(())
 }
