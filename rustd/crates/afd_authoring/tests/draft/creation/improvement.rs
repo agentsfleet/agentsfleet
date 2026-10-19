@@ -224,3 +224,81 @@ async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
     assert_eq!(read.expect("unchanged fleet").setup_revision, "1");
     c.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it() {
+    use sqlx::Connection as _;
+    let c = Case::create().await;
+    let saved = active(&c, "improve-twice").await;
+    let (chat, apply) = improvement(&c, &saved).await;
+    let key = mint();
+    let mut holder = c.base.connection().await;
+    let mut held = holder.begin().await.expect("holder transaction");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE",
+    )
+    .bind(chat.as_str())
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the chat the way a capture locks it");
+    let run = || {
+        c.creations.apply_revision(
+            c.base.access(),
+            &saved.id,
+            Some(&saved.setup_etag),
+            &key,
+            apply.clone(),
+            now(),
+        )
+    };
+    let (winner, waiter, ()) = tokio::join!(run(), run(), async {
+        c.base.waits_on(pid, 2).await;
+        held.rollback().await.expect("release the chat");
+    });
+    drop(holder);
+    let (winner, waiter) = (
+        winner.expect("one apply lands"),
+        waiter.expect("the waiter replays it"),
+    );
+    assert_eq!(winner.setup_revision, "2");
+    assert_eq!(waiter.setup_revision, winner.setup_revision);
+    let revisions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
+            .bind(saved.id.as_str())
+            .fetch_one(&mut *c.base.connection().await)
+            .await
+            .expect("the fleet's revisions");
+    assert_eq!(revisions, 2, "one revision for one key");
+    c.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_apply_that_loses_its_key_to_a_lapsed_claim_writes_no_revision() {
+    let c = Case::create().await;
+    let saved = active(&c, "improve-lost-key").await;
+    let (_, apply) = improvement(&c, &saved).await;
+    let key = mint();
+    let scope = format!("{}:fleet:{}:revision", c.base.workspace, saved.id);
+    let (holder, pid) = c.base.foreign_receipt(&scope, &key).await;
+    let (refused, ()) = tokio::join!(
+        c.creations.apply_revision(
+            c.base.access(),
+            &saved.id,
+            Some(&saved.setup_etag),
+            &key,
+            apply,
+            now(),
+        ),
+        async {
+            c.base.waits_on(pid, 1).await;
+            crate::draft::locks::commit_receipt(holder).await;
+        }
+    );
+    let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
+    assert_eq!(refused.code(), error_code::AUTHORING_GONE);
+    let read = c.creations.read(c.base.access(), &saved.id).await;
+    assert_eq!(read.expect("unchanged fleet").setup_revision, "1");
+    c.cleanup().await;
+}

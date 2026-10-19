@@ -5,6 +5,7 @@ mod funnel;
 mod listing;
 mod publication;
 mod revisions;
+mod staging;
 
 use super::{
     fixture::{Fixture, now},
