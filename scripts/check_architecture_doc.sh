@@ -16,8 +16,10 @@
 #   * test_arch_cited_make_targets_exist — every named make target is declared
 #   * test_arch_section_anchors_resolve  — every cross-page §anchor names a heading
 #   * test_arch_no_retired_slot_numbers  — no page cites a retired 0xx schema slot
+#   * test_arch_schema_layout_matches_doc — postgres_schemas.md lists exactly the
+#                                          tables and columns schema/ creates
 #
-# ARCH_DIR, SPEC_ROOT and DOC_SET_EXTRA are overridable so the self-tests can
+# ARCH_DIR, SPEC_ROOT, SCHEMA_DIR and DOC_SET_EXTRA are overridable so the self-tests can
 # point the gate at fixtures. Nothing else sets them.
 #
 # Exits 0 on success, 1 on the first failing assertion (with diagnostic).
@@ -29,7 +31,8 @@ set -euo pipefail
 # resolve either way.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-ARCH_DIR="${ARCH_DIR:-docs/architecture}"
+readonly DEFAULT_ARCH_DIR="docs/architecture"
+ARCH_DIR="${ARCH_DIR:-$DEFAULT_ARCH_DIR}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
 ACTIVE_DIR="$SPEC_ROOT/active"
@@ -230,8 +233,32 @@ done <<<"$(grep -rniIE "$RETIRED_RUNNER" "$RUST_DIR" --exclude-dir=target --excl
   && ok "rust_names_no_retired_runner: no file under $RUST_DIR names Zig, zlint or NullClaw"
 
 # ---------------------------------------------------------------------------
+# 7. test_arch_schema_layout_matches_doc
+#
+# `postgres_schemas.md` is the signed-off layout: every table and column the
+# slots build. The extractor compares its tables against every CREATE TABLE in
+# schema/ and names each table or column one side has and the other lacks. A
+# fixture ARCH_DIR without the page skips the row; the real corpus without it
+# fails, since a moved page would otherwise pass by comparing nothing.
+# ---------------------------------------------------------------------------
+SCHEMA_DIR="${SCHEMA_DIR:-schema}"
+SCHEMA_DOC="$ARCH_DIR/postgres_schemas.md"
+if [ -f "$SCHEMA_DOC" ]; then
+  if layout_report="$(python3 -B "$SCRIPT_DIR/check_architecture_doc_schema.py" "$SCHEMA_DOC" "$SCHEMA_DIR" 2>&1)"; then
+    ok "test_arch_schema_layout_matches_doc: $layout_report"
+  else
+    while IFS= read -r line; do
+      [ -n "$line" ] && err "test_arch_schema_layout_matches_doc: $line"
+    done <<<"$layout_report"
+  fi
+elif [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ]; then
+  err "test_arch_schema_layout_matches_doc: $SCHEMA_DOC is missing, so the layout has nothing to match"
+fi
+
+# ---------------------------------------------------------------------------
 # Citation assertions live beside this file and run in this shell, sharing
-# `err`, `ok`, `FAIL`, `ARCH_DIR` and `SCRIPT_DIR`. Split at the length cap.
+# `err`, `ok`, `FAIL`, `ARCH_DIR`, `DEFAULT_ARCH_DIR` and `SCRIPT_DIR`. Split
+# at the length cap.
 # ---------------------------------------------------------------------------
 # shellcheck source=scripts/check_architecture_doc_citations.sh
 . "$SCRIPT_DIR/check_architecture_doc_citations.sh"

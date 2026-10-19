@@ -2,7 +2,8 @@
 # Citation assertions of the architecture doc gate: cited paths, tables, make
 # targets, section anchors, retired slots, conflict markers and published
 # links. Sourced by `scripts/check_architecture_doc.sh`, never run alone: it
-# reads that script's `err`, `ok`, `FAIL`, `ARCH_DIR` and `SCRIPT_DIR`.
+# reads that script's `err`, `ok`, `FAIL`, `ARCH_DIR`, `DEFAULT_ARCH_DIR` and
+# `SCRIPT_DIR`.
 
 # ---------------------------------------------------------------------------
 # Citation assertions. The four checks above ask whether the docs
@@ -15,7 +16,6 @@
 # so a fixture run never reaches out and grades the live pages by accident.
 # ---------------------------------------------------------------------------
 
-readonly DEFAULT_ARCH_DIR="docs/architecture"
 if [ "$ARCH_DIR" = "$DEFAULT_ARCH_DIR" ]; then
   DOC_SET_EXTRA="${DOC_SET_EXTRA:-docs/AUTH.md docs/AUTH_DEVICE_LOGIN.md docs/development.md}"
 else
