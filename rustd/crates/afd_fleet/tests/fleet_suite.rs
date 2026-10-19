@@ -82,6 +82,8 @@ mod integration_lease_ready;
 mod integration_lease_retention;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
+#[path = "integration_lease_usage_flush.rs"]
+mod integration_lease_usage_flush;
 #[path = "integration_lease_verbs.rs"]
 mod integration_lease_verbs;
 mod integration_lease_wake;
