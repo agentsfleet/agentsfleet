@@ -5,22 +5,20 @@
     reason = "live-schema test preconditions fail loudly"
 )]
 
-use afd_billing::sql::{CHARGE_TYPE_AUTHORING, charge, work};
+use afd_billing::sql::CHARGE_TYPE_AUTHORING;
+use afd_billing::tenant::cursor::Boundary;
+use afd_billing::tenant::{self, Billing, ChargeRow};
+use afd_core::id::Uuid7;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, DbRole, Migrator};
-use jiff_sqlx::ToSqlx as _;
+use jiff::Timestamp;
 use serde_json::Value;
 use sqlx::AssertSqlSafe;
 
 #[path = "charge_paging/fixture.rs"]
 mod fixture;
 
-/// The first charges page, as the store runs it.
-const FIRST: &str = include_str!("../src/sql/select_tenant_charges_first.sql");
-/// A later charges page, as the store runs it.
-const AFTER: &str = include_str!("../src/sql/select_tenant_charges_after.sql");
-
-const PAGE: i32 = 10;
+const PAGE: u32 = 10;
 const HISTORY_SIZES: [i64; 4] = [128, 256, 512, 1024];
 const PAGING_INDEX: &str = "idx_usage_lines_tenant_id_created_at_id";
 
@@ -31,11 +29,12 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     Migrator::new().run(&db).await.unwrap();
-    let tenant = fixture::tenant();
+    let tenant = Uuid7::parse(&fixture::tenant()).unwrap();
     let foreign = fixture::tenant();
+    let billing = Billing::new(db.clone());
     let mut previous = 0;
     for size in HISTORY_SIZES {
-        for owner in [&tenant, &foreign] {
+        for owner in [tenant.as_str(), &foreign] {
             fixture::attempts(&db, owner, previous + 1, size).await;
             fixture::lines(&db, owner, previous + 1, size).await;
         }
@@ -43,10 +42,15 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
             .execute(&mut *db.acquire().await.unwrap())
             .await
             .unwrap();
-        for boundary in [None, Some(size / 2)] {
-            let plan = explain(&db, &tenant, boundary).await;
+        for boundary in [None, Some(boundary_at(size / 2))] {
+            let plan = explain(&db, &tenant, boundary.as_ref()).await;
             let root = plan.get(0).unwrap().get("Plan").unwrap();
             assert_bounded_page(root, boundary.is_some());
+            let rows = billing
+                .charges(&tenant, PAGE, boundary.as_ref())
+                .await
+                .unwrap();
+            assert_page_rows(&rows, &tenant, size, boundary.as_ref());
             println!("history={size} boundary={boundary:?} line_index_rows={PAGE}");
         }
         previous = size;
@@ -55,22 +59,51 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
     database.cleanup().await;
 }
 
-async fn explain(db: &Db, tenant: &str, boundary: Option<i64>) -> Value {
-    let statement = boundary.map_or(FIRST, |_| AFTER);
-    let text = AssertSqlSafe(format!("EXPLAIN (ANALYZE, FORMAT JSON) {statement}"));
-    let mut query = sqlx::query_scalar::<_, Value>(text).bind(tenant);
-    if let Some(second) = boundary {
-        let at = jiff::Timestamp::from_second(second).unwrap();
-        query = query.bind(at.to_sqlx()).bind(mint_id());
+/// A cursor boundary at second `second`, its id breaking the tie within it.
+fn boundary_at(second: i64) -> Boundary {
+    Boundary {
+        created_at: Timestamp::from_second(second).unwrap(),
+        id: Uuid7::parse(&mint_id()).unwrap(),
     }
-    query
-        .bind(i64::from(PAGE))
-        .bind(CHARGE_TYPE_AUTHORING)
-        .bind(work::FLEET_LEASE)
-        .bind(charge::STAGE)
-        .fetch_one(&mut *db.acquire().await.unwrap())
-        .await
-        .unwrap()
+}
+
+/// The plan of the page the store runs: its statement and its seven binds, run
+/// through `EXPLAIN` by the store's own query builder.
+async fn explain(db: &Db, tenant: &Uuid7, boundary: Option<&Boundary>) -> Value {
+    let (plan,): (Value,) = tenant::charges_query(
+        |statement| AssertSqlSafe(format!("EXPLAIN (ANALYZE, FORMAT JSON) {statement}")),
+        tenant,
+        PAGE,
+        boundary,
+    )
+    .fetch_one(&mut *db.acquire().await.unwrap())
+    .await
+    .unwrap();
+    plan
+}
+
+/// The page the store answers: full, the tenant's own, newest first, and
+/// strictly older than the cursor when there is one.
+fn assert_page_rows(rows: &[ChargeRow], tenant: &Uuid7, size: i64, boundary: Option<&Boundary>) {
+    assert_eq!(rows.len(), usize::try_from(PAGE).unwrap(), "{rows:#?}");
+    for row in rows {
+        assert_eq!(row.tenant_id, tenant.as_str(), "{row:#?}");
+        assert_eq!(row.charge_type, CHARGE_TYPE_AUTHORING, "{row:#?}");
+    }
+    for (newer, older) in rows.iter().zip(rows.iter().skip(1)) {
+        assert!(
+            (older.created_at, &older.id) < (newer.created_at, &newer.id),
+            "newest first: {newer:#?} then {older:#?}"
+        );
+    }
+    let newest = rows.first().unwrap();
+    match boundary {
+        None => assert_eq!(newest.created_at, Timestamp::from_second(size).unwrap()),
+        Some(after) => assert!(
+            (newest.created_at, newest.id.as_str()) < (after.created_at, after.id.as_str()),
+            "strictly older than the cursor: {newest:#?} after {after:?}"
+        ),
+    }
 }
 
 fn assert_bounded_page(plan: &Value, after: bool) {
