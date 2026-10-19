@@ -146,9 +146,6 @@ tower = { workspace = true, features = ["util"] }
 # `hyper::` is the wire suite that serves a real socket.
 hyper-util.workspace = true
 hyper.workspace = true
-# The span suite collects spans through a `Layer`, which is the only way to see
-# a field as a VALUE rather than as formatted output.
-tracing-subscriber = { workspace = true, features = ["registry"] }
 # A dev-dependency, not a library one: nothing in this crate opens a pool. The
 # runner-plane suite needs `Db::unreachable` to drive a real handler into the
 # transport-class refusal without a datastore, and the live suites seed their
