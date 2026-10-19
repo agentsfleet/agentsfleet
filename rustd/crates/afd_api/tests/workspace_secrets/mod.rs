@@ -21,12 +21,9 @@
 //! whichever verb reached them — which is the property most worth pinning, and
 //! it is only visible with both axes in one place.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_vault::MAX_DATA_BYTES;
@@ -86,26 +83,6 @@ async fn send(
 /// One authorised request, for the tests isolating an axis other than scope.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
     send(EVERY_SECRET_SCOPE, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Reads a problem document's registry code back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a registry code")
-        .to_owned()
 }
 
 /// Asserts the request got PAST every layer in front of the verb.

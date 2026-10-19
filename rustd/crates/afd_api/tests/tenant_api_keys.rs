@@ -5,16 +5,12 @@
 //! a valid request from one rejected by authentication, scope, path, paging or
 //! body parsing without introducing a second implementation of the key store.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -37,15 +33,6 @@ async fn send(
         .with_person(CREDENTIAL, SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, body).await
-}
-
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("a refusal carries detail")
-        .to_owned()
 }
 
 async fn assert_store_reached(response: axum::response::Response, case: &str) {

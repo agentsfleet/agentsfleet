@@ -13,16 +13,12 @@
 //! refuse with codes of their own before any pool is touched.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::{code_of, detail_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -40,9 +36,6 @@ const PROVIDER_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
 
 /// What it demands of the mutations.
 const PROVIDER_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretWrite]);
-
-/// The empty set, proving a refusal below is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 
 /// A request at the provider template, against a fresh router.
 async fn send(
@@ -66,26 +59,6 @@ async fn send_body(
     harness::send(&router, method, PROVIDER, credential, body).await
 }
 
-/// Reads a problem document's registry code back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal names its registry code")
-        .to_owned()
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
 #[tokio::test]
 async fn test_the_scope_rung_separates_the_read_from_the_reset() {
     // A read-scoped credential may view and may not reset; an unscoped one
@@ -98,7 +71,7 @@ async fn test_the_scope_rung_separates_the_read_from_the_reset() {
         "secret:read alone must not authorize a reset"
     );
 
-    let unscoped = send(NO_SCOPES, Method::GET, Some(TENANT_KEY)).await;
+    let unscoped = send(ScopeSet::EMPTY, Method::GET, Some(TENANT_KEY)).await;
     assert_eq!(
         unscoped.status(),
         StatusCode::FORBIDDEN,

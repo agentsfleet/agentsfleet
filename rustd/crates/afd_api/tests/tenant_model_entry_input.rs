@@ -13,18 +13,14 @@
 //! layer, so a check that refused everything could not pass them.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::{code_of, detail_of};
 
 use afd_api_wire::tenant_model_entry::MODEL_ID_MAX_BYTES;
 use afd_auth::scope::{Scope, ScopeSet};
 use base64::Engine as _;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -69,26 +65,6 @@ async fn send(
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, body).await
-}
-
-/// Reads a problem document's registry code back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal names its registry code")
-        .to_owned()
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
 }
 
 /// A cursor token for this page, as the handler mints one.

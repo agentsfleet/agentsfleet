@@ -17,17 +17,13 @@
 //! survives the whole layer stack and arrives as the envelope and status a
 //! client branches on.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -87,16 +83,6 @@ async fn reading(path: &str) -> axum::response::Response {
 /// One fully authorised forget.
 async fn forgetting(path: &str) -> axum::response::Response {
     send(FLEET_WRITE, Method::DELETE, path).await
-}
-
-/// Reads a problem document's `error_code` back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a registry code")
-        .to_owned()
 }
 
 /// A fleet id that is not an identifier never reaches a statement.

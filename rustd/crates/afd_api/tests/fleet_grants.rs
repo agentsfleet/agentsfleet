@@ -22,12 +22,9 @@
 //! registry codes, because an operator's remedy differs. Both are pinned below
 //! by CODE rather than by status, since the status alone cannot tell them apart.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::field_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
@@ -86,19 +83,6 @@ async fn send(
 /// One fully authorised request, for the tests isolating another axis.
 async fn authorised(method: Method, path: &str) -> axum::response::Response {
     send(EVERY_GRANT_SCOPE, method, path, Some(TENANT_KEY)).await
-}
-
-/// Reads one string field of a problem document back.
-///
-/// Every caller names a key the problem envelope always carries, so an absent
-/// one is an unmet precondition rather than a case to handle.
-async fn field_of(response: axum::response::Response, key: &str) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get(key)
-        .and_then(Value::as_str)
-        .expect("every refusal carries the field an assertion names")
-        .to_owned()
 }
 
 /// Seeing a fleet's grants does not confer the authority to revoke one.
