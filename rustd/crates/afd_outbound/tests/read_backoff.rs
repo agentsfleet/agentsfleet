@@ -223,3 +223,65 @@ async fn test_a_shutdown_does_not_wait_out_the_backoff() {
          rather than raced against the token"
     );
 }
+
+/// The failures a capture holds of a read for new entries, oldest first.
+fn new_read_failures(capture: &afd_core::test_util::trace::Capture) -> usize {
+    capture
+        .events()
+        .iter()
+        .filter(|event| event.field("event") == Some("outbound_read_next_failed"))
+        .count()
+}
+
+/// A blocking read that fails after the resume read came back empty is
+/// reported under its own event, waited out for the whole backoff, and then
+/// tried again; a shutdown during the next pause stops at once.
+///
+/// The other backoff cases fail the RESUME read, which keeps the worker
+/// resuming; this one is the steady state's failure, past the hand-over.
+/// Current-thread, so the worker's events land in this thread's capture.
+#[tokio::test]
+async fn test_a_failed_read_for_new_entries_is_retried_after_the_backoff() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let server = HangingQueue::spawn_failing_new_reads().await;
+    let (worker, token, delivered) = worker_against(&server).await;
+    let running = tokio::spawn(worker.run(token.clone()));
+
+    let deadline = Instant::now() + LONGEST_PARK * 3;
+    let mut first_failed = None;
+    while new_read_failures(&capture) < 2 {
+        assert!(
+            Instant::now() < deadline,
+            "the failing read was not retried: {:?}",
+            capture.events()
+        );
+        if first_failed.is_none() && new_read_failures(&capture) == 1 {
+            first_failed = Some(Instant::now());
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let retried_after = first_failed.map(|at| at.elapsed());
+    let started = Instant::now();
+    token.cancel();
+    running.await.expect("the worker task must not panic");
+
+    // Half the backoff, not all of it: the first failure is seen by a 5 ms
+    // poll, and the claim is a pause rather than a spin, which retries in
+    // microseconds.
+    assert!(
+        retried_after.is_some_and(|gap| gap >= LONGEST_PARK / 2),
+        "the retry came {retried_after:?} after the failure, inside the {LONGEST_PARK:?} backoff"
+    );
+    assert!(
+        started.elapsed() < SHUTDOWN_BUDGET,
+        "the pause after the failed read is slept through rather than raced"
+    );
+    assert_eq!(delivered.load(Ordering::Acquire), 0);
+    assert!(
+        !capture
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("outbound_read_pending_failed")),
+        "the resume read answered nothing pending; it did not fail"
+    );
+}

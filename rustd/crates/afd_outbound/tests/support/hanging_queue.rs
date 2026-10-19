@@ -33,6 +33,13 @@ const BULK: u8 = b'$';
 
 const CMD_XACK: &str = "XACK";
 
+/// The id `XREADGROUP` reads new entries from; anything else reads the
+/// consumer's pending list.
+const NEW_ENTRIES: &str = ">";
+
+/// An `XREADGROUP` reply carrying no stream at all: nothing pending.
+const NOTHING_PENDING: &[u8] = b"*0\r\n";
+
 /// One parsed command: what was asked, its last argument, and how many bytes
 /// it took.
 struct Request {
@@ -52,6 +59,10 @@ struct Request {
 pub(crate) enum OnRead {
     HangUp,
     Stall,
+    /// Answers the resume read (`0`) with nothing pending and hangs up on the
+    /// read for new entries (`>`), so a worker gets past resuming and fails
+    /// on the blocking read instead.
+    HangUpNew,
 }
 
 /// A server that refuses every `XREADGROUP`, counting them, and accepts every
@@ -75,6 +86,12 @@ impl HangingQueue {
     /// Binds a server that accepts the read and then answers nothing.
     pub(crate) async fn spawn_stalling() -> Self {
         Self::spawn_with(OnRead::Stall).await
+    }
+
+    /// Binds a server whose resume read finds nothing pending and whose read
+    /// for new entries hangs up.
+    pub(crate) async fn spawn_failing_new_reads() -> Self {
+        Self::spawn_with(OnRead::HangUpNew).await
     }
 
     async fn spawn_with(on_read: OnRead) -> Self {
@@ -147,6 +164,13 @@ async fn serve(
                 reads.fetch_add(1, Ordering::AcqRel);
                 match on_read {
                     OnRead::HangUp => return,
+                    OnRead::HangUpNew if request.last_argument == NEW_ENTRIES => return,
+                    OnRead::HangUpNew => {
+                        if socket.write_all(NOTHING_PENDING).await.is_err() {
+                            return;
+                        }
+                        continue;
+                    }
                     // Holds the connection open and never replies, so the client
                     // is left waiting on its own deadline rather than handed an
                     // error. Parking the task is what keeps the socket alive:

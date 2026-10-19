@@ -118,9 +118,16 @@ async fn a_row_its_inserter_receipted_mid_pass_is_released_not_recorded() {
     .fetch_one(&mut *connection)
     .await
     .expect("the row reads back");
-    assert_eq!(receipt.as_deref(), Some(INSERTER_RECEIPT), "the first receipt stands");
+    assert_eq!(
+        receipt.as_deref(),
+        Some(INSERTER_RECEIPT),
+        "the first receipt stands"
+    );
     assert!(!claimed, "the pass's claim is released");
-    assert_eq!(replays, 0, "a row the pass did not receipt is not counted as replayed");
+    assert_eq!(
+        replays, 0,
+        "a row the pass did not receipt is not counted as replayed"
+    );
 
     sqlx::query("DELETE FROM fleet.fleets WHERE id = $1::uuid")
         .bind(&fleet)
@@ -128,7 +135,10 @@ async fn a_row_its_inserter_receipted_mid_pass_is_released_not_recorded() {
         .await
         .expect("the fleet and its admissions go");
     for (statement, id) in [
-        ("DELETE FROM identity.workspaces WHERE id = $1::uuid", &workspace),
+        (
+            "DELETE FROM identity.workspaces WHERE id = $1::uuid",
+            &workspace,
+        ),
         ("DELETE FROM identity.tenants WHERE id = $1::uuid", &tenant),
     ] {
         sqlx::query(statement)

@@ -116,6 +116,66 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     );
 }
 
+/// The trigger standing in for a ledger that takes the append's receipt badly.
+const RECEIPT_REFUSAL: &str = "afd_it_outbound_receipt_refused";
+
+/// A re-append whose receipt the ledger refuses is still on the queue, and the
+/// row stays owed: the next pass appends it again, and the destination may see
+/// the answer twice — the direction the producer already accepts, over losing
+/// it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn a_reappend_whose_receipt_is_refused_stays_owed() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = ready().await;
+    let redis = datastore().await;
+    let event = "1700000000-9";
+    assert!(owe_committed(&harness, &obligation_id(11), event).await);
+    refuse_receipts(&harness, Some(event)).await;
+
+    let appended = producer_until(&harness, async || entries_naming(&redis, event).await > 0).await;
+    refuse_receipts(&harness, None).await;
+
+    assert!(appended, "the append itself went through");
+    assert_eq!(
+        awaiting_append(&harness).await,
+        vec![event.to_owned()],
+        "the refused receipt leaves the row for the next pass"
+    );
+}
+
+/// Installs, for `event`, or removes, for `None`, a trigger refusing every
+/// receipt written to that event's row.
+async fn refuse_receipts(harness: &OutboundHarness, event: Option<&str>) {
+    let mut connection = harness
+        .database
+        .acquire()
+        .await
+        .expect("the ledger answers");
+    let mut statements = vec![
+        format!("DROP TRIGGER IF EXISTS {RECEIPT_REFUSAL} ON fleet.obligations"),
+        format!("DROP FUNCTION IF EXISTS public.{RECEIPT_REFUSAL}()"),
+    ];
+    // The event is this suite's own constant, never input.
+    if let Some(event) = event {
+        statements.push(format!(
+            "CREATE FUNCTION public.{RECEIPT_REFUSAL}() RETURNS trigger LANGUAGE plpgsql AS $$ \
+             BEGIN RAISE EXCEPTION 'receipt fixture refusal'; END $$"
+        ));
+        statements.push(format!(
+            "CREATE TRIGGER {RECEIPT_REFUSAL} BEFORE UPDATE ON fleet.obligations FOR EACH ROW \
+             WHEN (NEW.event_id = '{event}' AND NEW.receipt IS NOT NULL) \
+             EXECUTE FUNCTION public.{RECEIPT_REFUSAL}()"
+        ));
+    }
+    for statement in statements {
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&mut *connection)
+            .await
+            .expect("the receipt fault installs and removes");
+    }
+}
+
 /// Runs the daemon's own producer until `done` holds or [`PRODUCER_PASS`]
 /// runs out, and answers whether it held.
 ///
