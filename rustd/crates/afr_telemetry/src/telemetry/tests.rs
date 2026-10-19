@@ -7,6 +7,8 @@
 
 use std::time::{Duration, Instant};
 
+use std::sync::atomic::Ordering;
+
 use afd_core::env::MapEnv;
 use afd_core::test_util::trace;
 use afd_observability::semconv::RUNNER_SCOPE_NAME;
@@ -14,6 +16,7 @@ use afd_otlp::{OTEL_ENDPOINT_KNOB, OTEL_TIMEOUT_KNOB};
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{EVENT_CLOSE_TIMED_OUT, EVENT_DISABLED, EVENT_STARTED, Telemetry, announce_disabled};
+use crate::budget::tests::Hand;
 use crate::budget::{MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND};
 use crate::endpoint::Endpoint;
 
@@ -135,12 +138,16 @@ fn the_pipeline_sheds_a_lease_past_its_budget() {
 ///
 /// The reaper reads the root's end through the pipeline's one processor, so a
 /// bridge or pipeline change that stopped it seeing roots would leak a slot
-/// per lease, and once the table filled every later child would be shed. The
-/// pause moves the run into a second its roots never charged, so only a
-/// leaked slot could shed the last child.
+/// per lease, and once the table filled every later child would be shed.
+/// Moving the hand clock on puts the run in a second its roots never charged,
+/// so only a leaked slot could shed the last child.
 #[test]
 fn a_finished_lease_frees_its_slot_through_the_production_pipeline() {
-    let telemetry = installed(&[(OTEL_ENDPOINT_KNOB, REFUSING)]);
+    let clock = Hand::default();
+    let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
+        .expect("every knob reads")
+        .expect("an endpoint is configured");
+    let telemetry = Telemetry::install_on(&endpoint, clock.clone()).expect("the pipeline builds");
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
     let leases = usize::try_from(afd_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
 
@@ -148,7 +155,7 @@ fn a_finished_lease_frees_its_slot_through_the_production_pipeline() {
         for _lease in 0..leases {
             tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {});
         }
-        std::thread::sleep(Duration::from_millis(1100));
+        clock.0.fetch_add(1, Ordering::SeqCst);
         tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {
             tracing::info_span!(target: RUNNER_SCOPE_NAME, TOOL).in_scope(|| {});
         });

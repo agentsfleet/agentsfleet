@@ -53,7 +53,7 @@ use self::table::{LeaseTable, SecondWindow};
 mod table;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 /// Spans one lease may export, its root included: the root and 255 children.
 ///

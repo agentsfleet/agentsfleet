@@ -14,6 +14,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use afd_core::test_util::trace::Capture;
 use tokio_util::sync::CancellationToken;
 
@@ -49,10 +51,11 @@ impl Sweep for Arc<Counting> {
         "counting"
     }
 
-    /// Short enough that a test observes several passes without waiting, and
-    /// long enough that the runtime is not spinning.
+    /// An hour: every test here runs on tokio's paused clock, so the wait
+    /// costs nothing, and an hour is long enough that a loop which waited it
+    /// out instead of selecting against cancellation shows on that clock.
     fn interval(&self) -> Duration {
-        Duration::from_millis(5)
+        INTERVAL
     }
 
     fn sweep(&self) -> impl Future<Output = Result<Swept>> + Send {
@@ -77,28 +80,39 @@ impl Sweep for Arc<Counting> {
 /// two spellings of it read as two different expectations in a failure log.
 const CANCELLED_RETURNS: &str = "a cancelled sweeper returns";
 
-/// Twelve of `Counting`'s 5 ms intervals: enough passes that one failed pass
-/// stopping the loop shows as a count of one.
-const SEVERAL_INTERVALS: Duration = Duration::from_millis(60);
+/// `Counting`'s interval.
+const INTERVAL: Duration = Duration::from_hours(1);
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+/// Twelve intervals and a half: enough passes that one failed pass stopping
+/// the loop shows as a count of one.
+const SEVERAL_INTERVALS: Duration = Duration::from_mins(12 * 60 + 30);
+
+#[tokio::test(start_paused = true)]
 async fn a_cancelled_sweeper_stops_without_waiting_out_its_interval() {
     // The property a poll loop cannot have: cancellation is selected
-    // AGAINST the wait, so a sweeper with a ten-minute interval stops now. If
-    // this were a poll loop the join below would hang until the interval
-    // elapsed, and the test would time out rather than fail.
+    // AGAINST the wait, so a sweeper with an hour's interval stops now. The
+    // paused clock jumps to the next timer whenever the runtime idles, so a
+    // poll loop would still return here, an hour later on that clock: the
+    // elapsed-time assertion is what catches it.
+    let started = Instant::now();
     let sweeper = Counting::new(false);
     let token = CancellationToken::new();
     let task = tokio::spawn(run(Arc::clone(&sweeper), token.clone()));
+    tokio::task::yield_now().await;
 
     token.cancel();
     task.await.expect(CANCELLED_RETURNS);
+    assert!(
+        started.elapsed() < INTERVAL,
+        "the sweeper waited out its interval before seeing the cancel: {:?}",
+        started.elapsed()
+    );
     // Cancelled during its first wait, so it never swept — which is also the
     // proof that the wait comes BEFORE the pass.
     assert_eq!(sweeper.passes(), 0);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(start_paused = true)]
 async fn a_failing_pass_does_not_stop_the_sweeper() {
     // A datastore blip must not need a daemon restart to get liveness back:
     // every sweep is idempotent and bounded, so a failed pass costs nothing a
@@ -112,15 +126,15 @@ async fn a_failing_pass_does_not_stop_the_sweeper() {
     token.cancel();
     task.await.expect(CANCELLED_RETURNS);
 
-    assert!(
-        survived > 1,
-        "the sweeper stopped after a failed pass: {survived} passes"
+    assert_eq!(
+        survived, 12,
+        "one pass per interval, failed or not: {survived} passes"
     );
 }
 
 /// A failed pass is logged with its code beside a reason that does not repeat
 /// it, under `reason` rather than the `error` field it used to carry.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_sweep_reason_carries_no_code_prefix() {
     // Current-thread, so the spawned loop raises its events on the thread the
     // capture listens on.
