@@ -28,7 +28,7 @@ impl Creations {
         now: Timestamp,
     ) -> Result<()> {
         let number = row
-            .setup_version
+            .head_revision
             .checked_add(1)
             .ok_or_else(|| crate::error::raise::invalid("Setup revision is exhausted"))?;
         // A revision is immutable, so it is written with the review of the

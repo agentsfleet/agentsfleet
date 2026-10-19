@@ -44,7 +44,7 @@ impl Creations {
             self.recover_initial(access, fleet).await?;
             return self.confirm_initial(access, fleet).await;
         }
-        if row.status != INSTALLING || row.setup_context.review_digest != checked.review_digest {
+        if row.status != INSTALLING || row.accepted.review_digest != checked.review_digest {
             return Ok(());
         }
         for check in &checked.readiness {
@@ -106,7 +106,7 @@ impl Creations {
             .await
             .map_err(query(CONTEXT))?;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
-        if row.status != INSTALLING || row.setup_version != snapshot.setup_version {
+        if row.status != INSTALLING || row.head_revision != snapshot.head_revision {
             return Ok(());
         }
         let checked = self.review(&mut tx, &row).await?;
@@ -121,7 +121,7 @@ impl Creations {
             .bind(access.workspace.as_str())
             .bind(ACTIVE)
             .bind(INSTALLING)
-            .bind(row.setup_version)
+            .bind(row.head_revision)
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
