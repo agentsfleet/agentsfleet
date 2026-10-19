@@ -104,3 +104,32 @@ fn credential_refusals_preserve_the_vault_code_and_original_cause() {
             .is::<afd_credential::Error>()
     );
 }
+
+// Value: protects=a biller that cannot answer keeps its own classification;
+// fails_when=authoring reports a lost billing datastore as its own refusal;
+// why_new=fixture billers always answer; seam=the real ledger over an unreachable pool;
+// no_claim=which authoring path surfaces it.
+#[tokio::test]
+async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
+    use afd_billing::biller::{Account, Biller as _};
+    let ledger =
+        afd_billing::ledger::LedgerBiller::on_system_clock(afd_db::test_util::unreachable_db());
+    let payer = Account {
+        tenant: afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
+        workspace: afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
+    };
+    let fault = ledger
+        .balance(&payer)
+        .await
+        .expect_err("nobody answers the ledger's pool");
+    let code = fault.code();
+    let error = Error::from(fault);
+    assert_eq!(error.code(), code);
+    assert!(
+        error
+            .source()
+            .expect("the biller's fault is the cause")
+            .is::<afd_billing::Error>()
+    );
+    assert_eq!(error.current_state(), None);
+}

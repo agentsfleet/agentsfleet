@@ -140,6 +140,50 @@ impl Fixture {
         self.db.acquire().await.expect("fixture database answers")
     }
 
+    /// Waits until `waiting` backends are blocked behind the session `holder`,
+    /// so a proof releases its lock only once the work it races is queued on it.
+    pub(super) async fn waits_on(&self, holder: i32, waiting: i64) {
+        const BLOCKED: &str =
+            "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
+        for _ in 0..1_000 {
+            let blocked: i64 = sqlx::query_scalar(BLOCKED)
+                .bind(holder)
+                .fetch_one(&mut *self.connection().await)
+                .await
+                .expect("read lock waits");
+            if blocked >= waiting {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        unreachable_wait(holder, waiting);
+    }
+
+    /// Appends a copy of `draft`'s head candidate as an older daemon would have
+    /// written it, under policy semantics this daemon no longer enforces, and
+    /// moves the head to it. Answers the new candidate.
+    pub(super) async fn retire_head(&self, draft: &Uuid7) -> Uuid7 {
+        const RETIRED: &str = "INSERT INTO authoring.candidates \
+             (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
+             SELECT $2::uuid,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
+             FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id \
+             WHERE d.id=$1::uuid";
+        const HEAD: &str =
+            "UPDATE authoring.drafts SET head_candidate_id=$2::uuid WHERE id=$1::uuid";
+        let retired = mint();
+        let mut connection = self.connection().await;
+        for statement in [RETIRED, HEAD] {
+            let written = sqlx::query(statement)
+                .bind(draft.as_str())
+                .bind(retired.as_str())
+                .execute(&mut *connection)
+                .await
+                .expect("an older daemon's candidate");
+            assert_eq!(written.rows_affected(), 1);
+        }
+        retired
+    }
+
     /// The lane owner's URL, which a fault fixture installs its trigger as.
     pub(super) fn owner_url(&self) -> String {
         self.lane.url()
@@ -248,4 +292,12 @@ pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
     Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
         db.clone(),
     ))
+}
+
+#[expect(
+    clippy::panic,
+    reason = "work that never queues on the lock fails the proof"
+)]
+fn unreachable_wait(holder: i32, waiting: i64) -> ! {
+    panic!("{waiting} backends never queued behind session {holder}")
 }
