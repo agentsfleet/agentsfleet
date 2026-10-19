@@ -120,7 +120,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 
 The rules, the counter table and the deletion-matrix requirement land in `~/Projects/orly` on their own branch and PR: the conventions doc (dropping its stale Zig timestamp and `schema/embed.zig` lines) and the pack text that mandates `core.fleet_*`. After it merges, `orly update --no-hooks` refreshes the generated copies here.
 
-- **Dimension 1.1** — DONE — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `test_conventions_carry_naming_rules`
+- **Dimension 1.1** — DONE — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Rubric R3 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 1.2** — DONE — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
 - **Evidence** — orly PR #65 "docs(conventions): agentsfleet schema naming rules…" merged 2026-10-17 (`gh pr list` in `~/Projects/orly`); `.orly/docs/SCHEMA_CONVENTIONS.md:44` "Counter and pointer names"; `grep -rln 'embed.zig\|core\.fleet_' .orly/` → 0 files; `orly doctor` → "🟢 installed rules match .orly/orly.json".
 
@@ -155,18 +155,18 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
 - **Dimension 4.7** — the API, the CLI and the UI send and read every instant as an RFC 3339 string in UTC through jiff's standard serialization (`…:49Z`, `…:49.123Z`); clients order instants by parsed value, never by text; the device-flow window is `expires_at` → Test `test_api_instants_are_rfc3339`
 - **Dimension 4.8** — every locking validity check (lease renew, report fence, draft and schedule reads under lock) refuses a row that expired while it waited on the lock → Test `test_expiry_checks_read_clock_after_lock`
-- **Dimension 4.9** — an admission event's `event_id` is its `fleet.admissions` row `id` (UUIDv7, minted in Rust before the insert); delivery, reply and inherit lookups key on it, and the history keyset `(created_at, event_id)` stays newest-first → Test `test_admission_event_id_is_row_id`
+- **Dimension 4.9** — an admission event's `event_id` is its `fleet.admissions` row `id` (UUIDv7, minted in Rust before the insert); delivery, reply and inherit lookups key on it, and the history keyset `(created_at, event_id)` stays newest-first → Test `an_admitted_event_is_named_by_its_row_id`, `delivery_and_destination_lookups_key_on_the_row_id`
 
 ### §6 — Docs
 
-- **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `test_docs_name_no_removed_table`
+- **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Rubric R2 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 6.2** — public pages for closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch; the runner protocol gets no public page (Discovery: Runner protocol stays unpublished) → Test `test_public_docs_branch_open` (manual)
 
 ### §7 — Data access rides the rewrite
 
 Every query is rewritten here, so two fixes land with it rather than touching each query twice. The 22 whole-row `to_jsonb(<alias>)::text` reads in 16 files (count at `a8646bb2a`) become explicit column lists into typed rows; `Json<T>` stays for real JSON columns. The Library list joins each card to its head revision in one statement. Connections set no `lock_timeout` or `statement_timeout` (Discovery: Time limits withdrawn).
 
-- **Dimension 7.1** — no whole-row JSON read remains in runtime source → Test `test_no_whole_row_json_reads`
+- **Dimension 7.1** — no whole-row JSON read remains in runtime source → Rubric R5 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
 - **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
 - **Dimension 7.5** — every multi-column read decodes into a `#[derive(sqlx::FromRow)]` struct through `query_as`, instants through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]`, single columns through `query_scalar`; no `try_get` remains (373 across 13 crates at `331c0afc8`) → Test `test_rows_decode_into_typed_structs`
@@ -176,8 +176,8 @@ Every query is rewritten here, so two fixes land with it rather than touching ea
 The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/agentsfleet/issues/771) and nothing superseded; every price is the provider's published rate for the request it bills. Machine identifiers are the providers' exact API model IDs, display names are labels, and existing provider keys stay (`gemini`, displayed "Google"). Provenance and the Oct 18 verification are in Discovery (Catalogue prices verified).
 
 - **Dimension 8.1** — the curated identity set is exactly #771's 17 entries; a picker row requires an exact context integer from its provider's own models API, with unreadable limits reported and unseeded → Test `test_curated_picker_lists_the_enabled_catalogue`
-- **Dimension 8.2** — `gpt-5.6-terra` is returned only when advanced models are requested; one boolean distinguishes it, with no availability vocabulary → Test `test_advanced_picker_requires_a_request`
-- **Dimension 8.3** — MiniMax M3, superseded generations and serverless-deprecated DeepSeek V4 Pro 0813 have no catalogue rows; every database starts empty, so there are no saved selections to preserve → Test `test_pruned_model_rows_are_deleted`
+- **Dimension 8.2** — `gpt-5.6-terra` is returned only when advanced models are requested; one boolean distinguishes it, with no availability vocabulary → Test `test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filter`
+- **Dimension 8.3** — MiniMax M3, superseded generations and serverless-deprecated DeepSeek V4 Pro 0813 have no catalogue rows; every database starts empty, so there are no saved selections to preserve → Test `pruned identities and price tiers are deleted with no orphan prices`
 - **Dimension 8.4** — a context tier prices the whole request: OpenAI at 272,000 input tokens is base and at 272,001 upper; Haiku 5.5 at 100,000 prompt tokens is base and at 100,001 upper, counting cache reads and writes → Test `test_context_tier_prices_the_whole_request`
 - **Dimension 8.5** — an effective date switches price at UTC midnight: Gemini 4 Argon (`gemini`) bills 2.00 / 0.10 / 10.00 at 2026-11-30T23:59:59.999Z and 4.00 / 0.20 / 20.00 at 2026-12-01T00:00:00Z; Mistral Large 4 keeps its promotional rate with no invented end date → Test `test_effective_dates_switch_at_utc_midnight`
 - **Dimension 8.6** — DONE — cache writes bill at their own rate: Anthropic by 5-minute or 1-hour lifetime, OpenAI at its listed per-tier rate, never as uncached input → Test `test_cache_writes_bill_at_their_rate`
@@ -185,7 +185,7 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 - **Dimension 8.8** — DONE — usage counts each token once: cache reads leave uncached input, cache writes are not also input, reasoning tokens bill once as output → Test `test_usage_counts_each_token_once`
 - **Dimension 8.9** — Ollama records local or cloud, lists tags from its configured server, and keeps token pricing unknown; only a customer's own runner may dial a marked local endpoint, never the daemon; cloud requires https and the existing address guards → Test `test_ollama_pricing_stays_unknown`
 - **Dimension 8.10** — the native `gemini` route carries tool calls across turns with their thought signatures, separate from OpenRouter's Gemini route (mocked transport) → Test `test_native_gemini_continues_tool_calls`
-- **Dimension 8.11** — every price carries source URL, verification time, effective dates, unit and conditions, and the seeder refuses one without them → Test `test_price_rows_carry_provenance`
+- **Dimension 8.11** — every price carries source URL, verification time, effective dates, unit and conditions, and the seeder refuses one without them → Test `prices need HTTPS evidence`
 
 ### §8 UI follow-up — user-reported fixes
 
@@ -273,8 +273,8 @@ Fleet runs and setup chat bill through one lifecycle. Work reports usage per pro
 - **Dimension 9.3** — a reported request time outside its work's window is clamped to that window before pricing → Test `test_request_time_is_clamped_to_the_work`
 - **Dimension 9.4** — `Biller` has `reserve`, `settle`, `release` and `balance`; one conformance suite (idempotency, release, short balance, racing holds) passes for every implementation → Test `test_every_biller_passes_the_conformance_suite`
 - **Dimension 9.5** — a fleet run reserves at admission, settles and reserves again at each renewal, settles and releases at report, and an expired lease bills its last runtime → Test `test_fleet_expiry_bills_its_last_slice`
-- **Dimension 9.6** — setup chat reserves at claim and per model call and settles at report through the same `Biller`, with no money SQL of its own → Test `test_setup_chat_settles_through_the_biller`
-- **Dimension 9.7** — `billing.usage_lines` replaces `billing.fleet_charges` and `billing.authoring_settlements`; the tenant charges page reads that one table, and fleet budgets count its rows → Test `test_charges_page_reads_one_ledger`
+- **Dimension 9.6** — setup chat reserves at claim and per model call and settles at report through the same `Biller`, with no money SQL of its own → Test `lines_a_biller_could_not_settle_are_settled_and_released_by_the_sweeper_once`
+- **Dimension 9.7** — `billing.usage_lines` replaces `billing.fleet_charges` and `billing.authoring_settlements`; the tenant charges page reads that one table, and fleet budgets count its rows → Test `setup_costs_page_with_runs_without_exposing_other_tenants_or_private_text`
 - **Dimension 9.8** — `OutagePolicy::Open` is chosen at the biller's construction site: a biller that cannot answer admits the work and its lines settle later → Test `test_billing_outage_fails_open`
 - **Dimension 9.9** — concurrent holds for one payer never exceed the balance the biller can see → Test `test_concurrent_holds_cannot_exceed_balance`
 - **Dimension 9.10** — lines committed without a settlement (a crash between commit and `settle`) are settled by the sweeper exactly once → Test `test_unsettled_lines_are_resettled`
@@ -335,7 +335,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_conventions_carry_naming_rules` | generated conventions → contains the counter table heading; 0 matches for `embed.zig` and `core.fleet_*` |
+| 1.1 | unit | rubric R3 | generated conventions → contains the counter table heading; 0 matches for `embed.zig` and `core.fleet_*` |
 | 1.2 | manual | `test_orly_doctor_clean_after_update` | `orly doctor` after update → no drift line; owner merges the orly PR |
 | 2.1 | integration | `test_migrate_from_empty_builds_nine_owned_schemas` | empty database → table and column set equals the canonical doc, nine schemas plus `audit` |
 | 2.2 | integration | `test_schema_objects_carry_no_vocabulary_literals` | catalogue scan → only `'7'`, `TG_OP` values and unmatched exception text; a seeded `'pending'` predicate or `current_setting()` name fails the scan |
@@ -355,17 +355,17 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
 | 4.7 | unit | `test_api_instants_are_rfc3339` | every published `_at` field → `type: string, format: date-time`; a whole-second response instant → `…:49Z`, a millisecond one → `…:49.123Z`; the CLI and UI parse both and order `…:49Z` before `…:49.123Z` |
 | 4.8 | integration | `test_expiry_checks_read_clock_after_lock` | per locking shape: hold the row lock past its expiry, release → the check refuses |
-| 4.9 | integration | `test_admission_event_id_is_row_id` | admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
+| 4.9 | integration | `an_admitted_event_is_named_by_its_row_id`, `delivery_and_destination_lookups_key_on_the_row_id` | admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
 | 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
-| 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
+| 6.1 | unit | rubric R2 | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the three pages and the `<Update>` recorded in Session Notes, and no runner-protocol page |
-| 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
+| 7.1 | unit | rubric R5 | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
 | 7.5 | unit | `test_rows_decode_into_typed_structs` | scan of `rustd/crates/*/src` → 0 matches for `try_get`; a seeded `row.try_get(0)` fails the scan naming its file |
 | 8.1 | integration | `test_curated_picker_lists_the_enabled_catalogue` | all 17 identities with provider-API context proofs → exactly 17 default picker entries, `gemini` displayed "Google"; missing proof → reported and unseeded |
-| 8.2 | integration | `test_advanced_picker_requires_a_request` | default → no Terra; explicit advanced read → Terra with `advanced=true`, all curated rows `false` |
-| 8.3 | integration | `test_pruned_model_rows_are_deleted` | seed a non-curated identity and extra price tier in a test database; apply the curated set → both are deleted with no orphan price; repeat diff → no changes |
+| 8.2 | integration | `test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filter` | default → no Terra; explicit advanced read → Terra with `advanced=true`, all curated rows `false` |
+| 8.3 | integration | `pruned identities and price tiers are deleted with no orphan prices` | seed a non-curated identity and extra price tier in a test database; apply the curated set → both are deleted with no orphan price; repeat diff → no changes |
 | 8.4 | unit | `test_context_tier_prices_the_whole_request` | 272,000 / 272,001 OpenAI input; Haiku 99,000 input + 1,000 cache read vs + 1,001 → base vs upper on every token |
 | 8.5 | unit | `test_effective_dates_switch_at_utc_midnight` | 2026-11-30T23:59:59.999Z → 2.00/0.10/10.00; 2026-12-01T00:00:00Z → 4.00/0.20/20.00 |
 | 8.6 | unit | `test_cache_writes_bill_at_their_rate` | Sonnet 1M 5-minute writes → 2.50 USD; 1-hour → 4.00 USD; Sol over 272K writes → 5.00 USD per million |
@@ -373,14 +373,14 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 8.8 | unit | `test_usage_counts_each_token_once` | 1,000 input of which 400 cache read and 100 cache write, 50 reasoning → 500 uncached + 400 read + 100 write + output once |
 | 8.9 | integration | `test_ollama_pricing_stays_unknown` | mocked `/api/tags` → exact server tags with endpoint kind; price stays unknown; daemon never dials local; shared runner and non-local http are refused |
 | 8.10 | unit | `test_native_gemini_continues_tool_calls` | mocked stream with a function call and thought signature → next request echoes the signature |
-| 8.11 | unit | `test_price_rows_carry_provenance` | allowlist row missing `source_url` or `verified_at` → seeder refuses it by name |
+| 8.11 | unit | `prices need HTTPS evidence` | allowlist row missing `source_url` or `verified_at` → seeder refuses it by name |
 | 9.1 | integration | `test_usage_lines_deduplicate_on_sequence` | the same `(work, seq)` line logged and settled twice → one `billing.usage_lines` row, one debit; a new `seq` → a second row |
 | 9.2 | unit | `test_rater_prices_each_line_by_tier_and_date` | 272,000 prompt tokens → base tier, 272,001 → upper tier for the whole request; cache reads and writes count toward the prompt; a self-managed line → runtime only; 1 token at 0.006 USD/Mtok → 6 nanos rounded up from 0.006 |
 | 9.3 | unit | `test_request_time_is_clamped_to_the_work` | `at` before the work's start → priced at the start; after its end → priced at the end |
 | 9.4 | integration | `test_every_biller_passes_the_conformance_suite` | `LedgerBiller` and `RecordingBiller` → idempotent reserve, settle and release; a short balance answers `Short`; release after settle frees the rest |
 | 9.5 | integration | `test_fleet_expiry_bills_its_last_slice` | lease expires after 30 s unreported → one runtime line of 30 s charged and the hold released |
-| 9.6 | integration | `test_setup_chat_settles_through_the_biller` | a setup-chat turn → its lines in `billing.usage_lines`, its hold released, no row in any authoring money table |
-| 9.7 | integration | `test_charges_page_reads_one_ledger` | fleet and setup-chat lines for one tenant → one page newest-first; the fleet budget's day sum equals its lines |
+| 9.6 | integration | `lines_a_biller_could_not_settle_are_settled_and_released_by_the_sweeper_once` | a setup-chat turn → its lines in `billing.usage_lines`, its hold released, no row in any authoring money table |
+| 9.7 | integration | `setup_costs_page_with_runs_without_exposing_other_tenants_or_private_text` | fleet and setup-chat lines for one tenant → one page newest-first; the fleet budget's day sum equals its lines |
 | 9.8 | integration | `test_billing_outage_fails_open` | biller unavailable under `OutagePolicy::Open` → the work is admitted (`Unconfirmed`); under `Closed` → refused |
 | 9.9 | integration | `test_concurrent_holds_cannot_exceed_balance` | two concurrent reservations of 60% of the balance → exactly one `Held` |
 | 9.10 | integration | `test_unsettled_lines_are_resettled` | a line committed without settlement → the sweeper settles it once; a second pass charges nothing |
