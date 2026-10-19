@@ -171,6 +171,16 @@ impl Fixture {
     }
 
     fn arm_cleanup(&mut self) {
+        // Drafts go first, before any attempt row. Every lane's maintenance
+        // pass recovers every lane's expired attempts, and it locks the draft
+        // and then the attempt; cleanup taking the attempts first and reaching
+        // the drafts through the tenant cascade is the opposite order, and
+        // Postgres broke that cycle as a deadlock in this cleanup. Messages,
+        // candidates and answer receipts cascade from the draft.
+        self.cleanup.record(
+            "DELETE FROM authoring.drafts WHERE workspace_id=$1::uuid",
+            self.workspace.as_str(),
+        );
         self.cleanup.record(
             "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1::uuid",
             self.workspace.as_str(),
