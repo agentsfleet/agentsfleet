@@ -33,7 +33,7 @@ use afd_dragonfly::streams::FleetStreams;
 use jiff::Timestamp;
 
 use super::sql;
-use crate::error::{Error, Result, query};
+use crate::error::{DETAIL_GATE_BINDING_UNWRITABLE, Error, Result, encoded, query};
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::pending::GateRef;
@@ -185,11 +185,8 @@ impl Gates {
         let binding = request
             .stated
             .binding
-            .map(|declared| serde_json::to_string(&declared.recorded()))
-            .transpose()
-            .map_err(|_shape| {
-                crate::error::rejected(crate::error::DETAIL_GATE_BINDING_UNWRITABLE)
-            })?;
+            .map(|declared| encoded(&declared.recorded(), DETAIL_GATE_BINDING_UNWRITABLE))
+            .transpose()?;
 
         let mut connection = self.database().acquire().await?;
         let pending_approvals = sql::PendingRow {

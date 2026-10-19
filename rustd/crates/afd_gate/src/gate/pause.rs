@@ -79,11 +79,13 @@ impl Gates {
             .await
             .map_err(query(CONTEXT_PAUSE))?;
 
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet = fleet_id.as_str();
+        let trigger_word = trigger.as_str();
         tracing::warn!(
             event = EVENT_FLEET_PAUSED,
             fleet_id = fleet,
-            trigger = trigger.as_str(),
+            trigger = trigger_word,
             "the fleet is stopped; no further work of its is admitted"
         );
 

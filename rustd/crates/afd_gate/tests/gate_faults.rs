@@ -21,7 +21,7 @@ use afd_core::test_util::trace::Capture;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_gate::gate::{Check, Gates, Trigger, Verdict};
+use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Trigger, Verdict, Waiting};
 
 use self::fixture::config_gates;
 
@@ -31,6 +31,9 @@ const NOWHERE: &str = "redis://127.0.0.1:1";
 /// A rule that stops the fleet on every chat, and a threshold to count it
 /// against, so one check reaches the counter and then the pause.
 const KILL_AND_COUNT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}],"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#;
+
+/// How long a parked question would wait for its answer.
+const PARK_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
 
 /// The fleet and workspace the check names; nothing answers, so any will do.
 const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee1";
@@ -98,4 +101,79 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
     told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
     told_reason(&capture, EVENT_COUNTER_UNAVAILABLE);
     told_reason(&capture, EVENT_PAUSE_FAILED);
+}
+
+/// A rule that asks a human about every chat.
+const ASK_EVERY_CHAT: &str =
+    r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve"}]}"#;
+
+/// A gate that could not be raised.
+const EVENT_PARK_UNAVAILABLE: &str = "gate_park_unavailable";
+
+#[tokio::test]
+async fn a_gated_event_whose_lookup_failed_waits_instead_of_asking_again() {
+    let capture = Capture::install();
+    let gates = unreachable_gates();
+    let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+    let config = config_gates(ASK_EVERY_CHAT);
+
+    let verdict = gates
+        .check(
+            Check {
+                fleet_id: &fleet,
+                workspace_id: &fleet,
+                event_id: "event-ask-unreadable",
+                event_type: "chat",
+                actor: "user:fixture",
+                request_json: "{}",
+                config: &config,
+            },
+            jiff::Timestamp::UNIX_EPOCH,
+        )
+        .await;
+
+    assert_eq!(
+        verdict,
+        Verdict::Await(Waiting::Unreadable),
+        "the event may already hold a card; a second one is worse than a poll"
+    );
+    told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
+    let events = capture.events();
+    assert!(
+        events
+            .iter()
+            .all(|event| event.field("event") != Some(EVENT_PARK_UNAVAILABLE)),
+        "no park was attempted: {events:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_park_whose_row_cannot_be_written_fails_closed_naming_the_row() {
+    let capture = Capture::install();
+    let gates = unreachable_gates();
+    let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+
+    let parked = gates
+        .park(
+            Park {
+                fleet_id: &fleet,
+                workspace_id: &fleet,
+                event_id: "event-row-unwritable",
+                stated: Stated::of(
+                    "chat",
+                    "user:fixture",
+                    "event-row-unwritable",
+                    None,
+                    PARK_TIMEOUT,
+                ),
+                claim: &Claim::of(None),
+            },
+            jiff::Timestamp::UNIX_EPOCH,
+        )
+        .await;
+
+    assert_eq!(parked, Parked::Unavailable, "no row, so no card and no run");
+    let logged = capture.only(EVENT_PARK_UNAVAILABLE);
+    assert_eq!(logged.field("write"), Some("durable_row"));
+    assert_eq!(logged.field("fleet_id"), Some(FLEET));
 }

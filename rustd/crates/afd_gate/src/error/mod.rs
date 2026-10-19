@@ -180,3 +180,16 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn rejected(detail: &'static str) -> Error {
     ErrorKind::Rejected { detail }.into()
 }
+
+/// `value` as the JSON text a store keeps, or the refusal `detail` names.
+///
+/// Every record the gate writes this way is strings and integers, which
+/// `serde_json` has no error to raise for; the refusal is what a shape that
+/// grew a serializer error would earn, so a gate that cannot be written says
+/// so rather than parking an event nothing can find.
+pub(crate) fn encoded<T: serde::Serialize + ?Sized>(
+    value: &T,
+    detail: &'static str,
+) -> Result<String> {
+    serde_json::to_string(value).map_err(|_shape| rejected(detail))
+}
