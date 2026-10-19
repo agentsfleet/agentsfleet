@@ -244,7 +244,7 @@ test("an UNREACHABLE catalogue accepts the provider — the server stays the arb
 });
 
 test("an EMPTY catalogue accepts the provider — a fresh environment stays usable", async () => {
-  // core.model_library ships empty; the model_catalogue playbook fills it.
+  // model.platform_models ships empty; the model_catalogue playbook fills it.
   const got = await run(
     resolveCatalogueTarget("anthropic", undefined, undefined),
     httpLayer([{ models: [] }]),

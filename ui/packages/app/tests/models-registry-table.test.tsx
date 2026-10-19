@@ -59,7 +59,7 @@ describe("Models registry actions", () => {
 
   it("warns instead of claiming Active when nothing is active and no platform default exists", async () => {
     // The regression this pins: isDefaultLive once tested only "no active
-    // entry", so a fresh tenant on a fresh install (core.model_library ships
+    // entry", so a fresh tenant on a fresh install (model.platform_models ships
     // empty, so no default can exist) saw a green Active badge on a default
     // that did not exist — and the badge suppressed the warning. That tenant's
     // first fleet run fails PlatformKeyMissing.

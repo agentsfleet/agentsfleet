@@ -126,7 +126,7 @@ describe("secret create — provider catalogue closure", () => {
 
   test("an EMPTY catalogue accepts the provider — a fresh environment stays usable", async () => {
     await authedScope(async () => {
-      // `core.model_library` ships empty and the model_catalogue playbook fills
+      // `model.platform_models` ships empty and the model_catalogue playbook fills
       // it. Rejecting every provider before that runs would make the CLI
       // unusable during exactly the provisioning it is used for.
       const routes: MockRoutes = {
