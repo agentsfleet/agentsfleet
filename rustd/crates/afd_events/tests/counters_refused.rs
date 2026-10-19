@@ -75,7 +75,5 @@ async fn an_unread_counter_reason_carries_no_code_prefix() {
     let logged = capture.only("fleet_counters_unread");
     assert!(logged.field("error_code").is_some(), "{logged:?}");
     assert_eq!(logged.field("fleet_id"), Some(FLEET_ID));
-    let reason = logged.field("reason").expect("a refused read says why");
-    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
-    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
+    logged.assert_uncoded_reason();
 }

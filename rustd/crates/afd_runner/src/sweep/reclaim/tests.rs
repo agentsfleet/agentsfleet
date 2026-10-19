@@ -93,16 +93,7 @@ async fn every_failed_stream_step_reason_carries_no_code_prefix() {
                 .is_some_and(|code| !code.is_empty()),
             "{event} names no error_code"
         );
-        let reason = logged.field("reason").expect("a failure line says why");
-        assert!(!reason.is_empty(), "{event} says nothing");
-        assert!(
-            !reason.contains("[UZ-"),
-            "{event} repeats its code: {reason}"
-        );
-        assert!(
-            !reason.contains('\n'),
-            "{event} carries a backtrace: {reason}"
-        );
+        logged.assert_uncoded_reason();
         assert_eq!(logged.field("error"), None, "{event} kept the old field");
         assert_eq!(logged.field("fleet_id"), Some(FLEET));
     }

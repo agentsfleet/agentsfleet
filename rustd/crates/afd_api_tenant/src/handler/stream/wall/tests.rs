@@ -86,7 +86,6 @@ fn an_unread_hello_counter_reason_carries_no_code_prefix() {
     counters_unread(&workspace, &failure);
 
     let logged = capture.only(EVENT_HELLO_COUNTERS_UNREAD);
-    let reason = logged.field("reason").unwrap_or_default();
-    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    logged.assert_uncoded_reason();
     assert_eq!(logged.field("error_code"), Some(failure.code().as_str()));
 }

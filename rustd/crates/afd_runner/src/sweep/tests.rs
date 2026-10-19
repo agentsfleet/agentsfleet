@@ -141,8 +141,7 @@ async fn a_failed_sweep_reason_carries_no_code_prefix() {
         .collect();
     assert!(!failed.is_empty(), "no failed pass was logged");
     for line in failed {
-        let reason = line.field("reason").expect("a failed pass says why");
-        assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+        line.assert_uncoded_reason();
         assert_eq!(line.field("error_code"), Some(expected_code.as_str()));
         assert_eq!(line.field("error"), None, "the reason moved to `reason`");
         assert_eq!(line.field("sweeper"), Some("counting"));
