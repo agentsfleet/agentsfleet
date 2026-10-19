@@ -35,6 +35,8 @@ mod openapi_stream_frames;
 mod openapi_contract;
 #[path = "openapi_contract_schemas.rs"]
 mod openapi_contract_schemas;
+#[path = "openapi_instants.rs"]
+mod openapi_instants;
 #[path = "route_inventory.rs"]
 mod route_inventory;
 #[path = "route_meta_scopes.rs"]
