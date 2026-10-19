@@ -23,26 +23,20 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     for (const path of FILES) await Bun.file(path).delete();
   });
 
-  test("the complete curated document seeds only the six proved contexts on an empty database", async () => {
+  test("the complete curated document seeds every proved context on an empty database", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
     assertCompleteCatalogue(catalogue.models);
     expect(catalogue.models).toHaveLength(18);
-    const wanted = [
-      "fireworks/accounts/fireworks/models/deepseek-v4p1-flash",
-      "fireworks/accounts/fireworks/models/glm-5p3-flash",
-      "fireworks/accounts/fireworks/models/kimi-k3",
-      "openrouter/google/gemini-4-argon",
-      "openrouter/meta/muse-wonder",
-      "openrouter/qwen/qwen3.8-max-0902",
-    ];
+    expect(catalogue.models.every((model) => model.context !== null)).toBe(true);
+    const wanted = catalogue.models.map((model) => `${model.provider}/${model.model_name}`).toSorted();
     const initial = await snapshot(database);
     const diff = await seedCatalogue(database, catalogue);
     expect(diff).toMatchObject({ diff: { changed: [], deleted: [] }, applied: false });
     expect(diff.diff.added.toSorted()).toEqual(wanted);
     expect(await snapshot(database)).toEqual(initial);
     expect((await seedCatalogue(database, catalogue, true)).applied).toBe(true);
-    const rows = await database`SELECT provider || '/' || model_name AS identity FROM model.platform_models ORDER BY identity`;
-    expect(rows.map((row: { identity: string }) => row.identity)).toEqual(wanted);
+    const rows = await database`SELECT provider || '/' || model_name AS identity FROM model.platform_models`;
+    expect(rows.map((row: { identity: string }) => row.identity).toSorted()).toEqual(wanted);
     expect((await seedCatalogue(database, catalogue)).diff).toEqual({ added: [], changed: [], deleted: [] });
   });
 
