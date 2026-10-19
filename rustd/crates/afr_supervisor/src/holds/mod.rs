@@ -211,11 +211,12 @@ impl Holds {
             sandbox,
             reply,
         };
-        if let Err(closed) = self.requests.send(parked) {
-            if let Request::Park { key, sandbox, .. } = closed.0 {
-                keeper::destroy_now(&key.fleet, sandbox, Release::Shutdown).await;
-            }
-            return None;
+        // A request the stopped task never took comes back whole: its sandbox
+        // is destroyed here, and its reply, dropped with it, answers `None`.
+        if let Err(closed) = self.requests.send(parked)
+            && let Request::Park { key, sandbox, .. } = closed.0
+        {
+            keeper::destroy_now(&key.fleet, sandbox, Release::Shutdown).await;
         }
         answer.await.ok().flatten()
     }

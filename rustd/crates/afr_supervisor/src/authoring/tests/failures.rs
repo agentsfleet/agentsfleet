@@ -43,3 +43,54 @@ async fn a_changed_dispatch_identity_cannot_publish_the_returned_private_text() 
     assert_eq!(report["usage"]["knowledge"], "unknown");
     assert!(report.get("answer").is_none_or(serde_json::Value::is_null));
 }
+
+/// A model reply carrying one proposal, as the daemon's model route answers.
+fn proposing(call: &crate::client::Call) -> Answer {
+    let request: serde_json::Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+    result(
+        call,
+        &json!([{"id":format!("call-{}",request["call_index"]),
+            "proposal":{"kind":"initialize","definition":{}}}]),
+        false,
+    )
+}
+
+/// Runs a turn whose proposal the daemon answers with `activity`, and hands
+/// back how many proposals reached it and the report.
+async fn proposed(activity: fn() -> Answer) -> (usize, serde_json::Value) {
+    let mut rig = rig(move |call| match call.verb {
+        Verb::AuthoringModel => proposing(call),
+        Verb::AuthoringActivity => activity(),
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let (calls, report) = run(&mut rig, lease()).await;
+    let proposals = calls
+        .iter()
+        .filter(|call| call.verb == Verb::AuthoringActivity)
+        .count();
+    (proposals, report)
+}
+
+#[tokio::test]
+async fn a_proposal_answered_but_not_accepted_ends_the_turn_rather_than_repairing() {
+    // A 2xx that says "not accepted" is a daemon this runner does not
+    // understand: repairing would loop on an answer the model cannot change.
+    let (proposals, report) = proposed(|| json(&json!({"accepted":false,"replayed":false}))).await;
+
+    assert_eq!(proposals, 1, "the proposal is not offered again");
+    assert_eq!(report["outcome"], "failed");
+    assert!(report.get("answer").is_none_or(serde_json::Value::is_null));
+}
+
+#[tokio::test]
+async fn a_proposal_refused_for_a_reason_the_model_cannot_fix_ends_the_turn() {
+    // Only 400 and 422 are the proposal's own fault; anything else is the
+    // daemon's, and telling the model to correct its schema would be a lie.
+    let (proposals, report) =
+        proposed(|| Answer::Fail(crate::error::refused(Verb::AuthoringActivity, 409, None))).await;
+
+    assert_eq!(proposals, 1, "the proposal is not offered again");
+    assert_eq!(report["outcome"], "failed");
+    assert!(report.get("answer").is_none_or(serde_json::Value::is_null));
+}

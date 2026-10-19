@@ -277,3 +277,86 @@ async fn test_a_poll_after_a_park_names_the_held_fleet() {
         "nothing held before the first lease, its fleet after"
     );
 }
+
+/// A worker that panics after leasing stopped is not started again: the
+/// restart is for a pool still serving, and this one is on its way out.
+#[tokio::test(start_paused = true)]
+async fn a_worker_that_panics_after_leasing_stopped_stays_down() {
+    let engine = FakeEngine {
+        panic_once: true,
+        ..FakeEngine::default()
+    };
+    let halt = Arc::clone(&engine.halt_before_panic);
+    let rig = polling_with(
+        |polled| match polled {
+            0 => granted(FIRST_LEASE),
+            _ => granted(SECOND_LEASE),
+        },
+        engine,
+    );
+    halt.set(rig.shutdown.clone()).unwrap();
+    let (_published, watching) = watch::channel(assigned(1));
+
+    serve(Arc::clone(&rig.lessee), watching).await;
+
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        1,
+        "no worker came back for the second lease"
+    );
+}
+
+/// A poll that hands out setup work authors it: no sandbox is prepared and no
+/// fleet turn runs for it.
+#[tokio::test(start_paused = true)]
+async fn an_authoring_lease_is_authored_rather_than_run() {
+    let polled = AtomicUsize::new(0);
+    let answer = daemon(move |call| match call.verb {
+        Verb::Lease => Some(if polled.fetch_add(1, Ordering::SeqCst) == 0 {
+            json(&LeaseResponse::<serde_json::Value> {
+                lease: Some(TaggedLease::Authoring(Box::new(
+                    crate::authoring::tests::lease(),
+                ))),
+                retry_after_ms: None,
+            })
+        } else {
+            idle(Some(500))
+        }),
+        Verb::AuthoringModel => Some(crate::authoring::tests::result(
+            call,
+            &serde_json::json!([]),
+            false,
+        )),
+        _ => None,
+    });
+    let mut rig = Rig::new(
+        answer,
+        FakeEngine::default(),
+        FakeAgent::new(Behaviour::Answer),
+    );
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    let authored = loop {
+        let call = tokio::time::timeout(Duration::from_secs(5), rig.calls.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if call.verb == Verb::AuthoringModel {
+            break call;
+        }
+    };
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert!(
+        authored.body.is_some(),
+        "the model route was asked for the turn"
+    );
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        0,
+        "no sandbox for setup work"
+    );
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no fleet turn ran");
+}

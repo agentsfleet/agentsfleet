@@ -327,3 +327,23 @@ async fn test_a_park_after_shutdown_destroys_the_sandbox_itself() {
     let left = holds.fleets().await;
     assert!(left.is_empty(), "{left:?}");
 }
+
+#[tokio::test]
+async fn test_a_second_shutdown_returns_at_once() {
+    let engine = FakeEngine::default();
+    let (holds, _clock) = holds(2);
+    park(&holds, &engine, FLEET_A).await;
+    holds.shutdown().await;
+
+    // The task is gone, so nothing is left to answer; waiting for it would
+    // hang a runner whose exit path calls this twice.
+    tokio::time::timeout(Duration::from_secs(1), holds.shutdown())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        engine.destroyed.load(Ordering::SeqCst),
+        1,
+        "nothing is destroyed twice"
+    );
+}

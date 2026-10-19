@@ -2,7 +2,6 @@
 
 use std::mem;
 
-use afd_core::error_code;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::tool_detail::ToolCallRecord;
 use bytes::Bytes;
@@ -20,7 +19,6 @@ const EVENT_CAPTURE_FAILED: &str = "memory_capture_post_failed";
 const EVENT_RECORDS_FAILED: &str = "tool_records_post_failed";
 const EVENT_SPOOL_KEPT: &str = "report_spool_kept";
 const EVENT_SPOOL_UNAVAILABLE: &str = "report_spool_unavailable";
-const EVENT_ENCODE_FAILED: &str = "report_encode_failed";
 const EVENT_UNSPOOLED_LOST: &str = "report_failed";
 
 impl LeaseRun<'_> {
@@ -48,27 +46,12 @@ impl LeaseRun<'_> {
             trace.as_deref(),
             held_until,
         );
-        let bytes = match serde_json::to_vec(&report) {
-            Ok(bytes) => Bytes::from(bytes),
-            Err(failure) => {
-                let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let lease_id = self.ids.lease.as_str();
-                let reason = failure.to_string();
-                let event = EVENT_ENCODE_FAILED;
-                tracing::error!(
-                    error_code = code,
-                    lease_id,
-                    reason,
-                    event,
-                    "the report would not serialize"
-                );
-                // Never posted, so never recorded: the hold ends as a rejected
-                // report's does. No test drives this arm: a `ReportRequest` is
-                // strings, integers, unit enums and parsed raw JSON, none of
-                // which `serde_json` refuses to write to a `Vec`.
-                return true;
-            }
-        };
+        // A `ReportRequest` is strings, integers, unit enums and parsed raw
+        // JSON, none of which `serde_json` refuses to write to a `Vec`, so no
+        // run reaches an encode failure. Were one ever to, the empty body it
+        // leaves is a report the daemon cannot read: the spool sets it aside
+        // for an operator and the hold ends as a rejected report's does.
+        let bytes = Bytes::from(serde_json::to_vec(&report).unwrap_or_default());
         match self.lessee.spool.hold(&self.ids.lease, bytes.clone()).await {
             Ok(spooled) => self.deliver(&spooled).await,
             Err(failure) => self.post_unspooled(bytes, &failure).await,
@@ -83,19 +66,13 @@ impl LeaseRun<'_> {
             return;
         }
         let plane = &self.lessee.plane;
-        let posted = match records::bodies(self.lease.fencing_token, records) {
-            Ok(bodies) => {
-                let mut posted = Ok(());
-                for body in bodies {
-                    posted = retrying(|| plane.tool_calls(&self.ids.lease, body.clone())).await;
-                    if posted.is_err() {
-                        break;
-                    }
-                }
-                posted
+        let posted: crate::Result<()> = async {
+            for body in records::bodies(self.lease.fencing_token, records)? {
+                retrying(|| plane.tool_calls(&self.ids.lease, body.clone())).await?;
             }
-            Err(failure) => Err(failure),
-        };
+            Ok(())
+        }
+        .await;
         if let Err(failure) = posted {
             let code = failure.code().as_str();
             let lease_id = self.ids.lease.as_str();
