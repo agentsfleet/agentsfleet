@@ -121,17 +121,18 @@ impl Creations {
 
     /// Best effort: the caller already holds the failure it reports.
     async fn remove_system(&self, workspace: &Uuid7, id: &Uuid7) {
-        let removed = match self.setup.drafts.database.acquire().await {
-            Ok(mut connection) => sqlx::query(sql::REMOVE)
+        let removed: Result<()> = async {
+            let mut connection = self.setup.drafts.database.acquire().await?;
+            sqlx::query(sql::REMOVE)
                 .bind(id.as_str())
                 .bind(workspace.as_str())
                 .bind(INSTALLING)
                 .execute(connection.as_mut())
                 .await
-                .map(drop)
-                .map_err(query(CONTEXT)),
-            Err(unavailable) => Err(unavailable.into()),
-        };
+                .map_err(query(CONTEXT))?;
+            Ok(())
+        }
+        .await;
         if let Err(failed) = removed {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();

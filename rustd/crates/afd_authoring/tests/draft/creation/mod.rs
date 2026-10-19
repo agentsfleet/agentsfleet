@@ -19,5 +19,6 @@ mod interleaving;
 mod race;
 mod refusals;
 mod retries;
+mod rollback;
 mod stages;
 mod stored;
