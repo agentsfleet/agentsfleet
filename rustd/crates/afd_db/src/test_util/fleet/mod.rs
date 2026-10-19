@@ -28,7 +28,7 @@ const INSERT_FLEET: &str = include_str!("sql/insert.sql");
 const INSERT_FLEET_WITH_SETUP: &str = include_str!("sql/insert_with_setup.sql");
 
 /// The revision number a seeded setup takes when the seed names none.
-const FIRST_SETUP_VERSION: i64 = 1;
+const FIRST_SETUP_REVISION: i64 = 1;
 
 /// The resource version a fleet is created at when the seed names none.
 const FIRST_RESOURCE_VERSION: i64 = 1;
@@ -91,7 +91,7 @@ pub struct FleetSeed<'a> {
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
     resource_version: Option<i64>,
-    setup_version: Option<i64>,
+    setup_revision: Option<i64>,
     created_at: Option<Timestamp>,
     updated_at: Option<Timestamp>,
     setup: Option<SetupRevision<'a>>,
@@ -112,7 +112,7 @@ impl<'a> FleetSeed<'a> {
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             resource_version: None,
-            setup_version: None,
+            setup_revision: None,
             created_at: None,
             updated_at: None,
             setup: None,
@@ -143,12 +143,12 @@ impl<'a> FleetSeed<'a> {
     /// number of the setup revision [`FleetSeed::setup`] writes.
     pub fn versions(mut self, resource: i64, setup: i64) -> Self {
         self.resource_version = Some(resource);
-        self.setup_version = Some(setup);
+        self.setup_revision = Some(setup);
         self
     }
 
     /// The setup revision the fleet selects, which admission and the lease
-    /// path both require. Numbers it [`FIRST_SETUP_VERSION`] unless
+    /// path both require. Numbers it [`FIRST_SETUP_REVISION`] unless
     /// [`FleetSeed::versions`] named one.
     pub fn setup(mut self, revision: SetupRevision<'a>) -> Self {
         self.setup = Some(revision);
@@ -218,7 +218,7 @@ impl<'a> FleetSeed<'a> {
         if let Some(setup) = self.setup {
             query = query
                 .bind(revision_id)
-                .bind(self.setup_version.unwrap_or(FIRST_SETUP_VERSION))
+                .bind(self.setup_revision.unwrap_or(FIRST_SETUP_REVISION))
                 .bind(setup.definition)
                 .bind(setup.digest)
                 .bind(setup.semantics)

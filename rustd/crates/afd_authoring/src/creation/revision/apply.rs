@@ -135,14 +135,14 @@ fn validate(
     row: &super::super::stored::Stored,
     expected: Option<&str>,
 ) -> Result<()> {
-    let current = etag(&row.id, row.setup_version);
+    let current = etag(&row.id, row.head_revision);
     if expected.ok_or(ErrorKind::Precondition)? != current {
         return Err(ErrorKind::Stale { etag: current }.into());
     }
     if row.status == KILLED {
         return Err(ErrorKind::State { current: "killed" }.into());
     }
-    super::target(captured, &row.id, row.setup_version)?;
+    super::target(captured, &row.id, row.head_revision)?;
     captured.candidate.definition.validate_for_save()?;
     if captured.candidate.policy_semantics != afd_fleet_runtime::definition::POLICY_SEMANTICS {
         return Err(ErrorKind::Policy.into());

@@ -88,13 +88,13 @@ impl Creations {
         connection: &mut PgConnection,
         row: &Stored,
     ) -> Result<Review> {
-        let mut context = row.setup_context.context.clone();
+        let mut context = row.accepted.context.clone();
         context.linked_fleet_id = Some(row.id.clone());
         review::build(
             &self.setup,
             connection,
             &context,
-            &row.setup_context.candidate(row.definition.clone()),
+            &row.accepted.candidate(row.definition.clone()),
             afd_core::clock::now(),
         )
         .await
@@ -126,10 +126,10 @@ fn project(row: Stored, review: &Review) -> SavedFleet {
     let setup = progress::current(&row, review);
     SavedFleet {
         etag: etag(&row.id, row.resource_version),
-        setup_etag: etag(&row.id, row.setup_version),
-        setup_revision: row.setup_version.to_string(),
-        needs_re_review: row.setup_context.review_digest != review.review_digest,
-        policy_semantics: row.setup_context.policy_semantics,
+        setup_etag: etag(&row.id, row.head_revision),
+        setup_revision: row.head_revision.to_string(),
+        needs_re_review: row.accepted.review_digest != review.review_digest,
+        policy_semantics: row.accepted.policy_semantics,
         id: row.id,
         name: row.name,
         status: row.status,

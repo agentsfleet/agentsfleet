@@ -73,12 +73,13 @@ pub(super) struct Stored {
     pub(super) workspace_id: Uuid7,
     pub(super) name: String,
     pub(super) status: String,
-    pub(super) setup_context: Accepted,
+    pub(super) accepted: Accepted,
     pub(super) setup_stream_ready: Option<bool>,
     pub(super) initial_start: InitialStart,
     pub(super) definition: Definition,
     pub(super) resource_version: i64,
-    pub(super) setup_version: i64,
+    /// The head `fleet.revisions.revision`: 1 at Save, +1 per Apply.
+    pub(super) head_revision: i64,
     pub(super) created_at: Timestamp,
     pub(super) updated_at: Timestamp,
     pub(super) events_processed: i64,
@@ -104,7 +105,7 @@ pub(super) struct StoredRow {
     updated_at: Timestamp,
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
-    setup_version: i64,
+    head_revision: i64,
     definition: String,
     review_context: Option<String>,
     review_digest: Option<String>,
@@ -125,7 +126,7 @@ impl StoredRow {
                 .as_deref()
                 .ok_or_else(|| absent("review_context"))?,
         )?;
-        let setup_context = Accepted {
+        let accepted = Accepted {
             context: frozen.context,
             candidate_id: Uuid7::parse(
                 self.source_candidate_id
@@ -142,7 +143,7 @@ impl StoredRow {
             workspace_id: Uuid7::parse(&self.workspace_id)?,
             name: self.name,
             status: self.status,
-            setup_context,
+            accepted,
             setup_stream_ready: self.setup_stream_ready,
             initial_start: value(
                 self.initial_start
@@ -151,7 +152,7 @@ impl StoredRow {
             )?,
             definition: value(&self.definition)?,
             resource_version: self.resource_version,
-            setup_version: self.setup_version,
+            head_revision: self.head_revision,
             created_at: self.created_at,
             updated_at: self.updated_at,
             events_processed: self.events_processed,
