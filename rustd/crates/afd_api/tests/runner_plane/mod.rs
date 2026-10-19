@@ -265,3 +265,5 @@ mod memory;
 mod satellites;
 
 mod usage;
+
+mod schedule_guard;
