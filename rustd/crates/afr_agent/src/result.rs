@@ -48,8 +48,6 @@ pub struct ExecutionResult<'a> {
     pub wall_seconds: u64,
     /// Peak resident bytes observed.
     pub memory_peak_bytes: u64,
-    /// Milliseconds the run spent throttled.
-    pub cpu_throttled_ms: u64,
     /// Cumulative uncached prompt tokens for the whole run: neither read
     /// from the provider's cache nor written to it.
     pub input_tokens: u64,

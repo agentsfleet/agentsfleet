@@ -211,7 +211,6 @@ pub(crate) fn answer() -> RunOutput {
             token_count: 8,
             wall_seconds: 1,
             memory_peak_bytes: 0,
-            cpu_throttled_ms: 0,
             input_tokens: 3,
             cached_input_tokens: 1,
             output_tokens: 4,
