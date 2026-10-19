@@ -55,8 +55,8 @@ This log records the requested server additions, client evidence and remaining r
 - CLI `777ff460d` adds private chat list/search, rename and confirmed deletion alongside existing `chat [draft-id]`.
 - List reads one bounded page. Rename uses a fresh entity tag and explains busy-chat refusal. Unattended deletion requires `--yes`.
 - Focused HTTP and terminal-input checks pass 54 tests across four files. Command inventory, rejection and help checks pass 173 tests across four files.
-- Complete CLI coverage passes 1937 tests, with 16 existing live-test skips and zero failures across 214 files. Functions and lines reach 100%.
-- Both clients now accept exact signed wallet debt, including `-50` and the signed minimum; they refuse `-0`, leading zeros and either overflow. Header and billing page share formatting, and the CLI provider-reset warning accepts debt. Tiny debt remains distinct from zero.
+- Complete CLI coverage passes 1952 tests, with 16 existing live-test skips and zero failures across 215 files. Functions and lines reach 100%.
+- Commit `aa112ddd1` makes both clients accept exact signed wallet debt, including `-50` and the signed minimum; they refuse `-0`, leading zeros and either overflow. Header and billing page share formatting, and the CLI provider-reset warning accepts debt. Tiny debt remains distinct from zero.
 - Debt regressions first failed in both clients, then 36 CLI and 56 app focused tests passed. Native source review found no concrete defects across the ten production files (`.tmp/reviews/m229-signed-balance.md`).
 
 ## Verification and performance
@@ -69,18 +69,18 @@ Post-review follow-up replaces all eight stale catalogue-table references in CLI
 
 | Package | Files | Passing tests | Coverage |
 |---|---|---|---|
-| App | 412 | 3848 | 100% statements, branches, functions and lines |
+| App | 412 | 3861 | 100% statements, branches, functions and lines |
 | Website | 20 | 133 | 100% on all four measures |
-| CLI | 214 | 1937 | 100% functions and lines; 16 existing live-test skips |
+| CLI | 215 | 1952 | 100% functions and lines; 16 existing live-test skips |
 | Design system | 62 | 497 | 100% on all four measures |
 
-- Evidence: `/tmp/m229-completion-coverage-all-final.txt`. No threshold, timeout, skip or budget changed.
-- `make lint-app` and `make lint-cli` pass in the scoped `c272f510d` and `777ff460d` commit hooks.
+- Evidence: `/tmp/m229-signed-coverage-all-final.txt`. No threshold, timeout, skip or budget changed.
+- `make lint-app lint-cli` passes after signed balances and the search refresh repair (`/tmp/m229-signed-lint.txt` and the scoped `a1dd087d2` / `aa112ddd1` commit hooks).
 - `make dry-app-smoke` passes four desktop/mobile sign-in and protected-route checks. Evidence: `/tmp/m229-completion-browser-smoke.txt`.
 - Production `bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard.
-- Shared compressed JavaScript is 274265 / 276480 bytes. New-fleet total is 334933 bytes; fleet-detail total is 364328 bytes.
-- Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496` measured 364917 and 366692 bytes for those pages. Reductions are 29984 and 2364 bytes.
-- The baseline failed the server-module guard. Current limits remain unchanged. Evidence: `/tmp/m229-sidebar-build-split.txt` and `/tmp/m229-sidebar-size-split.json`.
+- Shared compressed JavaScript is 274266 / 276480 bytes. New-fleet total is 334981 bytes; fleet-detail total is 364428 bytes.
+- Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496` measured 364917 and 366692 bytes for those pages. Reductions are 29936 bytes (8.20%) and 2264 bytes (0.62%).
+- The baseline failed the server-module guard. Current limits remain unchanged. Evidence: `/tmp/m229-signed-build-final.txt` and `/tmp/m229-signed-size-final.json`.
 - Duplicate audit: one weaker case removed; two overlapping cases merged into one. Net reduction: two cases, with retained assertions and app coverage at 100%.
 
 ## Review and remaining release checks
@@ -91,6 +91,8 @@ After the three native sidebar review cycles, Claude reviewed the final tag prop
 Authenticated local priming and reported-screen browser checks need the dedicated testing identity decision recorded in the mailbox.
 Read-only daemon health and readiness return HTTP 200. Anonymous browser checks do not establish authenticated behavior or scheduled delivery.
 
-Public command references and the changelog need the new chat commands and updated served fields.
-The docs-review checklist is `.tmp/audits/m229-docs-review-checklist.md`; no docs-repository writes occur before Claude posts docs ready.
+Public command references and the changelog are merged in [docs PR 222](https://github.com/agentsfleet/docs/pull/222), merge commit `b17f90500b3cae8ef291b3113d6b89f98c91906a`.
+Both Greptile findings were repaired in `3234f12`, answered and resolved. The final head passed Continuous Integration and Greptile reviewed 15 files with zero new comments; two quiet polls completed.
+Final docs `make lint` passed 22 tests, page rules, route drift, Mintlify validation and 152 links across 34 pages. Gitleaks scanned all 12 branch commits with no leaks. Docs `main` is pulled locally and the merged worktree and local branch are removed.
+The docs-review checklist is `.tmp/audits/m229-docs-review-checklist.md`.
 Claude owns the remaining shared verification and final spec move from `active/` to `done/`.
