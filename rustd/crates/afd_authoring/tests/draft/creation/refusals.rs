@@ -61,3 +61,20 @@ async fn a_candidate_an_edit_replaced_saves_no_fleet() {
     assert_eq!(c.fleet_count().await, 0);
     c.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_draft_already_saving_refuses_a_second_key() {
+    let c = Case::create().await;
+    let (_, request) = c.request("second-key", Start::None).await;
+    let first = c.save(&mint(), request.clone()).await;
+    assert_eq!(first.status, "installing", "unfunded, so the draft stays saving");
+    let refused = c
+        .creations
+        .save(c.base.access(), &mint(), request, now())
+        .await
+        .expect_err("one draft becomes one fleet");
+    assert_eq!(refused.current_state(), Some("saving"));
+    assert_eq!(c.fleet_count().await, 1);
+    c.cleanup().await;
+}

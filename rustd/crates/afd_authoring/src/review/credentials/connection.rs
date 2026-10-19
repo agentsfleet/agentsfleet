@@ -6,15 +6,15 @@ use super::{
 };
 use afd_connector::{Provider, registry::Archetype};
 
+/// Observes the reverse-routing install behind `held`, whose integration is
+/// `service`.
 pub(super) async fn observe(
     connection: &mut PgConnection,
     draft: &super::super::Context,
+    service: &str,
     held: &CredentialInspection,
     observed: &mut Observed,
 ) -> Result<()> {
-    let Some(service) = held.integration.as_deref() else {
-        return Ok(());
-    };
     let (version, covered) = if let Some(id) = held.connection_id.as_deref() {
         sqlx::query_as::<_, (Option<String>, bool)>(crate::review::sql::CONNECTION)
             .bind(draft.workspace_id.as_str())
