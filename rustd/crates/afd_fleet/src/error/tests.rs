@@ -238,3 +238,19 @@ fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
         Some("Queue unavailable")
     );
 }
+
+/// A fleet with no reviewed native setup is refused for good, with a sentence
+/// that sends its owner to review it rather than to retry.
+#[test]
+fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
+    let missing = Error::from(super::ErrorKind::SetupUnavailable);
+
+    assert_eq!(missing.code(), error_code::AUTHORING_POLICY);
+    // pin test: literal is the contract
+    assert_eq!(
+        missing.detail(),
+        "The fleet needs a reviewed native setup before it can run"
+    );
+    assert!(missing.is_config_permanent());
+    assert!(!missing.is_datastore_unavailable());
+}
