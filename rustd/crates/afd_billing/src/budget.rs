@@ -5,14 +5,15 @@
 //! Read from `billing.usage_lines` through [`crate::limits::fleet_spend`], so a
 //! ceiling caps usage whichever biller moves the money. A line the balance
 //! could not fully cover still counts at its price: the ceiling bounds what a
-//! fleet uses, and the write-off is the credit gate's concern, not this one.
+//! fleet uses, and the shortfall is wallet debt the next grant repays.
 //!
 //! # The ceiling is a floor-check, not a projection
 //!
-//! A run is admitted while `spend < cap`, and refused AT equality. An admitted
-//! run may overshoot by at most one renewal window before its next `/renew`
-//! refuses it — bounded, not unbounded, and that bound is the design rather
-//! than an accident.
+//! A run is admitted while `spend < cap`, and refused AT equality. While the
+//! datastore answers, an admitted run overshoots by at most one renewal window
+//! before its next `/renew` refuses it. During an outage the check fails open
+//! (below), so every renewal in that outage is admitted and the overshoot grows
+//! with its length; settlement still charges each line in full.
 //!
 //! # Two failures that look alike and point opposite ways
 //!
