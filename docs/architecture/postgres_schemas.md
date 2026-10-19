@@ -35,7 +35,7 @@ table has one obvious home and one obvious shape.
    [schema conventions](../../.orly/docs/SCHEMA_CONVENTIONS.md) §"Timestamps". Every table has `created_at`. Every table whose rows change has `updated_at`.
    Any other time column is one of: (a) a deadline, named `*expires_at`; (b) a NULL marker an index
    or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an
-   accounting cursor billing reads (`runner.fleet_slots.last_metered_at`).
+   accounting cursor billing reads (`runner.leases.last_metered_at`).
 5. **One fact, one home.** No JSON blob copies a column; no counter restates another table's number.
    Named exceptions, each with its consistency rule stated in the slot: an aggregate maintained under
    the same lock or trigger as its source; a delivery snapshot that must outlive its source; a
@@ -209,8 +209,8 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Columns |
 |---|---|---|
 | `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
-| `leases` | One fleet event handed to one runner. No foreign key to the fleet or its event: a settled lease outlives a purge as runner history; the insert proves fleet, workspace and tenant in the same statement | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count, metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
-| `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold | `fleet_id (PK), last_runner_id, fencing_token, lease_expires_at, hold_expires_at, metered_input_token_count, metered_cached_token_count, metered_output_token_count, last_metered_at, created_at, updated_at` |
+| `leases` | One fleet event handed to one runner. No foreign key to the fleet or its event: a settled lease outlives a purge as runner history; the insert proves fleet, workspace and tenant in the same statement | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, receipt, posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
+| `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold | `fleet_id (PK), last_runner_id, fencing_token, lease_expires_at, hold_expires_at, created_at, updated_at` |
 | `events` | Append-only runner history | `id, runner_id, event_type, metadata, last_seen_at, created_at` · unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies | `runner_id (PK), acquired_count, succeeded_count, failed_count, expired_count, created_at, updated_at` |
 

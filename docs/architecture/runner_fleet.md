@@ -135,7 +135,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound â€
 
 ### Per-lease renewal â€” how a long fleet keeps its lease
 
-A renewal pushes the kill-deadline forward while the runner's lease task lives. The Rust supervisor calls `/renew` on every `RENEWAL_TICK` tick from the lease's start, carrying the run's cumulative tokens, and gives the lease up at the last granted deadline less two seconds (`rustd/crates/afr_supervisor/src/renew/mod.rs`). The call atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
+A renewal pushes the kill-deadline forward while the runner's lease task lives. The Rust supervisor calls `/renew` on every `RENEWAL_TICK` tick from the lease's start, carrying one line per provider request the daemon has not yet recorded, and gives the lease up at the last granted deadline less two seconds (`rustd/crates/afr_supervisor/src/renew/mod.rs`). The call atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
 
 ```
  lease issued                                every RENEWAL_TICK (5 s) tick

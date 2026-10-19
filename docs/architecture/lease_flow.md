@@ -135,7 +135,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
  │     tool calls ──────► POST /v1/runners/me/credentials/mint  (first ${secrets.x})   │
  │     mid-run memory ──► POST /v1/runners/me/memory/{fleet_id} (every N calls)        │
  │     activity pump ───► POST /v1/runners/me/leases/{id}/activity (≤64 KiB, 250 ms)   │
- │   ║ renewal tick 5 s ─► POST /v1/runners/me/leases/{id}/renew {cumulative tokens}   │
+ │   ║ renewal tick 5 s ─► POST /v1/runners/me/leases/{id}/renew {request lines}      │
  │   ║                  ◄── {lease_expires_at}   4xx ⇒ interrupt run (5 s grace)       │
  │ 6 [sandbox] keep       processed ⇒ freeze and hold; else destroy                    │
  │ 7 settle               POST .../tool-calls (full records, ≤256 KiB per post)        │
@@ -159,7 +159,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **Worker pool.** Workers grow to the assigned count and are never killed. A worker polls while the assignment says to take work, sleeps the daemon's `retry_after_ms` (floored at 250 ms) on no work, and runs a lease to its report before polling again (`afr_supervisor/src/worker_pool/mod.rs`).
 
-**One lease.** The steps and their refusals are in [Runner execution](./runner_execution.md) §"One lease, end to end". The renewal ticks every 5 s with the run's cumulative tokens, moves the runner's own deadline to the reply's `lease_expires_at` less 2 s, keeps the lease on a 5xx and ends it on a 4xx ([Runner Fleet](./runner_fleet.md) §"Per-lease renewal — how a long fleet keeps its lease"). An interrupted engine gets 5 s to hand back its tokens and memory (`afr_supervisor/src/lease_loop/drive.rs`).
+**One lease.** The steps and their refusals are in [Runner execution](./runner_execution.md) §"One lease, end to end". The renewal ticks every 5 s with the provider requests the daemon has not recorded, one line each, moves the runner's own deadline to the reply's `lease_expires_at` less 2 s, keeps the lease on a 5xx and ends it on a 4xx ([Runner Fleet](./runner_fleet.md) §"Per-lease renewal — how a long fleet keeps its lease"). An interrupted engine gets 5 s to hand back its tokens and memory (`afr_supervisor/src/lease_loop/drive.rs`).
 
 **The turn.** The agent loop builds the prompt from the lease's `instructions` and, on a write binding, a trusted repair context; a chat lease also carries the thread's recent turns (`afr_agent/src/prompt/mod.rs`). Each call is numbered, announced, routed to the supervisor or the sandbox's executor, and closed exactly once (`afr_agent/src/ledger/mod.rs`). At the context cap the loop stops offering tools and asks for the answer (`afr_agent/src/context/mod.rs`).
 
