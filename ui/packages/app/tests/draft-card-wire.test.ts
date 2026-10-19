@@ -6,6 +6,7 @@ import { DRAFT_ID, FLEET_ID } from "./helpers/draft-fixtures";
 const EDITING_CARD = {
   id: DRAFT_ID, title: "Private setup", state: DRAFT_STATE.editing,
   etag: '"draft-card"', updated_at: "1970-01-01T00:00:00Z",
+  candidate_revision: null, setup_revision: null, publication_revision: null,
 };
 const parseCard = (fields: object) => DraftCardsSchema.parse({items: [fields], next_cursor: null}).items[0];
 

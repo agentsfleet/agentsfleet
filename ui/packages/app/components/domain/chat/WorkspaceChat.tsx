@@ -11,7 +11,7 @@ import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftClient } from "@/lib/api/drafts";
 import { isRunning } from "@/lib/api/draft-types";
 import { useCurrentUser } from "@/lib/auth/client";
-import { useDraftSidebarBridge } from "@/components/layout/DraftSidebarHistory";
+import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ScheduleSync } from "./ScheduleSync";
 import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";

@@ -126,3 +126,22 @@ it("saves an improvement against the current setup tag and publishes another rev
   fireEvent.click(await screen.findByRole("button", {name: "Publish next revision"}));
   await screen.findByText(/Published Library revision/);
 });
+
+it("keeps an unsaved improvement editable when its validated Apply is refused", async () => {
+  fixture.draft = {...DRAFT, linked_fleet_id: FLEET_ID,
+    review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
+  await client.resume(DRAFT.id);
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("The chat fixture is not mounted");
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.endsWith(`/fleets/${FLEET_ID}/revisions`)
+      ? response({user_message: "The saved fleet changed"}, 409) : base(input, init);
+  });
+  render(<LiveSetup />);
+  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+  await screen.findByText("The saved fleet changed");
+  expect(screen.queryByRole("heading", {name: "Fleet saved"})).toBeNull();
+  expect(screen.getByRole("button", {name: "Save changes"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: "Edit instructions"})).toHaveProperty("disabled", false);
+});

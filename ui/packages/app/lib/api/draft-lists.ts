@@ -14,6 +14,7 @@ const RESOURCE = {models: "models", drafts: "drafts"} as const;
 export class DraftLists {
   readonly #base: string;
   readonly #removed = new Set<string>();
+  readonly #publications = new Map<string, string | undefined>();
   readonly #loading = new Map<DraftList, Promise<DraftListsView | null>>();
   #models: readonly WorkspaceModel[] = [];
   #cards: readonly DraftCard[] = [];
@@ -28,19 +29,43 @@ export class DraftLists {
   }
 
   clear(): void {
-    this.#generation += 1; this.#loading.clear(); this.#removed.clear();
+    this.#generation += 1; this.#loading.clear(); this.#removed.clear(); this.#publications.clear();
     this.#models = []; this.#cards = []; this.#modelCursor = null; this.#cardCursor = null;
   }
 
   remove(id: string): DraftListsView {
     this.#removed.add(id);
+    this.#publications.delete(id);
     this.#cards = this.#cards.filter((card) => card.id !== id);
     return this.view;
   }
 
   updateDraft(draft: Draft): DraftListsView {
+    const publication = draft.publication?.revision_id;
     this.#cards = this.#cards.map((card) => card.id === draft.id
-      ? {...card, title: draft.title, state: draft.state, etag: draft.etag, linked_fleet_id: draft.linked_fleet_id ?? null} : card);
+      ? {...card, title: draft.title, state: draft.state, etag: draft.etag, linked_fleet_id: draft.linked_fleet_id ?? null,
+        candidate_revision: summaryRevision(draft.candidate?.revision),
+        setup_revision: card.linked_fleet_id === draft.linked_fleet_id ? card.setup_revision : null,
+        publication_revision: publication && (this.#publications.has(draft.id)
+          ? this.#publications.get(draft.id) === publication : card.etag === draft.etag) ? card.publication_revision : null} : card);
+    this.#publications.set(draft.id, publication);
+    return this.view;
+  }
+
+  updateSetup(id: string, fleet: {id: string; setup_revision: string}): DraftListsView {
+    this.#cards = this.#cards.map(card => card.id === id
+      ? {...card, linked_fleet_id: fleet.id, setup_revision: summaryRevision(fleet.setup_revision)} : card);
+    return this.view;
+  }
+
+  /** A completed creation or publication refreshes one summary without moving existing rows or its cursor. */
+  async refreshDraft(id: string, signal: AbortSignal): Promise<DraftListsView> {
+    const generation = this.#generation;
+    const page = await this.#cardPage(null, signal);
+    if (generation !== this.#generation || this.#removed.has(id)) return this.view;
+    const card = page.items.find(item => item.id === id);
+    if (card) this.#cards = this.#cards.some(item => item.id === id)
+      ? this.#cards.map(item => item.id === id ? card : item) : [card, ...this.#cards];
     return this.view;
   }
 
@@ -105,6 +130,11 @@ export class DraftLists {
     if (cursor !== null) query.set("starting_after", cursor);
     return setupRequest({path: `${this.#base}/${resource}?${query}`}, schema, signal);
   }
+}
+
+function summaryRevision(value: string | undefined): number | null {
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision > 0 ? revision : null;
 }
 
 function appendNew<T>(rows: readonly T[], more: readonly T[], key: (row: T) => string): readonly T[] {

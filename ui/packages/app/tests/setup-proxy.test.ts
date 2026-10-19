@@ -89,6 +89,16 @@ describe("private setup proxy", () => {
     await proxy(["models"]);
     expect(new URL(upstream.mock.calls.at(-1)?.[0]).search).toBe("");
   });
+  it("preserves the literal private-chat query together with its bound cursor", async () => {
+    upstream.mockResolvedValue(response({items: [], next_cursor: null}));
+    const query = new URLSearchParams({q: "build_% failures", limit: "50", starting_after: "opaque+cursor", credential: "discard"});
+    await proxy(["drafts"], {}, `?${query}`);
+    const target = new URL(upstream.mock.calls[0]?.[0]);
+    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/drafts`);
+    expect(target.searchParams.get("q")).toBe("build_% failures");
+    expect(target.searchParams.get("starting_after")).toBe("opaque+cursor");
+    expect(target.searchParams.has("credential")).toBe(false);
+  });
   it("streams progress without buffering and strips content types outside the allowed set", async () => {
     upstream.mockResolvedValueOnce(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
     const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
