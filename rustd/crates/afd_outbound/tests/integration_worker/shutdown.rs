@@ -5,6 +5,10 @@
 
 use super::*;
 
+use afd_outbound::LANE_DEPTH;
+
+use super::gated_poster::Gated;
+
 /// Dimension 5.2 — a shutdown mid-delivery loses nothing and duplicates
 /// nothing.
 ///
@@ -142,4 +146,97 @@ async fn test_a_shutdown_during_a_successful_delivery_still_acknowledges() {
         "a delivered answer is acknowledged even though the token was cancelled \
          during it; leaving it pending would post it twice"
     );
+}
+
+/// How long the test waits, once the reader has taken all it will, for that
+/// reader to reach the hand-off it then waits at.
+///
+/// The read's reply lands in microseconds; the margin is for a loaded host.
+/// What it buys is that the shutdown below arrives at the HAND-OFF rather than
+/// at the read, and the pending count asserted after it proves the reader
+/// did not move on in the meantime.
+const HAND_OFF_SETTLE: Duration = Duration::from_millis(200);
+
+/// A shutdown that arrives while a full lane holds the reader stops it at
+/// once: the hand-off is raced against the token, so the worker never waits
+/// for a destination that will not answer to make room.
+///
+/// The lane takes one job in hand and queues [`LANE_DEPTH`] more, so the read
+/// after those is the one whose hand-off waits, and one entry past it is
+/// never read at all. The job in hand finishes and is acknowledged; every
+/// other job the reader took stays pending under this host's consumer name,
+/// which is the hand-over to the next process.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_a_shutdown_while_a_full_lane_holds_the_reader_stops_the_worker() {
+    let _lane = OUTBOUND_LANE.lock().await;
+    let harness = OutboundHarness::reset().await;
+
+    let read = 1 + LANE_DEPTH + 1;
+    for queued in 0..=read {
+        enqueue(&harness, &format!("answer {queued}")).await;
+    }
+
+    let poster = Gated::default();
+    let gate = poster.shut(WORKSPACE_ID);
+    let token = CancellationToken::new();
+    let running = held_at_a_full_lane(&harness, &poster, &token, read).await;
+
+    token.cancel();
+    gate.notify_one();
+    tokio::time::timeout(PROGRESS_BUDGET, running)
+        .await
+        .expect("a cancelled worker joins inside the supervisor's budget")
+        .expect("the worker task must not panic");
+
+    assert_eq!(
+        poster.delivered(),
+        vec!["1700000000000-0".to_owned()],
+        "only the job in hand is delivered; the lane starts nothing after the \
+         shutdown"
+    );
+    assert_eq!(
+        harness.pending_count().await,
+        read - 1,
+        "the job in hand is acknowledged, and every other job the reader took \
+         stays pending"
+    );
+    assert_eq!(
+        harness.pending_consumers().await,
+        vec![afd_dragonfly::outbound_consumer()],
+        "pending under the name the next process comes back to"
+    );
+}
+
+/// Starts a worker over `poster` and returns once a full lane holds its
+/// reader, with `read` entries taken and one delivery in hand.
+async fn held_at_a_full_lane(
+    harness: &OutboundHarness,
+    poster: &Gated,
+    token: &CancellationToken,
+    read: usize,
+) -> tokio::task::JoinHandle<()> {
+    let worker = Worker::new(
+        harness.reader().await,
+        harness.queue.clone(),
+        harness.database.clone(),
+        Posters {
+            slack: poster.clone(),
+        },
+    );
+    let running = tokio::spawn(worker.run(token.clone()));
+
+    await_until(
+        "the lane to fill and its hand-off to hold the reader",
+        async || poster.in_flight() == 1 && harness.pending_count().await == read,
+    )
+    .await;
+    tokio::time::sleep(HAND_OFF_SETTLE).await;
+    assert_eq!(
+        harness.pending_count().await,
+        read,
+        "a full lane holds the reader: the entry past the waiting hand-off is \
+         never read"
+    );
+    running
 }
