@@ -130,12 +130,13 @@ impl Migrator {
         migrator.create_schema(LEDGER_SCHEMA);
         migrator.run(&mut **connection).await.map_err(refusal)?;
 
-        let after = applied_versions(connection).await?;
+        // sqlx answers `Ok` only once every slot in its list is recorded, so a
+        // slot the ledger did not hold before this run is one this run applied.
         let mut outcome = Applied::default();
         for version in self.canonical_versions() {
             if before.contains(&version) {
                 outcome.skipped.push(version);
-            } else if after.contains(&version) {
+            } else {
                 tracing::info!(version, event = "migration_applied");
                 outcome.applied.push(version);
             }

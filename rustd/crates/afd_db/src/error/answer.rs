@@ -49,3 +49,35 @@ impl DatabaseError for Answer {
 pub fn database_answer(code: &'static str) -> sqlx::Error {
     sqlx::Error::Database(Box::new(Answer(code)))
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the restriction set is for the library"
+)]
+mod tests {
+    use sqlx::error::ErrorKind;
+
+    use super::database_answer;
+
+    /// The SQLSTATE a fixture answer is built from.
+    const SERIALIZATION_FAILURE: &str = "40001";
+
+    /// A fixture answer reads back the way a server's would to every caller
+    /// that inspects one: its code and message, the kind sqlx assigns it, and
+    /// the text an `error = %fault` log field renders.
+    #[test]
+    fn a_fixture_answer_reads_as_a_server_answer() {
+        let mut answer = database_answer(SERIALIZATION_FAILURE)
+            .into_database_error()
+            .expect("the fixture builds a database answer");
+
+        assert_eq!(answer.code().as_deref(), Some(SERIALIZATION_FAILURE));
+        assert_eq!(answer.message(), SERIALIZATION_FAILURE);
+        assert!(matches!(answer.kind(), ErrorKind::Other));
+        assert_eq!(answer.to_string(), "postgres answered 40001");
+        assert_eq!(answer.as_error().to_string(), answer.to_string());
+        assert!(answer.as_error_mut().source().is_none());
+        assert_eq!(answer.into_error().to_string(), "postgres answered 40001");
+    }
+}
