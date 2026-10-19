@@ -15,6 +15,12 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+# M-TEST-UTIL: one flag, named so it cannot be mistaken for a production knob.
+# It unlocks `error::one_of_each_kind`, the matcher refusal a caller's error
+# suite lifts. A release build carries no such constructor.
+test-util = []
+
 [dependencies]
 # `error_shell!` and the registry code a scrub that cannot be built is logged under.
 afd_core.workspace = true

@@ -172,3 +172,28 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
         "an outage sample proves the class is carried, not defaulted"
     );
 }
+
+/// A scrub that could not be built answers the fixed operation failure: the
+/// matcher's refusal is the runner's own fault, and its wording stays in the
+/// log rather than reaching whoever asked.
+#[test]
+fn a_scrub_that_cannot_be_built_is_an_operation_failure() -> Result<(), &'static str> {
+    let (_label, scrub) = afr_secrets::error::one_of_each_kind()
+        .into_iter()
+        .find(|(label, _error)| *label == "matcher")
+        .ok_or("the secrets sample has no matcher kind")?;
+    let lifted = Error::from(scrub);
+
+    let code = afd_core::error_code::INTERNAL_OPERATION_FAILED;
+    assert_eq!(lifted.code(), code);
+    assert_eq!(lifted.detail(), afd_core::error::DETAIL_OPERATION_FAILED);
+    assert!(!lifted.is_datastore_unavailable());
+    assert_eq!(
+        lifted.source().map(ToString::to_string),
+        Some(format!(
+            "[{}] the secret scrub could not be built",
+            code.as_str()
+        ))
+    );
+    Ok(())
+}
