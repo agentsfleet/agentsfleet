@@ -18,17 +18,13 @@
 //! property of a library, not of this code, and a library's behaviour is exactly
 //! what a port should pin rather than assume.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -71,18 +67,6 @@ async fn send_at(
 /// One request at a router with room for every stream a case opens.
 async fn send(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::response::Response {
     send_at(8, scopes, path, credential).await
-}
-
-/// Reads a problem document's `error_code` back.
-///
-/// Safe on a refusal, which has a finite body — never called on a response that
-/// opened a stream.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    let carried = document.get("error_code").and_then(Value::as_str);
-    carried
-        .expect("every refusal carries a registry code")
-        .to_owned()
 }
 
 /// Both templates, as a client addresses them.

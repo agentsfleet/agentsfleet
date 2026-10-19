@@ -33,17 +33,13 @@ const TENANT_KEY: &str = "agt_tcafebabecafebabecafebabecafebabecafebabecafebabec
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2models";
 
-/// No capabilities at all — the route demands NONE, and an empty set is what
-/// proves the scope rung admits rather than the fixture smuggling one in.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// A well-formed boundary id for minted cursors.
 const BOUNDARY_ID: &str = "0195b4ba-8d3a-7f13-8abc-cd0000000002";
 
 /// A GET at `path` presenting `credential`, against a fresh router.
 async fn read(path: &str, credential: Option<&str>) -> axum::response::Response {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
         .router();
     harness::send(&router, Method::GET, path, credential, "").await
 }

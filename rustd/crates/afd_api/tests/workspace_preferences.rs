@@ -20,18 +20,14 @@
 //! of it: a subject with no `core.users` row is refused with a sentence, not a
 //! 500, and the refusal names the person's context rather than the workspace's.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use afd_tenant::preference::MAX_PREF_VALUE_BYTES;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -43,15 +39,6 @@ const SUBJECT: &str = "user_2prefs";
 
 /// A key inside the closed registry.
 const KNOWN_KEY: &str = "getting_started_dismissed";
-
-/// These routes carry no scope requirement of their own.
-///
-/// A preference is a property of the CALLER, not of anything they may reach, so
-/// there is no scope that would make sense to demand: a person who can act in
-/// the workspace at all can say whether they dismissed a panel. The route table
-/// spells this `Scopes::Always(NONE)`, and this constant is the suite reading
-/// that back — a test passing a rich set would prove nothing about the rung.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 
 /// A set with something in it, to prove the rung is not silently demanding one.
 const SOME_SCOPE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
@@ -87,17 +74,7 @@ async fn send(
 
 /// One authorised request, for the tests isolating an axis other than auth.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
-    send(NO_SCOPES, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's registry code back.
-async fn code_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("error_code")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a registry code")
-        .to_owned()
+    send(ScopeSet::EMPTY, method, path, Some(TENANT_KEY), body).await
 }
 
 /// Holding a scope this surface never asks for changes nothing.
@@ -107,7 +84,14 @@ async fn code_of(response: axum::response::Response) -> String {
 /// demanding something the route table says it does not.
 #[tokio::test]
 async fn an_unrelated_scope_neither_admits_nor_refuses() {
-    let with_none = send(NO_SCOPES, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
+    let with_none = send(
+        ScopeSet::EMPTY,
+        Method::GET,
+        &onboarding(),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
     let with_some = send(SOME_SCOPE, Method::GET, &onboarding(), Some(TENANT_KEY), "").await;
     assert_eq!(
         with_none.status(),

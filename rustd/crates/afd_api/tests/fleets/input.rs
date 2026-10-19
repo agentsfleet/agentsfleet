@@ -9,16 +9,14 @@
 //! would be one a client waits on a round trip for.
 #![cfg(feature = "test-util")]
 #![expect(
-    clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly, and a step \
-              indexes the problem body it just received"
+    reason = "test target: a step indexes the problem body it just received"
 )]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -55,16 +53,6 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
         .with_person(TENANT_KEY, SUBJECT, EVERY_FLEET_SCOPE)
         .router();
     harness::send(&router, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
 }
 
 /// Asserts the request got PAST the edge and reached the store.

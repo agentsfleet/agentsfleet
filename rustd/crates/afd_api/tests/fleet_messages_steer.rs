@@ -11,17 +11,13 @@
 //! `handler/fleet/message_steer/tests.rs`. What this adds is that the refusal
 //! survives the whole layer stack and arrives as the envelope and status a
 //! client branches on.
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::{code_of, field_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -74,20 +70,6 @@ fn steer_of(message: &str) -> String {
 /// A steer body carrying an operation id alongside its message.
 fn steer_with(operation_id: &str, message: &str) -> String {
     serde_json::json!({ "message": message, "operation_id": operation_id }).to_string()
-}
-
-/// Reads a problem document's `error_code` back.
-async fn code_of(response: axum::response::Response) -> String {
-    field_of(response, "error_code").await
-}
-
-/// Reads one string field out of a problem document.
-async fn field_of(response: axum::response::Response, name: &str) -> String {
-    let document = harness::json_body(response).await;
-    let carried = document.get(name).and_then(Value::as_str);
-    carried
-        .expect("every refusal names the field this suite reads")
-        .to_owned()
 }
 
 /// A steer with nothing in it is refused before the parser runs.

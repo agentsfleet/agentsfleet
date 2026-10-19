@@ -17,16 +17,12 @@
 //! the constant the handler answers with rather than a respelling here
 //! (RULE UFS).
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -56,16 +52,6 @@ async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::r
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, Method::GET, path, credential, "").await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
 }
 
 /// Asserts the request got PAST every layer in front of the verb.

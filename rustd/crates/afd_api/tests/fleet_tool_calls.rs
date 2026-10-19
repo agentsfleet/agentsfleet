@@ -5,12 +5,9 @@
 //! answering 404 — needs live Postgres and is proven in the integration lane
 //! (`agentsfleetd/tests/integration_tool_call_details.rs`).
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
@@ -29,9 +26,6 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// Reading a fleet.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// The read for `call_id` on a fixture event of `fleet`.
 fn tool_call(fleet: &str, call_id: &str) -> String {
     format!(
@@ -47,13 +41,6 @@ async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::r
     harness::send(&router, Method::GET, path, credential, "").await
 }
 
-/// The registry code a refusal carries.
-async fn code_of(response: axum::response::Response) -> String {
-    harness::error_code(&harness::json_body(response).await)
-        .expect("every refusal carries a code")
-        .to_owned()
-}
-
 #[tokio::test]
 async fn test_tool_call_detail_requires_fleet_read() {
     let path = tool_call(FLEET, "7:3");
@@ -63,7 +50,9 @@ async fn test_tool_call_detail_requires_fleet_read() {
         "never anonymous"
     );
     assert_eq!(
-        read(NO_SCOPES, &path, Some(TENANT_KEY)).await.status(),
+        read(ScopeSet::EMPTY, &path, Some(TENANT_KEY))
+            .await
+            .status(),
         StatusCode::FORBIDDEN,
         "the rung refuses a caller without fleet:read"
     );

@@ -29,12 +29,9 @@
 //! rows a `LIKE` pattern or a cursor boundary selects is a live-Postgres fact,
 //! and lives in the `#[ignore]`d lane `make test-integration-rustd` runs.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
@@ -95,13 +92,6 @@ fn fleet_history(suffix: &str) -> String {
 async fn authorised(path: &str) -> Response {
     let fleet = Fleet::new().with_person(TENANT_KEY, SUBJECT, FLEET_READ);
     harness::send(&fleet.router(), Method::GET, path, Some(TENANT_KEY), "").await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: Response) -> String {
-    let document = harness::json_body(response).await;
-    let detail = document.get("detail").and_then(Value::as_str);
-    detail.expect("every refusal carries a detail").to_owned()
 }
 
 /// Asserts `suffix` is refused on the workspace listing with `expected`.

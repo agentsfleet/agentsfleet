@@ -175,6 +175,27 @@ pub(crate) async fn exchange(
     (status, answered)
 }
 
+/// One string field of a refusal's problem document.
+///
+/// Every caller names a key the problem envelope always carries, so an absent
+/// one is an unmet precondition rather than a case to handle.
+pub(crate) async fn field_of(response: Response, key: &str) -> String {
+    let document = json_body(response).await;
+    let value = document.get(key).and_then(Value::as_str).map(str::to_owned);
+    assert!(value.is_some(), "the refusal carries `{key}`: {document}");
+    value.unwrap_or_default()
+}
+
+/// A refusal's `detail`: the sentence a caller is handed.
+pub(crate) async fn detail_of(response: Response) -> String {
+    field_of(response, "detail").await
+}
+
+/// A refusal's registry code.
+pub(crate) async fn code_of(response: Response) -> String {
+    field_of(response, ERROR_CODE).await
+}
+
 /// The registry code a refusal carries, read through [`ERROR_CODE`].
 pub(crate) fn error_code(problem: &Value) -> Option<&str> {
     problem.get(ERROR_CODE).and_then(Value::as_str)

@@ -23,17 +23,15 @@
 //! That proof rides the integration lane.
 #![cfg(feature = "test-util")]
 #![expect(
-    clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly, and a step \
-              indexes the problem body it just received"
+    reason = "test target: a step indexes the problem body it just received"
 )]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -97,16 +95,6 @@ async fn send(
 /// One authorised request, for the tests isolating an axis other than scope.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
     send(EVERY_FLEET_SCOPE, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
 }
 
 /// Asserts the request got PAST every layer in front of the verb.

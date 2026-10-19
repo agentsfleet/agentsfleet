@@ -42,13 +42,6 @@ const RUNNER: &str = "agt_r00112233445566778899aabbccddeeff00112233445566778899a
 /// class or capability and can be nothing else.
 const SUBJECT: &str = "user_2fixture";
 
-/// No capabilities at all — the honest fixture for a route that requires none.
-///
-/// This is the load-bearing one. A fixture holding scopes would pass whether or
-/// not the route gates on them, so the case that proves `Scopes::Always(NONE)`
-/// is a principal who holds nothing and still gets through.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// A capability set, for the case that must behave identically.
 const SOME_SCOPES: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
@@ -64,14 +57,14 @@ async fn every_person_credential_class_reaches_the_identity_read() {
         (
             "a tenant api-key",
             Fleet::new()
-                .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+                .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
                 .router(),
             TENANT_KEY,
         ),
         (
             "a command-line credential",
             Fleet::new()
-                .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+                .with_terminal(TERMINAL, SUBJECT, ScopeSet::EMPTY)
                 .router(),
             TERMINAL,
         ),
@@ -115,7 +108,7 @@ async fn a_browser_session_reaches_the_identity_read() {
 #[tokio::test]
 async fn the_identity_read_needs_no_capability() {
     for (label, scopes) in [
-        ("no capabilities", NO_SCOPES),
+        ("no capabilities", ScopeSet::EMPTY),
         ("one capability", SOME_SCOPES),
     ] {
         let router = Fleet::new()
@@ -156,7 +149,7 @@ async fn a_runner_token_is_refused_the_identity_read() {
 #[tokio::test]
 async fn the_identity_read_is_read_only() {
     let router = Fleet::new()
-        .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+        .with_terminal(TERMINAL, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     for method in [Method::POST, Method::PATCH, Method::DELETE, Method::PUT] {
