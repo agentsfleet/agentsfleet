@@ -1,6 +1,6 @@
 //! Everything a memory URL can be, and what each of them earns.
 //!
-//! The whole refusal surface in front of `memory.memory_entries` is decided by
+//! The whole refusal surface in front of `memory.entries` is decided by
 //! [`super::Read::parse`] and [`super::memory_key`], both of them total and
 //! datastore-free — so it is proven here rather than by driving HTTP, and the
 //! HTTP suite is left proving the guard, the rungs and the ownership layer.

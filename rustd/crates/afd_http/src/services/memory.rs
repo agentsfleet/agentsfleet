@@ -6,7 +6,7 @@
 //!
 //! # Every method takes the workspace, and none is a filter
 //!
-//! The store proves the fleet is the workspace's itself, reading `core.fleets`
+//! The store proves the fleet is the workspace's itself, reading `fleet.fleets`
 //! under the api role before any memory store is reached. Passing the
 //! workspace here rather than resolving it in the handler is what makes the
 //! check impossible to forget.

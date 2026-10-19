@@ -10,7 +10,7 @@ use afd_wire::memory::{MemoryDelta, Visibility};
 ///
 /// Both halves always travel together, because a store keyed by fleet alone
 /// cannot answer for the workspace's shared entries, and the pairing is read
-/// once from `core.fleets` rather than trusted from a caller.
+/// once from `fleet.fleets` rather than trusted from a caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Owner<'a> {
     /// The workspace the fleet belongs to.

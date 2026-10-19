@@ -17,7 +17,7 @@
 //! Four decisions happen before the route touches a store: the body cap, a
 //! deployment holding no keys, a token that does not verify, and a verified
 //! callback naming no schedule. Everything past them reads
-//! `core.fleet_schedules` and belongs to the integration lane. Splitting there
+//! `fleet.schedules` and belongs to the integration lane. Splitting there
 //! is the same line every webhook suite in this tree splits on — the last point
 //! at which the handler has acquired nothing.
 

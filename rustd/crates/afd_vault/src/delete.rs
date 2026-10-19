@@ -3,7 +3,7 @@
 //!
 //! # The race this closes
 //!
-//! `core.tenant_model_entries.secret_ref` names a `vault.secrets` row but
+//! `model.tenant_models.secret_ref` names a `vault.secrets` row but
 //! cannot be a foreign key: `secret_ref` is TEXT and the vault's identity is
 //! `(workspace_id, key_name)`, while an entry is keyed by tenant. Both sides
 //! were once check-then-act with nothing held between the check and the act:

@@ -10,7 +10,7 @@ use crate::harness::{Fleet, json_body, send, send_with_headers};
 
 /// The subject the lifecycle case authenticates as.
 ///
-/// One per TEST rather than one per file, because `core.users.oidc_subject` is
+/// One per TEST rather than one per file, because `identity.users.oidc_subject` is
 /// globally unique and every case in this suite seeds its own tenant. Two tests sharing
 /// a subject is a duplicate-key failure in whichever loses the race, and the
 /// other then fails for a reason that has nothing to do with what it asserts.

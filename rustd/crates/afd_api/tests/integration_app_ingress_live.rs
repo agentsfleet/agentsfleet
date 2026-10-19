@@ -3,9 +3,9 @@
 //! The App surface is the one that cannot be addressed. A provider App posts
 //! every event for every repository it can see to ONE endpoint, carrying no
 //! fleet, no workspace and no principal — so everything about where a delivery
-//! lands is looked up: `core.connector_installs` maps the installation to a
-//! workspace, and `core.integration_grants` joined against each fleet's stored
-//! document decides which fleets in it subscribed.
+//! lands is looked up: `connector.installs` maps the installation to a
+//! workspace, and `connector.integration_grants` joined against each fleet's
+//! head `fleet.revisions` document decides which fleets in it subscribed.
 //!
 //! `app_ingress_route.rs` proves the route's policy against a scripted store,
 //! which is right for what the HANDLER decides and cannot be wrong about the
@@ -60,7 +60,7 @@ async fn deliver(router: &axum::Router, body: &str, secret: &[u8]) -> axum::resp
 async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
     // The whole lookup in one pass. The App secret is opened out of the PLATFORM
     // ADMIN workspace, the installation is resolved to a tenant workspace
-    // through `core.connector_installs`, and the fleets are narrowed by an
+    // through `connector.installs`, and the fleets are narrowed by an
     // approved grant and then by each stored document's repository list.
     let fixture = Fixture::create().await;
     fixture.seed(Mapped::ToWorkspace).await;

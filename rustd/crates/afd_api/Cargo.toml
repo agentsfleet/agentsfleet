@@ -124,7 +124,7 @@ afd_outbound.workspace = true
 afd_memory.workspace = true
 afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
 # The document parser, so a fleet row a suite seeds stores exactly what an
-# install would, rather than a hand-written `config_json` that could drift.
+# install would, rather than a hand-written configuration that could drift.
 afd_fleet_runtime = { workspace = true, features = ["test-util"] }
 afd_fleet_ops.workspace = true
 afd_runner.workspace = true

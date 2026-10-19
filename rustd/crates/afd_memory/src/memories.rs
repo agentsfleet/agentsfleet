@@ -4,7 +4,7 @@
 //! ```text
 //!   lease plane ─┐
 //!   runner route ├─► Memories ─► grants ─► PgStore
-//!   tenant route ┘   (core.fleets)
+//!   tenant route ┘   (fleet.fleets)
 //! ```
 
 use std::sync::Arc;

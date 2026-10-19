@@ -18,7 +18,7 @@ use super::MachineName;
 /// subject", and two answers to it would be two things to keep true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserIdentity {
-    /// `core.users.id`, which the credential's foreign key points at.
+    /// `identity.users.id`, which the credential's foreign key points at.
     pub id: Uuid7,
     /// The tenant that user belongs to.
     pub tenant: Uuid7,
@@ -34,7 +34,7 @@ pub struct UserIdentity {
 /// What minting one credential needs.
 #[derive(Debug, Clone, Copy)]
 pub struct MintRequest<'a> {
-    /// Whose credential it is, as `core.users.id`.
+    /// Whose credential it is, as `identity.users.id`.
     pub user: &'a Uuid7,
     /// The tenant that user belongs to.
     pub tenant: &'a Uuid7,

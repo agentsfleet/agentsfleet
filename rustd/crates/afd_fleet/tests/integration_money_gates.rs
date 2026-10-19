@@ -147,7 +147,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 
 /// A fleet past its daily ceiling is refused, and refused permanently.
 ///
-/// The ceiling is the fleet author's own, read live from `config_json`. What
+/// The ceiling is the fleet author's own, read live from its head revision's `config`. What
 /// this proves that `budget::covers` alone cannot is that the pass READS the
 /// spend for the right fleet and window and acts on it — a query filtered
 /// wrongly would answer zero and admit every run past every ceiling.

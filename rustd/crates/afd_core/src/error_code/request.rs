@@ -75,7 +75,7 @@ pub const WEBHOOK_TIMESTAMP_STALE: ErrorCode = ErrorCode::declare("UZ-WH-011");
 /// Never a refusal on the wire: the App ingress answers 200 and names this as
 /// the reason it dropped the delivery. The sender is a correctly configured
 /// provider signing with the right secret — what is missing is a
-/// `core.connector_installs` row, which only an operator reconnecting the App
+/// `connector.installs` row, which only an operator reconnecting the App
 /// can supply. A 4xx would put a delivery nobody can act on into a three-day
 /// retry loop.
 pub const WEBHOOK_INSTALL_NOT_MAPPED: ErrorCode = ErrorCode::declare("UZ-WH-021");

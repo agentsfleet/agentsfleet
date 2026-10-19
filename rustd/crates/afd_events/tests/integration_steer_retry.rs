@@ -6,7 +6,7 @@
 //! the only thing that makes sending again safe is an identity the retry
 //! carries. `Steer::append` takes that identity as `operation_id` and hands it
 //! to the ledger as `Key::Repeated` (`afd_events::steer`), where
-//! `UNIQUE (producer, producer_key)` on `core.fleet_admissions` is what admits
+//! `UNIQUE (producer, producer_key)` on `fleet.admissions` is what admits
 //! it once.
 //!
 //! The claim is deliberately proven at THREE depths, because any one of them

@@ -57,7 +57,7 @@ pub(super) struct Fixture {
     /// Who the dashboard half acts as, and what its `resolved_by` will say.
     ///
     /// Minted per fixture rather than named once for the file, because
-    /// `core.users.oidc_subject` is unique across the whole deployment and the
+    /// `identity.users.oidc_subject` is unique across the whole deployment and the
     /// tests in this file seed their rows in parallel. A shared spelling makes
     /// the first fixture to commit win and every other one fail its seed.
     pub(super) subject: String,

@@ -24,7 +24,7 @@
 //! and `created_by` on an api-key row. Storing that in a field called
 //! `user_id` needs a comment at each site explaining the name is wrong.
 //!
-//! [`Subject`] is that fix. A provider subject and a `core.users` primary key
+//! [`Subject`] is that fix. A provider subject and an `identity.users` primary key
 //! are different types, so handing one to something expecting the other stops
 //! compiling instead of resolving the wrong person's capabilities.
 //!
@@ -42,7 +42,7 @@ use crate::scope::{RUNNER_SCOPES, ScopeSet};
 /// `oidc_subject` a credential row resolves to.
 ///
 /// Opaque to this daemon: it is the provider's identifier for a person, it is
-/// what the scope resolver is keyed on, and it is NOT a `core.users` row id.
+/// what the scope resolver is keyed on, and it is NOT an `identity.users` row id.
 /// Those two are distinct types so they cannot be confused.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Subject(Box<str>);
@@ -205,7 +205,7 @@ impl Runner {
         Self { runner, degraded }
     }
 
-    /// The `fleet.runners` row this token proved.
+    /// The `runner.runners` row this token proved.
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         &self.runner

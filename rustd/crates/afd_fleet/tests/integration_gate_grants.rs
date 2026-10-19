@@ -27,7 +27,7 @@ use self::support::Fixtures;
 /// Grant identifiers, distinct and version-7 so the table's CHECK admits them.
 /// Three grant identifiers this test alone can name.
 ///
-/// A function rather than a `const` array: `core.integration_grants.id` is the
+/// A function rather than a `const` array: `connector.integration_grants.id` is the
 /// primary key, and with every test in the lane sharing one database a fixed
 /// identifier is a unique-violation the moment a second test seeds its own
 /// grants. See [`afd_db::test_util::mint_id`].

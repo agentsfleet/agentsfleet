@@ -46,9 +46,10 @@ pub enum Route {
 ///
 /// [`RefState::Found`] outranks EVERY policy outcome — including both that
 /// would otherwise pass: no policy at all, and [`Decision::AutoApprove`] from
-/// an emptied rules list. Those two are exactly what a mid-flight `config_json`
-/// PATCH produces, and honouring the recorded gate ahead of them is what stops
-/// such a PATCH from silently withdrawing a question already put to a human.
+/// an emptied rules list. Those two are exactly what a mid-flight Apply of a
+/// new setup produces, and honouring the recorded gate ahead of them is what
+/// stops such an Apply from silently withdrawing a question already put to a
+/// human.
 ///
 /// Waking a fleet and reconfiguring one are ONE scope today, so that PATCH asks
 /// for no approval of its own; splitting the two is separate work, and a gate

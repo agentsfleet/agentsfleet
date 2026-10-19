@@ -168,7 +168,7 @@ fn never_offered(elsewhere: &[String]) -> String {
              poll correctly found the stream empty. The seed now admits through \
              the ledger (`e2e_event.rs`).\n\n\
              Also worth ruling out: a fleet in the lane database whose \
-             `config_json` will not parse — the pull path resolves one and \
+             head revision `config` will not parse — the pull path resolves one and \
              refuses the runner with UZ-INTERNAL-003."
         );
     }

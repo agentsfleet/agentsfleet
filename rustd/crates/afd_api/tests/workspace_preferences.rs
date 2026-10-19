@@ -17,7 +17,7 @@
 //! "An unset bag is `{}`, never a 404" is a claim about what the STORE returns
 //! for a user with no rows. This harness's store cannot answer, so the claim is
 //! the integration suite's. What IS here is the half that fails open in front
-//! of it: a subject with no `core.users` row is refused with a sentence, not a
+//! of it: a subject with no `identity.users` row is refused with a sentence, not a
 //! 500, and the refusal names the person's context rather than the workspace's.
 #![cfg(feature = "test-util")]
 

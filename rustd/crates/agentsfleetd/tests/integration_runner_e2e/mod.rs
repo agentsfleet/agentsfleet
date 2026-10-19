@@ -100,8 +100,8 @@ async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, 
     // misses this fleet's partition costs nothing — and about fifteen times in
     // sixteen that is true. The sixteenth is the bug: that throwaway request
     // WINS the lease, its body is dropped on the floor, and the lease is now
-    // held. `fleet.runner_affinity` then refuses to re-issue it while
-    // `leased_until` is in the future, so every one of the 128 polls below
+    // held. `runner.fleet_slots` then refuses to re-issue it while
+    // `lease_expires_at` is in the future, so every one of the 128 polls below
     // correctly answers `lease: null` and the test panics saying the event was
     // never offered. Measured at 2 failures in 15 local runs, and it is the red
     // `test-integration-rustd` lane on Pull Request #693.

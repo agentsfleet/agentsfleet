@@ -20,7 +20,7 @@
 //!
 //! **The platform provider, which is still in the way.** Past the event type,
 //! `admit` resolves the payer's provider before the money gates, and that
-//! resolution opens a secret named by `core.platform_provider_defaults` — a
+//! resolution opens a secret named by `model.platform_defaults` — a
 //! table whose PRIMARY KEY is `provider`, so the row is platform-wide and the
 //! first suite to seed it owns it. `agentsfleetd`'s end-to-end seed writes it
 //! and seals the secret under its own `GOOD_KEK`, while this crate's fixture

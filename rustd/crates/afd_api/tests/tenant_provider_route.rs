@@ -161,7 +161,7 @@ async fn test_a_self_managed_activation_reaches_its_transaction() {
 #[tokio::test]
 async fn test_a_reset_on_a_deployment_with_no_default_names_the_missing_key() {
     // The one refusal on this surface decided by a row nothing else can
-    // arrange. `core.platform_provider_defaults` has no tenant column, so the
+    // arrange. `model.platform_defaults` has no tenant column, so the
     // integration lane's shared database cannot assert the table is empty, and
     // over the dead pool the same read answers 503 rather than the `None` this
     // arm needs. The seam supplies that `None` and everything else is real:

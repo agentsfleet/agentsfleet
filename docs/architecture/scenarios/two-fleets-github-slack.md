@@ -85,8 +85,7 @@ Saving with start `none` runs nothing. It writes the fleet and its setup down, a
   Postgres                                   Dragonfly
   ────────                                   ─────────
   fleet.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
-  core.fleet_definition_                     fleet:{B}:events  (empty) + group ✔
-    revisions (revision 1) ✔
+  fleet.revisions (revision 1) ✔              fleet:{B}:events  (empty) + group ✔
   connector.integration_grants  ✔ approved before the fleet went active
   fleet.admissions    ✗  (no work yet)
   fleet.events        ✗                 fleet:{id}:activity  ✗ (exists from

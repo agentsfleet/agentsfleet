@@ -2,7 +2,7 @@
 //!
 //! # Why a name is generated at all
 //!
-//! A workspace does not need a name to work — `core.workspaces.name` is
+//! A workspace does not need a name to work — `identity.workspaces.name` is
 //! nullable and the identifier is the key. It needs one to be TALKED about: a
 //! person picking from a list, a support conversation, a log line somebody is
 //! reading at two in the morning. Making the caller supply one turns "create me

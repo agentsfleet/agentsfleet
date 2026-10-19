@@ -2,7 +2,7 @@
 //! the operator page, and forget. Reads live in `read`, writes in `write`.
 //!
 //! A store holds rows and answers for them; it decides nothing about who may
-//! read or publish. [`crate::Memories`] reads the grants from `core.fleets` and
+//! read or publish. [`crate::Memories`] reads the grants from `fleet.fleets` and
 //! passes them in as `reads`, so a query enforces a grant by honouring one flag.
 //!
 //! # The role switch is a transaction, not a pair of statements

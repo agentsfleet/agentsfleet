@@ -83,7 +83,7 @@ impl Leases {
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a `workspace_id` that will
-    /// not parse as a UUID, and a `config_json` this daemon cannot read. The
+    /// not parse as a UUID, and a revision `config` this daemon cannot read. The
     /// last is deliberately fatal to THIS FLEET's lease rather than skipped: a
     /// fleet whose stored config is unreadable must not run under a config this
     /// daemon guessed at. It is fatal to nothing else — the pull path answers
@@ -141,7 +141,7 @@ impl Leases {
     /// a killed fleet's cannot. `None` only when the row is gone.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer and a `config_json` this
+    /// Reports a datastore that would not answer and a revision `config` this
     /// daemon cannot read, as [`Self::installed`] does.
     pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
         let mut connection = self.pool().acquire().await?;

@@ -15,7 +15,7 @@ pub(crate) const SUBJECT: &str = "user_live_approval_inbox";
 
 /// The listing suite's own signed-in person.
 ///
-/// A separate subject because `core.users` holds one row per OIDC subject and
+/// A separate subject because `identity.users` holds one row per OIDC subject and
 /// these files run concurrently: two fixtures seeding one subject race, and the
 /// loser reports a duplicate key rather than the behaviour under test.
 pub(crate) const LISTING_SUBJECT: &str = "user_live_approval_listing";
@@ -41,7 +41,7 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
     fixture.cleanup().await;
 }
 
-/// The address the fixture seeds on its `core.users` row.
+/// The address the fixture seeds on its `identity.users` row.
 ///
 /// The fixture's SQL cannot take a constant — the statement is a `&str` whose other
 /// braces rule out `format!`, and every `$n` slot is spoken for — so a fixture
@@ -103,7 +103,7 @@ async fn assert_approval_resolution(
     // The name reaches the WIRE, not just the row. The schema declares the key required;
     // nothing pinned that `summary()` maps the right source field, so `resolved_by_name:
     // &gate.resolved_by` would compile, serialize, and match the schema. This lane's
-    // `core.users` row carries an address and no display name, so it also exercises the
+    // `identity.users` row carries an address and no display name, so it also exercises the
     // fallback the deleted browser lookup had.
     let after = send(router, Method::GET, collection, Some(token), "").await;
     assert_eq!(after.status(), StatusCode::OK);
