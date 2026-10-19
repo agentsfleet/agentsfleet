@@ -16,6 +16,8 @@ mod support;
 #[path = "counters_refused.rs"]
 mod counters_refused;
 
+#[path = "integration_admission_history.rs"]
+mod integration_admission_history;
 #[path = "integration_admission_prototype.rs"]
 mod integration_admission_prototype;
 #[path = "integration_backfill.rs"]
