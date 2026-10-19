@@ -46,6 +46,11 @@ pub const RUNNER_SEQ_MAX: u32 = DAEMON_SEQ_BASE - 1;
 /// Cache writes split by the lifetime the provider reported; a write with no
 /// reported lifetime is `cache_write_tokens`, never folded into either
 /// lifetime. Runtime is not here: the daemon measures it.
+//
+// Every count is a `u32`, published as `int64` with a maximum of `u32::MAX`:
+// utoipa's default `int32` would tell a generated client the top half of the
+// range does not exist. utoipa takes only a literal for the bound, so
+// `tests::the_published_token_counts_span_u32` keeps it equal to `u32::MAX`.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -61,21 +66,27 @@ pub struct RequestUsage {
     pub at: Timestamp,
     /// Uncached prompt tokens.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub input_tokens: u32,
     /// Prompt tokens read from the provider's cache.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub cached_input_tokens: u32,
     /// Cache writes the provider reported no lifetime for.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub cache_write_tokens: u32,
     /// Cache writes with a five-minute lifetime.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub cache_write_5m_tokens: u32,
     /// Cache writes with a one-hour lifetime.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub cache_write_1h_tokens: u32,
     /// Completion tokens, reasoning included once.
     #[garde(skip)]
+    #[cfg_attr(feature = "openapi", schema(format = Int64, maximum = 4_294_967_295_u64))]
     pub output_tokens: u32,
 }
 
