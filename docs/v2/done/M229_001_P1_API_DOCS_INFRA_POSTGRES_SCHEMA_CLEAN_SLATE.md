@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M229
 **Workstream:** 001
 **Date:** Oct 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the rebuild is only cheap before the first production launch (M224_001) puts data in Postgres
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — single workstream; the schema, every reader and the docs land in one Pull Request (PR), as the owner chose
@@ -486,7 +486,7 @@ git grep -nE "(^|[^A-Za-z0-9_.])(${pat})([^A-Za-z0-9_[]|$)" -- rustd ui cli scri
 Paste as-is. Prose is a claim to check against source, never evidence.
 
 ```text
-Re-review docs/v2/active/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md with
+Re-review docs/v2/done/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md with
 docs/architecture/postgres_schemas.md, branch feat/m229-postgres-schema-clean-slate, against source.
 Check each earlier fix, then attack with file:line evidence: slot and cycle order; SQLx Migrator use
 and checksum refusal; the PREPARE-every-file test; the deletion matrix; every dropped column's last

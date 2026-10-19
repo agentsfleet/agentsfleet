@@ -3,7 +3,7 @@
 **Branch:** `feat/m229-postgres-schema-clean-slate`
 **Folded-into:** `M229_001`
 
-All 22 reports and their subitems are tracked in the [spec UI table](../v2/active/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md#8-ui-follow-up--user-reported-fixes).
+All 22 reports and their subitems are tracked in the [spec UI table](../v2/done/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md#8-ui-follow-up--user-reported-fixes).
 This log records the requested server additions, client evidence and remaining release checks.
 
 ## Private setup-chat search and titles

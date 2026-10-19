@@ -128,5 +128,5 @@ This playbook never drops an environment database.
 ## Related pages
 
 - [Schema layout](../../../docs/architecture/postgres_schemas.md)
-- [Catalogue implementation and open decisions](../../../docs/v2/active/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md)
+- [Catalogue implementation and open decisions](../../../docs/v2/done/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md)
 - [Model catalogue issue](https://github.com/agentsfleet/agentsfleet/issues/771)
