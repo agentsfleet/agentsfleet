@@ -44,6 +44,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 
+use super::usage::{self, DETAIL_REPORT_MALFORMED};
 use crate::auth::RunnerIdentity;
 use crate::handler::{malformed, refuse};
 use crate::services::{Leasing as _, Services};
@@ -51,8 +52,26 @@ use crate::services::{Leasing as _, Services};
 /// The scoped event a failed report is logged under.
 const EVENT: &str = "runner_report_failed";
 
-/// The refusal a body this daemon cannot read earns.
-const DETAIL_MALFORMED: &str = "Malformed report body";
+/// What [`handle`] documents, its caps spelled from their constants.
+#[cfg(feature = "openapi")]
+const DESCRIPTION: &str = const_format::concatcp!(
+    "The terminal result of one lease. A report from a holder the fleet ",
+    "has already superseded is refused by the fence and writes nothing. ",
+    "A stale writer therefore cannot land a partial finalize on the ",
+    "current holder's run. ",
+    "The lease id is this endpoint's idempotency key, so it takes no ",
+    "`Idempotency-Key` header. Send the same report again after a lost ",
+    "response and the stored outcome is returned. The repeat charges ",
+    "nothing and counts the run once. ",
+    "A body that will not read is refused with `UZ-REQ-001`. Its `detail` ",
+    "names a retired cumulative total (`input_tokens`, ",
+    "`cached_input_tokens` or `output_tokens`) when the body carries one. ",
+    "It also names the bound a body breaks: more than ",
+    afd_wire::usage::LINES_MAX,
+    " `requests` lines, or a line `seq` above ",
+    afd_wire::usage::RUNNER_SEQ_MAX,
+    ". ",
+);
 
 /// Records one terminal execution result.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -61,19 +80,11 @@ const DETAIL_MALFORMED: &str = "Malformed report body";
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_report",
     summary = "Report the result of one run",
-    description = concat!(
-        "The terminal result of one lease. A report from a holder the fleet ",
-        "has already superseded is refused by the fence and writes nothing. ",
-        "A stale writer therefore cannot land a partial finalize on the ",
-        "current holder's run. ",
-        "The lease id is this endpoint's idempotency key, so it takes no ",
-        "`Idempotency-Key` header. Send the same report again after a lost ",
-        "response and the stored outcome is returned. The repeat charges ",
-        "nothing and counts the run once. ",
-    ),
+    description = DESCRIPTION,
     request_body = ReportRequest,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ReportResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -91,13 +102,19 @@ pub(crate) async fn handle<D: Services>(
     // the checkpoint are the two largest values on this path and both are
     // written straight into columns, so owning them here would copy a run's
     // whole output for nothing.
-    let Ok(request) = afd_http::handler::read_body::<ReportRequest<'_>>(&body) else {
-        return malformed(DETAIL_MALFORMED);
+    let request = match afd_http::handler::read_body::<ReportRequest<'_>>(&body) {
+        Ok(request) => request,
+        // A runner from before usage moved to request lines is told which
+        // field it sent; any other unreadable body gets the general sentence.
+        Err(failure) => {
+            return malformed(usage::retired_total(&failure).unwrap_or(DETAIL_REPORT_MALFORMED));
+        }
     };
     // The request lines are money: one past the batch cap, or numbered in the
-    // daemon's own range, is refused rather than partly priced.
-    if garde::Validate::validate(&request.requests).is_err() {
-        return malformed(DETAIL_MALFORMED);
+    // daemon's own range, is refused rather than partly priced, naming the
+    // bound it broke.
+    if let Err(report) = garde::Validate::validate(&request.requests) {
+        return malformed(usage::REPORT_LINES.pick(&report));
     }
 
     match services
