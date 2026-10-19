@@ -79,7 +79,7 @@ afd_core = { path = "crates/afd_core" }
 afd_credential = { path = "crates/afd_credential" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
-# `core.fleet_events` and its live tail. A crate of its own because the table
+# `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on leases,
 # money, policy and four sweepers to reuse ten lines of SQL.
@@ -100,7 +100,7 @@ afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
 # is the host's own plane and WRITES it — a lease-history join reaching for
-# `core.fleets` and `core.fleet_events` would put both on the heartbeat path.
+# `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/afd_fleet_ops" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
