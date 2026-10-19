@@ -60,14 +60,14 @@ const SPENT_NANOS: i64 = 10_000_000;
 /// Named because it is the counterpart of [`TINY_DAILY_NANOS`]: the pair is
 /// one fact — a spend that is over one ceiling and under the other — and a
 /// literal on each side could drift on one and still read as a pass.
-const AMPLE_DAILY_NANOS: &str = "1000000000000";
+pub(crate) const AMPLE_DAILY_NANOS: &str = "1000000000000";
 
 /// The ceiling a workspace with no tenant row declares; its size is irrelevant,
 /// since the missing payer ends the delivery before any ceiling is read.
 const ORPHAN_DAILY_NANOS: &str = "10000000000";
 
 /// A config carrying `daily` as its whole budget.
-fn budgeted(daily_nanos: &str) -> FleetConfig {
+pub(crate) fn budgeted(daily_nanos: &str) -> FleetConfig {
     // The runtime block is where every knob lives — a `budget` at the top
     // level is refused by name, which is the parser telling an author to
     // indent rather than dropping the ceiling in silence.
@@ -80,7 +80,7 @@ fn budgeted(daily_nanos: &str) -> FleetConfig {
 
 /// The request the pass is given, for `fleet` in `workspace`, its event created
 /// at `created_at`.
-fn request<'a>(
+pub(crate) fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
     event: &'a str,
@@ -98,7 +98,7 @@ fn request<'a>(
 }
 
 /// The built-in biller over the fixture database.
-fn biller(fixtures: &Fixtures) -> LedgerBiller {
+pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
     LedgerBiller::new(
         fixtures.database.clone(),
         Entropy::new(),
@@ -107,7 +107,7 @@ fn biller(fixtures: &Fixtures) -> LedgerBiller {
 }
 
 /// An identifier the seeds minted, as a `Uuid7`.
-fn id(raw: &str) -> Uuid7 {
+pub(crate) fn id(raw: &str) -> Uuid7 {
     Uuid7::parse(raw).expect("the seeded identifiers are canonical")
 }
 

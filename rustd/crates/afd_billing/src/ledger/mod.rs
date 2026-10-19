@@ -135,7 +135,7 @@ async fn lock_wallet(
 /// already happened must settle even for a tenant whose wallet was never
 /// provisioned, or its lines would stay unsettled forever and hold every
 /// newer line behind them in the sweeper's oldest-first scan. With no wallet
-/// nothing is taken and the whole charge is written off, visibly.
+/// nothing is debited, and the settlement logs that it was not.
 async fn lock_wallet_if_any(
     connection: &mut sqlx::PgConnection,
     tenant: &Uuid7,

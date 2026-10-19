@@ -49,7 +49,7 @@ where
     settling_twice_charges_once(biller, fresh().await).await;
     a_released_work_reserves_no_more(biller, fresh().await).await;
     an_expired_lease_bills_its_last_runtime(biller, fresh().await).await;
-    a_short_settlement_writes_off_the_rest(biller, fresh().await).await;
+    a_short_settlement_leaves_a_debt(biller, fresh().await).await;
 }
 
 fn work() -> WorkKey {
@@ -262,34 +262,45 @@ async fn an_expired_lease_bills_its_last_runtime(biller: &dyn Biller, payer: Acc
     );
 }
 
-/// A settlement half again past the balance: the balance gives what it has,
-/// and the rest is written off rather than silently dropped.
+/// A settlement half again past the balance: the balance takes the whole
+/// charge and goes below zero, records that it ran out, and refuses the next
+/// hold until a grant repays the debt.
 ///
 /// # Panics
-/// When the biller takes more than the balance, or loses the difference.
+/// When the biller takes less than the charge, leaves the balance anywhere but
+/// the debt, or holds credit for a payer in debt.
 #[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
-pub async fn a_short_settlement_writes_off_the_rest(
-    biller: &dyn Biller,
-    payer: Account,
-) -> Receipt {
-    let work = work();
+pub async fn a_short_settlement_leaves_a_debt(biller: &dyn Biller, payer: Account) -> Receipt {
+    let settled = work();
     let past = Nanos::from_i64(BALANCE.as_i64() + BALANCE.as_i64() / 2);
     let receipt = biller
-        .settle(&settlement(&work, &payer, vec![line(0, past, 0)]))
+        .settle(&settlement(&settled, &payer, vec![line(0, past, 0)]))
         .await
         .expect(SETTLES);
     assert_eq!(receipt.charged, past, "the line's whole cost is charged");
-    assert_eq!(receipt.taken, BALANCE, "the balance gives what it has");
-    assert_eq!(
-        receipt.written_off.as_i64(),
-        past.as_i64() - BALANCE.as_i64(),
-        "the rest is written off"
-    );
+    assert_eq!(receipt.taken, past, "the balance takes all of it");
     let balance = biller.balance(&payer).await.expect(BALANCES);
     assert_eq!(
-        balance.balance,
-        Nanos::ZERO,
-        "the balance is spent, never negative"
+        balance.balance.as_i64(),
+        BALANCE.as_i64() - past.as_i64(),
+        "the balance owes what it could not cover"
+    );
+    assert!(
+        balance.exhausted_at.is_some(),
+        "a balance in debt records when it ran out"
+    );
+    let asked = Nanos::from_i64(1);
+    let hold = biller
+        .reserve(&ask(&work(), &payer, asked))
+        .await
+        .expect(RESERVES);
+    assert_eq!(
+        hold,
+        Hold::Short {
+            available: Nanos::ZERO,
+            asked
+        },
+        "a payer in debt cannot hold even one nano"
     );
     receipt
 }

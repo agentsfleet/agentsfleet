@@ -151,19 +151,18 @@ pub struct Settlement {
 
 /// What one [`Biller::settle`] charged.
 ///
-/// `charged` is what the newly settled lines cost; `taken` is what the balance
-/// could give. A balance that cannot cover its lines is clamped at zero, and
-/// the difference is `written_off`, never silent: the biller logs it.
+/// `charged` is what the newly settled lines cost; `taken` is what left the
+/// payer's balance. A balance takes the whole charge even past zero, so the two
+/// differ only for a payer with no wallet to debit, where nothing is taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Receipt {
     /// Lines this call charged; lines charged before are not counted again.
     pub settled_lines: usize,
     /// What the newly settled lines cost.
     pub charged: Nanos,
-    /// What this call actually took from the balance.
+    /// What this call took from the balance: all of `charged`, or nothing
+    /// when the payer has no wallet.
     pub taken: Nanos,
-    /// What the balance could not cover: `charged` less `taken`.
-    pub written_off: Nanos,
 }
 
 /// Why a piece of work's hold is released.
@@ -185,11 +184,13 @@ pub enum Release {
 /// A payer's balance as a biller sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Balance {
-    /// Spendable credit.
+    /// Credit left, negative while the payer owes a debt a settlement ran past
+    /// zero; a grant repays the debt before any of it is spendable.
     pub balance: Nanos,
     /// Credit held by open reservations and not yet charged.
     pub held: Nanos,
-    /// When the balance last reached zero.
+    /// When the balance last reached zero or went below it; `None` while it
+    /// holds credit.
     pub exhausted_at: Option<Timestamp>,
 }
 

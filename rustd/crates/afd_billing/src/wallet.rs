@@ -50,7 +50,7 @@ const COLUMN_TENANT_ID: &str = "tenant_id";
 /// path, and it is one a test can reach by cutting the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Wallet {
-    /// What is left to spend.
+    /// What is left to spend; negative while the tenant owes a debt.
     pub balance: Nanos,
     /// When the pool last ran dry, if it ever has.
     ///

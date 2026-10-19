@@ -29,6 +29,8 @@ const CHEAP_COST: &str = "3000";
 const DEAR_COST: &str = "9000";
 /// One reported millisecond of runtime at the runtime rate.
 const RUNTIME_DEBIT: i64 = 100;
+/// What a wallet in debt owes.
+const DEBT: i64 = 50;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -75,6 +77,35 @@ async fn an_open_hold_that_leaves_less_than_the_bound_refuses_admission() {
     assert!(
         claim(&f, &admitted).await.is_some(),
         "the refusal above was the hold, not the balance"
+    );
+    f.cleanup().await;
+}
+
+/// A wallet in debt refuses the claim as the wallet refusal, and admits once a
+/// grant repays the debt. A settlement takes its whole charge, so the balance
+/// the gate reads can sit below zero.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_wallet_in_debt_refuses_admission_until_it_is_repaid() {
+    let f = funded(1).await;
+    fixture::balance(&f, -DEBT).await;
+    let refused = queue(&f, "A turn a wallet in debt cannot fund").await;
+    assert!(claim(&f, &refused).await.is_none(), "a debt never admits");
+    assert_eq!(fixture::attempts(&f).await, 0, "no attempt was issued");
+    let failed = fixture::failure(&f, &refused).await;
+    assert_eq!(
+        failed
+            .failure
+            .expect("durable debt failure")
+            .recovery_action,
+        "owner_billing",
+        "a debt reads as the wallet refusal"
+    );
+    fixture::balance(&f, NANOS_PER_USD).await;
+    let admitted = queue(&f, "The same wallet once the debt is repaid").await;
+    assert!(
+        claim(&f, &admitted).await.is_some(),
+        "a repaid wallet admits"
     );
     f.cleanup().await;
 }

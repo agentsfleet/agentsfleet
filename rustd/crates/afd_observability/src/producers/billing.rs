@@ -1,5 +1,5 @@
-//! What the billing lifecycle records: reservations, settlements, write-offs,
-//! unpriced tokens, and the sweeper's view of what is still owed.
+//! What the billing lifecycle records: reservations, settlements, unpriced
+//! tokens, and the sweeper's view of what is still owed.
 //!
 //! The counters are recorded by the one biller wrapper every money path holds,
 //! so a hold or a settlement counts once whoever made it; the gauges are
@@ -12,7 +12,7 @@ use opentelemetry::metrics::Counter;
 use crate::error::Result;
 use crate::metrics::declared::billing as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::billing::{Posture, ReserveOutcome, SettleOutcome, WorkType};
+use crate::metrics::label::billing::{ReserveOutcome, SettleOutcome, WorkType};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::semconv;
@@ -31,7 +31,6 @@ static HELD: Observed = Observed::new();
 pub struct Handles {
     reserve: Counter<u64>,
     settle: Counter<u64>,
-    written_off: Counter<u64>,
     unpriced: Counter<u64>,
     resettled: Counter<u64>,
 }
@@ -63,7 +62,6 @@ impl Handles {
         Ok(Self {
             reserve: instruments.counter_u64(&declared::BILLING_RESERVE_TOTAL)?,
             settle: instruments.counter_u64(&declared::BILLING_SETTLE_TOTAL)?,
-            written_off: instruments.counter_u64(&declared::BILLING_WRITTEN_OFF_NANOS_TOTAL)?,
             unpriced: instruments.counter_u64(&declared::BILLING_UNPRICED_TOKENS_TOTAL)?,
             resettled: instruments.counter_u64(&declared::BILLING_SWEEPER_RESETTLED_TOTAL)?,
         })
@@ -91,22 +89,6 @@ pub fn settled(work: WorkType, outcome: SettleOutcome) {
             &[
                 KeyValue::new(semconv::LABEL_WORK_TYPE, work.as_str()),
                 KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
-            ],
-        );
-    }
-}
-
-/// Nanos a settlement could not take from the balance.
-pub fn written_off(work: WorkType, posture: Posture, nanos: u64) {
-    if nanos == 0 {
-        return;
-    }
-    if let Some(producers) = installed() {
-        producers.billing.written_off.add(
-            nanos,
-            &[
-                KeyValue::new(semconv::LABEL_WORK_TYPE, work.as_str()),
-                KeyValue::new(semconv::LABEL_POSTURE, posture.as_str()),
             ],
         );
     }

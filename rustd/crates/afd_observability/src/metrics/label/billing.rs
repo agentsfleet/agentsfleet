@@ -1,8 +1,8 @@
 //! What the billing families label their counts with.
 //!
-//! `WorkType` and `Posture` spell the stored values of `billing.usage_lines`
-//! byte for byte; `afd_billing` depends on this crate, so the two cannot share
-//! a type, and a test there holds them equal member for member.
+//! `WorkType` spells the stored values of `billing.usage_lines` byte for byte;
+//! `afd_billing` depends on this crate, so the two cannot share a type, and a
+//! test there holds them equal member for member.
 
 use crate::metrics::label::closed_set;
 
@@ -13,16 +13,6 @@ closed_set! {
         FleetLease => "fleet_lease",
         /// A setup-chat attempt.
         AuthoringAttempt => "authoring_attempt",
-    }
-}
-
-closed_set! {
-    /// Whose key paid for the tokens.
-    Posture {
-        /// The platform's key; tokens are charged here.
-        Platform => "platform",
-        /// The tenant's own key; only runtime is charged here.
-        SelfManaged => "self_managed",
     }
 }
 

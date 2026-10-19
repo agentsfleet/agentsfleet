@@ -15,6 +15,8 @@ use crate::{Nanos, Result};
 const TABLE_HOLDS: &str = "billing.holds";
 /// The column a malformed tenant id is reported against.
 const COLUMN_TENANT_ID: &str = "tenant_id";
+/// The log event for usage settled against a payer with no wallet row.
+const EVENT_SETTLED_WITHOUT_WALLET: &str = "billing_settled_without_wallet";
 
 /// Charges `settlement`'s still-unsettled lines, under a wallet lock the caller
 /// already holds.
@@ -64,7 +66,7 @@ pub(super) async fn release(connection: &mut PgConnection, work: &WorkKey) -> Re
 }
 
 /// Stamps `work`'s unsettled lines (only `seqs`, when given) settled, then
-/// debits their sum from the wallet and captures it on the hold.
+/// debits their whole sum from the wallet and captures it on the hold.
 ///
 /// The `settled_at IS NULL` guard is what makes a repeat call charge nothing:
 /// a line settled once is never returned again.
@@ -92,14 +94,20 @@ async fn take(
             ..Receipt::default()
         });
     }
-    // No wallet row debits nothing: the whole charge is written off below.
-    let taken: i64 = sqlx::query_scalar(DEBIT_WALLET)
+    // The debit takes the whole charge, past zero if it must: a balance that
+    // cannot cover it is a debt the next grant repays. Only a payer with no
+    // wallet row (never provisioned, or erased after the work ran) has nothing
+    // to debit, and its lines settle all the same so the sweeper's
+    // oldest-first scan never stalls behind them.
+    let debited = sqlx::query(DEBIT_WALLET)
         .bind(tenant.as_str())
         .bind(total)
-        .fetch_optional(&mut *connection)
+        .execute(&mut *connection)
         .await
         .map_err(query(context))?
-        .unwrap_or(0);
+        .rows_affected()
+        > 0;
+    let taken = if debited { total } else { 0 };
     sqlx::query(CAPTURE_HOLD)
         .bind(work.work_type())
         .bind(work.id().as_str())
@@ -107,23 +115,19 @@ async fn take(
         .execute(&mut *connection)
         .await
         .map_err(query(context))?;
-    let written_off = total - taken;
-    if written_off > 0 {
+    if !debited {
         tracing::warn!(
             tenant_id = tenant.as_str(),
             work_type = work.work_type(),
             work_id = work.id().as_str(),
             charged_nanos = total,
-            taken_nanos = taken,
-            written_off_nanos = written_off,
-            event = "billing_charge_written_off",
-            "the balance could not cover settled usage; the rest is written off"
+            event = EVENT_SETTLED_WITHOUT_WALLET,
+            "settled usage for a payer with no wallet; nothing was debited"
         );
     }
     Ok(Receipt {
         settled_lines: charged.len(),
         charged: Nanos::from_i64(total),
         taken: Nanos::from_i64(taken),
-        written_off: Nanos::from_i64(written_off),
     })
 }
