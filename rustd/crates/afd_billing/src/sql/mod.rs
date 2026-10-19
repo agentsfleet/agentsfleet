@@ -62,7 +62,7 @@ pub mod charge {
     pub const STAGE: &str = "stage";
 }
 
-/// The `billing.fleet_charges.posture` values, as the resolver spells them.
+/// The `billing.usage_lines.posture` values, as the resolver spells them.
 ///
 /// The column is written by this codebase only, so an unknown spelling read
 /// back is a data-integrity fault to surface rather than a value to guess at —

@@ -64,7 +64,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 49] = [
+const GRANTS: [(&str, &str, &[Verb]); 48] = [
     ("identity.tenants", "api_runtime", READ_WRITE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", READ_WRITE),
@@ -109,7 +109,6 @@ const GRANTS: [(&str, &str, &[Verb]); 49] = [
     ("authoring.answer_receipts", "api_runtime", WRITE_ONCE),
     ("authoring.replay_receipts", "api_runtime", WRITE_ONCE),
     ("billing.wallets", "api_runtime", READ_WRITE),
-    ("billing.fleet_charges", "api_runtime", KEPT),
     ("billing.usage_lines", "api_runtime", KEPT),
     ("billing.holds", "api_runtime", KEPT),
     (
@@ -192,7 +191,6 @@ async fn assert_money_is_integral(connection: &mut PgConnection) {
     for expected in [
         "authoring.attempts.reserved_nanos",
         "billing.usage_lines.charged_nanos",
-        "billing.fleet_charges.charged_nanos",
         "billing.wallets.balance_nanos",
     ] {
         assert!(

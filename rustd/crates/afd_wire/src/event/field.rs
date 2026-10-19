@@ -32,7 +32,7 @@ pub const CREATED_AT: &str = "created_at";
 ///
 /// The entry id Dragonfly mints is a RECEIPT, not an identity: after a
 /// replay one logical event can have had two entries, and it is this
-/// field — not the entry id — that `fleet.events`, `billing.fleet_charges`
+/// field — not the entry id — that `fleet.events`, `billing.usage_lines`
 /// and every read address. Written by the ledger's append alone; a
 /// producer never spells it.
 pub const EVENT_ID: &str = "event_id";

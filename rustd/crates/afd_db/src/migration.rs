@@ -178,7 +178,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("1980_authoring_replay_receipts.sql"),
     // 20xx billing — the wallet and every charge
     migration!("2000_billing_wallets.sql"),
-    migration!("2010_billing_fleet_charges.sql"),
     migration!("2030_billing_authoring_report_receipts.sql"),
     migration!("2040_billing_usage_lines.sql"),
     migration!("2050_billing_holds.sql"),
