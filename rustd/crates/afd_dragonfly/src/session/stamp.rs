@@ -48,10 +48,9 @@ pub(super) mod optional {
         instant: &Option<Timestamp>,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
-        match instant {
-            Some(instant) => serializer.serialize_some(&super::epoch_ms(*instant)),
-            None => serializer.serialize_none(),
-        }
+        // Every optional field also carries `skip_serializing_if`, so `None`
+        // never reaches here; `Option`'s own impl answers it without an arm.
+        serde::Serialize::serialize(&instant.map(super::epoch_ms), serializer)
     }
 
     pub(in crate::session) fn deserialize<'de, D: Deserializer<'de>>(

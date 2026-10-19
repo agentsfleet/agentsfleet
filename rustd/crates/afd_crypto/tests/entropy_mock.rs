@@ -53,3 +53,23 @@ fn test_mock_entropy_failure_mid_seal_aborts_the_envelope() {
         .expect_err("a refused third draw must abort the seal");
     assert!(error.is_malformed_envelope(), "got {error}");
 }
+
+/// A draw with nothing queued fills with the fixed counting pattern, wrapping
+/// at 251, rather than silently going random: two unscripted mocks agree byte
+/// for byte, so a test that forgot to queue still reproduces.
+#[test]
+fn test_mock_entropy_unscripted_draw_is_the_counting_pattern() {
+    let (first, _ctrl) = afd_crypto::entropy::Entropy::new_mocked();
+    let (second, _other) = afd_crypto::entropy::Entropy::new_mocked();
+    let mut drawn = [0xFF_u8; 300];
+    let mut again = [0x00_u8; 300];
+
+    first.fill(&mut drawn).unwrap();
+    second.fill(&mut again).unwrap();
+
+    assert_eq!(drawn, again);
+    assert_eq!(drawn[0], 0);
+    assert_eq!(drawn[250], 250);
+    assert_eq!(drawn[251], 0, "the pattern wraps at 251");
+    assert_eq!(drawn[299], 48);
+}

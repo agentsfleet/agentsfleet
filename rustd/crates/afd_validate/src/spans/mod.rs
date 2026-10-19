@@ -37,12 +37,12 @@ pub fn disjoint<K: Ord + Copy, T: Ord + Copy>(
         return Err(garde::Error::new(REVERSED));
     }
     sorted.sort_by_key(|span| (span.key, span.start));
-    let overlap = sorted.windows(2).any(|pair| match pair {
-        [earlier, later] => {
+    let overlap = sorted
+        .iter()
+        .zip(sorted.iter().skip(1))
+        .any(|(earlier, later)| {
             earlier.key == later.key && earlier.end.is_none_or(|end| end > later.start)
-        }
-        _ => false,
-    });
+        });
     if overlap {
         Err(garde::Error::new(OVERLAPPING))
     } else {
