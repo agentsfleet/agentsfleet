@@ -160,7 +160,7 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 ### §6 — Docs
 
 - **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `test_docs_name_no_removed_table`
-- **Dimension 6.2** — public pages for the runner protocol, closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch → Test `test_public_docs_branch_open` (manual)
+- **Dimension 6.2** — public pages for closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch; the runner protocol gets no public page (Discovery: Runner protocol stays unpublished) → Test `test_public_docs_branch_open` (manual)
 
 ### §7 — Data access rides the rewrite
 
@@ -358,7 +358,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.9 | integration | `test_admission_event_id_is_row_id` | admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
 | 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
 | 6.1 | unit | `test_docs_name_no_removed_table` | inventory check over docs outside `done/` → 0 hits |
-| 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the four pages and the `<Update>` recorded in Session Notes |
+| 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the three pages and the `<Update>` recorded in Session Notes, and no runner-protocol page |
 | 7.1 | unit | `test_no_whole_row_json_reads` | scan of `rustd/crates/*/src` → 0 matches for `to_jsonb(<alias>)` |
 | 7.2 | integration | `test_library_list_single_statement` | pages of 1 and 25 cards → one statement each; card deleted between pages → no error, no stale card |
 | 7.4 | integration | `test_every_sql_file_prepares` | every `**/sql/*.sql` → `PREPARE` succeeds; a file naming a dropped column → fails naming the file |
@@ -502,6 +502,7 @@ comm -23 <(echo "$old") <(echo "$new") | sed 's/\./\\./' | paste -sd'|' \
 - **Docs branch ahead of code** — `chore/m229-schema-clean-slate-changelog` at `c3d4c8a` in `~/Projects/agentsfleet-worktrees/m229-docs` (docs `make test` 22 OK, `make lint` clean) states, from this spec, behaviour the code does not have yet; each is re-checked against code before the PR: 4.7 most API types still send milliseconds and `public/openapi.json` still carries `expires_at_ms` (`MintCredentialResponse`, `PollSessionResponse`) with no `format: date-time`; 4.5 `deletion_generation` still in 31 places under `crates/*/src`; 4.2 the replay key expires 24 hours after purge today, not 24 hours from the first attempt (`replay/sql.rs` PURGE); 4.3 Library removal keeps revisions a fleet references today (`library/remove.rs` UNREFERENCED); runner `status` replaces `admin_state` in OpenAPI `RunnerItem` and `RunnerAdminPatchResponse`.
 - **Billing revamp** — Indy (2026-10-18/19), via AskUserQuestion and chat: usage reporting "I choose A" (per-request records, priced by the daemon, deduplicated on work and sequence); "Biller System must be abstracted by trait, one of the Trait Object is the inbuilt billing system", so a queue or a third party can bill later; the trait owns both gates and charges ("Both: admit + settle"); "Think on a large refactor and i command you to do so, since we have an opportunity to revamp"; one ledger ("One usage_lines"); rounding "Round up per line"; outage "keep it fail OPEN with an ability to flip later … since when we are early we must adopt the optimistic eagar path to promote usage from users". Setup chat moves from failing closed to failing open with fleets. Indy reviews the abstraction before implementation: architecture §11.
 - **Gemini key out of the URL** — Indy (2026-10-19): "do what is needed to cover the security loophole. i leave it to you." rig-core 0.44 builds `?key=` (`providers/gemini/mod.rs:91`); `afd_inference`'s `HeaderKey` transport moves it to `x-goog-api-key` for both runner and daemon (`55eaf1d76`, `df93412df`).
+- **Runner protocol stays unpublished** — Oct 19, 2026: Dimension 6.2 asked for a public runner-protocol page, but the docs repository's rules forbid one (`~/Projects/docs/AGENTS.md:54`: "Do not document internal agent pipeline internals (NullClaw config details, runner RPC protocol)"). A spec that contradicts a rule is amended, so 6.2 drops that page and keeps closed-draft retention, the retry window and Library deletion; the runner wire stays described in `docs/architecture/` and the generated `public/openapi.json`.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
