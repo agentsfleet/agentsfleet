@@ -68,3 +68,65 @@ fn counter(raw: &str) -> Result<i64> {
     }
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "fixture requests are built to pass the wire bounds"
+    )]
+
+    use super::Counters;
+    use crate::lease::ActivityInput;
+    use afd_core::error_code;
+    use afd_wire::authoring::{ActivityEvent, Knowledge, Meter, Renew};
+
+    fn activity(fence: &str, sequence: &str, activity: &str) -> garde::Valid<ActivityInput> {
+        garde::Unvalidated::new(ActivityInput {
+            fence: fence.into(),
+            sequence: sequence.into(),
+            activity_sequence: activity.into(),
+            event: ActivityEvent::Progress {
+                text: "Reading the checkout service".into(),
+            },
+        })
+        .validate()
+        .expect("digit counters pass the wire bounds")
+    }
+
+    #[test]
+    fn a_zero_fence_binds_no_lease() {
+        let renew = garde::Unvalidated::new(Renew {
+            fence: "0".into(),
+            usage: Meter {
+                knowledge: Knowledge::Known,
+                calls: 0,
+                input_tokens: Some(0),
+                output_tokens: Some(0),
+                runtime_ms: 1,
+                provider_cost_nanos: None,
+            },
+        })
+        .validate()
+        .expect("a zero fence passes the wire bounds");
+        let refused = Counters::renew(&renew).err().map(|error| error.code());
+        assert_eq!(refused, Some(error_code::INVALID_REQUEST));
+    }
+
+    #[test]
+    fn activity_counters_start_at_one_and_bind_all_three_positions() {
+        let counters = Counters::parse(&activity("1", "2", "3")).expect("positive counters");
+        assert_eq!(
+            (counters.fence, counters.sequence, counters.activity),
+            (1, Some(2), 3)
+        );
+        for (fence, sequence, position) in [("0", "1", "1"), ("1", "0", "1"), ("1", "1", "0")] {
+            let refused = Counters::parse(&activity(fence, sequence, position)).err();
+            assert_eq!(
+                refused.map(|error| error.code()),
+                Some(error_code::INVALID_REQUEST),
+                "{fence}/{sequence}/{position} names no issued counter"
+            );
+        }
+    }
+}

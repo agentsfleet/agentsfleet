@@ -60,12 +60,15 @@ pub(crate) async fn resolve(
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?,
-        Source::Fleet { fleet_id, .. } => {
+        Source::Fleet {
+            fleet_id,
+            setup_revision,
+        } => {
             return fleet_source(
                 connection,
                 access.workspace,
                 fleet_id,
-                positive_revision(request)?,
+                positive_revision(setup_revision)?,
             )
             .await;
         }
@@ -79,14 +82,11 @@ pub(crate) async fn resolve(
     })
 }
 
-fn positive_revision(request: &garde::Valid<CreateDraft>) -> Result<i64> {
-    let Source::Fleet { setup_revision, .. } = &request.source else {
-        return Err(invalid(REVISION_INVALID));
-    };
+fn positive_revision(setup_revision: &str) -> Result<i64> {
     let revision = setup_revision
         .parse::<i64>()
         .map_err(|_overflow| invalid(REVISION_INVALID))?;
-    if revision <= 0 || revision.to_string() != *setup_revision {
+    if revision <= 0 || revision.to_string() != setup_revision {
         return Err(invalid(REVISION_INVALID));
     }
     Ok(revision)
@@ -133,4 +133,23 @@ async fn fleet_source(
         fleet_revision: Some(Uuid7::parse(&row.id)?),
         instance_name: Some(row.name),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::positive_revision;
+    use afd_core::error_code;
+
+    #[test]
+    fn a_setup_revision_is_only_its_own_canonical_positive_decimal() {
+        assert_eq!(positive_revision("12").ok(), Some(12));
+        for spelling in ["0", "-3", "+3", "007", "99999999999999999999", "4.0"] {
+            let refused = positive_revision(spelling).err();
+            assert_eq!(
+                refused.map(|error| error.code()),
+                Some(error_code::INVALID_REQUEST),
+                "{spelling} names no stored revision"
+            );
+        }
+    }
 }

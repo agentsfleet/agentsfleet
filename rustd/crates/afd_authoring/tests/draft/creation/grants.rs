@@ -1,7 +1,7 @@
 //! Setup records pending approval and cannot reinterpret it as consent.
 
 use super::super::{fixture::now, mint};
-use super::fixture::{Case, NO_ADMISSIONS};
+use super::fixture::{Case, NO_ADMISSIONS, check};
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
 use afd_authoring::types::{SaveSource, Start};
@@ -112,6 +112,43 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
         !ready.needs_re_review,
         "approval status is readiness, not authored identity"
     );
+    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    c.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
+    let c = Case::create().await;
+    c.fund().await;
+    let request = requiring_github(&c).await;
+    let key = mint();
+    let saved = c.save(&key, request.clone()).await;
+    let pending = cards(&c, &saved.id).await;
+    assert_eq!(pending.len(), 1);
+    let inbox = Inbox::new(
+        c.base.db.clone(),
+        c.queue.clone(),
+        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()),
+    );
+    let resolved = inbox
+        .resolve(
+            &pending[0].0,
+            Decision::Denied,
+            c.base.owner.as_str(),
+            "",
+            Some(saved.id.as_str()),
+        )
+        .await
+        .expect("explicit denial");
+    assert!(matches!(resolved, Resolution::Resolved(_)));
+    let retried = c.save(&key, request).await;
+    assert_eq!(retried.id, saved.id);
+    assert_eq!(retried.status, "installing", "a denial never activates");
+    assert_eq!(check(&retried, "grants"), "blocked");
+    assert_eq!(retried.setup.state, "waiting");
+    let after = cards(&c, &saved.id).await;
+    assert_eq!(after.len(), 1, "a denial is not re-asked: {after:?}");
     assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
     c.cleanup().await;
 }

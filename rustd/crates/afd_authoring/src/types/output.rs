@@ -212,3 +212,26 @@ pub struct Page<T> {
     /// Opaque boundary, null on the final page.
     pub next_cursor: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MessageState;
+
+    /// Funnel steps and the stored `authoring.messages.status` spell a state
+    /// with `as_str`; rows read back through serde. One drifting arm would turn
+    /// a written message into an unreadable one.
+    #[test]
+    fn every_message_state_reads_back_as_the_word_it_is_stored_under() {
+        for state in [
+            MessageState::Queued,
+            MessageState::Running,
+            MessageState::Completed,
+            MessageState::Cancelled,
+            MessageState::Failed,
+            MessageState::TimedOut,
+        ] {
+            let read: Option<MessageState> = crate::draft::word(state.as_str()).ok();
+            assert_eq!(read, Some(state), "{} reads back", state.as_str());
+        }
+    }
+}

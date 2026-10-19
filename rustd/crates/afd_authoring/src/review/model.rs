@@ -18,8 +18,9 @@ pub(super) async fn observe(
     candidate: &Candidate,
     observed: &mut Observed,
 ) -> Result<Option<String>> {
+    // The owner's selection, else the platform default: never no reference.
     let reference = match candidate.definition.runtime().model() {
-        Some(reference) => Some(reference.to_owned()),
+        Some(reference) => reference.to_owned(),
         None => sqlx::query_scalar(super::sql::DEFAULT_MODEL)
             .bind(draft.tenant_id.as_str())
             .bind(PLATFORM_MODEL_REF)
@@ -27,10 +28,7 @@ pub(super) async fn observe(
             .await
             .map_err(query(CONTEXT))?,
     };
-    let resolved = match &reference {
-        Some(reference) => runtime_model(connection, &draft.tenant_id, reference).await?,
-        None => None,
-    };
+    let resolved = runtime_model(connection, &draft.tenant_id, &reference).await?;
     observed
         .versions
         .push(json!({"kind":"runtime_model", "reference":reference,
@@ -38,7 +36,7 @@ pub(super) async fn observe(
     let ready = resolved.is_some();
     observed.check(
         CheckKind::Model,
-        reference.as_deref().unwrap_or("account-default"),
+        &reference,
         if ready {
             CheckState::Ready
         } else {
@@ -50,5 +48,5 @@ pub(super) async fn observe(
             href: format!("/w/{}/settings/models", draft.workspace_id),
         }),
     );
-    Ok(reference)
+    Ok(Some(reference))
 }
