@@ -45,6 +45,33 @@ describe("grant (integration grant) commands", () => {
     });
   });
 
+  test("`grant list` prints a malformed approval instant as the empty cell instead of crashing", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
+          () => jsonResponse(200, {
+            items: [
+              { id: "grant_bad", service: "github", status: "approved",
+                created_at: "2023-11-14T22:13:20Z", approved_at: "not-an-instant" },
+            ],
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["grant", "list", "--fleet", FLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text).toContain("grant_bad");
+        expect(text).toContain("—");
+        expect(text).not.toContain("not-an-instant");
+      });
+    });
+  });
+
   test("m202_001 `grant list --json` reports the install-time grant as approved", async () => {
     // Dimension 4.1. Installing a fleet that declares a mintable credential
     // writes an APPROVED grant and raises no card, so this is the row an
