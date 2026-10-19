@@ -54,6 +54,12 @@ CREATE TABLE authoring.attempts (
 -- Host capacity: a runner's live attempts.
 CREATE INDEX idx_attempts_runner_id_status_lease_expires_at
     ON authoring.attempts (runner_id, status, lease_expires_at);
+-- The lapse sweep (`afd_authoring` maintenance `candidates.sql`): attempts in
+-- one status, oldest deadline first, where the deadline is whichever of the
+-- lease and the attempt runs out sooner. The expression is the statement's own,
+-- so the scan reads the index in order and stops at its limit.
+CREATE INDEX idx_attempts_status_deadline_id
+    ON authoring.attempts (status, LEAST(lease_expires_at, expires_at), id);
 -- Wallet admission: a tenant's open reservations.
 CREATE INDEX idx_attempts_tenant_id_status ON authoring.attempts (tenant_id, status);
 -- Erasure scrubs by workspace and by user.

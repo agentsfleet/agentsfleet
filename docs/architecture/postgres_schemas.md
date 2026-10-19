@@ -165,6 +165,10 @@ connection or transaction; there is no generic repository trait.
   its own, and `Drafts::maintain` sweeps the rest in bounded `SKIP LOCKED` batches. The draft
   message API returns `operation_id` from `messages.operation_id`, written when the turn is
   accepted, because the turn outlives its receipt.
+- **Lapse sweep.** `idx_attempts_status_deadline_id` indexes `(status, LEAST(lease_expires_at,
+  expires_at), id)`, the maintenance sweep's own filter and order, so the sweep reads lapsed
+  attempts oldest first and stops at its batch limit without a sort
+  (`schema/1940_authoring_attempts.sql`).
 - **Running totals.** `attempts.call_count` and `output_token_count` are aggregates maintained under
   the attempt lock and read by admission and renewal (rule 5 exception); the input total had no reader.
 - The setup JSON is copied onto each frozen revision table on purpose: a shared definitions table
@@ -220,6 +224,10 @@ Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, 
 keeping "no self-test yet" distinct from "self-test failed". `leases.event_created_at` is the
 producer's instant billing uses, which the event row does not hold; the lease's `actor` and
 `event_type` come from a join to `fleet.events`, as reclaim already does.
+The metering sweep finds expired leases with an unbilled tail through
+`idx_leases_lease_expires_at_unbilled`, partial on `last_metered_at < lease_expires_at`: a lease
+leaves the index once metering reaches its expiry, so the index holds only the backlog
+(`schema/1810_runner_leases.sql`).
 
 ## connector
 

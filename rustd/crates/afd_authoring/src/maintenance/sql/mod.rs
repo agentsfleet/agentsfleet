@@ -12,6 +12,10 @@ pub(super) const RESULTS: &str = include_str!("results.sql");
 
 /// Live attempts whose lease or deadline passed; hints only, rechecked locked.
 ///
+/// The order is `idx_attempts_status_deadline_id`'s, so the scan stops at the
+/// limit without sorting. It names `attempts.id`, the uuid, because a bare
+/// `id` is the text alias the select list projects, which no index orders.
+///
 /// `$1` the active status, `$2` limit.
 pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
 
