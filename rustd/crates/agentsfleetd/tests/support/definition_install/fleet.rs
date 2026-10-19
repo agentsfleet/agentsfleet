@@ -16,7 +16,7 @@ use jiff::Timestamp;
 
 use crate::e2e::unique_ids;
 use crate::e2e_native::Stored;
-use crate::e2e_seed::enrolment;
+use crate::e2e_seed::{enrolment, scenario_tag};
 
 /// The native setup corpus, from this crate: the same files every corpus suite reads.
 const CORPUS: &str = "../../../tests/fixtures/fleets";
@@ -73,7 +73,12 @@ fn read_definition(fleet_name: &str) -> Definition {
 }
 
 /// The fleet row a Save writes, named for the runtime and selecting its setup.
-/// Unplaced, so only the runner [`enrol`] labels for it is handed its work.
+///
+/// Placed on its own scenario tag, so only the runner [`enrol`] labels for it
+/// is handed its work. The shared unplaced tag would not do: `enrol` copies
+/// the row's tags onto the runner, and a runner carrying the tag every
+/// unplaced fixture fleet requires is offered the work other suites left on
+/// them.
 async fn insert_fleet_row(
     connection: &mut sqlx::PgConnection,
     definition: &Definition,
@@ -83,6 +88,7 @@ async fn insert_fleet_row(
     at: Timestamp,
 ) {
     let stored = Stored::of(definition);
+    let tag = scenario_tag(fleet.as_str());
     FleetSeed::new(
         fleet.as_str(),
         workspace.as_str(),
@@ -91,7 +97,8 @@ async fn insert_fleet_row(
     )
     .name(definition.runtime().name().as_str())
     .at(at)
-    .unplaced_setup(stored.revision())
+    .tags(&[tag.as_str()])
+    .setup(stored.revision())
     .insert(&mut *connection)
     .await
     .expect("the corpus fleet's row inserts");
