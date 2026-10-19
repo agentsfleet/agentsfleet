@@ -279,6 +279,16 @@ fn test_a_window_under_the_warmup_floor_is_refused() {
         refused.kind(),
         crate::error::ErrorKind::WindowTooShort { .. }
     ));
+    // The spans are `Duration`s; the sentence still reads in milliseconds.
+    let sentence = format!(
+        "a window of 1 ms is under the {} warmup floor of {} ms",
+        Profile::Rig,
+        Profile::Rig.caps().warmup.as_millis()
+    );
+    assert!(
+        refused.to_string().contains(&sentence),
+        "renders both spans: {refused}"
+    );
     Profile::Rig
         .check_window(Profile::Rig.caps().warmup)
         .expect("the floor itself is allowed");
