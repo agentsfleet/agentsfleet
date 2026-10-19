@@ -33,9 +33,9 @@ use crate::lease::sql;
 use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
 use crate::lease::usage::{self, Pricing, SliceColumns};
+use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
 use afd_billing::rates::Posture;
-use afd_billing::Nanos;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";

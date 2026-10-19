@@ -13,9 +13,9 @@ use crate::rows::Row;
 use afd_authoring::Claimed;
 use std::sync::Arc;
 
+use afd_billing::Posture;
 use afd_billing::biller::{Biller as _, Receipt};
 use afd_billing::ledger::LedgerBiller;
-use afd_billing::Posture;
 use afd_core::{clock, id::Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;

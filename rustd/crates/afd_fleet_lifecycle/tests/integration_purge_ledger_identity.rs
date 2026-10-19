@@ -106,13 +106,11 @@ struct ChargedAs {
 
 /// The identity a ledger row still carries, if the row is there.
 async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
-    sqlx::query_as(
-        "SELECT fleet_id::text, fleet_name FROM billing.usage_lines WHERE id = $1::uuid",
-    )
-    .bind(row.as_str())
-    .fetch_optional(&mut *lane.connection().await)
-    .await
-    .expect("reading the ledger row")
+    sqlx::query_as("SELECT fleet_id::text, fleet_name FROM billing.usage_lines WHERE id = $1::uuid")
+        .bind(row.as_str())
+        .fetch_optional(&mut *lane.connection().await)
+        .await
+        .expect("reading the ledger row")
 }
 
 /// Rows left in one table for one fleet.

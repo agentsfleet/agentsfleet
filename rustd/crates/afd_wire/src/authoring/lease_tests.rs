@@ -93,10 +93,7 @@ fn a_lease_prints_its_identity_and_never_its_capability_or_conversation() {
 #[test]
 fn test_runner_wire_drops_deletion_generation() {
     let written = serde_json::to_value(lease()).expect("a lease writes");
-    assert!(
-        written.get("deletion_generation").is_none(),
-        "{written}"
-    );
+    assert!(written.get("deletion_generation").is_none(), "{written}");
     let usage = json!({"knowledge": "known", "calls": 0, "runtime_ms": 0});
     serde_json::from_value::<crate::authoring::Renew>(json!({"fence": "1", "usage": usage}))
         .expect("a renewal without a generation decodes");
