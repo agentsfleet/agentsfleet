@@ -49,5 +49,11 @@ CREATE INDEX idx_leases_runner_id_created_at_id
 CREATE INDEX idx_leases_runner_id_status ON runner.leases (runner_id, status);
 -- The expiry sweep.
 CREATE INDEX idx_leases_status_updated_at ON runner.leases (status, updated_at);
+-- The metering sweep (`select_unbilled_expired_leases.sql`): expired leases
+-- whose last slice is not yet billed. Partial, so a lease leaves the index once
+-- metering catches up with its expiry, and the index holds only the backlog.
+CREATE INDEX idx_leases_lease_expires_at_unbilled
+    ON runner.leases (lease_expires_at)
+    WHERE last_metered_at < lease_expires_at;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.leases TO api_runtime;
