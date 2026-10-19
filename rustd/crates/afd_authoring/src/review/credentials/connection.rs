@@ -46,12 +46,13 @@ pub(super) async fn observe(
     Ok(())
 }
 
+/// The scopes an install of `service` must have granted: Slack's consent
+/// scopes, and none for a service routed without a consent flow.
 fn required_scopes(service: &str) -> Vec<&'static str> {
-    match Provider::parse(service) {
-        Some(Provider::Slack) => match Provider::Slack.archetype() {
-            Archetype::Oauth2(flow) => flow.scopes.split(flow.scope_delimiter).collect(),
-            Archetype::AppInstall(_) => Vec::new(),
-        },
+    match (Provider::parse(service), Provider::Slack.archetype()) {
+        (Some(Provider::Slack), Archetype::Oauth2(flow)) => {
+            flow.scopes.split(flow.scope_delimiter).collect()
+        }
         _ => Vec::new(),
     }
 }
