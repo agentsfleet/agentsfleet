@@ -65,9 +65,10 @@ impl Leases {
         .await;
         read.unwrap_or_else(|fault: crate::Error| {
             let Logged { error_code, reason } = fault.logged();
+            let lease_id = lease.as_str();
             tracing::warn!(
                 error_code,
-                lease_id = lease.as_str(),
+                lease_id,
                 reason,
                 event = EVENT_RUN_TOKENS_UNREAD,
                 "a settled run's tokens could not be read; its metrics record none"

@@ -45,11 +45,14 @@ async fn maintain(drafts: &afd_authoring::Drafts) {
             );
         }
         Ok(_) => {}
-        Err(error) => tracing::warn!(
-            event = FAILED,
-            error_code = error.code().as_str(),
-            "authoring recovery waits for its durable store"
-        ),
+        Err(error) => {
+            let error_code = error.code().as_str();
+            tracing::warn!(
+                event = FAILED,
+                error_code,
+                "authoring recovery waits for its durable store"
+            );
+        }
     }
 }
 
