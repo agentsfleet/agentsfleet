@@ -120,7 +120,12 @@ mod tests {
             (counters.fence, counters.sequence, counters.activity),
             (1, Some(2), 3)
         );
-        for (fence, sequence, position) in [("0", "1", "1"), ("1", "0", "1"), ("1", "1", "0")] {
+        for (fence, sequence, position) in [
+            ("0", "1", "1"),
+            ("1", "0", "1"),
+            ("1", "1", "0"),
+            ("01", "1", "1"),
+        ] {
             let refused = Counters::parse(&activity(fence, sequence, position)).err();
             assert_eq!(
                 refused.map(|error| error.code()),

@@ -124,7 +124,9 @@ async fn statuses(f: &Fixture, a: &Attempt) -> (String, String) {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() {
-    let f = Fixture::create().await;
+    // Its own database: a pass sweeps every lane's expired private state, and
+    // this proof's pass must not sweep another proof's.
+    let f = Fixture::isolated().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
@@ -164,7 +166,9 @@ async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn an_expired_attempt_whose_message_already_finished_keeps_that_finish() {
-    let f = Fixture::create().await;
+    // Its own database: a pass sweeps every lane's expired private state, and
+    // this proof's pass must not sweep another proof's.
+    let f = Fixture::isolated().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query(
         "WITH stopped AS (UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$2::uuid) \

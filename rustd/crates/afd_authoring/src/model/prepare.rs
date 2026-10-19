@@ -17,6 +17,11 @@ struct Envelope<'a> {
 pub(super) struct Prepared {
     pub(super) body: rig_core::completion::CompletionRequest,
     pub(super) output_limit: u32,
+    /// The route the body was validated against, so the dispatch sends on
+    /// exactly that route.
+    pub(super) inference: afd_wire::inference::ModelInference,
+    /// The context window the body was measured against.
+    pub(super) context_tokens: u32,
 }
 
 pub(super) fn request(mut request: ModelCallInput) -> Result<garde::Valid<ModelCallInput>> {
@@ -60,6 +65,8 @@ pub(super) fn body(
     Ok(Prepared {
         body: canonical,
         output_limit,
+        inference: settings.clone(),
+        context_tokens: context,
     })
 }
 

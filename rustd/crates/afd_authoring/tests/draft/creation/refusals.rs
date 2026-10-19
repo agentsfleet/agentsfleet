@@ -1,5 +1,6 @@
-//! A Save names one exact candidate under this daemon's policy; anything else
-//! is refused before a fleet identity is reserved.
+//! A Save names one exact candidate under this daemon's policy and one unused
+//! key; anything else is refused before a fleet is written, and what it does
+//! write follows the candidate exactly, its schedules included.
 
 use super::super::{fixture::now, mint};
 use super::fixture::Case;
@@ -100,5 +101,46 @@ async fn a_save_that_loses_its_key_to_a_lapsed_claim_saves_no_fleet() {
     let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
     assert_eq!(refused.code(), error_code::AUTHORING_GONE);
     assert_eq!(c.fleet_count().await, 0, "the reservation rolled back");
+    c.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn only_a_saved_cron_trigger_files_a_schedule() {
+    let c = Case::create().await;
+    let (draft, mut request) = c.request("triggered", Start::None).await;
+    let current = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("current draft");
+    let patch: DraftPatch = serde_json::from_value(json!({"config_ops":[{"op":"replace",
+    "path":"/config/x-agentsfleet/triggers","value":[
+        {"type":"webhook","source":"github"},
+        {"type":"cron","schedule":"0 * * * *","timezone":"UTC","message":"Review evidence"}
+    ]}]}))
+    .expect("declare both triggers");
+    c.base
+        .drafts
+        .patch(c.base.access(), &draft, Some(&current.etag), patch, now())
+        .await
+        .expect("declared triggers");
+    let reviewed = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("review the triggers");
+    request.source = SaveSource::Draft {
+        draft_candidate_id: reviewed.candidate.expect("candidate").id,
+    };
+    request.review_digest = reviewed.review.expect("live review").review_digest;
+    let saved = c.save(&mint(), request).await;
+    let schedules: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.schedules WHERE fleet_id=$1::uuid")
+            .bind(saved.id.as_str())
+            .fetch_one(&mut *c.base.connection().await)
+            .await
+            .expect("the fleet's schedules");
+    assert_eq!(schedules, 1, "the webhook files none, the cron one");
     c.cleanup().await;
 }

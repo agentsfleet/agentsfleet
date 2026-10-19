@@ -244,3 +244,58 @@ async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
         .cleanup()
         .await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant() {
+    use afd_authoring::types::{CheckKind, CheckState};
+    let c = Case::create().await;
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"integration":"pagerduty","token":"pd-fixture-token"}).to_string(),
+    )
+    .expect("handle JSON");
+    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+        .expect("fixture key");
+    Vault::new(c.base.db.clone(), Arc::new(key), Entropy::new())
+        .create(
+            &c.base.workspace,
+            &SecretName::parse("pagerduty").expect("handle name"),
+            &SecretBody::parse(&raw).expect("handle object"),
+            now(),
+        )
+        .await
+        .expect("seal a stored token");
+    let (draft, _) = c.request("stored-token", Start::None).await;
+    let current = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("current draft");
+    let patch = serde_json::from_value(json!({"config_ops":[{"op":"replace",
+        "path":"/config/x-agentsfleet/credentials","value":["pagerduty"]}]}))
+    .expect("declare the credential");
+    c.base
+        .drafts
+        .patch(c.base.access(), &draft, Some(&current.etag), patch, now())
+        .await
+        .expect("declared requirement");
+    let review = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("review declared access")
+        .review
+        .expect("live review");
+    let about = |kind: CheckKind| {
+        review
+            .readiness
+            .iter()
+            .filter(|check| check.kind == kind && check.subject == "pagerduty")
+            .map(|check| check.state)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(about(CheckKind::Credential), [CheckState::Ready]);
+    assert_eq!(about(CheckKind::Connection), []);
+    assert_eq!(about(CheckKind::Grant), []);
+    c.cleanup().await;
+}
