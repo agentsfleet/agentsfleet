@@ -90,3 +90,37 @@ fn an_unknown_cache_write_is_null_and_instants_are_rfc_3339() {
         "an empty label and a zero cap are refused"
     );
 }
+
+/// Postgres refuses NUL inside `text`, so every catalogue string an operator
+/// types must be the caller's 400 rather than the store's 500.
+#[test]
+fn a_nul_in_any_catalogue_text_is_refused_at_the_boundary() {
+    let refused = |report: garde::Report| report.to_string().contains(afd_validate::rules::HAS_NUL);
+    let metadata = |display_name: &'static str, url: &'static str| CatalogueMetadata {
+        display_name: Cow::Borrowed(display_name),
+        context_cap_tokens: 200_000,
+        context_source_url: Cow::Borrowed(url),
+        context_verified_at: START,
+        advanced: false,
+    };
+    metadata("Opus", "https://example.test/models")
+        .validate()
+        .expect("clean metadata passes");
+    for broken in [
+        metadata("Op\0us", "https://example.test/models"),
+        metadata("Opus", "https://example.test/\0models"),
+    ] {
+        assert!(refused(broken.validate().expect_err("a NUL is refused")));
+    }
+
+    let mut price = price(BASE_TIER, 0, None);
+    price.conditions = Cow::Borrowed("batch\0only");
+    assert!(refused(
+        price.validate().expect_err("a NUL condition is refused")
+    ));
+    price.conditions = Cow::Borrowed("");
+    price.source_url = Cow::Borrowed("https://example.test/\0pricing");
+    assert!(refused(
+        price.validate().expect_err("a NUL source is refused")
+    ));
+}

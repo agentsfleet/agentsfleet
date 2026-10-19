@@ -134,11 +134,11 @@ pub const MODEL_ID_MAX_BYTES: usize = 256;
 pub struct AdminModelCreate<'a> {
     /// Provider identity.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = PROVIDER_MAX_BYTES))]
+    #[garde(length(bytes, min = 1, max = PROVIDER_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub provider: Cow<'a, str>,
     /// Provider-native model identity.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub model_id: Cow<'a, str>,
     /// Label and context evidence.
     #[serde(borrow)]
