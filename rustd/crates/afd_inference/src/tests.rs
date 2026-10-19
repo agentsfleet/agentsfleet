@@ -97,6 +97,20 @@ fn rejects_unknown_or_wrong_api_dialects() {
 }
 
 #[test]
+fn a_native_api_refuses_any_saved_dialect() {
+    for api in [InferenceApi::Gemini, InferenceApi::Ollama] {
+        let mut value = settings(api);
+        assert!(Configured::new(&value, 100).is_ok(), "{api:?} without one");
+        value.dialect = Some("openai".into());
+        assert_eq!(
+            Configured::new(&value, 100).unwrap_err().code(),
+            afd_core::error_code::INVALID_REQUEST,
+            "{api:?} has no dialect table to look one up in"
+        );
+    }
+}
+
+#[test]
 fn a_credential_endpoint_restriction_cannot_be_replaced_by_catalogue_routing() {
     let value = settings(InferenceApi::Chat);
     let route = Configured::new(&value, 100).unwrap();
@@ -284,6 +298,29 @@ async fn a_gemini_request_carries_its_key_in_a_header_never_in_its_url() {
         format!("{unary:?}"),
         format!("{frame:?}"),
     ] {
+        assert!(!rendered.contains(GEMINI_KEY));
+    }
+}
+
+/// A Gemini key that decodes to something no header may carry is refused at
+/// the wrapper: the request never reaches the transport, so it is never sent
+/// with the key left in its URL, and the refusal does not repeat the key.
+#[tokio::test]
+async fn a_gemini_key_that_cannot_be_a_header_is_never_sent() {
+    // rig splices the key into the query raw; `%0A` decodes to a newline.
+    let key = format!("{GEMINI_KEY}%0A");
+    let value = settings(InferenceApi::Gemini);
+    let route = Configured::new(&value, 100).unwrap();
+    let capture = Capture::default();
+    let model = route.model("gemini-next", &key, capture.clone());
+
+    let error = model
+        .call(CompletionRequest::new(Message::user("hello")))
+        .await
+        .unwrap_err();
+
+    assert!(capture.0.lock().unwrap().is_empty(), "nothing was sent");
+    for rendered in [error.to_string(), format!("{error:?}")] {
         assert!(!rendered.contains(GEMINI_KEY));
     }
 }
