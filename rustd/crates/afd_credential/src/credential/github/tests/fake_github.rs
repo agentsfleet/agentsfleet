@@ -143,6 +143,22 @@ impl Drop for FakeGithub {
     }
 }
 
+/// Mints against a loopback port nothing listens on: the request is never
+/// answered at all.
+pub(super) async fn mint_against_nothing() -> Outcome {
+    let closed = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .expect("a loopback port binds")
+        .local_addr()
+        .expect("a bound listener has an address");
+    let http = loopback_client();
+    let api = AppApi::new(
+        &http,
+        Url::parse(&format!("http://{closed}/")).expect("the loopback base is a URL"),
+        Zeroizing::new(UNSIGNED.to_owned()),
+    );
+    request_token(&api, INSTALLATION_ID, &binding(), NOW).await
+}
+
 /// The bearer an unsigned fixture client presents.
 const UNSIGNED: &str = "unsigned";
 

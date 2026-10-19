@@ -84,6 +84,25 @@ async fn every_wrong_limit_earns_the_bounds_refusal() {
 }
 
 #[tokio::test]
+async fn advanced_takes_only_true_or_false() {
+    // `?advanced=1` must not quietly list the ordinary catalogue, so anything
+    // but the two spellings is a bounds refusal; both spellings reach the verb.
+    for wrong in ["1", "yes", "TRUE", ""] {
+        let path = format!("{MODELS}?advanced={wrong}");
+        let response = read(&path, Some(TENANT_KEY)).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+        let (_, code, detail) = harness::problem(response).await;
+        assert_eq!(detail, "advanced must be true or false", "{path}");
+        assert_eq!(code, "UZ-LIBRARY-003", "{path}");
+    }
+    for right in ["true", "false"] {
+        let path = format!("{MODELS}?advanced={right}");
+        let response = read(&path, Some(TENANT_KEY)).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
+    }
+}
+
+#[tokio::test]
 async fn an_empty_limit_is_the_default_page() {
     let path = format!("{MODELS}?limit=");
     let response = read(&path, Some(TENANT_KEY)).await;

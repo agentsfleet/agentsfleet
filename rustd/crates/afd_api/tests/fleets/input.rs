@@ -57,7 +57,14 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
 
 #[tokio::test]
 async fn a_cursor_this_daemon_never_issued_is_refused() {
-    for token in ["garbage", "notanumber:019abc", "1744000000000:not-a-uuid"] {
+    // The last is a well-formed text-sort token: a cursor some OTHER list
+    // issued, naming a sort this walk on `(created_at, id)` does not have.
+    for token in [
+        "garbage",
+        "notanumber:019abc",
+        "1744000000000:not-a-uuid",
+        "s:YWJj:01924f4e-0000-7000-8000-00000000f1ee",
+    ] {
         let path = format!("{}?starting_after={token}", collection());
         let response = authorised(Method::GET, &path, "").await;
 

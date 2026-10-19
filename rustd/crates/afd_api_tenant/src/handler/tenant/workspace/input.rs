@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
-use afd_core::paging::{BoundaryKind, CEILING, Cursor};
+use afd_core::paging::{CEILING, Cursor};
 use afd_tenant::workspace::directory::After;
 use afd_validate::{Limit, nul_free};
 use garde::Validate as _;
@@ -65,16 +65,11 @@ pub(super) fn parse_cursor(raw: Option<Cow<'_, str>>) -> Result<Option<After>, R
     };
     let cursor =
         Cursor::parse(&raw).map_err(|_foreign| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
-    if cursor.kind() != BoundaryKind::Timestamp {
-        return Err(Refusal::malformed(DETAIL_INVALID_CURSOR));
-    }
-    let id = Uuid7::parse(cursor.id())
-        .map_err(|_not_workspace| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
-    let Cursor::Timestamp { at, .. } = cursor else {
-        // The kind was just checked; stated as unreachable rather than left
-        // for a refactor to make reachable silently.
+    let Cursor::Timestamp { at, id } = cursor else {
         return Err(Refusal::malformed(DETAIL_INVALID_CURSOR));
     };
+    let id =
+        Uuid7::parse(&id).map_err(|_not_workspace| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
     Ok(Some(After { created_at: at, id }))
 }
 

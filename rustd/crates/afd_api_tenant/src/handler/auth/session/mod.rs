@@ -192,3 +192,6 @@ const fn status_name(status: SessionStatus) -> &'static str {
         SessionStatus::Aborted => "aborted",
     }
 }
+
+#[cfg(test)]
+mod tests;

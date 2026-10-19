@@ -145,7 +145,10 @@ impl Vault {
             )
             .map_err(crate::error::vault_open)?;
 
-        let updated = EnvelopeRow {
+        // The `FOR UPDATE` above holds the row until commit, so the write
+        // always lands on it: a delete racing this exchange waits, or won
+        // before the lock and was answered as stale there.
+        EnvelopeRow {
             key,
             sealed: &sealed,
         }
@@ -153,9 +156,6 @@ impl Vault {
         .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_ROTATE))?;
-        if updated.rows_affected() == 0 {
-            return Ok(Rotated::SkippedStale);
-        }
         transaction.commit().await.map_err(query(CONTEXT_ROTATE))?;
         Ok(Rotated::Persisted)
     }

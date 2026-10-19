@@ -226,3 +226,80 @@ async fn an_id_that_resolves_to_nothing_is_answered_by_each_write_verb_in_its_ow
 
     fixture.cleanup().await;
 }
+
+/// A tenant with no workspace holds no credential to register a model
+/// against, and is told that rather than "credential missing": the two
+/// remedies differ, and the lock that found no credential cannot tell them
+/// apart on its own.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_entry_for_a_tenant_with_no_workspace_names_the_missing_workspace() {
+    let fixture = Fixture::create().await;
+    let store = seeded(&fixture).await;
+    let orphan = fixture.seed_tenant_without_workspace().await;
+
+    let outcome = store
+        .add_entry(&orphan, &unique_model(), CREDENTIAL, NOW)
+        .await
+        .expect("a missing workspace is an outcome, not a fault");
+
+    assert!(matches!(outcome, Added::NoWorkspace), "{outcome:?}");
+    fixture.cleanup().await;
+}
+
+/// A retarget the database refuses for any reason but the domain key is the
+/// store's failure, never a duplicate: only that one constraint is the
+/// caller's to fix.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_retarget_the_database_refuses_off_the_domain_key_is_a_query_failure() {
+    let fixture = Fixture::create().await;
+    let store = seeded(&fixture).await;
+    let entry = stored(&store, &fixture, &unique_model()).await;
+
+    // Postgres refuses a NUL byte in text, so the update itself fails.
+    let refused = store
+        .set_entry_model(&fixture.tenant, &entry.id, "nul\0model")
+        .await
+        .expect_err("the statement is refused");
+
+    assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert!(holds(&store, &fixture, &entry.id).await, "the entry stands");
+    fixture.cleanup().await;
+}
+
+/// An envelope sealed under another key is a failure the inspection
+/// preserves, never a credential classified from bytes that did not open.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_inspection_of_an_envelope_that_will_not_open_fails() {
+    let fixture = Fixture::create().await;
+    let foreign = afd_crypto::secret::Kek::from_bytes([0x24; 32]);
+    let envelope = afd_crypto::envelope::Sealer::new()
+        .seal(
+            &foreign,
+            &afd_crypto::aad::Aad::new(fixture.workspace.as_str(), CREDENTIAL),
+            BODY,
+        )
+        .expect("the foreign envelope seals");
+    fixture.insert(CREDENTIAL, &envelope).await;
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
+
+    let refused = fixture
+        .vault
+        .inspect_on(
+            &mut connection,
+            &fixture.workspace,
+            &[CREDENTIAL.to_owned()],
+            &afd_credential::secrets::Registry::SHIPPED,
+        )
+        .await
+        .expect_err("the envelope does not open under this vault's key");
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    drop(connection);
+    fixture.cleanup().await;
+}

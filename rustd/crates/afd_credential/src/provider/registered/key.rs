@@ -42,15 +42,14 @@ impl Providers {
             return Ok(None);
         }
         let (workspace, name) = (registration.workspace_id, registration.key_name);
+        // `read` took this secret `FOR SHARE` in the caller's transaction, so
+        // the row it named is still there to open.
         let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(&workspace)
             .bind(&name)
-            .fetch_optional(connection)
+            .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
-        let Some(stored) = stored else {
-            return Ok(None);
-        };
         let body = stored
             .into_envelope()
             .map_err(vault_open)?

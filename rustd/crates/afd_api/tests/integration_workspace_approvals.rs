@@ -41,6 +41,62 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
     fixture.cleanup().await;
 }
 
+/// A gate and a fleet this workspace does not hold are each answered as
+/// absent by the live stores: a decision on an unknown gate is the approval's
+/// own 404, and revoking a grant under an unknown fleet is the fleet's, so a
+/// caller learns which half of the path named nothing.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let queue = harness::connect_redis().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_approval_queue(fixture.database.clone(), queue)
+    .router();
+    let workspace = fixture.workspace.as_str();
+    let nowhere = afd_db::test_util::mint_id();
+
+    let decided = send(
+        &router,
+        Method::POST,
+        &format!("/v1/workspaces/{workspace}/approvals/{nowhere}/approve"),
+        Some(&fixture.token),
+        r#"{"reason":"reviewed"}"#,
+    )
+    .await;
+    let status = decided.status();
+    let decided = json_body(decided).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{decided}");
+    assert_eq!(
+        decided.get("error_code").and_then(Value::as_str),
+        Some(error_code::APPROVAL_NOT_FOUND.as_str())
+    );
+
+    let grant = afd_db::test_util::mint_id();
+    let revoked = send(
+        &router,
+        Method::DELETE,
+        &format!("/v1/workspaces/{workspace}/fleets/{nowhere}/integration-grants/{grant}"),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    let status = revoked.status();
+    let revoked = json_body(revoked).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{revoked}");
+    assert_eq!(
+        revoked.get("error_code").and_then(Value::as_str),
+        Some(error_code::AGENTSFLEET_NOT_FOUND.as_str())
+    );
+    fixture.cleanup().await;
+}
+
 /// The address the fixture seeds on its `identity.users` row.
 ///
 /// The fixture's SQL cannot take a constant — the statement is a `&str` whose other

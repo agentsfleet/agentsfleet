@@ -15,6 +15,7 @@ use tracing::Level;
 
 use super::fake_github::{
     CREATED, FakeGithub, GONE, HOLDS_EVERYTHING, HOLDS_NO_CHECKS, IN_AN_HOUR, LATER, OK,
+    mint_against_nothing,
 };
 use crate::credential::outcome::{Outcome, Retry};
 
@@ -140,5 +141,15 @@ async fn token_request_failures_keep_their_retry_posture() {
     assert!(matches!(
         malformed.mint().await,
         Outcome::MintFailed(Retry::Permanent)
+    ));
+}
+
+#[tokio::test]
+async fn a_github_that_never_answers_is_retried_not_given_up_on() {
+    // A refused connection may never have reached GitHub at all, so the next
+    // attempt can succeed unchanged: transient, unlike a refusal it answered.
+    assert!(matches!(
+        mint_against_nothing().await,
+        Outcome::MintFailed(Retry::Transient)
     ));
 }
