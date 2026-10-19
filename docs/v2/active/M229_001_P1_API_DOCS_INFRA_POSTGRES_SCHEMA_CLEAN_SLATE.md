@@ -120,7 +120,7 @@ Discovery grep (rerun at PLAN): `git grep -lE "(^|[^a-z_])(core|fleet|billing|va
 
 The rules, the counter table and the deletion-matrix requirement land in `~/Projects/orly` on their own branch and PR: the conventions doc (dropping its stale Zig timestamp and `schema/embed.zig` lines) and the pack text that mandates `core.fleet_*`. After it merges, `orly update --no-hooks` refreshes the generated copies here.
 
-- **Dimension 1.1** — DONE — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Rubric R3 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
+- **Dimension 1.1** — DONE — generated conventions carry the rules and counter table, and no Zig, `embed.zig` or `core.fleet_*` text → Test `rubric R3` (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 1.2** — DONE — `orly doctor` reports no drift after the update → Test `test_orly_doctor_clean_after_update`
 - **Evidence** — orly PR #65 "docs(conventions): agentsfleet schema naming rules…" merged 2026-10-17 (`gh pr list` in `~/Projects/orly`); `.orly/docs/SCHEMA_CONVENTIONS.md:44` "Counter and pointer names"; `grep -rln 'embed.zig\|core\.fleet_' .orly/` → 0 files; `orly doctor` → "🟢 installed rules match .orly/orly.json".
 
@@ -159,14 +159,14 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 
 ### §6 — Docs
 
-- **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Rubric R2 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
+- **Dimension 6.1** — no doc outside `docs/v2/done/` names a removed table → Test `rubric R2` (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 6.2** — public pages for closed-draft retention, the retry window and Library deletion, plus a changelog `<Update>`, land on their own docs branch; the runner protocol gets no public page (Discovery: Runner protocol stays unpublished) → Test `test_public_docs_branch_open` (manual)
 
 ### §7 — Data access rides the rewrite
 
 Every query is rewritten here, so two fixes land with it rather than touching each query twice. The 22 whole-row `to_jsonb(<alias>)::text` reads in 16 files (count at `a8646bb2a`) become explicit column lists into typed rows; `Json<T>` stays for real JSON columns. The Library list joins each card to its head revision in one statement. Connections set no `lock_timeout` or `statement_timeout` (Discovery: Time limits withdrawn).
 
-- **Dimension 7.1** — no whole-row JSON read remains in runtime source → Rubric R5 (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
+- **Dimension 7.1** — no whole-row JSON read remains in runtime source → Test `rubric R5` (a test that reads the repository breaks `scripts/check_tests_call_code.py`, so the proof is the rubric command)
 - **Dimension 7.2** — a Library page is one statement at any page size and stays coherent when a card is deleted mid-read → Test `test_library_list_single_statement`
 - **Dimension 7.4** — every static statement is a `.sql` file beside its use case, loaded with `include_str!`, and each one `PREPARE`s against the rebuilt schema; joined-string statements become whole files where possible and the rest are named and tested → Test `test_every_sql_file_prepares`
 - **Dimension 7.5** — every multi-column read decodes into a `#[derive(sqlx::FromRow)]` struct through `query_as`, instants through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]`, single columns through `query_scalar`; no `try_get` remains (373 across 13 crates at `331c0afc8`) → Test `test_rows_decode_into_typed_structs`
@@ -175,7 +175,7 @@ Every query is rewritten here, so two fixes land with it rather than touching ea
 
 The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/agentsfleet/issues/771) and nothing superseded; every price is the provider's published rate for the request it bills. Machine identifiers are the providers' exact API model IDs, display names are labels, and existing provider keys stay (`gemini`, displayed "Google"). Provenance and the Oct 18 verification are in Discovery (Catalogue prices verified).
 
-- **Dimension 8.1** — the curated identity set is exactly #771's 17 entries; a picker row requires an exact context integer from its provider's own models API, with unreadable limits reported and unseeded → Test `test_curated_picker_lists_the_enabled_catalogue`
+- **Dimension 8.1** — the curated identity set is exactly #771's 17 entries; a picker row requires an exact context integer from its provider's own models API or, where that API needs a key or omits the limit, OpenRouter's public endpoints list for that provider's standard endpoint tag, with unreadable limits reported and unseeded → Test `test_curated_picker_lists_the_enabled_catalogue`
 - **Dimension 8.2** — `gpt-5.6-terra` is returned only when advanced models are requested; one boolean distinguishes it, with no availability vocabulary → Test `test_catalogue_walk_carries_metadata_prices_and_explicit_advanced_filter`
 - **Dimension 8.3** — MiniMax M3, superseded generations and serverless-deprecated DeepSeek V4 Pro 0813 have no catalogue rows; every database starts empty, so there are no saved selections to preserve → Test `pruned identities and price tiers are deleted with no orphan prices`
 - **Dimension 8.4** — a context tier prices the whole request: OpenAI at 272,000 input tokens is base and at 272,001 upper; Haiku 5.5 at 100,000 prompt tokens is base and at 100,001 upper, counting cache reads and writes → Test `test_context_tier_prices_the_whole_request`
@@ -189,25 +189,15 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 
 ### §8 UI follow-up — user-reported fixes
 
-These user-reported fixes extend the application and design-system scope under `ui/packages/**` and this tracking section.
+All 22 reports and their subitems extend `ui/packages/**`; all five requested server additions are consumed. Details and release checks: [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md).
 
-All 22 reports and their subitems are recorded below. All five requested server additions are consumed by the clients.
-Client details and remaining release checks are in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md).
-
-`make test-coverage-all` passes every configured floor in `/tmp/m229-completion-coverage-all-final.txt`:
-
-- App: 412 files / 3848 tests; 100% statements, branches, functions and lines.
-- Website: 20 files / 133 tests; 100% on all four measures.
-- Command-line interface (CLI): 214 files / 1937 passing tests / 16 existing live-test skips / zero failures; 100% functions and lines.
-- Design system: 62 files / 497 tests; 100% on all four measures.
-
-App and CLI lint pass in the scoped `c272f510d` and `777ff460d` commit hooks.
-No coverage threshold, timeout, skip or bundle budget changed.
+`make test-coverage-all` passes: app 412 files / 3861 tests; website 20 / 133; command-line interface (CLI) 215 / 1952 passing, 16 existing live-test skips and zero failures; design system 62 / 497. Every configured coverage measure is 100% (`/tmp/m229-signed-coverage-all-final.txt`).
+`make lint-app lint-cli check-playbooks` and the final signed-balance lint/hooks pass. No coverage threshold, timeout, skip or bundle budget changed.
 
 | Report | Required result | Progress / evidence |
 |---|---|---|
 | 1 | Meaningful setup-chat titles; preserve explicit renames. | `2ead62453` adds explicit rename. Server `1b084cd67` records meaningful initial titles; app `c272f510d` consumes them without fetching transcripts. |
-| 2 | Search all private chats, with honest scope and pagination. | `c272f510d` consumes creator-only server title/message search with query-bound paging, cancellation and access-loss clearing. Saved message changes refresh an open search; busy-only changes make no extra read. |
+| 2 | Search all private chats, with honest scope and pagination. | `c272f510d` consumes creator-only server title/message search with query-bound paging, cancellation and access-loss clearing. `a1dd087d2` preserves matches and cursor until refreshed data arrives, cancels stale continuation responses and retains matches with retry after temporary failure. Current access refusal clears them. |
 | 3 | Selecting a chat keeps its position and avoids the new-fleet page flash. | `2ead62453`: stable ordering and selection-specific loading. |
 | 3a | Delete a private setup chat with confirmation and clear failures. | `2ead62453`: shared deletion action and confirmation. |
 | 3b | Show draft, saved, version, and publication state from recorded data. | `c272f510d` reads the three nullable revision counters from server `1aeb6ffb7`. Actual Save/Apply receipts and bounded publication refreshes keep independent proposed, saved and published labels current. |
@@ -232,37 +222,19 @@ No coverage threshold, timeout, skip or bundle budget changed.
 | 20c | Explain activity details without repeating the activity timestamp. | `0645aedcc`: descriptive details, current metadata keys, one timestamp column, regression tests. |
 | 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | `ff00608e2`: parse the published Activity payload and keep recovery within the page; app regression tests pass. Deployed reproduction remains unverified. |
 | 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | `ffc5cfd3b`: one-line description, Fleet setups heading, workspace action, empty-state regression. |
-| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | `e0c15db29` fixes exact money, inclusive advanced models and exact-event recovery. `e7c5c55f9` validates fleet lists; `dc65550b6` validates schedule summaries. `777ff460d` adds bounded chat list/search, idle rename and confirmed delete. Final gate: 1937 pass / 16 existing live-test skips / zero failures; 100% functions and lines. |
+| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | `e0c15db29` fixes exact money, inclusive advanced models and exact-event recovery. `e7c5c55f9` validates fleet lists; `dc65550b6` validates schedule summaries. `777ff460d` adds bounded chat list/search, idle rename and confirmed delete. `aa112ddd1` accepts canonical signed wallet debt and displays it consistently in both clients. Final gate: 1952 pass / 16 existing live-test skips / zero failures; 100% functions and lines. |
 
-The catalogue editor and picker landed in `43b537a19`, `7152af4d2`, `c50b4b630`, and `98c184bdc`.
-`78118fd17` separates intent-loaded sidebar actions. `c272f510d` separates editor state from shared sidebar context and adds bounded private-chat search.
-The shared row list keeps ordinary history and search selection/deletion behavior aligned.
+Catalogue/editor source receipts and the shared sidebar refactor are recorded in the request log. Ordinary history and search share selection/deletion behavior.
+`8f27e365c` replaces all eight stale client/playbook references and adds three CLI `byInstant` ordering regressions for Dimension 4.7. Exact R2 inventory: zero (`/tmp/m229-r2-inventory-final.txt`).
 
-Production `bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard.
+Production build and all 25 size budgets, including the server-module guard, pass: shared compressed JavaScript 274266 / 276480 bytes; new-fleet total 334981; fleet detail 364428.
+Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496`: 364917 and 366692 bytes; savings 29936 (8.20%) and 2264 (0.62%). Baseline failed the server-module guard; current limits are unchanged. Receipts: `/tmp/m229-signed-build-final.txt`, `/tmp/m229-signed-size-final.json`. Claude removed `cron-parser` from the lockfile in `8a194eda3`.
 
-Shared compressed JavaScript is 274265 / 276480 bytes. New-fleet total is 334933 bytes; fleet-detail total is 364328 bytes.
-
-Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496` measured 364917 and 366692 bytes for those pages.
-The reductions are 29984 and 2364 bytes.
-
-The baseline failed the server-module guard; current limits remain unchanged.
-Evidence: `/tmp/m229-sidebar-build-split.txt` and `/tmp/m229-sidebar-size-split.json`.
-Claude refreshed the root lockfile in `8a194eda3`, removing `cron-parser`.
-
-`make dry-app-smoke` passes four desktop/mobile sign-in and protected-route checks (`/tmp/m229-completion-browser-smoke.txt`).
-Duplicate audit: one weaker case removed; two overlapping cases merged into one, retaining their assertions. Net reduction: two cases.
-
-Native source rereviews are clean for money readers, schedule/lease readers and the new CLI history source.
-Sidebar review stopped after three cycles without convergence. Its final message-only search finding has a failing-before regression and a repair.
-Claude must inspect the final saved entity-tag propagation. Receipts and exact scope are recorded under `.tmp/reviews/`.
-
-Local daemon health and readiness return HTTP 200. Authenticated priming and reported-screen browser checks still need the dedicated testing identity decision.
-No shared Clerk identity was changed.
-
-Evidence: `.tmp/audits/local-priming-deviations.md`.
-Public documentation remains in Claude's lane until docs ready. The review checklist is `.tmp/audits/m229-docs-review-checklist.md`.
-
-The UI work is handed to Claude with these remaining release checks explicit; the shared spec moves to `done/` when required checks finish.
+Scoped native reviews are clean for money, schedule/lease and CLI history readers. Claude's 09:20 sidebar acceptance required the refresh repair now in `a1dd087d2` (failing-before, four files / 28 tests passing). Signed-debt regressions first failed, then 36 CLI / 56 app tests passed; ten production files have a clean native review. Receipts: `.tmp/reviews/`.
+`make dry-app-smoke`: four desktop/mobile checks pass (`/tmp/m229-completion-browser-smoke.txt`). Duplicate audit removes two net cases while retaining assertions and 100% app coverage.
+Daemon health/readiness return HTTP 200. Authenticated screen and scheduled-execution proof still need the dedicated testing identity decision; no shared identity changed (`.tmp/audits/local-priming-deviations.md`).
+Public documentation: [docs PR 222](https://github.com/agentsfleet/docs/pull/222) merged as `b17f90500b3cae8ef291b3113d6b89f98c91906a` after green Continuous Integration, zero new Greptile findings and two quiet polls. Both threads resolved; local docs main pulled and merged worktree/branch removed. Checklist: `.tmp/audits/m229-docs-review-checklist.md`.
+Claude owns the remaining shared checks and final move to `done/`, with inbound links updated together.
 
 ### §9 — One billing lifecycle behind a `Biller` trait
 
@@ -313,7 +285,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | Pruned route selected | A tenant or setup names an identity absent from the catalogue | Selection is refused; no catalogue row or replacement is fabricated (8.3) |
 | Unknown price | An Ollama model has no published token price | Price stays unknown; the spend view shows unknown, never 0 (8.9) |
 | Promotion ends | Gemini's Dec 1, 2026 date passes, or Mistral publishes an end date | The effective-dated row takes over at UTC midnight; an undated promotion stays until the catalogue is edited (8.5) |
-| Context cannot be verified | The provider models API cannot supply the exact served limit | Seeder reports the identity and omits its row; marketing shorthand is never converted (8.1) |
+| Context cannot be verified | Neither the provider models API nor OpenRouter's endpoint entry for that provider supplies the exact served limit | Seeder reports the identity and omits its row; marketing shorthand is never converted (8.1) |
 | Ollama boundary crossed | A daemon or shared runner is asked to dial a local endpoint, or cloud uses http | Refuse before network access; no private endpoint is discovered by the daemon (8.9) |
 
 ## Invariants
@@ -345,7 +317,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 2.6 | integration | `test_instant_columns_are_timestamptz_ms` | every `_at` column is `timestamp with time zone` at precision 3, and no other column is |
 | 3.1 | integration | `test_integration_lane_on_rebuilt_schema` | `make test-integration-rustd` on the rebuilt schema → exit 0 |
 | 3.2 | unit | `test_settled_columns_have_outcomes` | each §Settled bullet → kept or dropped plus a citation |
-| 3.3 | unit | `test_github_app_without_octocrab`, `test_github_pull_request_decodes_without_octocrab`, `test_github_workflow_run_decodes_without_octocrab` | `cargo tree -i octocrab` → not found (command evidence: no lint reads `Cargo.lock`, and `check_tests_call_code.py` forbids a test reading it); an App JWT minted with `jsonwebtoken` 11 → RS256 header, `iss` the App id, `exp` ≤ 10 minutes after `iat`; a `pull_request` and a `workflow_run` payload → decode into the fields the handlers read |
+| 3.3 | unit | `test_github_app_without_octocrab` | with `test_github_pull_request_decodes_without_octocrab` and `test_github_workflow_run_decodes_without_octocrab`: `cargo tree -i octocrab` → not found (command evidence: no lint reads `Cargo.lock`, and `check_tests_call_code.py` forbids a test reading it); an App JWT minted with `jsonwebtoken` 11 → RS256 header, `iss` the App id, `exp` ≤ 10 minutes after `iat`; a `pull_request` and a `workflow_run` payload → decode into the fields the handlers read |
 | 3.4 | unit | `test_no_integer_millis_outside_edges` | per-crate scan of every converted crate → 0 integer-millisecond spans, instants or `*_MS` constants outside the listed edges (Redis `PX`, Lua `ARGV`, a `BIGINT` span column, a wire span field, the cursor token, the UUIDv7 layout, JWT NumericDate); a seeded `const X_MS: i64` fails the scan naming its file |
 | 4.1 | integration | `test_deletion_matrix_keeps_money` | delete each root → money rows remain with opaque ids, `dispatches.result` NULL; open draft and installing fleet untouched |
 | 4.2 | integration | `test_replay_receipt_window` | same key at 23h59m → replay; changed body → refused; other user → refused; deleted resource → Gone; at 24h → new |
@@ -355,7 +327,7 @@ Tables and columns: docs/architecture/postgres_schemas.md is the interface; rena
 | 4.6 | integration | `test_resolution_happens_once` | two concurrent resolutions → one success, one conflict; second pending invite for the same address → refused |
 | 4.7 | unit | `test_api_instants_are_rfc3339` | every published `_at` field → `type: string, format: date-time`; a whole-second response instant → `…:49Z`, a millisecond one → `…:49.123Z`; the CLI and UI parse both and order `…:49Z` before `…:49.123Z` |
 | 4.8 | integration | `test_expiry_checks_read_clock_after_lock` | per locking shape: hold the row lock past its expiry, release → the check refuses |
-| 4.9 | integration | `an_admitted_event_is_named_by_its_row_id`, `delivery_and_destination_lookups_key_on_the_row_id` | admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
+| 4.9 | integration | `an_admitted_event_is_named_by_its_row_id` | with `delivery_and_destination_lookups_key_on_the_row_id`: admit → `event_id` equals the row `id`; mark delivered and reply lookup by it → one row; two admissions in one millisecond → both listed once, newest-first by `(created_at, event_id)`; a `{millis}-{seq}` id → not found |
 | 5.1 | manual | `test_local_lane_rebuilt_from_empty` | local lane torn down; `agentsfleetd migrate` from empty, `make test-integration-rustd` and the smoke run's output pasted in Session Notes |
 | 6.1 | unit | rubric R2 | inventory check over docs outside `done/` → 0 hits |
 | 6.2 | manual | `test_public_docs_branch_open` | docs branch URL with the three pages and the `<Update>` recorded in Session Notes, and no runner-protocol page |
@@ -495,6 +467,7 @@ git grep -nE "(^|[^A-Za-z0-9_.])(${pat})([^A-Za-z0-9_[]|$)" -- rustd ui cli scri
 - **Model catalogue fold** — > Indy (2026-10-18): "I want the Model library to prune … add this to your spec", then "open an issue on the gh for the model stuff … and link the issue in the spec too" — context: the curated picker, provider mappings and pricing are refreshed in this PR as §8; the full brief, sources and the first pricing verification are [issue #771](https://github.com/agentsfleet/agentsfleet/issues/771).
 - **Catalogue prices verified** — Oct 18, 2026, 12:33 UTC, official pages and OpenRouter's `/api/v1/models`: Anthropic, OpenAI (both tiers, cache writes 1.25× input), Google, Mistral, Fireworks GLM 5.3 Flash 0.15/0.03/0.50, Kimi K3 3.00/0.30/15.00, DeepSeek V4.1 Flash 0.30/0.006/1.20, OpenRouter Muse Wonder 4.00/0.20/20.00, Gemini 4 Argon 2.00/0.10/10.00 (cache write 0.1875), Qwen3.8 Max 0902 2.00/0.25/6.00, and Groq gpt-oss-120b 0.15/0.075 (50% cache discount)/0.60 all match #771. Differences: Fireworks states context as "1040k" (Kimi K3's FAQ says 1,048,576), so those three stay unverified integers; OpenRouter reports Muse Wonder at 1,048,576, not 1,000,000; Google and Mistral pages state no context window; DeepSeek V4 Pro 0813 serverless is deprecated from Sep 25, 2026, still showing 1.32/0.044/3.96; Anthropic adds a 1.1× multiplier for US-only inference.
 - **§8 catalogue calls** — Indy (2026-10-18), via AskUserQuestion, eight answers: picker = exactly #771's 17 curated entries plus `gpt-5.6-terra` as advanced ("Exactly the brief"); native Gemini runner wire built in this PR through Rig 0.44's `gemini` module ("Build it now"); Ollama gets its own runner wire through Rig's `ollama` module ("New Ollama wire"); cache-write tokens are reported and billed by lifetime ("Bill them now"); prices move to a new `model.platform_model_prices` table, one row per prompt-size tier and date range ("New price table", after asking "do you need a new table"); rows that leave the picker are deleted, not flagged ("Delete pruned rows") — every database starts empty under §2/§5, so no saved configuration survives to preserve, and serverless-deprecated DeepSeek V4 Pro 0813 is left out the same way, leaving one advanced flag; context integers come from each provider's own models API, recorded with their source, and a model with no exact served limit is not seeded ("From provider API"); a local Ollama endpoint may be `http`/private only when marked local and dialled by the runner on the customer's host, never by the daemon, while cloud Ollama keeps https and the full SSRF guard ("Runner-local exception"). Where §8's text assumes an availability column with pruned/disabled values, this entry supersedes it until §8 is reconciled.
+- **8.1 context evidence** — Indy (2026-10-19): "you donot need keys for this" and "May be look at openrouter and use the same". Twelve identities (Anthropic ×4, OpenAI ×4, Groq, Mistral ×2, native Gemini) take their exact limit from `https://openrouter.ai/api/v1/models/<slug>/endpoints#<tag>`, where the tag is the provider's standard endpoint (`anthropic`, `openai`, `groq`, `mistral`, `google-ai-studio`); variants such as `mistral/eu` (524,288) are refused. Each figure was cross-read against the provider's own docs. This supersedes "From provider API" for providers whose models API needs a key or omits the limit.
 - **Charge shape after the `main` merge** — Indy (2026-10-18), relayed by the coordinator: "Accept fork's shape". `main` (`66ba35918`, PR #770) put setup-chat settlements on the charges page; this branch (`55d79e488`) had made every charge name its workspace and fleet. Merged shape: `workspace_id` stays required (both sources store it `NOT NULL`); `fleet_id`, `fleet_name` and `event_id` are optional because a setup chat may precede its fleet and is no fleet event; `authoring_attempt_id` is added; the billing tab labels a fleetless setup row "Fleet setup" and still shows the callsign alone for a purged fleet's charge.
 - **§8 implementation decisions** — Indy (2026-10-18), answering the isolated catalogue worktree: include a separate unspecified-lifetime cache-write rate and token category; keep `effective_from` and `effective_until` with a narrow naming exception for those two price-table columns. Per-request usage, pricing and deduplication design is left to Indy and the other agent. Local Ollama stays blocked until Indy chooses customer-runner ownership. Neither deferred design is claimed complete here. Update (Oct 19, 2026): per-request usage, pricing and deduplication landed as §9 (`e4dd5e37a`, `8e0a7d542`); local Ollama is still blocked.
 - **§8 isolated implementation** — owner instruction (Oct 18, 2026): branch `feat/m229-model-catalogue` starts at `53e3d093ece9ff39fde0290924ff30b7ac70efca`; local commits only, no push or Pull Request. The sibling agent owns `afd_http`, `afd_api_*`, `agentsfleetd`, `afd_bench` and `public/openapi.json`; required edits there are a file-and-line handover. Service tiers (OpenAI Batch, Flex and Fast) and Anthropic's US-only 1.1× pricing are outside this section. Whole-file Rust coverage must reach 99%; TypeScript coverage 100%.
