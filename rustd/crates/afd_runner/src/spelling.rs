@@ -54,6 +54,20 @@ pub fn render_list<T: serde::Serialize>(values: &[T]) -> String {
     serde_json::to_string(values).unwrap_or_else(|_unreachable| "[]".to_owned())
 }
 
+/// Renders a record as the JSON object a `jsonb` column takes.
+///
+/// Infallible in practice for the reason [`render_list`] gives: every record
+/// that reaches it is strings, booleans and lists of them. An empty object is
+/// the honest degradation if it ever were, reading back as "reported nothing"
+/// rather than as half a record.
+#[must_use]
+pub fn render_object<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_unreachable| EMPTY_OBJECT.to_owned())
+}
+
+/// What [`render_object`] falls back to.
+const EMPTY_OBJECT: &str = "{}";
+
 #[cfg(test)]
 mod tests {
     //! The write direction, checked against the read direction it feeds.

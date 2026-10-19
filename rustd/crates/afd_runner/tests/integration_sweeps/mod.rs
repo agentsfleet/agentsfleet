@@ -196,3 +196,75 @@ impl Fixture {
         self.lane.cleanup().await;
     }
 }
+
+/// Past the retention window by a day: due for deletion on any pass.
+const AGED: Timestamp = Timestamp::constant(86_400, 0);
+
+/// Rows one retention cycle may delete from one table: its batch ceiling
+/// times its batch limit, as the module note on saturation states them.
+const CYCLE_CEILING: i64 = 8 * 1_000;
+
+/// Rows past [`CYCLE_CEILING`]: what is left for the following cycle.
+const LEFT_OVER: i64 = 500;
+
+/// A cycle that fills every batch it is allowed comes back in a minute; the
+/// one after, which drains what was left, idles again.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
+    // Every retention pass in the lane deletes from the same tables; the
+    // sweep above runs one, so the two take turns.
+    let _lane = crate::integration_reclaim_faults::RECLAIM_LANE.lock().await;
+    let fixture = Fixture::create().await;
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
+    afd_db::test_util::RunnerSeed::new(
+        &fixture.stale,
+        afd_runner::sql::RUNNER_STATUS_ACTIVE,
+        crate::rows::POLICY,
+    )
+    .at(OLD)
+    .insert(&mut *connection)
+    .await
+    .expect("the runner row seeds");
+    sqlx::query(
+        "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
+         SELECT uuidv7(), $1::uuid, 'lease_acquired', '{}', $2::timestamptz \
+         FROM generate_series(1, $3::bigint)",
+    )
+    .bind(&fixture.stale)
+    .bind(jiff_sqlx::ToSqlx::to_sqlx(AGED))
+    .bind(CYCLE_CEILING + LEFT_OVER)
+    .execute(&mut *connection)
+    .await
+    .expect("the aged backlog seeds");
+    drop(connection);
+
+    let retention = Retention::new(fixture.database.clone());
+    let idle = retention.interval();
+    let first = retention.sweep().await.expect("retention sweeps real rows");
+    assert!(
+        first.changed >= u64::try_from(CYCLE_CEILING).expect("a row count"),
+        "the cycle deleted its whole ceiling: {first:?}"
+    );
+    assert!(
+        retention.interval() < idle,
+        "a cycle that hit its ceiling comes back sooner"
+    );
+
+    retention
+        .sweep()
+        .await
+        .expect("retention sweeps the remainder");
+    assert_eq!(
+        fixture
+            .scalar::<i64>(
+                "SELECT count(*) FROM runner.events WHERE runner_id = $1::uuid",
+                &fixture.stale,
+            )
+            .await,
+        0,
+        "the second cycle drained what the first left"
+    );
+    assert_eq!(retention.interval(), idle, "a drained cycle idles again");
+    fixture.cleanup().await;
+}
