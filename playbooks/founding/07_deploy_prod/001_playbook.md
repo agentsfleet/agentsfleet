@@ -53,7 +53,7 @@ gh run watch "$PROD_RELEASE_RUN_ID" \
   pass.
 - The development readiness check passes before production deployment.
 - Production API, tunnel, health, and readiness checks pass.
-- `core.model_library` is populated. It ships EMPTY and every fleet needs a
+- `model.platform_models` and `model.platform_model_prices` are populated. They ship empty and every fleet needs a
   model, so a green release is not yet a usable environment. Prime it with
   `playbooks/operations/model_catalogue/001_playbook.md`, reading the diff
   before approving the write — these rows are billing rates:

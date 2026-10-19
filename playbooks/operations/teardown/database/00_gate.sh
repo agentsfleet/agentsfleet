@@ -69,7 +69,7 @@ run_step "$SCRIPT_DIR/03_verify.sh"
 
 echo "✅ database-teardown complete (env: $ENV)"
 echo ""
-echo "NEXT: the database is empty, so core.model_library is empty too and every"
+echo "NEXT: the database is empty, so the model catalogue is empty too and every"
 echo "fleet needs a model. Prime the catalogue before calling the environment"
 echo "usable:"
 echo "  ACTION=diff  ENV=$ENV ALLOW_VAULT_READS=1 \\"

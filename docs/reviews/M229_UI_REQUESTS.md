@@ -57,6 +57,10 @@ This log records the requested server additions, client evidence and remaining r
 
 ## Verification and performance
 
+Post-review follow-up replaces all eight stale catalogue-table references in CLI, playbooks and app tests. The spec's exact R2 inventory returns zero. `make lint-app lint-cli check-playbooks` passes (`/tmp/m229-client-followup-lint.txt`).
+
+`cli/test/instant.unit.test.ts` adds three passing ordering regressions for Dimension 4.7: equal instants at different precision, fractional milliseconds and an instant whose text sorts in the opposite order. Comparisons use parsed time.
+
 `make test-coverage-all` passes every configured package floor.
 
 | Package | Files | Passing tests | Coverage |
