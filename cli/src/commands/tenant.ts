@@ -12,7 +12,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
-import { isNanos } from "../lib/nanos.ts";
+import { isSignedNanos } from "../lib/nanos.ts";
 import { isNumber, isString } from "../lib/guards.ts";
 import {
   PROVIDER_MODE,
@@ -192,7 +192,7 @@ const lowBalanceWarning: Effect.Effect<
     .pipe(Effect.orElseSucceed(() => null));
   if (billing === null) return;
   const balance =
-    isNanos(billing.balance_nanos) ? billing.balance_nanos : null;
+    isSignedNanos(billing.balance_nanos) ? billing.balance_nanos : null;
   if (balance !== null && BigInt(balance) < LOW_BALANCE_THRESHOLD_NANOS) {
     yield* output.info("");
     yield* output.error(

@@ -18,6 +18,9 @@ it("rounds large balances with integer arithmetic and retains sub-cent precision
   expect(formatDollars("9223372036854775807", 2)).toBe("$9,223,372,036.85");
   expect(formatDollars("999995000", 2)).toBe("$1.00");
   expect(formatDollars("50000")).toBe("$0.0001");
+  expect(formatDollars("-50000")).toBe("-$0.0001");
+  expect(formatDollars("-50000000")).toBe("-$0.05");
+  expect(formatDollars("-9223372036854775808")).toBe("-$9,223,372,036.8548");
 });
 it("orders amounts beyond safe integers numerically, with missing amounts first", () => {
   expect(compareNanos("9007199254740992", "9007199254740993")).toBe(-1);

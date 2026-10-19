@@ -1,10 +1,6 @@
 import Link from "next/link";
 import { cn } from "@agentsfleet/design-system";
-import {
-  formatDollars,
-  MIN_VISIBLE_NANOS,
-  SUBVISIBLE_AMOUNT_LABEL,
-} from "@/app/(dashboard)/settings/billing/lib/charges";
+import { formatBalance } from "@/lib/money";
 import { NANOS_PER_USD } from "@/lib/types";
 
 // Header balance links to Billing. Information blue separates the amount
@@ -18,21 +14,11 @@ const CENTS_PER_USD = 100n;
 const NANOS_PER_CENT = BigInt(NANOS_PER_USD) / CENTS_PER_USD;
 const CENT_DIGITS = 2;
 
-/**
- * Cents in the header, because $4.8066 is a figure to parse and $4.81 is one
- * to read.
- *
- * Two floors below that, and they are the charges table's own floors, for the
- * same reason: a live balance must never render as $0.00, which is the one
- * figure that says "spent". Under a cent it keeps the billing page's
- * four-decimal precision; under what four decimals can show, it says so,
- * exactly as a sub-visible debit does.
- */
+/** Read cents at a glance; retain smaller credits and debts below a cent. */
 export function formatHeaderBalance(nanos: string): string {
   const amount = BigInt(nanos);
-  if (amount > 0n && amount < MIN_VISIBLE_NANOS) return SUBVISIBLE_AMOUNT_LABEL;
-  if (amount > 0n && amount < NANOS_PER_CENT) return formatDollars(nanos);
-  return formatDollars(nanos, CENT_DIGITS);
+  const magnitude = amount < 0n ? -amount : amount;
+  return magnitude < NANOS_PER_CENT ? formatBalance(nanos) : formatBalance(nanos, CENT_DIGITS);
 }
 
 export function BalanceLink({

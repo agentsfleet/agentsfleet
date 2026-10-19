@@ -2,12 +2,12 @@ import { cache } from "react";
 import { z } from "zod";
 import { request } from "./client";
 import { Instant } from "./decode";
-import { nanosSchema } from "./nanos";
+import { nanosSchema, signedNanosSchema } from "./nanos";
 import { CHARGE_TYPE } from "../types";
 import type { TenantBilling, TenantBillingChargesResponse } from "../types";
 
 const BillingSchema = z.object({
-  balance_nanos: nanosSchema, updated_at: Instant, is_exhausted: z.boolean(), exhausted_at: Instant.nullable(),
+  balance_nanos: signedNanosSchema, updated_at: Instant, is_exhausted: z.boolean(), exhausted_at: Instant.nullable(),
 });
 const Count = z.number().int().nonnegative().nullable();
 const ChargesSchema = z.object({

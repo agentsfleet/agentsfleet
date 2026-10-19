@@ -21,7 +21,9 @@ import {
 } from "./helpers-tenant-effect.ts";
 
 describe("tenantProviderDeleteEffect", () => {
-  test("DELETEs and warns on low balance", async () => {
+  test.each([
+    [String(42 * ONE_CENT_NANOS), "$0.42"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"],
+  ])("DELETEs and warns on low balance %s", async (balance_nanos, expected) => {
     const rec = makeRecorder();
     const program = tenantProviderDeleteEffect.pipe(
       Effect.provide(configLayer()),
@@ -37,7 +39,7 @@ describe("tenantProviderDeleteEffect", () => {
             }) as Effect.Effect<unknown, ServerError>;
           }
           return Effect.succeed({
-            balance_nanos: String(42 * ONE_CENT_NANOS),
+            balance_nanos,
           }) as Effect.Effect<unknown, ServerError>;
         }, rec),
       ),
@@ -50,7 +52,7 @@ describe("tenantProviderDeleteEffect", () => {
     ]);
     expect(
       rec.stderr.some((line) =>
-        /Tenant balance is low: \$0\.42/.test(line),
+        line.includes(`Tenant balance is low: ${expected}`),
       ),
     ).toBe(true);
   });

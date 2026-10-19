@@ -32,12 +32,13 @@ describe("BalanceLink", () => {
     expect(link().getAttribute("aria-label")).toBe(BALANCE_ARIA_LABEL);
   });
 
-  it("turns destructive when exhausted, because that changes what happens next", () => {
+  it.each([["0", "$0.00"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"]])(
+    "shows exhausted balance %s with destructive treatment", (balanceNanos, expected) => {
     // Exhausted is the one state an operator has to act on: new fleet events
     // gate-block until a top-up.
-    render(<BalanceLink balanceNanos="0" isExhausted />);
-    expect(figure().className).toContain("text-destructive");
-    expect(figure().className).not.toContain("text-info");
+    render(<BalanceLink balanceNanos={balanceNanos} isExhausted />);
+    expect(screen.getByText(expected).className).toContain("text-destructive");
+    expect(screen.getByText(expected).className).not.toContain("text-info");
     // The whole chip turns, not just the figure inside it.
     expect(link().className).toContain("border-destructive/40");
     expect(link().className).toContain("bg-destructive/10");
@@ -66,6 +67,7 @@ describe("formatHeaderBalance", () => {
     // Rounding a live sub-cent balance to zero would say "spent" where the
     // truth is "nearly" — and the exhausted treatment is what says spent.
     expect(formatHeaderBalance("9400000")).toBe("$0.0094");
+    expect(formatHeaderBalance("-9400000")).toBe("-$0.0094");
   });
 
   it("says so when the balance is smaller than four decimals can show", () => {

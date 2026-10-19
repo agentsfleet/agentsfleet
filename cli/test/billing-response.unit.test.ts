@@ -18,11 +18,18 @@ const run = async (wallet: unknown, charges: unknown) => {
 };
 const wallet = { balance_nanos: "9223372036854775807", is_exhausted: false };
 
-test.each([1, null, undefined, "01", "-1", "1.5", "9223372036854775808"])(
+test.each([1, null, undefined, "01", "-0", "-01", "+1", "1.5", "9223372036854775808", "-9223372036854775809"])(
   "a malformed wallet %j cannot masquerade as a zero balance", async balance_nanos => {
     const { exit, rec } = await run({ ...wallet, balance_nanos }, { items: [] });
     expect(expectFailure(exit)).toMatchObject({ code: "BILLING_RESPONSE_INVALID", status: 502 });
     expect(rec.stdout).toEqual([]);
+  },
+);
+test.each(["-50", "-50000000", "-9223372036854775808"])(
+  "retains the exact debt %s", async balance_nanos => {
+    const { exit, rec } = await run({ balance_nanos, is_exhausted: true }, { items: [] });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(JSON.parse(rec.stdout[0] ?? "{}")).toMatchObject({ balance_nanos, is_exhausted: true });
   },
 );
 test.each([1, null, undefined, "01", "-1", "1e3", "9223372036854775808"])(

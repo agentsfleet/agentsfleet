@@ -49,13 +49,15 @@ This log records the requested server additions, client evidence and remaining r
 
 ## Exact money and CLI completeness
 
-- Server `2c9c0300b` sends bounded, canonical non-negative decimal strings for nanos. Integer arithmetic preserves exact totals and ordering.
+- Server `2c9c0300b` sends bounded, canonical decimal strings for nanos. Integer arithmetic preserves exact totals and ordering. The later debt change permits a minus sign only on wallet `balance_nanos`; other amounts remain non-negative.
 - App `716c0cfdd` and CLI `e0c15db29` consume this representation across billing, event spend and model rates.
 - CLI `e7c5c55f9` validates fleet list pages before text or intact JSON success. Calendar-invalid instants fail the read.
 - CLI `777ff460d` adds private chat list/search, rename and confirmed deletion alongside existing `chat [draft-id]`.
 - List reads one bounded page. Rename uses a fresh entity tag and explains busy-chat refusal. Unattended deletion requires `--yes`.
 - Focused HTTP and terminal-input checks pass 54 tests across four files. Command inventory, rejection and help checks pass 173 tests across four files.
 - Complete CLI coverage passes 1937 tests, with 16 existing live-test skips and zero failures across 214 files. Functions and lines reach 100%.
+- Both clients now accept exact signed wallet debt, including `-50` and the signed minimum; they refuse `-0`, leading zeros and either overflow. Header and billing page share formatting, and the CLI provider-reset warning accepts debt. Tiny debt remains distinct from zero.
+- Debt regressions first failed in both clients, then 36 CLI and 56 app focused tests passed. Native source review found no concrete defects across the ten production files (`.tmp/reviews/m229-signed-balance.md`).
 
 ## Verification and performance
 

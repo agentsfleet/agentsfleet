@@ -36,12 +36,20 @@ describe("getTenantBilling", () => {
     await expect(getTenantBilling("tok")).rejects.toBeInstanceOf(ApiError);
   });
 
-  it.each([12, null, "01", "9223372036854775808"])("refuses malformed balance %j", async balance_nanos => {
+  it.each([12, null, "01", "-0", "-01", "+1", "9223372036854775808", "-9223372036854775809"])("refuses malformed balance %j", async balance_nanos => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({
       balance_nanos, updated_at: "2026-10-18T12:00:00Z", is_exhausted: false, exhausted_at: null,
     }) });
     const { getTenantBilling } = await import("./tenant_billing");
     await expect(getTenantBilling("tok")).rejects.toThrow();
+  });
+
+  it.each(["-50", "-50000000", "-9223372036854775808"])("retains exact debt %s", async balance_nanos => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      balance_nanos, updated_at: "2026-10-18T12:00:00Z", is_exhausted: true, exhausted_at: null,
+    }) });
+    const { getTenantBilling } = await import("./tenant_billing");
+    expect(await getTenantBilling("tok")).toMatchObject({ balance_nanos, is_exhausted: true });
   });
 
   it("retains the largest supported balance without converting it to a number", async () => {
