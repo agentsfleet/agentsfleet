@@ -80,6 +80,23 @@ async fn platform_operator_rotates_runner_token_once() {
     assert_eq!(replacement.status(), StatusCode::OK);
     assert_eq!(fixtures.rotation_actor(&runner_id).await, OPERATOR);
 
+    // A runner the platform never enrolled has no token to rotate, and the
+    // refusal reveals nothing a client could hold.
+    let unknown = afd_db::test_util::mint_id();
+    let refused = send(
+        &router,
+        Method::PATCH,
+        &format!("/v1/fleets/runners/{unknown}"),
+        Some(&fixtures.operator_token),
+        r#"{"action":"rotate"}"#,
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    assert!(
+        json_body(refused).await.get("runner_token").is_none(),
+        "a refused rotation carries no token"
+    );
+
     fixtures.cleanup().await;
 }
 

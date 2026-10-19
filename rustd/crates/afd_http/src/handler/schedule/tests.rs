@@ -13,7 +13,7 @@ use afd_cron::{DesiredStatus, Reconciled, Refused, Schedule, Source, SyncStatus,
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use super::{checked, held_or, not_fleet_owned, not_found, refused, rendered};
+use super::{checked, edit_refusal, held_or, not_fleet_owned, not_found, refused, rendered};
 
 /// What a fixture identifier must be.
 const CANONICAL: &str = "a canonical UUIDv7";
@@ -243,5 +243,27 @@ async fn test_schedule_fields_validated() {
     assert!(
         checked(validate::Fields::default()).is_ok(),
         "nothing named, nothing refused"
+    );
+}
+
+/// An edit another syncer still holds is a conflict naming the state that
+/// forbade it, so a client waits for the sync rather than retrying blind; it
+/// carries no entity tag, because nothing about the edit's own version was
+/// wrong.
+#[tokio::test]
+async fn an_edit_a_syncer_still_holds_is_a_conflict_naming_its_state() {
+    let held = afd_cron::error::retire_held();
+    let code = held.code();
+
+    let answered = edit_refusal(held);
+
+    assert_eq!(answered.status(), StatusCode::CONFLICT);
+    let response = answered.into_response();
+    assert!(response.headers().get(http::header::ETAG).is_none());
+    let body = body_of(response).await;
+    assert_eq!(body["error_code"], code.as_str());
+    assert_eq!(
+        body["current_state"].as_str(),
+        Some(afd_cron::error::STATE_SYNCING)
     );
 }

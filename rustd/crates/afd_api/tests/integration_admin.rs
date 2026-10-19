@@ -39,12 +39,32 @@ async fn platform_models_and_keys_complete_real_http_lifecycles() {
         PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
     exercise_platform_keys(&router, &fixture).await;
     drop(platform_default);
+
+    // The platform library list answers over the live authoring store; what
+    // it holds is every suite's, so the claim is the shape, not the rows.
+    let libraries = send(
+        &router,
+        Method::GET,
+        "/v1/admin/fleet-libraries",
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(libraries.status(), StatusCode::OK);
+    assert!(
+        json_body(libraries)
+            .await
+            .get("entries")
+            .is_some_and(Value::is_array),
+        "the list carries an entries array"
+    );
     fixture.cleanup().await;
 }
 
 async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
     let collection = "/v1/admin/platform-keys";
     an_absent_source_workspace_is_named_as_absent(router, fixture, collection).await;
+    a_model_outside_the_catalogue_is_named_as_absent(router, fixture, collection).await;
 
     let set = send(
         router,
@@ -102,6 +122,36 @@ async fn an_absent_source_workspace_is_named_as_absent(
             .and_then(Value::as_str),
         Some("UZ-PROVIDER-011"),
         "an absent workspace must not read back as an invalid request"
+    );
+}
+
+/// A model the catalogue does not list for the provider is refused with its
+/// own code: there is nothing to price a default against.
+async fn a_model_outside_the_catalogue_is_named_as_absent(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
+    let unknown = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &serde_json::json!({
+            "provider": fixture.provider,
+            "source_workspace_id": fixture.workspace,
+            "model": format!("not-in-the-catalogue-{}", mint_id()),
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(unknown)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
+        Some(afd_core::error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE.as_str())
     );
 }
 

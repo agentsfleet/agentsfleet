@@ -111,10 +111,14 @@ pub(crate) async fn set<D: Services>(
     };
     match services.platform_keys().set(input).await {
         Ok(SetPlatformKey::Set(key)) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let (actor_id, set_provider) = (identity.subject(), key.provider.as_str());
+            let set_model = key.model.as_deref();
             tracing::info!(
-                actor_id = identity.subject(),
-                provider = key.provider.as_str(),
-                model = key.model.as_deref(),
+                actor_id,
+                provider = set_provider,
+                model = set_model,
                 event = "admin_platform_default_set",
             );
             Json(PlatformKeySetResponse {
@@ -173,11 +177,9 @@ pub(crate) async fn deactivate<D: Services>(
     let provider = segment.provider;
     match services.platform_keys().deactivate(&provider).await {
         Ok(_existed) => {
-            tracing::info!(
-                actor_id = identity.subject(),
-                provider,
-                event = "admin_platform_key_deactivated",
-            );
+            // Hoisted for the same reason as the set above.
+            let actor_id = identity.subject();
+            tracing::info!(actor_id, provider, event = "admin_platform_key_deactivated");
             Json(PlatformKeyDeactivateResponse {
                 provider: Cow::Owned(provider),
                 active: false,
