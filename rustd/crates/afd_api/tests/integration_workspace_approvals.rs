@@ -97,6 +97,104 @@ async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
     fixture.cleanup().await;
 }
 
+/// The vanishing-gate test's own signed-in person, for the reason
+/// [`LISTING_SUBJECT`] gives.
+const VANISH_SUBJECT: &str = "user_live_approval_vanish";
+
+/// The action id the concurrent edit moves the gate to.
+const MOVED_ACTION: &str = "moved-away";
+
+/// A gate that leaves its action between the handler's read and its decision
+/// is answered as absent, not as resolved by nobody.
+///
+/// An open transaction moves the gate off its action id and holds the row; the
+/// decision's update queues behind it. Once the edit commits, the update
+/// re-checks a row that no longer matches and the follow-up read finds no gate
+/// under that action. The wait polls `pg_stat_activity`, a catalog view no
+/// test alters, never the gate table.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_gate_that_vanishes_mid_decision_is_absent() {
+    let fixture = Fixture::create_as(VANISH_SUBJECT).await;
+    fixture.seed().await;
+    let queue = harness::connect_redis().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        VANISH_SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone())
+    .with_approval_queue(fixture.database.clone(), queue)
+    .router();
+
+    let mut editor = fixture
+        .database
+        .acquire()
+        .await
+        .expect("an editing connection");
+    let mut edit = sqlx::Acquire::begin(&mut *editor)
+        .await
+        .expect("the edit opens");
+    let editor_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *edit)
+        .await
+        .expect("the editor names its backend");
+    sqlx::query("UPDATE fleet.approval_gates SET action_id = $2 WHERE id = $1::uuid")
+        .bind(&fixture.gate)
+        .bind(MOVED_ACTION)
+        .execute(&mut *edit)
+        .await
+        .expect("the gate moves inside the open edit");
+
+    let path = format!(
+        "/v1/workspaces/{}/approvals/{}/approve",
+        fixture.workspace.as_str(),
+        fixture.gate
+    );
+    let token = fixture.token.clone();
+    let decision = tokio::spawn({
+        let router = router.clone();
+        async move { send(&router, Method::POST, &path, Some(&token), "").await }
+    });
+
+    let mut watcher = fixture
+        .database
+        .acquire()
+        .await
+        .expect("a watching connection");
+    let blocked = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity \
+                 WHERE $1 = ANY(pg_blocking_pids(pid))",
+            )
+            .bind(editor_pid)
+            .fetch_one(&mut *watcher)
+            .await
+            .expect("the activity view answers");
+            if waiting > 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    edit.commit().await.expect("the edit commits");
+    blocked.expect("the decision queued behind the edit");
+
+    let decided = decision.await.expect("the decision task joins");
+    let status = decided.status();
+    let decided = json_body(decided).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{decided}");
+    assert_eq!(
+        decided.get("error_code").and_then(Value::as_str),
+        Some(error_code::APPROVAL_NOT_FOUND.as_str())
+    );
+    drop(watcher);
+    drop(editor);
+    fixture.cleanup().await;
+}
+
 /// The address the fixture seeds on its `identity.users` row.
 ///
 /// The fixture's SQL cannot take a constant — the statement is a `&str` whose other
