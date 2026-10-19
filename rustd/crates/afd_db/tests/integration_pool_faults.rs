@@ -35,8 +35,9 @@ pub(crate) mod fault_net;
 #[path = "support/lane.rs"]
 pub(crate) mod lane;
 
-use self::fault_net::{FaultProxy, install_subscriber};
+use self::fault_net::FaultProxy;
 use self::lane::{ACQUIRE_BUDGET, CONNECT_BUDGET, config_through, lane_database, lane_target};
+use afd_core::test_util::trace::install_subscriber;
 
 /// One migration that would apply cleanly, so the only thing that can go wrong
 /// is the transaction the migrator opens to apply it in.

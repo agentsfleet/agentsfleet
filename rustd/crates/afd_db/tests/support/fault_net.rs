@@ -203,20 +203,3 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         .windows(needle.len())
         .any(|window| window == needle)
 }
-
-/// Installs a subscriber so event macros actually run.
-///
-/// The same trap the live harness carries: `tracing::warn!` checks whether its
-/// callsite is enabled before evaluating its fields, so a failure path exercised
-/// without a subscriber runs without the line that reports it. Output goes to a
-/// sink — the point is that the fields run.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ignored = tracing::subscriber::set_global_default(subscriber);
-    });
-}

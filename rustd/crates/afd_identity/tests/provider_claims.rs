@@ -121,7 +121,7 @@ fn test_a_blank_provider_secret_is_refused_at_construction() {
 /// A provisioned claim comes back, and the request carries the credential.
 #[test]
 fn test_a_provisioned_claim_is_read_from_public_metadata() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(
             200,
@@ -159,7 +159,7 @@ fn test_a_provisioned_claim_is_read_from_public_metadata() {
 /// principal, never widen one.
 #[test]
 fn test_every_unusable_metadata_shape_grants_nothing() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         for document in [
             // No metadata at all.
@@ -195,7 +195,7 @@ fn test_every_unusable_metadata_shape_grants_nothing() {
 /// the person, so it is an outage rather than an empty grant.
 #[test]
 fn test_a_body_that_is_not_a_user_document_is_an_outage() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         for document in [
             &b"not json"[..],
@@ -223,7 +223,7 @@ fn test_a_body_that_is_not_a_user_document_is_an_outage() {
 /// A 404 reaches the caller as the person being gone.
 #[test]
 fn test_a_404_is_the_person_being_gone() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(404, b"{}".to_vec()).await;
         let refused = ProviderClaims::new(base, secret(), TIMEOUT)
@@ -239,7 +239,7 @@ fn test_a_404_is_the_person_being_gone() {
 /// A document past the cap is refused rather than accumulated.
 #[test]
 fn test_a_user_document_past_the_cap_is_refused() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(200, vec![b'x'; USER_MAX_RESPONSE_BYTES + 1]).await;
         let refused = ProviderClaims::new(base, secret(), TIMEOUT)
@@ -255,7 +255,7 @@ fn test_a_user_document_past_the_cap_is_refused() {
 /// Nothing listening is an outage, not a person being gone.
 #[test]
 fn test_an_unreachable_provider_is_an_outage() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -280,7 +280,7 @@ fn test_an_unreachable_provider_is_an_outage() {
 /// A subject carrying URL syntax is one person, sent as one escaped segment.
 #[test]
 fn test_a_subject_with_url_syntax_reaches_the_provider_as_one_segment() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(404, b"{}".to_vec()).await;
         let odd = Subject::new("a/b?c%d").expect("a non-blank subject");

@@ -146,7 +146,7 @@ impl OutboundHarness {
 
     /// Opens the shared handle, installing the subscriber on the way.
     async fn connect() -> Dragonfly {
-        install_subscriber();
+        afd_core::test_util::trace::install_subscriber();
         Dragonfly::connect(&Self::config())
             .await
             .expect("the lane's Dragonfly must be reachable")
@@ -237,24 +237,4 @@ impl OutboundHarness {
             redis::streams::StreamPendingReply::Empty | _ => Vec::new(),
         }
     }
-}
-
-/// Installs a subscriber so event macros evaluate their fields.
-///
-/// `tracing::warn!` asks whether its callsite is enabled BEFORE evaluating the
-/// fields inside it, so with no subscriber every field expression in every
-/// diagnostic is skipped — the events are not merely unrecorded, their
-/// arguments never run. The worker's failure paths are mostly diagnostics, so
-/// without this a test proves the branch is reached and never proves the line
-/// reporting it works. Output goes to a sink; the point is evaluation, not
-/// readership. `afd_dragonfly/tests/support/dragonfly_harness.rs` learned this first.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    });
 }

@@ -89,10 +89,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # Joins the racers so the datastore, and not the order of a test loop, decides
 # which transition arrives first.
 futures-util = { workspace = true }
-# Installs a subscriber so `tracing` event macros evaluate their fields at all;
-# without one a diagnostic line reads as unreachable to llvm-cov.
-tracing-subscriber.workspace = true
-# The crossing audit's proof reads its event back (`afd_core::test_util::trace`).
+# The crossing audit's proof reads its event back (`afd_core::test_util::trace`),
+# and the live harness installs that module's sink subscriber.
 # A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
 # The fleet row the preference suite seeds (`afd_db::test_util::FleetSeed`).
