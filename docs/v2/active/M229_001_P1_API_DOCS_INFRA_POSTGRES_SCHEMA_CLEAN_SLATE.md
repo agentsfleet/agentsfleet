@@ -190,15 +190,27 @@ The picker shows the brief's catalogue in [#771](https://github.com/agentsfleet/
 ### §8 UI follow-up — user-reported fixes
 
 These user-reported fixes extend the application and design-system scope under `ui/packages/**` and this tracking section.
-All five backend requests have landed; sidebar readers remain in progress in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md). Completed rows name their commits. `make lint-app` and `make lint-cli` pass. The last complete `make test-coverage-all` checkpoint passes: app 402 files / 3791 tests, website 20 / 133, command-line interface (CLI) 211 files / 1857 passing tests / 16 existing skips, and design system 62 / 497. App, website and design system reach 100% statements, branches, functions and lines; CLI reaches its 100% functions and lines gate. No coverage threshold, timeout, skip or bundle budget changed. Full output: `/tmp/m229-cli-list-coverage-all.txt`; lint: `/tmp/m229-purpose-lint-final.txt` and `/tmp/m229-lint-cli-complete.txt`.
+
+All 22 reports and their subitems are recorded below. All five requested server additions are consumed by the clients.
+Client details and remaining release checks are in [M229_UI_REQUESTS.md](../../reviews/M229_UI_REQUESTS.md).
+
+`make test-coverage-all` passes every configured floor in `/tmp/m229-completion-coverage-all-final.txt`:
+
+- App: 412 files / 3848 tests; 100% statements, branches, functions and lines.
+- Website: 20 files / 133 tests; 100% on all four measures.
+- Command-line interface (CLI): 214 files / 1937 passing tests / 16 existing live-test skips / zero failures; 100% functions and lines.
+- Design system: 62 files / 497 tests; 100% on all four measures.
+
+App and CLI lint pass in the scoped `c272f510d` and `777ff460d` commit hooks.
+No coverage threshold, timeout, skip or bundle budget changed.
 
 | Report | Required result | Progress / evidence |
 |---|---|---|
-| 1 | Meaningful setup-chat titles; preserve explicit renames. | `2ead62453`: derived titles and rename; server `1b084cd67` now persists meaningful initial titles. Sidebar verification follows. |
-| 2 | Search all private chats, with honest scope and pagination. | Server `1b084cd67` adds creator-only title and turn-text search with query-bound paging. Sidebar reader is in progress. |
+| 1 | Meaningful setup-chat titles; preserve explicit renames. | `2ead62453` adds explicit rename. Server `1b084cd67` records meaningful initial titles; app `c272f510d` consumes them without fetching transcripts. |
+| 2 | Search all private chats, with honest scope and pagination. | `c272f510d` consumes creator-only server title/message search with query-bound paging, cancellation and access-loss clearing. Saved message changes refresh an open search; busy-only changes make no extra read. |
 | 3 | Selecting a chat keeps its position and avoids the new-fleet page flash. | `2ead62453`: stable ordering and selection-specific loading. |
 | 3a | Delete a private setup chat with confirmation and clear failures. | `2ead62453`: shared deletion action and confirmation. |
-| 3b | Show draft, saved, version, and publication state from recorded data. | `2ead62453`: current chat state; server `1aeb6ffb7` supplies candidate, saved setup and publication revisions. Sidebar reader is in progress. |
+| 3b | Show draft, saved, version, and publication state from recorded data. | `c272f510d` reads the three nullable revision counters from server `1aeb6ffb7`. Actual Save/Apply receipts and bounded publication refreshes keep independent proposed, saved and published labels current. |
 | 4 | Remove Review Setup; save directly with current setup validation. | `2ead62453`: inline setup and direct Save / Save changes. |
 | 5 | Edit the correct saved fleet; explain its purpose; remove Advanced settings. | `aa88f485f`, `2ead62453`: revision-bound source, saved purpose, no Advanced settings; app coverage gate passes. |
 | 6 | Combine Setup and Trigger; show triggers and schedules read-only. | `aa88f485f`: combined under Setup. Simplified to a schedule summary; server `9deadc1c3` now supplies description, run state and next run. The app consumes these directly and refuses missing or malformed fields. |
@@ -220,14 +232,37 @@ All five backend requests have landed; sidebar readers remain in progress in [M2
 | 20c | Explain activity details without repeating the activity timestamp. | `0645aedcc`: descriptive details, current metadata keys, one timestamp column, regression tests. |
 | 21 | Fix Workspace Activity page loading and preserve useful failure recovery. | `ff00608e2`: parse the published Activity payload and keep recovery within the page; app regression tests pass. Deployed reproduction remains unverified. |
 | 22 | Simplify Platform Fleet library subtitle, terminology, and empty-state action. | `ffc5cfd3b`: one-line description, Fleet setups heading, workspace action, empty-state regression. |
-| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | `e0c15db29`: audited corresponding commands; exact money validation and totals, inclusive advanced-model paging, complete catalogue output, bounded billing limits and exact-event stream recovery. `e7c5c55f9` also validates list pages before text or JSON success. Latest complete CLI gate: 1857 pass / 16 existing skips, 100% functions and lines. The schedule summary reader is in progress. |
+| CLI | Audit the matching model, billing, setup and schedule commands for completeness. | `e0c15db29` fixes exact money, inclusive advanced models and exact-event recovery. `e7c5c55f9` validates fleet lists; `dc65550b6` validates schedule summaries. `777ff460d` adds bounded chat list/search, idle rename and confirmed delete. Final gate: 1937 pass / 16 existing live-test skips / zero failures; 100% functions and lines. |
 
 The catalogue editor and picker landed in `43b537a19`, `7152af4d2`, `c50b4b630`, and `98c184bdc`.
-`bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard. Shared compressed JavaScript is 275318 / 276480 bytes. Compared with `4e0bafb45502bad3b3b88b631a3690bb80ec2496`, new-fleet total JavaScript falls from 364917 to 334590 bytes; fleet-detail total falls from 366692 to 365323. These measurements include the sidebar import cleanup and removal of the Trigger tab and `cron-parser`. The baseline failed the server-module guard; current budgets and guard are unchanged. Build and size output: `/tmp/m229-purpose-build.txt`, `/tmp/m229-purpose-size.json`.
+`78118fd17` separates intent-loaded sidebar actions. `c272f510d` separates editor state from shared sidebar context and adds bounded private-chat search.
+The shared row list keeps ordinary history and search selection/deletion behavior aligned.
 
-`78118fd17` finishes the sidebar action/import refactor. `716c0cfdd` and `e0c15db29` consume the verified decimal-string money wire in the app and CLI, including live counters and exact integer totals. Native production review is clean after correcting duplicate advanced-model rows and an unvalidated fleet-detail read; receipts and scope: `.tmp/reviews/m229-cli-ui-money.md`.
+Production `bun run build` and `bun run size --json` pass all 25 budgets and the server-module guard.
 
-Local branch-daemon health and readiness returned HTTP 200; readiness reports database and queue available. Authenticated priming and browser checks remain blocked by the shared Clerk identity decision recorded in `.tmp/agent-mailbox.md`; no shared identity was changed. Deviations: `.tmp/audits/local-priming-deviations.md`. The saved-purpose addition is consumed in the app. All five backend additions have landed. Schedule and lease readers pass `make lint-app` and `make test-unit-app`: 404 files / 3802 tests. Evidence: `/tmp/m229-schedule-lease-unit-final.txt`, `/tmp/m229-schedule-lease-lint-final.txt`, and `.tmp/reviews/m229-schedule-lease-readers.md`. Sidebar search/revision readers, final coverage and size measurements remain required before the shared spec moves to `done/`.
+Shared compressed JavaScript is 274265 / 276480 bytes. New-fleet total is 334933 bytes; fleet-detail total is 364328 bytes.
+
+Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496` measured 364917 and 366692 bytes for those pages.
+The reductions are 29984 and 2364 bytes.
+
+The baseline failed the server-module guard; current limits remain unchanged.
+Evidence: `/tmp/m229-sidebar-build-split.txt` and `/tmp/m229-sidebar-size-split.json`.
+Claude refreshed the root lockfile in `8a194eda3`, removing `cron-parser`.
+
+`make dry-app-smoke` passes four desktop/mobile sign-in and protected-route checks (`/tmp/m229-completion-browser-smoke.txt`).
+Duplicate audit: one weaker case removed; two overlapping cases merged into one, retaining their assertions. Net reduction: two cases.
+
+Native source rereviews are clean for money readers, schedule/lease readers and the new CLI history source.
+Sidebar review stopped after three cycles without convergence. Its final message-only search finding has a failing-before regression and a repair.
+Claude must inspect the final saved entity-tag propagation. Receipts and exact scope are recorded under `.tmp/reviews/`.
+
+Local daemon health and readiness return HTTP 200. Authenticated priming and reported-screen browser checks still need the dedicated testing identity decision.
+No shared Clerk identity was changed.
+
+Evidence: `.tmp/audits/local-priming-deviations.md`.
+Public documentation remains in Claude's lane until docs ready. The review checklist is `.tmp/audits/m229-docs-review-checklist.md`.
+
+The UI work is handed to Claude with these remaining release checks explicit; the shared spec moves to `done/` when required checks finish.
 
 ### §9 — One billing lifecycle behind a `Biller` trait
 
