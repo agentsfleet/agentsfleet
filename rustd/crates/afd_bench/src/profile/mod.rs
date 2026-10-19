@@ -234,8 +234,8 @@ impl Profile {
         if window < floor {
             return Err(ErrorKind::WindowTooShort {
                 profile: self,
-                requested_ms: window.as_millis(),
-                floor_ms: floor.as_millis(),
+                requested: window,
+                floor,
             }
             .into());
         }
