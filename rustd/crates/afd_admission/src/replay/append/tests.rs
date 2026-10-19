@@ -129,24 +129,34 @@ async fn a_row_its_inserter_receipted_mid_pass_is_released_not_recorded() {
         "a row the pass did not receipt is not counted as replayed"
     );
 
+    remove(&mut connection, &fleet, &workspace, &tenant).await;
+    drop(connection);
+    lane.cleanup().await;
+}
+
+/// Removes the fleet (its admissions cascade), then the workspace and tenant.
+async fn remove(
+    connection: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+    fleet: &str,
+    workspace: &str,
+    tenant: &str,
+) {
     sqlx::query("DELETE FROM fleet.fleets WHERE id = $1::uuid")
-        .bind(&fleet)
-        .execute(&mut *connection)
+        .bind(fleet)
+        .execute(&mut **connection)
         .await
         .expect("the fleet and its admissions go");
     for (statement, id) in [
         (
             "DELETE FROM identity.workspaces WHERE id = $1::uuid",
-            &workspace,
+            workspace,
         ),
-        ("DELETE FROM identity.tenants WHERE id = $1::uuid", &tenant),
+        ("DELETE FROM identity.tenants WHERE id = $1::uuid", tenant),
     ] {
         sqlx::query(statement)
             .bind(id)
-            .execute(&mut *connection)
+            .execute(&mut **connection)
             .await
             .expect("fixture rows go");
     }
-    drop(connection);
-    lane.cleanup().await;
 }

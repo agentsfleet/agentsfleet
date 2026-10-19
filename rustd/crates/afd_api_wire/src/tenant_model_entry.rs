@@ -231,13 +231,11 @@ mod tests {
             report.to_string().contains(afd_validate::rules::HAS_NUL),
             "{report}"
         );
-        assert!(
-            UpdateModelEntryRequest {
-                model_id: "gpt-6".to_owned()
-            }
-            .validate()
-            .is_ok()
-        );
+        UpdateModelEntryRequest {
+            model_id: "gpt-6".to_owned(),
+        }
+        .validate()
+        .expect("a clean id passes");
         let create: CreateModelEntryRequest =
             serde_json::from_str(r#"{"model_id":"a\u0000b","secret_ref":"k"}"#).expect("decodes");
         assert!(

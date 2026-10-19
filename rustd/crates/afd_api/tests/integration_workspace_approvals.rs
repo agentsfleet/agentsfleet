@@ -114,6 +114,7 @@ const MOVED_ACTION: &str = "moved-away";
 /// test alters, never the gate table.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[expect(clippy::expect_used, reason = "a test asserts by panicking")]
 async fn a_gate_that_vanishes_mid_decision_is_absent() {
     let fixture = Fixture::create_as(VANISH_SUBJECT).await;
     fixture.seed().await;

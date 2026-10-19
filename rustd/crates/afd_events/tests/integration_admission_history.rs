@@ -92,12 +92,13 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     }
     assert_eq!(walked, newest_first, "each listed once, in keyset order");
 
+    let first = ids.first().expect("two admissions were made");
     let found = history
-        .detail(&workspace, &fleet, &ids[0])
+        .detail(&workspace, &fleet, first)
         .await
         .expect("the detail reads")
         .expect("the row id names the event");
-    assert_eq!(found.row.event_id, ids[0]);
+    assert_eq!(&found.row.event_id, first);
     let legacy = history
         .detail(&workspace, &fleet, LEGACY_ID)
         .await
