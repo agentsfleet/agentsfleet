@@ -27,12 +27,22 @@ const FLEET_INDEX: &str = "idx_usage_lines_fleet_id_created_at";
 const DECOY_LINES: i32 = 600;
 /// The number of distinct fleets those lines are spread over.
 const DECOY_FLEETS: i32 = 60;
+/// Days of history the probed fleet carries, one line a day.
+///
+/// The read's `created_at` bound is the reason [`FLEET_INDEX`] exists: a
+/// long-lived fleet's lines reach back months, and only that index stops the
+/// day and month sums at the floor. A fleet seeded with no history makes the
+/// bound worthless, and the planner then ties it with any other index that
+/// leads on `fleet_id`.
+const HISTORY_DAYS: i32 = 365;
 
 /// The spend read reaches the fleet index, never a sequential scan.
 ///
 /// The probe seeds a realistic spread first, inside a transaction that rolls
 /// back; `ANALYZE` is not transactional, so it runs again afterwards rather
-/// than leaving the planner believing in rows that no longer exist.
+/// than leaving the planner believing in rows that no longer exist. The probed
+/// fleet gets a year of history and the decoys share it, so the plan is chosen
+/// for a fleet whose lines mostly fall before the month floor.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_fleet_spend_read_is_served_by_its_index() {
@@ -72,16 +82,19 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
          SELECT ('0199c900-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, $4,
                 ('0199c902-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, 0,
                 $1::uuid, $2::uuid,
-                ('0199c901-0000-7000-8000-' || lpad(to_hex(g % $3), 12, '0'))::uuid,
+                CASE WHEN g <= $7 THEN $6::uuid
+                     ELSE ('0199c901-0000-7000-8000-' || lpad(to_hex(g % $3), 12, '0'))::uuid END,
                 'decoy', 'spend-probe-' || g, 'anthropic', 'claude-opus-5', 'platform', now(),
-                0, 0, 0, 0, 0, 0, 0, 0, 0, now(), now()
-         FROM generate_series(1, $5) g",
+                0, 0, 0, 0, 0, 0, 0, 0, 0, now() - make_interval(days => g % $7), now()
+         FROM generate_series(1, $5 + $7) g",
     )
     .bind(&held.tenant)
     .bind(&workspace)
     .bind(DECOY_FLEETS)
     .bind(afd_billing::sql::work::FLEET_LEASE)
     .bind(DECOY_LINES)
+    .bind(&held.fleet)
+    .bind(HISTORY_DAYS)
     .execute(&mut *connection)
     .await
     .expect("the decoy lines insert");
