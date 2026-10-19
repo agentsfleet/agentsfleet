@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** A second worktree running `make test-integration-rustd` against a healthy shared stack starts zero new containers and cannot observe the first worktree's fixtures, and `make down` leaves no worktree database rows or namespace keys behind.
 **Problem:** Each worktree that runs the integration or coverage lanes brings up its own Postgres/Dragonfly/QStash/Mailpit compose project (`make/test-infra.mk:161`), so a five-worktree machine runs five stacks plus orphaned stacks after worktrees are deleted; and no teardown drops a worktree's database or namespace anywhere in the dev scripts.
-**Solution summary:** Extend M223's shared-stack design from the dev-daemon flow to the test and coverage lanes: `_ensure-test-infra` targets the repository's shared stack instead of bringing up a per-worktree project; the lane's database becomes `test_<worktree-id>` created and migrated per run; Dragonfly connections carry the worktree namespace through the existing `AGENTSFLEET_DEV_NAMESPACE` knob, and the lane reset becomes namespace-scoped instead of cluster-wide. Only the slot-migration/cluster-fault suites keep a disposable stack, because slot topology is cluster-global. `make down` becomes the full worktree teardown: stop the daemon, drop the worktree's databases, sweep its namespace.
+**Solution summary:** Extend M223's shared-stack design from the dev-daemon flow to the test and coverage lanes: `_ensure-test-infra` targets the repository's shared stack instead of bringing up a per-worktree project; the lane's database becomes `test_<worktree-id>` created and migrated per run; Dragonfly connections carry the worktree namespace through the existing `AGENTSFLEET_DEV_NAMESPACE` knob, and the lane reset becomes namespace-scoped instead of cluster-wide. Cluster-global suites (slot movers, the hub-exclusive connection killer) ride the shared cluster too, on the owner's call. `make down` becomes the full worktree teardown: stop the daemon, drop the worktree's databases, sweep its namespaces.
 
 ## PR Intent & comprehension handshake
 
@@ -54,17 +54,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `make/test-infra.mk` | EDIT | Lane targets the shared stack; per-worktree `test_<worktree-id>` database; namespace-scoped Dragonfly reset; split out the slot-migration/cluster-fault suites onto the disposable stack |
-| `make/test-integration-rustd.mk` | EDIT | Integration and coverage suites inherit the shared-stack targeting; per-worktree migrate step |
-| `make/bench.mk` | EDIT | Consumes `_ensure-test-infra`; follows the retargeted infra |
-| `make/dev.mk` | EDIT | `down` becomes full worktree teardown (daemon, databases, namespace) |
-| `scripts/local-dev.sh` | EDIT | Implements worktree teardown: drop `dev_<worktree-id>` and `test_<worktree-id>` databases, sweep the namespace |
-| `scripts/local-dev-state.sh` | EDIT | Per-worktree teardown helper; `DEV_STACK` validation widened to accept worktree-named disposable projects for the orphan sweep |
-| `scripts/local-dev-test.sh` | EDIT | Two-worktree proof extended: concurrent lanes, zero new containers, teardown residue checks |
+| `make/test-infra.mk` | EDIT | Lane targets the shared stack; per-worktree `test_<worktree-id>` database; namespace-scoped Dragonfly reset — recipes delegate to `scripts/test-infra-shared.sh` |
+| `make/test-integration-rustd.mk` | VERIFY | No routing change: the exclusive filter stays cargo-level; confirm comments and edges |
+| `make/bench.mk` | VERIFY | Consumes `TEST_*` unchanged (bench.mk:116-118); confirm no per-worktree stack assumption |
+| `make/dev.mk` | EDIT | `down` becomes full worktree teardown (daemon, databases, namespaces); `DEV_STACK` accepts worktree-named projects |
+| `scripts/local-dev.sh` | EDIT | Implements worktree teardown: drop `dev_<worktree-id>` and `test_<worktree-id>` databases, sweep both namespaces, deregister; new `ports` verb |
+| `scripts/local-dev-state.sh` | EDIT | Snapshot refresh on definition change; postgres preload recreate; `test-database` verb; `DEV_STACK` validation widened to worktree-named projects for the orphan sweep |
+| `scripts/local-dev-test.sh` | VERIFY | Launcher semantics unchanged; the existing fake-tool suite must stay green |
 | `scripts/local-dev-live-test.sh` | EDIT | Live proof updated for teardown: its post-`make down` database assertions move onto the two-namespace residue proof |
-| `scripts/make_reset_order_test.sh` | EDIT | Drives the reset; follows the scoped reset |
-| `docker-compose.yml` | EDIT | Header narrows to the slot-migration/cluster-fault disposable suite only |
-| `.github/workflows/test-integration-rustd.yml` | EDIT | Continuous Integration (CI) lane targeting follows the makefile; **requires Indy's explicit CI-edit approval at EXECUTE** |
+| `scripts/make_reset_order_test.sh` | VERIFY | The five dependency-graph cases must stay green; no new cases |
+| `scripts/test-infra-shared.sh` | CREATE | The test lanes' shared-stack operator: `env`, `ensure`, `reset`, `control` |
+| `scripts/dragonfly-cluster.sh` | EDIT | New `sweep <prefix>` verb: SCAN+DEL every key embedding the namespace, every node, no layout change |
+| `docker-compose.yml` | VERIFY | Not sunset: bench.mk reads the image pin from it (bench.mk:93); remains the manual/ops stack |
+| `.github/workflows/test-integration-rustd.yml` | EDIT | Failure-diagnostics step retargets from the retired workspace compose project to the shared dev stack; **Indy's CI-edit approval recorded in Discovery (Oct 19, 2026: 12:35 PM)** |
 | `docs/development.md` | EDIT | Replaces the "retains its own disposable stack" lane paragraph with the shared-stack design and the teardown behaviour |
 | `docs/architecture/datastore_scaling.md` | EDIT | §Shared local development: lanes join the shared stack; snapshot image-pinning rule recorded |
 | `docs/architecture/testing.md` | EDIT | Lane datastore description follows |
@@ -118,12 +120,9 @@ The integration and coverage lanes reuse the repository's one shared stack throu
 - **Dimension 2.1** — Resetting worktree A leaves worktree B's rows, keys, streams and consumer groups intact → Test `namespace_reset_leaves_sibling_state_intact`
 - **Dimension 2.2** — `KEEP_TEST_STATE=1` skips the reset → Test `keep_test_state_skips_reset` (regression)
 
-### §3 — Slot-migration and cluster-fault suites stay disposable
+### §3 — Cluster-global suites ride the shared cluster (owner call)
 
-Suites that own cluster-global state keep today's per-worktree disposable compose project, because slot topology and the server's connection table cannot be namespaced: the slot-migration suites, and `integration_hub_exclusive`, which diffs every node's client set and kills connections by id (`integration_hub.rs:141`). The integration gate routes them by explicit selection, and `docker-compose.yml` remains their definition.
-
-- **Dimension 3.1** — The slot-migration suite runs green on its disposable stack while another worktree runs the shared-stack lane → Test `slot_migration_suite_on_disposable_stack`
-- **Dimension 3.2** — `integration_hub_exclusive` runs green on its disposable stack while another worktree runs the shared-stack lane, and no `CLIENT KILL` reaches a shared-stack connection → Test `integration_hub_exclusive_on_disposable_stack`
+Suites that move slots or observe the server's whole client set run on the shared cluster too, on Indy's call (Oct 19, 2026: "keep things simple… nothing hurts now"): their windows are transient and serialized, and the layout self-heals — each test restores its slots, and the cluster script bootstraps the canonical layout on every container restart. `TEST_DRAGONFLY_CONTROL` reaches the shared stack's container; no per-worktree disposable routing exists.
 
 ### §4 — Worktree teardown nukes worktree state
 
@@ -159,7 +158,7 @@ make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named di
 |------|-------|--------------------------------------------------------|
 | Shared Mailpit cross-reads | Two worktrees' invite suites share one inbox | Suites match messages by the recipient they invited, the pattern `datastore_scaling.md` already documents; the concurrency proof fails loudly on any cross-read |
 | QStash schedule collision | Shared emulator with its fixed identity | Schedules key on the destination URL, which embeds each worktree's daemon port per the architecture table; collision covered by the concurrency proof |
-| Slot topology or connections mutated on the shared cluster | A slot-migration or `integration_hub_exclusive` suite routed to the shared stack | Gate routes cluster-global suites to the disposable stack by explicit selection; the lane smoke asserts the routing |
+| Slot topology or connections mutated on the shared cluster | A slot-migrating or `integration_hub_exclusive` suite runs against the shared cluster | Accepted on the owner's call: windows are transient and serialized, and the layout self-heals (each test restores its slots; the cluster script bootstraps the canonical layout on restart) |
 | Concurrent database creation race | Two worktrees create `test_<worktree-id>` simultaneously | Idempotent create-if-not-exists, the `dev_database` precedent (`local-dev-state.sh:141`), with duplicate-key tolerated as success |
 | Snapshot image skew | The shared snapshot is pinned by whichever worktree provisioned it | The lane runs against the snapshot's datastore versions and prints them; the pinning rule is recorded in `datastore_scaling.md`; no silent mismatch |
 
@@ -186,8 +185,6 @@ make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named di
 | 1.4 | integration | `namespaces_isolate_values_sessions_and_scans` | M223 namespace proofs remain green unchanged |
 | 2.1 | integration | `namespace_reset_leaves_sibling_state_intact` | Reset in worktree A; worktree B's rows, keys, streams and consumer groups are byte-for-byte intact |
 | 2.2 | integration | `keep_test_state_skips_reset` | `KEEP_TEST_STATE=1` preserves fixtures across runs |
-| 3.1 | integration | `slot_migration_suite_on_disposable_stack` | Slot-migration suite green on its own project while a shared-stack lane runs elsewhere |
-| 3.2 | integration | `integration_hub_exclusive_on_disposable_stack` | Hub-exclusive suite green on its own project while a shared-stack lane runs; shared-stack `CLIENT LIST` untouched |
 | 4.1 | integration | `teardown_leaves_no_worktree_residue` | After `make down`: zero `pg_database` rows; zero keys under both prefixes — `$DEV_ID` and `test_<worktree-id>` |
 | 4.2 | integration | `up_after_down_rebuilds` | `make up` after full teardown recreates the database, migrates and serves |
 | 5.1 | integration | `orphan_disposable_stack_sweep` | `make down DEV_STACK=<worktree-named project>` removes its containers and volumes; refuses when live roots remain |
