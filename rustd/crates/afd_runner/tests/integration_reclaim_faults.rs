@@ -6,6 +6,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use afd_core::test_util::trace::Capture;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, RunnerSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
@@ -19,7 +20,7 @@ use afd_state::sql::FLEET_STATUS_ACTIVE;
 use jiff::Timestamp;
 
 use crate::rows::{self, LeaseRow, POLICY};
-use crate::support::{RING_QUIET_FOR, Recorder, connect_redis, heard_ring, listen_for_rings};
+use crate::support::{RING_QUIET_FOR, connect_redis, heard_ring, listen_for_rings};
 
 /// Held by every test that runs a reclaim pass: a pass sweeps every active
 /// fleet in the lane, so two passes in parallel claim each other's entries.
@@ -92,26 +93,28 @@ async fn a_stranded_lease_the_index_will_not_mark_is_logged_and_not_counted() {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket");
-    let recorder = Recorder::default();
+    let capture = Capture::install();
 
-    let swept = recorder
-        .around(Reclaim::new(fixture.database.clone(), dead, "reclaim-dead").sweep())
+    let swept = Reclaim::new(fixture.database.clone(), dead, "reclaim-dead")
+        .sweep()
         .await
         .expect("a queue that will not answer fails marks, never the pass");
 
     assert_eq!(swept.changed, 0, "a mark that did not land is not counted");
-    let logged = recorder
-        .find("ready_remark_failed", |fields| {
-            fields.get("fleet_id") == Some(&fixture.fleet)
+    let logged = capture
+        .events()
+        .into_iter()
+        .find(|line| {
+            line.field("event") == Some("ready_remark_failed")
+                && line.field("fleet_id") == Some(fixture.fleet.as_str())
         })
         .expect("the ledger's stranded fleet is named when its mark fails");
     assert!(
         logged
-            .get("error_code")
+            .field("error_code")
             .is_some_and(|code| !code.is_empty())
     );
-    let reason = logged.get("reason").expect("the failed mark says why");
-    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+    logged.assert_uncoded_reason();
     fixture.cleanup().await;
 }
 

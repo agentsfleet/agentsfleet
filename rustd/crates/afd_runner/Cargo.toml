@@ -83,9 +83,6 @@ afd_dragonfly.workspace = true
 # The raw `XCLAIM`/`XPENDING` `integration_reclaim_faults.rs` ages and reads an
 # entry through.
 redis.workspace = true
-# The thread-scoped recorder `tests/support.rs` reads a sweep's log line back
-# through.
-tracing-subscriber.workspace = true
 
 [[test]]
 name = "runner_suite"
