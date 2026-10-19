@@ -57,8 +57,33 @@ TAIL = {
     "measurements": {"frames_undelivered": 0, "streams_unreached": 0},
 }
 
+# Integer milliseconds the scan must let through: an edge's one conversion from
+# a `Duration`, a field name that only ends in `_MS`, a comment naming a
+# retired helper, and a test's own constants.
+EDGES_RS = """\
+// The retired `UnixMillis` read is gone.
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+const WIRE_INTERVAL_MS: u32 = {
+    const _: () = assert!(HEARTBEAT_INTERVAL.as_millis() <= u32::MAX as u128);
+    HEARTBEAT_INTERVAL.as_millis() as u32
+};
+const P95_MS: &str = "p95_ms";
+
+#[cfg(test)]
+mod tests {
+    const BRIEF_MS: u64 = 250;
+}
+"""
+
+SPANS_RS = "pub const WAIT: Duration = Duration::from_secs(30);\n"
+
+
 def clean_tree() -> dict[str, str]:
     return {
+        "rustd/crates/afr_agent/src/nested/wait.rs": SPANS_RS,
+        "rustd/crates/afd_api_runner/src/heartbeat.rs": EDGES_RS,
+        "rustd/crates/afr_agent/src/loop/session_tests.rs": "const BRIEF_YIELD_MS: u64 = 250;\n",
+        "rustd/crates/afd_db/src/test_util/unreachable.rs": "pub const ACQUIRE_TIMEOUT_MS: u64 = 50;\n",
         f"{checker.SCHEMA_CRATES[0]}/policy.rs": WIRE_RS,
         f"{checker.SCHEMA_CRATES[1]}/workspace.rs": API_WIRE_RS,
         checker.MIGRATION_LIST: MIGRATION_RS,
@@ -135,11 +160,34 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
                 code, output = lint_tree(files)
                 self.assertIn(": rust-stream-ceiling: ", output)
 
+    def test_no_integer_millis_outside_edges(self) -> None:
+        seeded_const = clean_tree()
+        seeded_const["rustd/crates/afd_fleet/src/lease.rs"] = "const X_MS: i64 = 60_000;\n"
+        code, output = lint_tree(seeded_const)
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn("rustd/crates/afd_fleet/src/lease.rs:1: rust-integer-millis: `X_MS`", output)
+        self.assertEqual(1, output.count("rust-integer-millis"), output)
+
+        for line, named in (
+            ("pub const WAIT_MS_MAX: u64 = 3_600_000;\n", "`WAIT_MS_MAX`"),
+            ("let at = UnixMillis::now();\n", "`UnixMillis`"),
+            ("let later = clock::add_millis(at, 5);\n", "`add_millis`"),
+            ("let span = millis_between(a, b);\n", "`millis_between`"),
+        ):
+            with self.subTest(named=named):
+                files = clean_tree()
+                files["rustd/crates/afd_fleet/src/lease.rs"] = line
+                code, output = lint_tree(files)
+                self.assertIn(f"rustd/crates/afd_fleet/src/lease.rs:1: rust-integer-millis: {named}", output)
+
     def test_an_empty_scan_is_a_finding(self) -> None:
         files = {k: v for k, v in clean_tree().items() if not k.startswith("rustd/crates/afd")}
         code, output = lint_tree(files)
         self.assertIn("no ToSchema derive was read", output)
         self.assertIn("no migration entry or no tracked schema file was read", output)
+        files = {k: v for k, v in clean_tree().items() if not k.startswith(checker.CRATES)}
+        code, output = lint_tree(files)
+        self.assertIn("no crate source was read", output)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ use crate::name::{CredentialName, FleetName};
 pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
-pub use self::gates::{Behavior, DEFAULT_TIMEOUT_MS, GatePolicy, GateRule};
+pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::{ContextBudget, Network};
 pub use self::repository::{Access, Reach, Recorded, RepositoryBinding};
 pub use self::trigger::{

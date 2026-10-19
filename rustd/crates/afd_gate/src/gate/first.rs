@@ -16,8 +16,6 @@
 //! those. What bounds a write fleet now is that grant, the fleet's
 //! `budget.daily_nanos`, and `agentsfleet grant delete`.
 
-use std::time::Duration;
-
 use afd_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 use serde_json::Value;
@@ -82,7 +80,7 @@ impl Gates {
                 // The matched rule carries the workspace copy the decision
                 // discards, and it is the SAME match — so the card cannot
                 // describe a different rule from the one that fired.
-                let timeout = timeout_of(policy.timeout_ms());
+                let timeout = policy.timeout();
                 let stated = Stated::of(
                     request.event_type,
                     request.actor,
@@ -170,21 +168,9 @@ fn parse_context(request_json: &str) -> Option<Value> {
     serde_json::from_str(request_json).ok()
 }
 
-/// A policy timeout as the span the database adds to its clock.
-///
-/// The one place the authored millisecond count becomes a span: the config
-/// field is `timeout_ms` because that is what a fleet author writes, and
-/// everything past this line carries a [`Duration`].
-const fn timeout_of(millis: u64) -> Duration {
-    Duration::from_millis(millis)
-}
-
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use super::{parse_context, timeout_of};
-    use afd_fleet_runtime::config::DEFAULT_TIMEOUT_MS;
+    use super::parse_context;
     use serde_json::json;
 
     #[test]
@@ -203,15 +189,5 @@ mod tests {
         );
         assert_eq!(parse_context("[]"), Some(json!([])));
         assert_eq!(parse_context("null"), Some(json!(null)));
-    }
-
-    #[test]
-    fn an_authored_timeout_becomes_the_span_it_names() {
-        // The conversion is exact across the whole range an author can write,
-        // so no timeout becomes a deadline in the past: a span cannot be
-        // negative, and the largest one stays the largest.
-        assert_eq!(timeout_of(DEFAULT_TIMEOUT_MS), Duration::from_hours(1));
-        assert_eq!(timeout_of(0), Duration::ZERO);
-        assert!(timeout_of(u64::MAX) > timeout_of(DEFAULT_TIMEOUT_MS));
     }
 }

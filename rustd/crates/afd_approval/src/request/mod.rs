@@ -68,7 +68,7 @@ const EVENT_STATUS_UNKNOWN: &str = "grant_status_unrecognised";
 /// How long a grant card stands before the sweeper may take it.
 ///
 /// Thirty days, and deliberately not the hour an event gate gets
-/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT_MS`). That hour bounds a
+/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT`). That hour bounds a
 /// question about ONE delivery, where a run is waiting and a stale answer is
 /// worse than none. This card asks for a STANDING authorisation, raised at
 /// install for a person who may not be at their desk, and an hour would expire
