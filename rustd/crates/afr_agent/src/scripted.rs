@@ -174,7 +174,6 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
             token_count: 0,
             wall_seconds: started.elapsed().as_secs(),
             memory_peak_bytes: 0,
-            cpu_throttled_ms: 0,
             input_tokens: 0,
             cached_input_tokens: 0,
             output_tokens: 0,
