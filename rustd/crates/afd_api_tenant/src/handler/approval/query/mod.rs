@@ -187,16 +187,21 @@ fn parse_gate_type(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal>
 ///
 /// A text-boundary cursor is refused as malformed rather than mapped: this
 /// listing orders by instant alone, and a name boundary would resume a walk
-/// through an ordering it never served.
+/// through an ordering it never served. The gate id is proved an identifier
+/// here for the reason [`DETAIL_FLEET_ID`] gives: `SELECT_GATE_PAGE` casts it
+/// to `uuid`, and a forged one would come back as the store's 500.
 fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
     match CoreCursor::parse(raw) {
-        Ok(CoreCursor::Timestamp { at, id }) => Ok(Some(Resume {
-            created_at: at,
-            gate_id: id,
-        })),
+        Ok(CoreCursor::Timestamp { at, id }) => {
+            let gate = parse_id(&id, DETAIL_CURSOR)?;
+            Ok(Some(Resume {
+                created_at: at,
+                gate_id: gate.as_str().to_owned(),
+            }))
+        }
         Ok(CoreCursor::Text { .. }) | Err(InvalidCursor) => Err(Refusal::malformed(DETAIL_CURSOR)),
     }
 }

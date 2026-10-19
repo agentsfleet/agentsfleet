@@ -176,6 +176,9 @@ fn a_cursor_this_endpoint_never_issued_is_refused() {
         "cursor=1735689600000:",
         "cursor=abc:01924f4e",
         "cursor=",
+        // A well-formed instant with a gate id that is not one: the statement
+        // casts it to `uuid`, so it must stop here as a 400, not a 500.
+        "cursor=2025-01-01T00:00:00Z:not-a-gate",
     ] {
         assert_eq!(refusal_status(unminted), BAD_REQUEST, "{unminted}");
     }
