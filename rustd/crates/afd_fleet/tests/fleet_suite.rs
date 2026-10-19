@@ -67,6 +67,8 @@ mod integration_lease_assign;
 mod integration_lease_billing_races;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
+#[path = "integration_lease_expiry_lock.rs"]
+mod integration_lease_expiry_lock;
 #[path = "integration_lease_fairness.rs"]
 mod integration_lease_fairness;
 mod integration_lease_gates;

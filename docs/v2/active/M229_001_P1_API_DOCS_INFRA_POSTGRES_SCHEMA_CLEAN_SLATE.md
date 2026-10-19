@@ -154,7 +154,7 @@ Every query, row struct and fixture moves to the new tables and columns. Each it
 - **Dimension 4.5** — runner protocol bodies carry no `deletion_generation`; the runner and its report spool decode without it; the draft message response still carries `operation_id`, stored on the message → Test `test_runner_wire_drops_deletion_generation`
 - **Dimension 4.6** — a resolved approval gate or invite cannot be resolved again; the pending indexes read `resolved_at` → Test `test_resolution_happens_once`
 - **Dimension 4.7** — the API, the CLI and the UI send and read every instant as an RFC 3339 string in UTC through jiff's standard serialization (`…:49Z`, `…:49.123Z`); clients order instants by parsed value, never by text; the device-flow window is `expires_at` → Test `test_api_instants_are_rfc3339`
-- **Dimension 4.8** — every locking validity check (lease renew, report fence, draft and schedule reads under lock) refuses a row that expired while it waited on the lock → Test `test_expiry_checks_read_clock_after_lock`
+- **Dimension 4.8** — DONE — every locking validity check (lease renew, report fence, draft and schedule reads under lock) refuses a row that expired while it waited on the lock → Test `test_expiry_checks_read_clock_after_lock`
 - **Dimension 4.9** — an admission event's `event_id` is its `fleet.admissions` row `id` (UUIDv7, minted in Rust before the insert); delivery, reply and inherit lookups key on it, and the history keyset `(created_at, event_id)` stays newest-first → Test `an_admitted_event_is_named_by_its_row_id`, `delivery_and_destination_lookups_key_on_the_row_id`
 
 ### §6 — Docs

@@ -20,9 +20,13 @@
 /// settle takes the lease lock before the tenant's wallet, so it never waits on
 /// a post while holding the wallet.
 ///
-/// `$1` lease, `$2` runner, `$3` the active status.
-pub const SELECT_LIVE_LEASE: &str =
-    concat!(include_str!("live_lease.sql"), "FOR NO KEY UPDATE OF l");
+/// `$1` lease, `$2` runner, `$3` the active status. The deadline is judged
+/// after the lock wait, for the reason [`super::standing::LEASE_READ`] gives.
+pub const SELECT_LIVE_LEASE: &str = const_format::concatcp!(
+    super::standing::LEASE_READ,
+    "FOR NO KEY UPDATE OF l",
+    super::standing::LEASE_JUDGED
+);
 
 /// The record bytes one lease of an event keeps.
 ///
