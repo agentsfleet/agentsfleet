@@ -11,6 +11,7 @@ mod obligations;
 mod offered;
 mod platform;
 mod replacement;
+mod revalidation;
 mod stop;
 
 use super::{

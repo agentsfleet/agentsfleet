@@ -154,3 +154,28 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
     assert_eq!(f.counts().await, (1, 0, 1), "no candidate was written");
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_model_the_catalogue_changed_fences_the_attempt_that_pinned_it() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    sqlx::query(
+        "UPDATE model.platform_models SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1::uuid",
+    )
+    .bind(f.catalogue[0].as_str())
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("the catalogue re-verifies the model's context window");
+    assert_eq!(
+        f.drafts
+            .activity(&f.runner, &a.lease, a.initialize(1))
+            .await
+            .expect_err("the pinned snapshot no longer matches the live model")
+            .code(),
+        afd_core::error_code::AUTHORING_MODEL
+    );
+    assert_eq!(a.activity_count(&f).await, 0);
+    assert_eq!(f.counts().await, (1, 0, 1));
+    f.cleanup().await;
+}
