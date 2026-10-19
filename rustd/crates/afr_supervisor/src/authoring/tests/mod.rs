@@ -25,7 +25,7 @@ const GRANTED_UNTIL: &str = "1970-01-01T00:00:30Z";
 /// The attempt's end, five minutes after the rig clock's zero.
 const ATTEMPT_ENDS: &str = "1970-01-01T00:05:00Z";
 
-fn lease() -> Lease<Value> {
+pub(crate) fn lease() -> Lease<Value> {
     serde_json::from_value(json!({
         "lease_id": LEASE, "attempt_id": ATTEMPT, "draft_id": LEASE,
         "sequence": "1", "fence": "1",
@@ -50,7 +50,7 @@ fn rig(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Rig {
     )
 }
 
-fn result(call: &Call, proposals: &Value, cut: bool) -> Answer {
+pub(crate) fn result(call: &Call, proposals: &Value, cut: bool) -> Answer {
     let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
     json(
         &json!({"dispatch_id": request["dispatch_id"], "call_index":request["call_index"],

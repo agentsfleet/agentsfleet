@@ -6,7 +6,7 @@ mod renew;
 mod turn;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use self::{meter::Observed, turn::Turn};
 use crate::{Result, lease_loop::Lessee};

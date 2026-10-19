@@ -11,7 +11,7 @@ use std::time::Duration;
 use afd_core::clock::{FixedClock, before};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_wire::report::FailureClass;
+use afd_wire::report::{FailureClass, RenewResponse};
 use afr_agent::Meter;
 use afr_providers::Usage;
 use jiff::Timestamp;
@@ -22,6 +22,12 @@ use crate::client::Verb;
 use crate::error;
 use crate::test_support::{Answer, GRANTED_UNTIL, LEASE_ID, drain, json, plane};
 use afd_core::timing::RENEWAL_TICK;
+
+/// The renew body's usage lines, by the key the daemon reads them under.
+const REQUESTS: &str = "requests";
+
+/// A usage line's number within its run.
+const SEQ: &str = "seq";
 
 /// The grant every successful renewal answers with: thirty seconds after the
 /// fixed clock's zero, so each one pushes the deadline a full grant ahead.
@@ -189,12 +195,58 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     let sent = drain(&mut calls);
     let body: serde_json::Value =
         serde_json::from_slice(sent.first().unwrap().body.as_ref().unwrap()).unwrap();
-    let line = &body["requests"][0];
-    assert_eq!(line["seq"], 0, "the run's first request");
+    let line = &body[REQUESTS][0];
+    assert_eq!(line[SEQ], 0, "the run's first request");
     assert_eq!(line["input_tokens"], 300);
     assert_eq!(line["cached_input_tokens"], 100);
     assert_eq!(line["cache_write_tokens"], 7, "a write of no lifetime");
     assert_eq!(line["cache_write_5m_tokens"], 20);
     assert_eq!(line["cache_write_1h_tokens"], 30);
     assert_eq!(line["output_tokens"], 40);
+}
+
+/// A renewal the daemon says recorded a line forgets it, so the next renewal
+/// carries only what is still unrecorded rather than billing the line again.
+#[tokio::test(start_paused = true)]
+async fn a_line_a_renewal_recorded_is_not_sent_again() {
+    let renewals = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&renewals);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => json(&RenewResponse {
+            lease_expires_at: GRANTED_UNTIL,
+            recorded_through: Some(0),
+        }),
+        1 => renewed(),
+        _ => Answer::Fail(error::refused(Verb::Renew, 409, None)),
+    });
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let clock = clock();
+    let meter = Meter::default();
+    meter.add(Usage {
+        input: 300,
+        output: 40,
+        ..Usage::default()
+    });
+
+    Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &meter)
+        .keep()
+        .await;
+
+    let sent = drain(&mut calls);
+    let lines = |index: usize| -> serde_json::Value {
+        let body: serde_json::Value =
+            serde_json::from_slice(sent[index].body.as_ref().unwrap()).unwrap();
+        body[REQUESTS].clone()
+    };
+    assert_eq!(
+        lines(0)[0][SEQ],
+        0,
+        "the first renewal carries the run's line"
+    );
+    assert_eq!(
+        lines(1),
+        serde_json::json!([]),
+        "the line the daemon recorded is not sent again"
+    );
+    assert_eq!(meter.backlog(), 0);
 }
