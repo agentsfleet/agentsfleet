@@ -54,16 +54,17 @@ pub(crate) async fn verify(
     let runtime = observations(attempt, reported, &totals, now)?;
     check_cost(reported, totals.provider)?;
     let runtime_nanos = runtime_nanos(runtime)?;
+    let usage = usage(
+        totals.known,
+        totals.input,
+        totals.output,
+        totals.provider,
+        runtime_nanos,
+    );
     Ok(Verified {
         runtime,
         failed_calls: totals.failed_calls,
-        usage: usage(
-            totals.known,
-            totals.input,
-            totals.output,
-            totals.provider,
-            runtime_nanos,
-        )?,
+        usage: usage?,
     })
 }
 
@@ -173,4 +174,60 @@ fn check_cost(reported: &Meter, authoritative: i64) -> Result<()> {
         return Err(invalid("Unknown provider usage must omit provider figures"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_cost;
+    use afd_core::error_code;
+    use afd_wire::authoring::{Knowledge, Meter};
+
+    fn meter(knowledge: Knowledge, cost: Option<&str>, tokens: Option<u64>) -> Meter {
+        Meter {
+            knowledge,
+            calls: 1,
+            input_tokens: tokens,
+            output_tokens: tokens,
+            runtime_ms: 1,
+            provider_cost_nanos: cost.map(str::to_owned),
+        }
+    }
+
+    fn refused(reported: &Meter, authoritative: i64) -> Option<afd_core::error_code::ErrorCode> {
+        check_cost(reported, authoritative)
+            .err()
+            .map(|error| error.code())
+    }
+
+    #[test]
+    fn a_reported_provider_cost_is_a_canonical_figure_within_the_receipts() {
+        let known = |cost| meter(Knowledge::Known, Some(cost), Some(1));
+        assert_eq!(refused(&known("40"), 40), None);
+        for cost in ["41", "-1", "040", "+4"] {
+            assert_eq!(
+                refused(&known(cost), 40),
+                Some(error_code::INVALID_REQUEST),
+                "{cost} against 40 nanos of receipts"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_usage_reports_no_provider_figure() {
+        assert_eq!(refused(&meter(Knowledge::Unknown, None, None), 0), None);
+        for reported in [
+            meter(Knowledge::Unknown, None, Some(1)),
+            Meter {
+                output_tokens: Some(1),
+                ..meter(Knowledge::Unknown, None, None)
+            },
+            meter(Knowledge::Unknown, Some("0"), None),
+        ] {
+            assert_eq!(
+                refused(&reported, 0),
+                Some(error_code::INVALID_REQUEST),
+                "{reported:?}"
+            );
+        }
+    }
 }

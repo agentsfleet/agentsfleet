@@ -82,6 +82,9 @@ async fn a_host_choice_that_cannot_be_recorded_rolls_the_admission_back() {
         .claim_queued(&f.runner, &draft.id)
         .await
         .expect("admission answers");
-    assert!(retried.is_some(), "the message stayed queued for the next poll");
+    assert!(
+        retried.is_some(),
+        "the message stayed queued for the next poll"
+    );
     f.cleanup().await;
 }

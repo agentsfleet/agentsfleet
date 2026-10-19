@@ -29,12 +29,6 @@ pub(super) const ATTEMPT: &str = include_str!("attempt.sql");
 /// `$6` failure reason, `$7` the running status.
 pub(super) const MESSAGE: &str = include_str!("message.sql");
 
-/// A late report rewriting a message expiry already failed for unknown usage;
-/// the message finished then, so this write is not a second finish.
-///
-/// [`MESSAGE`]'s binds, then `$8` the unknown-usage reason.
-pub(super) const LATE_MESSAGE: &str = include_str!("late_message.sql");
-
 /// Replaces an unknown-usage failure once its usage became known.
 ///
 /// `$1` draft, `$2` sequence, `$3` the resolved reason, `$4` the unknown-usage

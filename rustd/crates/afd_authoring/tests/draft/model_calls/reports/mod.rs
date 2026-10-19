@@ -5,6 +5,7 @@ mod failure_facts;
 mod replay;
 mod uncertainty;
 mod validation;
+mod verdicts;
 
 use super::super::{attempt::Attempt, fixture::Fixture, mint};
 use super::fixture;
