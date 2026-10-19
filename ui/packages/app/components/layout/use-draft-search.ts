@@ -13,7 +13,7 @@ export function useDraftSearch(workspace: string, query: string, history: readon
   useEffect(() => {
     const refresh = previousQuery.current === query && search.getSnapshot().query === query.trim();
     previousQuery.current = query;
-    // A changed chat can change result order; begin again instead of retaining its old cursor or labels.
+    // A changed chat can change result order; replace its first page while keeping current matches visible.
     if (refresh) {void search.search(query); return () => {search.cancel();};}
     const timer = setTimeout(() => {void search.search(query);}, SEARCH_DELAY_MS);
     return () => {clearTimeout(timer); search.cancel();};

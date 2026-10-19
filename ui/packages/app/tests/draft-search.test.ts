@@ -66,6 +66,33 @@ it("retains matches and the exact continuation through a temporary page failure"
   expect(search.getSnapshot().items).toHaveLength(2);
 });
 
+it("replaces a refreshed page atomically and holds its old continuation until that response lands", async () => {
+  const stale = Promise.withResolvers<Response>();
+  const refreshed = Promise.withResolvers<Response>();
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(page([CARD], CURSOR))
+    .mockImplementationOnce(() => stale.promise).mockImplementationOnce(() => refreshed.promise);
+  const search = owner(); await search.search("failures");
+  const items = search.getSnapshot().items;
+  const more = search.more(); const refresh = search.search("failures");
+  expect(search.getSnapshot()).toMatchObject({status: "ready", next_cursor: CURSOR});
+  expect(search.getSnapshot().items).toBe(items);
+  expect(search.more()).toBe(refresh);
+  stale.resolve(page([SECOND])); await more;
+  expect(search.getSnapshot().items).toBe(items);
+  refreshed.resolve(page([THIRD])); await refresh;
+  expect(search.getSnapshot()).toMatchObject({status: "ready", items: [expect.objectContaining({id: THIRD.id})], next_cursor: null});
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it("keeps matches after a failed refresh but clears them if retry discovers access was revoked", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(page([CARD], CURSOR))
+    .mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({}, 403));
+  const search = owner(); await search.search("failures"); await search.search("failures");
+  expect(search.getSnapshot()).toMatchObject({status: "failed", items: [expect.objectContaining({id: CARD.id})], next_cursor: CURSOR});
+  await search.search("failures");
+  expect(search.getSnapshot()).toMatchObject({status: "inaccessible", items: [], next_cursor: null});
+});
+
 it.each([401, 403, 404, 410])("clears private results on a current %i refusal", async status => {
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(page([CARD], CURSOR)).mockResolvedValueOnce(response({}, status));
   const search = owner(); await search.search("failures"); await search.more();

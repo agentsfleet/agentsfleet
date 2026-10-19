@@ -31,20 +31,26 @@ export class DraftSearch {
       this.#publish({...empty, status: STATUS.failed, message: QUERY_INVALID});
       return Promise.resolve();
     }
-    this.#publish({...empty, status: STATUS.loading});
-    return this.#read(null, this.#owner, true);
+    const retain = trimmed === this.#view.query && (this.#view.status === STATUS.ready || this.#view.items.length > 0);
+    this.#publish(retain ? {query: trimmed, items: this.#view.items, next_cursor: this.#view.next_cursor, status: STATUS.ready}
+      : {...empty, status: STATUS.loading});
+    return this.#load(null, true);
   }
 
   more = (): Promise<void> => {
     if (this.#pending) return this.#pending;
     const cursor = this.#view.next_cursor;
     if (cursor === null || this.#view.status !== STATUS.ready || this.#owner.signal.aborted) return Promise.resolve();
-    const pending = this.#read(cursor, this.#owner, false);
+    return this.#load(cursor, false);
+  };
+
+  #load(cursor: string | null, first: boolean): Promise<void> {
+    const pending = this.#read(cursor, this.#owner, first);
     this.#pending = pending;
     const release = (): void => {if (this.#pending === pending) this.#pending = null;};
     pending.then(release, release);
     return pending;
-  };
+  }
 
   remove = (id: string): void => {this.#removed.add(id); this.#publish({...this.#view, items: this.#view.items.filter(card => card.id !== id)});};
   cancel(): void { this.#owner.abort(); this.#pending = null; }
