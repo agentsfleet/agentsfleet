@@ -61,6 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/local-dev.sh` | EDIT | Implements worktree teardown: drop `dev_<worktree-id>` and `test_<worktree-id>` databases, sweep the namespace |
 | `scripts/local-dev-state.sh` | EDIT | Per-worktree teardown helper; `DEV_STACK` validation widened to accept worktree-named disposable projects for the orphan sweep |
 | `scripts/local-dev-test.sh` | EDIT | Two-worktree proof extended: concurrent lanes, zero new containers, teardown residue checks |
+| `scripts/local-dev-live-test.sh` | EDIT | Live proof updated for teardown: its post-`make down` database assertions move onto the two-namespace residue proof |
 | `scripts/make_reset_order_test.sh` | EDIT | Drives the reset; follows the scoped reset |
 | `docker-compose.yml` | EDIT | Header narrows to the slot-migration/cluster-fault disposable suite only |
 | `.github/workflows/test-integration-rustd.yml` | EDIT | Continuous Integration (CI) lane targeting follows the makefile; **requires Indy's explicit CI-edit approval at EXECUTE** |
@@ -119,15 +120,16 @@ The integration and coverage lanes reuse the repository's one shared stack throu
 
 ### §3 — Slot-migration and cluster-fault suites stay disposable
 
-Suites that move cluster slots keep today's per-worktree disposable compose project, because slot topology is cluster-global and cannot be namespaced. The integration gate routes them by explicit selection, and `docker-compose.yml` remains their definition.
+Suites that own cluster-global state keep today's per-worktree disposable compose project, because slot topology and the server's connection table cannot be namespaced: the slot-migration suites, and `integration_hub_exclusive`, which diffs every node's client set and kills connections by id (`integration_hub.rs:141`). The integration gate routes them by explicit selection, and `docker-compose.yml` remains their definition.
 
 - **Dimension 3.1** — The slot-migration suite runs green on its disposable stack while another worktree runs the shared-stack lane → Test `slot_migration_suite_on_disposable_stack`
+- **Dimension 3.2** — `integration_hub_exclusive` runs green on its disposable stack while another worktree runs the shared-stack lane, and no `CLIENT KILL` reaches a shared-stack connection → Test `integration_hub_exclusive_on_disposable_stack`
 
 ### §4 — Worktree teardown nukes worktree state
 
-`make down` in a worktree stops its daemon, deregisters it, drops its `dev_<worktree-id>` and `test_<worktree-id>` databases, and sweeps its namespace keys. `make up` afterwards recreates and migrates, which it already does on every start.
+`make down` in a worktree stops its daemon, deregisters it, drops its `dev_<worktree-id>` and `test_<worktree-id>` databases, and sweeps both namespaces the worktree owns — dev (`$DEV_ID`, `local-dev.sh:96`) and test (`test_<worktree-id>`). `make up` afterwards recreates and migrates, which it already does on every start.
 
-- **Dimension 4.1** — After `make down`, `pg_database` holds no row for the worktree and its namespace holds zero keys → Test `teardown_leaves_no_worktree_residue`
+- **Dimension 4.1** — After `make down`, `pg_database` holds no row for the worktree and both its namespaces (`$DEV_ID`, `test_<worktree-id>`) hold zero keys → Test `teardown_leaves_no_worktree_residue`
 - **Dimension 4.2** — `make up` after `make down` reaches a healthy daemon → Test `up_after_down_rebuilds` (regression)
 
 ### §5 — Orphan sweep and documentation
@@ -147,7 +149,7 @@ TEST_DRAGONFLY_TLS_URL=rediss://:agentsfleet@127.0.0.1:${AGENTSFLEET_DRAGONFLY_L
 AGENTSFLEET_DEV_NAMESPACE=test_<worktree-id>   # existing knob, namespace/mod.rs:6
 
 # Teardown surface (make/dev.mk)
-make down                          # daemon stop + deregister + DROP worktree databases + namespace sweep
+make down                          # daemon stop + deregister + DROP worktree databases + sweep $DEV_ID and test_<worktree-id> namespaces
 make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named disposable projects
 ```
 
@@ -157,7 +159,7 @@ make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named di
 |------|-------|--------------------------------------------------------|
 | Shared Mailpit cross-reads | Two worktrees' invite suites share one inbox | Suites match messages by the recipient they invited, the pattern `datastore_scaling.md` already documents; the concurrency proof fails loudly on any cross-read |
 | QStash schedule collision | Shared emulator with its fixed identity | Schedules key on the destination URL, which embeds each worktree's daemon port per the architecture table; collision covered by the concurrency proof |
-| Slot topology mutated on the shared cluster | A slot-migration suite routed to the shared stack | Gate routes slot suites to the disposable stack by explicit selection; the lane smoke asserts the routing |
+| Slot topology or connections mutated on the shared cluster | A slot-migration or `integration_hub_exclusive` suite routed to the shared stack | Gate routes cluster-global suites to the disposable stack by explicit selection; the lane smoke asserts the routing |
 | Concurrent database creation race | Two worktrees create `test_<worktree-id>` simultaneously | Idempotent create-if-not-exists, the `dev_database` precedent (`local-dev-state.sh:141`), with duplicate-key tolerated as success |
 | Snapshot image skew | The shared snapshot is pinned by whichever worktree provisioned it | The lane runs against the snapshot's datastore versions and prints them; the pinning rule is recorded in `datastore_scaling.md`; no silent mismatch |
 
@@ -185,7 +187,8 @@ make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named di
 | 2.1 | integration | `namespace_reset_leaves_sibling_state_intact` | Reset in worktree A; worktree B's rows, keys, streams and consumer groups are byte-for-byte intact |
 | 2.2 | integration | `keep_test_state_skips_reset` | `KEEP_TEST_STATE=1` preserves fixtures across runs |
 | 3.1 | integration | `slot_migration_suite_on_disposable_stack` | Slot-migration suite green on its own project while a shared-stack lane runs elsewhere |
-| 4.1 | integration | `teardown_leaves_no_worktree_residue` | After `make down`: zero `pg_database` rows for the worktree; zero keys under its namespace prefix |
+| 3.2 | integration | `integration_hub_exclusive_on_disposable_stack` | Hub-exclusive suite green on its own project while a shared-stack lane runs; shared-stack `CLIENT LIST` untouched |
+| 4.1 | integration | `teardown_leaves_no_worktree_residue` | After `make down`: zero `pg_database` rows; zero keys under both prefixes — `$DEV_ID` and `test_<worktree-id>` |
 | 4.2 | integration | `up_after_down_rebuilds` | `make up` after full teardown recreates the database, migrates and serves |
 | 5.1 | integration | `orphan_disposable_stack_sweep` | `make down DEV_STACK=<worktree-named project>` removes its containers and volumes; refuses when live roots remain |
 | 5.2 | manual | `docs_currency_check` | Procedure: run the R3 grep commands; evidence pasted into Pull Request Session Notes; required person: Indy |
@@ -194,7 +197,7 @@ make down DEV_STACK=<project>      # orphan sweep; now accepts worktree-named di
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Lanes reuse the shared stack and teardown leaves no residue (§1, §4) | `bash scripts/local-dev-test.sh --live <sibling-checkout>` | exit 0 | P0 | |
+| R1 | Lanes reuse the shared stack and teardown leaves no residue (§1, §4) | `bash scripts/local-dev-live-test.sh <sibling-checkout>` | exit 0 | P0 | |
 | R2 | Reset stays scoped to one worktree (§2) | `make test-integration-rustd 2>&1 \| tee /tmp/m230-lane.log; grep -c 'namespace_reset_leaves_sibling_state_intact' /tmp/m230-lane.log` | exit 0 and count ≥ 1 | P0 | |
 | R3 | Documentation carries the one-stack design (§5) | `grep -c 'retains its own disposable stack' docs/development.md docs/architecture/datastore_scaling.md` | 0 matches | P1 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
