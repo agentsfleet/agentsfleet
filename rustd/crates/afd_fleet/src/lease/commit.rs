@@ -140,6 +140,16 @@ impl Leases {
     /// caller that returns success without acknowledging afterwards leaves the
     /// entry pending and redelivered, which is the safe direction.
     ///
+    /// The host's capacity lock comes first, as it does for a renewal
+    /// ([`Leases::extend`]): host row, then lease and slot rows. The metering
+    /// statement numbers its runtime line from the lines it counts, and under
+    /// READ COMMITTED a statement that waits on the lease row keeps its
+    /// starting snapshot for that count. Waiting on the host row in its own
+    /// statement means the metering statement starts after a racing renewal
+    /// committed, so it counts the renewal's line. The capacity read itself
+    /// gates nothing: a report from a cordoned, revoked or removed host still
+    /// settles, and the fence alone decides whether it wins.
+    ///
     /// # Errors
     /// Reports an entropy source that could not produce the usage line's
     /// identifier, an instant that cannot be encoded, and a datastore that
@@ -148,6 +158,8 @@ impl Leases {
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
+        let _held_until_commit =
+            afd_runner::capacity::lock(&mut transaction, report.runner_id).await?;
 
         let metering = Metering {
             lease_id: report.lease_id,
