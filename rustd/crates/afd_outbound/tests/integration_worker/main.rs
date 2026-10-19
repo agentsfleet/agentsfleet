@@ -45,6 +45,12 @@ use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, Worker};
 use tokio_util::sync::CancellationToken;
 
+#[path = "../support/gated_poster.rs"]
+#[allow(
+    dead_code,
+    reason = "shared support: the ceiling suite reads the high-water mark, this one does not"
+)]
+mod gated_poster;
 #[path = "../support/outbound_harness.rs"]
 mod support;
 
