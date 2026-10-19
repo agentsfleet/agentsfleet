@@ -47,7 +47,16 @@ pub(super) struct Case {
 
 impl Case {
     pub(super) async fn create() -> Self {
-        let base = Fixture::create().await;
+        Self::over(Fixture::create().await).await
+    }
+
+    /// A case with a database of its own, for a proof whose fault would reach
+    /// every other proof's rows.
+    pub(super) async fn isolated() -> Self {
+        Self::over(Fixture::isolated().await).await
+    }
+
+    async fn over(base: Fixture) -> Self {
         let config = DragonflyConfig::from_url(
             DragonflyRole::Default,
             ProcessEnv

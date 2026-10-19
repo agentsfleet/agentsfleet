@@ -6,6 +6,7 @@
 )]
 
 mod activation;
+mod admission_faults;
 mod cancellation;
 mod contention;
 mod deletion_matrix;
